@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Switch } from "@/components/ui/switch";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
@@ -293,18 +292,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
   useEffect(() => stop, [stop]);
 
-  const handleToggle = async (on: boolean) => {
-    if (on) {
-      await start();
-    } else {
-      stop();
-      if (char) {
-        const [cr, cg, cb] = currentColor;
-        await sendColor(char, cr, cg, cb).catch(() => {});
-        await sendBrightness(char, 100).catch(() => {});
-      }
+  // Auto-start when char becomes available
+  useEffect(() => {
+    if (char && !active) {
+      start();
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [char]);
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
@@ -321,13 +315,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
           className="w-12 h-12"
           style={{ opacity: active ? 0.7 : 0.3 }}
         />
-      </div>
-
-      {/* Toggle */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-muted-foreground">Baspuls</span>
-        <Switch checked={active} onCheckedChange={handleToggle} />
-        <span className="text-sm font-bold">{active ? "PÅ" : "AV"}</span>
       </div>
 
 
