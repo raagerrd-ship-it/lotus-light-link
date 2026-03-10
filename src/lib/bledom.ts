@@ -2,10 +2,72 @@
 
 const SERVICE_UUID = 0xfff0;
 const CHAR_UUID = 0xfff3;
+const STORAGE_KEY = 'bledom-last-device';
 
 export interface BLEConnection {
   device: any;
   characteristic: any;
+}
+
+export function saveLastDevice(device: any) {
+  if (device?.id && device?.name) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: device.id, name: device.name }));
+  }
+}
+
+export function getLastDevice(): { id: string; name: string } | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function connectToDevice(device: any): Promise<BLEConnection> {
+  const server = await device.gatt!.connect();
+  const service = await server.getPrimaryService(SERVICE_UUID);
+  const characteristic = await service.getCharacteristic(CHAR_UUID);
+  saveLastDevice(device);
+  return { device, characteristic };
+}
+
+// Try reconnecting to a previously paired device without showing the chooser
+export async function reconnectLastDevice(): Promise<BLEConnection | null> {
+  const nav = navigator as any;
+  if (!nav.bluetooth?.getDevices) return null;
+
+  const lastDevice = getLastDevice();
+  if (!lastDevice) return null;
+
+  const devices = await nav.bluetooth.getDevices();
+  const device = devices.find((d: any) => d.id === lastDevice.id);
+  if (!device) return null;
+
+  // Request the browser to watch for the device advertisement
+  const abortController = new AbortController();
+  
+  return new Promise<BLEConnection | null>((resolve) => {
+    const timeout = setTimeout(() => {
+      abortController.abort();
+      resolve(null);
+    }, 5000);
+
+    device.addEventListener('advertisementreceived', async () => {
+      clearTimeout(timeout);
+      try {
+        const conn = await connectToDevice(device);
+        resolve(conn);
+      } catch {
+        resolve(null);
+      }
+    }, { once: true });
+
+    device.watchAdvertisements({ signal: abortController.signal }).catch(() => {
+      clearTimeout(timeout);
+      resolve(null);
+    });
+  });
 }
 
 export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
@@ -25,12 +87,7 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
       };
 
   const device = await nav.bluetooth.requestDevice(options);
-
-  const server = await device.gatt!.connect();
-  const service = await server.getPrimaryService(SERVICE_UUID);
-  const characteristic = await service.getCharacteristic(CHAR_UUID);
-
-  return { device, characteristic };
+  return connectToDevice(device);
 }
 
 export async function sendColor(char: any, r: number, g: number, b: number) {

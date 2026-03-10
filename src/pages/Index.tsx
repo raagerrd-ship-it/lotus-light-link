@@ -1,35 +1,57 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import ColorCanvas from "@/components/ColorCanvas";
-import { connectBLEDOM, sendColor, sendBrightness, sendPower, hsvToRgb, type BLEConnection } from "@/lib/bledom";
-import { Power, Bluetooth, Sun } from "lucide-react";
+import { connectBLEDOM, reconnectLastDevice, getLastDevice, sendColor, sendBrightness, sendPower, hsvToRgb, type BLEConnection } from "@/lib/bledom";
+import { Power, Bluetooth, Sun, Zap } from "lucide-react";
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 255, 255]);
   const [brightness, setBrightness] = useState(80);
   const [isOn, setIsOn] = useState(true);
   const throttleRef = useRef<number>(0);
+  const lastDevice = getLastDevice();
+
+  const finishConnect = async (conn: BLEConnection) => {
+    setConnection(conn);
+    await sendPower(conn.characteristic, true);
+    await sendBrightness(conn.characteristic, 80);
+    conn.device.addEventListener("gattserverdisconnected", () => {
+      setConnection(null);
+    });
+  };
 
   const handleConnect = async (scanAll = false) => {
     setConnecting(true);
     setError(null);
     try {
       const conn = await connectBLEDOM(scanAll);
-      setConnection(conn);
-      await sendPower(conn.characteristic, true);
-      await sendBrightness(conn.characteristic, 80);
-
-      conn.device.addEventListener("gattserverdisconnected", () => {
-        setConnection(null);
-      });
+      await finishConnect(conn);
     } catch (e: any) {
       setError(e.message || "Kunde inte ansluta");
     } finally {
       setConnecting(false);
+    }
+  };
+
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    setError(null);
+    try {
+      const conn = await reconnectLastDevice();
+      if (conn) {
+        await finishConnect(conn);
+      } else {
+        setError("Kunde inte hitta enheten. Prova 'VÄCK LJUS' istället.");
+      }
+    } catch (e: any) {
+      setError(e.message || "Kunde inte återansluta");
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -89,23 +111,44 @@ const Index = () => {
             </p>
           </div>
 
+          {lastDevice && (
+            <Button
+              onClick={handleReconnect}
+              disabled={connecting || reconnecting}
+              size="lg"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
+              style={!reconnecting ? {
+                backgroundColor: accentColor,
+                color: "#121212",
+                boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
+              } : undefined}
+            >
+              <Zap className="w-5 h-5 mr-2" />
+              {reconnecting ? "Söker..." : lastDevice.name}
+            </Button>
+          )}
+
           <Button
             onClick={() => handleConnect(false)}
-            disabled={connecting}
-            size="lg"
-            className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
-            style={!connecting ? {
+            disabled={connecting || reconnecting}
+            size={lastDevice ? "sm" : "lg"}
+            variant={lastDevice ? "outline" : "default"}
+            className={lastDevice
+              ? "rounded-full"
+              : "text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
+            }
+            style={!lastDevice && !connecting ? {
               backgroundColor: accentColor,
               color: "#121212",
               boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
             } : undefined}
           >
-            {connecting ? "Söker..." : "VÄCK LJUS"}
+            {connecting ? "Söker..." : lastDevice ? "Ny enhet" : "VÄCK LJUS"}
           </Button>
 
           <Button
             onClick={() => handleConnect(true)}
-            disabled={connecting}
+            disabled={connecting || reconnecting}
             variant="ghost"
             size="sm"
             className="text-muted-foreground"
