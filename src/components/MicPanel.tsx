@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { sendBrightness, sendColor } from "@/lib/bledom";
-import { Activity, Music } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { Activity } from "lucide-react";
 
 interface MicPanelProps {
   char: any;
@@ -38,16 +37,8 @@ function createBleQueue(char: any) {
   };
 }
 
-interface SongInfo {
-  title: string;
-  artist: string;
-  bpm: number | null;
-}
-
 export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
-  const [songInfo, setSongInfo] = useState<SongInfo | null>(null);
-  const [identifying, setIdentifying] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
@@ -77,110 +68,25 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const pulseMaxRef = useRef(0.7);
   const transientAvgRef = useRef(0.1);
 
-  // BPM detection refs
+  // Improved BPM detection refs
   const onsetTimesRef = useRef<number[]>([]);
   const lastOnsetRef = useRef(0);
   const bpmRef = useRef(0);
+  const bpmConfidenceRef = useRef(0); // 0-1 confidence
   const silenceStartRef = useRef(0);
-  const acrBpmRef = useRef<number | null>(null); // ACRCloud exact BPM
   
+  // Auto-correlation BPM: track energy history for spectral tempo
+  const energyHistoryRef = useRef<number[]>([]);
+  const energyHistoryMaxLen = 256; // ~4s at 60fps
+
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
   // Audio nodes
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
 
-  // Song identification
-  const identifyIntervalRef = useRef<number>(0);
-  const recorderStreamRef = useRef<MediaStream | null>(null);
-
-  const identifySong = useCallback(async () => {
-    if (!streamRef.current || identifying) return;
-    setIdentifying(true);
-
-    try {
-      // Record at 16kHz for smaller payload while still good enough for ACRCloud
-      const recCtx = new AudioContext({ sampleRate: 16000 });
-      const source = recCtx.createMediaStreamSource(streamRef.current);
-      const processor = recCtx.createScriptProcessor(4096, 1, 1);
-      const chunks: Float32Array[] = [];
-      let sampleCount = 0;
-      const targetSamples = 16000 * 4; // 4 seconds at 16kHz
-
-      await new Promise<void>((resolve) => {
-        processor.onaudioprocess = (e) => {
-          const data = e.inputBuffer.getChannelData(0);
-          chunks.push(new Float32Array(data));
-          sampleCount += data.length;
-          if (sampleCount >= targetSamples) {
-            source.disconnect();
-            processor.disconnect();
-            resolve();
-          }
-        };
-        source.connect(processor);
-        processor.connect(recCtx.destination);
-      });
-
-      await recCtx.close();
-
-      // Convert Float32 to Int16 PCM
-      const totalSamples = Math.min(sampleCount, targetSamples);
-      const pcm = new Int16Array(totalSamples);
-      let offset = 0;
-      for (const chunk of chunks) {
-        for (let i = 0; i < chunk.length && offset < totalSamples; i++, offset++) {
-          const s = Math.max(-1, Math.min(1, chunk[i]));
-          pcm[offset] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-      }
-
-      // Encode to base64
-      const pcmBytes = new Uint8Array(pcm.buffer);
-      let binary = '';
-      for (let i = 0; i < pcmBytes.length; i++) {
-        binary += String.fromCharCode(pcmBytes[i]);
-      }
-      const base64Audio = btoa(binary);
-
-      // Call edge function
-      const { data, error } = await supabase.functions.invoke('identify-song', {
-        body: { audio: base64Audio, sampleRate: 16000, channels: 1 },
-      });
-
-      if (error) {
-        console.error('Song identification error:', error);
-      } else if (data?.identified) {
-        const info: SongInfo = {
-          title: data.title,
-          artist: data.artist,
-          bpm: data.bpm,
-        };
-        setSongInfo(info);
-
-        if (data.bpm && data.bpm >= 60 && data.bpm <= 200) {
-          acrBpmRef.current = data.bpm;
-          const beatMs = 60000 / data.bpm;
-          framesPerBeatRef.current = (beatMs / 1000) * 60;
-          bpmRef.current = data.bpm;
-          if (bpmDisplayRef.current) {
-            bpmDisplayRef.current.textContent = `${Math.round(data.bpm)} BPM ♪`;
-          }
-        }
-      } else {
-        // No match - keep using onset detection
-        console.log('Song not identified:', data?.message);
-      }
-    } catch (err) {
-      console.error('Identification failed:', err);
-    } finally {
-      setIdentifying(false);
-    }
-  }, [identifying]);
-
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    if (identifyIntervalRef.current) clearInterval(identifyIntervalRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
@@ -189,7 +95,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     streamRef.current = null;
     bleQueueRef.current = null;
     setActive(false);
-    setSongInfo(null);
     prevSampleRef.current = 0;
     agcAvgRef.current = 0.01;
     beatPhaseRef.current = 1;
@@ -199,7 +104,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     onsetTimesRef.current = [];
     lastOnsetRef.current = 0;
     bpmRef.current = 0;
-    acrBpmRef.current = null;
+    bpmConfidenceRef.current = 0;
+    energyHistoryRef.current = [];
   }, []);
 
   const start = useCallback(async () => {
@@ -242,26 +148,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     }
   }, [char]);
 
-  // Periodically try to identify the song (every 30s)
-  useEffect(() => {
-    if (!active) return;
-
-    // First identification after 3s
-    const initialTimeout = setTimeout(() => {
-      identifySong();
-    }, 3000);
-
-    // Then every 30s
-    identifyIntervalRef.current = window.setInterval(() => {
-      identifySong();
-    }, 30000);
-
-    return () => {
-      clearTimeout(initialTimeout);
-      if (identifyIntervalRef.current) clearInterval(identifyIntervalRef.current);
-    };
-  }, [active, identifySong]);
-
   useEffect(() => {
     if (!active || !lowAnalyserRef.current || !midAnalyserRef.current || !bleQueueRef.current) return;
 
@@ -272,6 +158,53 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     const midTD = new Uint8Array(32);
 
     const FLOOR = 0.05;
+
+    // Auto-correlation BPM estimation from energy history
+    const estimateBpmFromHistory = () => {
+      const history = energyHistoryRef.current;
+      if (history.length < 120) return; // need ~2s minimum
+
+      const len = history.length;
+      // Calculate mean
+      let mean = 0;
+      for (let i = 0; i < len; i++) mean += history[i];
+      mean /= len;
+
+      // Auto-correlation for lags corresponding to 60-200 BPM
+      // At 60fps: 60BPM = lag 60, 200BPM = lag 18
+      const minLag = 18; // 200 BPM
+      const maxLag = Math.min(90, len - 1); // 40 BPM
+      let bestLag = 30;
+      let bestCorr = -1;
+
+      for (let lag = minLag; lag <= maxLag; lag++) {
+        let corr = 0;
+        let norm1 = 0;
+        let norm2 = 0;
+        const n = len - lag;
+        for (let i = 0; i < n; i++) {
+          const a = history[i] - mean;
+          const b = history[i + lag] - mean;
+          corr += a * b;
+          norm1 += a * a;
+          norm2 += b * b;
+        }
+        const denom = Math.sqrt(norm1 * norm2);
+        if (denom > 0) corr /= denom;
+
+        if (corr > bestCorr) {
+          bestCorr = corr;
+          bestLag = lag;
+        }
+      }
+
+      // Only use if correlation is strong enough
+      if (bestCorr > 0.15) {
+        const autoBpm = (60 * 60) / bestLag; // 60fps * 60s / lag
+        return { bpm: autoBpm, confidence: bestCorr };
+      }
+      return null;
+    };
 
     const loop = () => {
       lowAnalyser.getByteTimeDomainData(lowTD);
@@ -302,6 +235,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const agcGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
       const energy = rawEnergy * Math.min(agcGain, 30);
 
+      // Track energy history for auto-correlation BPM
+      const hist = energyHistoryRef.current;
+      hist.push(energy);
+      if (hist.length > energyHistoryMaxLen) hist.shift();
+
       const delta = energy - prevSampleRef.current;
       prevSampleRef.current = isSilence ? energy * 0.5 + prevSampleRef.current * 0.5 : energy;
       const transient = isSilence ? 0 : (delta > 0 ? Math.min(1, delta * 6) : 0);
@@ -329,30 +267,90 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (isOnset) {
         beatPhaseRef.current = 0;
 
-        // If we have ACRCloud BPM, use it as ground truth and only reset phase on onset
-        if (acrBpmRef.current) {
-          // Don't update framesPerBeat – ACRCloud BPM is authoritative
-          if (bpmDisplayRef.current) {
-            bpmDisplayRef.current.textContent = `${Math.round(acrBpmRef.current)} BPM ♪`;
-          }
-        } else if (lastOnsetRef.current > 0) {
+        if (lastOnsetRef.current > 0) {
           const interval = now - lastOnsetRef.current;
           const onsets = onsetTimesRef.current;
           onsets.push(interval);
-          if (onsets.length > 16) onsets.shift();
+          if (onsets.length > 24) onsets.shift(); // larger window for stability
 
-          if (onsets.length >= 4 && onsets.length % 4 === 0) {
+          if (onsets.length >= 4) {
+            // Multi-method BPM: onset intervals + auto-correlation
             const sorted = [...onsets].sort((a, b) => a - b);
-            const q1 = sorted[Math.floor(sorted.length * 0.25)];
-            const q3 = sorted[Math.floor(sorted.length * 0.75)];
+            const q1 = sorted[Math.floor(sorted.length * 0.2)];
+            const q3 = sorted[Math.floor(sorted.length * 0.8)];
             const filtered = sorted.filter(v => v >= q1 * 0.7 && v <= q3 * 1.3);
+            
+            let onsetBpm = 0;
+            let onsetConf = 0;
             if (filtered.length >= 3) {
+              // Weighted median – center values get more weight
               const mid = filtered[Math.floor(filtered.length / 2)];
-              const bpmRaw = 60000 / mid;
-              if (bpmRaw >= 60 && bpmRaw <= 200) {
-                bpmRef.current = bpmRaw;
-                framesPerBeatRef.current = (mid / 1000) * 60;
-                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${Math.round(bpmRaw)} BPM`;
+              onsetBpm = 60000 / mid;
+              // Confidence: low variance = high confidence
+              const variance = filtered.reduce((s, v) => s + (v - mid) ** 2, 0) / filtered.length;
+              onsetConf = Math.max(0, 1 - Math.sqrt(variance) / mid);
+            }
+
+            // Auto-correlation BPM
+            const autoBpmResult = estimateBpmFromHistory();
+            
+            let finalBpm = onsetBpm;
+            let finalConf = onsetConf;
+
+            if (autoBpmResult && autoBpmResult.bpm >= 60 && autoBpmResult.bpm <= 200) {
+              // Blend: if both agree (within 10%), high confidence
+              if (onsetBpm > 0) {
+                const ratio = autoBpmResult.bpm / onsetBpm;
+                if (ratio > 0.9 && ratio < 1.1) {
+                  // Strong agreement – average and boost confidence
+                  finalBpm = (onsetBpm * onsetConf + autoBpmResult.bpm * autoBpmResult.confidence) / (onsetConf + autoBpmResult.confidence);
+                  finalConf = Math.min(1, (onsetConf + autoBpmResult.confidence) * 0.7);
+                } else if (autoBpmResult.confidence > onsetConf) {
+                  // Auto-corr wins
+                  finalBpm = autoBpmResult.bpm;
+                  finalConf = autoBpmResult.confidence * 0.8;
+                }
+                // Check for half/double time agreement
+                if (ratio > 1.8 && ratio < 2.2) {
+                  finalBpm = onsetBpm; // onset is likely correct, auto-corr found half-time
+                  finalConf = Math.max(onsetConf, autoBpmResult.confidence * 0.6);
+                } else if (ratio > 0.45 && ratio < 0.55) {
+                  finalBpm = autoBpmResult.bpm; // auto-corr found double-time
+                  finalConf = autoBpmResult.confidence * 0.7;
+                }
+              } else {
+                finalBpm = autoBpmResult.bpm;
+                finalConf = autoBpmResult.confidence * 0.6;
+              }
+            }
+
+            if (finalBpm >= 60 && finalBpm <= 200 && finalConf > 0.1) {
+              // Smooth BPM transitions – don't jump wildly
+              if (bpmRef.current > 0) {
+                const diff = Math.abs(finalBpm - bpmRef.current);
+                if (diff < 5) {
+                  // Small correction – smooth heavily
+                  bpmRef.current += (finalBpm - bpmRef.current) * 0.15;
+                } else if (diff < 15) {
+                  // Medium jump – moderate smoothing
+                  bpmRef.current += (finalBpm - bpmRef.current) * 0.3;
+                } else {
+                  // Big jump – likely new song, apply if confident
+                  if (finalConf > 0.4) {
+                    bpmRef.current = finalBpm;
+                  }
+                }
+              } else {
+                bpmRef.current = finalBpm;
+              }
+              
+              bpmConfidenceRef.current = finalConf;
+              const beatMs = 60000 / bpmRef.current;
+              framesPerBeatRef.current = (beatMs / 1000) * 60;
+              
+              if (bpmDisplayRef.current) {
+                const confBar = finalConf > 0.6 ? '●●●' : finalConf > 0.3 ? '●●○' : '●○○';
+                bpmDisplayRef.current.textContent = `${Math.round(bpmRef.current)} BPM ${confBar}`;
               }
             }
           }
@@ -439,23 +437,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         />
       </div>
 
-      {/* Song info */}
-      {active && songInfo && (
-        <div className="flex items-center gap-2 text-center">
-          <Music className="w-4 h-4 text-muted-foreground shrink-0" />
-          <div className="text-sm">
-            <span className="font-medium text-foreground">{songInfo.title}</span>
-            <span className="text-muted-foreground"> — {songInfo.artist}</span>
-          </div>
-        </div>
-      )}
-
-      {active && identifying && !songInfo && (
-        <div className="text-xs text-muted-foreground animate-pulse">
-          Identifierar låt...
-        </div>
-      )}
-
       {active && (
         <div className="w-full max-w-xs space-y-4">
           <div>
@@ -474,7 +455,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
           <div className="flex justify-between">
             <span className="text-xs text-muted-foreground">
-              {acrBpmRef.current ? 'Exakt BPM · ACRCloud' : 'Dual-band · BPM-synk · 40Hz BLE'}
+              Dual-band · Auto-korrelation · 40Hz BLE
             </span>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
@@ -483,9 +464,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         {active
-          ? songInfo
-            ? `Spelar: ${songInfo.title} · Exakt BPM från ACRCloud`
-            : "Ljuset pulserar med basslaget – identifierar låten..."
+          ? "Ljuset pulserar med basslaget – din färg behålls"
           : "Isolerar basfrekvenser och styr ljusstyrkan efter kickdrum/bas. Välj färg först."
         }
       </p>
