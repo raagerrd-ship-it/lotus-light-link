@@ -244,8 +244,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         lastOnsetRef.current = now;
       }
 
-      // Brightness: full range 0-100%, punch hard then fade
-      const pct = Math.round(curved * 100);
+      // Brightness: floor at 3% so light never fully off
+      const pct = Math.max(3, Math.round(curved * 100));
       if (vizRef.current) {
         const s = vizRef.current.style;
         s.transform = `scale(${1 + curved * 0.25})`;
