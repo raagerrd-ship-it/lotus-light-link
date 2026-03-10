@@ -72,6 +72,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const onsetTimesRef = useRef<number[]>([]);
   const lastOnsetRef = useRef(0);
   const bpmRef = useRef(0);
+  const silenceStartRef = useRef(0); // when silence began
   
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
