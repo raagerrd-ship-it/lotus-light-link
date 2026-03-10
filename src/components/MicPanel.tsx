@@ -146,11 +146,17 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const output = Math.min(1, Math.max(0, smoothed));
       setVolume(output);
 
-      // Send brightness
+      // Send brightness + color boost
       const now = Date.now();
       if (now - throttleRef.current >= 40) {
         throttleRef.current = now;
-        sendBrightness(char, Math.round(output * 100)).catch(() => {});
+        // Brightness always at 100, color gets boosted toward white on hits
+        const [cr, cg, cb] = currentColor;
+        const boost = output; // 0 = base color, 1 = nearly white
+        const r = Math.round(cr + (255 - cr) * boost * 0.7);
+        const g = Math.round(cg + (255 - cg) * boost * 0.7);
+        const b = Math.round(cb + (255 - cb) * boost * 0.7);
+        sendColor(char, r, g, b).catch(() => {});
       }
 
       rafRef.current = requestAnimationFrame(loop);
