@@ -287,7 +287,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = color;
-        const boost = (curved - 0.98) * 50;
+        const boost = (curved - 0.98) * 25;
         ble.color(
           Math.round(cr + (255 - cr) * boost),
           Math.round(cg + (255 - cg) * boost),
