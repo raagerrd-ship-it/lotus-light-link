@@ -96,7 +96,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     lastOnsetRef.current = 0;
     wasAboveRef.current = false;
     bpmRef.current = 0;
-    releaseCoeffRef.current = 0.95;
+    releaseCoeffRef.current = 0.92;
   }, []);
 
   const start = useCallback(async () => {
