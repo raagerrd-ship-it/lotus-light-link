@@ -40,8 +40,6 @@ function createBleQueue(char: any) {
 
 export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
-  const [punchColor, setPunchColor] = useState(true);
-  const punchColorRef = useRef(true);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
@@ -268,7 +266,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
-      if (punchColorRef.current && curved > 0.9 && now - colorThrottleRef.current >= colorFadeMs) {
+      if (curved > 0.9 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = color;
@@ -332,15 +330,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         <span className="text-sm font-bold">{active ? "PÅ" : "AV"}</span>
       </div>
 
-      {/* Punch color toggle */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-muted-foreground">Punch-färg</span>
-        <Switch
-          checked={punchColor}
-          onCheckedChange={(v) => { setPunchColor(v); punchColorRef.current = v; }}
-        />
-        <span className="text-xs text-muted-foreground">{punchColor ? "Vit kick" : "Av"}</span>
-      </div>
 
       {active && (
         <div className="w-full max-w-xs space-y-4">
