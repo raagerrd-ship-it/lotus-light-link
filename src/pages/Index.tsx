@@ -117,6 +117,35 @@ const Index = () => {
             </p>
           </div>
 
+          {/* Fallback color setting */}
+          <div className="w-full">
+            <label className="text-xs text-muted-foreground mb-2 block text-left">Startfärg</label>
+            <Select value={selectedColorIdx} onValueChange={handleColorSelect}>
+              <SelectTrigger className="w-full bg-secondary/50 border-border">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-4 h-4 rounded-full shrink-0 border border-border"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                  <SelectValue placeholder="Välj färg" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {PRESET_COLORS.map((c, i) => (
+                  <SelectItem key={i} value={String(i)}>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-4 h-4 rounded-full shrink-0 border border-border"
+                        style={{ backgroundColor: `rgb(${c.rgb[0]}, ${c.rgb[1]}, ${c.rgb[2]})` }}
+                      />
+                      {c.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {lastDevice && (
             <Button
               onClick={handleReconnect}
