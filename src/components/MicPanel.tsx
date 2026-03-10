@@ -61,19 +61,18 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const iconRef = useRef<SVGSVGElement>(null);
 
   // Envelope follower state
-  const envelopeRef = useRef(0);
   const prevSampleRef = useRef(0);
   const agcAvgRef = useRef(0.01); // AGC running average
 
-  // Running min/max tracker (O(1) per frame, no sorting)
-  const runMinRef = useRef(1);
-  const runMaxRef = useRef(0);
-  const decayCounterRef = useRef(0);
+  // Beat-phase pulse model
+  const beatPhaseRef = useRef(1); // 0=onset, 1=next beat
+  const framesPerBeatRef = useRef(60); // default ~120bpm at 60fps
+  const adaptiveThreshRef = useRef(0.15); // adaptive onset threshold
+  const transientAvgRef = useRef(0.1); // running average of transients
 
   // BPM detection refs
   const onsetTimesRef = useRef<number[]>([]);
   const lastOnsetRef = useRef(0);
-  const wasAboveRef = useRef(false);
   const bpmRef = useRef(0);
   const releaseCoeffRef = useRef(0.993);
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
