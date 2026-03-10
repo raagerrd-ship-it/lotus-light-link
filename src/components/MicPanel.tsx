@@ -207,12 +207,12 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         ble.brightness(pct);
       }
 
-      // Color boost at peaks
-      if (curved > 0.8 && now - colorThrottleRef.current >= 100) {
+      // Color boost at peaks (only if punch-color enabled)
+      if (punchColorRef.current && curved > 0.8 && now - colorThrottleRef.current >= 100) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = currentColor;
-        const boost = (curved - 0.8) * 1.75; // 0-0.35
+        const boost = (curved - 0.8) * 1.75;
         ble.color(
           Math.round(cr + (255 - cr) * boost),
           Math.round(cg + (255 - cg) * boost),
