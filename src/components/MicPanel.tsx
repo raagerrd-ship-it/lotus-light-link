@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
@@ -39,6 +40,7 @@ function createBleQueue(char: any) {
 
 export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
+  const [punchWhite, setPunchWhite] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
@@ -46,6 +48,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const colorThrottleRef = useRef<number>(0);
   const colorBoostedRef = useRef(false);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
+  const punchWhiteRef = useRef(true);
+  useEffect(() => { punchWhiteRef.current = punchWhite; }, [punchWhite]);
 
   // Ref for currentColor so the rAF loop never restarts on color change
   const currentColorRef = useRef(currentColor);
@@ -397,7 +401,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
-      if (curved > 0.98 && beatPhaseRef.current < 0.1 && now - colorThrottleRef.current >= colorFadeMs) {
+      if (punchWhiteRef.current && curved > 0.98 && beatPhaseRef.current < 0.1 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = color;
@@ -465,10 +469,14 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             </div>
           </div>
 
-          <div className="flex justify-between">
-            <span className="text-xs text-muted-foreground">
-              Dual-band · Auto-korrelation · 40Hz BLE
-            </span>
+          <div className="flex justify-between items-center">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                checked={punchWhite}
+                onCheckedChange={(v) => setPunchWhite(!!v)}
+              />
+              <span className="text-xs text-muted-foreground">Vit kick</span>
+            </label>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
         </div>
