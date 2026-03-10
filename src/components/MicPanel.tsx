@@ -264,6 +264,15 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const now = performance.now();
       const isOnset = !isSilence && transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
 
+      // Sub-threshold "micro-pulse": softer transients still nudge brightness up to ~40%
+      const isMicroHit = !isSilence && !isOnset && transient > adaptiveThreshRef.current * 0.3 && beatPhaseRef.current > 0.15;
+      if (isMicroHit) {
+        // Nudge phase back proportionally – smaller hit = smaller nudge
+        const strength = transient / adaptiveThreshRef.current; // 0.3–1.0 range
+        const nudge = strength * 0.4; // max 40% phase reset
+        beatPhaseRef.current = Math.min(beatPhaseRef.current, 1 - nudge);
+      }
+
       if (isOnset) {
         beatPhaseRef.current = 0;
 
