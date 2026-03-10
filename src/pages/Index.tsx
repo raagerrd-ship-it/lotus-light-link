@@ -224,23 +224,6 @@ const Index = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Brightness zone */}
-      <div className="px-6 py-4 shrink-0">
-        <div className="flex items-center gap-4">
-          <Sun className="w-4 h-4 text-muted-foreground shrink-0" />
-          <Slider
-            value={[brightness]}
-            onValueChange={handleBrightnessChange}
-            min={0}
-            max={100}
-            step={1}
-            className="flex-1"
-          />
-          <span className="text-xs text-muted-foreground w-8 text-right font-mono">
-            {brightness}%
-          </span>
-        </div>
-      </div>
     </div>
   );
 };
