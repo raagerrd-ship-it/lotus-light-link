@@ -254,7 +254,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
       // BLE brightness at ~33Hz (30ms)
-      if (now - throttleRef.current >= 30) {
+      // BLE brightness at ~40Hz (25ms)
+      if (now - throttleRef.current >= 25) {
         throttleRef.current = now;
         ble.brightness(pct);
       }
