@@ -166,7 +166,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [active, char]);
+  }, [active, char, currentColor]);
 
   useEffect(() => stop, [stop]);
 
