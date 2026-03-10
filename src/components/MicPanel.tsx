@@ -320,21 +320,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             </div>
           </div>
 
-          {/* Sensitivity slider */}
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Känslighet</span>
-              <span className="text-xs font-mono text-foreground">{sensitivity}%</span>
-            </div>
-            <Slider
-              value={[sensitivity]}
-              onValueChange={([v]) => setSensitivity(v)}
-              min={10}
-              max={100}
-              step={5}
-              className="w-full"
-            />
-          </div>
 
           <p className="text-xs text-muted-foreground text-center">
             Dual-band 30–200Hz · RMS+Peak · Kompressor · Smoothstep
