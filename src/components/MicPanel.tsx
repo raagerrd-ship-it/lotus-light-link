@@ -48,6 +48,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const colorThrottleRef = useRef<number>(0);
   const colorBoostedRef = useRef(false);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
+  const punchWhiteRef = useRef(true);
+  useEffect(() => { punchWhiteRef.current = punchWhite; }, [punchWhite]);
 
   // Ref for currentColor so the rAF loop never restarts on color change
   const currentColorRef = useRef(currentColor);
