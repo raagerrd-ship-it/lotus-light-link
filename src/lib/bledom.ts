@@ -1,17 +1,16 @@
 // BLEDOM BLE LED strip protocol
-// Service UUID: 0000fff0-0000-1000-8000-00805f9b34fb
-// Characteristic UUID: 0000fff3-0000-1000-8000-00805f9b34fb
 
 const SERVICE_UUID = 0xfff0;
 const CHAR_UUID = 0xfff3;
 
 export interface BLEConnection {
-  device: BluetoothDevice;
-  characteristic: BluetoothRemoteGATTCharacteristic;
+  device: any;
+  characteristic: any;
 }
 
 export async function connectBLEDOM(): Promise<BLEConnection> {
-  const device = await navigator.bluetooth.requestDevice({
+  const nav = navigator as any;
+  const device = await nav.bluetooth.requestDevice({
     filters: [{ namePrefix: 'ELK-BLEDOM' }],
     optionalServices: [SERVICE_UUID],
   });
@@ -23,7 +22,7 @@ export async function connectBLEDOM(): Promise<BLEConnection> {
   return { device, characteristic };
 }
 
-export async function sendColor(char: BluetoothRemoteGATTCharacteristic, r: number, g: number, b: number) {
+export async function sendColor(char: any, r: number, g: number, b: number) {
   // Protocol: 7E 07 05 03 RR GG BB 00 EF
   const data = new Uint8Array([0x7e, 0x07, 0x05, 0x03, r & 0xff, g & 0xff, b & 0xff, 0x00, 0xef]);
   await char.writeValueWithoutResponse(data);
