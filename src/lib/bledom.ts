@@ -35,7 +35,7 @@ export async function sendBrightness(char: any, brightness: number) {
   await char.writeValueWithoutResponse(data);
 }
 
-export async function sendPower(char: BluetoothRemoteGATTCharacteristic, on: boolean) {
+export async function sendPower(char: any, on: boolean) {
   const cmd = on ? 0x23 : 0x24;
   const data = new Uint8Array([0x7e, 0x04, 0x04, cmd, 0x01, 0xff, 0x00, 0x00, 0xef]);
   await char.writeValueWithoutResponse(data);
