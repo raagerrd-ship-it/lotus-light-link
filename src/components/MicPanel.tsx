@@ -469,10 +469,14 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             </div>
           </div>
 
-          <div className="flex justify-between">
-            <span className="text-xs text-muted-foreground">
-              Dual-band · Auto-korrelation · 40Hz BLE
-            </span>
+          <div className="flex justify-between items-center">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                checked={punchWhite}
+                onCheckedChange={(v) => setPunchWhite(!!v)}
+              />
+              <span className="text-xs text-muted-foreground">Vit kick</span>
+            </label>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
         </div>
