@@ -8,17 +8,23 @@ export interface BLEConnection {
   characteristic: any;
 }
 
-export async function connectBLEDOM(): Promise<BLEConnection> {
+export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   const nav = navigator as any;
-  const device = await nav.bluetooth.requestDevice({
-    filters: [
-      { namePrefix: 'ELK-BLEDOM' },
-      { namePrefix: 'BLEDOM' },
-      { namePrefix: 'ELK' },
-      { namePrefix: 'MELK' },
-    ],
-    optionalServices: [SERVICE_UUID],
-  });
+
+  const options = scanAll
+    ? { acceptAllDevices: true, optionalServices: [SERVICE_UUID] }
+    : {
+        filters: [
+          { namePrefix: 'ELK-BLEDOM' },
+          { namePrefix: 'BLEDOM' },
+          { namePrefix: 'ELK' },
+          { namePrefix: 'MELK' },
+          { services: [SERVICE_UUID] },
+        ],
+        optionalServices: [SERVICE_UUID],
+      };
+
+  const device = await nav.bluetooth.requestDevice(options);
 
   const server = await device.gatt!.connect();
   const service = await server.getPrimaryService(SERVICE_UUID);
