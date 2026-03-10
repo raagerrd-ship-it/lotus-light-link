@@ -11,9 +11,10 @@ interface MicPanelProps {
 export default function MicPanel({ char }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [volume, setVolume] = useState(0);
-  const [sensitivity, setSensitivity] = useState(80);
+  const [sensitivity, setSensitivity] = useState(50);
   const [minBrightness, setMinBrightness] = useState(0);
   const [maxBrightness, setMaxBrightness] = useState(100);
+  const smoothedRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -37,9 +38,9 @@ export default function MicPanel({ char }: MicPanelProps) {
       const ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.3;
-      analyser.minDecibels = -90;
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.4;
+      analyser.minDecibels = -70;
       analyser.maxDecibels = -10;
       source.connect(analyser);
 
@@ -61,18 +62,25 @@ export default function MicPanel({ char }: MicPanelProps) {
     const loop = () => {
       analyser.getByteFrequencyData(dataArray);
 
-      // Peak-based detection for more dynamic response
-      let peak = 0;
+      // Use RMS for a more musical response
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) {
-        if (dataArray[i] > peak) peak = dataArray[i];
-        sum += dataArray[i];
+        sum += dataArray[i] * dataArray[i];
       }
-      const avg = sum / dataArray.length;
-      // Blend peak and average for punchy but smooth response
-      const blend = peak * 0.6 + avg * 0.4;
-      const sensitivityMultiplier = sensitivity / 40;
-      const normalized = Math.min(1, Math.pow(blend / 200, 0.8) * sensitivityMultiplier);
+      const rms = Math.sqrt(sum / dataArray.length) / 255;
+
+      // Apply sensitivity as an exponent curve: low sensitivity = need louder sound
+      const sensitivityFactor = sensitivity / 50;
+      const shaped = Math.pow(rms, 1.5 / Math.max(0.1, sensitivityFactor));
+
+      // Smooth: fast attack, slow release for musical feel
+      const prev = smoothedRef.current;
+      const smoothed = shaped > prev
+        ? prev + (shaped - prev) * 0.7  // fast attack
+        : prev + (shaped - prev) * 0.15; // slow release
+      smoothedRef.current = smoothed;
+
+      const normalized = Math.min(1, Math.max(0, smoothed));
       setVolume(normalized);
 
       const now = Date.now();
