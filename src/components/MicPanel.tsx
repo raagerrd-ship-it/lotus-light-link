@@ -70,7 +70,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const lastOnsetRef = useRef(0);
   const wasAboveRef = useRef(false);
   const bpmRef = useRef(0);
-  const releaseCoeffRef = useRef(0.95);
+  const releaseCoeffRef = useRef(0.92);
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
   // Audio nodes
@@ -96,7 +96,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     lastOnsetRef.current = 0;
     wasAboveRef.current = false;
     bpmRef.current = 0;
-    releaseCoeffRef.current = 0.95;
+    releaseCoeffRef.current = 0.92;
   }, []);
 
   const start = useCallback(async () => {
@@ -184,7 +184,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       prevSampleRef.current = energy;
       const transient = delta > 0 ? Math.min(1, delta * 8) : 0;
 
-      const combined = Math.min(1, envelope * 0.6 + transient * 0.4);
+      const combined = Math.min(1, envelope * 0.5 + transient * 0.5);
 
       // O(1) running min/max with slow decay (replaces O(n log n) sort)
       if (combined < runMinRef.current) runMinRef.current = combined;
@@ -203,42 +203,45 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Smoothstep curve
       const curved = normalized * normalized * (3 - 2 * normalized);
 
-      // --- BPM onset detection ---
+      // --- BPM onset detection (transient-based, more reliable) ---
       const now = Date.now();
-      const isAbove = curved > 0.5;
-      if (isAbove && !wasAboveRef.current && now - lastOnsetRef.current > 200) {
-        // Rising edge crossing threshold, min 200ms between onsets (max 300 BPM)
+      const isOnset = transient > 0.3 && now - lastOnsetRef.current > 180;
+      if (isOnset) {
         if (lastOnsetRef.current > 0) {
           const interval = now - lastOnsetRef.current;
           const onsets = onsetTimesRef.current;
           onsets.push(interval);
-          if (onsets.length > 8) onsets.shift(); // keep last 8
+          if (onsets.length > 12) onsets.shift(); // keep last 12 for stability
 
-          // Compute median interval
-          if (onsets.length >= 4) {
+          if (onsets.length >= 3) {
+            // Median of intervals, filtering outliers
             const sorted = [...onsets].sort((a, b) => a - b);
-            const mid = sorted[Math.floor(sorted.length / 2)];
-            const bpm = Math.round(60000 / mid);
-            if (bpm >= 60 && bpm <= 200) {
-              bpmRef.current = bpm;
-              // Higher BPM = slower fade so light sustains between rapid beats
-              // At 60 BPM: decay to 0.15 over 2 beat periods (slow song, full fade ok)
-              // At 200 BPM: decay to 0.5 over 3 beat periods (fast song, stay bright)
-              const bpmFactor = (bpm - 60) / 140; // 0..1
-              const targetLevel = 0.5 + bpmFactor * 0.35; // 0.5 at 60bpm, 0.85 at 200bpm
-              const spanBeats = 4 + bpmFactor * 4; // 4 beats at 60bpm, 8 beats at 200bpm
-              const totalFrames = (spanBeats * mid / 1000) * 60;
-              releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
-              if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm} BPM`;
+            // Use interquartile range for robustness
+            const q1 = sorted[Math.floor(sorted.length * 0.25)];
+            const q3 = sorted[Math.floor(sorted.length * 0.75)];
+            const filtered = sorted.filter(v => v >= q1 * 0.7 && v <= q3 * 1.3);
+            if (filtered.length >= 2) {
+              const mid = filtered[Math.floor(filtered.length / 2)];
+              const bpm = Math.round(60000 / mid);
+              if (bpm >= 60 && bpm <= 200) {
+                bpmRef.current = bpm;
+                const bpmFactor = (bpm - 60) / 140;
+                // Decay: at 60bpm fade to 0.3 over 1.5 beats, at 200bpm fade to 0.5 over 2 beats
+                const targetLevel = 0.3 + bpmFactor * 0.2;
+                const spanBeats = 1.5 + bpmFactor * 0.5;
+                const totalFrames = (spanBeats * mid / 1000) * 60;
+                releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
+                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm} BPM`;
+              }
             }
           }
         }
         lastOnsetRef.current = now;
       }
-      wasAboveRef.current = isAbove;
 
-      // Direct DOM updates – zero React overhead
-      const pct = Math.round(curved * 100);
+      // Brightness: floor at 20% so it never goes full dark, punch to 100%
+      const floor = 20;
+      const pct = Math.round(floor + curved * (100 - floor));
       if (vizRef.current) {
         const s = vizRef.current.style;
         s.transform = `scale(${1 + curved * 0.25})`;
