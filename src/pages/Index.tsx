@@ -90,7 +90,7 @@ const Index = () => {
           </div>
 
           <Button
-            onClick={handleConnect}
+            onClick={() => handleConnect(false)}
             disabled={connecting}
             size="lg"
             className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
@@ -103,6 +103,16 @@ const Index = () => {
             {connecting ? "Söker..." : "VÄCK LJUS"}
           </Button>
 
+          <Button
+            onClick={() => handleConnect(true)}
+            disabled={connecting}
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+          >
+            Sök alla enheter
+          </Button>
+
           {error && (
             <p className="text-destructive text-sm">{error}</p>
           )}
@@ -110,7 +120,7 @@ const Index = () => {
           <p className="text-muted-foreground text-xs mt-4 leading-relaxed">
             Kräver Chrome på Android eller dator.
             <br />
-            Se till att Bluetooth är aktiverat.
+            Stäng Lotus Lantern-appen innan du ansluter.
           </p>
         </div>
       </div>
