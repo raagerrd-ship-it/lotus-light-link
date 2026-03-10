@@ -17,6 +17,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const rafRef = useRef<number>(0);
   const throttleRef = useRef<number>(0);
   const colorThrottleRef = useRef<number>(0);
+  const colorBoostedRef = useRef(false);
   const smoothedRef = useRef(0);
 
   // Rolling history for auto-calibration (~3s at 60fps)
@@ -156,15 +157,23 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         sendBrightness(char, brightnessVal).catch(() => {});
       }
 
-      // Color boost only on peaks >80%, separate timing to avoid BLE collision
-      if (output > 0.8 && now - colorThrottleRef.current >= 150) {
-        colorThrottleRef.current = now;
+      // Color boost at peaks >80%, restore original color when dropping below
+      const now2 = Date.now();
+      if (output > 0.8 && now2 - colorThrottleRef.current >= 150) {
+        colorThrottleRef.current = now2;
+        colorBoostedRef.current = true;
         const [cr, cg, cb] = currentColor;
         const boost = (output - 0.8) / 0.2 * 0.35;
         const r = Math.round(cr + (255 - cr) * boost);
         const g = Math.round(cg + (255 - cg) * boost);
         const b = Math.round(cb + (255 - cb) * boost);
         sendColor(char, r, g, b).catch(() => {});
+      } else if (output <= 0.75 && colorBoostedRef.current && now2 - colorThrottleRef.current >= 100) {
+        // Dropped below 75% → restore original color
+        colorThrottleRef.current = now2;
+        colorBoostedRef.current = false;
+        const [cr, cg, cb] = currentColor;
+        sendColor(char, cr, cg, cb).catch(() => {});
       }
 
       rafRef.current = requestAnimationFrame(loop);
