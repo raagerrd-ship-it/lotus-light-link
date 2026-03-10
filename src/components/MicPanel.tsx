@@ -63,6 +63,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   // Envelope follower state
   const envelopeRef = useRef(0);
   const prevSampleRef = useRef(0);
+  const agcAvgRef = useRef(0.01); // AGC running average
 
   // Running min/max tracker (O(1) per frame, no sorting)
   const runMinRef = useRef(1);
@@ -93,6 +94,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     setActive(false);
     envelopeRef.current = 0;
     prevSampleRef.current = 0;
+    agcAvgRef.current = 0.01;
     runMinRef.current = 1;
     runMaxRef.current = 0;
     decayCounterRef.current = 0;
@@ -177,7 +179,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const midRms = Math.sqrt(midSum * 0.03125);
 
       // Weight sub-bass heavier, peak for transient snap
-      const energy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
+      const rawEnergy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
+
+      // AGC: normalize energy by running average so all songs drive full range
+      const agcAlpha = 0.002; // slow adaptation (~8s to fully adjust)
+      agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
+      const agcGain = agcAvgRef.current > 0.0001 ? 0.25 / agcAvgRef.current : 1;
+      const energy = rawEnergy * Math.min(agcGain, 20); // cap gain at 20x
 
       // Envelope: instant attack, BPM-synced release
       const prev = envelopeRef.current;
