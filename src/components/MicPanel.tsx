@@ -272,6 +272,17 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         <span className="text-sm font-bold">{active ? "PÅ" : "AV"}</span>
       </div>
 
+      {/* Punch color toggle */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted-foreground">Punch-färg</span>
+        <Switch
+          checked={punchColor}
+          onCheckedChange={(v) => { setPunchColor(v); punchColorRef.current = v; }}
+        />
+        <span className="text-xs text-muted-foreground">{punchColor ? "Vit kick" : "Av"}</span>
+      </div>
+      </div>
+
       {active && (
         <div className="w-full max-w-xs space-y-4">
           <div>
