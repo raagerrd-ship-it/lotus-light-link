@@ -111,23 +111,44 @@ const Index = () => {
             </p>
           </div>
 
+          {lastDevice && (
+            <Button
+              onClick={handleReconnect}
+              disabled={connecting || reconnecting}
+              size="lg"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
+              style={!reconnecting ? {
+                backgroundColor: accentColor,
+                color: "#121212",
+                boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
+              } : undefined}
+            >
+              <Zap className="w-5 h-5 mr-2" />
+              {reconnecting ? "Söker..." : lastDevice.name}
+            </Button>
+          )}
+
           <Button
             onClick={() => handleConnect(false)}
-            disabled={connecting}
-            size="lg"
-            className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
-            style={!connecting ? {
+            disabled={connecting || reconnecting}
+            size={lastDevice ? "sm" : "lg"}
+            variant={lastDevice ? "outline" : "default"}
+            className={lastDevice
+              ? "rounded-full"
+              : "text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
+            }
+            style={!lastDevice && !connecting ? {
               backgroundColor: accentColor,
               color: "#121212",
               boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
             } : undefined}
           >
-            {connecting ? "Söker..." : "VÄCK LJUS"}
+            {connecting ? "Söker..." : lastDevice ? "Ny enhet" : "VÄCK LJUS"}
           </Button>
 
           <Button
             onClick={() => handleConnect(true)}
-            disabled={connecting}
+            disabled={connecting || reconnecting}
             variant="ghost"
             size="sm"
             className="text-muted-foreground"
