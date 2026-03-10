@@ -185,8 +185,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         const agcAlpha = 0.002;
         agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       }
-      const agcGain = agcAvgRef.current > 0.0001 ? 0.25 / agcAvgRef.current : 1;
-      const energy = rawEnergy * Math.min(agcGain, 20);
+      const agcGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      const energy = rawEnergy * Math.min(agcGain, 30);
 
       // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
@@ -253,11 +253,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const phase = beatPhaseRef.current;
       // Smooth cosine pulse: holds near top longer, then gentle fade
       const pulse = 0.5 * (1 + Math.cos(phase * Math.PI)); // 1→0 smooth S-curve
-      // Scale pulse by onset strength – only strong hits reach 100%
-      const onsetStrength = Math.min(1, (transient / adaptiveThreshRef.current - 1) * 0.8);
+      // Scale pulse by onset strength – strong hits easily reach 100%
+      const onsetStrength = Math.min(1, (transient / adaptiveThreshRef.current - 1) * 1.5);
       const peakLevel = beatPhaseRef.current < 0.02
-        ? Math.max(0.5, Math.min(1, 0.5 + onsetStrength * 0.5))
-        : (pulseMaxRef.current ?? 0.7);
+        ? Math.max(0.6, Math.min(1, 0.6 + onsetStrength * 0.4))
+        : (pulseMaxRef.current ?? 0.8);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
       const curved = FLOOR + (peakLevel - FLOOR) * pulse;
 
