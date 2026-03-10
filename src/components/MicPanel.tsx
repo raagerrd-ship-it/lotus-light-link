@@ -168,7 +168,7 @@ export default function MicPanel({ char }: MicPanelProps) {
       await start();
     } else {
       stop();
-      if (char) await sendBrightness(char, 80).catch(() => {});
+      if (char) await sendBrightness(char, 100).catch(() => {});
     }
   };
 

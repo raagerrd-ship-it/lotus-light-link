@@ -26,7 +26,7 @@ const Index = () => {
   const finishConnect = async (conn: BLEConnection) => {
     setConnection(conn);
     await sendPower(conn.characteristic, true);
-    await sendBrightness(conn.characteristic, 80);
+    await sendBrightness(conn.characteristic, 100);
     conn.device.addEventListener("gattserverdisconnected", () => {
       setConnection(null);
     });
