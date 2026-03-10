@@ -220,7 +220,7 @@ const Index = () => {
         </TabsContent>
 
         <TabsContent value="mic" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
-          <MicPanel char={char} />
+          <MicPanel char={char} currentColor={currentColor} />
         </TabsContent>
       </Tabs>
 
