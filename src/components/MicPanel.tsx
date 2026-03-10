@@ -15,6 +15,8 @@ export default function MicPanel({ char }: MicPanelProps) {
   const [minBrightness, setMinBrightness] = useState(0);
   const [maxBrightness, setMaxBrightness] = useState(100);
   const smoothedRef = useRef(0);
+  const noiseFloorRef = useRef(1);  // auto-calibrating min
+  const peakRef = useRef(0);        // auto-calibrating max
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
