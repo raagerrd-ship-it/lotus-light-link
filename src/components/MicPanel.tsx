@@ -16,7 +16,6 @@ function createBleQueue(char: any) {
 
   const process = async () => {
     if (busy) return;
-    // Brightness takes priority
     const cmd = pendingBrightness || pendingColor;
     if (!cmd) return;
     if (pendingBrightness) pendingBrightness = null;
@@ -41,8 +40,6 @@ function createBleQueue(char: any) {
 
 export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
-  const [volume, setVolume] = useState(0);
-  
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
@@ -51,51 +48,49 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const colorBoostedRef = useRef(false);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
 
+  // Direct DOM refs to avoid React re-renders in hot loop
+  const vizRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const pctRef = useRef<HTMLSpanElement>(null);
+  const iconRef = useRef<SVGSVGElement>(null);
+
   // Envelope follower state
   const envelopeRef = useRef(0);
   const prevSampleRef = useRef(0);
 
-  // Auto-calibration with separate percentile tracking
-  const historyRef = useRef<Float32Array>(new Float32Array(180)); // ~3s at 60fps
-  const historyIndexRef = useRef(0);
-  const historyFilledRef = useRef(0);
+  // Running min/max tracker (O(1) per frame, no sorting)
+  const runMinRef = useRef(1);
+  const runMaxRef = useRef(0);
+  const decayCounterRef = useRef(0);
 
   // Audio nodes
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const lowFilterRef = useRef<BiquadFilterNode | null>(null);
-  const midFilterRef = useRef<BiquadFilterNode | null>(null);
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
-
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
-    analyserRef.current = null;
-    lowFilterRef.current = null;
-    midFilterRef.current = null;
     lowAnalyserRef.current = null;
     midAnalyserRef.current = null;
     streamRef.current = null;
     bleQueueRef.current = null;
     setActive(false);
-    setVolume(0);
-    historyRef.current.fill(0);
-    historyIndexRef.current = 0;
-    historyFilledRef.current = 0;
     envelopeRef.current = 0;
     prevSampleRef.current = 0;
+    runMinRef.current = 1;
+    runMaxRef.current = 0;
+    decayCounterRef.current = 0;
   }, []);
 
   const start = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const ctx = new AudioContext();
+      const ctx = new AudioContext({ latencyHint: "interactive" });
       const source = ctx.createMediaStreamSource(stream);
 
-      // Dual-band: sub-bass (30-80Hz) for kick, low-mid (80-200Hz) for bass guitar
+      // Dual-band filters
       const lowFilter = ctx.createBiquadFilter();
       lowFilter.type = "bandpass";
       lowFilter.frequency.value = 55;
@@ -106,33 +101,24 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       midFilter.frequency.value = 130;
       midFilter.Q.value = 0.6;
 
-      // Compressor to even out dynamic range before analysis
-      const compressor = ctx.createDynamicsCompressor();
-      compressor.threshold.value = -30;
-      compressor.knee.value = 10;
-      compressor.ratio.value = 4;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.1;
-
+      // Minimal-latency analysers
       const lowAnalyser = ctx.createAnalyser();
-      lowAnalyser.fftSize = 256; // Smaller = faster
-      lowAnalyser.smoothingTimeConstant = 0.15;
+      lowAnalyser.fftSize = 128; // Minimum for speed
+      lowAnalyser.smoothingTimeConstant = 0;
 
       const midAnalyser = ctx.createAnalyser();
-      midAnalyser.fftSize = 256;
-      midAnalyser.smoothingTimeConstant = 0.15;
+      midAnalyser.fftSize = 128;
+      midAnalyser.smoothingTimeConstant = 0;
 
-      source.connect(compressor);
-      compressor.connect(lowFilter);
-      compressor.connect(midFilter);
+      // Skip compressor – it adds ~3ms lookahead latency
+      source.connect(lowFilter);
+      source.connect(midFilter);
       lowFilter.connect(lowAnalyser);
       midFilter.connect(midAnalyser);
 
       audioContextRef.current = ctx;
       lowAnalyserRef.current = lowAnalyser;
       midAnalyserRef.current = midAnalyser;
-      lowFilterRef.current = lowFilter;
-      midFilterRef.current = midFilter;
       streamRef.current = stream;
       bleQueueRef.current = createBleQueue(char);
       setActive(true);
@@ -147,101 +133,94 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     const lowAnalyser = lowAnalyserRef.current;
     const midAnalyser = midAnalyserRef.current;
     const ble = bleQueueRef.current;
-    const lowTD = new Uint8Array(lowAnalyser.fftSize);
-    const midTD = new Uint8Array(midAnalyser.fftSize);
-    const history = historyRef.current;
-
-    // RMS helper for more accurate energy measurement
-    const rms = (data: Uint8Array) => {
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128;
-        sum += v * v;
-      }
-      return Math.sqrt(sum / data.length);
-    };
-
-    // Peak helper
-    const peak = (data: Uint8Array) => {
-      let max = 0;
-      for (let i = 0; i < data.length; i++) {
-        const v = Math.abs(data[i] - 128) / 128;
-        if (v > max) max = v;
-      }
-      return max;
-    };
+    const lowTD = new Uint8Array(128);
+    const midTD = new Uint8Array(128);
 
     const loop = () => {
       lowAnalyser.getByteTimeDomainData(lowTD);
       midAnalyser.getByteTimeDomainData(midTD);
 
-      // Dual-band energy: combine RMS + peak for both bands
-      const lowRms = rms(lowTD);
-      const midRms = rms(midTD);
-      const lowPeak = peak(lowTD);
-      const midPeak = peak(midTD);
+      // Inline peak+RMS in single pass per band (avoid function call overhead)
+      let lowSum = 0, lowMax = 0, midSum = 0, midMax = 0;
+      for (let i = 0; i < 128; i++) {
+        const lv = (lowTD[i] - 128) / 128;
+        lowSum += lv * lv;
+        const la = lv < 0 ? -lv : lv;
+        if (la > lowMax) lowMax = la;
 
-      // Weight sub-bass more, use peak for transients
-      const energy = lowRms * 0.5 + midRms * 0.2 + lowPeak * 0.2 + midPeak * 0.1;
+        const mv = (midTD[i] - 128) / 128;
+        midSum += mv * mv;
+        const ma = mv < 0 ? -mv : mv;
+        if (ma > midMax) midMax = ma;
+      }
+      const lowRms = Math.sqrt(lowSum * 0.0078125); // /128
+      const midRms = Math.sqrt(midSum * 0.0078125);
 
-      // Envelope follower: instant attack, controlled release
+      // Weight sub-bass heavier, peak for transient snap
+      const energy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
+
+      // Envelope: instant attack, fast release
       const prev = envelopeRef.current;
-      const envelope = energy > prev
-        ? energy
-        : prev * 0.88;
+      const envelope = energy > prev ? energy : prev * 0.85; // faster decay
       envelopeRef.current = envelope;
 
-      // Transient detection with derivative
-      const delta = Math.max(0, energy - prevSampleRef.current);
+      // Transient boost
+      const delta = energy - prevSampleRef.current;
       prevSampleRef.current = energy;
-      const transientBoost = Math.min(1, delta * 6);
+      const transient = delta > 0 ? Math.min(1, delta * 8) : 0; // sharper transient
 
-      // Combine
-      const combined = Math.min(1, envelope * 0.65 + transientBoost * 0.35);
+      const combined = Math.min(1, envelope * 0.6 + transient * 0.4);
 
-      // Auto-calibrate with rolling percentile
-      const idx = historyIndexRef.current;
-      history[idx] = combined;
-      historyIndexRef.current = (idx + 1) % history.length;
-      if (historyFilledRef.current < history.length) historyFilledRef.current++;
-
-      const count = historyFilledRef.current;
-      // Use 5th and 95th percentile for robust normalization
-      let sorted: number[] = [];
-      for (let i = 0; i < count; i++) sorted.push(history[i]);
-      sorted.sort();
-      const p5 = sorted[Math.floor(count * 0.05)];
-      const p95 = sorted[Math.max(0, Math.ceil(count * 0.95) - 1)];
-      const range = Math.max(0.005, p95 - p5);
-      const normalized = Math.max(0, Math.min(1, (combined - p5) / range));
-
-      // Apply curve for punchier feel (slight exponential)
-      const curved = normalized * normalized * (3 - 2 * normalized); // smoothstep
-
-      setVolume(curved);
-
-      // Send brightness at ~18Hz (every 55ms)
-      const now = Date.now();
-      if (now - throttleRef.current >= 55) {
-        throttleRef.current = now;
-        ble.brightness(Math.round(curved * 100));
+      // O(1) running min/max with slow decay (replaces O(n log n) sort)
+      if (combined < runMinRef.current) runMinRef.current = combined;
+      if (combined > runMaxRef.current) runMaxRef.current = combined;
+      // Slowly contract range every ~60 frames (~1s)
+      decayCounterRef.current++;
+      if (decayCounterRef.current >= 60) {
+        decayCounterRef.current = 0;
+        const mid = (runMinRef.current + runMaxRef.current) * 0.5;
+        runMinRef.current += (mid - runMinRef.current) * 0.15;
+        runMaxRef.current -= (runMaxRef.current - mid) * 0.15;
       }
 
-      // Color boost at peaks >80%, restore at <70%
-      if (curved > 0.8 && now - colorThrottleRef.current >= 120) {
+      const range = Math.max(0.005, runMaxRef.current - runMinRef.current);
+      const normalized = Math.max(0, Math.min(1, (combined - runMinRef.current) / range));
+
+      // Smoothstep curve
+      const curved = normalized * normalized * (3 - 2 * normalized);
+
+      // Direct DOM updates – zero React overhead
+      const pct = Math.round(curved * 100);
+      if (vizRef.current) {
+        const s = vizRef.current.style;
+        s.transform = `scale(${1 + curved * 0.25})`;
+        s.boxShadow = `0 0 ${curved * 80}px ${curved * 25}px hsl(var(--foreground) / ${curved * 0.4})`;
+      }
+      if (barRef.current) barRef.current.style.width = `${pct}%`;
+      if (pctRef.current) pctRef.current.textContent = `${pct}%`;
+
+      // BLE brightness at ~25Hz (40ms) – pushed from 55ms
+      const now = Date.now();
+      if (now - throttleRef.current >= 40) {
+        throttleRef.current = now;
+        ble.brightness(pct);
+      }
+
+      // Color boost at peaks
+      if (curved > 0.8 && now - colorThrottleRef.current >= 100) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = currentColor;
-        const boost = (curved - 0.8) / 0.2 * 0.35;
-        const r = Math.round(cr + (255 - cr) * boost);
-        const g = Math.round(cg + (255 - cg) * boost);
-        const b = Math.round(cb + (255 - cb) * boost);
-        ble.color(r, g, b);
-      } else if (curved <= 0.7 && colorBoostedRef.current && now - colorThrottleRef.current >= 80) {
+        const boost = (curved - 0.8) * 1.75; // 0-0.35
+        ble.color(
+          Math.round(cr + (255 - cr) * boost),
+          Math.round(cg + (255 - cg) * boost),
+          Math.round(cb + (255 - cb) * boost),
+        );
+      } else if (curved <= 0.7 && colorBoostedRef.current && now - colorThrottleRef.current >= 70) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = false;
-        const [cr, cg, cb] = currentColor;
-        ble.color(cr, cg, cb);
+        ble.color(currentColor[0], currentColor[1], currentColor[2]);
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -272,22 +251,16 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
       {/* Bass pulse visualizer */}
       <div
-        className="w-32 h-32 rounded-full border-2 flex items-center justify-center"
+        ref={vizRef}
+        className="w-32 h-32 rounded-full border-2 flex items-center justify-center will-change-transform"
         style={{
           borderColor: active ? "hsl(var(--foreground))" : "hsl(var(--border))",
-          boxShadow: active
-            ? `0 0 ${volume * 80}px ${volume * 25}px hsl(var(--foreground) / ${volume * 0.4})`
-            : "none",
-          transform: `scale(${1 + volume * 0.25})`,
-          transition: "transform 40ms, box-shadow 40ms",
         }}
       >
         <Activity
+          ref={iconRef}
           className="w-12 h-12"
-          style={{
-            opacity: active ? 0.4 + volume * 0.6 : 0.3,
-            transition: "opacity 40ms",
-          }}
+          style={{ opacity: active ? 0.7 : 0.3 }}
         />
       </div>
 
@@ -300,26 +273,22 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       {active && (
         <div className="w-full max-w-xs space-y-4">
-          {/* Volume bar */}
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-xs text-muted-foreground">Ljusstyrka</span>
-              <span className="text-xs font-mono text-foreground">{Math.round(volume * 100)}%</span>
+              <span ref={pctRef} className="text-xs font-mono text-foreground">0%</span>
             </div>
             <div className="h-3 rounded-full bg-secondary overflow-hidden">
               <div
-                className="h-full bg-foreground rounded-full"
-                style={{
-                  width: `${volume * 100}%`,
-                  transition: "width 40ms",
-                }}
+                ref={barRef}
+                className="h-full bg-foreground rounded-full will-change-[width]"
+                style={{ width: "0%" }}
               />
             </div>
           </div>
 
-
           <p className="text-xs text-muted-foreground text-center">
-            Dual-band 30–200Hz · RMS+Peak · Kompressor · Smoothstep
+            Dual-band · Zero-latency · Direct DOM · 25Hz BLE
           </p>
         </div>
       )}
