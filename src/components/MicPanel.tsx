@@ -227,22 +227,21 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
           const interval = now - lastOnsetRef.current;
           const onsets = onsetTimesRef.current;
           onsets.push(interval);
-          if (onsets.length > 12) onsets.shift();
+          if (onsets.length > 16) onsets.shift();
 
-          if (onsets.length >= 3) {
+          // Only recalculate BPM every 4 onsets for stability
+          if (onsets.length >= 4 && onsets.length % 4 === 0) {
             const sorted = [...onsets].sort((a, b) => a - b);
             const q1 = sorted[Math.floor(sorted.length * 0.25)];
             const q3 = sorted[Math.floor(sorted.length * 0.75)];
             const filtered = sorted.filter(v => v >= q1 * 0.7 && v <= q3 * 1.3);
-            if (filtered.length >= 2) {
+            if (filtered.length >= 3) {
               const mid = filtered[Math.floor(filtered.length / 2)];
               const bpmRaw = 60000 / mid;
               if (bpmRaw >= 60 && bpmRaw <= 200) {
-                const prevBpm = bpmRef.current;
-                const bpm = prevBpm > 0 ? prevBpm * 0.7 + bpmRaw * 0.3 : bpmRaw;
-                bpmRef.current = bpm;
-                framesPerBeatRef.current = (mid / 1000) * 60; // frames at 60fps
-                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(0)} BPM`;
+                bpmRef.current = bpmRaw;
+                framesPerBeatRef.current = (mid / 1000) * 60;
+                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${Math.round(bpmRaw)} BPM`;
               }
             }
           }
