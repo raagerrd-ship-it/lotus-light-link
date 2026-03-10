@@ -1,9 +1,18 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ColorCanvas from "@/components/ColorCanvas";
-import { connectBLEDOM, reconnectLastDevice, getLastDevice, sendColor, sendBrightness, sendPower, hsvToRgb, type BLEConnection } from "@/lib/bledom";
-import { Power, Bluetooth, Sun, Zap } from "lucide-react";
+import EffectsPanel from "@/components/EffectsPanel";
+import ColorTempPanel from "@/components/ColorTempPanel";
+import MicPanel from "@/components/MicPanel";
+import SchedulePanel from "@/components/SchedulePanel";
+import {
+  connectBLEDOM, reconnectLastDevice, getLastDevice,
+  sendColor, sendBrightness, sendPower, hsvToRgb,
+  type BLEConnection
+} from "@/lib/bledom";
+import { Power, Bluetooth, Sun, Zap, Palette, Sparkles, Thermometer, Mic, Clock } from "lucide-react";
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
@@ -13,6 +22,7 @@ const Index = () => {
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 255, 255]);
   const [brightness, setBrightness] = useState(80);
   const [isOn, setIsOn] = useState(true);
+  const [activeTab, setActiveTab] = useState("color");
   const throttleRef = useRef<number>(0);
   const lastDevice = getLastDevice();
 
@@ -58,12 +68,9 @@ const Index = () => {
   const handleColorChange = useCallback(
     (_h: number, _s: number, r: number, g: number, b: number) => {
       setCurrentColor([r, g, b]);
-
-      // Throttle BLE writes to ~30ms
       const now = Date.now();
       if (now - throttleRef.current < 30) return;
       throttleRef.current = now;
-
       if (connection && isOn) {
         sendColor(connection.characteristic, r, g, b).catch(() => {});
       }
@@ -92,6 +99,7 @@ const Index = () => {
   const [r, g, b] = currentColor;
   const accentColor = `rgb(${r}, ${g}, ${b})`;
   const bgGlow = `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)`;
+  const char = connection?.characteristic;
 
   // Connect screen
   if (!connection) {
@@ -177,7 +185,7 @@ const Index = () => {
       style={{ backgroundImage: bgGlow }}
     >
       {/* Top zone */}
-      <div className="flex items-center justify-between px-6 py-4 shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
           <div
             className="w-3 h-3 rounded-full animate-pulse"
@@ -199,13 +207,49 @@ const Index = () => {
         </Button>
       </div>
 
-      {/* Color canvas zone */}
-      <div className="flex-1 px-4 pb-2 min-h-0">
-        <ColorCanvas onColorChange={handleColorChange} />
-      </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <TabsList className="mx-4 bg-secondary/50 shrink-0">
+          <TabsTrigger value="color" className="flex-1 gap-1.5 text-xs">
+            <Palette className="w-3.5 h-3.5" /> Färg
+          </TabsTrigger>
+          <TabsTrigger value="effects" className="flex-1 gap-1.5 text-xs">
+            <Sparkles className="w-3.5 h-3.5" /> Effekter
+          </TabsTrigger>
+          <TabsTrigger value="temp" className="flex-1 gap-1.5 text-xs">
+            <Thermometer className="w-3.5 h-3.5" /> Temp
+          </TabsTrigger>
+          <TabsTrigger value="mic" className="flex-1 gap-1.5 text-xs">
+            <Mic className="w-3.5 h-3.5" /> Ljud
+          </TabsTrigger>
+          <TabsTrigger value="schedule" className="flex-1 gap-1.5 text-xs">
+            <Clock className="w-3.5 h-3.5" /> Timer
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="color" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
+          <ColorCanvas onColorChange={handleColorChange} />
+        </TabsContent>
+
+        <TabsContent value="effects" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0 overflow-y-auto">
+          <EffectsPanel char={char} />
+        </TabsContent>
+
+        <TabsContent value="temp" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
+          <ColorTempPanel char={char} />
+        </TabsContent>
+
+        <TabsContent value="mic" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
+          <MicPanel char={char} />
+        </TabsContent>
+
+        <TabsContent value="schedule" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0 overflow-y-auto">
+          <SchedulePanel char={char} />
+        </TabsContent>
+      </Tabs>
 
       {/* Brightness zone */}
-      <div className="px-6 py-6 shrink-0">
+      <div className="px-6 py-4 shrink-0">
         <div className="flex items-center gap-4">
           <Sun className="w-4 h-4 text-muted-foreground shrink-0" />
           <Slider
