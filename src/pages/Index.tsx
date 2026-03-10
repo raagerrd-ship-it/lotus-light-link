@@ -1,35 +1,57 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import ColorCanvas from "@/components/ColorCanvas";
-import { connectBLEDOM, sendColor, sendBrightness, sendPower, hsvToRgb, type BLEConnection } from "@/lib/bledom";
-import { Power, Bluetooth, Sun } from "lucide-react";
+import { connectBLEDOM, reconnectLastDevice, getLastDevice, sendColor, sendBrightness, sendPower, hsvToRgb, type BLEConnection } from "@/lib/bledom";
+import { Power, Bluetooth, Sun, Zap } from "lucide-react";
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 255, 255]);
   const [brightness, setBrightness] = useState(80);
   const [isOn, setIsOn] = useState(true);
   const throttleRef = useRef<number>(0);
+  const lastDevice = getLastDevice();
+
+  const finishConnect = async (conn: BLEConnection) => {
+    setConnection(conn);
+    await sendPower(conn.characteristic, true);
+    await sendBrightness(conn.characteristic, 80);
+    conn.device.addEventListener("gattserverdisconnected", () => {
+      setConnection(null);
+    });
+  };
 
   const handleConnect = async (scanAll = false) => {
     setConnecting(true);
     setError(null);
     try {
       const conn = await connectBLEDOM(scanAll);
-      setConnection(conn);
-      await sendPower(conn.characteristic, true);
-      await sendBrightness(conn.characteristic, 80);
-
-      conn.device.addEventListener("gattserverdisconnected", () => {
-        setConnection(null);
-      });
+      await finishConnect(conn);
     } catch (e: any) {
       setError(e.message || "Kunde inte ansluta");
     } finally {
       setConnecting(false);
+    }
+  };
+
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    setError(null);
+    try {
+      const conn = await reconnectLastDevice();
+      if (conn) {
+        await finishConnect(conn);
+      } else {
+        setError("Kunde inte hitta enheten. Prova 'VÄCK LJUS' istället.");
+      }
+    } catch (e: any) {
+      setError(e.message || "Kunde inte återansluta");
+    } finally {
+      setReconnecting(false);
     }
   };
 
