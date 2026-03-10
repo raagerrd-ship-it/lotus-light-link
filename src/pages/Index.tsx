@@ -1,18 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ColorCanvas from "@/components/ColorCanvas";
-import EffectsPanel from "@/components/EffectsPanel";
-import ColorTempPanel from "@/components/ColorTempPanel";
 import MicPanel from "@/components/MicPanel";
-import SchedulePanel from "@/components/SchedulePanel";
 import {
   connectBLEDOM, reconnectLastDevice, getLastDevice,
   sendColor, sendBrightness, sendPower, hsvToRgb,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Sun, Zap, Palette, Sparkles, Thermometer, Mic, Clock } from "lucide-react";
+import { Power, Bluetooth, Sun, Zap, Palette, Activity } from "lucide-react";
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
