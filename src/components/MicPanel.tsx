@@ -179,18 +179,18 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Weight peaks heavier for sharper transient detection
       const rawEnergy = lowRms * 0.3 + midRms * 0.1 + lowMax * 0.45 + midMax * 0.15;
 
-      // AGC
-      const agcAlpha = 0.002;
-      agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
+      // AGC – freeze during silence so it's ready when music returns
+      const isSilence = rawEnergy < 0.015;
+      if (!isSilence) {
+        const agcAlpha = 0.002;
+        agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
+      }
       const agcGain = agcAvgRef.current > 0.0001 ? 0.25 / agcAvgRef.current : 1;
       const energy = rawEnergy * Math.min(agcGain, 20);
 
-      // Noise gate: if raw energy is near-silence, skip onset detection entirely
-      const isSilence = rawEnergy < 0.015;
-
       // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
-      prevSampleRef.current = energy;
+      prevSampleRef.current = isSilence ? energy * 0.5 + prevSampleRef.current * 0.5 : energy;
       const transient = isSilence ? 0 : (delta > 0 ? Math.min(1, delta * 6) : 0);
 
       // Adaptive onset threshold: higher multiplier = fewer false triggers
@@ -203,13 +203,12 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
 
-      // Reset BPM only after 5 seconds of sustained silence
+      // Hide BPM after 10s silence but keep history for fast re-lock
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
-        if (performance.now() - silenceStartRef.current > 5000 && bpmRef.current > 0) {
-          bpmRef.current = 0;
-          onsetTimesRef.current = [];
+        if (performance.now() - silenceStartRef.current > 10000 && bpmRef.current > 0) {
           if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = '— BPM';
+          // Keep bpmRef and onsetTimes so we re-lock instantly
         }
       } else {
         silenceStartRef.current = 0;
