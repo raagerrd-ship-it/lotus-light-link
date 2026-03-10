@@ -225,8 +225,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
               // At 60 BPM: decay to 0.15 over 2 beat periods (slow song, full fade ok)
               // At 200 BPM: decay to 0.5 over 3 beat periods (fast song, stay bright)
               const bpmFactor = (bpm - 60) / 140; // 0..1
-              const targetLevel = 0.15 + bpmFactor * 0.45; // 0.15 at 60bpm, 0.6 at 200bpm
-              const spanBeats = 2 + bpmFactor * 2; // 2 beats at 60bpm, 4 beats at 200bpm
+              const targetLevel = 0.35 + bpmFactor * 0.4; // 0.35 at 60bpm, 0.75 at 200bpm
+              const spanBeats = 3 + bpmFactor * 3; // 3 beats at 60bpm, 6 beats at 200bpm
               const totalFrames = (spanBeats * mid / 1000) * 60;
               releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
               if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm} BPM`;
