@@ -1,13 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { sendBrightness } from "@/lib/bledom";
+import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
 interface MicPanelProps {
   char: any;
+  currentColor: [number, number, number];
 }
 
-export default function MicPanel({ char }: MicPanelProps) {
+export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [volume, setVolume] = useState(0);
   const audioContextRef = useRef<AudioContext | null>(null);
