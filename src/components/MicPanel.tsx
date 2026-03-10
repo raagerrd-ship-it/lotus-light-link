@@ -121,13 +121,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       midFilter.frequency.value = 130;
       midFilter.Q.value = 0.6;
 
-      // Minimal-latency analysers
+      // Ultra-low-latency analysers – 32 samples at 8kHz = 4ms buffer
       const lowAnalyser = ctx.createAnalyser();
-      lowAnalyser.fftSize = 128; // Minimum for speed
+      lowAnalyser.fftSize = 32;
       lowAnalyser.smoothingTimeConstant = 0;
 
       const midAnalyser = ctx.createAnalyser();
-      midAnalyser.fftSize = 128;
+      midAnalyser.fftSize = 32;
       midAnalyser.smoothingTimeConstant = 0;
 
       // Skip compressor – it adds ~3ms lookahead latency
@@ -153,8 +153,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     const lowAnalyser = lowAnalyserRef.current;
     const midAnalyser = midAnalyserRef.current;
     const ble = bleQueueRef.current;
-    const lowTD = new Uint8Array(128);
-    const midTD = new Uint8Array(128);
+    const lowTD = new Uint8Array(32);
+    const midTD = new Uint8Array(32);
 
     const loop = () => {
       lowAnalyser.getByteTimeDomainData(lowTD);
@@ -162,7 +162,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       // Inline peak+RMS in single pass per band (avoid function call overhead)
       let lowSum = 0, lowMax = 0, midSum = 0, midMax = 0;
-      for (let i = 0; i < 128; i++) {
+      for (let i = 0; i < 32; i++) {
         const lv = (lowTD[i] - 128) / 128;
         lowSum += lv * lv;
         const la = lv < 0 ? -lv : lv;
@@ -173,8 +173,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         const ma = mv < 0 ? -mv : mv;
         if (ma > midMax) midMax = ma;
       }
-      const lowRms = Math.sqrt(lowSum * 0.0078125); // /128
-      const midRms = Math.sqrt(midSum * 0.0078125);
+      const lowRms = Math.sqrt(lowSum * 0.03125); // /32
+      const midRms = Math.sqrt(midSum * 0.03125);
 
       // Weight sub-bass heavier, peak for transient snap
       const energy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
@@ -254,7 +254,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
       // BLE brightness at ~33Hz (30ms)
-      if (now - throttleRef.current >= 30) {
+      // BLE brightness at ~40Hz (25ms)
+      if (now - throttleRef.current >= 25) {
         throttleRef.current = now;
         ble.brightness(pct);
       }
@@ -355,7 +356,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
           <div className="flex justify-between">
             <span className="text-xs text-muted-foreground">
-              Dual-band · BPM-synk · 33Hz BLE
+              Dual-band · BPM-synk · 40Hz BLE
             </span>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
