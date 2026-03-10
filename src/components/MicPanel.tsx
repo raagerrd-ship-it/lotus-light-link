@@ -68,6 +68,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const beatPhaseRef = useRef(1); // 0=onset, 1=next beat
   const framesPerBeatRef = useRef(60); // default ~120bpm at 60fps
   const adaptiveThreshRef = useRef(0.15); // adaptive onset threshold
+  const pulseMaxRef = useRef(0.7); // peak level for current pulse
   const transientAvgRef = useRef(0.1); // running average of transients
 
   // BPM detection refs
