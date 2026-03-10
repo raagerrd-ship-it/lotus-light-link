@@ -112,8 +112,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Dual-band filters
       const lowFilter = ctx.createBiquadFilter();
       lowFilter.type = "bandpass";
-      lowFilter.frequency.value = 55;
-      lowFilter.Q.value = 0.8;
+      lowFilter.frequency.value = 60;
+      lowFilter.Q.value = 1.2;
 
       const midFilter = ctx.createBiquadFilter();
       midFilter.type = "bandpass";
