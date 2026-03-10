@@ -99,13 +99,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     setIdentifying(true);
 
     try {
-      // Create a separate AudioContext at 44100 for recording (ACRCloud needs decent quality)
-      const recCtx = new AudioContext({ sampleRate: 44100 });
+      // Record at 16kHz for smaller payload while still good enough for ACRCloud
+      const recCtx = new AudioContext({ sampleRate: 16000 });
       const source = recCtx.createMediaStreamSource(streamRef.current);
       const processor = recCtx.createScriptProcessor(4096, 1, 1);
       const chunks: Float32Array[] = [];
       let sampleCount = 0;
-      const targetSamples = 44100 * 5; // 5 seconds
+      const targetSamples = 16000 * 4; // 4 seconds at 16kHz
 
       await new Promise<void>((resolve) => {
         processor.onaudioprocess = (e) => {
@@ -145,7 +145,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       // Call edge function
       const { data, error } = await supabase.functions.invoke('identify-song', {
-        body: { audio: base64Audio, sampleRate: 44100, channels: 1 },
+        body: { audio: base64Audio, sampleRate: 16000, channels: 1 },
       });
 
       if (error) {

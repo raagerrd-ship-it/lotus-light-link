@@ -1,12 +1,24 @@
+// Song identification via ACRCloud
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-import { HmacSha1 } from "https://deno.land/std@0.168.0/hash/sha1.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+async function hmacSha1(key: string, message: string): Promise<string> {
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(key),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(message));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -22,19 +34,18 @@ serve(async (req) => {
       throw new Error("ACRCloud credentials not configured");
     }
 
-    // Expect base64-encoded audio in the request body
     const { audio, sampleRate, channels } = await req.json();
     if (!audio) {
       throw new Error("No audio data provided");
     }
 
     // Decode the base64 audio back to binary
-    const audioBytes = Uint8Array.from(atob(audio), (c) => c.charCodeAt(0));
+    const pcmBytes = Uint8Array.from(atob(audio), (c) => c.charCodeAt(0));
 
     // Build WAV file from raw PCM
-    const wavBytes = buildWav(audioBytes, sampleRate || 8000, channels || 1);
+    const wavBytes = buildWav(pcmBytes, sampleRate || 8000, channels || 1);
 
-    // ACRCloud signature
+    // ACRCloud signature using Web Crypto
     const httpMethod = "POST";
     const httpUri = "/v1/identify";
     const dataType = "audio";
@@ -42,9 +53,7 @@ serve(async (req) => {
     const timestamp = Math.floor(Date.now() / 1000).toString();
 
     const stringToSign = `${httpMethod}\n${httpUri}\n${accessKey}\n${dataType}\n${signatureVersion}\n${timestamp}`;
-    const hmac = new HmacSha1(accessSecret);
-    hmac.update(stringToSign);
-    const signature = base64Encode(new Uint8Array(hmac.arrayBuffer()));
+    const signature = await hmacSha1(accessSecret, stringToSign);
 
     // Build multipart form
     const formData = new FormData();
@@ -57,18 +66,20 @@ serve(async (req) => {
     formData.append("timestamp", timestamp);
 
     const acrUrl = `https://${host}/v1/identify`;
+    console.log("Calling ACRCloud:", acrUrl, "wav size:", wavBytes.length);
+    
     const response = await fetch(acrUrl, {
       method: "POST",
       body: formData,
     });
 
     const result = await response.json();
+    console.log("ACRCloud response:", JSON.stringify(result).slice(0, 500));
 
     if (!response.ok) {
       throw new Error(`ACRCloud API error [${response.status}]: ${JSON.stringify(result)}`);
     }
 
-    // Extract relevant info
     const status = result?.status;
     if (status?.code !== 0) {
       return new Response(
@@ -85,7 +96,7 @@ serve(async (req) => {
       );
     }
 
-    // Extract BPM from Deezer or Spotify metadata if available
+    // Extract BPM from external metadata if available
     let bpm = null;
     const deezer = music?.external_metadata?.deezer;
     if (deezer?.track?.bpm) bpm = deezer.track.bpm;
@@ -114,7 +125,6 @@ serve(async (req) => {
   }
 });
 
-/** Build a minimal WAV file from raw 16-bit PCM data */
 function buildWav(pcmData: Uint8Array, sampleRate: number, channels: number): Uint8Array {
   const bitsPerSample = 16;
   const byteRate = (sampleRate * channels * bitsPerSample) / 8;
@@ -123,22 +133,17 @@ function buildWav(pcmData: Uint8Array, sampleRate: number, channels: number): Ui
   const wav = new Uint8Array(headerSize + pcmData.length);
   const view = new DataView(wav.buffer);
 
-  // RIFF header
   writeString(wav, 0, "RIFF");
   view.setUint32(4, 36 + pcmData.length, true);
   writeString(wav, 8, "WAVE");
-
-  // fmt chunk
   writeString(wav, 12, "fmt ");
-  view.setUint32(16, 16, true); // chunk size
-  view.setUint16(20, 1, true); // PCM format
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
   view.setUint16(22, channels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, byteRate, true);
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitsPerSample, true);
-
-  // data chunk
   writeString(wav, 36, "data");
   view.setUint32(40, pcmData.length, true);
   wav.set(pcmData, 44);
