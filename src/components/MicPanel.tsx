@@ -188,15 +188,19 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Transient is only used for BPM onset detection below
       const combined = envelope;
 
-      // O(1) running min/max with slow decay (replaces O(n log n) sort)
+      // O(1) running min/max – max jumps instantly, min tracks instantly
+      // Decay slowly toward center so it stays calibrated over time
       if (combined < runMinRef.current) runMinRef.current = combined;
-      if (combined > runMaxRef.current) runMaxRef.current = combined;
+      if (combined > runMaxRef.current) {
+        // Instant jump to new max for fast reaction
+        runMaxRef.current = combined;
+      }
       decayCounterRef.current++;
-      if (decayCounterRef.current >= 60) {
+      if (decayCounterRef.current >= 90) {
         decayCounterRef.current = 0;
         const mid = (runMinRef.current + runMaxRef.current) * 0.5;
-        runMinRef.current += (mid - runMinRef.current) * 0.15;
-        runMaxRef.current -= (runMaxRef.current - mid) * 0.15;
+        runMinRef.current += (mid - runMinRef.current) * 0.1;
+        runMaxRef.current -= (runMaxRef.current - mid) * 0.08;
       }
 
       const range = Math.max(0.005, runMaxRef.current - runMinRef.current);
