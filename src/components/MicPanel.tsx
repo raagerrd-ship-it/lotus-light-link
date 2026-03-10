@@ -74,7 +74,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const lastOnsetRef = useRef(0);
   const wasAboveRef = useRef(false);
   const bpmRef = useRef(0);
-  const releaseCoeffRef = useRef(0.97);
+  const releaseCoeffRef = useRef(0.993);
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
   // Audio nodes
