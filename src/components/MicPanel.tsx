@@ -155,11 +155,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     const lowTD = new Uint8Array(32);
     const midTD = new Uint8Array(32);
 
+    const FLOOR = 0.05; // 5% glow between beats
+
     const loop = () => {
       lowAnalyser.getByteTimeDomainData(lowTD);
       midAnalyser.getByteTimeDomainData(midTD);
 
-      // Inline peak+RMS in single pass per band (avoid function call overhead)
+      // Peak+RMS in single pass per band
       let lowSum = 0, lowMax = 0, midSum = 0, midMax = 0;
       for (let i = 0; i < 32; i++) {
         const lv = (lowTD[i] - 128) / 128;
@@ -172,53 +174,38 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         const ma = mv < 0 ? -mv : mv;
         if (ma > midMax) midMax = ma;
       }
-      const lowRms = Math.sqrt(lowSum * 0.03125); // /32
+      const lowRms = Math.sqrt(lowSum * 0.03125);
       const midRms = Math.sqrt(midSum * 0.03125);
 
-      // Weight sub-bass heavier, peak for transient snap
-      const rawEnergy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
+      // Weight peaks heavier for sharper transient detection
+      const rawEnergy = lowRms * 0.3 + midRms * 0.1 + lowMax * 0.45 + midMax * 0.15;
 
-      // AGC: normalize energy by running average so all songs drive full range
-      const agcAlpha = 0.002; // slow adaptation (~8s to fully adjust)
+      // AGC
+      const agcAlpha = 0.002;
       agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       const agcGain = agcAvgRef.current > 0.0001 ? 0.25 / agcAvgRef.current : 1;
-      const energy = rawEnergy * Math.min(agcGain, 20); // cap gain at 20x
+      const energy = rawEnergy * Math.min(agcGain, 20);
 
-      // Envelope: instant attack, BPM-synced release
-      const prev = envelopeRef.current;
-      const envelope = energy > prev ? energy : prev * releaseCoeffRef.current;
-      envelopeRef.current = envelope;
-
-      // Transient boost
+      // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
       prevSampleRef.current = energy;
       const transient = delta > 0 ? Math.min(1, delta * 8) : 0;
 
-      // Use envelope directly for brightness (has instant attack + slow release)
-      const combined = envelope;
+      // Adaptive onset threshold: tracks running average of transients
+      transientAvgRef.current += (transient - transientAvgRef.current) * 0.01;
+      adaptiveThreshRef.current = Math.max(0.08, transientAvgRef.current * 2.5);
 
-      // O(1) running min/max – instant jump up, normal decay
-      if (combined < runMinRef.current) runMinRef.current = combined;
-      if (combined > runMaxRef.current) runMaxRef.current = combined;
-      decayCounterRef.current++;
-      // Fast tight decay every ~1s: keeps range snug around actual signal
-      if (decayCounterRef.current >= 60) {
-        decayCounterRef.current = 0;
-        const range = runMaxRef.current - runMinRef.current;
-        runMinRef.current += range * 0.1;  // floor rises
-        runMaxRef.current -= range * 0.1;  // ceiling drops
-      }
+      // --- Beat-phase advance ---
+      beatPhaseRef.current = Math.min(1, beatPhaseRef.current + 1 / framesPerBeatRef.current);
 
-      const range = Math.max(0.0005, runMaxRef.current - runMinRef.current);
-      const normalized = Math.max(0, Math.min(1, (combined - runMinRef.current) / range));
-
-      // Smoothstep curve
-      const curved = normalized * normalized * (3 - 2 * normalized);
-
-      // --- BPM onset detection (transient-based, more reliable) ---
+      // --- Onset detection ---
       const now = performance.now();
-      const isOnset = transient > 0.3 && now - lastOnsetRef.current > 180;
+      const isOnset = transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 150;
+
       if (isOnset) {
+        // Reset phase → instant pulse
+        beatPhaseRef.current = 0;
+
         if (lastOnsetRef.current > 0) {
           const interval = now - lastOnsetRef.current;
           const onsets = onsetTimesRef.current;
@@ -237,11 +224,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
                 const prevBpm = bpmRef.current;
                 const bpm = prevBpm > 0 ? prevBpm * 0.7 + bpmRaw * 0.3 : bpmRaw;
                 bpmRef.current = bpm;
-                const beatSec = mid / 1000;
-                const framesPerBeat = beatSec * 60;
-                releaseCoeffRef.current = Math.pow(0.40, 1 / framesPerBeat);
-                
-                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
+                framesPerBeatRef.current = (mid / 1000) * 60; // frames at 60fps
+                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(0)} BPM`;
               }
             }
           }
@@ -249,8 +233,15 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         lastOnsetRef.current = now;
       }
 
-      // Brightness: floor at 3% so light never fully off
+      // --- Pulse-shaped brightness from beat phase ---
+      const phase = beatPhaseRef.current;
+      const pulse = Math.pow(1 - phase, 2); // quadratic falloff: 1→0 over one beat
+      const curved = FLOOR + (1 - FLOOR) * pulse;
+
+      // Brightness percentage
       const pct = Math.max(3, Math.round(curved * 100));
+
+      // Direct DOM updates
       if (vizRef.current) {
         const s = vizRef.current.style;
         s.transform = `scale(${1 + curved * 0.25})`;
@@ -259,14 +250,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
-      // BLE brightness at ~33Hz (30ms)
-      // BLE brightness at ~40Hz (25ms)
+      // BLE brightness at ~40Hz
       if (now - throttleRef.current >= 25) {
         throttleRef.current = now;
         ble.brightness(pct);
       }
 
-      // Color boost at peaks – read color from ref (no loop restart on color change)
+      // Color boost at peaks
       const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
@@ -274,7 +264,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = color;
-        const boost = (curved - 0.9) * 10; // 0→1 over 90-100% range
+        const boost = (curved - 0.9) * 10;
         ble.color(
           Math.round(cr + (255 - cr) * boost),
           Math.round(cg + (255 - cg) * boost),
@@ -293,7 +283,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [active]); // currentColor removed – read from ref instead
+  }, [active]);
 
   useEffect(() => stop, [stop]);
 
