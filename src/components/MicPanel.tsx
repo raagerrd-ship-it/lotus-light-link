@@ -133,7 +133,7 @@ export default function MicPanel({ char }: MicPanelProps) {
               <span className="text-xs text-muted-foreground">Känslighet</span>
               <span className="text-xs font-mono text-muted-foreground">{sensitivity}%</span>
             </div>
-            <Slider value={[sensitivity]} onValueChange={(v) => setSensitivity(v[0])} min={10} max={100} step={5} />
+            <Slider value={[sensitivity]} onValueChange={(v) => setSensitivity(v[0])} min={5} max={200} step={5} />
           </div>
           <div>
             <div className="flex justify-between mb-1">
