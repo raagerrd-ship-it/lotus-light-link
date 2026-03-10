@@ -40,7 +40,8 @@ function createBleQueue(char: any) {
 
 export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const [punchColor, setPunchColor] = useState(true);
+  const punchColorRef = useRef(true);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const throttleRef = useRef<number>(0);
