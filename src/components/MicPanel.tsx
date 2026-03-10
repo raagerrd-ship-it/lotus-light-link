@@ -15,6 +15,8 @@ export default function MicPanel({ char }: MicPanelProps) {
   const [minBrightness, setMinBrightness] = useState(0);
   const [maxBrightness, setMaxBrightness] = useState(100);
   const smoothedRef = useRef(0);
+  const noiseFloorRef = useRef(1);  // auto-calibrating min
+  const peakRef = useRef(0);        // auto-calibrating max
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -62,31 +64,45 @@ export default function MicPanel({ char }: MicPanelProps) {
     const loop = () => {
       analyser.getByteFrequencyData(dataArray);
 
-      // Use RMS for a more musical response
+      // RMS level
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) {
         sum += dataArray[i] * dataArray[i];
       }
       const rms = Math.sqrt(sum / dataArray.length) / 255;
 
-      // Apply sensitivity as an exponent curve: low sensitivity = need louder sound
-      const sensitivityFactor = sensitivity / 50;
-      const shaped = Math.pow(rms, 1.5 / Math.max(0.1, sensitivityFactor));
+      // Auto-calibrate: track noise floor and peak with slow decay
+      // Noise floor rises slowly, peak decays slowly – always adapts
+      noiseFloorRef.current = noiseFloorRef.current * 0.995 + rms * 0.005; // slowly tracks silence
+      if (rms > peakRef.current) {
+        peakRef.current = rms; // instant attack on new peak
+      } else {
+        peakRef.current = peakRef.current * 0.998 + rms * 0.002; // slow decay
+      }
 
-      // Smooth: fast attack, slow release for musical feel
+      // Normalize between noise floor and peak → always 0-1 range
+      const floor = noiseFloorRef.current;
+      const peak = Math.max(floor + 0.01, peakRef.current); // prevent division by ~0
+      const normalized = Math.max(0, Math.min(1, (rms - floor) / (peak - floor)));
+
+      // Apply sensitivity curve
+      const sensitivityFactor = sensitivity / 50;
+      const shaped = Math.pow(normalized, 1.2 / Math.max(0.1, sensitivityFactor));
+
+      // Smooth: fast attack, medium release
       const prev = smoothedRef.current;
       const smoothed = shaped > prev
-        ? prev + (shaped - prev) * 0.7  // fast attack
-        : prev + (shaped - prev) * 0.15; // slow release
+        ? prev + (shaped - prev) * 0.8
+        : prev + (shaped - prev) * 0.2;
       smoothedRef.current = smoothed;
 
-      const normalized = Math.min(1, Math.max(0, smoothed));
-      setVolume(normalized);
+      const output = Math.min(1, Math.max(0, smoothed));
+      setVolume(output);
 
       const now = Date.now();
       if (now - throttleRef.current >= 50) {
         throttleRef.current = now;
-        const brightness = Math.round(minBrightness + normalized * (maxBrightness - minBrightness));
+        const brightness = Math.round(output * 100);
         sendBrightness(char, brightness).catch(() => {});
       }
 
@@ -143,27 +159,27 @@ export default function MicPanel({ char }: MicPanelProps) {
             </div>
             <Slider value={[sensitivity]} onValueChange={(v) => setSensitivity(v[0])} min={5} max={200} step={5} />
           </div>
+
+          {/* Live meter */}
           <div>
             <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Min ljusstyrka</span>
-              <span className="text-xs font-mono text-muted-foreground">{minBrightness}%</span>
+              <span className="text-xs text-muted-foreground">Ljusstyrka nu</span>
+              <span className="text-xs font-mono text-foreground">{Math.round(volume * 100)}%</span>
             </div>
-            <Slider value={[minBrightness]} onValueChange={(v) => setMinBrightness(v[0])} min={0} max={100} step={1} />
-          </div>
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Max ljusstyrka</span>
-              <span className="text-xs font-mono text-muted-foreground">{maxBrightness}%</span>
+            <div className="h-2 rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full bg-foreground rounded-full transition-all duration-75"
+                style={{ width: `${volume * 100}%` }}
+              />
             </div>
-            <Slider value={[maxBrightness]} onValueChange={(v) => setMaxBrightness(v[0])} min={0} max={100} step={1} />
           </div>
         </div>
       )}
 
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         {active
-          ? "Ljusstyrkan pulserar med musiken – din valda färg behålls"
-          : "Lyssnar via telefonens mikrofon och styr bara ljusstyrkan. Välj färg under Färg-fliken först."
+          ? "Ljusstyrkan går automatiskt mellan 0–100% baserat på volymen. Din färg behålls."
+          : "Lyssnar via telefonens mikrofon och styr ljusstyrkan 0–100%. Välj färg först."
         }
       </p>
     </div>
