@@ -17,6 +17,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const rafRef = useRef<number>(0);
   const throttleRef = useRef<number>(0);
   const colorThrottleRef = useRef<number>(0);
+  const colorBoostedRef = useRef(false);
   const smoothedRef = useRef(0);
 
   // Rolling history for auto-calibration (~3s at 60fps)
