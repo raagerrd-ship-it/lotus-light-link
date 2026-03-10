@@ -178,7 +178,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const midRms = Math.sqrt(midSum * 0.03125);
 
       // Weight sub-bass heavier, peak for transient snap
-      const energy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
+      const rawEnergy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
+
+      // AGC: normalize energy by running average so all songs drive full range
+      const agcAlpha = 0.002; // slow adaptation (~8s to fully adjust)
+      agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
+      const agcGain = agcAvgRef.current > 0.0001 ? 0.25 / agcAvgRef.current : 1;
+      const energy = rawEnergy * Math.min(agcGain, 20); // cap gain at 20x
 
       // Envelope: instant attack, BPM-synced release
       const prev = envelopeRef.current;
