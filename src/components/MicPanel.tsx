@@ -189,18 +189,18 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
       prevSampleRef.current = energy;
-      const transient = delta > 0 ? Math.min(1, delta * 8) : 0;
+      const transient = delta > 0 ? Math.min(1, delta * 6) : 0;
 
-      // Adaptive onset threshold: tracks running average of transients
-      transientAvgRef.current += (transient - transientAvgRef.current) * 0.01;
-      adaptiveThreshRef.current = Math.max(0.08, transientAvgRef.current * 2.5);
+      // Adaptive onset threshold: higher multiplier = fewer false triggers
+      transientAvgRef.current += (transient - transientAvgRef.current) * 0.008;
+      adaptiveThreshRef.current = Math.max(0.12, transientAvgRef.current * 3.5);
 
       // --- Beat-phase advance ---
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + 1 / framesPerBeatRef.current);
 
-      // --- Onset detection ---
+      // --- Onset detection (longer cooldown to avoid flicker) ---
       const now = performance.now();
-      const isOnset = transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 150;
+      const isOnset = transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
 
       if (isOnset) {
         // Reset phase → instant pulse
@@ -235,7 +235,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       // --- Pulse-shaped brightness from beat phase ---
       const phase = beatPhaseRef.current;
-      const pulse = Math.pow(1 - phase, 2); // quadratic falloff: 1→0 over one beat
+      // Smooth cosine pulse: holds near top longer, then gentle fade
+      const pulse = 0.5 * (1 + Math.cos(phase * Math.PI)); // 1→0 smooth S-curve
       const curved = FLOOR + (1 - FLOOR) * pulse;
 
       // Brightness percentage
