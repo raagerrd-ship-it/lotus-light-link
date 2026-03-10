@@ -14,13 +14,12 @@ const Index = () => {
   const [isOn, setIsOn] = useState(true);
   const throttleRef = useRef<number>(0);
 
-  const handleConnect = async () => {
+  const handleConnect = async (scanAll = false) => {
     setConnecting(true);
     setError(null);
     try {
-      const conn = await connectBLEDOM();
+      const conn = await connectBLEDOM(scanAll);
       setConnection(conn);
-      // Turn on and set initial brightness
       await sendPower(conn.characteristic, true);
       await sendBrightness(conn.characteristic, 80);
 
