@@ -185,7 +185,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const energy = rawEnergy * Math.min(agcGain, 20);
 
       // Noise gate: if raw energy is near-silence, skip onset detection entirely
-      const isSilence = rawEnergy < 0.005;
+      const isSilence = rawEnergy < 0.015;
 
       // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
