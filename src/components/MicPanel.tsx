@@ -234,7 +234,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
                 const beatSec = mid / 1000;
                 const framesPerBeat = beatSec * 60; // at 60fps
                 // Reach 10% in exactly 1 beat period = tight beat-sync
-                releaseCoeffRef.current = Math.pow(0.01, 1 / framesPerBeat);
+                releaseCoeffRef.current = Math.pow(0.03, 1 / framesPerBeat);
                 
                 if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
               }
