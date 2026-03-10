@@ -28,7 +28,7 @@ export async function sendColor(char: any, r: number, g: number, b: number) {
   await char.writeValueWithoutResponse(data);
 }
 
-export async function sendBrightness(char: BluetoothRemoteGATTCharacteristic, brightness: number) {
+export async function sendBrightness(char: any, brightness: number) {
   // brightness: 0-100
   const val = Math.max(0, Math.min(100, Math.round(brightness)));
   const data = new Uint8Array([0x7e, 0x04, 0x01, val, 0x01, 0xff, 0x00, 0x00, 0xef]);
