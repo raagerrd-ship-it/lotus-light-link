@@ -11,8 +11,8 @@ interface MicPanelProps {
 export default function MicPanel({ char }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [volume, setVolume] = useState(0);
-  const [sensitivity, setSensitivity] = useState(70);
-  const [minBrightness, setMinBrightness] = useState(5);
+  const [sensitivity, setSensitivity] = useState(80);
+  const [minBrightness, setMinBrightness] = useState(0);
   const [maxBrightness, setMaxBrightness] = useState(100);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
