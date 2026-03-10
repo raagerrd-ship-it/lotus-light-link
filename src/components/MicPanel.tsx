@@ -150,14 +150,21 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const now = Date.now();
       if (now - throttleRef.current >= 40) {
         throttleRef.current = now;
-        // Brightness always at 100, color gets boosted toward white on hits
         const [cr, cg, cb] = currentColor;
-        // Only boost toward white above 80% intensity
-        const boost = output > 0.8 ? (output - 0.8) / 0.2 * 0.3 : 0;
-        const r = Math.round(cr + (255 - cr) * boost);
-        const g = Math.round(cg + (255 - cg) * boost);
-        const b = Math.round(cb + (255 - cb) * boost);
-        sendColor(char, r, g, b).catch(() => {});
+
+        if (output > 0.8) {
+          // Above 80%: brightness at 100, boost color toward white
+          const boost = (output - 0.8) / 0.2 * 0.3;
+          const r = Math.round(cr + (255 - cr) * boost);
+          const g = Math.round(cg + (255 - cg) * boost);
+          const b = Math.round(cb + (255 - cb) * boost);
+          sendBrightness(char, 100).catch(() => {});
+          sendColor(char, r, g, b).catch(() => {});
+        } else {
+          // Below 80%: adjust brightness, keep original color
+          sendColor(char, cr, cg, cb).catch(() => {});
+          sendBrightness(char, Math.round((output / 0.8) * 100)).catch(() => {});
+        }
       }
 
       rafRef.current = requestAnimationFrame(loop);
