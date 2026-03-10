@@ -222,16 +222,18 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             const filtered = sorted.filter(v => v >= q1 * 0.7 && v <= q3 * 1.3);
             if (filtered.length >= 2) {
               const mid = filtered[Math.floor(filtered.length / 2)];
-              const bpm = Math.round(60000 / mid);
-              if (bpm >= 60 && bpm <= 200) {
+              const bpmRaw = 60000 / mid;
+              if (bpmRaw >= 60 && bpmRaw <= 200) {
+                // Smooth BPM with exponential moving average
+                const prevBpm = bpmRef.current;
+                const bpm = prevBpm > 0 ? prevBpm * 0.7 + bpmRaw * 0.3 : bpmRaw;
                 bpmRef.current = bpm;
                 const bpmFactor = (bpm - 60) / 140;
-                // Decay: at 60bpm fade to 0.3 over 1.5 beats, at 200bpm fade to 0.5 over 2 beats
                 const targetLevel = 0.3 + bpmFactor * 0.2;
                 const spanBeats = 1.5 + bpmFactor * 0.5;
                 const totalFrames = (spanBeats * mid / 1000) * 60;
                 releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
-                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm} BPM`;
+                if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
               }
             }
           }
