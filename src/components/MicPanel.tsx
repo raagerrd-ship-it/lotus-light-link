@@ -102,7 +102,7 @@ export default function MicPanel({ char }: MicPanelProps) {
       const now = Date.now();
       if (now - throttleRef.current >= 50) {
         throttleRef.current = now;
-        const brightness = Math.round(minBrightness + normalized * (maxBrightness - minBrightness));
+        const brightness = Math.round(output * 100);
         sendBrightness(char, brightness).catch(() => {});
       }
 
