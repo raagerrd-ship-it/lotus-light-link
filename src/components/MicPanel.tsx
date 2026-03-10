@@ -146,29 +146,24 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const output = Math.min(1, Math.max(0, smoothed));
       setVolume(output);
 
-      // Send commands
+      // Send brightness command
       const now = Date.now();
       if (now - throttleRef.current >= 60) {
         throttleRef.current = now;
 
         const brightnessVal = Math.round(output * 100);
-        const [cr, cg, cb] = currentColor;
+        sendBrightness(char, brightnessVal).catch(() => {});
+      }
 
-        if (output > 0.8) {
-          // Above 80%: send boosted color (which also affects perceived brightness)
-          const boost = (output - 0.8) / 0.2 * 0.35;
-          const r = Math.round(cr + (255 - cr) * boost);
-          const g = Math.round(cg + (255 - cg) * boost);
-          const b = Math.round(cb + (255 - cb) * boost);
-          sendColor(char, r, g, b).catch(() => {});
-        } else {
-          // Below 80%: darken the color proportionally (simulate brightness via color)
-          const factor = output / 0.8;
-          const r = Math.round(cr * factor);
-          const g = Math.round(cg * factor);
-          const b = Math.round(cb * factor);
-          sendColor(char, r, g, b).catch(() => {});
-        }
+      // Color boost only on peaks >80%, separate timing to avoid BLE collision
+      if (output > 0.8 && now - colorThrottleRef.current >= 150) {
+        colorThrottleRef.current = now;
+        const [cr, cg, cb] = currentColor;
+        const boost = (output - 0.8) / 0.2 * 0.35;
+        const r = Math.round(cr + (255 - cr) * boost);
+        const g = Math.round(cg + (255 - cg) * boost);
+        const b = Math.round(cb + (255 - cb) * boost);
+        sendColor(char, r, g, b).catch(() => {});
       }
 
       rafRef.current = requestAnimationFrame(loop);
