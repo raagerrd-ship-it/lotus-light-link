@@ -196,12 +196,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (combined < runMinRef.current) runMinRef.current = combined;
       if (combined > runMaxRef.current) runMaxRef.current = combined;
       decayCounterRef.current++;
-      // Slow asymmetric decay every ~3s: min rises fast (floor adapts), max drops slowly (preserves punch)
+      // Slow asymmetric decay every ~3s: min stays low (more light), max barely drops (preserves punch)
       if (decayCounterRef.current >= 180) {
         decayCounterRef.current = 0;
-        const mid = (runMinRef.current + runMaxRef.current) * 0.5;
-        runMinRef.current += (mid - runMinRef.current) * 0.12;
-        runMaxRef.current -= (runMaxRef.current - mid) * 0.04;
+        runMinRef.current *= 0.85; // push floor down → more brightness
+        runMaxRef.current -= (runMaxRef.current - runMinRef.current) * 0.03;
       }
 
       const range = Math.max(0.005, runMaxRef.current - runMinRef.current);
