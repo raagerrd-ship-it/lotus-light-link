@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { sendBrightness, sendColor } from "@/lib/bledom";
-import { Activity } from "lucide-react";
+import { Activity, Music } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface MicPanelProps {
   char: any;
@@ -37,8 +38,16 @@ function createBleQueue(char: any) {
   };
 }
 
+interface SongInfo {
+  title: string;
+  artist: string;
+  bpm: number | null;
+}
+
 export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
+  const [songInfo, setSongInfo] = useState<SongInfo | null>(null);
+  const [identifying, setIdentifying] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
@@ -59,20 +68,21 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
   // Envelope follower state
   const prevSampleRef = useRef(0);
-  const agcAvgRef = useRef(0.01); // AGC running average
+  const agcAvgRef = useRef(0.01);
 
   // Beat-phase pulse model
-  const beatPhaseRef = useRef(1); // 0=onset, 1=next beat
-  const framesPerBeatRef = useRef(60); // default ~120bpm at 60fps
-  const adaptiveThreshRef = useRef(0.15); // adaptive onset threshold
-  const pulseMaxRef = useRef(0.7); // peak level for current pulse
-  const transientAvgRef = useRef(0.1); // running average of transients
+  const beatPhaseRef = useRef(1);
+  const framesPerBeatRef = useRef(60);
+  const adaptiveThreshRef = useRef(0.15);
+  const pulseMaxRef = useRef(0.7);
+  const transientAvgRef = useRef(0.1);
 
   // BPM detection refs
   const onsetTimesRef = useRef<number[]>([]);
   const lastOnsetRef = useRef(0);
   const bpmRef = useRef(0);
-  const silenceStartRef = useRef(0); // when silence began
+  const silenceStartRef = useRef(0);
+  const acrBpmRef = useRef<number | null>(null); // ACRCloud exact BPM
   
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
@@ -80,8 +90,97 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
 
+  // Song identification
+  const identifyIntervalRef = useRef<number>(0);
+  const recorderStreamRef = useRef<MediaStream | null>(null);
+
+  const identifySong = useCallback(async () => {
+    if (!streamRef.current || identifying) return;
+    setIdentifying(true);
+
+    try {
+      // Create a separate AudioContext at 44100 for recording (ACRCloud needs decent quality)
+      const recCtx = new AudioContext({ sampleRate: 44100 });
+      const source = recCtx.createMediaStreamSource(streamRef.current);
+      const processor = recCtx.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+      let sampleCount = 0;
+      const targetSamples = 44100 * 5; // 5 seconds
+
+      await new Promise<void>((resolve) => {
+        processor.onaudioprocess = (e) => {
+          const data = e.inputBuffer.getChannelData(0);
+          chunks.push(new Float32Array(data));
+          sampleCount += data.length;
+          if (sampleCount >= targetSamples) {
+            source.disconnect();
+            processor.disconnect();
+            resolve();
+          }
+        };
+        source.connect(processor);
+        processor.connect(recCtx.destination);
+      });
+
+      await recCtx.close();
+
+      // Convert Float32 to Int16 PCM
+      const totalSamples = Math.min(sampleCount, targetSamples);
+      const pcm = new Int16Array(totalSamples);
+      let offset = 0;
+      for (const chunk of chunks) {
+        for (let i = 0; i < chunk.length && offset < totalSamples; i++, offset++) {
+          const s = Math.max(-1, Math.min(1, chunk[i]));
+          pcm[offset] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+      }
+
+      // Encode to base64
+      const pcmBytes = new Uint8Array(pcm.buffer);
+      let binary = '';
+      for (let i = 0; i < pcmBytes.length; i++) {
+        binary += String.fromCharCode(pcmBytes[i]);
+      }
+      const base64Audio = btoa(binary);
+
+      // Call edge function
+      const { data, error } = await supabase.functions.invoke('identify-song', {
+        body: { audio: base64Audio, sampleRate: 44100, channels: 1 },
+      });
+
+      if (error) {
+        console.error('Song identification error:', error);
+      } else if (data?.identified) {
+        const info: SongInfo = {
+          title: data.title,
+          artist: data.artist,
+          bpm: data.bpm,
+        };
+        setSongInfo(info);
+
+        if (data.bpm && data.bpm >= 60 && data.bpm <= 200) {
+          acrBpmRef.current = data.bpm;
+          const beatMs = 60000 / data.bpm;
+          framesPerBeatRef.current = (beatMs / 1000) * 60;
+          bpmRef.current = data.bpm;
+          if (bpmDisplayRef.current) {
+            bpmDisplayRef.current.textContent = `${Math.round(data.bpm)} BPM ♪`;
+          }
+        }
+      } else {
+        // No match - keep using onset detection
+        console.log('Song not identified:', data?.message);
+      }
+    } catch (err) {
+      console.error('Identification failed:', err);
+    } finally {
+      setIdentifying(false);
+    }
+  }, [identifying]);
+
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (identifyIntervalRef.current) clearInterval(identifyIntervalRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
@@ -90,6 +189,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     streamRef.current = null;
     bleQueueRef.current = null;
     setActive(false);
+    setSongInfo(null);
     prevSampleRef.current = 0;
     agcAvgRef.current = 0.01;
     beatPhaseRef.current = 1;
@@ -99,16 +199,15 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     onsetTimesRef.current = [];
     lastOnsetRef.current = 0;
     bpmRef.current = 0;
+    acrBpmRef.current = null;
   }, []);
 
   const start = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Force low sampleRate – we only need bass (30-200Hz), 8kHz is plenty
       const ctx = new AudioContext({ latencyHint: "interactive", sampleRate: 8000 });
       const source = ctx.createMediaStreamSource(stream);
 
-      // Dual-band filters
       const lowFilter = ctx.createBiquadFilter();
       lowFilter.type = "bandpass";
       lowFilter.frequency.value = 60;
@@ -119,7 +218,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       midFilter.frequency.value = 130;
       midFilter.Q.value = 0.6;
 
-      // Ultra-low-latency analysers – 32 samples at 8kHz = 4ms buffer
       const lowAnalyser = ctx.createAnalyser();
       lowAnalyser.fftSize = 32;
       lowAnalyser.smoothingTimeConstant = 0;
@@ -128,7 +226,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       midAnalyser.fftSize = 32;
       midAnalyser.smoothingTimeConstant = 0;
 
-      // Skip compressor – it adds ~3ms lookahead latency
       source.connect(lowFilter);
       source.connect(midFilter);
       lowFilter.connect(lowAnalyser);
@@ -145,6 +242,26 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     }
   }, [char]);
 
+  // Periodically try to identify the song (every 30s)
+  useEffect(() => {
+    if (!active) return;
+
+    // First identification after 3s
+    const initialTimeout = setTimeout(() => {
+      identifySong();
+    }, 3000);
+
+    // Then every 30s
+    identifyIntervalRef.current = window.setInterval(() => {
+      identifySong();
+    }, 30000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      if (identifyIntervalRef.current) clearInterval(identifyIntervalRef.current);
+    };
+  }, [active, identifySong]);
+
   useEffect(() => {
     if (!active || !lowAnalyserRef.current || !midAnalyserRef.current || !bleQueueRef.current) return;
 
@@ -154,13 +271,12 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     const lowTD = new Uint8Array(32);
     const midTD = new Uint8Array(32);
 
-    const FLOOR = 0.05; // 5% glow between beats
+    const FLOOR = 0.05;
 
     const loop = () => {
       lowAnalyser.getByteTimeDomainData(lowTD);
       midAnalyser.getByteTimeDomainData(midTD);
 
-      // Peak+RMS in single pass per band
       let lowSum = 0, lowMax = 0, midSum = 0, midMax = 0;
       for (let i = 0; i < 32; i++) {
         const lv = (lowTD[i] - 128) / 128;
@@ -176,60 +292,55 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const lowRms = Math.sqrt(lowSum * 0.03125);
       const midRms = Math.sqrt(midSum * 0.03125);
 
-      // Weight peaks heavier for sharper transient detection
       const rawEnergy = lowRms * 0.3 + midRms * 0.1 + lowMax * 0.45 + midMax * 0.15;
 
-      // AGC – freeze during silence so it's ready when music returns
       const isSilence = rawEnergy < 0.015;
       if (!isSilence) {
-        // Asymmetric AGC: fast attack (tracks sudden loud), slow release (holds calibration)
         const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
         agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       }
       const agcGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
       const energy = rawEnergy * Math.min(agcGain, 30);
 
-      // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
       prevSampleRef.current = isSilence ? energy * 0.5 + prevSampleRef.current * 0.5 : energy;
       const transient = isSilence ? 0 : (delta > 0 ? Math.min(1, delta * 6) : 0);
 
-      // Adaptive onset threshold: higher multiplier = fewer false triggers
       if (!isSilence) {
         transientAvgRef.current += (transient - transientAvgRef.current) * 0.008;
         adaptiveThreshRef.current = Math.max(0.10, transientAvgRef.current * 3.0);
       }
 
-      // --- Beat-phase advance (faster during silence to settle quickly) ---
       const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
 
-      // Hide BPM after 10s silence but keep history for fast re-lock
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
         if (performance.now() - silenceStartRef.current > 10000 && bpmRef.current > 0) {
           if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = '— BPM';
-          // Keep bpmRef and onsetTimes so we re-lock instantly
         }
       } else {
         silenceStartRef.current = 0;
       }
 
-      // --- Onset detection (longer cooldown to avoid flicker) ---
       const now = performance.now();
       const isOnset = !isSilence && transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
 
       if (isOnset) {
-        // Reset phase → instant pulse
         beatPhaseRef.current = 0;
 
-        if (lastOnsetRef.current > 0) {
+        // If we have ACRCloud BPM, use it as ground truth and only reset phase on onset
+        if (acrBpmRef.current) {
+          // Don't update framesPerBeat – ACRCloud BPM is authoritative
+          if (bpmDisplayRef.current) {
+            bpmDisplayRef.current.textContent = `${Math.round(acrBpmRef.current)} BPM ♪`;
+          }
+        } else if (lastOnsetRef.current > 0) {
           const interval = now - lastOnsetRef.current;
           const onsets = onsetTimesRef.current;
           onsets.push(interval);
           if (onsets.length > 16) onsets.shift();
 
-          // Only recalculate BPM every 4 onsets for stability
           if (onsets.length >= 4 && onsets.length % 4 === 0) {
             const sorted = [...onsets].sort((a, b) => a - b);
             const q1 = sorted[Math.floor(sorted.length * 0.25)];
@@ -249,11 +360,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         lastOnsetRef.current = now;
       }
 
-      // --- Pulse-shaped brightness from beat phase ---
       const phase = beatPhaseRef.current;
-      // Fast exponential decay – snappy fade instead of slow cosine tail
       const pulse = Math.pow(1 - phase, 2.5);
-      // Scale pulse by onset strength – strong hits easily reach 100%
       const onsetStrength = Math.min(1, (transient / adaptiveThreshRef.current - 1) * 2.5);
       const peakLevel = beatPhaseRef.current < 0.02
         ? Math.max(0.75, Math.min(1, 0.75 + onsetStrength * 0.25))
@@ -261,10 +369,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
       const curved = FLOOR + (peakLevel - FLOOR) * pulse;
 
-      // Brightness percentage
       const pct = Math.max(3, Math.round(curved * 100));
 
-      // Direct DOM updates
       if (vizRef.current) {
         const s = vizRef.current.style;
         s.transform = `scale(${1 + curved * 0.25})`;
@@ -273,13 +379,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
-      // BLE brightness at ~40Hz
       if (now - throttleRef.current >= 25) {
         throttleRef.current = now;
         ble.brightness(pct);
       }
 
-      // Color boost at peaks
       const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
@@ -335,6 +439,22 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         />
       </div>
 
+      {/* Song info */}
+      {active && songInfo && (
+        <div className="flex items-center gap-2 text-center">
+          <Music className="w-4 h-4 text-muted-foreground shrink-0" />
+          <div className="text-sm">
+            <span className="font-medium text-foreground">{songInfo.title}</span>
+            <span className="text-muted-foreground"> — {songInfo.artist}</span>
+          </div>
+        </div>
+      )}
+
+      {active && identifying && !songInfo && (
+        <div className="text-xs text-muted-foreground animate-pulse">
+          Identifierar låt...
+        </div>
+      )}
 
       {active && (
         <div className="w-full max-w-xs space-y-4">
@@ -354,7 +474,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
           <div className="flex justify-between">
             <span className="text-xs text-muted-foreground">
-              Dual-band · BPM-synk · 40Hz BLE
+              {acrBpmRef.current ? 'Exakt BPM · ACRCloud' : 'Dual-band · BPM-synk · 40Hz BLE'}
             </span>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
@@ -363,7 +483,9 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         {active
-          ? "Ljuset pulserar med basslaget – din färg behålls"
+          ? songInfo
+            ? `Spelar: ${songInfo.title} · Exakt BPM från ACRCloud`
+            : "Ljuset pulserar med basslaget – identifierar låten..."
           : "Isolerar basfrekvenser och styr ljusstyrkan efter kickdrum/bas. Välj färg först."
         }
       </p>
