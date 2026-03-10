@@ -146,24 +146,23 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const output = Math.min(1, Math.max(0, smoothed));
       setVolume(output);
 
-      // Send brightness + color boost
+      // Send commands – throttle to avoid BLE overload
       const now = Date.now();
-      if (now - throttleRef.current >= 40) {
+      if (now - throttleRef.current >= 60) {
         throttleRef.current = now;
-        const [cr, cg, cb] = currentColor;
 
+        // Always send brightness based on output
+        const brightnessVal = Math.round(output * 100);
+        sendBrightness(char, brightnessVal).catch(() => {});
+
+        // Only boost color toward white above 80% – extra kick
+        const [cr, cg, cb] = currentColor;
         if (output > 0.8) {
-          // Above 80%: brightness at 100, boost color toward white
           const boost = (output - 0.8) / 0.2 * 0.3;
           const r = Math.round(cr + (255 - cr) * boost);
           const g = Math.round(cg + (255 - cg) * boost);
           const b = Math.round(cb + (255 - cb) * boost);
-          sendBrightness(char, 100).catch(() => {});
           sendColor(char, r, g, b).catch(() => {});
-        } else {
-          // Below 80%: adjust brightness, keep original color
-          sendColor(char, cr, cg, cb).catch(() => {});
-          sendBrightness(char, Math.round((output / 0.8) * 100)).catch(() => {});
         }
       }
 
