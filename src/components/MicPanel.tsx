@@ -281,7 +281,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         />
         <span className="text-xs text-muted-foreground">{punchColor ? "Vit kick" : "Av"}</span>
       </div>
-      </div>
 
       {active && (
         <div className="w-full max-w-xs space-y-4">
