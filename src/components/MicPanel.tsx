@@ -374,7 +374,10 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         ? Math.max(0.75, Math.min(1, 0.75 + onsetStrength * 0.25))
         : (pulseMaxRef.current ?? 0.85);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
-      const curved = FLOOR + (peakLevel - FLOOR) * pulse;
+      const linear = FLOOR + (peakLevel - FLOOR) * pulse;
+      // Logarithmic curve: lifts low values so subtle sounds are visible, 
+      // but only the strongest hits reach max
+      const curved = Math.pow(linear, 0.55);
 
       const pct = Math.max(3, Math.round(curved * 100));
 
