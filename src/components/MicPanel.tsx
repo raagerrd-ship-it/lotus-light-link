@@ -356,7 +356,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
           <div className="flex justify-between">
             <span className="text-xs text-muted-foreground">
-              Dual-band · BPM-synk · 33Hz BLE
+              Dual-band · BPM-synk · 40Hz BLE
             </span>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
