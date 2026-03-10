@@ -175,7 +175,12 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       await start();
     } else {
       stop();
-      if (char) await sendBrightness(char, 100).catch(() => {});
+      if (char) {
+        // Restore original color and full brightness
+        const [cr, cg, cb] = currentColor;
+        await sendColor(char, cr, cg, cb).catch(() => {});
+        await sendBrightness(char, 100).catch(() => {});
+      }
     }
   };
 
