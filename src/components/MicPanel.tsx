@@ -230,10 +230,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
                 const prevBpm = bpmRef.current;
                 const bpm = prevBpm > 0 ? prevBpm * 0.7 + bpmRaw * 0.3 : bpmRaw;
                 bpmRef.current = bpm;
-                const bpmFactor = (bpm - 60) / 140;
-                const targetLevel = 0.15 + bpmFactor * 0.15;
-                const spanBeats = 3 + bpmFactor * 3; // 3 beats at 60bpm, 6 at 200bpm
-                const totalFrames = (spanBeats * mid / 1000) * 60;
+                // Fade to ~10% brightness exactly 1 beat before next expected hit
+                const beatSec = mid / 1000;
+                const framesPerBeat = beatSec * 60; // at 60fps
+                // Reach 10% in exactly 1 beat period = tight beat-sync
+                releaseCoeffRef.current = Math.pow(0.1, 1 / framesPerBeat);
                 releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
                 if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
               }
