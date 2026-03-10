@@ -1,13 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { sendBrightness } from "@/lib/bledom";
+import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
 interface MicPanelProps {
   char: any;
+  currentColor: [number, number, number];
 }
 
-export default function MicPanel({ char }: MicPanelProps) {
+export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [volume, setVolume] = useState(0);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -145,11 +146,17 @@ export default function MicPanel({ char }: MicPanelProps) {
       const output = Math.min(1, Math.max(0, smoothed));
       setVolume(output);
 
-      // Send brightness
+      // Send brightness + color boost
       const now = Date.now();
       if (now - throttleRef.current >= 40) {
         throttleRef.current = now;
-        sendBrightness(char, Math.round(output * 100)).catch(() => {});
+        // Brightness always at 100, color gets boosted toward white on hits
+        const [cr, cg, cb] = currentColor;
+        const boost = output; // 0 = base color, 1 = nearly white
+        const r = Math.round(cr + (255 - cr) * boost * 0.7);
+        const g = Math.round(cg + (255 - cg) * boost * 0.7);
+        const b = Math.round(cb + (255 - cb) * boost * 0.7);
+        sendColor(char, r, g, b).catch(() => {});
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -159,7 +166,7 @@ export default function MicPanel({ char }: MicPanelProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [active, char]);
+  }, [active, char, currentColor]);
 
   useEffect(() => stop, [stop]);
 
@@ -168,7 +175,12 @@ export default function MicPanel({ char }: MicPanelProps) {
       await start();
     } else {
       stop();
-      if (char) await sendBrightness(char, 100).catch(() => {});
+      if (char) {
+        // Restore original color and full brightness
+        const [cr, cg, cb] = currentColor;
+        await sendColor(char, cr, cg, cb).catch(() => {});
+        await sendBrightness(char, 100).catch(() => {});
+      }
     }
   };
 
