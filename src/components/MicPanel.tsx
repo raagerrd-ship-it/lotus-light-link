@@ -195,8 +195,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       envelopeRef.current = envelope;
 
       // Transient detection with derivative
-      const delta = Math.max(0, amplified - prevSampleRef.current);
-      prevSampleRef.current = amplified;
+      const delta = Math.max(0, energy - prevSampleRef.current);
+      prevSampleRef.current = energy;
       const transientBoost = Math.min(1, delta * 6);
 
       // Combine
