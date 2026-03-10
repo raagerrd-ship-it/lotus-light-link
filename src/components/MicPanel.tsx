@@ -70,7 +70,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const lastOnsetRef = useRef(0);
   const wasAboveRef = useRef(false);
   const bpmRef = useRef(0);
-  const releaseCoeffRef = useRef(0.96);
+  const releaseCoeffRef = useRef(0.98);
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
   // Audio nodes
@@ -96,7 +96,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     lastOnsetRef.current = 0;
     wasAboveRef.current = false;
     bpmRef.current = 0;
-    releaseCoeffRef.current = 0.96;
+    releaseCoeffRef.current = 0.98;
   }, []);
 
   const start = useCallback(async () => {
@@ -230,7 +230,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
                 bpmRef.current = bpm;
                 const bpmFactor = (bpm - 60) / 140;
                 const targetLevel = 0.1 + bpmFactor * 0.15;
-                const spanBeats = 2 + bpmFactor * 1.5; // 2 beats at 60bpm, 3.5 at 200bpm
+                const spanBeats = 3 + bpmFactor * 3; // 3 beats at 60bpm, 6 at 200bpm
                 const totalFrames = (spanBeats * mid / 1000) * 60;
                 releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
                 if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
