@@ -153,8 +153,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     const lowAnalyser = lowAnalyserRef.current;
     const midAnalyser = midAnalyserRef.current;
     const ble = bleQueueRef.current;
-    const lowTD = new Uint8Array(128);
-    const midTD = new Uint8Array(128);
+    const lowTD = new Uint8Array(32);
+    const midTD = new Uint8Array(32);
 
     const loop = () => {
       lowAnalyser.getByteTimeDomainData(lowTD);
