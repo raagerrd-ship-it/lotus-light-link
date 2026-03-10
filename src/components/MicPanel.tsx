@@ -61,12 +61,18 @@ export default function MicPanel({ char }: MicPanelProps) {
     const loop = () => {
       analyser.getByteFrequencyData(dataArray);
 
+      // Peak-based detection for more dynamic response
+      let peak = 0;
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i] * dataArray[i];
+        if (dataArray[i] > peak) peak = dataArray[i];
+        sum += dataArray[i];
       }
-      const rms = Math.sqrt(sum / dataArray.length);
-      const normalized = Math.min(1, (rms / 128) * (sensitivity / 50));
+      const avg = sum / dataArray.length;
+      // Blend peak and average for punchy but smooth response
+      const blend = peak * 0.6 + avg * 0.4;
+      const sensitivityMultiplier = sensitivity / 40;
+      const normalized = Math.min(1, Math.pow(blend / 200, 0.8) * sensitivityMultiplier);
       setVolume(normalized);
 
       const now = Date.now();
