@@ -234,6 +234,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       }
 
       // --- Pulse-shaped brightness from beat phase ---
+      const phase = beatPhaseRef.current;
       // Smooth cosine pulse: holds near top longer, then gentle fade
       const pulse = 0.5 * (1 + Math.cos(phase * Math.PI)); // 1→0 smooth S-curve
       const curved = FLOOR + (1 - FLOOR) * pulse;
