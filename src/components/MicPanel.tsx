@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import { sendBrightness } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
@@ -11,17 +10,17 @@ interface MicPanelProps {
 export default function MicPanel({ char }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [volume, setVolume] = useState(0);
-  const [sensitivity, setSensitivity] = useState(50);
-  const [minBrightness, setMinBrightness] = useState(0);
-  const [maxBrightness, setMaxBrightness] = useState(100);
-  const smoothedRef = useRef(0);
-  const noiseFloorRef = useRef(1);  // auto-calibrating min
-  const peakRef = useRef(0);        // auto-calibrating max
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const throttleRef = useRef<number>(0);
+  const smoothedRef = useRef(0);
+
+  // Rolling history for auto-calibration (last ~3 seconds at 60fps)
+  const historyRef = useRef<Float32Array>(new Float32Array(180));
+  const historyIndexRef = useRef(0);
+  const historyFilledRef = useRef(0);
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -32,6 +31,11 @@ export default function MicPanel({ char }: MicPanelProps) {
     streamRef.current = null;
     setActive(false);
     setVolume(0);
+    // Reset calibration
+    historyRef.current.fill(0);
+    historyIndexRef.current = 0;
+    historyFilledRef.current = 0;
+    smoothedRef.current = 0;
   }, []);
 
   const start = useCallback(async () => {
@@ -60,6 +64,7 @@ export default function MicPanel({ char }: MicPanelProps) {
 
     const analyser = analyserRef.current;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const history = historyRef.current;
 
     const loop = () => {
       analyser.getByteFrequencyData(dataArray);
@@ -71,39 +76,42 @@ export default function MicPanel({ char }: MicPanelProps) {
       }
       const rms = Math.sqrt(sum / dataArray.length) / 255;
 
-      // Auto-calibrate: track noise floor and peak with slow decay
-      // Noise floor rises slowly, peak decays slowly – always adapts
-      noiseFloorRef.current = noiseFloorRef.current * 0.995 + rms * 0.005; // slowly tracks silence
-      if (rms > peakRef.current) {
-        peakRef.current = rms; // instant attack on new peak
-      } else {
-        peakRef.current = peakRef.current * 0.998 + rms * 0.002; // slow decay
-      }
+      // Store in rolling history
+      const idx = historyIndexRef.current;
+      history[idx] = rms;
+      historyIndexRef.current = (idx + 1) % history.length;
+      if (historyFilledRef.current < history.length) historyFilledRef.current++;
 
-      // Normalize between noise floor and peak → always 0-1 range
-      const floor = noiseFloorRef.current;
-      const peak = Math.max(floor + 0.01, peakRef.current); // prevent division by ~0
-      const normalized = Math.max(0, Math.min(1, (rms - floor) / (peak - floor)));
+      // Calculate percentile-based floor and ceiling from history
+      const count = historyFilledRef.current;
+      const samples: number[] = [];
+      for (let i = 0; i < count; i++) samples.push(history[i]);
+      samples.sort((a, b) => a - b);
 
-      // Apply sensitivity curve
-      const sensitivityFactor = sensitivity / 50;
-      const shaped = Math.pow(normalized, 1.2 / Math.max(0.1, sensitivityFactor));
+      // Floor = 10th percentile, Ceiling = 95th percentile
+      const floor = samples[Math.floor(count * 0.10)] || 0;
+      const ceiling = samples[Math.floor(count * 0.95)] || 0.01;
+      const range = Math.max(0.005, ceiling - floor);
 
-      // Smooth: fast attack, medium release
+      // Normalize current RMS into 0-1 using the adaptive range
+      const raw = (rms - floor) / range;
+      const clamped = Math.max(0, Math.min(1, raw));
+
+      // Smooth: fast attack, moderate release
       const prev = smoothedRef.current;
-      const smoothed = shaped > prev
-        ? prev + (shaped - prev) * 0.8
-        : prev + (shaped - prev) * 0.2;
+      const smoothed = clamped > prev
+        ? prev + (clamped - prev) * 0.7
+        : prev + (clamped - prev) * 0.25;
       smoothedRef.current = smoothed;
 
       const output = Math.min(1, Math.max(0, smoothed));
       setVolume(output);
 
+      // Send brightness 0-100
       const now = Date.now();
       if (now - throttleRef.current >= 50) {
         throttleRef.current = now;
-        const brightness = Math.round(output * 100);
-        sendBrightness(char, brightness).catch(() => {});
+        sendBrightness(char, Math.round(output * 100)).catch(() => {});
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -113,7 +121,7 @@ export default function MicPanel({ char }: MicPanelProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [active, char, sensitivity, minBrightness, maxBrightness]);
+  }, [active, char]);
 
   useEffect(() => stop, [stop]);
 
@@ -151,35 +159,27 @@ export default function MicPanel({ char }: MicPanelProps) {
       </div>
 
       {active && (
-        <div className="w-full max-w-xs flex flex-col gap-4">
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Känslighet</span>
-              <span className="text-xs font-mono text-muted-foreground">{sensitivity}%</span>
-            </div>
-            <Slider value={[sensitivity]} onValueChange={(v) => setSensitivity(v[0])} min={5} max={200} step={5} />
+        <div className="w-full max-w-xs">
+          <div className="flex justify-between mb-1">
+            <span className="text-xs text-muted-foreground">Ljusstyrka</span>
+            <span className="text-xs font-mono text-foreground">{Math.round(volume * 100)}%</span>
           </div>
-
-          {/* Live meter */}
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Ljusstyrka nu</span>
-              <span className="text-xs font-mono text-foreground">{Math.round(volume * 100)}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-secondary overflow-hidden">
-              <div
-                className="h-full bg-foreground rounded-full transition-all duration-75"
-                style={{ width: `${volume * 100}%` }}
-              />
-            </div>
+          <div className="h-3 rounded-full bg-secondary overflow-hidden">
+            <div
+              className="h-full bg-foreground rounded-full transition-all duration-75"
+              style={{ width: `${volume * 100}%` }}
+            />
           </div>
+          <p className="text-xs text-muted-foreground text-center mt-3">
+            Kalibrerar automatiskt efter volymnivån
+          </p>
         </div>
       )}
 
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         {active
-          ? "Ljusstyrkan går automatiskt mellan 0–100% baserat på volymen. Din färg behålls."
-          : "Lyssnar via telefonens mikrofon och styr ljusstyrkan 0–100%. Välj färg först."
+          ? "Ljusstyrkan anpassas dynamiskt 0–100% efter musiken. Din färg behålls."
+          : "Lyssnar via telefonens mikrofon och styr ljusstyrkan automatiskt. Välj färg först."
         }
       </p>
     </div>
