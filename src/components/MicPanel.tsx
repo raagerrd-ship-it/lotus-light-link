@@ -182,7 +182,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // AGC – freeze during silence so it's ready when music returns
       const isSilence = rawEnergy < 0.015;
       if (!isSilence) {
-        const agcAlpha = 0.002;
+        // Asymmetric AGC: fast attack (tracks sudden loud), slow release (holds calibration)
+        const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
         agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       }
       const agcGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
