@@ -67,9 +67,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
 
-  // Sensitivity ref for use in loop
-  const sensitivityRef = useRef(sensitivity);
-  sensitivityRef.current = sensitivity;
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
