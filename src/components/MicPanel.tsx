@@ -234,7 +234,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
                 bpmRef.current = bpm;
                 const beatSec = mid / 1000;
                 const framesPerBeat = beatSec * 60;
-                releaseCoeffRef.current = Math.pow(0.15, 1 / framesPerBeat);
+                releaseCoeffRef.current = Math.pow(0.25, 1 / framesPerBeat);
                 
                 if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
               }
