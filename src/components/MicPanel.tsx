@@ -185,7 +185,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const energy = rawEnergy * Math.min(agcGain, 20);
 
       // Noise gate: if raw energy is near-silence, skip onset detection entirely
-      const isSilence = rawEnergy < 0.005;
+      const isSilence = rawEnergy < 0.015;
 
       // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
@@ -199,8 +199,17 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       }
 
       // --- Beat-phase advance (faster during silence to settle quickly) ---
-      const phaseStep = isSilence ? 0.05 : (1 / framesPerBeatRef.current);
+      const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
+
+      // Reset BPM display during sustained silence
+      if (isSilence && beatPhaseRef.current >= 1) {
+        if (bpmRef.current > 0) {
+          bpmRef.current = 0;
+          onsetTimesRef.current = [];
+          if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = '— BPM';
+        }
+      }
 
       // --- Onset detection (longer cooldown to avoid flicker) ---
       const now = performance.now();
