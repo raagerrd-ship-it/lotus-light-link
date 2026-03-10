@@ -140,14 +140,14 @@ export default function MicPanel({ char }: MicPanelProps) {
               <span className="text-xs text-muted-foreground">Min ljusstyrka</span>
               <span className="text-xs font-mono text-muted-foreground">{minBrightness}%</span>
             </div>
-            <Slider value={[minBrightness]} onValueChange={(v) => setMinBrightness(v[0])} min={0} max={50} step={5} />
+            <Slider value={[minBrightness]} onValueChange={(v) => setMinBrightness(v[0])} min={0} max={100} step={1} />
           </div>
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-xs text-muted-foreground">Max ljusstyrka</span>
               <span className="text-xs font-mono text-muted-foreground">{maxBrightness}%</span>
             </div>
-            <Slider value={[maxBrightness]} onValueChange={(v) => setMaxBrightness(v[0])} min={50} max={100} step={5} />
+            <Slider value={[maxBrightness]} onValueChange={(v) => setMaxBrightness(v[0])} min={0} max={100} step={1} />
           </div>
         </div>
       )}
