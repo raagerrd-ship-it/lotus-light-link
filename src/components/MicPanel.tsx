@@ -72,6 +72,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const onsetTimesRef = useRef<number[]>([]);
   const lastOnsetRef = useRef(0);
   const bpmRef = useRef(0);
+  const silenceStartRef = useRef(0); // when silence began
   
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
@@ -202,13 +203,16 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
 
-      // Reset BPM display during sustained silence
-      if (isSilence && beatPhaseRef.current >= 1) {
-        if (bpmRef.current > 0) {
+      // Reset BPM only after 5 seconds of sustained silence
+      if (isSilence) {
+        if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
+        if (performance.now() - silenceStartRef.current > 5000 && bpmRef.current > 0) {
           bpmRef.current = 0;
           onsetTimesRef.current = [];
           if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = '— BPM';
         }
+      } else {
+        silenceStartRef.current = 0;
       }
 
       // --- Onset detection (longer cooldown to avoid flicker) ---
