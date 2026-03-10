@@ -70,7 +70,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const lastOnsetRef = useRef(0);
   const wasAboveRef = useRef(false);
   const bpmRef = useRef(0);
-  const releaseCoeffRef = useRef(0.85);
+  const releaseCoeffRef = useRef(0.95);
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
   // Audio nodes
@@ -96,7 +96,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     lastOnsetRef.current = 0;
     wasAboveRef.current = false;
     bpmRef.current = 0;
-    releaseCoeffRef.current = 0.85;
+    releaseCoeffRef.current = 0.95;
   }, []);
 
   const start = useCallback(async () => {
@@ -225,8 +225,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
               // At 60 BPM: decay to 0.15 over 2 beat periods (slow song, full fade ok)
               // At 200 BPM: decay to 0.5 over 3 beat periods (fast song, stay bright)
               const bpmFactor = (bpm - 60) / 140; // 0..1
-              const targetLevel = 0.35 + bpmFactor * 0.4; // 0.35 at 60bpm, 0.75 at 200bpm
-              const spanBeats = 3 + bpmFactor * 3; // 3 beats at 60bpm, 6 beats at 200bpm
+              const targetLevel = 0.5 + bpmFactor * 0.35; // 0.5 at 60bpm, 0.85 at 200bpm
+              const spanBeats = 4 + bpmFactor * 4; // 4 beats at 60bpm, 8 beats at 200bpm
               const totalFrames = (spanBeats * mid / 1000) * 60;
               releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
               if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm} BPM`;
