@@ -1,32 +1,46 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import ColorCanvas from "@/components/ColorCanvas";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MicPanel from "@/components/MicPanel";
 import {
   connectBLEDOM, reconnectLastDevice, getLastDevice,
-  sendColor, sendBrightness, sendPower, hsvToRgb,
+  sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Sun, Zap, Palette, Activity } from "lucide-react";
+import { Power, Bluetooth, Zap } from "lucide-react";
+
+const PRESET_COLORS: { label: string; rgb: [number, number, number] }[] = [
+  { label: "Röd", rgb: [255, 0, 0] },
+  { label: "Grön", rgb: [0, 255, 0] },
+  { label: "Blå", rgb: [0, 0, 255] },
+  { label: "Gul", rgb: [255, 255, 0] },
+  { label: "Cyan", rgb: [0, 255, 255] },
+  { label: "Magenta", rgb: [255, 0, 255] },
+  { label: "Orange", rgb: [255, 120, 0] },
+  { label: "Rosa", rgb: [255, 60, 120] },
+  { label: "Lila", rgb: [140, 0, 255] },
+  { label: "Varmvit", rgb: [255, 200, 120] },
+  { label: "Kallvit", rgb: [200, 220, 255] },
+  { label: "Vit", rgb: [255, 255, 255] },
+];
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 255, 255]);
-  const [brightness, setBrightness] = useState(80);
+  const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
+  const [selectedColorIdx, setSelectedColorIdx] = useState("0");
   const [isOn, setIsOn] = useState(true);
-  const [activeTab, setActiveTab] = useState("color");
-  const throttleRef = useRef<number>(0);
   const lastDevice = getLastDevice();
 
   const finishConnect = async (conn: BLEConnection) => {
     setConnection(conn);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
+    // Send initial color
+    const [r, g, b] = currentColor;
+    await sendColor(conn.characteristic, r, g, b).catch(() => {});
     conn.device.addEventListener("gattserverdisconnected", () => {
       setConnection(null);
     });
@@ -62,29 +76,16 @@ const Index = () => {
     }
   };
 
-  const handleColorChange = useCallback(
-    (_h: number, _s: number, r: number, g: number, b: number) => {
-      setCurrentColor([r, g, b]);
-      const now = Date.now();
-      if (now - throttleRef.current < 30) return;
-      throttleRef.current = now;
-      if (connection && isOn) {
-        sendColor(connection.characteristic, r, g, b).catch(() => {});
-      }
-    },
-    [connection, isOn]
-  );
-
-  const handleBrightnessChange = useCallback(
-    (value: number[]) => {
-      const val = value[0];
-      setBrightness(val);
-      if (connection && isOn) {
-        sendBrightness(connection.characteristic, val).catch(() => {});
-      }
-    },
-    [connection, isOn]
-  );
+  const handleColorSelect = useCallback((value: string) => {
+    setSelectedColorIdx(value);
+    const preset = PRESET_COLORS[parseInt(value)];
+    if (!preset) return;
+    const [r, g, b] = preset.rgb;
+    setCurrentColor([r, g, b]);
+    if (connection && isOn) {
+      sendColor(connection.characteristic, r, g, b).catch(() => {});
+    }
+  }, [connection, isOn]);
 
   const handlePowerToggle = async () => {
     if (!connection) return;
@@ -204,26 +205,38 @@ const Index = () => {
         </Button>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-4 bg-secondary/50 shrink-0">
-          <TabsTrigger value="color" className="flex-1 gap-1.5 text-sm">
-            <Palette className="w-4 h-4" /> Färg
-          </TabsTrigger>
-          <TabsTrigger value="mic" className="flex-1 gap-1.5 text-sm">
-            <Activity className="w-4 h-4" /> Baspuls
-          </TabsTrigger>
-        </TabsList>
+      {/* Color selector */}
+      <div className="px-4 pb-3 shrink-0">
+        <Select value={selectedColorIdx} onValueChange={handleColorSelect}>
+          <SelectTrigger className="w-full bg-secondary/50 border-border">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-4 h-4 rounded-full shrink-0 border border-border"
+                style={{ backgroundColor: accentColor }}
+              />
+              <SelectValue placeholder="Välj färg" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            {PRESET_COLORS.map((c, i) => (
+              <SelectItem key={i} value={String(i)}>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-4 h-4 rounded-full shrink-0 border border-border"
+                    style={{ backgroundColor: `rgb(${c.rgb[0]}, ${c.rgb[1]}, ${c.rgb[2]})` }}
+                  />
+                  {c.label}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-        <TabsContent value="color" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
-          <ColorCanvas onColorChange={handleColorChange} />
-        </TabsContent>
-
-        <TabsContent value="mic" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
-          <MicPanel char={char} currentColor={currentColor} />
-        </TabsContent>
-      </Tabs>
-
+      {/* Mic panel takes remaining space */}
+      <div className="flex-1 min-h-0">
+        <MicPanel char={char} currentColor={currentColor} />
+      </div>
     </div>
   );
 };
