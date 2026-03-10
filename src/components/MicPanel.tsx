@@ -252,8 +252,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       // --- Pulse-shaped brightness from beat phase ---
       const phase = beatPhaseRef.current;
-      // Smooth cosine pulse: holds near top longer, then gentle fade
-      const pulse = 0.5 * (1 + Math.cos(phase * Math.PI)); // 1→0 smooth S-curve
+      // Fast exponential decay – snappy fade instead of slow cosine tail
+      const pulse = Math.pow(1 - phase, 2.5);
       // Scale pulse by onset strength – strong hits easily reach 100%
       const onsetStrength = Math.min(1, (transient / adaptiveThreshRef.current - 1) * 2.5);
       const peakLevel = beatPhaseRef.current < 0.02
