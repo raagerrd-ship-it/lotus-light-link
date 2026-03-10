@@ -17,10 +17,14 @@ export default function MicPanel({ char }: MicPanelProps) {
   const throttleRef = useRef<number>(0);
   const smoothedRef = useRef(0);
 
-  // Rolling history for auto-calibration (last ~3 seconds at 60fps)
+  // Rolling history for auto-calibration (~3s at 60fps)
   const historyRef = useRef<Float32Array>(new Float32Array(180));
   const historyIndexRef = useRef(0);
   const historyFilledRef = useRef(0);
+
+  // Transient detection
+  const prevEnergyRef = useRef(0);
+  const envelopeRef = useRef(0);
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -31,11 +35,12 @@ export default function MicPanel({ char }: MicPanelProps) {
     streamRef.current = null;
     setActive(false);
     setVolume(0);
-    // Reset calibration
     historyRef.current.fill(0);
     historyIndexRef.current = 0;
     historyFilledRef.current = 0;
     smoothedRef.current = 0;
+    prevEnergyRef.current = 0;
+    envelopeRef.current = 0;
   }, []);
 
   const start = useCallback(async () => {
@@ -44,8 +49,8 @@ export default function MicPanel({ char }: MicPanelProps) {
       const ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.4;
+      analyser.fftSize = 2048; // More frequency resolution for bass detection
+      analyser.smoothingTimeConstant = 0.2; // Low smoothing = faster transient response
       analyser.minDecibels = -70;
       analyser.maxDecibels = -10;
       source.connect(analyser);
@@ -65,51 +70,84 @@ export default function MicPanel({ char }: MicPanelProps) {
     const analyser = analyserRef.current;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     const history = historyRef.current;
+    const sampleRate = audioContextRef.current?.sampleRate || 44100;
+    const binSize = sampleRate / analyser.fftSize;
+
+    // Calculate how many bins cover bass frequencies (20-250Hz)
+    const bassMaxBin = Math.min(Math.ceil(250 / binSize), dataArray.length);
+    const subBassMaxBin = Math.min(Math.ceil(80 / binSize), dataArray.length);
 
     const loop = () => {
       analyser.getByteFrequencyData(dataArray);
 
-      // RMS level
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i] * dataArray[i];
+      // Bass energy: weighted toward sub-bass (20-80Hz) and bass (80-250Hz)
+      let subBassSum = 0;
+      let bassSum = 0;
+      for (let i = 1; i < bassMaxBin; i++) {
+        const val = dataArray[i] / 255;
+        if (i < subBassMaxBin) {
+          subBassSum += val * val;
+        } else {
+          bassSum += val * val;
+        }
       }
-      const rms = Math.sqrt(sum / dataArray.length) / 255;
+      const subBassRms = subBassMaxBin > 1 ? Math.sqrt(subBassSum / (subBassMaxBin - 1)) : 0;
+      const bassRms = bassMaxBin > subBassMaxBin ? Math.sqrt(bassSum / (bassMaxBin - subBassMaxBin)) : 0;
 
-      // Store in rolling history
+      // Weighted blend: sub-bass counts more for kick detection
+      const bassEnergy = subBassRms * 0.7 + bassRms * 0.3;
+
+      // Transient detection: compare current energy to previous
+      const prevEnergy = prevEnergyRef.current;
+      const delta = bassEnergy - prevEnergy;
+      prevEnergyRef.current = bassEnergy;
+
+      // If energy jumps up = bass hit → spike the envelope
+      const envelope = envelopeRef.current;
+      let newEnvelope: number;
+      if (delta > 0.02) {
+        // Bass hit detected! Spike up fast
+        newEnvelope = Math.min(1, envelope + delta * 4);
+      } else {
+        // Decay quickly for punchy response
+        newEnvelope = envelope * 0.85;
+      }
+      envelopeRef.current = newEnvelope;
+
+      // Combine: steady bass level + transient spikes
+      const combined = Math.min(1, bassEnergy * 0.4 + newEnvelope * 0.6);
+
+      // Store in rolling history for auto-calibration
       const idx = historyIndexRef.current;
-      history[idx] = rms;
+      history[idx] = combined;
       historyIndexRef.current = (idx + 1) % history.length;
       if (historyFilledRef.current < history.length) historyFilledRef.current++;
 
-      // Calculate percentile-based floor and ceiling from history
+      // Percentile-based auto-calibration
       const count = historyFilledRef.current;
       const samples: number[] = [];
       for (let i = 0; i < count; i++) samples.push(history[i]);
       samples.sort((a, b) => a - b);
 
-      // Floor = 10th percentile, Ceiling = 95th percentile
-      const floor = samples[Math.floor(count * 0.10)] || 0;
-      const ceiling = samples[Math.floor(count * 0.95)] || 0.01;
+      const floor = samples[Math.floor(count * 0.05)] || 0;
+      const ceiling = samples[Math.floor(count * 0.98)] || 0.01;
       const range = Math.max(0.005, ceiling - floor);
 
-      // Normalize current RMS into 0-1 using the adaptive range
-      const raw = (rms - floor) / range;
-      const clamped = Math.max(0, Math.min(1, raw));
+      const normalized = Math.max(0, Math.min(1, (combined - floor) / range));
 
-      // Smooth: fast attack, moderate release
+      // Smooth: very fast attack for bass hits, medium-fast release
       const prev = smoothedRef.current;
-      const smoothed = clamped > prev
-        ? prev + (clamped - prev) * 0.7
-        : prev + (clamped - prev) * 0.25;
+      const smoothed = normalized > prev
+        ? prev + (normalized - prev) * 0.85  // instant-ish attack
+        : prev + (normalized - prev) * 0.3;  // quick release for punchy feel
       smoothedRef.current = smoothed;
 
       const output = Math.min(1, Math.max(0, smoothed));
       setVolume(output);
 
-      // Send brightness 0-100
+      // Send brightness
       const now = Date.now();
-      if (now - throttleRef.current >= 50) {
+      if (now - throttleRef.current >= 40) {
         throttleRef.current = now;
         sendBrightness(char, Math.round(output * 100)).catch(() => {});
       }
@@ -136,24 +174,26 @@ export default function MicPanel({ char }: MicPanelProps) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 px-4">
-      {/* Volume visualizer */}
+      {/* Bass pulse visualizer */}
       <div
-        className="w-32 h-32 rounded-full border-2 flex items-center justify-center transition-all duration-100"
+        className="w-32 h-32 rounded-full border-2 flex items-center justify-center transition-all duration-75"
         style={{
           borderColor: active ? "hsl(var(--foreground))" : "hsl(var(--border))",
-          boxShadow: active ? `0 0 ${volume * 60}px ${volume * 20}px hsl(var(--foreground) / ${volume * 0.3})` : "none",
-          transform: `scale(${1 + volume * 0.15})`,
+          boxShadow: active
+            ? `0 0 ${volume * 80}px ${volume * 25}px hsl(var(--foreground) / ${volume * 0.4})`
+            : "none",
+          transform: `scale(${1 + volume * 0.2})`,
         }}
       >
         <Activity
-          className="w-12 h-12 transition-all"
-          style={{ opacity: active ? 0.5 + volume * 0.5 : 0.3 }}
+          className="w-12 h-12 transition-all duration-75"
+          style={{ opacity: active ? 0.4 + volume * 0.6 : 0.3 }}
         />
       </div>
 
       {/* Toggle */}
       <div className="flex items-center gap-3">
-        <span className="text-sm text-muted-foreground">Ljuspuls</span>
+        <span className="text-sm text-muted-foreground">Baspuls</span>
         <Switch checked={active} onCheckedChange={handleToggle} />
         <span className="text-sm font-bold">{active ? "PÅ" : "AV"}</span>
       </div>
@@ -171,15 +211,15 @@ export default function MicPanel({ char }: MicPanelProps) {
             />
           </div>
           <p className="text-xs text-muted-foreground text-center mt-3">
-            Kalibrerar automatiskt efter volymnivån
+            Reagerar på basslag · Kalibrerar automatiskt
           </p>
         </div>
       )}
 
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         {active
-          ? "Ljusstyrkan anpassas dynamiskt 0–100% efter musiken. Din färg behålls."
-          : "Lyssnar via telefonens mikrofon och styr ljusstyrkan automatiskt. Välj färg först."
+          ? "Ljuset pulserar med basslaget – din färg behålls"
+          : "Lyssnar efter basfrekvenser och simulerar slag med ljusstyrkan. Välj färg först."
         }
       </p>
     </div>
