@@ -173,8 +173,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         const ma = mv < 0 ? -mv : mv;
         if (ma > midMax) midMax = ma;
       }
-      const lowRms = Math.sqrt(lowSum * 0.0078125); // /128
-      const midRms = Math.sqrt(midSum * 0.0078125);
+      const lowRms = Math.sqrt(lowSum * 0.03125); // /32
+      const midRms = Math.sqrt(midSum * 0.03125);
 
       // Weight sub-bass heavier, peak for transient snap
       const energy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
