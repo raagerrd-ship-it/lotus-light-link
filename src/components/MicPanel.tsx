@@ -38,9 +38,9 @@ export default function MicPanel({ char }: MicPanelProps) {
       const ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.3;
-      analyser.minDecibels = -90;
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.4;
+      analyser.minDecibels = -70;
       analyser.maxDecibels = -10;
       source.connect(analyser);
 
