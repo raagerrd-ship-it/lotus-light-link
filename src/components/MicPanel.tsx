@@ -254,10 +254,10 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Smooth cosine pulse: holds near top longer, then gentle fade
       const pulse = 0.5 * (1 + Math.cos(phase * Math.PI)); // 1→0 smooth S-curve
       // Scale pulse by onset strength – strong hits easily reach 100%
-      const onsetStrength = Math.min(1, (transient / adaptiveThreshRef.current - 1) * 1.5);
+      const onsetStrength = Math.min(1, (transient / adaptiveThreshRef.current - 1) * 2.5);
       const peakLevel = beatPhaseRef.current < 0.02
-        ? Math.max(0.6, Math.min(1, 0.6 + onsetStrength * 0.4))
-        : (pulseMaxRef.current ?? 0.8);
+        ? Math.max(0.75, Math.min(1, 0.75 + onsetStrength * 0.25))
+        : (pulseMaxRef.current ?? 0.85);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
       const curved = FLOOR + (peakLevel - FLOOR) * pulse;
 
