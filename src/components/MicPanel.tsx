@@ -283,17 +283,17 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
-      if (curved > 0.95 && now - colorThrottleRef.current >= colorFadeMs) {
+      if (curved > 0.98 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = color;
-        const boost = (curved - 0.95) * 20;
+        const boost = (curved - 0.98) * 50;
         ble.color(
           Math.round(cr + (255 - cr) * boost),
           Math.round(cg + (255 - cg) * boost),
           Math.round(cb + (255 - cb) * boost),
         );
-      } else if (curved <= 0.90 && colorBoostedRef.current && now - colorThrottleRef.current >= colorFadeMs) {
+      } else if (curved <= 0.95 && colorBoostedRef.current && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = false;
         ble.color(color[0], color[1], color[2]);
