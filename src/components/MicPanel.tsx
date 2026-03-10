@@ -187,17 +187,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Weight sub-bass more, use peak for transients
       const energy = lowRms * 0.5 + midRms * 0.2 + lowPeak * 0.2 + midPeak * 0.1;
 
-      // Apply sensitivity: higher = more responsive to quiet sounds
-      const sens = sensitivityRef.current / 100;
-      const gain = 1 + sens * 4; // 1x to 5x gain
-      const amplified = Math.min(1, energy * gain);
-
-      // Envelope follower: instant attack, variable release
+      // Envelope follower: instant attack, controlled release
       const prev = envelopeRef.current;
-      const releaseRate = 0.85 + (1 - sens) * 0.1; // 0.85 - 0.95
-      const envelope = amplified > prev
-        ? amplified
-        : prev * releaseRate;
+      const envelope = energy > prev
+        ? energy
+        : prev * 0.88;
       envelopeRef.current = envelope;
 
       // Transient detection with derivative
