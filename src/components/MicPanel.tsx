@@ -185,8 +185,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         const agcAlpha = 0.002;
         agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       }
-      const agcGain = agcAvgRef.current > 0.0001 ? 0.25 / agcAvgRef.current : 1;
-      const energy = rawEnergy * Math.min(agcGain, 20);
+      const agcGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      const energy = rawEnergy * Math.min(agcGain, 30);
 
       // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
