@@ -94,6 +94,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     setActive(false);
     envelopeRef.current = 0;
     prevSampleRef.current = 0;
+    agcAvgRef.current = 0.01;
     runMinRef.current = 1;
     runMaxRef.current = 0;
     decayCounterRef.current = 0;
