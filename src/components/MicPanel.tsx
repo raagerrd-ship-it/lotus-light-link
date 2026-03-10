@@ -266,7 +266,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
-      if (punchColorRef.current && curved > 0.9 && now - colorThrottleRef.current >= colorFadeMs) {
+      if (curved > 0.9 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = color;
