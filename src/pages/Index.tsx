@@ -234,34 +234,6 @@ const Index = () => {
         </Button>
       </div>
 
-      {/* Color selector */}
-      <div className="px-4 pb-3 shrink-0">
-        <Select value={selectedColorIdx} onValueChange={handleColorSelect}>
-          <SelectTrigger className="w-full bg-secondary/50 border-border">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-4 h-4 rounded-full shrink-0 border border-border"
-                style={{ backgroundColor: accentColor }}
-              />
-              <SelectValue placeholder="Välj färg" />
-            </div>
-          </SelectTrigger>
-          <SelectContent>
-            {PRESET_COLORS.map((c, i) => (
-              <SelectItem key={i} value={String(i)}>
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-4 h-4 rounded-full shrink-0 border border-border"
-                    style={{ backgroundColor: `rgb(${c.rgb[0]}, ${c.rgb[1]}, ${c.rgb[2]})` }}
-                  />
-                  {c.label}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Mic panel takes remaining space */}
       <div className="flex-1 min-h-0">
         <MicPanel char={char} currentColor={currentColor} />
