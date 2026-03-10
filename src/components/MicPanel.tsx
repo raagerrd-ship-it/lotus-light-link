@@ -193,7 +193,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       // Adaptive onset threshold: higher multiplier = fewer false triggers
       transientAvgRef.current += (transient - transientAvgRef.current) * 0.008;
-      adaptiveThreshRef.current = Math.max(0.12, transientAvgRef.current * 3.5);
+      adaptiveThreshRef.current = Math.max(0.10, transientAvgRef.current * 3.0);
 
       // --- Beat-phase advance ---
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + 1 / framesPerBeatRef.current);
