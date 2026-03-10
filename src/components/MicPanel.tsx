@@ -221,9 +221,14 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             const bpm = Math.round(60000 / mid);
             if (bpm >= 60 && bpm <= 200) {
               bpmRef.current = bpm;
-              // Calculate release coeff so envelope reaches 0.1 in one beat period
-              const beatFrames = (mid / 1000) * 60; // frames at 60fps
-              releaseCoeffRef.current = Math.pow(0.1, 1 / beatFrames);
+              // Higher BPM = slower fade so light sustains between rapid beats
+              // At 60 BPM: decay to 0.15 over 2 beat periods (slow song, full fade ok)
+              // At 200 BPM: decay to 0.5 over 3 beat periods (fast song, stay bright)
+              const bpmFactor = (bpm - 60) / 140; // 0..1
+              const targetLevel = 0.15 + bpmFactor * 0.45; // 0.15 at 60bpm, 0.6 at 200bpm
+              const spanBeats = 2 + bpmFactor * 2; // 2 beats at 60bpm, 4 beats at 200bpm
+              const totalFrames = (spanBeats * mid / 1000) * 60;
+              releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
               if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm} BPM`;
             }
           }
