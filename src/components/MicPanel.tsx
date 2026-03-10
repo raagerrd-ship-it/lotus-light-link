@@ -121,13 +121,13 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       midFilter.frequency.value = 130;
       midFilter.Q.value = 0.6;
 
-      // Minimal-latency analysers
+      // Ultra-low-latency analysers – 32 samples at 8kHz = 4ms buffer
       const lowAnalyser = ctx.createAnalyser();
-      lowAnalyser.fftSize = 128; // Minimum for speed
+      lowAnalyser.fftSize = 32;
       lowAnalyser.smoothingTimeConstant = 0;
 
       const midAnalyser = ctx.createAnalyser();
-      midAnalyser.fftSize = 128;
+      midAnalyser.fftSize = 32;
       midAnalyser.smoothingTimeConstant = 0;
 
       // Skip compressor – it adds ~3ms lookahead latency
