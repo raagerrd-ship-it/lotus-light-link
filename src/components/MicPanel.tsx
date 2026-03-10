@@ -65,6 +65,14 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const runMaxRef = useRef(0);
   const decayCounterRef = useRef(0);
 
+  // BPM detection refs
+  const onsetTimesRef = useRef<number[]>([]);
+  const lastOnsetRef = useRef(0);
+  const wasAboveRef = useRef(false);
+  const bpmRef = useRef(0);
+  const releaseCoeffRef = useRef(0.85);
+  const bpmDisplayRef = useRef<HTMLSpanElement>(null);
+
   // Audio nodes
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -84,6 +92,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     runMinRef.current = 1;
     runMaxRef.current = 0;
     decayCounterRef.current = 0;
+    onsetTimesRef.current = [];
+    lastOnsetRef.current = 0;
+    wasAboveRef.current = false;
+    bpmRef.current = 0;
+    releaseCoeffRef.current = 0.85;
   }, []);
 
   const start = useCallback(async () => {
@@ -161,22 +174,21 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Weight sub-bass heavier, peak for transient snap
       const energy = lowRms * 0.45 + midRms * 0.15 + lowMax * 0.3 + midMax * 0.1;
 
-      // Envelope: instant attack, fast release
+      // Envelope: instant attack, BPM-synced release
       const prev = envelopeRef.current;
-      const envelope = energy > prev ? energy : prev * 0.85; // faster decay
+      const envelope = energy > prev ? energy : prev * releaseCoeffRef.current;
       envelopeRef.current = envelope;
 
       // Transient boost
       const delta = energy - prevSampleRef.current;
       prevSampleRef.current = energy;
-      const transient = delta > 0 ? Math.min(1, delta * 8) : 0; // sharper transient
+      const transient = delta > 0 ? Math.min(1, delta * 8) : 0;
 
       const combined = Math.min(1, envelope * 0.6 + transient * 0.4);
 
       // O(1) running min/max with slow decay (replaces O(n log n) sort)
       if (combined < runMinRef.current) runMinRef.current = combined;
       if (combined > runMaxRef.current) runMaxRef.current = combined;
-      // Slowly contract range every ~60 frames (~1s)
       decayCounterRef.current++;
       if (decayCounterRef.current >= 60) {
         decayCounterRef.current = 0;
@@ -191,6 +203,35 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Smoothstep curve
       const curved = normalized * normalized * (3 - 2 * normalized);
 
+      // --- BPM onset detection ---
+      const now = Date.now();
+      const isAbove = curved > 0.5;
+      if (isAbove && !wasAboveRef.current && now - lastOnsetRef.current > 200) {
+        // Rising edge crossing threshold, min 200ms between onsets (max 300 BPM)
+        if (lastOnsetRef.current > 0) {
+          const interval = now - lastOnsetRef.current;
+          const onsets = onsetTimesRef.current;
+          onsets.push(interval);
+          if (onsets.length > 8) onsets.shift(); // keep last 8
+
+          // Compute median interval
+          if (onsets.length >= 4) {
+            const sorted = [...onsets].sort((a, b) => a - b);
+            const mid = sorted[Math.floor(sorted.length / 2)];
+            const bpm = Math.round(60000 / mid);
+            if (bpm >= 60 && bpm <= 200) {
+              bpmRef.current = bpm;
+              // Calculate release coeff so envelope reaches 0.1 in one beat period
+              const beatFrames = (mid / 1000) * 60; // frames at 60fps
+              releaseCoeffRef.current = Math.pow(0.1, 1 / beatFrames);
+              if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm} BPM`;
+            }
+          }
+        }
+        lastOnsetRef.current = now;
+      }
+      wasAboveRef.current = isAbove;
+
       // Direct DOM updates – zero React overhead
       const pct = Math.round(curved * 100);
       if (vizRef.current) {
@@ -201,15 +242,16 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
-      // BLE brightness at ~25Hz (40ms) – pushed from 55ms
-      const now = Date.now();
+      // BLE brightness at ~25Hz (40ms)
       if (now - throttleRef.current >= 40) {
         throttleRef.current = now;
         ble.brightness(pct);
       }
 
-      // Color boost at peaks (only if punch-color enabled)
-      if (punchColorRef.current && curved > 0.8 && now - colorThrottleRef.current >= 100) {
+      // Color boost at peaks (BPM-synced fade-back)
+      const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
+      const colorFadeMs = Math.max(50, beatMs * 0.15); // fade-back at ~15% of beat period
+      if (punchColorRef.current && curved > 0.8 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         const [cr, cg, cb] = currentColor;
@@ -219,7 +261,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
           Math.round(cg + (255 - cg) * boost),
           Math.round(cb + (255 - cb) * boost),
         );
-      } else if (curved <= 0.7 && colorBoostedRef.current && now - colorThrottleRef.current >= 70) {
+      } else if (curved <= 0.7 && colorBoostedRef.current && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = false;
         ble.color(currentColor[0], currentColor[1], currentColor[2]);
@@ -299,9 +341,12 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             </div>
           </div>
 
-          <p className="text-xs text-muted-foreground text-center">
-            Dual-band · Zero-latency · Direct DOM · 25Hz BLE
-          </p>
+          <div className="flex justify-between">
+            <span className="text-xs text-muted-foreground">
+              Dual-band · BPM-synk · 25Hz BLE
+            </span>
+            <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
+          </div>
         </div>
       )}
 
