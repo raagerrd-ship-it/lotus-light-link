@@ -184,7 +184,9 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       prevSampleRef.current = energy;
       const transient = delta > 0 ? Math.min(1, delta * 8) : 0;
 
-      const combined = Math.min(1, envelope * 0.5 + transient * 0.5);
+      // Use envelope directly for brightness (has instant attack + slow release)
+      // Transient is only used for BPM onset detection below
+      const combined = envelope;
 
       // O(1) running min/max with slow decay (replaces O(n log n) sort)
       if (combined < runMinRef.current) runMinRef.current = combined;
