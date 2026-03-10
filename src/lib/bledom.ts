@@ -96,15 +96,20 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   return connectToDevice(device);
 }
 
+// Pre-allocated buffers to avoid GC in hot loops
+const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
+const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
+
 export async function sendColor(char: any, r: number, g: number, b: number) {
-  const data = new Uint8Array([0x7e, 0x07, 0x05, 0x03, r & 0xff, g & 0xff, b & 0xff, 0x00, 0xef]);
-  await char.writeValueWithoutResponse(data);
+  _colorBuf[4] = r & 0xff;
+  _colorBuf[5] = g & 0xff;
+  _colorBuf[6] = b & 0xff;
+  await char.writeValueWithoutResponse(_colorBuf);
 }
 
 export async function sendBrightness(char: any, brightness: number) {
-  const val = Math.max(0, Math.min(100, Math.round(brightness)));
-  const data = new Uint8Array([0x7e, 0x04, 0x01, val, 0x01, 0xff, 0x00, 0x00, 0xef]);
-  await char.writeValueWithoutResponse(data);
+  _brightBuf[3] = Math.max(0, Math.min(100, Math.round(brightness)));
+  await char.writeValueWithoutResponse(_brightBuf);
 }
 
 export async function sendPower(char: any, on: boolean) {
