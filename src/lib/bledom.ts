@@ -42,32 +42,38 @@ export async function reconnectLastDevice(): Promise<BLEConnection | null> {
 
   const devices = await nav.bluetooth.getDevices();
   const device = devices.find((d: any) => d.id === lastDevice.id);
-  if (!device) return null;
+  if (!device?.gatt) return null;
 
-  // Request the browser to watch for the device advertisement
-  const abortController = new AbortController();
-  
-  return new Promise<BLEConnection | null>((resolve) => {
-    const timeout = setTimeout(() => {
+  // Strategy 1: Try direct connect (works if device is already known to OS)
+  try {
+    const conn = await Promise.race([
+      connectToDevice(device),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+    ]);
+    return conn;
+  } catch {}
+
+  // Strategy 2: Watch for advertisements then connect
+  if (device.watchAdvertisements) {
+    const abortController = new AbortController();
+    try {
+      const conn = await Promise.race([
+        new Promise<BLEConnection>((resolve, reject) => {
+          device.addEventListener('advertisementreceived', async () => {
+            try { resolve(await connectToDevice(device)); }
+            catch (e) { reject(e); }
+          }, { once: true });
+          device.watchAdvertisements({ signal: abortController.signal }).catch(reject);
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ]);
+      return conn;
+    } catch {} finally {
       abortController.abort();
-      resolve(null);
-    }, 5000);
+    }
+  }
 
-    device.addEventListener('advertisementreceived', async () => {
-      clearTimeout(timeout);
-      try {
-        const conn = await connectToDevice(device);
-        resolve(conn);
-      } catch {
-        resolve(null);
-      }
-    }, { once: true });
-
-    device.watchAdvertisements({ signal: abortController.signal }).catch(() => {
-      clearTimeout(timeout);
-      resolve(null);
-    });
-  });
+  return null;
 }
 
 export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
