@@ -63,6 +63,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   // Envelope follower state
   const envelopeRef = useRef(0);
   const prevSampleRef = useRef(0);
+  const agcAvgRef = useRef(0.01); // AGC running average
 
   // Running min/max tracker (O(1) per frame, no sorting)
   const runMinRef = useRef(1);
