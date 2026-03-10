@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
@@ -43,7 +42,7 @@ function createBleQueue(char: any) {
 export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [volume, setVolume] = useState(0);
-  const [sensitivity, setSensitivity] = useState(70); // 0-100
+  
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
@@ -68,9 +67,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
 
-  // Sensitivity ref for use in loop
-  const sensitivityRef = useRef(sensitivity);
-  sensitivityRef.current = sensitivity;
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -188,22 +184,16 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       // Weight sub-bass more, use peak for transients
       const energy = lowRms * 0.5 + midRms * 0.2 + lowPeak * 0.2 + midPeak * 0.1;
 
-      // Apply sensitivity: higher = more responsive to quiet sounds
-      const sens = sensitivityRef.current / 100;
-      const gain = 1 + sens * 4; // 1x to 5x gain
-      const amplified = Math.min(1, energy * gain);
-
-      // Envelope follower: instant attack, variable release
+      // Envelope follower: instant attack, controlled release
       const prev = envelopeRef.current;
-      const releaseRate = 0.85 + (1 - sens) * 0.1; // 0.85 - 0.95
-      const envelope = amplified > prev
-        ? amplified
-        : prev * releaseRate;
+      const envelope = energy > prev
+        ? energy
+        : prev * 0.88;
       envelopeRef.current = envelope;
 
       // Transient detection with derivative
-      const delta = Math.max(0, amplified - prevSampleRef.current);
-      prevSampleRef.current = amplified;
+      const delta = Math.max(0, energy - prevSampleRef.current);
+      prevSampleRef.current = energy;
       const transientBoost = Math.min(1, delta * 6);
 
       // Combine
@@ -327,21 +317,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             </div>
           </div>
 
-          {/* Sensitivity slider */}
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Känslighet</span>
-              <span className="text-xs font-mono text-foreground">{sensitivity}%</span>
-            </div>
-            <Slider
-              value={[sensitivity]}
-              onValueChange={([v]) => setSensitivity(v)}
-              min={10}
-              max={100}
-              step={5}
-              className="w-full"
-            />
-          </div>
 
           <p className="text-xs text-muted-foreground text-center">
             Dual-band 30–200Hz · RMS+Peak · Kompressor · Smoothstep
