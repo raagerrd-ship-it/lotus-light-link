@@ -50,6 +50,10 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const colorBoostedRef = useRef(false);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
 
+  // Ref for currentColor so the rAF loop never restarts on color change
+  const currentColorRef = useRef(currentColor);
+  useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
+
   // Direct DOM refs to avoid React re-renders in hot loop
   const vizRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -102,7 +106,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const start = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const ctx = new AudioContext({ latencyHint: "interactive" });
+      // Force low sampleRate – we only need bass (30-200Hz), 8kHz is plenty
+      const ctx = new AudioContext({ latencyHint: "interactive", sampleRate: 8000 });
       const source = ctx.createMediaStreamSource(stream);
 
       // Dual-band filters
@@ -185,7 +190,6 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const transient = delta > 0 ? Math.min(1, delta * 8) : 0;
 
       // Use envelope directly for brightness (has instant attack + slow release)
-      // Transient is only used for BPM onset detection below
       const combined = envelope;
 
       // O(1) running min/max – instant jump up, normal decay
@@ -206,19 +210,17 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const curved = normalized * normalized * (3 - 2 * normalized);
 
       // --- BPM onset detection (transient-based, more reliable) ---
-      const now = Date.now();
+      const now = performance.now();
       const isOnset = transient > 0.3 && now - lastOnsetRef.current > 180;
       if (isOnset) {
         if (lastOnsetRef.current > 0) {
           const interval = now - lastOnsetRef.current;
           const onsets = onsetTimesRef.current;
           onsets.push(interval);
-          if (onsets.length > 12) onsets.shift(); // keep last 12 for stability
+          if (onsets.length > 12) onsets.shift();
 
           if (onsets.length >= 3) {
-            // Median of intervals, filtering outliers
             const sorted = [...onsets].sort((a, b) => a - b);
-            // Use interquartile range for robustness
             const q1 = sorted[Math.floor(sorted.length * 0.25)];
             const q3 = sorted[Math.floor(sorted.length * 0.75)];
             const filtered = sorted.filter(v => v >= q1 * 0.7 && v <= q3 * 1.3);
@@ -226,14 +228,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
               const mid = filtered[Math.floor(filtered.length / 2)];
               const bpmRaw = 60000 / mid;
               if (bpmRaw >= 60 && bpmRaw <= 200) {
-                // Smooth BPM with exponential moving average
                 const prevBpm = bpmRef.current;
                 const bpm = prevBpm > 0 ? prevBpm * 0.7 + bpmRaw * 0.3 : bpmRaw;
                 bpmRef.current = bpm;
-                // Fade to ~10% brightness exactly 1 beat before next expected hit
                 const beatSec = mid / 1000;
-                const framesPerBeat = beatSec * 60; // at 60fps
-                // Reach 3% in exactly 1 beat period
+                const framesPerBeat = beatSec * 60;
                 releaseCoeffRef.current = Math.pow(0.03, 1 / framesPerBeat);
                 
                 if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
@@ -254,19 +253,20 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
-      // BLE brightness at ~25Hz (40ms)
-      if (now - throttleRef.current >= 40) {
+      // BLE brightness at ~33Hz (30ms)
+      if (now - throttleRef.current >= 30) {
         throttleRef.current = now;
         ble.brightness(pct);
       }
 
-      // Color boost at peaks (BPM-synced fade-back)
+      // Color boost at peaks – read color from ref (no loop restart on color change)
+      const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
-      const colorFadeMs = Math.max(50, beatMs * 0.15); // fade-back at ~15% of beat period
+      const colorFadeMs = Math.max(50, beatMs * 0.15);
       if (punchColorRef.current && curved > 0.8 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
-        const [cr, cg, cb] = currentColor;
+        const [cr, cg, cb] = color;
         const boost = (curved - 0.8) * 1.75;
         ble.color(
           Math.round(cr + (255 - cr) * boost),
@@ -276,7 +276,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       } else if (curved <= 0.7 && colorBoostedRef.current && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = false;
-        ble.color(currentColor[0], currentColor[1], currentColor[2]);
+        ble.color(color[0], color[1], color[2]);
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -286,7 +286,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [active, currentColor]);
+  }, [active]); // currentColor removed – read from ref instead
 
   useEffect(() => stop, [stop]);
 
@@ -355,7 +355,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
           <div className="flex justify-between">
             <span className="text-xs text-muted-foreground">
-              Dual-band · BPM-synk · 25Hz BLE
+              Dual-band · BPM-synk · 33Hz BLE
             </span>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
