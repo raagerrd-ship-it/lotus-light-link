@@ -11,8 +11,8 @@ interface MicPanelProps {
 export default function MicPanel({ char }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [volume, setVolume] = useState(0);
-  const [sensitivity, setSensitivity] = useState(70);
-  const [minBrightness, setMinBrightness] = useState(5);
+  const [sensitivity, setSensitivity] = useState(80);
+  const [minBrightness, setMinBrightness] = useState(0);
   const [maxBrightness, setMaxBrightness] = useState(100);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -37,8 +37,10 @@ export default function MicPanel({ char }: MicPanelProps) {
       const ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.5;
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.3;
+      analyser.minDecibels = -90;
+      analyser.maxDecibels = -10;
       source.connect(analyser);
 
       audioContextRef.current = ctx;
@@ -59,12 +61,18 @@ export default function MicPanel({ char }: MicPanelProps) {
     const loop = () => {
       analyser.getByteFrequencyData(dataArray);
 
+      // Peak-based detection for more dynamic response
+      let peak = 0;
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i] * dataArray[i];
+        if (dataArray[i] > peak) peak = dataArray[i];
+        sum += dataArray[i];
       }
-      const rms = Math.sqrt(sum / dataArray.length);
-      const normalized = Math.min(1, (rms / 128) * (sensitivity / 50));
+      const avg = sum / dataArray.length;
+      // Blend peak and average for punchy but smooth response
+      const blend = peak * 0.6 + avg * 0.4;
+      const sensitivityMultiplier = sensitivity / 40;
+      const normalized = Math.min(1, Math.pow(blend / 200, 0.8) * sensitivityMultiplier);
       setVolume(normalized);
 
       const now = Date.now();
@@ -125,21 +133,21 @@ export default function MicPanel({ char }: MicPanelProps) {
               <span className="text-xs text-muted-foreground">Känslighet</span>
               <span className="text-xs font-mono text-muted-foreground">{sensitivity}%</span>
             </div>
-            <Slider value={[sensitivity]} onValueChange={(v) => setSensitivity(v[0])} min={10} max={100} step={5} />
+            <Slider value={[sensitivity]} onValueChange={(v) => setSensitivity(v[0])} min={5} max={200} step={5} />
           </div>
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-xs text-muted-foreground">Min ljusstyrka</span>
               <span className="text-xs font-mono text-muted-foreground">{minBrightness}%</span>
             </div>
-            <Slider value={[minBrightness]} onValueChange={(v) => setMinBrightness(v[0])} min={0} max={50} step={5} />
+            <Slider value={[minBrightness]} onValueChange={(v) => setMinBrightness(v[0])} min={0} max={100} step={1} />
           </div>
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-xs text-muted-foreground">Max ljusstyrka</span>
               <span className="text-xs font-mono text-muted-foreground">{maxBrightness}%</span>
             </div>
-            <Slider value={[maxBrightness]} onValueChange={(v) => setMaxBrightness(v[0])} min={50} max={100} step={5} />
+            <Slider value={[maxBrightness]} onValueChange={(v) => setMaxBrightness(v[0])} min={0} max={100} step={1} />
           </div>
         </div>
       )}
