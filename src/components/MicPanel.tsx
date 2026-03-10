@@ -152,10 +152,10 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         throttleRef.current = now;
         // Brightness always at 100, color gets boosted toward white on hits
         const [cr, cg, cb] = currentColor;
-        const boost = output; // 0 = base color, 1 = nearly white
-        const r = Math.round(cr + (255 - cr) * boost * 0.7);
-        const g = Math.round(cg + (255 - cg) * boost * 0.7);
-        const b = Math.round(cb + (255 - cb) * boost * 0.7);
+        const boost = output * 0.3; // max 30% toward white
+        const r = Math.round(cr + (255 - cr) * boost);
+        const g = Math.round(cg + (255 - cg) * boost);
+        const b = Math.round(cb + (255 - cb) * boost);
         sendColor(char, r, g, b).catch(() => {});
       }
 
