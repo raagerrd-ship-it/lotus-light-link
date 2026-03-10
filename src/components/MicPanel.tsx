@@ -373,10 +373,12 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       const phase = beatPhaseRef.current;
       const pulse = Math.pow(1 - phase, 2.5);
-      const onsetStrength = Math.min(1, (transient / adaptiveThreshRef.current - 1) * 2.5);
+      // Scale peak by how strong the onset actually was (transient 0-1)
+      // Weak hits peak at ~50-65%, only hard hits reach 90-100%
+      const onsetStrength = isOnset ? Math.min(1, transient / (adaptiveThreshRef.current * 2.5)) : 0;
       const peakLevel = beatPhaseRef.current < 0.02
-        ? Math.max(0.75, Math.min(1, 0.75 + onsetStrength * 0.25))
-        : (pulseMaxRef.current ?? 0.85);
+        ? Math.max(0.45, Math.min(1, 0.45 + onsetStrength * 0.55))
+        : (pulseMaxRef.current ?? 0.6);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
       const linear = FLOOR + (peakLevel - FLOOR) * pulse;
       // Logarithmic curve: lifts low values so subtle sounds are visible, 
