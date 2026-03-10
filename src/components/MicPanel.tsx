@@ -184,21 +184,27 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       const agcGain = agcAvgRef.current > 0.0001 ? 0.25 / agcAvgRef.current : 1;
       const energy = rawEnergy * Math.min(agcGain, 20);
 
+      // Noise gate: if raw energy is near-silence, skip onset detection entirely
+      const isSilence = rawEnergy < 0.005;
+
       // Transient = positive derivative
       const delta = energy - prevSampleRef.current;
       prevSampleRef.current = energy;
-      const transient = delta > 0 ? Math.min(1, delta * 6) : 0;
+      const transient = isSilence ? 0 : (delta > 0 ? Math.min(1, delta * 6) : 0);
 
       // Adaptive onset threshold: higher multiplier = fewer false triggers
-      transientAvgRef.current += (transient - transientAvgRef.current) * 0.008;
-      adaptiveThreshRef.current = Math.max(0.10, transientAvgRef.current * 3.0);
+      if (!isSilence) {
+        transientAvgRef.current += (transient - transientAvgRef.current) * 0.008;
+        adaptiveThreshRef.current = Math.max(0.10, transientAvgRef.current * 3.0);
+      }
 
-      // --- Beat-phase advance ---
-      beatPhaseRef.current = Math.min(1, beatPhaseRef.current + 1 / framesPerBeatRef.current);
+      // --- Beat-phase advance (faster during silence to settle quickly) ---
+      const phaseStep = isSilence ? 0.05 : (1 / framesPerBeatRef.current);
+      beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
 
       // --- Onset detection (longer cooldown to avoid flicker) ---
       const now = performance.now();
-      const isOnset = transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
+      const isOnset = !isSilence && transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
 
       if (isOnset) {
         // Reset phase → instant pulse
