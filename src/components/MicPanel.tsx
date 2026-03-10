@@ -482,12 +482,11 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground text-center max-w-xs">
-        {active
-          ? "Ljuset pulserar med basslaget – din färg behålls"
-          : "Isolerar basfrekvenser och styr ljusstyrkan efter kickdrum/bas. Välj färg först."
-        }
-      </p>
+      {!active && (
+        <p className="text-xs text-muted-foreground text-center max-w-xs">
+          Isolerar basfrekvenser och styr ljusstyrkan efter kickdrum/bas. Välj färg först.
+        </p>
+      )}
     </div>
   );
 }
