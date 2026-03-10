@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
