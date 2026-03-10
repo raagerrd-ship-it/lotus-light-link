@@ -159,27 +159,27 @@ export default function MicPanel({ char }: MicPanelProps) {
             </div>
             <Slider value={[sensitivity]} onValueChange={(v) => setSensitivity(v[0])} min={5} max={200} step={5} />
           </div>
+
+          {/* Live meter */}
           <div>
             <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Min ljusstyrka</span>
-              <span className="text-xs font-mono text-muted-foreground">{minBrightness}%</span>
+              <span className="text-xs text-muted-foreground">Ljusstyrka nu</span>
+              <span className="text-xs font-mono text-foreground">{Math.round(volume * 100)}%</span>
             </div>
-            <Slider value={[minBrightness]} onValueChange={(v) => setMinBrightness(v[0])} min={0} max={100} step={1} />
-          </div>
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Max ljusstyrka</span>
-              <span className="text-xs font-mono text-muted-foreground">{maxBrightness}%</span>
+            <div className="h-2 rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full bg-foreground rounded-full transition-all duration-75"
+                style={{ width: `${volume * 100}%` }}
+              />
             </div>
-            <Slider value={[maxBrightness]} onValueChange={(v) => setMaxBrightness(v[0])} min={0} max={100} step={1} />
           </div>
         </div>
       )}
 
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         {active
-          ? "Ljusstyrkan pulserar med musiken – din valda färg behålls"
-          : "Lyssnar via telefonens mikrofon och styr bara ljusstyrkan. Välj färg under Färg-fliken först."
+          ? "Ljusstyrkan går automatiskt mellan 0–100% baserat på volymen. Din färg behålls."
+          : "Lyssnar via telefonens mikrofon och styr ljusstyrkan 0–100%. Välj färg först."
         }
       </p>
     </div>
