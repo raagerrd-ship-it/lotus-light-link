@@ -196,14 +196,15 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (combined < runMinRef.current) runMinRef.current = combined;
       if (combined > runMaxRef.current) runMaxRef.current = combined;
       decayCounterRef.current++;
-      // Decay every ~2s: max drops fast to stay close to signal, min rises gently
-      if (decayCounterRef.current >= 120) {
+      // Fast tight decay every ~1s: keeps range snug around actual signal
+      if (decayCounterRef.current >= 60) {
         decayCounterRef.current = 0;
-        runMaxRef.current *= 0.88; // shrink max toward signal
-        runMinRef.current *= 0.95; // slight min decay
+        const range = runMaxRef.current - runMinRef.current;
+        runMinRef.current += range * 0.1;  // floor rises
+        runMaxRef.current -= range * 0.1;  // ceiling drops
       }
 
-      const range = Math.max(0.005, runMaxRef.current - runMinRef.current);
+      const range = Math.max(0.0005, runMaxRef.current - runMinRef.current);
       const normalized = Math.max(0, Math.min(1, (combined - runMinRef.current) / range));
 
       // Smoothstep curve
