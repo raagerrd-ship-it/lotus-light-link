@@ -162,7 +162,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
       // Inline peak+RMS in single pass per band (avoid function call overhead)
       let lowSum = 0, lowMax = 0, midSum = 0, midMax = 0;
-      for (let i = 0; i < 128; i++) {
+      for (let i = 0; i < 32; i++) {
         const lv = (lowTD[i] - 128) / 128;
         lowSum += lv * lv;
         const la = lv < 0 ? -lv : lv;
