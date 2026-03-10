@@ -65,6 +65,14 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
   const runMaxRef = useRef(0);
   const decayCounterRef = useRef(0);
 
+  // BPM detection refs
+  const onsetTimesRef = useRef<number[]>([]);
+  const lastOnsetRef = useRef(0);
+  const wasAboveRef = useRef(false);
+  const bpmRef = useRef(0);
+  const releaseCoeffRef = useRef(0.85);
+  const bpmDisplayRef = useRef<HTMLSpanElement>(null);
+
   // Audio nodes
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
