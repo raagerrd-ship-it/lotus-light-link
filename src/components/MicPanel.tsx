@@ -229,8 +229,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
                 const bpm = prevBpm > 0 ? prevBpm * 0.7 + bpmRaw * 0.3 : bpmRaw;
                 bpmRef.current = bpm;
                 const bpmFactor = (bpm - 60) / 140;
-                const targetLevel = 0.3 + bpmFactor * 0.2;
-                const spanBeats = 1.5 + bpmFactor * 0.5;
+                const targetLevel = 0.1 + bpmFactor * 0.15; // 0.1 at 60bpm, 0.25 at 200bpm
+                const spanBeats = 1 + bpmFactor * 0.5; // 1 beat at 60bpm, 1.5 at 200bpm
                 const totalFrames = (spanBeats * mid / 1000) * 60;
                 releaseCoeffRef.current = Math.pow(targetLevel, 1 / totalFrames);
                 if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = `${bpm.toFixed(1)} BPM`;
@@ -241,9 +241,8 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
         lastOnsetRef.current = now;
       }
 
-      // Brightness: floor at 20% so it never goes full dark, punch to 100%
-      const floor = 20;
-      const pct = Math.round(floor + curved * (100 - floor));
+      // Brightness: full range 0-100%, punch hard then fade
+      const pct = Math.round(curved * 100);
       if (vizRef.current) {
         const s = vizRef.current.style;
         s.transform = `scale(${1 + curved * 0.25})`;
