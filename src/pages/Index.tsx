@@ -207,20 +207,11 @@ const Index = () => {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
         <TabsList className="mx-4 bg-secondary/50 shrink-0">
-          <TabsTrigger value="color" className="flex-1 gap-1.5 text-xs">
-            <Palette className="w-3.5 h-3.5" /> Färg
+          <TabsTrigger value="color" className="flex-1 gap-1.5 text-sm">
+            <Palette className="w-4 h-4" /> Färg
           </TabsTrigger>
-          <TabsTrigger value="effects" className="flex-1 gap-1.5 text-xs">
-            <Sparkles className="w-3.5 h-3.5" /> Effekter
-          </TabsTrigger>
-          <TabsTrigger value="temp" className="flex-1 gap-1.5 text-xs">
-            <Thermometer className="w-3.5 h-3.5" /> Temp
-          </TabsTrigger>
-          <TabsTrigger value="mic" className="flex-1 gap-1.5 text-xs">
-            <Mic className="w-3.5 h-3.5" /> Ljud
-          </TabsTrigger>
-          <TabsTrigger value="schedule" className="flex-1 gap-1.5 text-xs">
-            <Clock className="w-3.5 h-3.5" /> Timer
+          <TabsTrigger value="mic" className="flex-1 gap-1.5 text-sm">
+            <Activity className="w-4 h-4" /> Baspuls
           </TabsTrigger>
         </TabsList>
 
@@ -228,20 +219,8 @@ const Index = () => {
           <ColorCanvas onColorChange={handleColorChange} />
         </TabsContent>
 
-        <TabsContent value="effects" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0 overflow-y-auto">
-          <EffectsPanel char={char} />
-        </TabsContent>
-
-        <TabsContent value="temp" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
-          <ColorTempPanel char={char} />
-        </TabsContent>
-
         <TabsContent value="mic" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0">
           <MicPanel char={char} />
-        </TabsContent>
-
-        <TabsContent value="schedule" className="flex-1 min-h-0 px-4 pt-2 pb-0 mt-0 overflow-y-auto">
-          <SchedulePanel char={char} />
         </TabsContent>
       </Tabs>
 
