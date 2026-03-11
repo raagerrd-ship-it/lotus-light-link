@@ -42,6 +42,20 @@ const Index = () => {
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
+  const [showOverlay, setShowOverlay] = useState(true);
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-hide overlay after 3s, show on interaction
+  const resetOverlayTimer = useCallback(() => {
+    setShowOverlay(true);
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
+  }, []);
+
+  useEffect(() => {
+    if (connection) resetOverlayTimer();
+    return () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); };
+  }, [connection, resetOverlayTimer]);
   const lastBpmTrackRef = useRef<string | null>(null);
   const lastDevice = getLastDevice();
   const { nowPlaying } = useSonosNowPlaying();
