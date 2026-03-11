@@ -169,7 +169,7 @@ const Index = () => {
   // Auto-connecting screen
   if (reconnecting) {
     return (
-      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
+      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8 animate-fade-in">
         <div className="flex flex-col items-center gap-6 text-center">
           <div className="relative">
             <div
@@ -215,7 +215,7 @@ const Index = () => {
               onClick={handleReconnect}
               disabled={connecting || reconnecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
               style={!reconnecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
@@ -230,7 +230,7 @@ const Index = () => {
               onClick={() => handleConnect(false)}
               disabled={connecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
               style={!connecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
@@ -292,7 +292,7 @@ const Index = () => {
 
       {/* Overlay: compact header */}
       <div
-        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 transition-opacity duration-500 backdrop-blur-lg ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] transition-opacity duration-500 backdrop-blur-lg border-b border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ background: 'hsl(var(--background) / 0.5)' }}
       >
         <div className="flex items-center gap-2">
@@ -330,7 +330,7 @@ const Index = () => {
       {/* Overlay: now playing */}
       {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
         <div
-          className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 backdrop-blur-lg ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          className={`absolute bottom-0 left-0 right-0 z-20 pb-[env(safe-area-inset-bottom)] transition-opacity duration-500 backdrop-blur-lg border-t border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
           <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} progressFraction={progressFraction} />

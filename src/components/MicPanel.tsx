@@ -760,10 +760,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           ) : (
             <Activity
               ref={iconRef}
-              className="w-14 h-14"
+              className="w-14 h-14 animate-pulse"
               style={{
-                opacity: 0.3,
-                color: undefined,
+                opacity: 0.4,
+                color: `rgba(${currentColor[0]},${currentColor[1]},${currentColor[2]},0.6)`,
               }}
             />
           )}

@@ -11,11 +11,11 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, progressFr
   const [r, g, b] = accentColor ?? [255, 255, 255];
 
   return (
-    <div className="px-4 py-3 shrink-0">
-      {/* Progress bar */}
-      <div className="h-[2px] rounded-full bg-border/30 mb-3 overflow-hidden">
+    <div className="shrink-0">
+      {/* Progress bar — top edge */}
+      <div className="h-[2px] bg-border/30 overflow-hidden">
         <div
-          className="h-full rounded-full transition-[width] duration-1000 ease-linear"
+          className="h-full transition-[width] duration-1000 ease-linear"
           style={{
             width: `${progressFraction * 100}%`,
             backgroundColor: `rgb(${r}, ${g}, ${b})`,
@@ -24,7 +24,7 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, progressFr
         />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 px-4 py-3">
         {nowPlaying.albumArtUrl && (
           <img
             src={nowPlaying.albumArtUrl}
