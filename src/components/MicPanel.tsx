@@ -215,13 +215,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (history.length < 120) return; // need ~2s minimum
 
       const len = history.length;
-      // Calculate mean
       let mean = 0;
       for (let i = 0; i < len; i++) mean += history[i];
       mean /= len;
 
-      // Auto-correlation for lags corresponding to 60-200 BPM
-      // At 60fps: 60BPM = lag 60, 200BPM = lag 18
       const minLag = 18; // 200 BPM
       const maxLag = Math.min(90, len - 1); // 40 BPM
       let bestLag = 30;
@@ -248,15 +245,15 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         }
       }
 
-      // Only use if correlation is strong enough
       if (bestCorr > 0.15) {
-        const autoBpm = (60 * 60) / bestLag; // 60fps * 60s / lag
+        const autoBpm = (60 * 60) / bestLag;
         return { bpm: autoBpm, confidence: bestCorr };
       }
       return null;
     };
 
-    const loop = () => {
+    // ─── Sub-function: sample energy from analysers ───
+    const sampleEnergy = () => {
       lowAnalyser.getByteTimeDomainData(lowTD);
       midAnalyser.getByteTimeDomainData(midTD);
 
@@ -299,6 +296,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         adaptiveThreshRef.current = Math.max(0.10, transientAvgRef.current * 3.0);
       }
 
+      return { energy, transient, isSilence, rawEnergy };
+    };
+
+    // ─── Sub-function: beat detection, phase tracking, BPM estimation ───
+    const detectBeatsAndBpm = (transient: number, isSilence: boolean, now: number) => {
       const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
       const prevPhase = beatPhaseRef.current;
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
@@ -307,130 +309,87 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         predictiveFiredRef.current = false;
       }
 
-      // Sonos position phase correction: every 500ms, nudge beatPhase toward
-      // the phase implied by Sonos position + BPM
+      // Sonos position phase correction
       const sonosPos = sonosPositionRef.current;
-      const nowMs = performance.now();
-      if (sonosPos && bpmRef.current > 0 && nowMs - lastPhaseCorrectionRef.current > 500) {
-        lastPhaseCorrectionRef.current = nowMs;
-        const elapsed = nowMs - sonosPos.receivedAt;
+      if (sonosPos && bpmRef.current > 0 && now - lastPhaseCorrectionRef.current > 500) {
+        lastPhaseCorrectionRef.current = now;
+        const elapsed = now - sonosPos.receivedAt;
         const estimatedMs = sonosPos.positionMs + elapsed;
         const beatIntervalMs = 60000 / bpmRef.current;
         const sonosPhase = (estimatedMs % beatIntervalMs) / beatIntervalMs;
         const currentPhase = beatPhaseRef.current;
-        // Phase difference: shortest path around the circle
         let phaseDiff = sonosPhase - currentPhase;
         if (phaseDiff > 0.5) phaseDiff -= 1;
         if (phaseDiff < -0.5) phaseDiff += 1;
-        // Gentle nudge: 15% correction per update to avoid jarring jumps
         if (Math.abs(phaseDiff) > 0.05) {
           beatPhaseRef.current = ((currentPhase + phaseDiff * 0.15) % 1 + 1) % 1;
         }
       }
 
       if (isSilence) {
-        if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
-        if (performance.now() - silenceStartRef.current > 10000 && bpmRef.current > 0) {
+        if (silenceStartRef.current === 0) silenceStartRef.current = now;
+        if (now - silenceStartRef.current > 10000 && bpmRef.current > 0) {
           onBpmChangeRef.current?.(null);
         }
       } else {
         silenceStartRef.current = 0;
       }
 
-      const now = performance.now();
       const isOnset = !isSilence && transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
 
-      // Sub-threshold "micro-pulse": softer transients still nudge brightness up to ~40%
+      // Sub-threshold micro-pulse
       const isMicroHit = !isSilence && !isOnset && transient > adaptiveThreshRef.current * 0.3 && beatPhaseRef.current > 0.15;
       if (isMicroHit) {
-        // Nudge phase back proportionally – smaller hit = smaller nudge
-        const strength = transient / adaptiveThreshRef.current; // 0.3–1.0 range
-        const nudge = strength * 0.4; // max 40% phase reset
+        const strength = transient / adaptiveThreshRef.current;
+        const nudge = strength * 0.4;
         beatPhaseRef.current = Math.min(beatPhaseRef.current, 1 - nudge);
-      }
-
-      // Predictive BLE: pre-fire brightness boost before expected beat
-      if (bpmRef.current > 0 && bpmConfidenceRef.current > 0.3 && !predictiveFiredRef.current) {
-        const beatMs = 60000 / bpmRef.current;
-        const phaseMs = beatPhaseRef.current * beatMs;
-        const msUntilBeat = beatMs - phaseMs;
-        // Fire when we're BLE_LATENCY_MS before the next expected beat
-        if (msUntilBeat <= BLE_LATENCY_MS && msUntilBeat > 0) {
-          predictiveFiredRef.current = true;
-          // Pre-send a high brightness to arrive just as beat hits
-          const ble = bleQueueRef.current;
-          if (ble) {
-            const predictedPct = Math.max(60, Math.round((pulseMaxRef.current ?? 0.7) * 100));
-            ble.brightness(predictedPct);
-            // Pre-send white color kick if enabled
-            if (punchWhiteRef.current && predictedPct > 85) {
-              const color = currentColorRef.current;
-              const [cr, cg, cb] = color;
-              const boost = Math.min(1, (predictedPct - 85) / 15);
-              ble.color(
-                Math.round(cr + (255 - cr) * boost),
-                Math.round(cg + (255 - cg) * boost),
-                Math.round(cb + (255 - cb) * boost),
-              );
-              colorBoostedRef.current = true; // mark so it gets restored
-            }
-          }
-        }
       }
 
       if (isOnset) {
         beatPhaseRef.current = 0;
-        predictiveFiredRef.current = false; // reset for next beat cycle
+        predictiveFiredRef.current = false;
 
         if (lastOnsetRef.current > 0) {
           const interval = now - lastOnsetRef.current;
           const onsets = onsetTimesRef.current;
           onsets.push(interval);
-          if (onsets.length > 24) onsets.shift(); // larger window for stability
+          if (onsets.length > 24) onsets.shift();
 
           if (onsets.length >= 4) {
-            // Multi-method BPM: onset intervals + auto-correlation
             const sorted = [...onsets].sort((a, b) => a - b);
             const q1 = sorted[Math.floor(sorted.length * 0.2)];
             const q3 = sorted[Math.floor(sorted.length * 0.8)];
             const filtered = sorted.filter(v => v >= q1 * 0.7 && v <= q3 * 1.3);
-            
+
             let onsetBpm = 0;
             let onsetConf = 0;
             if (filtered.length >= 3) {
-              // Weighted median – center values get more weight
               const mid = filtered[Math.floor(filtered.length / 2)];
               onsetBpm = 60000 / mid;
-              // Confidence: low variance = high confidence
               const variance = filtered.reduce((s, v) => s + (v - mid) ** 2, 0) / filtered.length;
               onsetConf = Math.max(0, 1 - Math.sqrt(variance) / mid);
             }
 
-            // Auto-correlation BPM
             const autoBpmResult = estimateBpmFromHistory();
-            
+
             let finalBpm = onsetBpm;
             let finalConf = onsetConf;
 
             if (autoBpmResult && autoBpmResult.bpm >= 60 && autoBpmResult.bpm <= 200) {
-              // Blend: if both agree (within 10%), high confidence
               if (onsetBpm > 0) {
                 const ratio = autoBpmResult.bpm / onsetBpm;
                 if (ratio > 0.9 && ratio < 1.1) {
-                  // Strong agreement – average and boost confidence
                   finalBpm = (onsetBpm * onsetConf + autoBpmResult.bpm * autoBpmResult.confidence) / (onsetConf + autoBpmResult.confidence);
                   finalConf = Math.min(1, (onsetConf + autoBpmResult.confidence) * 0.7);
                 } else if (autoBpmResult.confidence > onsetConf) {
-                  // Auto-corr wins
                   finalBpm = autoBpmResult.bpm;
                   finalConf = autoBpmResult.confidence * 0.8;
                 }
-                // Check for half/double time agreement
                 if (ratio > 1.8 && ratio < 2.2) {
-                  finalBpm = onsetBpm; // onset is likely correct, auto-corr found half-time
+                  finalBpm = onsetBpm;
                   finalConf = Math.max(onsetConf, autoBpmResult.confidence * 0.6);
                 } else if (ratio > 0.45 && ratio < 0.55) {
-                  finalBpm = autoBpmResult.bpm; // auto-corr found double-time
+                  finalBpm = autoBpmResult.bpm;
                   finalConf = autoBpmResult.confidence * 0.7;
                 }
               } else {
@@ -440,18 +399,14 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             }
 
             if (finalBpm >= 60 && finalBpm <= 200 && finalConf > 0.1) {
-              // If we have an external BPM, only allow small drift corrections
               const hasExternal = externalBpmRef.current !== null && externalBpmRef.current > 0;
-              
+
               if (hasExternal) {
-                // Only nudge slightly toward local detection if it agrees
                 const extBpm = externalBpmRef.current!;
                 const diff = Math.abs(finalBpm - extBpm);
                 if (diff < 8) {
-                  // Local agrees with external — tiny correction
                   bpmRef.current += (finalBpm - bpmRef.current) * 0.05;
                 }
-                // Otherwise ignore local — trust the external source
               } else if (bpmRef.current > 0) {
                 const diff = Math.abs(finalBpm - bpmRef.current);
                 if (diff < 5) {
@@ -466,11 +421,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               } else {
                 bpmRef.current = finalBpm;
               }
-              
+
               bpmConfidenceRef.current = finalConf;
               const beatMs = 60000 / bpmRef.current;
               framesPerBeatRef.current = (beatMs / 1000) * 60;
-              
+
               onBpmChangeRef.current?.(Math.round(bpmRef.current));
             }
           }
@@ -478,38 +433,39 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         lastOnsetRef.current = now;
       }
 
+      return isOnset;
+    };
+
+    // ─── Sub-function: compute brightness from beat phase ───
+    const computeBrightness = (isOnset: boolean, transient: number) => {
       const phase = beatPhaseRef.current;
       const pulse = Math.pow(1 - phase, 2.5);
-      // Scale peak by how strong the onset actually was (transient 0-1)
-      // Weak hits peak at ~50-65%, only hard hits reach 90-100%
       const onsetStrength = isOnset ? Math.min(1, transient / (adaptiveThreshRef.current * 2.5)) : 0;
       const peakLevel = beatPhaseRef.current < 0.02
         ? Math.max(0.45, Math.min(1, 0.45 + onsetStrength * 0.55))
         : (pulseMaxRef.current ?? 0.6);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
       const linear = peakLevel * pulse;
-      // Logarithmic curve: lifts low values so subtle sounds are visible, 
-      // but only the strongest hits reach max
       const curved = Math.pow(linear, 0.55);
 
-      // BPM-based fallback pulse when mic doesn't detect strong beats
       let finalCurved = curved;
       if (bpmRef.current > 0 && curved < 0.25) {
-        // Generate synthetic pulse from BPM phase
         const bpmPulse = Math.pow(1 - phase, 2.0);
-        const synthCurved = 0.15 + bpmPulse * 0.35; // gentle 15-50% range
+        const synthCurved = 0.15 + bpmPulse * 0.35;
         finalCurved = Math.max(curved, synthCurved);
       }
 
-      // Apply floor AFTER curve so 10% actually means 10%
       const floored = Math.max(FLOOR, finalCurved);
-
       const pct = Math.max(3, Math.round(floored * 100));
 
+      return { phase, curved, finalCurved, pct };
+    };
+
+    // ─── Sub-function: update DOM visuals (glow, ring, canvas) ───
+    const updateVisuals = (finalCurved: number, pct: number, isOnset: boolean, now: number) => {
       if (vizRef.current) {
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
-        // Lift dark colors so the glow is always visible
         const lift = 0.5;
         const gr = Math.round(cr + (255 - cr) * lift);
         const gg = Math.round(cg + (255 - cg) * lift);
@@ -534,7 +490,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const elapsed = now - sPos.receivedAt;
         const currentPos = Math.min(sPos.positionMs + elapsed, dur);
         const fraction = currentPos / dur;
-        const circumference = 2 * Math.PI * 60; // r=60
+        const circumference = 2 * Math.PI * 60;
         progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
       }
 
@@ -556,15 +512,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           const len2 = samples.length;
           const threshold = 85;
 
-          // Chart occupies middle band of canvas (centered vertically)
           const chartHeight = h * 0.7;
           const chartTop = (h - chartHeight) / 2;
-
           const yThresh = chartTop + chartHeight - (threshold / 100) * chartHeight;
 
           ctx2d.clearRect(0, 0, w, h);
 
-          // Reserve future space: 2 beats after current "now" position
           const futureFrames = bpmRef.current > 0 ? Math.round(framesPerBeatRef.current * 2) : 0;
           const totalFrames = HISTORY_LEN + futureFrames;
 
@@ -583,13 +536,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const cr = s1.r, cg = s1.g, cb = s1.b;
               const avgPct = (s0.pct + s1.pct) / 2;
               const brightFactor = Math.max(0.15, avgPct / 100);
-              // Lighten dark colors toward white based on intensity so they stay visible
               const lift = brightFactor * 0.6;
               const lr = Math.round(cr + (255 - cr) * lift);
               const lg = Math.round(cg + (255 - cg) * lift);
               const lb = Math.round(cb + (255 - cb) * lift);
 
-              // Filled area — brightness-scaled gradient
               const grad = ctx2d.createLinearGradient(x0, y1, x0, chartBottom);
               grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.15 + brightFactor * 0.4})`);
               grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
@@ -602,11 +553,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               ctx2d.closePath();
               ctx2d.fill();
 
-              // White fill above 85% threshold
               if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
                 const clipY0 = Math.min(y0, yThresh);
                 const clipY1 = Math.min(y1, yThresh);
-                // Graduated white fill: more white the higher above threshold
                 const whiteT = Math.min(1, (avgPct - threshold) / (100 - threshold));
                 const fillGrad = ctx2d.createLinearGradient(0, yThresh, 0, Math.min(clipY0, clipY1));
                 fillGrad.addColorStop(0, `rgba(255, 255, 255, 0.05)`);
@@ -621,7 +570,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                 ctx2d.fill();
               }
 
-              // Line — color gets lighter with intensity
               const lineAlpha = 0.4 + brightFactor * 0.6;
               ctx2d.beginPath();
               ctx2d.moveTo(x0, Math.max(y0, yThresh));
@@ -630,7 +578,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               ctx2d.lineWidth = 2.5;
               ctx2d.stroke();
 
-              // Line above threshold — graduated white
               if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
                 const aboveY0 = Math.min(y0, yThresh);
                 const aboveY1 = Math.min(y1, yThresh);
@@ -643,20 +590,58 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                 ctx2d.stroke();
               }
             }
-
           }
         }
       }
+    };
 
-      if (now - throttleRef.current >= 25) {
+    // ─── Sub-function: unified BLE dispatch (predictive + normal + kick) ───
+    const dispatchBle = (pct: number, curved: number, now: number) => {
+      // Predictive pre-fire: send early to compensate for BLE latency
+      if (bpmRef.current > 0 && bpmConfidenceRef.current > 0.3 && !predictiveFiredRef.current) {
+        const beatMs = 60000 / bpmRef.current;
+        const phaseMs = beatPhaseRef.current * beatMs;
+        const msUntilBeat = beatMs - phaseMs;
+        if (msUntilBeat <= BLE_LATENCY_MS && msUntilBeat > 0) {
+          predictiveFiredRef.current = true;
+          const predictedPct = Math.max(60, Math.round((pulseMaxRef.current ?? 0.7) * 100));
+          ble.brightness(predictedPct);
+          if (punchWhiteRef.current && predictedPct > 85) {
+            const color = currentColorRef.current;
+            const [cr, cg, cb] = color;
+            const boost = Math.min(1, (predictedPct - 85) / 15);
+            ble.color(
+              Math.round(cr + (255 - cr) * boost),
+              Math.round(cg + (255 - cg) * boost),
+              Math.round(cb + (255 - cb) * boost),
+            );
+            colorBoostedRef.current = true;
+            boostStartRef.current = now;
+            boostColorRef.current = [
+              Math.round(cr + (255 - cr) * boost),
+              Math.round(cg + (255 - cg) * boost),
+              Math.round(cb + (255 - cb) * boost),
+            ];
+          }
+          return; // predictive handled this frame
+        }
+      }
+
+      // Skip normal brightness + kick if predictive already fired for this beat
+      const predictiveActive = predictiveFiredRef.current && beatPhaseRef.current < 0.15;
+
+      // Normal brightness (throttled)
+      if (!predictiveActive && now - throttleRef.current >= 25) {
         throttleRef.current = now;
         ble.brightness(pct);
       }
 
+      // Color kick / fade-back
       const color = currentColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
-      if (punchWhiteRef.current && curved > 0.98 && beatPhaseRef.current < 0.1 && now - colorThrottleRef.current >= colorFadeMs) {
+
+      if (!predictiveActive && punchWhiteRef.current && curved > 0.98 && beatPhaseRef.current < 0.1 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
         boostStartRef.current = now;
@@ -672,7 +657,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const fadeDuration = Math.max(80, beatMs * 0.6);
         const elapsed = now - boostStartRef.current;
         const tLinear = Math.min(elapsed / fadeDuration, 1);
-        // Cubic ease-out: fast initial drop, slow approach — perceptually even
         const tLog = 1 - Math.pow(1 - tLinear, 3);
 
         const [br, bg, bb] = boostColorRef.current;
@@ -687,7 +671,16 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           colorBoostedRef.current = false;
         }
       }
+    };
 
+    // ─── Main loop: orchestrates sub-functions ───
+    const loop = () => {
+      const now = performance.now();
+      const { transient, isSilence } = sampleEnergy();
+      const isOnset = detectBeatsAndBpm(transient, isSilence, now);
+      const { curved, finalCurved, pct } = computeBrightness(isOnset, transient);
+      updateVisuals(finalCurved, pct, isOnset, now);
+      dispatchBle(pct, curved, now);
       rafRef.current = requestAnimationFrame(loop);
     };
 
