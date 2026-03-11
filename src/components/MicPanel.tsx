@@ -111,9 +111,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       bpmConfidenceRef.current = 0.8;
       const beatMs = 60000 / externalBpm;
       framesPerBeatRef.current = (beatMs / 1000) * 60;
-      if (bpmDisplayRef.current) {
-        bpmDisplayRef.current.textContent = `${Math.round(externalBpm)} BPM 🎵`;
-      }
+      onBpmChangeRef.current?.(externalBpm);
     }
   }, [externalBpm]);
 
