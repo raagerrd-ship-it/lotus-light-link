@@ -566,15 +566,15 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const lr = cr, lg = cg, lb = cb;
 
               // Filled area — brightness-scaled gradient
-              const grad = ctx2d.createLinearGradient(x0, y1, x0, h);
-              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.1 + brightFactor * 0.25})`);
-              grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.02)`);
+              const grad = ctx2d.createLinearGradient(x0, y1, x0, chartBottom);
+              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.15 + brightFactor * 0.35})`);
+              grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
               ctx2d.fillStyle = grad;
               ctx2d.beginPath();
-              ctx2d.moveTo(x0, h);
+              ctx2d.moveTo(x0, chartBottom);
               ctx2d.lineTo(x0, y0);
               ctx2d.lineTo(x1, y1);
-              ctx2d.lineTo(x1, h);
+              ctx2d.lineTo(x1, chartBottom);
               ctx2d.closePath();
               ctx2d.fill();
 
