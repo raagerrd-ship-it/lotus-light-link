@@ -42,7 +42,8 @@ export function useSonosNowPlaying() {
   const prevArtRef = useRef<string | null>(null);
   const lastUpdatedAtRef = useRef<string | null>(null);
   const lastDbWriteAtMsRef = useRef<number>(0);
-  const watchdogTrackRef = useRef<string | null>(null); // track name applied by watchdog ahead of DB
+  const fastPollRef = useRef(false);
+  const watchdogTrackRef = useRef<string | null>(null); // track applied by watchdog ahead of DB
   const dbIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dataRef = useRef<SonosNowPlaying | null>(null);
 
