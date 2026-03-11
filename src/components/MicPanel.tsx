@@ -325,7 +325,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         silenceStartRef.current = 0;
       }
 
-      const isOnset = !isSilence && transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
+      // Dynamic min-interval: 55% of current beat interval, clamped to 150ms minimum
+      const beatIntervalMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 455;
+      const minInterval = Math.max(150, beatIntervalMs * 0.55);
+
+      // Phase-gating: off-beat onsets need 1.6x stronger transient
+      const phase = beatPhaseRef.current;
+      const nearBeat = phase < 0.2 || phase > 0.8;
+      const gatedThreshold = nearBeat
+        ? adaptiveThreshRef.current
+        : adaptiveThreshRef.current * 1.6;
+
+      const isOnset = !isSilence && transient > gatedThreshold && now - lastOnsetRef.current > minInterval;
 
       const isMicroHit = !isSilence && !isOnset && transient > adaptiveThreshRef.current * 0.3 && beatPhaseRef.current > 0.15;
       if (isMicroHit) {
