@@ -295,6 +295,26 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         predictiveFiredRef.current = false;
       }
 
+      // Sonos position phase correction: every 500ms, nudge beatPhase toward
+      // the phase implied by Sonos position + BPM
+      const sonosPos = sonosPositionRef.current;
+      if (sonosPos && bpmRef.current > 0 && now - lastPhaseCorrectionRef.current > 500) {
+        lastPhaseCorrectionRef.current = now;
+        const elapsed = now - sonosPos.receivedAt;
+        const estimatedMs = sonosPos.positionMs + elapsed;
+        const beatIntervalMs = 60000 / bpmRef.current;
+        const sonosPhase = (estimatedMs % beatIntervalMs) / beatIntervalMs;
+        const currentPhase = beatPhaseRef.current;
+        // Phase difference: shortest path around the circle
+        let phaseDiff = sonosPhase - currentPhase;
+        if (phaseDiff > 0.5) phaseDiff -= 1;
+        if (phaseDiff < -0.5) phaseDiff += 1;
+        // Gentle nudge: 15% correction per update to avoid jarring jumps
+        if (Math.abs(phaseDiff) > 0.05) {
+          beatPhaseRef.current = ((currentPhase + phaseDiff * 0.15) % 1 + 1) % 1;
+        }
+      }
+
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
         if (performance.now() - silenceStartRef.current > 10000 && bpmRef.current > 0) {
