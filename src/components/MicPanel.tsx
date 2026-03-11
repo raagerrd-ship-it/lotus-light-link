@@ -728,18 +728,20 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   return (
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
       {/* Bass pulse visualizer with progress ring */}
-      <div
-        ref={vizRef}
-        className="relative w-36 h-36 rounded-full flex items-center justify-center will-change-transform"
-        style={{
-          boxShadow: active
-            ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
-            : undefined,
-        }}
-      >
+      <div className="relative w-44 h-44 flex items-center justify-center">
+        <div
+          ref={vizRef}
+          className="absolute w-36 h-36 rounded-full will-change-transform"
+          style={{
+            boxShadow: active
+              ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
+              : undefined,
+          }}
+        />
         <svg
           viewBox="0 0 140 140"
-          className="absolute inset-0 w-full h-full -rotate-90"
+          className="absolute w-36 h-36 -rotate-90"
+          style={{ overflow: 'visible' }}
         >
           {/* Background track */}
           <circle
@@ -764,7 +766,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           />
         </svg>
         {/* Center content */}
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-1 z-10">
           <Activity
             ref={iconRef}
             className="w-10 h-10"
