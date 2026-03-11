@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
-  connectBLEDOM, getLastDevice,
+  connectBLEDOM, getLastDevice, autoReconnect,
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
@@ -81,7 +81,22 @@ const Index = () => {
     setupDisconnectHandler(conn);
   }, [setupDisconnectHandler]);
 
-  // No auto-reconnect — Web Bluetooth requires user gesture for reliable connect
+  // Auto-reconnect on mount via getDevices() + watchAdvertisements()
+  useEffect(() => {
+    if (connection) return;
+    const saved = getLastDevice();
+    if (!saved) return;
+
+    setReconnecting(true);
+    autoReconnect().then((conn) => {
+      if (conn) {
+        finishConnect(conn);
+      } else {
+        setReconnecting(false);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-extract color from Sonos album art
   useEffect(() => {

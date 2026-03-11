@@ -24,6 +24,7 @@ declare global {
     name?: string;
     gatt?: BluetoothRemoteGATTServer;
     id: string;
+    watchAdvertisements(options?: { signal?: AbortSignal }): Promise<void>;
   }
 
   interface RequestDeviceOptions {
@@ -34,6 +35,7 @@ declare global {
 
   interface Bluetooth {
     requestDevice(options: RequestDeviceOptions): Promise<BluetoothDevice>;
+    getDevices(): Promise<BluetoothDevice[]>;
   }
 
   interface Navigator {
