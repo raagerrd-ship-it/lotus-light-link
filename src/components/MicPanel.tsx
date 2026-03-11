@@ -725,26 +725,26 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [char]);
 
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
-      {/* Bass pulse visualizer with progress ring */}
-      <div className="relative w-44 h-44 flex items-center justify-center overflow-visible">
+    return (
+    <div className="flex flex-col items-center justify-center h-full px-4">
+      {/* Bass pulse visualizer with progress ring — enlarged with chart inside */}
+      <div className="relative w-72 h-72 flex items-center justify-center overflow-visible">
         <div
           ref={vizRef}
-          className="absolute left-1/2 top-1/2 w-40 h-40 -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
+          className="absolute left-1/2 top-1/2 w-64 h-64 -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
           style={{
             background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.28) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.14) 38%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.04) 58%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 78%)`,
             filter: "blur(18px)",
             opacity: active ? 0.7 : 0.35,
             boxShadow: active
-              ? `0 0 36px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.45)`
+              ? `0 0 50px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.45)`
               : undefined,
           }}
         />
         <svg
           ref={ringWrapRef}
           viewBox="0 0 140 140"
-          className="absolute w-36 h-36"
+          className="absolute w-60 h-60"
           style={{ overflow: 'visible', transform: 'rotate(-90deg)' }}
         >
           {/* Background track */}
@@ -752,7 +752,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             cx="70" cy="70" r="60"
             fill="none"
             stroke="hsl(var(--border))"
-            strokeWidth="3"
+            strokeWidth="2.5"
             opacity="0.3"
           />
           {/* Progress ring */}
@@ -761,7 +761,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             cx="70" cy="70" r="60"
             fill="none"
             stroke={`rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
-            strokeWidth="5"
+            strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray={String(2 * Math.PI * 60)}
             strokeDashoffset={String(2 * Math.PI * 60)}
@@ -769,35 +769,32 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             style={{ filter: `drop-shadow(0 0 10px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.75))` }}
           />
         </svg>
-        {/* Center content */}
-        <div className="flex flex-col items-center gap-1 z-10">
-          <Activity
-            ref={iconRef}
-            className="w-10 h-10"
-            style={{
-              opacity: active ? 0.7 : 0.3,
-              color: active ? `rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})` : undefined,
-            }}
-          />
+        {/* Center content: chart inside the circle */}
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          {active ? (
+            <div className="w-40 h-24 rounded-lg overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                width={320}
+                height={160}
+                className="w-full h-full"
+              />
+            </div>
+          ) : (
+            <Activity
+              ref={iconRef}
+              className="w-12 h-12"
+              style={{
+                opacity: 0.3,
+                color: undefined,
+              }}
+            />
+          )}
         </div>
       </div>
 
-      {active && (
-        <div className="w-full max-w-xs space-y-4">
-          {/* Intensity history chart */}
-          <div className="rounded-lg overflow-hidden" style={{ background: 'hsl(0 0% 15% / 0.3)' }}>
-            <canvas
-              ref={canvasRef}
-              width={320}
-              height={80}
-              className="w-full h-20"
-            />
-          </div>
-        </div>
-      )}
-
       {!active && (
-        <p className="text-xs text-muted-foreground text-center max-w-xs">
+        <p className="text-xs text-muted-foreground text-center max-w-xs mt-4">
           Isolerar basfrekvenser och styr ljusstyrkan efter kickdrum/bas. Välj färg först.
         </p>
       )}
