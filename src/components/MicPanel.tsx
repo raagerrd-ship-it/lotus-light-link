@@ -525,7 +525,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         ringStyle.filter = `drop-shadow(0 0 ${6 + finalCurved * 18}px rgba(${gr2}, ${gg2}, ${gb2}, ${0.4 + finalCurved * 0.5}))`;
       }
       const sPos = sonosPositionRef.current;
-      const dur = durationMs;
+      const dur = durationMsRef.current;
       if (progressRingRef.current && sPos && dur && dur > 0) {
         const elapsed = now - sPos.receivedAt;
         const currentPos = Math.min(sPos.positionMs + elapsed, dur);

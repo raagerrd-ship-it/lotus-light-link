@@ -36,64 +36,8 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
 }
 
 // Try reconnecting to a previously paired device without showing the chooser
-export async function reconnectLastDevice(): Promise<BLEConnection | null> {
-  const nav = navigator as any;
-  const lastDevice = getLastDevice();
-  if (!lastDevice || !nav.bluetooth) return null;
-
-  if (!nav.bluetooth.getDevices) {
-    console.log('[BLE] getDevices not supported — manual connect needed');
-    return null;
-  }
-
-  const devices = await nav.bluetooth.getDevices();
-  const device = devices.find((d: any) => d.id === lastDevice.id)
-    ?? devices.find((d: any) => d.name === lastDevice.name);
-
-  if (!device?.gatt) {
-    console.log('[BLE] Saved device not found in paired list');
-    return null;
-  }
-
-  // Strategy 1: direct connect (fast, 4s timeout)
-  try {
-    console.log('[BLE] Trying direct connect...');
-    const conn = await Promise.race([
-      connectToDevice(device),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
-    ]);
-    console.log('[BLE] Direct connect succeeded');
-    return conn;
-  } catch (e) {
-    console.log('[BLE] Direct connect failed:', (e as Error).message);
-  }
-
-  // Strategy 2: watchAdvertisements (5s timeout)
-  if (device.watchAdvertisements) {
-    const abortController = new AbortController();
-    try {
-      console.log('[BLE] Watching for advertisements...');
-      const conn = await Promise.race([
-        new Promise<BLEConnection>((resolve, reject) => {
-          device.addEventListener('advertisementreceived', async () => {
-            try { resolve(await connectToDevice(device)); }
-            catch (e) { reject(e); }
-          }, { once: true });
-          device.watchAdvertisements({ signal: abortController.signal }).catch(reject);
-        }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-      ]);
-      console.log('[BLE] Advertisement connect succeeded');
-      return conn;
-    } catch (e) {
-      console.log('[BLE] Advertisement connect failed:', (e as Error).message);
-    } finally {
-      abortController.abort();
-    }
-  }
-
-  return null;
-}
+// reconnectLastDevice removed — Web Bluetooth on Desktop Chrome requires
+// a user gesture for reliable connection. Use connectBLEDOM() instead.
 
 export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   const nav = navigator as any;

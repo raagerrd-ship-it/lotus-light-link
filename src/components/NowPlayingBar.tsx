@@ -3,7 +3,6 @@ import type { SonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 
 interface Props {
   nowPlaying: SonosNowPlaying;
-  accentColor: string;
   bpm?: number | null;
 }
 
