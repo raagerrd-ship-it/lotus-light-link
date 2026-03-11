@@ -491,12 +491,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (vizRef.current) {
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
-        s.transform = `scale(${1 + curved * 0.25})`;
-        s.opacity = String(0.35 + curved * 0.65);
-        s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.12 + curved * 0.28}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.06 + curved * 0.18}) 42%, rgba(${cr}, ${cg}, ${cb}, 0) 72%)`;
-        s.boxShadow = `0 0 ${curved * 80}px ${curved * 25}px rgba(${cr}, ${cg}, ${cb}, ${curved * 0.5})`;
+        s.transform = `translate(-50%, -50%) scale(${1 + curved * 0.32})`;
+        s.opacity = String(0.28 + curved * 0.9);
+        s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.34}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.08 + curved * 0.24}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.02 + curved * 0.08}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
+        s.boxShadow = `0 0 ${18 + curved * 70}px ${6 + curved * 26}px rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.5})`;
       }
-      // Update progress ring
       const sPos = sonosPositionRef.current;
       const dur = durationMs;
       if (progressRingRef.current && sPos && dur && dur > 0) {
@@ -730,14 +729,16 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   return (
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
       {/* Bass pulse visualizer with progress ring */}
-      <div className="relative w-44 h-44 flex items-center justify-center">
+      <div className="relative w-44 h-44 flex items-center justify-center overflow-visible">
         <div
           ref={vizRef}
-          className="absolute inset-0 m-auto w-36 h-36 rounded-full will-change-transform pointer-events-none"
+          className="absolute left-1/2 top-1/2 w-40 h-40 -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
           style={{
-            background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.22) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.1) 42%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 72%)`,
+            background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.28) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.14) 38%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.04) 58%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 78%)`,
+            filter: "blur(18px)",
+            opacity: active ? 0.7 : 0.35,
             boxShadow: active
-              ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
+              ? `0 0 36px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.45)`
               : undefined,
           }}
         />
