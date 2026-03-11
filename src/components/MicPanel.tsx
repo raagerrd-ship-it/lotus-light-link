@@ -467,7 +467,7 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
       // Store base color for chart
       const baseColor = currentColorRef.current;
       const hist2 = intensityHistoryRef.current;
-      hist2.push({ pct, r: baseColor[0], g: baseColor[1], b: baseColor[2] });
+      hist2.push({ pct, r: baseColor[0], g: baseColor[1], b: baseColor[2], beat: isOnset });
       if (hist2.length > HISTORY_LEN) hist2.shift();
 
       // Draw canvas chart every 3rd frame (~20fps)
