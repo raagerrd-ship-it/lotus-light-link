@@ -199,7 +199,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     const lowTD = new Uint8Array(32);
     const midTD = new Uint8Array(32);
 
-    const FLOOR = 0.05;
+    const FLOOR = 0.10;
 
     // Auto-correlation BPM estimation from energy history
     const estimateBpmFromHistory = () => {
