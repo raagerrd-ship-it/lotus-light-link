@@ -16,6 +16,8 @@ interface MicPanelProps {
   onBpmChange?: (bpm: number | null) => void;
   songSections?: SongSection[];
   songDrops?: number[];
+  syncOffsetMs?: number;
+  smoothedRtt?: number;
 }
 
 // Priority-aware BLE command queue
