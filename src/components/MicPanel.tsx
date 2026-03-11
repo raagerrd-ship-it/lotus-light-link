@@ -730,7 +730,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       {/* Bass pulse visualizer with progress ring */}
       <div
         ref={vizRef}
-        className="relative w-36 h-36 flex items-center justify-center will-change-transform"
+        className="relative w-36 h-36 rounded-full flex items-center justify-center will-change-transform"
         style={{
           boxShadow: active
             ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
