@@ -717,7 +717,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         {/* Center content: circular-masked chart inside the ring */}
         <div className="absolute inset-0 flex items-center justify-center z-10">
           {active ? (
-            <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full overflow-hidden flex items-center justify-center">
+            <div className="w-[72%] h-[72%] rounded-full overflow-hidden flex items-center justify-center">
               <canvas
                 ref={canvasRef}
                 width={400}
