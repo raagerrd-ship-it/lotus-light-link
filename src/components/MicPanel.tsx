@@ -428,9 +428,9 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
       // Compute the actual output color (with white boost if applicable)
       const baseColor = currentColorRef.current;
       let outR = baseColor[0], outG = baseColor[1], outB = baseColor[2];
-      if (punchWhiteRef.current && curved > 0.86) {
-        // Blend toward white based on intensity
-        const t = Math.min(1, (curved - 0.86) / 0.14);
+      if (punchWhiteRef.current && pct > 85) {
+        // Blend toward white only above 85% intensity
+        const t = Math.min(1, (pct - 85) / 15);
         outR = Math.round(outR + (255 - outR) * t);
         outG = Math.round(outG + (255 - outG) * t);
         outB = Math.round(outB + (255 - outB) * t);
