@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
-  connectBLEDOM, reconnectLastDevice, getLastDevice,
+  connectBLEDOM, getLastDevice,
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
@@ -32,13 +32,12 @@ const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [autoConnecting] = useState(false);
+  
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
   const [isOn, setIsOn] = useState(true);
-  const retryCountRef = useRef(0);
-  const [sonosColor, setSonosColor] = useState<[number, number, number] | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
@@ -61,40 +60,17 @@ const Index = () => {
   const { nowPlaying } = useSonosNowPlaying();
   const lastArtUrlRef = useRef<string | null>(null);
 
-  const doReconnect = async (): Promise<BLEConnection | null> => {
-    try {
-      return await reconnectLastDevice();
-    } catch {
-      return null;
-    }
-  };
 
   const setupDisconnectHandler = useCallback((conn: BLEConnection) => {
-    const handleDisconnect = async () => {
+    const handleDisconnect = () => {
       setConnection(null);
-      for (let i = 0; i < 3; i++) {
-        retryCountRef.current = i + 1;
-        setReconnecting(true);
-        await new Promise(res => setTimeout(res, 2000));
-        const retry = await doReconnect();
-        if (retry) {
-          retryCountRef.current = 0;
-          setConnection(retry);
-          setReconnecting(false);
-          await sendPower(retry.characteristic, true).catch(() => {});
-          await sendBrightness(retry.characteristic, 100).catch(() => {});
-          setupDisconnectHandler(retry);
-          return;
-        }
-      }
       setReconnecting(false);
-      retryCountRef.current = 0;
     };
     conn.device.addEventListener("gattserverdisconnected", handleDisconnect);
   }, []);
 
   const finishConnect = useCallback(async (conn: BLEConnection) => {
-    retryCountRef.current = 0;
+    setRetryCount(0);
     setConnection(conn);
     setReconnecting(false);
     await sendPower(conn.characteristic, true);
@@ -114,7 +90,6 @@ const Index = () => {
 
     extractDominantColor(artUrl).then((color) => {
       if (!color) return;
-      setSonosColor(color);
       setCurrentColor(color);
       if (connection && isOn) {
         sendColor(connection.characteristic, color[0], color[1], color[2]).catch(() => {});
@@ -168,17 +143,8 @@ const Index = () => {
     setReconnecting(true);
     setError(null);
     try {
-      // First try silent reconnect; fallback opens chooser if needed
-      let conn = await reconnectLastDevice();
-      if (!conn) {
-        conn = await connectBLEDOM(false).catch(() => null);
-      }
-
-      if (conn) {
-        await finishConnect(conn);
-      } else {
-        setError("Kunde inte återansluta. Prova 'Ny enhet'.");
-      }
+      const conn = await connectBLEDOM(false);
+      await finishConnect(conn);
     } catch (e: any) {
       setError(e.message || "Kunde inte återansluta");
     } finally {
@@ -210,20 +176,13 @@ const Index = () => {
   const char = connection?.characteristic;
 
   // Auto-connecting screen
-  if (autoConnecting || reconnecting) {
+  if (reconnecting) {
     return (
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <Loader2 className="w-10 h-10 text-muted-foreground animate-spin" />
           <div>
-            <p className="text-lg font-medium text-foreground">
-              {reconnecting ? "Återansluter..." : `Ansluter till ${lastDevice?.name ?? "enhet"}...`}
-            </p>
-            {reconnecting && retryCountRef.current > 0 && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Försök {retryCountRef.current} av 3
-              </p>
-            )}
+            <p className="text-lg font-medium text-foreground">Återansluter...</p>
           </div>
         </div>
       </div>
@@ -399,7 +358,7 @@ const Index = () => {
           className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'linear-gradient(to top, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} bpm={liveBpm} />
+          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} />
         </div>
       )}
     </div>

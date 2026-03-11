@@ -13,7 +13,7 @@ interface MicPanelProps {
 }
 
 // Priority-aware BLE command queue
-function createBleQueue(char: any) {
+function createBleQueue(charRef: { current: any }) {
   let busy = false;
   let pendingBrightness: (() => Promise<void>) | null = null;
   let pendingColor: (() => Promise<void>) | null = null;
@@ -32,11 +32,15 @@ function createBleQueue(char: any) {
 
   return {
     brightness(val: number) {
-      pendingBrightness = () => sendBrightness(char, val);
+      const c = charRef.current;
+      if (!c) return;
+      pendingBrightness = () => sendBrightness(c, val);
       process();
     },
     color(r: number, g: number, b: number) {
-      pendingColor = () => sendColor(char, r, g, b);
+      const c = charRef.current;
+      if (!c) return;
+      pendingColor = () => sendColor(c, r, g, b);
       process();
     },
   };
@@ -51,6 +55,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const colorThrottleRef = useRef<number>(0);
   const colorBoostedRef = useRef(false);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
+  const charRef = useRef<any>(char);
+  useEffect(() => { charRef.current = char; }, [char]);
   const punchWhiteRef = useRef(true);
   useEffect(() => { punchWhiteRef.current = punchWhite; }, [punchWhite]);
 
@@ -89,10 +95,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   
   // Sonos position phase-sync
   const sonosPositionRef = useRef<{ positionMs: number; receivedAt: number } | null>(null);
+  const durationMsRef = useRef<number | null | undefined>(durationMs);
   const lastPhaseCorrectionRef = useRef(0);
   useEffect(() => {
     sonosPositionRef.current = sonosPosition ?? null;
   }, [sonosPosition]);
+  useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
   // Auto-correlation BPM: track energy history for spectral tempo
   const energyHistoryRef = useRef<number[]>([]);
@@ -179,7 +187,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       lowAnalyserRef.current = lowAnalyser;
       midAnalyserRef.current = midAnalyser;
       streamRef.current = stream;
-      bleQueueRef.current = createBleQueue(char);
+      bleQueueRef.current = createBleQueue(charRef);
       setActive(true);
     } catch {
       // Mic access denied
@@ -517,7 +525,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         ringStyle.filter = `drop-shadow(0 0 ${6 + finalCurved * 18}px rgba(${gr2}, ${gg2}, ${gb2}, ${0.4 + finalCurved * 0.5}))`;
       }
       const sPos = sonosPositionRef.current;
-      const dur = durationMs;
+      const dur = durationMsRef.current;
       if (progressRingRef.current && sPos && dur && dur > 0) {
         const elapsed = now - sPos.receivedAt;
         const currentPos = Math.min(sPos.positionMs + elapsed, dur);
