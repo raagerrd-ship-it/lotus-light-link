@@ -90,7 +90,6 @@ const Index = () => {
 
     extractDominantColor(artUrl).then((color) => {
       if (!color) return;
-      setSonosColor(color);
       setCurrentColor(color);
       if (connection && isOn) {
         sendColor(connection.characteristic, color[0], color[1], color[2]).catch(() => {});
