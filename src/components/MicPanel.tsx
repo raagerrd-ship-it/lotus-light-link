@@ -699,7 +699,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   useEffect(() => stop, [stop]);
 
-  // Auto-start when char becomes available
+  // Auto-start when char becomes available.
+  // charRef keeps the rAF loop connected to the current BLE characteristic,
+  // so reconnects work implicitly without restarting the audio pipeline.
   useEffect(() => {
     if (char && !active) {
       start();
