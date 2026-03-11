@@ -42,6 +42,20 @@ const Index = () => {
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
+  const [showOverlay, setShowOverlay] = useState(true);
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-hide overlay after 3s, show on interaction
+  const resetOverlayTimer = useCallback(() => {
+    setShowOverlay(true);
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
+  }, []);
+
+  useEffect(() => {
+    if (connection) resetOverlayTimer();
+    return () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); };
+  }, [connection, resetOverlayTimer]);
   const lastBpmTrackRef = useRef<string | null>(null);
   const lastDevice = getLastDevice();
   const { nowPlaying } = useSonosNowPlaying();
@@ -343,6 +357,8 @@ const Index = () => {
     <div
       className="relative h-[100dvh] bg-background transition-all duration-700 overflow-hidden"
       style={{ backgroundImage: bgGlow }}
+      onPointerMove={resetOverlayTimer}
+      onPointerDown={resetOverlayTimer}
     >
       {/* Mic panel fills entire viewport */}
       <div className="absolute inset-0">
@@ -358,7 +374,8 @@ const Index = () => {
       </div>
 
       {/* Overlay: compact header */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2"
+      <div
+        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ background: 'linear-gradient(to bottom, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
       >
         <div className="flex items-center gap-2">
@@ -394,7 +411,8 @@ const Index = () => {
 
       {/* Overlay: now playing */}
       {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
-        <div className="absolute bottom-0 left-0 right-0 z-20"
+        <div
+          className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'linear-gradient(to top, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
         >
           <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} bpm={liveBpm} />
