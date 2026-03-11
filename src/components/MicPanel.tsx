@@ -16,6 +16,8 @@ interface MicPanelProps {
   onBpmChange?: (bpm: number | null) => void;
   songSections?: SongSection[];
   songDrops?: number[];
+  syncOffsetMs?: number;
+  smoothedRtt?: number;
 }
 
 // Priority-aware BLE command queue
@@ -52,7 +54,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150 }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -116,8 +118,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const songSectionsRef = useRef<SongSection[]>([]);
   const songDropsRef = useRef<number[]>([]);
   const dropFiredRef = useRef<Set<number>>(new Set());
+  const syncOffsetMsRef = useRef(syncOffsetMs);
+  const smoothedRttRef = useRef(smoothedRtt);
   useEffect(() => { songSectionsRef.current = songSections ?? []; dropFiredRef.current.clear(); }, [songSections]);
   useEffect(() => { songDropsRef.current = songDrops ?? []; dropFiredRef.current.clear(); }, [songDrops]);
+  useEffect(() => { syncOffsetMsRef.current = syncOffsetMs; }, [syncOffsetMs]);
+  useEffect(() => { smoothedRttRef.current = smoothedRtt; }, [smoothedRtt]);
 
   // Auto-correlation BPM: track energy history for spectral tempo
   const energyHistoryRef = useRef<number[]>([]);
@@ -454,7 +460,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       let currentSec = 0;
       if (sonosPos) {
         const elapsed = performance.now() - sonosPos.receivedAt;
-        currentSec = (sonosPos.positionMs + elapsed) / 1000;
+        currentSec = (sonosPos.positionMs + elapsed + syncOffsetMsRef.current) / 1000;
       }
       if (songSectionsRef.current.length > 0) {
         const section = getCurrentSection(songSectionsRef.current, currentSec);
@@ -548,8 +554,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const boost = colorBoostRef.current;
       const effectivePunchWhite = sectionBehavior.punchWhiteOverride !== null ? sectionBehavior.punchWhiteOverride : punchWhiteRef.current;
 
-      // Predictive drop flash: fire 50ms before a known drop
-      const upcomingDrop = getUpcomingDrop(songDropsRef.current, currentSec, 0.1);
+      // Predictive drop flash: dynamic lookahead = 100ms + smoothedRtt/2
+      const lookaheadSec = 0.1 + (smoothedRttRef.current / 2) / 1000;
+      const upcomingDrop = getUpcomingDrop(songDropsRef.current, currentSec, lookaheadSec);
       if (upcomingDrop !== null && !dropFiredRef.current.has(upcomingDrop)) {
         dropFiredRef.current.add(upcomingDrop);
         ble.brightness(100);

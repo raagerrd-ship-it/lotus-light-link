@@ -17,6 +17,7 @@ export interface SonosNowPlaying {
   durationMs: number | null;
   positionMs: number | null;
   receivedAt: number;
+  smoothedRtt: number;
 }
 
 export function useSonosNowPlaying() {
@@ -68,16 +69,23 @@ export function useSonosNowPlaying() {
         durationMs: row.duration_ms,
         positionMs: pos,
         receivedAt: performance.now(),
+        smoothedRtt: 0,
       });
     };
+
+    // RTT smoothing via EMA
+    let smoothedRtt = 150; // initial estimate in ms
 
     // Watchdog: direct API call for fresh position + fast track change detection
     const fetchApi = async () => {
       try {
+        const t0 = performance.now();
         const res = await fetch(`${BREW_URL}/functions/v1/sonos-playback-status`, {
           headers: { Authorization: `Bearer ${BREW_ANON}`, apikey: BREW_ANON, "Content-Type": "application/json" },
           cache: "no-store",
         });
+        const rtt = performance.now() - t0;
+        smoothedRtt = smoothedRtt * 0.7 + rtt * 0.3;
         if (!res.ok) return;
         const s = await res.json();
         if (!s?.ok || !s.trackName) return;
@@ -92,11 +100,12 @@ export function useSonosNowPlaying() {
             trackName: s.trackName,
             artistName: s.artistName ?? null,
             albumName: s.albumName ?? prev?.albumName ?? null,
-            albumArtUrl: prev?.albumArtUrl ?? null, // DB has better art URL
+            albumArtUrl: prev?.albumArtUrl ?? null,
             playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
             durationMs: s.durationMillis ?? null,
-            positionMs: s.positionMillis ?? 0,
+            positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
             receivedAt: performance.now(),
+            smoothedRtt,
           });
           // Fetch DB after short delay to get album art
           setTimeout(fetchDb, 800);
@@ -107,9 +116,10 @@ export function useSonosNowPlaying() {
         apply({
           ...prev!,
           playbackState: s.playbackState ?? prev!.playbackState,
-          positionMs: s.positionMillis ?? prev!.positionMs,
+          positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + smoothedRtt / 2,
           durationMs: s.durationMillis ?? prev!.durationMs,
           receivedAt: performance.now(),
+          smoothedRtt,
         });
       } catch { /* network error — ignore */ }
     };
@@ -135,5 +145,5 @@ export function useSonosNowPlaying() {
   const artChanged = data?.albumArtUrl !== prevArtRef.current;
   prevArtRef.current = data?.albumArtUrl ?? null;
 
-  return { nowPlaying: data, artChanged };
+  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 150 };
 }
