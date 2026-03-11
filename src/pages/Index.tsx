@@ -376,6 +376,7 @@ const Index = () => {
           currentColor={currentColor}
           externalBpm={sonosBpm}
           sonosPosition={nowPlaying?.positionMs != null ? { positionMs: nowPlaying.positionMs, receivedAt: nowPlaying.receivedAt } : null}
+          durationMs={nowPlaying?.durationMs}
         />
       </div>
     </div>
