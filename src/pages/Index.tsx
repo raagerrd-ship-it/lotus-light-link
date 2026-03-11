@@ -30,7 +30,11 @@ const Index = () => {
   const currentColorRef = useRef(currentColor);
 
   const lastDevice = getLastDevice();
-  const { nowPlaying } = useSonosNowPlaying();
+  const { nowPlaying, smoothedRtt } = useSonosNowPlaying();
+  const [syncOffsetMs, setSyncOffsetMs] = useState(() => {
+    const stored = localStorage.getItem("syncOffsetMs");
+    return stored ? parseInt(stored, 10) : 0;
+  });
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
