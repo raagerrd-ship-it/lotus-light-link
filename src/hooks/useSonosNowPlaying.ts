@@ -43,6 +43,7 @@ export function useSonosNowPlaying() {
   const lastUpdatedAtRef = useRef<string | null>(null);
   const lastDbWriteAtMsRef = useRef<number>(0);
   const fastPollRef = useRef(false);
+  const watchdogTrackRef = useRef<string | null>(null); // track applied by watchdog ahead of DB
   const dbIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dataRef = useRef<SonosNowPlaying | null>(null);
 
@@ -72,6 +73,15 @@ export function useSonosNowPlaying() {
     if (changed) {
       lastUpdatedAtRef.current = row.updated_at;
       lastDbWriteAtMsRef.current = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+    }
+
+    // If watchdog already applied a newer track, skip DB data until DB catches up
+    if (watchdogTrackRef.current && row.track_name !== watchdogTrackRef.current) {
+      return;
+    }
+    // DB caught up — clear watchdog override
+    if (watchdogTrackRef.current && row.track_name === watchdogTrackRef.current) {
+      watchdogTrackRef.current = null;
     }
 
     applyNowPlaying({
@@ -165,6 +175,10 @@ export function useSonosNowPlaying() {
         dbStaleMs > 12000;
 
       if (shouldApply) {
+        // Mark watchdog override so DB polls don't flicker back to old track
+        if (status.trackName && (!currentData || status.trackName !== currentData.trackName)) {
+          watchdogTrackRef.current = status.trackName;
+        }
         applyNowPlaying({
           trackName: status.trackName ?? null,
           artistName: status.artistName ?? null,
