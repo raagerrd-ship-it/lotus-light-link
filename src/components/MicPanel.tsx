@@ -784,31 +784,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       {active && (
         <div className="w-full max-w-xs space-y-4">
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Ljusstyrka</span>
-              <span ref={pctRef} className="text-xs font-mono text-foreground">0%</span>
-            </div>
-            <div className="h-3 rounded-full bg-secondary overflow-hidden">
-              <div
-                ref={barRef}
-                className="h-full bg-foreground rounded-full will-change-[width]"
-                style={{ width: "0%" }}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox
-                checked={punchWhite}
-                onCheckedChange={(v) => setPunchWhite(!!v)}
-              />
-              <span className="text-xs text-muted-foreground">Vit kick</span>
-            </label>
-            <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
-          </div>
-
           {/* Intensity history chart */}
           <div className="rounded-lg overflow-hidden" style={{ background: 'hsl(0 0% 15% / 0.3)' }}>
             <canvas
