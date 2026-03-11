@@ -220,6 +220,7 @@ export function useSonosNowPlaying() {
           watchdogTrackRef.current = status.trackName;
         }
         const newPos = status.positionMillis ?? 0;
+        const clampedPos = Math.min(status.durationMillis ?? Number.MAX_SAFE_INTEGER, newPos);
 
         // Skip position-only updates that would cause small jumps
         const isTrackChange = !currentData || status.trackName !== currentData.trackName;
