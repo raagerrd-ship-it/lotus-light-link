@@ -60,13 +60,6 @@ const Index = () => {
   const { nowPlaying } = useSonosNowPlaying();
   const lastArtUrlRef = useRef<string | null>(null);
 
-  const doReconnect = async (): Promise<BLEConnection | null> => {
-    try {
-      return await reconnectLastDevice();
-    } catch {
-      return null;
-    }
-  };
 
   const setupDisconnectHandler = useCallback((conn: BLEConnection) => {
     const handleDisconnect = async () => {
