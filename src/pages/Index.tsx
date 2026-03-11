@@ -195,9 +195,18 @@ const Index = () => {
     return (
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
         <div className="flex flex-col items-center gap-6 text-center">
-          <Loader2 className="w-10 h-10 text-muted-foreground animate-spin" />
+          <div className="relative">
+            <div
+              className="absolute inset-0 rounded-full animate-pulse"
+              style={{ boxShadow: `0 0 40px rgba(${r},${g},${b},0.3), 0 0 80px rgba(${r},${g},${b},0.1)` }}
+            />
+            <Loader2 className="w-10 h-10 animate-spin" style={{ color: accentColor }} />
+          </div>
           <div>
-            <p className="text-lg font-medium text-foreground">Återansluter...</p>
+            <p className="text-lg font-medium text-foreground">Återansluter…</p>
+            {lastDevice && (
+              <p className="text-xs text-muted-foreground mt-1">{lastDevice.name}</p>
+            )}
           </div>
         </div>
       </div>
