@@ -560,13 +560,11 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
               }
             }
 
-            // Draw dashed vertical lines at detected beats + predicted future beats
+            // Draw dashed vertical lines: BPM grid from last detected beat
             if (bpmRef.current > 0 && len2 > 1) {
               const step = w / (HISTORY_LEN - 1);
               const offsetX = (HISTORY_LEN - len2) * step;
-              ctx2d.setLineDash([3, 4]);
-              ctx2d.lineWidth = 1;
-              ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+              const framesPerBeat = framesPerBeatRef.current;
 
               // Find last beat index in history
               let lastBeatIdx = -1;
@@ -577,40 +575,44 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
                 }
               }
 
-              // Draw lines at all beat positions in history
-              for (let i = 0; i < len2; i++) {
-                if (samples[i].beat) {
-                  const x = offsetX + i * step;
-                  ctx2d.beginPath();
-                  ctx2d.moveTo(x, 0);
-                  ctx2d.lineTo(x, h);
-                  ctx2d.stroke();
-                }
-              }
+              if (lastBeatIdx >= 0 && framesPerBeat > 5) {
+                ctx2d.setLineDash([3, 4]);
+                ctx2d.lineWidth = 1;
 
-              // Draw predicted future beat lines from last beat
-              if (lastBeatIdx >= 0) {
-                const framesPerBeat = framesPerBeatRef.current;
-                const framesFromLastBeat = len2 - 1 - lastBeatIdx;
-                // Next predicted beats ahead in the visible area
-                let nextBeatFrame = lastBeatIdx + framesPerBeat;
-                while (nextBeatFrame < HISTORY_LEN) {
-                  if (nextBeatFrame >= len2) {
-                    // This is a predicted (future) beat — not yet in data
-                    const x = offsetX + nextBeatFrame * step;
-                    if (x >= 0 && x <= w) {
-                      ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-                      ctx2d.beginPath();
-                      ctx2d.moveTo(x, 0);
-                      ctx2d.lineTo(x, h);
-                      ctx2d.stroke();
-                    }
+                // Draw BPM grid: backwards and forwards from last beat
+                // Backwards through history
+                let beatFrame = lastBeatIdx;
+                while (beatFrame >= 0) {
+                  const x = offsetX + beatFrame * step;
+                  if (x >= 0 && x <= w) {
+                    const isActualBeat = samples[Math.round(beatFrame)]?.beat;
+                    ctx2d.strokeStyle = isActualBeat
+                      ? 'rgba(255, 255, 255, 0.35)'
+                      : 'rgba(255, 255, 255, 0.15)';
+                    ctx2d.beginPath();
+                    ctx2d.moveTo(x, 0);
+                    ctx2d.lineTo(x, h);
+                    ctx2d.stroke();
                   }
-                  nextBeatFrame += framesPerBeat;
+                  beatFrame -= framesPerBeat;
                 }
-              }
 
-              ctx2d.setLineDash([]);
+                // Forwards (predicted future beats)
+                beatFrame = lastBeatIdx + framesPerBeat;
+                while (beatFrame < HISTORY_LEN) {
+                  const x = offsetX + beatFrame * step;
+                  if (x >= 0 && x <= w) {
+                    ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+                    ctx2d.beginPath();
+                    ctx2d.moveTo(x, 0);
+                    ctx2d.lineTo(x, h);
+                    ctx2d.stroke();
+                  }
+                  beatFrame += framesPerBeat;
+                }
+
+                ctx2d.setLineDash([]);
+              }
             }
           }
         }
