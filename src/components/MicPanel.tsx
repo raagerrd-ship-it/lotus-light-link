@@ -521,13 +521,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const fraction = currentPos / dur;
         const circumference = 2 * Math.PI * 60; // r=60
         progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
-        // Update time text
-        if (timeTextRef.current) {
-          const remainSec = Math.max(0, Math.floor((dur - currentPos) / 1000));
-          const m = Math.floor(remainSec / 60);
-          const s2 = remainSec % 60;
-          timeTextRef.current.textContent = `-${m}:${s2.toString().padStart(2, '0')}`;
-        }
       }
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
