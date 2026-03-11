@@ -603,7 +603,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               ctx2d.moveTo(x0, Math.max(y0, yThresh));
               ctx2d.lineTo(x1, Math.max(y1, yThresh));
               ctx2d.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${lineAlpha})`;
-              ctx2d.lineWidth = 1.5;
+              ctx2d.lineWidth = 2.5;
               ctx2d.stroke();
 
               // Line above threshold — graduated white
