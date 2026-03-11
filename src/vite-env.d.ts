@@ -24,6 +24,7 @@ declare global {
     name?: string;
     gatt?: BluetoothRemoteGATTServer;
     id: string;
+    watchAdvertisements(options?: { signal?: AbortSignal }): Promise<void>;
   }
 
   interface RequestDeviceOptions {

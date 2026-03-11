@@ -81,7 +81,22 @@ const Index = () => {
     setupDisconnectHandler(conn);
   }, [setupDisconnectHandler]);
 
-  // No auto-reconnect — Web Bluetooth requires user gesture for reliable connect
+  // Auto-reconnect on mount via getDevices() + watchAdvertisements()
+  useEffect(() => {
+    if (connection) return;
+    const saved = getLastDevice();
+    if (!saved) return;
+
+    setReconnecting(true);
+    autoReconnect().then((conn) => {
+      if (conn) {
+        finishConnect(conn);
+      } else {
+        setReconnecting(false);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-extract color from Sonos album art
   useEffect(() => {

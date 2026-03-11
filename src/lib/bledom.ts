@@ -35,9 +35,42 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
   return { device, characteristic };
 }
 
-// Try reconnecting to a previously paired device without showing the chooser
-// reconnectLastDevice removed — Web Bluetooth on Desktop Chrome requires
-// a user gesture for reliable connection. Use connectBLEDOM() instead.
+// Auto-reconnect using getDevices() + watchAdvertisements() — no picker needed
+export async function autoReconnect(): Promise<BLEConnection | null> {
+  const nav = navigator as any;
+  if (!nav.bluetooth?.getDevices) return null;
+
+  try {
+    const devices = await nav.bluetooth.getDevices();
+    const saved = getLastDevice();
+    const target = devices.find((d: any) => d.id === saved?.id) ?? devices[0];
+    if (!target) return null;
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        target.removeEventListener('advertisementreceived', onAdvert);
+        resolve(null);
+      }, 5000);
+
+      const onAdvert = async () => {
+        clearTimeout(timeout);
+        target.removeEventListener('advertisementreceived', onAdvert);
+        try {
+          const conn = await connectToDevice(target);
+          resolve(conn);
+        } catch { resolve(null); }
+      };
+
+      target.addEventListener('advertisementreceived', onAdvert);
+      target.watchAdvertisements({ signal: AbortSignal.timeout(5000) }).catch(() => {
+        clearTimeout(timeout);
+        resolve(null);
+      });
+    });
+  } catch {
+    return null;
+  }
+}
 
 export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   const nav = navigator as any;
