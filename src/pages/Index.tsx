@@ -83,14 +83,16 @@ const Index = () => {
     });
   }, [nowPlaying?.albumArtUrl, connection, isOn]);
 
-  // BPM lookup on track change
+  // Song analysis on track change (replaces bpm-lookup)
   useEffect(() => {
     const { trackName: track, artistName: artist } = nowPlaying ?? {};
     const key = `${track ?? ""}::${artist ?? ""}`;
     if (!track || key === lastBpmTrackRef.current) return;
     lastBpmTrackRef.current = key;
+    setSongSections([]);
+    setSongDrops([]);
 
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bpm-lookup`, {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-analysis`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -99,8 +101,16 @@ const Index = () => {
       body: JSON.stringify({ track, artist }),
     })
       .then((r) => r.json())
-      .then((d) => setSonosBpm(d.bpm >= 40 && d.bpm <= 220 ? d.bpm : null))
-      .catch(() => setSonosBpm(null));
+      .then((d) => {
+        setSonosBpm(d.bpm >= 40 && d.bpm <= 220 ? d.bpm : null);
+        setSongSections(Array.isArray(d.sections) ? d.sections : []);
+        setSongDrops(Array.isArray(d.drops) ? d.drops : []);
+      })
+      .catch(() => {
+        setSonosBpm(null);
+        setSongSections([]);
+        setSongDrops([]);
+      });
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
 
   const handleConnect = useCallback(async (scanAll = false) => {
