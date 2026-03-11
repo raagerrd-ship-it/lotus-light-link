@@ -485,8 +485,12 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
 
           ctx2d.clearRect(0, 0, w, h);
 
+          // Reserve future space: 2 beats after current "now" position
+          const futureFrames = bpmRef.current > 0 ? Math.round(framesPerBeatRef.current * 2) : 0;
+          const totalFrames = HISTORY_LEN + futureFrames;
+
           if (len2 > 1) {
-            const step = w / (HISTORY_LEN - 1);
+            const step = w / (totalFrames - 1);
             const offsetX = (HISTORY_LEN - len2) * step;
 
             for (let i = 1; i < len2; i++) {
@@ -562,8 +566,6 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
 
             // Draw dashed vertical lines: BPM grid from last detected beat
             if (bpmRef.current > 0 && len2 > 1) {
-              const step = w / (HISTORY_LEN - 1);
-              const offsetX = (HISTORY_LEN - len2) * step;
               const framesPerBeat = framesPerBeatRef.current;
 
               // Find last beat index in history
@@ -597,9 +599,9 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
                   beatFrame -= framesPerBeat;
                 }
 
-                // Forwards (predicted future beats)
+                // Forwards into future zone
                 beatFrame = lastBeatIdx + framesPerBeat;
-                while (beatFrame < HISTORY_LEN) {
+                while (beatFrame < totalFrames) {
                   const x = offsetX + beatFrame * step;
                   if (x >= 0 && x <= w) {
                     ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.10)';
@@ -613,6 +615,18 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
 
                 ctx2d.setLineDash([]);
               }
+            }
+
+            // Draw "now" marker line
+            if (futureFrames > 0) {
+              const nowX = offsetX + (len2 - 1) * step;
+              ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+              ctx2d.lineWidth = 1;
+              ctx2d.setLineDash([]);
+              ctx2d.beginPath();
+              ctx2d.moveTo(nowX, 0);
+              ctx2d.lineTo(nowX, h);
+              ctx2d.stroke();
             }
           }
         }
