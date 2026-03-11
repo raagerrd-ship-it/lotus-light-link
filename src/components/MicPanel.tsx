@@ -112,6 +112,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   useEffect(() => { sonosPositionRef.current = sonosPosition ?? null; }, [sonosPosition]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
+  // Song section refs
+  const songSectionsRef = useRef<SongSection[]>([]);
+  const songDropsRef = useRef<number[]>([]);
+  const dropFiredRef = useRef<Set<number>>(new Set());
+  useEffect(() => { songSectionsRef.current = songSections ?? []; dropFiredRef.current.clear(); }, [songSections]);
+  useEffect(() => { songDropsRef.current = songDrops ?? []; dropFiredRef.current.clear(); }, [songDrops]);
+
   // Auto-correlation BPM: track energy history for spectral tempo
   const energyHistoryRef = useRef<number[]>([]);
   const energyHistoryMaxLen = 256;
