@@ -8,6 +8,7 @@ import {
   type BLEConnection
 } from "@/lib/bledom";
 import { Power, Bluetooth, Zap, Loader2, Music } from "lucide-react";
+import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
 
