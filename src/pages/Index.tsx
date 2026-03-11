@@ -382,7 +382,7 @@ const Index = () => {
 
       {/* Mic panel takes remaining space */}
       <div className="flex-1 min-h-0">
-        <MicPanel char={char} currentColor={currentColor} />
+        <MicPanel char={char} currentColor={currentColor} externalBpm={sonosBpm} />
       </div>
     </div>
   );
