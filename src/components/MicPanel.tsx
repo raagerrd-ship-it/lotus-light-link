@@ -85,6 +85,12 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
+  // Intensity history for canvas chart
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const intensityHistoryRef = useRef<number[]>([]);
+  const canvasFrameRef = useRef(0);
+  const HISTORY_LEN = 300; // 5s × 60fps
+
   // Audio nodes
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
