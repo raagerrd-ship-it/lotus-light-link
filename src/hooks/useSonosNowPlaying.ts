@@ -1,17 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// brew-monitor-tv backend (public SELECT policy on sonos_now_playing)
 const BREW_URL = "https://plwchuzidrjgyuepwdcl.supabase.co";
 const BREW_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsd2NodXppZHJqZ3l1ZXB3ZGNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0ODUyOTIsImV4cCI6MjA3NTA2MTI5Mn0.p9giTnFOK-b0NqrB4ZqN-3CJEaAqMNy-KYvRZ6P_qS0";
 
 const brewSupabase = createClient(BREW_URL, BREW_ANON, {
-  auth: {
-    storageKey: "brew-monitor-auth",
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false,
-  },
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
 
 export interface SonosNowPlaying {
@@ -22,230 +16,118 @@ export interface SonosNowPlaying {
   playbackState: string;
   durationMs: number | null;
   positionMs: number | null;
-  /** When we received this position data (performance.now()) */
   receivedAt: number;
-}
-
-interface SonosPlaybackStatusResponse {
-  ok?: boolean;
-  trackName?: string;
-  artistName?: string;
-  albumName?: string;
-  albumArtUrl?: string;
-  playbackState?: string;
-  durationMillis?: number;
-  positionMillis?: number;
 }
 
 export function useSonosNowPlaying() {
   const [data, setData] = useState<SonosNowPlaying | null>(null);
-  const prevArtRef = useRef<string | null>(null);
-  const lastUpdatedAtRef = useRef<string | null>(null);
-  const lastDbWriteAtMsRef = useRef<number>(0);
-  const fastPollRef = useRef(false);
-  const watchdogTrackRef = useRef<string | null>(null); // track applied by watchdog ahead of DB
-  const dbIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dataRef = useRef<SonosNowPlaying | null>(null);
+  const prevArtRef = useRef<string | null>(null);
 
-  const setPollInterval = (ms: number) => {
-    if (dbIntervalRef.current) clearInterval(dbIntervalRef.current);
-    dbIntervalRef.current = setInterval(fetchNowPlayingFromDb, ms);
-  };
+  useEffect(() => {
+    // Apply new data with drift protection — avoid small position jumps on same track
+    const apply = (next: SonosNowPlaying) => {
+      const prev = dataRef.current;
+      if (
+        prev &&
+        prev.trackName === next.trackName &&
+        prev.artistName === next.artistName &&
+        prev.positionMs != null &&
+        next.positionMs != null
+      ) {
+        const estimated = prev.positionMs + (performance.now() - prev.receivedAt);
+        if (Math.abs(next.positionMs - estimated) < 5000) return; // interpolation is close enough
+      }
+      dataRef.current = next;
+      setData(next);
+    };
 
-  const applyNowPlaying = (next: SonosNowPlaying) => {
-    const current = dataRef.current;
+    // Fetch full metadata from DB (album art, etc)
+    const fetchDb = async () => {
+      const { data: rows } = await brewSupabase
+        .from("sonos_now_playing")
+        .select("track_name, artist_name, album_name, album_art_url, playback_state, duration_ms, position_ms, updated_at")
+        .order("updated_at", { ascending: false })
+        .limit(1);
 
-    if (
-      current &&
-      current.trackName === next.trackName &&
-      current.artistName === next.artistName
-    ) {
-      const currentEstimated = current.positionMs != null
-        ? current.positionMs + (performance.now() - current.receivedAt)
-        : null;
+      if (!rows?.length) { dataRef.current = null; setData(null); return; }
+      const row = rows[0];
 
-      // Keep local timer stable on same track; only hard-correct on very large drift
-      if (currentEstimated != null && next.positionMs != null) {
-        const drift = Math.abs(next.positionMs - currentEstimated);
-        if (drift < 8000) {
-          setData({
-            ...next,
-            positionMs: current.positionMs,
-            receivedAt: current.receivedAt,
+      // Compensate position for time since DB write
+      const dbAge = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
+      const pos = row.playback_state === "PLAYBACK_STATE_PLAYING"
+        ? Math.min(row.duration_ms ?? Infinity, (row.position_ms ?? 0) + Math.max(0, dbAge))
+        : (row.position_ms ?? 0);
+
+      apply({
+        trackName: row.track_name,
+        artistName: row.artist_name,
+        albumName: row.album_name,
+        albumArtUrl: row.album_art_url,
+        playbackState: row.playback_state,
+        durationMs: row.duration_ms,
+        positionMs: pos,
+        receivedAt: performance.now(),
+      });
+    };
+
+    // Watchdog: direct API call for fresh position + fast track change detection
+    const fetchApi = async () => {
+      try {
+        const res = await fetch(`${BREW_URL}/functions/v1/sonos-playback-status`, {
+          headers: { Authorization: `Bearer ${BREW_ANON}`, apikey: BREW_ANON, "Content-Type": "application/json" },
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const s = await res.json();
+        if (!s?.ok || !s.trackName) return;
+
+        const prev = dataRef.current;
+        const isTrackChange = !prev || s.trackName !== prev.trackName;
+
+        // On track change, fetch DB for full metadata (album art URL from Spotify CDN)
+        if (isTrackChange) {
+          // Apply immediately with what we have, then refresh from DB
+          apply({
+            trackName: s.trackName,
+            artistName: s.artistName ?? null,
+            albumName: s.albumName ?? prev?.albumName ?? null,
+            albumArtUrl: prev?.albumArtUrl ?? null, // DB has better art URL
+            playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
+            durationMs: s.durationMillis ?? null,
+            positionMs: s.positionMillis ?? 0,
+            receivedAt: performance.now(),
           });
+          // Fetch DB after short delay to get album art
+          setTimeout(fetchDb, 800);
           return;
         }
-      }
-    }
 
-    setData(next);
-  };
-
-  const fetchNowPlayingFromDb = async () => {
-    const { data: rows } = await brewSupabase
-      .from("sonos_now_playing")
-      .select("track_name, artist_name, album_name, album_art_url, playback_state, duration_ms, position_ms, updated_at")
-      .order("updated_at", { ascending: false })
-      .limit(1);
-
-    if (!rows || rows.length === 0) {
-      setData(null);
-      return;
-    }
-
-    const row = rows[0];
-    const changed = row.updated_at !== lastUpdatedAtRef.current;
-    if (changed) {
-      lastUpdatedAtRef.current = row.updated_at;
-      lastDbWriteAtMsRef.current = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
-    }
-
-    // If watchdog already applied a newer track, skip DB data until DB catches up
-    if (watchdogTrackRef.current && row.track_name !== watchdogTrackRef.current) {
-      return;
-    }
-    // DB caught up — clear watchdog override
-    if (watchdogTrackRef.current && row.track_name === watchdogTrackRef.current) {
-      watchdogTrackRef.current = null;
-    }
-
-    // Compensate position for time elapsed since DB row was written
-    const dbWriteAge = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
-    const compensatedPosition = row.playback_state === "PLAYBACK_STATE_PLAYING"
-      ? Math.min((row.duration_ms ?? Number.MAX_SAFE_INTEGER), (row.position_ms ?? 0) + Math.max(0, dbWriteAge))
-      : (row.position_ms ?? 0);
-
-    // Only update position if it wouldn't cause a visible jump backwards
-    const currentData = dataRef.current;
-    if (currentData && currentData.trackName === row.track_name && currentData.positionMs != null) {
-      const currentEstimated = currentData.positionMs + (performance.now() - currentData.receivedAt);
-      const diff = Math.abs(compensatedPosition - currentEstimated);
-      // Skip if the difference is small (< 3s) — our interpolation is good enough
-      if (diff < 3000 && !changed) return;
-    }
-
-    applyNowPlaying({
-      trackName: row.track_name,
-      artistName: row.artist_name,
-      albumName: row.album_name,
-      albumArtUrl: row.album_art_url,
-      playbackState: row.playback_state,
-      durationMs: row.duration_ms,
-      positionMs: compensatedPosition,
-      receivedAt: performance.now(),
-    });
-
-    // If we were in fast-poll mode and got a fresh DB write, slow back down.
-    if (changed && fastPollRef.current) {
-      fastPollRef.current = false;
-      setPollInterval(1200);
-    }
-  };
-
-  const fetchPlaybackStatus = async (): Promise<SonosPlaybackStatusResponse | null> => {
-    try {
-      const response = await fetch(`${BREW_URL}/functions/v1/sonos-playback-status`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${BREW_ANON}`,
-          apikey: BREW_ANON,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      });
-
-      if (!response.ok) return null;
-      const result = (await response.json()) as SonosPlaybackStatusResponse;
-      if (!result?.ok) return null;
-      return result;
-    } catch {
-      return null;
-    }
-  };
-
-  // Detect when track is near end and switch DB polling to fast mode.
-  useEffect(() => {
-    if (!data || !data.durationMs || data.positionMs == null) return;
-    if (data.playbackState !== "PLAYBACK_STATE_PLAYING") return;
-
-    const elapsed = performance.now() - data.receivedAt;
-    const estimatedPos = data.positionMs + elapsed;
-    const remaining = data.durationMs - estimatedPos;
-
-    if (remaining < 15000 && !fastPollRef.current) {
-      fastPollRef.current = true;
-      setPollInterval(500);
-    }
-  }, [data]);
-
-  useEffect(() => {
-    dataRef.current = data;
-  }, [data]);
-
-  useEffect(() => {
-    fetchNowPlayingFromDb();
-
-    const channel = brewSupabase
-      .channel("sonos-now-playing-remote")
-      .on(
-        "postgres_changes" as any,
-        { event: "*", schema: "public", table: "sonos_now_playing" },
-        () => {
-          fetchNowPlayingFromDb();
-        }
-      )
-      .subscribe();
-
-    // Baslinjepoll för DB-raden.
-    setPollInterval(1200);
-
-    // Watchdog: om DB inte skrivits nyligen, fråga playback-status direkt.
-    const watchdog = setInterval(async () => {
-      const dbStaleMs = lastDbWriteAtMsRef.current ? Date.now() - lastDbWriteAtMsRef.current : Infinity;
-      if (dbStaleMs < 6000 && !fastPollRef.current) return;
-
-      const status = await fetchPlaybackStatus();
-      if (!status?.trackName) return;
-
-      const currentData = dataRef.current;
-      const shouldApply =
-        !currentData ||
-        status.trackName !== currentData.trackName ||
-        (status.artistName ?? null) !== currentData.artistName ||
-        dbStaleMs > 12000;
-
-      if (shouldApply) {
-        // Mark watchdog override so DB polls don't flicker back to old track
-        if (status.trackName && (!currentData || status.trackName !== currentData.trackName)) {
-          watchdogTrackRef.current = status.trackName;
-        }
-        const newPos = status.positionMillis ?? 0;
-        const clampedPos = Math.min(status.durationMillis ?? Number.MAX_SAFE_INTEGER, newPos);
-
-        // Skip position-only updates that would cause small jumps
-        const isTrackChange = !currentData || status.trackName !== currentData.trackName;
-        if (!isTrackChange && currentData && currentData.positionMs != null) {
-          const currentEstimated = currentData.positionMs + (performance.now() - currentData.receivedAt);
-          const diff = Math.abs(clampedPos - currentEstimated);
-          if (diff < 3000) return; // interpolation is close enough
-        }
-
-        applyNowPlaying({
-          trackName: status.trackName ?? null,
-          artistName: status.artistName ?? null,
-          albumName: status.albumName ?? currentData?.albumName ?? null,
-          albumArtUrl: status.albumArtUrl ?? currentData?.albumArtUrl ?? null,
-          playbackState: status.playbackState ?? currentData?.playbackState ?? "PLAYBACK_STATE_PLAYING",
-          durationMs: status.durationMillis ?? currentData?.durationMs ?? null,
-          positionMs: clampedPos,
+        // Same track — only correct if big drift
+        apply({
+          ...prev!,
+          playbackState: s.playbackState ?? prev!.playbackState,
+          positionMs: s.positionMillis ?? prev!.positionMs,
+          durationMs: s.durationMillis ?? prev!.durationMs,
           receivedAt: performance.now(),
         });
-      }
-    }, 2000);
+      } catch { /* network error — ignore */ }
+    };
+
+    // Initial load from DB
+    fetchDb();
+
+    // Realtime subscription — fetch DB on any change
+    const channel = brewSupabase
+      .channel("sonos-np")
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "sonos_now_playing" }, fetchDb)
+      .subscribe();
+
+    // Watchdog polls API every 2.5s for fresh position data
+    const watchdog = setInterval(fetchApi, 2500);
 
     return () => {
       channel.unsubscribe();
-      if (dbIntervalRef.current) clearInterval(dbIntervalRef.current);
       clearInterval(watchdog);
     };
   }, []);
@@ -255,4 +137,3 @@ export function useSonosNowPlaying() {
 
   return { nowPlaying: data, artChanged };
 }
-
