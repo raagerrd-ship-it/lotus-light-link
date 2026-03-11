@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MicPanel from "@/components/MicPanel";
@@ -7,7 +7,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
 
 const PRESET_COLORS: { label: string; rgb: [number, number, number] }[] = [
   { label: "Röd", rgb: [255, 0, 0] },
@@ -28,23 +28,74 @@ const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [autoConnecting, setAutoConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
   const [isOn, setIsOn] = useState(true);
+  const retryCountRef = useRef(0);
   const lastDevice = getLastDevice();
 
-  const finishConnect = async (conn: BLEConnection) => {
+  const doReconnect = async (): Promise<BLEConnection | null> => {
+    try {
+      return await reconnectLastDevice();
+    } catch {
+      return null;
+    }
+  };
+
+  const finishConnect = useCallback(async (conn: BLEConnection) => {
+    retryCountRef.current = 0;
     setConnection(conn);
+    setAutoConnecting(false);
+    setReconnecting(false);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
-    // Send initial color
     const [r, g, b] = currentColor;
     await sendColor(conn.characteristic, r, g, b).catch(() => {});
-    conn.device.addEventListener("gattserverdisconnected", () => {
+
+    conn.device.addEventListener("gattserverdisconnected", async () => {
       setConnection(null);
+      // Auto-retry up to 3 times
+      for (let i = 0; i < 3; i++) {
+        retryCountRef.current = i + 1;
+        setReconnecting(true);
+        await new Promise(res => setTimeout(res, 2000));
+        const retry = await doReconnect();
+        if (retry) {
+          retryCountRef.current = 0;
+          setConnection(retry);
+          setReconnecting(false);
+          await sendPower(retry.characteristic, true).catch(() => {});
+          await sendBrightness(retry.characteristic, 100).catch(() => {});
+          const [cr, cg, cb] = currentColor;
+          await sendColor(retry.characteristic, cr, cg, cb).catch(() => {});
+          // Re-attach disconnect listener
+          retry.device.addEventListener("gattserverdisconnected", arguments.callee);
+          return;
+        }
+      }
+      setReconnecting(false);
+      retryCountRef.current = 0;
     });
-  };
+  }, [currentColor]);
+
+  // Auto-reconnect on mount
+  useEffect(() => {
+    const saved = getLastDevice();
+    if (!saved) return;
+    let cancelled = false;
+    setAutoConnecting(true);
+    doReconnect().then(conn => {
+      if (cancelled) return;
+      if (conn) {
+        finishConnect(conn);
+      } else {
+        setAutoConnecting(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleConnect = async (scanAll = false) => {
     setConnecting(true);

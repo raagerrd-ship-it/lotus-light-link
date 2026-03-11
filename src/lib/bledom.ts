@@ -65,7 +65,7 @@ export async function reconnectLastDevice(): Promise<BLEConnection | null> {
           }, { once: true });
           device.watchAdvertisements({ signal: abortController.signal }).catch(reject);
         }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
       ]);
       return conn;
     } catch {} finally {
