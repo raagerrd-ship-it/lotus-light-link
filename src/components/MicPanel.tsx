@@ -99,7 +99,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const energyHistoryRef = useRef<number[]>([]);
   const energyHistoryMaxLen = 256; // ~4s at 60fps
 
-  const bpmDisplayRef = useRef<HTMLSpanElement>(null);
+  const onBpmChangeRef = useRef(onBpmChange);
+  useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
   // Apply external BPM from Sonos lookup as a strong prior
   const externalBpmRef = useRef<number | null>(null);
