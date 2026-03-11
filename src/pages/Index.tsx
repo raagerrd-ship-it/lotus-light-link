@@ -150,6 +150,27 @@ const Index = () => {
   const bgGlow = `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)`;
   const char = connection?.characteristic;
 
+  // Auto-connecting screen
+  if (autoConnecting || reconnecting) {
+    return (
+      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
+        <div className="flex flex-col items-center gap-6 text-center">
+          <Loader2 className="w-10 h-10 text-muted-foreground animate-spin" />
+          <div>
+            <p className="text-lg font-medium text-foreground">
+              {reconnecting ? "Återansluter..." : `Ansluter till ${lastDevice?.name ?? "enhet"}...`}
+            </p>
+            {reconnecting && retryCountRef.current > 0 && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Försök {retryCountRef.current} av 3
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Connect screen
   if (!connection) {
     return (
