@@ -44,6 +44,7 @@ export function useSonosNowPlaying() {
   const lastDbWriteAtMsRef = useRef<number>(0);
   const fastPollRef = useRef(false);
   const dbIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dataRef = useRef<SonosNowPlaying | null>(null);
 
   const setPollInterval = (ms: number) => {
     if (dbIntervalRef.current) clearInterval(dbIntervalRef.current);
