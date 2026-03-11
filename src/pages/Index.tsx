@@ -8,7 +8,6 @@ import {
   type BLEConnection
 } from "@/lib/bledom";
 import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
@@ -196,9 +195,18 @@ const Index = () => {
     return (
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
         <div className="flex flex-col items-center gap-6 text-center">
-          <Loader2 className="w-10 h-10 text-muted-foreground animate-spin" />
+          <div className="relative">
+            <div
+              className="absolute inset-0 rounded-full animate-pulse"
+              style={{ boxShadow: `0 0 40px rgba(${r},${g},${b},0.3), 0 0 80px rgba(${r},${g},${b},0.1)` }}
+            />
+            <Loader2 className="w-10 h-10 animate-spin" style={{ color: accentColor }} />
+          </div>
           <div>
-            <p className="text-lg font-medium text-foreground">Återansluter...</p>
+            <p className="text-lg font-medium text-foreground">Återansluter…</p>
+            {lastDevice && (
+              <p className="text-xs text-muted-foreground mt-1">{lastDevice.name}</p>
+            )}
           </div>
         </div>
       </div>
@@ -211,8 +219,11 @@ const Index = () => {
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
         <div className="flex flex-col items-center gap-8 max-w-sm text-center">
           <div className="relative">
-            <div className="w-28 h-28 rounded-full border border-border flex items-center justify-center">
-              <Bluetooth className="w-10 h-10 text-muted-foreground" />
+            <div
+              className="w-28 h-28 rounded-full border border-border flex items-center justify-center animate-pulse"
+              style={{ boxShadow: `0 0 40px rgba(${r},${g},${b},0.2), 0 0 80px rgba(${r},${g},${b},0.08)` }}
+            >
+              <Bluetooth className="w-10 h-10" style={{ color: accentColor }} />
             </div>
           </div>
 
@@ -347,15 +358,16 @@ const Index = () => {
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <Checkbox
-              checked={punchWhite}
-              onCheckedChange={(v) => setPunchWhite(!!v)}
-              className="w-3.5 h-3.5"
-            />
-            <span className="text-[10px] text-muted-foreground">Vit kick</span>
-          </label>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setPunchWhite(!punchWhite)}
+            className="rounded-full w-7 h-7"
+            style={punchWhite ? { color: accentColor } : undefined}
+          >
+            <Zap className="w-3.5 h-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -374,7 +386,7 @@ const Index = () => {
           className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'linear-gradient(to top, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} />
+          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} />
         </div>
       )}
     </div>
