@@ -378,7 +378,7 @@ const Index = () => {
 
       {/* Now playing from Sonos */}
       {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
-        <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} />
+        <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} bpm={liveBpm} />
       )}
 
       {/* Mic panel takes remaining space */}
