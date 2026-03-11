@@ -34,7 +34,7 @@ const Index = () => {
   
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
-  const [selectedColorIdx, setSelectedColorIdx] = useState("0");
+  
   const [isOn, setIsOn] = useState(true);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
