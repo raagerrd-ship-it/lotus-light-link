@@ -7,6 +7,7 @@ interface MicPanelProps {
   char: any;
   currentColor: [number, number, number];
   externalBpm?: number | null;
+  sonosPosition?: { positionMs: number; receivedAt: number } | null;
 }
 
 // Priority-aware BLE command queue
@@ -39,7 +40,7 @@ function createBleQueue(char: any) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [punchWhite, setPunchWhite] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -85,6 +86,13 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
   const bpmConfidenceRef = useRef(0); // 0-1 confidence
   const silenceStartRef = useRef(0);
   
+  // Sonos position phase-sync
+  const sonosPositionRef = useRef<{ positionMs: number; receivedAt: number } | null>(null);
+  const lastPhaseCorrectionRef = useRef(0);
+  useEffect(() => {
+    sonosPositionRef.current = sonosPosition ?? null;
+  }, [sonosPosition]);
+
   // Auto-correlation BPM: track energy history for spectral tempo
   const energyHistoryRef = useRef<number[]>([]);
   const energyHistoryMaxLen = 256; // ~4s at 60fps
@@ -285,6 +293,27 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
       // Reset predictive flag when phase wraps (beat passed without onset)
       if (prevPhase < 0.5 && beatPhaseRef.current >= 0.5) {
         predictiveFiredRef.current = false;
+      }
+
+      // Sonos position phase correction: every 500ms, nudge beatPhase toward
+      // the phase implied by Sonos position + BPM
+      const sonosPos = sonosPositionRef.current;
+      const nowMs = performance.now();
+      if (sonosPos && bpmRef.current > 0 && nowMs - lastPhaseCorrectionRef.current > 500) {
+        lastPhaseCorrectionRef.current = nowMs;
+        const elapsed = nowMs - sonosPos.receivedAt;
+        const estimatedMs = sonosPos.positionMs + elapsed;
+        const beatIntervalMs = 60000 / bpmRef.current;
+        const sonosPhase = (estimatedMs % beatIntervalMs) / beatIntervalMs;
+        const currentPhase = beatPhaseRef.current;
+        // Phase difference: shortest path around the circle
+        let phaseDiff = sonosPhase - currentPhase;
+        if (phaseDiff > 0.5) phaseDiff -= 1;
+        if (phaseDiff < -0.5) phaseDiff += 1;
+        // Gentle nudge: 15% correction per update to avoid jarring jumps
+        if (Math.abs(phaseDiff) > 0.05) {
+          beatPhaseRef.current = ((currentPhase + phaseDiff * 0.15) % 1 + 1) % 1;
+        }
       }
 
       if (isSilence) {
