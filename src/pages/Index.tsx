@@ -230,7 +230,7 @@ const Index = () => {
               onClick={() => handleConnect(false)}
               disabled={connecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
               style={!connecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
