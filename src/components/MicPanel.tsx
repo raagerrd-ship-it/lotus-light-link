@@ -86,6 +86,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const bpmConfidenceRef = useRef(0); // 0-1 confidence
   const silenceStartRef = useRef(0);
   
+  // Sonos position phase-sync
+  const sonosPositionRef = useRef<{ positionMs: number; receivedAt: number } | null>(null);
+  const lastPhaseCorrectionRef = useRef(0);
+  useEffect(() => {
+    sonosPositionRef.current = sonosPosition ?? null;
+  }, [sonosPosition]);
+
   // Auto-correlation BPM: track energy history for spectral tempo
   const energyHistoryRef = useRef<number[]>([]);
   const energyHistoryMaxLen = 256; // ~4s at 60fps
