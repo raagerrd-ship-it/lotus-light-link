@@ -727,24 +727,56 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
-      {/* Bass pulse visualizer */}
+      {/* Bass pulse visualizer with progress ring */}
       <div
         ref={vizRef}
-        className="w-32 h-32 rounded-full border-2 flex items-center justify-center will-change-transform"
+        className="relative w-36 h-36 flex items-center justify-center will-change-transform"
         style={{
-          borderColor: active
-            ? `rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`
-            : "hsl(var(--border))",
           boxShadow: active
             ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
             : undefined,
         }}
       >
-        <Activity
-          ref={iconRef}
-          className="w-12 h-12"
-          style={{ opacity: active ? 0.7 : 0.3 }}
-        />
+        <svg
+          viewBox="0 0 140 140"
+          className="absolute inset-0 w-full h-full -rotate-90"
+        >
+          {/* Background track */}
+          <circle
+            cx="70" cy="70" r="60"
+            fill="none"
+            stroke="hsl(var(--border))"
+            strokeWidth="3"
+            opacity="0.3"
+          />
+          {/* Progress ring */}
+          <circle
+            ref={progressRingRef}
+            cx="70" cy="70" r="60"
+            fill="none"
+            stroke={`rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={String(2 * Math.PI * 60)}
+            strokeDashoffset={String(2 * Math.PI * 60)}
+            className="transition-[stroke] duration-500"
+          />
+        </svg>
+        {/* Center content */}
+        <div className="flex flex-col items-center gap-1">
+          <Activity
+            ref={iconRef}
+            className="w-10 h-10"
+            style={{
+              opacity: active ? 0.7 : 0.3,
+              color: active ? `rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})` : undefined,
+            }}
+          />
+          <span
+            ref={timeTextRef}
+            className="text-[10px] font-mono text-muted-foreground tabular-nums"
+          />
+        </div>
       </div>
 
       {active && (
