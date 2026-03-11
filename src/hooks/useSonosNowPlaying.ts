@@ -17,6 +17,7 @@ export interface SonosNowPlaying {
   durationMs: number | null;
   positionMs: number | null;
   receivedAt: number;
+  smoothedRtt: number;
 }
 
 export function useSonosNowPlaying() {
