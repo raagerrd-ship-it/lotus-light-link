@@ -341,7 +341,7 @@ const Index = () => {
   // Main controller
   return (
     <div
-      className="flex flex-col min-h-[100dvh] bg-background transition-all duration-700"
+      className="flex flex-col h-[100dvh] bg-background transition-all duration-700 overflow-hidden"
       style={{ backgroundImage: bgGlow }}
     >
       {/* Top zone */}
