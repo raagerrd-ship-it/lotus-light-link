@@ -127,7 +127,7 @@ const Index = () => {
       .catch(() => setSonosBpm(null));
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
 
-  const handleConnect = async (scanAll = false) => {
+  const handleConnect = useCallback(async (scanAll = false) => {
     setConnecting(true);
     setError(null);
     try {
@@ -138,9 +138,9 @@ const Index = () => {
     } finally {
       setConnecting(false);
     }
-  };
+  }, [finishConnect]);
 
-  const handleReconnect = async () => {
+  const handleReconnect = useCallback(async () => {
     setReconnecting(true);
     setError(null);
     try {
@@ -151,7 +151,7 @@ const Index = () => {
     } finally {
       setReconnecting(false);
     }
-  };
+  }, [finishConnect]);
 
   const handleColorSelect = useCallback((value: string) => {
     setSelectedColorIdx(value);
