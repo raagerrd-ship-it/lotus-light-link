@@ -730,14 +730,16 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   return (
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
       {/* Bass pulse visualizer with progress ring */}
-      <div className="relative w-44 h-44 flex items-center justify-center">
+      <div className="relative w-44 h-44 flex items-center justify-center overflow-visible">
         <div
           ref={vizRef}
-          className="absolute inset-0 m-auto w-36 h-36 rounded-full will-change-transform pointer-events-none"
+          className="absolute left-1/2 top-1/2 w-40 h-40 -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
           style={{
-            background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.22) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.1) 42%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 72%)`,
+            background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.28) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.14) 38%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.04) 58%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 78%)`,
+            filter: "blur(18px)",
+            opacity: active ? 0.7 : 0.35,
             boxShadow: active
-              ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
+              ? `0 0 36px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.45)`
               : undefined,
           }}
         />
