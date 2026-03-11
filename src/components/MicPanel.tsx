@@ -65,7 +65,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const iconRef = useRef<SVGSVGElement>(null);
   const progressRingRef = useRef<SVGCircleElement>(null);
   const ringWrapRef = useRef<SVGSVGElement>(null);
-  const timeTextRef = useRef<HTMLSpanElement>(null);
 
   // Envelope follower state
   const prevSampleRef = useRef(0);
