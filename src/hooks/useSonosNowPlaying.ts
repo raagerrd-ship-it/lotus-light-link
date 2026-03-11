@@ -144,5 +144,5 @@ export function useSonosNowPlaying() {
   const artChanged = data?.albumArtUrl !== prevArtRef.current;
   prevArtRef.current = data?.albumArtUrl ?? null;
 
-  return { nowPlaying: data, artChanged };
+  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 150 };
 }

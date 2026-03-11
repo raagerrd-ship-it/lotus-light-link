@@ -227,7 +227,21 @@ const Index = () => {
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => setPunchWhite(!punchWhite)} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={punchWhite ? { color: accent } : undefined}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setPunchWhite(!punchWhite)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                const next = syncOffsetMs + (e.shiftKey ? -50 : 50);
+                const clamped = Math.max(-500, Math.min(500, next));
+                setSyncOffsetMs(clamped);
+                localStorage.setItem("syncOffsetMs", String(clamped));
+              }}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+              style={punchWhite ? { color: accent } : undefined}
+              title={`Punch white${syncOffsetMs ? ` (offset: ${syncOffsetMs}ms)` : ''}`}
+            >
               <Zap className="w-3.5 h-3.5" />
             </Button>
             <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>

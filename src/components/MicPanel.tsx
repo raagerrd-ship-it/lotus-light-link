@@ -554,8 +554,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const boost = colorBoostRef.current;
       const effectivePunchWhite = sectionBehavior.punchWhiteOverride !== null ? sectionBehavior.punchWhiteOverride : punchWhiteRef.current;
 
-      // Predictive drop flash: fire 50ms before a known drop
-      const upcomingDrop = getUpcomingDrop(songDropsRef.current, currentSec, 0.1);
+      // Predictive drop flash: dynamic lookahead = 100ms + smoothedRtt/2
+      const lookaheadSec = 0.1 + (smoothedRttRef.current / 2) / 1000;
+      const upcomingDrop = getUpcomingDrop(songDropsRef.current, currentSec, lookaheadSec);
       if (upcomingDrop !== null && !dropFiredRef.current.has(upcomingDrop)) {
         dropFiredRef.current.add(upcomingDrop);
         ble.brightness(100);
