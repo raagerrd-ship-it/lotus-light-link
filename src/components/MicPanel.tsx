@@ -144,6 +144,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
+    subAnalyserRef.current = null;
     lowAnalyserRef.current = null;
     midAnalyserRef.current = null;
     streamRef.current = null;
