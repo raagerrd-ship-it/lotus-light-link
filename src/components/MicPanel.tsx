@@ -194,7 +194,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     } catch {
       // Mic access denied
     }
-  }, [char]);
+    // charRef (not char) is used inside — keep start stable to avoid re-creating audio pipeline
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!active || !lowAnalyserRef.current || !midAnalyserRef.current || !bleQueueRef.current) return;
