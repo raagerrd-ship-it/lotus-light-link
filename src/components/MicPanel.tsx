@@ -135,6 +135,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const HISTORY_LEN = 300;
 
   // Audio nodes
+  const subAnalyserRef = useRef<AnalyserNode | null>(null);
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
 
