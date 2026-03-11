@@ -8,6 +8,7 @@ import {
   type BLEConnection
 } from "@/lib/bledom";
 import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
@@ -39,6 +40,8 @@ const Index = () => {
   const retryCountRef = useRef(0);
   const [sonosColor, setSonosColor] = useState<[number, number, number] | null>(null);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
+  const [punchWhite, setPunchWhite] = useState(true);
+  const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
   const lastDevice = getLastDevice();
   const { nowPlaying } = useSonosNowPlaying();
@@ -353,20 +356,29 @@ const Index = () => {
           </span>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handlePowerToggle}
-          className="rounded-full"
-          style={isOn ? { color: accentColor } : undefined}
-        >
-          <Power className="w-5 h-5" />
-        </Button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox
+              checked={punchWhite}
+              onCheckedChange={(v) => setPunchWhite(!!v)}
+            />
+            <span className="text-xs text-muted-foreground">Vit kick</span>
+          </label>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handlePowerToggle}
+            className="rounded-full"
+            style={isOn ? { color: accentColor } : undefined}
+          >
+            <Power className="w-5 h-5" />
+          </Button>
+        </div>
       </div>
 
       {/* Now playing from Sonos */}
       {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
-        <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} />
+        <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} bpm={liveBpm} />
       )}
 
       {/* Mic panel takes remaining space */}
@@ -377,6 +389,8 @@ const Index = () => {
           externalBpm={sonosBpm}
           sonosPosition={nowPlaying?.positionMs != null ? { positionMs: nowPlaying.positionMs, receivedAt: nowPlaying.receivedAt } : null}
           durationMs={nowPlaying?.durationMs}
+          punchWhite={punchWhite}
+          onBpmChange={setLiveBpm}
         />
       </div>
     </div>

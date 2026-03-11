@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
@@ -9,6 +8,8 @@ interface MicPanelProps {
   externalBpm?: number | null;
   sonosPosition?: { positionMs: number; receivedAt: number } | null;
   durationMs?: number | null;
+  punchWhite: boolean;
+  onBpmChange?: (bpm: number | null) => void;
 }
 
 // Priority-aware BLE command queue
@@ -41,9 +42,8 @@ function createBleQueue(char: any) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange }: MicPanelProps) {
   const [active, setActive] = useState(false);
-  const [punchWhite, setPunchWhite] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
@@ -60,8 +60,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   // Direct DOM refs to avoid React re-renders in hot loop
   const vizRef = useRef<HTMLDivElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
-  const pctRef = useRef<HTMLSpanElement>(null);
   const iconRef = useRef<SVGSVGElement>(null);
   const progressRingRef = useRef<SVGCircleElement>(null);
   const ringWrapRef = useRef<SVGSVGElement>(null);
@@ -100,7 +98,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const energyHistoryRef = useRef<number[]>([]);
   const energyHistoryMaxLen = 256; // ~4s at 60fps
 
-  const bpmDisplayRef = useRef<HTMLSpanElement>(null);
+  const onBpmChangeRef = useRef(onBpmChange);
+  useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
   // Apply external BPM from Sonos lookup as a strong prior
   const externalBpmRef = useRef<number | null>(null);
@@ -111,9 +110,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       bpmConfidenceRef.current = 0.8;
       const beatMs = 60000 / externalBpm;
       framesPerBeatRef.current = (beatMs / 1000) * 60;
-      if (bpmDisplayRef.current) {
-        bpmDisplayRef.current.textContent = `${Math.round(externalBpm)} BPM 🎵`;
-      }
+      onBpmChangeRef.current?.(externalBpm);
     }
   }, [externalBpm]);
 
@@ -322,7 +319,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
         if (performance.now() - silenceStartRef.current > 10000 && bpmRef.current > 0) {
-          if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = '— BPM';
+          onBpmChangeRef.current?.(null);
         }
       } else {
         silenceStartRef.current = 0;
@@ -462,11 +459,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const beatMs = 60000 / bpmRef.current;
               framesPerBeatRef.current = (beatMs / 1000) * 60;
               
-              if (bpmDisplayRef.current) {
-                const hasExt = externalBpmRef.current !== null && externalBpmRef.current > 0;
-                const indicator = hasExt ? '🎵' : (finalConf > 0.6 ? '●●●' : finalConf > 0.3 ? '●●○' : '●○○');
-                bpmDisplayRef.current.textContent = `${Math.round(bpmRef.current)} BPM ${indicator}`;
-              }
+              onBpmChangeRef.current?.(Math.round(bpmRef.current));
             }
           }
         }
@@ -523,8 +516,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const circumference = 2 * Math.PI * 60; // r=60
         progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
       }
-      if (barRef.current) barRef.current.style.width = `${pct}%`;
-      if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
       // Store base color for chart
       const baseColor = currentColorRef.current;
@@ -793,31 +784,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       {active && (
         <div className="w-full max-w-xs space-y-4">
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Ljusstyrka</span>
-              <span ref={pctRef} className="text-xs font-mono text-foreground">0%</span>
-            </div>
-            <div className="h-3 rounded-full bg-secondary overflow-hidden">
-              <div
-                ref={barRef}
-                className="h-full bg-foreground rounded-full will-change-[width]"
-                style={{ width: "0%" }}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox
-                checked={punchWhite}
-                onCheckedChange={(v) => setPunchWhite(!!v)}
-              />
-              <span className="text-xs text-muted-foreground">Vit kick</span>
-            </label>
-            <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
-          </div>
-
           {/* Intensity history chart */}
           <div className="rounded-lg overflow-hidden" style={{ background: 'hsl(0 0% 15% / 0.3)' }}>
             <canvas
