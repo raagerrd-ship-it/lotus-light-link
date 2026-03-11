@@ -182,7 +182,7 @@ export function useSonosNowPlaying() {
       if (dbIntervalRef.current) clearInterval(dbIntervalRef.current);
       clearInterval(watchdog);
     };
-  }, [data]);
+  }, []);
 
   const artChanged = data?.albumArtUrl !== prevArtRef.current;
   prevArtRef.current = data?.albumArtUrl ?? null;
