@@ -671,7 +671,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   }, [char]);
 
     return (
-    <div className="flex flex-col items-center justify-center h-full px-4">
+    <div className="flex flex-col items-center justify-center h-full px-4 overflow-hidden">
       {/* Bass pulse visualizer — fills available space */}
       <div className="relative aspect-square w-full max-w-[min(80vw,80vh)] flex items-center justify-center overflow-visible">
         <div
