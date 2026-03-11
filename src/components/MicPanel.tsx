@@ -187,7 +187,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       lowAnalyserRef.current = lowAnalyser;
       midAnalyserRef.current = midAnalyser;
       streamRef.current = stream;
-      bleQueueRef.current = createBleQueue(char);
+      bleQueueRef.current = createBleQueue(charRef);
       setActive(true);
     } catch {
       // Mic access denied
