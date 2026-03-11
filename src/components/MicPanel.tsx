@@ -107,7 +107,7 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
   }, [externalBpm]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intensityHistoryRef = useRef<{ pct: number; r: number; g: number; b: number }[]>([]);
+  const intensityHistoryRef = useRef<{ pct: number; r: number; g: number; b: number; beat?: boolean }[]>([]);
   const canvasFrameRef = useRef(0);
   const HISTORY_LEN = 300; // 5s × 60fps
 
