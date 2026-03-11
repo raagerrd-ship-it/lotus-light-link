@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -12,20 +12,6 @@ import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
 
-const PRESET_COLORS: { label: string; rgb: [number, number, number] }[] = [
-  { label: "Röd", rgb: [255, 0, 0] },
-  { label: "Grön", rgb: [0, 255, 0] },
-  { label: "Blå", rgb: [0, 0, 255] },
-  { label: "Gul", rgb: [255, 255, 0] },
-  { label: "Cyan", rgb: [0, 255, 255] },
-  { label: "Magenta", rgb: [255, 0, 255] },
-  { label: "Orange", rgb: [255, 120, 0] },
-  { label: "Rosa", rgb: [255, 60, 120] },
-  { label: "Lila", rgb: [140, 0, 255] },
-  { label: "Varmvit", rgb: [255, 200, 120] },
-  { label: "Kallvit", rgb: [200, 220, 255] },
-  { label: "Vit", rgb: [255, 255, 255] },
-];
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
@@ -34,7 +20,7 @@ const Index = () => {
   
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
-  const [selectedColorIdx, setSelectedColorIdx] = useState("0");
+  
   const [isOn, setIsOn] = useState(true);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
@@ -167,16 +153,6 @@ const Index = () => {
     }
   }, [finishConnect]);
 
-  const handleColorSelect = useCallback((value: string) => {
-    setSelectedColorIdx(value);
-    const preset = PRESET_COLORS[parseInt(value)];
-    if (!preset) return;
-    const [r, g, b] = preset.rgb;
-    setCurrentColor([r, g, b]);
-    if (connection && isOn) {
-      sendColor(connection.characteristic, r, g, b).catch(() => {});
-    }
-  }, [connection, isOn]);
 
   const handlePowerToggle = async () => {
     if (!connection) return;
@@ -216,8 +192,8 @@ const Index = () => {
   // Connect screen
   if (!connection) {
     return (
-      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
-        <div className="flex flex-col items-center gap-8 max-w-sm text-center">
+      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8 animate-fade-in">
+        <div className="flex flex-col items-center gap-10 max-w-sm text-center">
           <div className="relative">
             <div
               className="w-28 h-28 rounded-full border border-border flex items-center justify-center animate-pulse"
@@ -228,47 +204,18 @@ const Index = () => {
           </div>
 
           <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Ljusår</h1>
+            <h1 className="text-2xl font-bold tracking-[0.2em] uppercase mb-2">Ljusår</h1>
             <p className="text-muted-foreground text-sm">
               Anslut till din LED-slinga via Bluetooth
             </p>
           </div>
 
-          {/* Fallback color setting */}
-          <div className="w-full">
-            <label className="text-xs text-muted-foreground mb-2 block text-left">Startfärg</label>
-            <Select value={selectedColorIdx} onValueChange={handleColorSelect}>
-              <SelectTrigger className="w-full bg-secondary/50 border-border">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-4 h-4 rounded-full shrink-0 border border-border"
-                    style={{ backgroundColor: accentColor }}
-                  />
-                  <SelectValue placeholder="Välj färg" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {PRESET_COLORS.map((c, i) => (
-                  <SelectItem key={i} value={String(i)}>
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-4 h-4 rounded-full shrink-0 border border-border"
-                        style={{ backgroundColor: `rgb(${c.rgb[0]}, ${c.rgb[1]}, ${c.rgb[2]})` }}
-                      />
-                      {c.label}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {lastDevice && (
+          {lastDevice ? (
             <Button
               onClick={handleReconnect}
               disabled={connecting || reconnecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full"
               style={!reconnecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
@@ -278,49 +225,49 @@ const Index = () => {
               <Zap className="w-5 h-5 mr-2" />
               {reconnecting ? "Söker..." : lastDevice.name}
             </Button>
+          ) : (
+            <Button
+              onClick={() => handleConnect(false)}
+              disabled={connecting}
+              size="lg"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full"
+              style={!connecting ? {
+                backgroundColor: accentColor,
+                color: "#121212",
+                boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
+              } : undefined}
+            >
+              {connecting ? "Söker..." : "VÄCK LJUS"}
+            </Button>
           )}
 
-          <Button
-            onClick={() => handleConnect(false)}
+          <button
+            onClick={() => handleConnect(lastDevice ? false : true)}
             disabled={connecting || reconnecting}
-            size={lastDevice ? "sm" : "lg"}
-            variant={lastDevice ? "outline" : "default"}
-            className={lastDevice
-              ? "rounded-full"
-              : "text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
-            }
-            style={!lastDevice && !connecting ? {
-              backgroundColor: accentColor,
-              color: "#121212",
-              boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
-            } : undefined}
+            className="text-muted-foreground text-xs hover:text-foreground transition-colors disabled:opacity-50"
           >
-            {connecting ? "Söker..." : lastDevice ? "Ny enhet" : "VÄCK LJUS"}
-          </Button>
-
-          <Button
-            onClick={() => handleConnect(true)}
-            disabled={connecting || reconnecting}
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-          >
-            Sök alla enheter
-          </Button>
+            {lastDevice ? "Ny enhet" : "Sök alla enheter"}
+          </button>
 
           {error && (
             <p className="text-destructive text-sm">{error}</p>
           )}
-
-          <p className="text-muted-foreground text-xs mt-4 leading-relaxed">
-            Kräver Chrome på Android eller dator.
-            <br />
-            Stäng Lotus Lantern-appen innan du ansluter.
-          </p>
         </div>
+
+        <p className="text-muted-foreground/50 text-[10px] absolute bottom-6 text-center leading-relaxed">
+          Kräver Chrome på Android eller dator · Stäng Lotus Lantern först
+        </p>
       </div>
     );
   }
+
+  // Compute progress fraction for NowPlayingBar
+  const progressFraction = (() => {
+    if (!nowPlaying?.positionMs || !nowPlaying?.durationMs || nowPlaying.durationMs <= 0) return 0;
+    const elapsed = performance.now() - (nowPlaying.receivedAt ?? performance.now());
+    const estimatedMs = nowPlaying.positionMs + elapsed;
+    return Math.min(1, Math.max(0, estimatedMs / nowPlaying.durationMs));
+  })();
 
   // Main controller
    return (
@@ -345,8 +292,8 @@ const Index = () => {
 
       {/* Overlay: compact header */}
       <div
-        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-        style={{ background: 'linear-gradient(to bottom, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
+        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 transition-opacity duration-500 backdrop-blur-lg ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        style={{ background: 'hsl(var(--background) / 0.5)' }}
       >
         <div className="flex items-center gap-2">
           <div
@@ -383,10 +330,10 @@ const Index = () => {
       {/* Overlay: now playing */}
       {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
         <div
-          className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-          style={{ background: 'linear-gradient(to top, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
+          className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 backdrop-blur-lg ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} />
+          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} progressFraction={progressFraction} />
         </div>
       )}
     </div>
