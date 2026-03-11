@@ -7,7 +7,9 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2, Music } from "lucide-react";
+import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
+import { extractDominantColor } from "@/lib/colorExtract";
 
 const PRESET_COLORS: { label: string; rgb: [number, number, number] }[] = [
   { label: "Röd", rgb: [255, 0, 0] },
@@ -34,7 +36,10 @@ const Index = () => {
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
   const [isOn, setIsOn] = useState(true);
   const retryCountRef = useRef(0);
+  const [sonosColor, setSonosColor] = useState<[number, number, number] | null>(null);
   const lastDevice = getLastDevice();
+  const { nowPlaying } = useSonosNowPlaying();
+  const lastArtUrlRef = useRef<string | null>(null);
 
   const doReconnect = async (): Promise<BLEConnection | null> => {
     try {
@@ -96,6 +101,22 @@ const Index = () => {
     });
     return () => { cancelled = true; };
   }, []);
+
+  // Auto-extract color from Sonos album art
+  useEffect(() => {
+    const artUrl = nowPlaying?.albumArtUrl;
+    if (!artUrl || artUrl === lastArtUrlRef.current) return;
+    lastArtUrlRef.current = artUrl;
+
+    extractDominantColor(artUrl).then((color) => {
+      if (!color) return;
+      setSonosColor(color);
+      setCurrentColor(color);
+      if (connection && isOn) {
+        sendColor(connection.characteristic, color[0], color[1], color[2]).catch(() => {});
+      }
+    });
+  }, [nowPlaying?.albumArtUrl, connection, isOn]);
 
   const handleConnect = async (scanAll = false) => {
     setConnecting(true);
@@ -305,6 +326,29 @@ const Index = () => {
           <Power className="w-5 h-5" />
         </Button>
       </div>
+
+      {/* Now playing from Sonos */}
+      {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
+        <div className="flex items-center gap-3 px-4 py-2 shrink-0">
+          {nowPlaying.albumArtUrl && (
+            <img
+              src={nowPlaying.albumArtUrl}
+              alt="Album art"
+              className="w-10 h-10 rounded shadow-md"
+              crossOrigin="anonymous"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground truncate">
+              {nowPlaying.trackName}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {nowPlaying.artistName}
+            </p>
+          </div>
+          <Music className="w-4 h-4 text-muted-foreground shrink-0" />
+        </div>
+      )}
 
       {/* Mic panel takes remaining space */}
       <div className="flex-1 min-h-0">
