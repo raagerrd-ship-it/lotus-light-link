@@ -662,8 +662,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                   if (x >= 0 && x <= w) {
                     ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.10)';
                     ctx2d.beginPath();
-                    ctx2d.moveTo(x, 0);
-                    ctx2d.lineTo(x, h);
+                    ctx2d.moveTo(x, chartTop);
+                    ctx2d.lineTo(x, chartTop + chartHeight);
                     ctx2d.stroke();
                   }
                   beatFrame += framesPerBeat;
