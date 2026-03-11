@@ -24,7 +24,8 @@ export function useSonosNowPlaying() {
   const fetchNowPlaying = async () => {
     const { data: rows } = await brewSupabase
       .from("sonos_now_playing")
-      .select("track_name, artist_name, album_name, album_art_url, playback_state, duration_ms, position_ms")
+      .select("track_name, artist_name, album_name, album_art_url, playback_state, duration_ms, position_ms, updated_at")
+      .order("updated_at", { ascending: false })
       .limit(1);
 
     if (rows && rows.length > 0) {
@@ -58,8 +59,8 @@ export function useSonosNowPlaying() {
       )
       .subscribe();
 
-    // Fallback poll every 10s in case realtime fails
-    const interval = setInterval(fetchNowPlaying, 10000);
+    // Fallback poll every 3s in case realtime lags/fails
+    const interval = setInterval(fetchNowPlaying, 3000);
 
     return () => {
       channel.unsubscribe();
