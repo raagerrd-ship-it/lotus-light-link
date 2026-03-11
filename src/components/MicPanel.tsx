@@ -563,13 +563,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const y0 = h - (s0.pct / 100) * h;
               const y1 = h - (s1.pct / 100) * h;
               const cr = s1.r, cg = s1.g, cb = s1.b;
-              // Brightness factor: higher pct = brighter color
               const avgPct = (s0.pct + s1.pct) / 2;
-              const brightFactor = Math.max(0.15, avgPct / 100); // 0.15 at bottom, 1.0 at top
-              // Lighten the color toward white based on brightness
-              const lr = Math.round(cr + (255 - cr) * brightFactor * 0.5);
-              const lg = Math.round(cg + (255 - cg) * brightFactor * 0.5);
-              const lb = Math.round(cb + (255 - cb) * brightFactor * 0.5);
+              const brightFactor = Math.max(0.15, avgPct / 100);
+              // Use base color directly — no lightening toward white
+              const lr = cr, lg = cg, lb = cb;
 
               // Filled area — brightness-scaled gradient
               const grad = ctx2d.createLinearGradient(x0, y1, x0, h);
