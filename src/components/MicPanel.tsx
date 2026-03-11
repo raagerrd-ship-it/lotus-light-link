@@ -425,20 +425,10 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
-      // Compute the actual output color (with white boost if applicable)
+      // Store base color for chart
       const baseColor = currentColorRef.current;
-      let outR = baseColor[0], outG = baseColor[1], outB = baseColor[2];
-      if (punchWhiteRef.current && pct > 85) {
-        // Blend toward white only above 85% intensity
-        const t = Math.min(1, (pct - 85) / 15);
-        outR = Math.round(outR + (255 - outR) * t);
-        outG = Math.round(outG + (255 - outG) * t);
-        outB = Math.round(outB + (255 - outB) * t);
-      }
-
-      // Push to intensity history with actual color
       const hist2 = intensityHistoryRef.current;
-      hist2.push({ pct, r: outR, g: outG, b: outB });
+      hist2.push({ pct, r: baseColor[0], g: baseColor[1], b: baseColor[2] });
       if (hist2.length > HISTORY_LEN) hist2.shift();
 
       // Draw canvas chart every 3rd frame (~20fps)
@@ -451,6 +441,8 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
           const h = canvas.height;
           const samples = hist2;
           const len2 = samples.length;
+          const threshold = 85;
+          const yThresh = h - (threshold / 100) * h;
 
           ctx2d.clearRect(0, 0, w, h);
 
@@ -458,7 +450,6 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
             const step = w / (HISTORY_LEN - 1);
             const offsetX = (HISTORY_LEN - len2) * step;
 
-            // Draw per-segment with actual color
             for (let i = 1; i < len2; i++) {
               const x0 = offsetX + (i - 1) * step;
               const x1 = offsetX + i * step;
@@ -466,11 +457,12 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
               const s1 = samples[i];
               const y0 = h - (s0.pct / 100) * h;
               const y1 = h - (s1.pct / 100) * h;
+              const cr = s1.r, cg = s1.g, cb = s1.b;
 
-              // Filled area segment
+              // Filled area — base color
               const grad = ctx2d.createLinearGradient(0, 0, 0, h);
-              grad.addColorStop(0, `rgba(${s1.r}, ${s1.g}, ${s1.b}, 0.3)`);
-              grad.addColorStop(1, `rgba(${s1.r}, ${s1.g}, ${s1.b}, 0.02)`);
+              grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.3)`);
+              grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.02)`);
               ctx2d.fillStyle = grad;
               ctx2d.beginPath();
               ctx2d.moveTo(x0, h);
@@ -480,13 +472,42 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
               ctx2d.closePath();
               ctx2d.fill();
 
-              // Line segment
+              // White fill above 85% threshold
+              if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
+                const clipY0 = Math.min(y0, yThresh);
+                const clipY1 = Math.min(y1, yThresh);
+                ctx2d.fillStyle = 'rgba(255, 255, 255, 0.25)';
+                ctx2d.beginPath();
+                ctx2d.moveTo(x0, yThresh);
+                ctx2d.lineTo(x0, clipY0);
+                ctx2d.lineTo(x1, clipY1);
+                ctx2d.lineTo(x1, yThresh);
+                ctx2d.closePath();
+                ctx2d.fill();
+              }
+
+              // Line below threshold — base color
+              const belowY0 = Math.max(y0, yThresh);
+              const belowY1 = Math.max(y1, yThresh);
               ctx2d.beginPath();
-              ctx2d.moveTo(x0, y0);
-              ctx2d.lineTo(x1, y1);
-              ctx2d.strokeStyle = `rgba(${s1.r}, ${s1.g}, ${s1.b}, 0.8)`;
+              ctx2d.moveTo(x0, belowY0);
+              ctx2d.lineTo(x1, belowY1);
+              ctx2d.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, 0.8)`;
               ctx2d.lineWidth = 1.5;
               ctx2d.stroke();
+
+              // Line above threshold — white
+              if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
+                // Clip line to above threshold
+                const aboveY0 = Math.min(y0, yThresh);
+                const aboveY1 = Math.min(y1, yThresh);
+                ctx2d.beginPath();
+                ctx2d.moveTo(x0, aboveY0);
+                ctx2d.lineTo(x1, aboveY1);
+                ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx2d.lineWidth = 1.5;
+                ctx2d.stroke();
+              }
             }
           }
         }
