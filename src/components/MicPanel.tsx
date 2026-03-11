@@ -497,6 +497,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.34}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.08 + curved * 0.24}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.02 + curved * 0.08}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
         s.boxShadow = `0 0 ${18 + curved * 70}px ${6 + curved * 26}px rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.5})`;
       }
+      if (ringWrapRef.current) {
+        const ringStyle = ringWrapRef.current.style;
+        ringStyle.transform = `scale(${1 + curved * 0.12}) rotate(-90deg)`;
+        ringStyle.filter = `drop-shadow(0 0 ${4 + curved * 14}px rgba(${currentColorRef.current[0]}, ${currentColorRef.current[1]}, ${currentColorRef.current[2]}, ${0.35 + curved * 0.45}))`;
+      }
       const sPos = sonosPositionRef.current;
       const dur = durationMs;
       if (progressRingRef.current && sPos && dur && dur > 0) {
