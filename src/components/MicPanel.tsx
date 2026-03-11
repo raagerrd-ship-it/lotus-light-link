@@ -680,8 +680,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               ctx2d.lineWidth = 1;
               ctx2d.setLineDash([]);
               ctx2d.beginPath();
-              ctx2d.moveTo(nowX, 0);
-              ctx2d.lineTo(nowX, h);
+              ctx2d.moveTo(nowX, chartTop);
+              ctx2d.lineTo(nowX, chartTop + chartHeight);
               ctx2d.stroke();
             }
           }
