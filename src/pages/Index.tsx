@@ -157,6 +157,8 @@ const Index = () => {
           durationMs={nowPlaying?.durationMs}
           punchWhite={punchWhite}
           onBpmChange={setLiveBpm}
+          songSections={songSections}
+          songDrops={songDrops}
         />
       </div>
 
