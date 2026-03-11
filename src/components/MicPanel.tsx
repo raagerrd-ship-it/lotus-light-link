@@ -672,11 +672,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
     return (
     <div className="flex flex-col items-center justify-center h-full px-4">
-      {/* Bass pulse visualizer with progress ring — large with circular chart inside */}
-      <div className="relative w-80 h-80 sm:w-96 sm:h-96 flex items-center justify-center overflow-visible">
+      {/* Bass pulse visualizer — fills available space */}
+      <div className="relative aspect-square w-full max-w-[min(80vw,80vh)] flex items-center justify-center overflow-visible">
         <div
           ref={vizRef}
-          className="absolute left-1/2 top-1/2 w-72 h-72 sm:w-[22rem] sm:h-[22rem] -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
+          className="absolute left-1/2 top-1/2 w-[90%] h-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
           style={{
             background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.28) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.14) 38%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.04) 58%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 78%)`,
             filter: "blur(22px)",
@@ -689,7 +689,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         <svg
           ref={ringWrapRef}
           viewBox="0 0 140 140"
-          className="absolute w-72 h-72 sm:w-80 sm:h-80"
+          className="absolute w-[85%] h-[85%]"
           style={{ overflow: 'visible', transform: 'rotate(-90deg)' }}
         >
           {/* Background track */}
@@ -717,7 +717,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         {/* Center content: circular-masked chart inside the ring */}
         <div className="absolute inset-0 flex items-center justify-center z-10">
           {active ? (
-            <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full overflow-hidden flex items-center justify-center">
+            <div className="w-[72%] h-[72%] rounded-full overflow-hidden flex items-center justify-center">
               <canvas
                 ref={canvasRef}
                 width={400}
