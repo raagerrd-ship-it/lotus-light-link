@@ -492,6 +492,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
         s.transform = `scale(${1 + curved * 0.25})`;
+        s.opacity = String(0.35 + curved * 0.65);
+        s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.12 + curved * 0.28}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.06 + curved * 0.18}) 42%, rgba(${cr}, ${cg}, ${cb}, 0) 72%)`;
         s.boxShadow = `0 0 ${curved * 80}px ${curved * 25}px rgba(${cr}, ${cg}, ${cb}, ${curved * 0.5})`;
       }
       // Update progress ring
