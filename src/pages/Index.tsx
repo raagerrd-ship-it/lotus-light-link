@@ -153,17 +153,19 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel
-          char={char}
-          currentColor={currentColor}
-          externalBpm={sonosBpm}
-          sonosPosition={nowPlaying?.positionMs != null ? { positionMs: nowPlaying.positionMs, receivedAt: nowPlaying.receivedAt } : null}
-          durationMs={nowPlaying?.durationMs}
-          punchWhite={punchWhite}
-          onBpmChange={setLiveBpm}
-          songSections={songSections}
-          songDrops={songDrops}
-        />
+          <MicPanel
+            char={char}
+            currentColor={currentColor}
+            externalBpm={sonosBpm}
+            sonosPosition={nowPlaying?.positionMs != null ? { positionMs: nowPlaying.positionMs, receivedAt: nowPlaying.receivedAt } : null}
+            durationMs={nowPlaying?.durationMs}
+            punchWhite={punchWhite}
+            onBpmChange={setLiveBpm}
+            songSections={songSections}
+            songDrops={songDrops}
+            syncOffsetMs={syncOffsetMs}
+            smoothedRtt={smoothedRtt}
+          />
       </div>
 
       {/* Connection overlay */}
