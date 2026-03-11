@@ -37,6 +37,8 @@ const Index = () => {
   const [isOn, setIsOn] = useState(true);
   const retryCountRef = useRef(0);
   const [sonosColor, setSonosColor] = useState<[number, number, number] | null>(null);
+  const [sonosBpm, setSonosBpm] = useState<number | null>(null);
+  const lastBpmTrackRef = useRef<string | null>(null);
   const lastDevice = getLastDevice();
   const { nowPlaying } = useSonosNowPlaying();
   const lastArtUrlRef = useRef<string | null>(null);
