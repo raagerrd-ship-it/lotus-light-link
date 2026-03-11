@@ -99,11 +99,12 @@ export function useSonosNowPlaying() {
             trackName: s.trackName,
             artistName: s.artistName ?? null,
             albumName: s.albumName ?? prev?.albumName ?? null,
-            albumArtUrl: prev?.albumArtUrl ?? null, // DB has better art URL
+            albumArtUrl: prev?.albumArtUrl ?? null,
             playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
             durationMs: s.durationMillis ?? null,
-            positionMs: s.positionMillis ?? 0,
+            positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
             receivedAt: performance.now(),
+            smoothedRtt,
           });
           // Fetch DB after short delay to get album art
           setTimeout(fetchDb, 800);
