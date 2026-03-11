@@ -215,7 +215,7 @@ const Index = () => {
               onClick={handleReconnect}
               disabled={connecting || reconnecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
+              className="text-base px-8 py-5 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
               style={!reconnecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
