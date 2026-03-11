@@ -534,7 +534,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           const samples = hist2;
           const len2 = samples.length;
           const threshold = 85;
-          const yThresh = h - (threshold / 100) * h;
+
+          // Chart occupies middle band of canvas (centered vertically)
+          const chartHeight = h * 0.5;
+          const chartTop = (h - chartHeight) / 2;
+
+          const yThresh = chartTop + chartHeight - (threshold / 100) * chartHeight;
 
           ctx2d.clearRect(0, 0, w, h);
 
@@ -551,8 +556,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const x1 = offsetX + i * step;
               const s0 = samples[i - 1];
               const s1 = samples[i];
-              const y0 = h - (s0.pct / 100) * h;
-              const y1 = h - (s1.pct / 100) * h;
+              const y0 = chartTop + chartHeight - (s0.pct / 100) * chartHeight;
+              const y1 = chartTop + chartHeight - (s1.pct / 100) * chartHeight;
+              const chartBottom = chartTop + chartHeight;
               const cr = s1.r, cg = s1.g, cb = s1.b;
               const avgPct = (s0.pct + s1.pct) / 2;
               const brightFactor = Math.max(0.15, avgPct / 100);
@@ -560,15 +566,15 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const lr = cr, lg = cg, lb = cb;
 
               // Filled area — brightness-scaled gradient
-              const grad = ctx2d.createLinearGradient(x0, y1, x0, h);
-              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.1 + brightFactor * 0.25})`);
-              grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.02)`);
+              const grad = ctx2d.createLinearGradient(x0, y1, x0, chartBottom);
+              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.15 + brightFactor * 0.35})`);
+              grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
               ctx2d.fillStyle = grad;
               ctx2d.beginPath();
-              ctx2d.moveTo(x0, h);
+              ctx2d.moveTo(x0, chartBottom);
               ctx2d.lineTo(x0, y0);
               ctx2d.lineTo(x1, y1);
-              ctx2d.lineTo(x1, h);
+              ctx2d.lineTo(x1, chartBottom);
               ctx2d.closePath();
               ctx2d.fill();
 
@@ -597,7 +603,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               ctx2d.moveTo(x0, Math.max(y0, yThresh));
               ctx2d.lineTo(x1, Math.max(y1, yThresh));
               ctx2d.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${lineAlpha})`;
-              ctx2d.lineWidth = 1.5;
+              ctx2d.lineWidth = 2.5;
               ctx2d.stroke();
 
               // Line above threshold — graduated white
@@ -609,7 +615,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                 ctx2d.moveTo(x0, aboveY0);
                 ctx2d.lineTo(x1, aboveY1);
                 ctx2d.strokeStyle = `rgba(255, 255, 255, ${0.3 + whiteT * 0.6})`;
-                ctx2d.lineWidth = 1.5;
+                ctx2d.lineWidth = 2.5;
                 ctx2d.stroke();
               }
             }
@@ -642,8 +648,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                       ? 'rgba(255, 255, 255, 0.35)'
                       : 'rgba(255, 255, 255, 0.15)';
                     ctx2d.beginPath();
-                    ctx2d.moveTo(x, 0);
-                    ctx2d.lineTo(x, h);
+                    ctx2d.moveTo(x, chartTop);
+                    ctx2d.lineTo(x, chartTop + chartHeight);
                     ctx2d.stroke();
                   }
                   beatFrame -= framesPerBeat;
@@ -656,8 +662,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                   if (x >= 0 && x <= w) {
                     ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.10)';
                     ctx2d.beginPath();
-                    ctx2d.moveTo(x, 0);
-                    ctx2d.lineTo(x, h);
+                    ctx2d.moveTo(x, chartTop);
+                    ctx2d.lineTo(x, chartTop + chartHeight);
                     ctx2d.stroke();
                   }
                   beatFrame += framesPerBeat;
@@ -674,8 +680,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               ctx2d.lineWidth = 1;
               ctx2d.setLineDash([]);
               ctx2d.beginPath();
-              ctx2d.moveTo(nowX, 0);
-              ctx2d.lineTo(nowX, h);
+              ctx2d.moveTo(nowX, chartTop);
+              ctx2d.lineTo(nowX, chartTop + chartHeight);
               ctx2d.stroke();
             }
           }
