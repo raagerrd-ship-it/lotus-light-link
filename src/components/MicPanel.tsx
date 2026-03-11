@@ -559,6 +559,59 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
                 ctx2d.stroke();
               }
             }
+
+            // Draw dashed vertical lines at detected beats + predicted future beats
+            if (bpmRef.current > 0 && len2 > 1) {
+              const step = w / (HISTORY_LEN - 1);
+              const offsetX = (HISTORY_LEN - len2) * step;
+              ctx2d.setLineDash([3, 4]);
+              ctx2d.lineWidth = 1;
+              ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+
+              // Find last beat index in history
+              let lastBeatIdx = -1;
+              for (let i = len2 - 1; i >= 0; i--) {
+                if (samples[i].beat) {
+                  lastBeatIdx = i;
+                  break;
+                }
+              }
+
+              // Draw lines at all beat positions in history
+              for (let i = 0; i < len2; i++) {
+                if (samples[i].beat) {
+                  const x = offsetX + i * step;
+                  ctx2d.beginPath();
+                  ctx2d.moveTo(x, 0);
+                  ctx2d.lineTo(x, h);
+                  ctx2d.stroke();
+                }
+              }
+
+              // Draw predicted future beat lines from last beat
+              if (lastBeatIdx >= 0) {
+                const framesPerBeat = framesPerBeatRef.current;
+                const framesFromLastBeat = len2 - 1 - lastBeatIdx;
+                // Next predicted beats ahead in the visible area
+                let nextBeatFrame = lastBeatIdx + framesPerBeat;
+                while (nextBeatFrame < HISTORY_LEN) {
+                  if (nextBeatFrame >= len2) {
+                    // This is a predicted (future) beat — not yet in data
+                    const x = offsetX + nextBeatFrame * step;
+                    if (x >= 0 && x <= w) {
+                      ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+                      ctx2d.beginPath();
+                      ctx2d.moveTo(x, 0);
+                      ctx2d.lineTo(x, h);
+                      ctx2d.stroke();
+                    }
+                  }
+                  nextBeatFrame += framesPerBeat;
+                }
+              }
+
+              ctx2d.setLineDash([]);
+            }
           }
         }
       }
