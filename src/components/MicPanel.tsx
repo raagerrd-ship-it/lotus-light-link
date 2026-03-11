@@ -61,7 +61,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   // Direct DOM refs to avoid React re-renders in hot loop
   const vizRef = useRef<HTMLDivElement>(null);
   const iconRef = useRef<SVGSVGElement>(null);
-  const iconRef = useRef<SVGSVGElement>(null);
   const progressRingRef = useRef<SVGCircleElement>(null);
   const ringWrapRef = useRef<SVGSVGElement>(null);
 
