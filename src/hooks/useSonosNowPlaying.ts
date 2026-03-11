@@ -40,6 +40,7 @@ export function useSonosNowPlaying() {
         playbackState: row.playback_state,
         durationMs: row.duration_ms,
         positionMs: row.position_ms,
+        receivedAt: performance.now(),
       });
     } else {
       setData(null);
