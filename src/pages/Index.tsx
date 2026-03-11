@@ -357,6 +357,8 @@ const Index = () => {
     <div
       className="relative h-[100dvh] bg-background transition-all duration-700 overflow-hidden"
       style={{ backgroundImage: bgGlow }}
+      onPointerMove={resetOverlayTimer}
+      onPointerDown={resetOverlayTimer}
     >
       {/* Mic panel fills entire viewport */}
       <div className="absolute inset-0">
