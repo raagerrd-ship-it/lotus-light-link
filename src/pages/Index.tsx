@@ -319,7 +319,7 @@ const Index = () => {
             variant="ghost"
             size="icon"
             onClick={handlePowerToggle}
-            className="rounded-full w-7 h-7"
+            className="rounded-full w-7 h-7 active:scale-90 transition-transform"
             style={isOn ? { color: accentColor } : undefined}
           >
             <Power className="w-4 h-4" />
