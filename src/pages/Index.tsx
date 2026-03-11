@@ -193,7 +193,7 @@ const Index = () => {
   if (!connection) {
     return (
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8 animate-fade-in">
-        <div className="flex flex-col items-center gap-10 max-w-sm text-center">
+        <div className="flex flex-col items-center gap-8 max-w-sm text-center">
           <div className="relative">
             <div
               className="w-28 h-28 rounded-full border border-border flex items-center justify-center animate-pulse"
