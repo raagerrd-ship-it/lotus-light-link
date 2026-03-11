@@ -483,7 +483,12 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
               if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
                 const clipY0 = Math.min(y0, yThresh);
                 const clipY1 = Math.min(y1, yThresh);
-                ctx2d.fillStyle = 'rgba(255, 255, 255, 0.25)';
+                // Graduated white fill: more white the higher above threshold
+                const whiteT = Math.min(1, (avgPct - threshold) / (100 - threshold));
+                const fillGrad = ctx2d.createLinearGradient(0, yThresh, 0, Math.min(clipY0, clipY1));
+                fillGrad.addColorStop(0, `rgba(255, 255, 255, 0.05)`);
+                fillGrad.addColorStop(1, `rgba(255, 255, 255, ${0.1 + whiteT * 0.4})`);
+                ctx2d.fillStyle = fillGrad;
                 ctx2d.beginPath();
                 ctx2d.moveTo(x0, yThresh);
                 ctx2d.lineTo(x0, clipY0);
@@ -502,14 +507,15 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
               ctx2d.lineWidth = 1.5;
               ctx2d.stroke();
 
-              // Line above threshold — white
+              // Line above threshold — graduated white
               if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
                 const aboveY0 = Math.min(y0, yThresh);
                 const aboveY1 = Math.min(y1, yThresh);
+                const whiteT = Math.min(1, (avgPct - threshold) / (100 - threshold));
                 ctx2d.beginPath();
                 ctx2d.moveTo(x0, aboveY0);
                 ctx2d.lineTo(x1, aboveY1);
-                ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx2d.strokeStyle = `rgba(255, 255, 255, ${0.3 + whiteT * 0.6})`;
                 ctx2d.lineWidth = 1.5;
                 ctx2d.stroke();
               }
