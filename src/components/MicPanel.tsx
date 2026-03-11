@@ -359,17 +359,25 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
             }
 
             if (finalBpm >= 60 && finalBpm <= 200 && finalConf > 0.1) {
-              // Smooth BPM transitions – don't jump wildly
-              if (bpmRef.current > 0) {
+              // If we have an external BPM, only allow small drift corrections
+              const hasExternal = externalBpmRef.current !== null && externalBpmRef.current > 0;
+              
+              if (hasExternal) {
+                // Only nudge slightly toward local detection if it agrees
+                const extBpm = externalBpmRef.current!;
+                const diff = Math.abs(finalBpm - extBpm);
+                if (diff < 8) {
+                  // Local agrees with external — tiny correction
+                  bpmRef.current += (finalBpm - bpmRef.current) * 0.05;
+                }
+                // Otherwise ignore local — trust the external source
+              } else if (bpmRef.current > 0) {
                 const diff = Math.abs(finalBpm - bpmRef.current);
                 if (diff < 5) {
-                  // Small correction – smooth heavily
                   bpmRef.current += (finalBpm - bpmRef.current) * 0.15;
                 } else if (diff < 15) {
-                  // Medium jump – moderate smoothing
                   bpmRef.current += (finalBpm - bpmRef.current) * 0.3;
                 } else {
-                  // Big jump – likely new song, apply if confident
                   if (finalConf > 0.4) {
                     bpmRef.current = finalBpm;
                   }
