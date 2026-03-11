@@ -5,7 +5,9 @@ import { createClient } from "@supabase/supabase-js";
 const BREW_URL = "https://plwchuzidrjgyuepwdcl.supabase.co";
 const BREW_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsd2NodXppZHJqZ3l1ZXB3ZGNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0ODUyOTIsImV4cCI6MjA3NTA2MTI5Mn0.p9giTnFOK-b0NqrB4ZqN-3CJEaAqMNy-KYvRZ6P_qS0";
 
-const brewSupabase = createClient(BREW_URL, BREW_ANON);
+const brewSupabase = createClient(BREW_URL, BREW_ANON, {
+  auth: { storageKey: 'brew-monitor-auth', persistSession: false },
+});
 
 export interface SonosNowPlaying {
   trackName: string | null;
