@@ -534,7 +534,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           const samples = hist2;
           const len2 = samples.length;
           const threshold = 85;
-          const yThresh = h - (threshold / 100) * h;
+
+          // Chart occupies middle band of canvas (centered vertically)
+          const chartHeight = h * 0.5;
+          const chartTop = (h - chartHeight) / 2;
+
+          const yThresh = chartTop + chartHeight - (threshold / 100) * chartHeight;
 
           ctx2d.clearRect(0, 0, w, h);
 
