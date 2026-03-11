@@ -169,15 +169,27 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const ctx = new AudioContext({ latencyHint: "interactive", sampleRate: 8000 });
       const source = ctx.createMediaStreamSource(stream);
 
+      // Sub/Kick band: Lowpass 100 Hz
+      const subFilter = ctx.createBiquadFilter();
+      subFilter.type = "lowpass";
+      subFilter.frequency.value = 100;
+      subFilter.Q.value = 0.7;
+
+      // Bass band: Bandpass 150 Hz
       const lowFilter = ctx.createBiquadFilter();
       lowFilter.type = "bandpass";
-      lowFilter.frequency.value = 60;
-      lowFilter.Q.value = 1.2;
+      lowFilter.frequency.value = 150;
+      lowFilter.Q.value = 0.8;
 
+      // Low-mid band: Bandpass 350 Hz
       const midFilter = ctx.createBiquadFilter();
       midFilter.type = "bandpass";
-      midFilter.frequency.value = 130;
-      midFilter.Q.value = 0.6;
+      midFilter.frequency.value = 350;
+      midFilter.Q.value = 1.0;
+
+      const subAnalyser = ctx.createAnalyser();
+      subAnalyser.fftSize = 32;
+      subAnalyser.smoothingTimeConstant = 0;
 
       const lowAnalyser = ctx.createAnalyser();
       lowAnalyser.fftSize = 32;
@@ -187,12 +199,15 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       midAnalyser.fftSize = 32;
       midAnalyser.smoothingTimeConstant = 0;
 
+      source.connect(subFilter);
       source.connect(lowFilter);
       source.connect(midFilter);
+      subFilter.connect(subAnalyser);
       lowFilter.connect(lowAnalyser);
       midFilter.connect(midAnalyser);
 
       audioContextRef.current = ctx;
+      subAnalyserRef.current = subAnalyser;
       lowAnalyserRef.current = lowAnalyser;
       midAnalyserRef.current = midAnalyser;
       streamRef.current = stream;
