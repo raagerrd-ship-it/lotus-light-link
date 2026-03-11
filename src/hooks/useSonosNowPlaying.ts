@@ -84,6 +84,21 @@ export function useSonosNowPlaying() {
       watchdogTrackRef.current = null;
     }
 
+    // Compensate position for time elapsed since DB row was written
+    const dbWriteAge = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
+    const compensatedPosition = row.playback_state === "PLAYBACK_STATE_PLAYING"
+      ? (row.position_ms ?? 0) + Math.max(0, dbWriteAge)
+      : (row.position_ms ?? 0);
+
+    // Only update position if it wouldn't cause a visible jump backwards
+    const currentData = dataRef.current;
+    if (currentData && currentData.trackName === row.track_name && currentData.positionMs != null) {
+      const currentEstimated = currentData.positionMs + (performance.now() - currentData.receivedAt);
+      const diff = Math.abs(compensatedPosition - currentEstimated);
+      // Skip if the difference is small (< 3s) — our interpolation is good enough
+      if (diff < 3000 && !changed) return;
+    }
+
     applyNowPlaying({
       trackName: row.track_name,
       artistName: row.artist_name,
@@ -91,7 +106,7 @@ export function useSonosNowPlaying() {
       albumArtUrl: row.album_art_url,
       playbackState: row.playback_state,
       durationMs: row.duration_ms,
-      positionMs: row.position_ms,
+      positionMs: compensatedPosition,
       receivedAt: performance.now(),
     });
 
@@ -179,6 +194,16 @@ export function useSonosNowPlaying() {
         if (status.trackName && (!currentData || status.trackName !== currentData.trackName)) {
           watchdogTrackRef.current = status.trackName;
         }
+        const newPos = status.positionMillis ?? 0;
+
+        // Skip position-only updates that would cause small jumps
+        const isTrackChange = !currentData || status.trackName !== currentData.trackName;
+        if (!isTrackChange && currentData && currentData.positionMs != null) {
+          const currentEstimated = currentData.positionMs + (performance.now() - currentData.receivedAt);
+          const diff = Math.abs(newPos - currentEstimated);
+          if (diff < 3000) return; // interpolation is close enough
+        }
+
         applyNowPlaying({
           trackName: status.trackName ?? null,
           artistName: status.artistName ?? null,
@@ -186,7 +211,7 @@ export function useSonosNowPlaying() {
           albumArtUrl: status.albumArtUrl ?? currentData?.albumArtUrl ?? null,
           playbackState: status.playbackState ?? currentData?.playbackState ?? "PLAYBACK_STATE_PLAYING",
           durationMs: status.durationMillis ?? currentData?.durationMs ?? null,
-          positionMs: status.positionMillis ?? 0,
+          positionMs: newPos,
           receivedAt: performance.now(),
         });
       }
