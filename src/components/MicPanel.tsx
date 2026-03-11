@@ -516,8 +516,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const circumference = 2 * Math.PI * 60; // r=60
         progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
       }
-      if (barRef.current) barRef.current.style.width = `${pct}%`;
-      if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
       // Store base color for chart
       const baseColor = currentColorRef.current;
