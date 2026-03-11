@@ -44,19 +44,9 @@ const Index = () => {
     }
   };
 
-  const finishConnect = useCallback(async (conn: BLEConnection) => {
-    retryCountRef.current = 0;
-    setConnection(conn);
-    setAutoConnecting(false);
-    setReconnecting(false);
-    await sendPower(conn.characteristic, true);
-    await sendBrightness(conn.characteristic, 100);
-    const [r, g, b] = currentColor;
-    await sendColor(conn.characteristic, r, g, b).catch(() => {});
-
-    conn.device.addEventListener("gattserverdisconnected", async () => {
+  const setupDisconnectHandler = useCallback((conn: BLEConnection) => {
+    const handleDisconnect = async () => {
       setConnection(null);
-      // Auto-retry up to 3 times
       for (let i = 0; i < 3; i++) {
         retryCountRef.current = i + 1;
         setReconnecting(true);
@@ -68,17 +58,27 @@ const Index = () => {
           setReconnecting(false);
           await sendPower(retry.characteristic, true).catch(() => {});
           await sendBrightness(retry.characteristic, 100).catch(() => {});
-          const [cr, cg, cb] = currentColor;
-          await sendColor(retry.characteristic, cr, cg, cb).catch(() => {});
-          // Re-attach disconnect listener
-          retry.device.addEventListener("gattserverdisconnected", arguments.callee);
+          setupDisconnectHandler(retry);
           return;
         }
       }
       setReconnecting(false);
       retryCountRef.current = 0;
-    });
-  }, [currentColor]);
+    };
+    conn.device.addEventListener("gattserverdisconnected", handleDisconnect);
+  }, []);
+
+  const finishConnect = useCallback(async (conn: BLEConnection) => {
+    retryCountRef.current = 0;
+    setConnection(conn);
+    setAutoConnecting(false);
+    setReconnecting(false);
+    await sendPower(conn.characteristic, true);
+    await sendBrightness(conn.characteristic, 100);
+    const [r, g, b] = currentColor;
+    await sendColor(conn.characteristic, r, g, b).catch(() => {});
+    setupDisconnectHandler(conn);
+  }, [currentColor, setupDisconnectHandler]);
 
   // Auto-reconnect on mount
   useEffect(() => {
