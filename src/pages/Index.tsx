@@ -36,7 +36,10 @@ const Index = () => {
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
   const [isOn, setIsOn] = useState(true);
   const retryCountRef = useRef(0);
+  const [sonosColor, setSonosColor] = useState<[number, number, number] | null>(null);
   const lastDevice = getLastDevice();
+  const { nowPlaying } = useSonosNowPlaying();
+  const lastArtUrlRef = useRef<string | null>(null);
 
   const doReconnect = async (): Promise<BLEConnection | null> => {
     try {
