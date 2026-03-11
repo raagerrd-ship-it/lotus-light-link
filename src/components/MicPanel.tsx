@@ -711,7 +711,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         ref={vizRef}
         className="w-32 h-32 rounded-full border-2 flex items-center justify-center will-change-transform"
         style={{
-          borderColor: active ? "hsl(var(--foreground))" : "hsl(var(--border))",
+          borderColor: active
+            ? `rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`
+            : "hsl(var(--border))",
+          boxShadow: active
+            ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
+            : undefined,
         }}
       >
         <Activity
