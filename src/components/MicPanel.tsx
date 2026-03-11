@@ -770,11 +770,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         </div>
       </div>
 
-      {!active && (
-        <p className="text-xs text-muted-foreground text-center max-w-xs mt-4">
-          Isolerar basfrekvenser och styr ljusstyrkan efter kickdrum/bas. Välj färg först.
-        </p>
-      )}
     </div>
   );
 }

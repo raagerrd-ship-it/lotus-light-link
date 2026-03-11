@@ -4,19 +4,32 @@ interface Props {
   nowPlaying: SonosNowPlaying;
   bpm?: number | null;
   accentColor?: [number, number, number];
+  progressFraction?: number;
 }
 
-export default function NowPlayingBar({ nowPlaying, bpm, accentColor }: Props) {
+export default function NowPlayingBar({ nowPlaying, bpm, accentColor, progressFraction = 0 }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
 
   return (
     <div className="px-4 py-3 shrink-0">
+      {/* Progress bar */}
+      <div className="h-[2px] rounded-full bg-border/30 mb-3 overflow-hidden">
+        <div
+          className="h-full rounded-full transition-[width] duration-1000 ease-linear"
+          style={{
+            width: `${progressFraction * 100}%`,
+            backgroundColor: `rgb(${r}, ${g}, ${b})`,
+            boxShadow: `0 0 6px rgba(${r},${g},${b},0.5)`,
+          }}
+        />
+      </div>
+
       <div className="flex items-center gap-3">
         {nowPlaying.albumArtUrl && (
           <img
             src={nowPlaying.albumArtUrl}
             alt="Album art"
-            className="w-11 h-11 rounded-lg"
+            className="w-12 h-12 rounded-xl"
             crossOrigin="anonymous"
             style={{
               boxShadow: `0 0 16px rgba(${r},${g},${b},0.4), 0 0 4px rgba(${r},${g},${b},0.2)`,
