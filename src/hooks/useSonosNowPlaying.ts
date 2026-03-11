@@ -194,6 +194,16 @@ export function useSonosNowPlaying() {
         if (status.trackName && (!currentData || status.trackName !== currentData.trackName)) {
           watchdogTrackRef.current = status.trackName;
         }
+        const newPos = status.positionMillis ?? 0;
+
+        // Skip position-only updates that would cause small jumps
+        const isTrackChange = !currentData || status.trackName !== currentData.trackName;
+        if (!isTrackChange && currentData && currentData.positionMs != null) {
+          const currentEstimated = currentData.positionMs + (performance.now() - currentData.receivedAt);
+          const diff = Math.abs(newPos - currentEstimated);
+          if (diff < 3000) return; // interpolation is close enough
+        }
+
         applyNowPlaying({
           trackName: status.trackName ?? null,
           artistName: status.artistName ?? null,
@@ -201,7 +211,7 @@ export function useSonosNowPlaying() {
           albumArtUrl: status.albumArtUrl ?? currentData?.albumArtUrl ?? null,
           playbackState: status.playbackState ?? currentData?.playbackState ?? "PLAYBACK_STATE_PLAYING",
           durationMs: status.durationMillis ?? currentData?.durationMs ?? null,
-          positionMs: status.positionMillis ?? 0,
+          positionMs: newPos,
           receivedAt: performance.now(),
         });
       }
