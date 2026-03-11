@@ -1,6 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
+import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
+import { drawIntensityChart, type ChartSample } from "@/lib/drawChart";
+import { liftColor } from "@/lib/colorUtils";
 
 interface MicPanelProps {
   char: any;
@@ -52,15 +55,19 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const throttleRef = useRef<number>(0);
-  const colorThrottleRef = useRef<number>(0);
-  const colorBoostedRef = useRef(false);
-  const boostStartRef = useRef<number>(0);
-  const boostColorRef = useRef<[number, number, number]>([255, 255, 255]);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
   const charRef = useRef<any>(char);
   useEffect(() => { charRef.current = char; }, [char]);
   const punchWhiteRef = useRef(true);
   useEffect(() => { punchWhiteRef.current = punchWhite; }, [punchWhite]);
+
+  // Consolidated color boost state
+  const colorBoostRef = useRef({
+    active: false,
+    startTime: 0,
+    color: [255, 255, 255] as [number, number, number],
+    throttle: 0,
+  });
 
   // Ref for currentColor so the rAF loop never restarts on color change
   const currentColorRef = useRef(currentColor);
@@ -84,7 +91,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const transientAvgRef = useRef(0.1);
   
   // Predictive beat: pre-fire BLE commands to compensate for latency
-  const BLE_LATENCY_MS = 50; // pre-fire ms before expected beat
+  const BLE_LATENCY_MS = 50;
   const predictiveFiredRef = useRef(false);
   const lastBeatTimeRef = useRef(0);
 
@@ -92,21 +99,19 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const onsetTimesRef = useRef<number[]>([]);
   const lastOnsetRef = useRef(0);
   const bpmRef = useRef(0);
-  const bpmConfidenceRef = useRef(0); // 0-1 confidence
+  const bpmConfidenceRef = useRef(0);
   const silenceStartRef = useRef(0);
   
   // Sonos position phase-sync
   const sonosPositionRef = useRef<{ positionMs: number; receivedAt: number } | null>(null);
   const durationMsRef = useRef<number | null | undefined>(durationMs);
   const lastPhaseCorrectionRef = useRef(0);
-  useEffect(() => {
-    sonosPositionRef.current = sonosPosition ?? null;
-  }, [sonosPosition]);
+  useEffect(() => { sonosPositionRef.current = sonosPosition ?? null; }, [sonosPosition]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
   // Auto-correlation BPM: track energy history for spectral tempo
   const energyHistoryRef = useRef<number[]>([]);
-  const energyHistoryMaxLen = 256; // ~4s at 60fps
+  const energyHistoryMaxLen = 256;
 
   const onBpmChangeRef = useRef(onBpmChange);
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
@@ -125,9 +130,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   }, [externalBpm]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intensityHistoryRef = useRef<{ pct: number; r: number; g: number; b: number; beat?: boolean }[]>([]);
+  const intensityHistoryRef = useRef<ChartSample[]>([]);
   const canvasFrameRef = useRef(0);
-  const HISTORY_LEN = 300; // 5s × 60fps
+  const HISTORY_LEN = 300;
 
   // Audio nodes
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -194,7 +199,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     } catch {
       // Mic access denied
     }
-    // charRef (not char) is used inside — keep start stable to avoid re-creating audio pipeline
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -208,49 +212,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     const midTD = new Uint8Array(32);
 
     const FLOOR = 0.10;
-
-    // Auto-correlation BPM estimation from energy history
-    const estimateBpmFromHistory = () => {
-      const history = energyHistoryRef.current;
-      if (history.length < 120) return; // need ~2s minimum
-
-      const len = history.length;
-      let mean = 0;
-      for (let i = 0; i < len; i++) mean += history[i];
-      mean /= len;
-
-      const minLag = 18; // 200 BPM
-      const maxLag = Math.min(90, len - 1); // 40 BPM
-      let bestLag = 30;
-      let bestCorr = -1;
-
-      for (let lag = minLag; lag <= maxLag; lag++) {
-        let corr = 0;
-        let norm1 = 0;
-        let norm2 = 0;
-        const n = len - lag;
-        for (let i = 0; i < n; i++) {
-          const a = history[i] - mean;
-          const b = history[i + lag] - mean;
-          corr += a * b;
-          norm1 += a * a;
-          norm2 += b * b;
-        }
-        const denom = Math.sqrt(norm1 * norm2);
-        if (denom > 0) corr /= denom;
-
-        if (corr > bestCorr) {
-          bestCorr = corr;
-          bestLag = lag;
-        }
-      }
-
-      if (bestCorr > 0.15) {
-        const autoBpm = (60 * 60) / bestLag;
-        return { bpm: autoBpm, confidence: bestCorr };
-      }
-      return null;
-    };
 
     // ─── Sub-function: sample energy from analysers ───
     const sampleEnergy = () => {
@@ -304,7 +265,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
       const prevPhase = beatPhaseRef.current;
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
-      // Reset predictive flag when phase wraps (beat passed without onset)
       if (prevPhase < 0.5 && beatPhaseRef.current >= 0.5) {
         predictiveFiredRef.current = false;
       }
@@ -337,7 +297,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       const isOnset = !isSilence && transient > adaptiveThreshRef.current && now - lastOnsetRef.current > 250;
 
-      // Sub-threshold micro-pulse
       const isMicroHit = !isSilence && !isOnset && transient > adaptiveThreshRef.current * 0.3 && beatPhaseRef.current > 0.15;
       if (isMicroHit) {
         const strength = transient / adaptiveThreshRef.current;
@@ -370,7 +329,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               onsetConf = Math.max(0, 1 - Math.sqrt(variance) / mid);
             }
 
-            const autoBpmResult = estimateBpmFromHistory();
+            const autoBpmResult = estimateBpmFromHistory(energyHistoryRef.current);
 
             let finalBpm = onsetBpm;
             let finalConf = onsetConf;
@@ -466,10 +425,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (vizRef.current) {
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
-        const lift = 0.5;
-        const gr = Math.round(cr + (255 - cr) * lift);
-        const gg = Math.round(cg + (255 - cg) * lift);
-        const gb = Math.round(cb + (255 - cb) * lift);
+        const [gr, gg, gb] = liftColor(currentColorRef.current, 0.5);
         s.transform = `translate(-50%, -50%) scale(${1 + finalCurved * 0.32})`;
         s.opacity = String(0.35 + finalCurved * 0.9);
         s.background = `radial-gradient(circle, rgba(${gr}, ${gg}, ${gb}, ${0.25 + finalCurved * 0.4}) 0%, rgba(${gr}, ${gg}, ${gb}, ${0.12 + finalCurved * 0.28}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.04 + finalCurved * 0.1}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
@@ -477,10 +433,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       }
       if (ringWrapRef.current) {
         const ringStyle = ringWrapRef.current.style;
-        const [cr2, cg2, cb2] = currentColorRef.current;
-        const gr2 = Math.round(cr2 + (255 - cr2) * 0.4);
-        const gg2 = Math.round(cg2 + (255 - cg2) * 0.4);
-        const gb2 = Math.round(cb2 + (255 - cb2) * 0.4);
+        const [gr2, gg2, gb2] = liftColor(currentColorRef.current, 0.4);
         ringStyle.transform = `scale(${1 + finalCurved * 0.12}) rotate(-90deg)`;
         ringStyle.filter = `drop-shadow(0 0 ${6 + finalCurved * 18}px rgba(${gr2}, ${gg2}, ${gb2}, ${0.4 + finalCurved * 0.5}))`;
       }
@@ -503,101 +456,22 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Draw canvas chart every 3rd frame (~20fps)
       canvasFrameRef.current++;
       if (canvasFrameRef.current % 3 === 0 && canvasRef.current) {
-        const canvas = canvasRef.current;
-        const ctx2d = canvas.getContext('2d');
-        if (ctx2d) {
-          const w = canvas.width;
-          const h = canvas.height;
-          const samples = hist2;
-          const len2 = samples.length;
-          const threshold = 85;
-
-          const chartHeight = h * 0.7;
-          const chartTop = (h - chartHeight) / 2;
-          const yThresh = chartTop + chartHeight - (threshold / 100) * chartHeight;
-
-          ctx2d.clearRect(0, 0, w, h);
-
-          const futureFrames = bpmRef.current > 0 ? Math.round(framesPerBeatRef.current * 2) : 0;
-          const totalFrames = HISTORY_LEN + futureFrames;
-
-          if (len2 > 1) {
-            const step = w / (totalFrames - 1);
-            const offsetX = (HISTORY_LEN - len2) * step;
-
-            for (let i = 1; i < len2; i++) {
-              const x0 = offsetX + (i - 1) * step;
-              const x1 = offsetX + i * step;
-              const s0 = samples[i - 1];
-              const s1 = samples[i];
-              const y0 = chartTop + chartHeight - (s0.pct / 100) * chartHeight;
-              const y1 = chartTop + chartHeight - (s1.pct / 100) * chartHeight;
-              const chartBottom = chartTop + chartHeight;
-              const cr = s1.r, cg = s1.g, cb = s1.b;
-              const avgPct = (s0.pct + s1.pct) / 2;
-              const brightFactor = Math.max(0.15, avgPct / 100);
-              const lift = brightFactor * 0.6;
-              const lr = Math.round(cr + (255 - cr) * lift);
-              const lg = Math.round(cg + (255 - cg) * lift);
-              const lb = Math.round(cb + (255 - cb) * lift);
-
-              const grad = ctx2d.createLinearGradient(x0, y1, x0, chartBottom);
-              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.15 + brightFactor * 0.4})`);
-              grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
-              ctx2d.fillStyle = grad;
-              ctx2d.beginPath();
-              ctx2d.moveTo(x0, chartBottom);
-              ctx2d.lineTo(x0, y0);
-              ctx2d.lineTo(x1, y1);
-              ctx2d.lineTo(x1, chartBottom);
-              ctx2d.closePath();
-              ctx2d.fill();
-
-              if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
-                const clipY0 = Math.min(y0, yThresh);
-                const clipY1 = Math.min(y1, yThresh);
-                const whiteT = Math.min(1, (avgPct - threshold) / (100 - threshold));
-                const fillGrad = ctx2d.createLinearGradient(0, yThresh, 0, Math.min(clipY0, clipY1));
-                fillGrad.addColorStop(0, `rgba(255, 255, 255, 0.05)`);
-                fillGrad.addColorStop(1, `rgba(255, 255, 255, ${0.1 + whiteT * 0.4})`);
-                ctx2d.fillStyle = fillGrad;
-                ctx2d.beginPath();
-                ctx2d.moveTo(x0, yThresh);
-                ctx2d.lineTo(x0, clipY0);
-                ctx2d.lineTo(x1, clipY1);
-                ctx2d.lineTo(x1, yThresh);
-                ctx2d.closePath();
-                ctx2d.fill();
-              }
-
-              const lineAlpha = 0.4 + brightFactor * 0.6;
-              ctx2d.beginPath();
-              ctx2d.moveTo(x0, Math.max(y0, yThresh));
-              ctx2d.lineTo(x1, Math.max(y1, yThresh));
-              ctx2d.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${lineAlpha})`;
-              ctx2d.lineWidth = 2.5;
-              ctx2d.stroke();
-
-              if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
-                const aboveY0 = Math.min(y0, yThresh);
-                const aboveY1 = Math.min(y1, yThresh);
-                const whiteT = Math.min(1, (avgPct - threshold) / (100 - threshold));
-                ctx2d.beginPath();
-                ctx2d.moveTo(x0, aboveY0);
-                ctx2d.lineTo(x1, aboveY1);
-                ctx2d.strokeStyle = `rgba(255, 255, 255, ${0.3 + whiteT * 0.6})`;
-                ctx2d.lineWidth = 2.5;
-                ctx2d.stroke();
-              }
-            }
-          }
-        }
+        drawIntensityChart(
+          canvasRef.current,
+          hist2,
+          HISTORY_LEN,
+          framesPerBeatRef.current,
+          bpmRef.current,
+          punchWhiteRef.current,
+        );
       }
     };
 
     // ─── Sub-function: unified BLE dispatch (predictive + normal + kick) ───
     const dispatchBle = (pct: number, curved: number, now: number) => {
-      // Predictive pre-fire: send early to compensate for BLE latency
+      const boost = colorBoostRef.current;
+
+      // Predictive pre-fire
       if (bpmRef.current > 0 && bpmConfidenceRef.current > 0.3 && !predictiveFiredRef.current) {
         const beatMs = 60000 / bpmRef.current;
         const phaseMs = beatPhaseRef.current * beatMs;
@@ -608,26 +482,17 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           ble.brightness(predictedPct);
           if (punchWhiteRef.current && predictedPct > 85) {
             const color = currentColorRef.current;
-            const [cr, cg, cb] = color;
-            const boost = Math.min(1, (predictedPct - 85) / 15);
-            ble.color(
-              Math.round(cr + (255 - cr) * boost),
-              Math.round(cg + (255 - cg) * boost),
-              Math.round(cb + (255 - cb) * boost),
-            );
-            colorBoostedRef.current = true;
-            boostStartRef.current = now;
-            boostColorRef.current = [
-              Math.round(cr + (255 - cr) * boost),
-              Math.round(cg + (255 - cg) * boost),
-              Math.round(cb + (255 - cb) * boost),
-            ];
+            const boostFactor = Math.min(1, (predictedPct - 85) / 15);
+            const lifted = liftColor(color, boostFactor);
+            ble.color(...lifted);
+            boost.active = true;
+            boost.startTime = now;
+            boost.color = lifted;
           }
-          return; // predictive handled this frame
+          return;
         }
       }
 
-      // Skip normal brightness + kick if predictive already fired for this beat
       const predictiveActive = predictiveFiredRef.current && beatPhaseRef.current < 0.15;
 
       // Normal brightness (throttled)
@@ -641,39 +506,35 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
 
-      if (!predictiveActive && punchWhiteRef.current && curved > 0.98 && beatPhaseRef.current < 0.1 && now - colorThrottleRef.current >= colorFadeMs) {
-        colorThrottleRef.current = now;
-        colorBoostedRef.current = true;
-        boostStartRef.current = now;
-        const [cr, cg, cb] = color;
-        const boost = (curved - 0.98) * 25;
-        const br = Math.round(cr + (255 - cr) * boost);
-        const bg = Math.round(cg + (255 - cg) * boost);
-        const bb = Math.round(cb + (255 - cb) * boost);
-        boostColorRef.current = [br, bg, bb];
-        ble.color(br, bg, bb);
-      } else if (colorBoostedRef.current && now - colorThrottleRef.current >= colorFadeMs) {
-        // Logarithmic fade-out from boost color back to base color
+      if (!predictiveActive && punchWhiteRef.current && curved > 0.98 && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorFadeMs) {
+        boost.throttle = now;
+        const boostFactor = (curved - 0.98) * 25;
+        const lifted = liftColor(color, boostFactor);
+        boost.active = true;
+        boost.startTime = now;
+        boost.color = lifted;
+        ble.color(...lifted);
+      } else if (boost.active && now - boost.throttle >= colorFadeMs) {
         const fadeDuration = Math.max(80, beatMs * 0.6);
-        const elapsed = now - boostStartRef.current;
+        const elapsed = now - boost.startTime;
         const tLinear = Math.min(elapsed / fadeDuration, 1);
         const tLog = 1 - Math.pow(1 - tLinear, 3);
 
-        const [br, bg, bb] = boostColorRef.current;
+        const [br, bg, bb] = boost.color;
         const fr = Math.round(br + (color[0] - br) * tLog);
         const fg = Math.round(bg + (color[1] - bg) * tLog);
         const fb = Math.round(bb + (color[2] - bb) * tLog);
 
-        colorThrottleRef.current = now;
+        boost.throttle = now;
         ble.color(fr, fg, fb);
 
         if (tLinear >= 1) {
-          colorBoostedRef.current = false;
+          boost.active = false;
         }
       }
     };
 
-    // ─── Main loop: orchestrates sub-functions ───
+    // ─── Main loop ───
     const loop = () => {
       const now = performance.now();
       const { transient, isSilence } = sampleEnergy();
@@ -692,9 +553,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   useEffect(() => stop, [stop]);
 
-  // Auto-start when char becomes available.
-  // charRef keeps the rAF loop connected to the current BLE characteristic,
-  // so reconnects work implicitly without restarting the audio pipeline.
   useEffect(() => {
     if (char && !active) {
       start();
@@ -702,9 +560,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [char]);
 
-    return (
+  return (
     <div className="flex flex-col items-center justify-center h-full px-4 overflow-hidden">
-      {/* Bass pulse visualizer — fills available space */}
       <div className="relative aspect-square w-full max-w-[min(80vw,80vh)] flex items-center justify-center overflow-visible">
         <div
           ref={vizRef}
@@ -724,15 +581,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           className="absolute w-[85%] h-[85%]"
           style={{ overflow: 'visible', transform: 'rotate(-90deg)' }}
         >
-          {/* Background track */}
-          <circle
-            cx="70" cy="70" r="60"
-            fill="none"
-            stroke="hsl(var(--border))"
-            strokeWidth="2"
-            opacity="0.3"
-          />
-          {/* Progress ring */}
+          <circle cx="70" cy="70" r="60" fill="none" stroke="hsl(var(--border))" strokeWidth="2" opacity="0.3" />
           <circle
             ref={progressRingRef}
             cx="70" cy="70" r="60"
@@ -746,30 +595,20 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             style={{ filter: `drop-shadow(0 0 10px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.75))` }}
           />
         </svg>
-        {/* Center content: circular-masked chart inside the ring */}
         <div className="absolute inset-0 flex items-center justify-center z-10">
           {active ? (
             <div className="w-[72%] h-[72%] rounded-full overflow-hidden flex items-center justify-center">
-              <canvas
-                ref={canvasRef}
-                width={400}
-                height={400}
-                className="w-full h-full"
-              />
+              <canvas ref={canvasRef} width={400} height={400} className="w-full h-full" />
             </div>
           ) : (
             <Activity
               ref={iconRef}
               className="w-14 h-14 animate-pulse"
-              style={{
-                opacity: 0.4,
-                color: `rgba(${currentColor[0]},${currentColor[1]},${currentColor[2]},0.6)`,
-              }}
+              style={{ opacity: 0.4, color: `rgba(${currentColor[0]},${currentColor[1]},${currentColor[2]},0.6)` }}
             />
           )}
         </div>
       </div>
-
     </div>
   );
 }
