@@ -175,6 +175,10 @@ export function useSonosNowPlaying() {
         dbStaleMs > 12000;
 
       if (shouldApply) {
+        // Mark watchdog override so DB polls don't flicker back to old track
+        if (status.trackName && (!currentData || status.trackName !== currentData.trackName)) {
+          watchdogTrackRef.current = status.trackName;
+        }
         applyNowPlaying({
           trackName: status.trackName ?? null,
           artistName: status.artistName ?? null,
