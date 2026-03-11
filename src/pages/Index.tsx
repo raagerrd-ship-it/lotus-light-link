@@ -339,50 +339,13 @@ const Index = () => {
   }
 
   // Main controller
-  return (
+   return (
     <div
-      className="flex flex-col h-[100dvh] bg-background transition-all duration-700 overflow-hidden"
+      className="relative h-[100dvh] bg-background transition-all duration-700 overflow-hidden"
       style={{ backgroundImage: bgGlow }}
     >
-      {/* Top zone */}
-      <div className="flex items-center justify-between px-4 py-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-3 h-3 rounded-full animate-pulse"
-            style={{ backgroundColor: isOn ? accentColor : "hsl(var(--muted-foreground))" }}
-          />
-          <span className="text-sm font-bold tracking-widest text-foreground uppercase">
-            {connection.device.name || "BLEDOM01"}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Checkbox
-              checked={punchWhite}
-              onCheckedChange={(v) => setPunchWhite(!!v)}
-            />
-            <span className="text-xs text-muted-foreground">Vit kick</span>
-          </label>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handlePowerToggle}
-            className="rounded-full"
-            style={isOn ? { color: accentColor } : undefined}
-          >
-            <Power className="w-5 h-5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Now playing from Sonos */}
-      {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
-        <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} bpm={liveBpm} />
-      )}
-
-      {/* Mic panel takes remaining space */}
-      <div className="flex-1 min-h-0">
+      {/* Mic panel fills entire viewport */}
+      <div className="absolute inset-0">
         <MicPanel
           char={char}
           currentColor={currentColor}
@@ -393,6 +356,50 @@ const Index = () => {
           onBpmChange={setLiveBpm}
         />
       </div>
+
+      {/* Overlay: compact header */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2"
+        style={{ background: 'linear-gradient(to bottom, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
+      >
+        <div className="flex items-center gap-2">
+          <div
+            className="w-2.5 h-2.5 rounded-full animate-pulse"
+            style={{ backgroundColor: isOn ? accentColor : "hsl(var(--muted-foreground))" }}
+          />
+          <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase">
+            {connection.device.name || "BLEDOM01"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <Checkbox
+              checked={punchWhite}
+              onCheckedChange={(v) => setPunchWhite(!!v)}
+              className="w-3.5 h-3.5"
+            />
+            <span className="text-[10px] text-muted-foreground">Vit kick</span>
+          </label>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handlePowerToggle}
+            className="rounded-full w-7 h-7"
+            style={isOn ? { color: accentColor } : undefined}
+          >
+            <Power className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Overlay: now playing */}
+      {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
+        <div className="absolute bottom-0 left-0 right-0 z-20"
+          style={{ background: 'linear-gradient(to top, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
+        >
+          <NowPlayingBar nowPlaying={nowPlaying} accentColor={accentColor} bpm={liveBpm} />
+        </div>
+      )}
     </div>
   );
 };
