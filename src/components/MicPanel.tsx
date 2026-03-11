@@ -495,8 +495,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
     };
 
-      return { phase, curved, finalCurved, pct };
-    };
 
     // ─── Sub-function: update DOM visuals (glow, ring, canvas) ───
     const updateVisuals = (finalCurved: number, pct: number, isOnset: boolean, now: number) => {
