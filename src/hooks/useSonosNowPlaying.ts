@@ -133,6 +133,7 @@ export function useSonosNowPlaying() {
   }, [data]);
 
   useEffect(() => {
+    fetchNowPlayingFromDb();
 
     const channel = brewSupabase
       .channel("sonos-now-playing-remote")
