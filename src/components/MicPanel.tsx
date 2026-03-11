@@ -102,7 +102,7 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
   }, [externalBpm]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intensityHistoryRef = useRef<number[]>([]);
+  const intensityHistoryRef = useRef<{ pct: number; r: number; g: number; b: number }[]>([]);
   const canvasFrameRef = useRef(0);
   const HISTORY_LEN = 300; // 5s × 60fps
 
@@ -425,9 +425,20 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
-      // Push to intensity history
+      // Compute the actual output color (with white boost if applicable)
+      const baseColor = currentColorRef.current;
+      let outR = baseColor[0], outG = baseColor[1], outB = baseColor[2];
+      if (punchWhiteRef.current && curved > 0.85) {
+        // Blend toward white based on intensity
+        const t = Math.min(1, (curved - 0.85) / 0.15);
+        outR = Math.round(outR + (255 - outR) * t);
+        outG = Math.round(outG + (255 - outG) * t);
+        outB = Math.round(outB + (255 - outB) * t);
+      }
+
+      // Push to intensity history with actual color
       const hist2 = intensityHistoryRef.current;
-      hist2.push(pct);
+      hist2.push({ pct, r: outR, g: outG, b: outB });
       if (hist2.length > HISTORY_LEN) hist2.shift();
 
       // Draw canvas chart every 3rd frame (~20fps)
@@ -438,8 +449,8 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
         if (ctx2d) {
           const w = canvas.width;
           const h = canvas.height;
-          const data = hist2;
-          const len2 = data.length;
+          const samples = hist2;
+          const len2 = samples.length;
 
           ctx2d.clearRect(0, 0, w, h);
 
@@ -447,34 +458,36 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
             const step = w / (HISTORY_LEN - 1);
             const offsetX = (HISTORY_LEN - len2) * step;
 
-            // Filled area
-            ctx2d.beginPath();
-            ctx2d.moveTo(offsetX, h);
-            for (let i = 0; i < len2; i++) {
-              const x = offsetX + i * step;
-              const y = h - (data[i] / 100) * h;
-              ctx2d.lineTo(x, y);
-            }
-            ctx2d.lineTo(offsetX + (len2 - 1) * step, h);
-            ctx2d.closePath();
-            const [cr, cg, cb] = currentColorRef.current;
-            const grad = ctx2d.createLinearGradient(0, 0, 0, h);
-            grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.25)`);
-            grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
-            ctx2d.fillStyle = grad;
-            ctx2d.fill();
+            // Draw per-segment with actual color
+            for (let i = 1; i < len2; i++) {
+              const x0 = offsetX + (i - 1) * step;
+              const x1 = offsetX + i * step;
+              const s0 = samples[i - 1];
+              const s1 = samples[i];
+              const y0 = h - (s0.pct / 100) * h;
+              const y1 = h - (s1.pct / 100) * h;
 
-            // Line
-            ctx2d.beginPath();
-            for (let i = 0; i < len2; i++) {
-              const x = offsetX + i * step;
-              const y = h - (data[i] / 100) * h;
-              if (i === 0) ctx2d.moveTo(x, y);
-              else ctx2d.lineTo(x, y);
+              // Filled area segment
+              const grad = ctx2d.createLinearGradient(0, 0, 0, h);
+              grad.addColorStop(0, `rgba(${s1.r}, ${s1.g}, ${s1.b}, 0.3)`);
+              grad.addColorStop(1, `rgba(${s1.r}, ${s1.g}, ${s1.b}, 0.02)`);
+              ctx2d.fillStyle = grad;
+              ctx2d.beginPath();
+              ctx2d.moveTo(x0, h);
+              ctx2d.lineTo(x0, y0);
+              ctx2d.lineTo(x1, y1);
+              ctx2d.lineTo(x1, h);
+              ctx2d.closePath();
+              ctx2d.fill();
+
+              // Line segment
+              ctx2d.beginPath();
+              ctx2d.moveTo(x0, y0);
+              ctx2d.lineTo(x1, y1);
+              ctx2d.strokeStyle = `rgba(${s1.r}, ${s1.g}, ${s1.b}, 0.8)`;
+              ctx2d.lineWidth = 1.5;
+              ctx2d.stroke();
             }
-            ctx2d.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, 0.7)`;
-            ctx2d.lineWidth = 1.5;
-            ctx2d.stroke();
           }
         }
       }
