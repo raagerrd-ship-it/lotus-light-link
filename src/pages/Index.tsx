@@ -40,6 +40,8 @@ const Index = () => {
   const retryCountRef = useRef(0);
   const [sonosColor, setSonosColor] = useState<[number, number, number] | null>(null);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
+  const [punchWhite, setPunchWhite] = useState(true);
+  const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
   const lastDevice = getLastDevice();
   const { nowPlaying } = useSonosNowPlaying();
