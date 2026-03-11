@@ -4,6 +4,7 @@ import { Activity } from "lucide-react";
 import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
 import { drawIntensityChart, type ChartSample } from "@/lib/drawChart";
 import { liftColor } from "@/lib/colorUtils";
+import { type SongSection, getCurrentSection, getSectionBehavior, getUpcomingDrop } from "@/lib/songSections";
 
 interface MicPanelProps {
   char: any;
@@ -13,6 +14,8 @@ interface MicPanelProps {
   durationMs?: number | null;
   punchWhite: boolean;
   onBpmChange?: (bpm: number | null) => void;
+  songSections?: SongSection[];
+  songDrops?: number[];
 }
 
 // Priority-aware BLE command queue
@@ -49,7 +52,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -108,6 +111,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const lastPhaseCorrectionRef = useRef(0);
   useEffect(() => { sonosPositionRef.current = sonosPosition ?? null; }, [sonosPosition]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
+
+  // Song section refs
+  const songSectionsRef = useRef<SongSection[]>([]);
+  const songDropsRef = useRef<number[]>([]);
+  const dropFiredRef = useRef<Set<number>>(new Set());
+  useEffect(() => { songSectionsRef.current = songSections ?? []; dropFiredRef.current.clear(); }, [songSections]);
+  useEffect(() => { songDropsRef.current = songDrops ?? []; dropFiredRef.current.clear(); }, [songDrops]);
 
   // Auto-correlation BPM: track energy history for spectral tempo
   const energyHistoryRef = useRef<number[]>([]);
@@ -438,28 +448,53 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
     // ─── Sub-function: compute brightness from beat phase ───
     const computeBrightness = (isOnset: boolean, transient: number) => {
+      // Get current section behavior
+      let sectionBehavior = { maxBrightness: 1, beatReactivity: 1, breathingMode: false, punchWhiteOverride: null as boolean | null };
+      const sonosPos = sonosPositionRef.current;
+      let currentSec = 0;
+      if (sonosPos) {
+        const elapsed = performance.now() - sonosPos.receivedAt;
+        currentSec = (sonosPos.positionMs + elapsed) / 1000;
+      }
+      if (songSectionsRef.current.length > 0) {
+        const section = getCurrentSection(songSectionsRef.current, currentSec);
+        sectionBehavior = getSectionBehavior(section);
+      }
+
       const phase = beatPhaseRef.current;
+
+      // Breathing mode: gentle sine wave
+      if (sectionBehavior.breathingMode) {
+        const breathe = 0.3 + 0.2 * Math.sin(performance.now() / 1200);
+        const pct = Math.round(10 + 90 * breathe * sectionBehavior.maxBrightness);
+        return { phase, curved: breathe, finalCurved: breathe, pct, sectionBehavior, currentSec };
+      }
+
       const pulse = Math.pow(1 - phase, 2.5);
       const onsetStrength = isOnset ? Math.min(1, transient / (adaptiveThreshRef.current * 2.5)) : 0;
       const peakLevel = beatPhaseRef.current < 0.02
         ? Math.max(0.45, Math.min(1, 0.45 + onsetStrength * 0.55))
         : (pulseMaxRef.current ?? 0.6);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
-      const linear = peakLevel * pulse;
+      const linear = peakLevel * pulse * sectionBehavior.beatReactivity;
       const curved = Math.pow(linear, 0.55);
 
       let finalCurved = curved;
       if (bpmRef.current > 0 && curved < 0.25) {
         const bpmPulse = Math.pow(1 - phase, 2.0);
-        const synthCurved = 0.15 + bpmPulse * 0.35;
+        const synthCurved = 0.15 + bpmPulse * 0.35 * sectionBehavior.beatReactivity;
         finalCurved = Math.max(curved, synthCurved);
       }
+
+      // Cap by section max brightness
+      finalCurved = Math.min(finalCurved, sectionBehavior.maxBrightness);
 
       const floored = Math.max(0, finalCurved);
       const pct = Math.round(10 + 90 * Math.log1p(floored * 9) / Math.log(10));
 
-      return { phase, curved, finalCurved, pct };
+      return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
     };
+
 
     // ─── Sub-function: update DOM visuals (glow, ring, canvas) ───
     const updateVisuals = (finalCurved: number, pct: number, isOnset: boolean, now: number) => {
@@ -509,8 +544,23 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     };
 
     // ─── Sub-function: unified BLE dispatch (predictive + normal + kick) ───
-    const dispatchBle = (pct: number, curved: number, now: number) => {
+    const dispatchBle = (pct: number, curved: number, now: number, sectionBehavior: { punchWhiteOverride: boolean | null }, currentSec: number) => {
       const boost = colorBoostRef.current;
+      const effectivePunchWhite = sectionBehavior.punchWhiteOverride !== null ? sectionBehavior.punchWhiteOverride : punchWhiteRef.current;
+
+      // Predictive drop flash: fire 50ms before a known drop
+      const upcomingDrop = getUpcomingDrop(songDropsRef.current, currentSec, 0.1);
+      if (upcomingDrop !== null && !dropFiredRef.current.has(upcomingDrop)) {
+        dropFiredRef.current.add(upcomingDrop);
+        ble.brightness(100);
+        const color = currentColorRef.current;
+        const lifted = liftColor(color, 1.0);
+        ble.color(...lifted);
+        boost.active = true;
+        boost.startTime = now;
+        boost.color = lifted;
+        return;
+      }
 
       // Predictive pre-fire
       if (bpmRef.current > 0 && bpmConfidenceRef.current > 0.3 && !predictiveFiredRef.current) {
@@ -521,7 +571,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           predictiveFiredRef.current = true;
           const predictedPct = Math.max(60, Math.round((pulseMaxRef.current ?? 0.7) * 100));
           ble.brightness(predictedPct);
-          if (punchWhiteRef.current && predictedPct > 85) {
+          if (effectivePunchWhite && predictedPct > 85) {
             const color = currentColorRef.current;
             const boostFactor = Math.min(1, (predictedPct - 85) / 15);
             const lifted = liftColor(color, boostFactor);
@@ -547,7 +597,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
 
-      if (!predictiveActive && punchWhiteRef.current && curved > 0.98 && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorFadeMs) {
+      if (!predictiveActive && effectivePunchWhite && curved > 0.98 && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorFadeMs) {
         boost.throttle = now;
         const boostFactor = (curved - 0.98) * 25;
         const lifted = liftColor(color, boostFactor);
@@ -580,9 +630,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const now = performance.now();
       const { transient, isSilence } = sampleEnergy();
       const isOnset = detectBeatsAndBpm(transient, isSilence, now);
-      const { curved, finalCurved, pct } = computeBrightness(isOnset, transient);
+      const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient);
       updateVisuals(finalCurved, pct, isOnset, now);
-      dispatchBle(pct, curved, now);
+      dispatchBle(pct, curved, now, sectionBehavior, currentSec);
       rafRef.current = requestAnimationFrame(loop);
     };
 
