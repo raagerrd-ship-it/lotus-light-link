@@ -727,24 +727,24 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
     return (
     <div className="flex flex-col items-center justify-center h-full px-4">
-      {/* Bass pulse visualizer with progress ring — enlarged with chart inside */}
-      <div className="relative w-72 h-72 flex items-center justify-center overflow-visible">
+      {/* Bass pulse visualizer with progress ring — large with circular chart inside */}
+      <div className="relative w-80 h-80 sm:w-96 sm:h-96 flex items-center justify-center overflow-visible">
         <div
           ref={vizRef}
-          className="absolute left-1/2 top-1/2 w-64 h-64 -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
+          className="absolute left-1/2 top-1/2 w-72 h-72 sm:w-[22rem] sm:h-[22rem] -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
           style={{
             background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.28) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.14) 38%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.04) 58%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 78%)`,
-            filter: "blur(18px)",
+            filter: "blur(22px)",
             opacity: active ? 0.7 : 0.35,
             boxShadow: active
-              ? `0 0 50px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.45)`
+              ? `0 0 60px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.45)`
               : undefined,
           }}
         />
         <svg
           ref={ringWrapRef}
           viewBox="0 0 140 140"
-          className="absolute w-60 h-60"
+          className="absolute w-72 h-72 sm:w-80 sm:h-80"
           style={{ overflow: 'visible', transform: 'rotate(-90deg)' }}
         >
           {/* Background track */}
@@ -752,7 +752,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             cx="70" cy="70" r="60"
             fill="none"
             stroke="hsl(var(--border))"
-            strokeWidth="2.5"
+            strokeWidth="2"
             opacity="0.3"
           />
           {/* Progress ring */}
@@ -761,7 +761,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             cx="70" cy="70" r="60"
             fill="none"
             stroke={`rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
-            strokeWidth="4"
+            strokeWidth="3.5"
             strokeLinecap="round"
             strokeDasharray={String(2 * Math.PI * 60)}
             strokeDashoffset={String(2 * Math.PI * 60)}
@@ -769,21 +769,21 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             style={{ filter: `drop-shadow(0 0 10px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.75))` }}
           />
         </svg>
-        {/* Center content: chart inside the circle */}
+        {/* Center content: circular-masked chart inside the ring */}
         <div className="absolute inset-0 flex items-center justify-center z-10">
           {active ? (
-            <div className="w-40 h-24 rounded-lg overflow-hidden">
+            <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full overflow-hidden flex items-center justify-center">
               <canvas
                 ref={canvasRef}
-                width={320}
-                height={160}
+                width={400}
+                height={400}
                 className="w-full h-full"
               />
             </div>
           ) : (
             <Activity
               ref={iconRef}
-              className="w-12 h-12"
+              className="w-14 h-14"
               style={{
                 opacity: 0.3,
                 color: undefined,
