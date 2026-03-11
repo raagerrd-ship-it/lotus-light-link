@@ -216,8 +216,8 @@ const Index = () => {
   // Connect screen
   if (!connection) {
     return (
-      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
-        <div className="flex flex-col items-center gap-8 max-w-sm text-center">
+      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8 animate-fade-in">
+        <div className="flex flex-col items-center gap-10 max-w-sm text-center">
           <div className="relative">
             <div
               className="w-28 h-28 rounded-full border border-border flex items-center justify-center animate-pulse"
@@ -228,47 +228,18 @@ const Index = () => {
           </div>
 
           <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Ljusår</h1>
+            <h1 className="text-2xl font-bold tracking-[0.2em] uppercase mb-2">Ljusår</h1>
             <p className="text-muted-foreground text-sm">
               Anslut till din LED-slinga via Bluetooth
             </p>
           </div>
 
-          {/* Fallback color setting */}
-          <div className="w-full">
-            <label className="text-xs text-muted-foreground mb-2 block text-left">Startfärg</label>
-            <Select value={selectedColorIdx} onValueChange={handleColorSelect}>
-              <SelectTrigger className="w-full bg-secondary/50 border-border">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-4 h-4 rounded-full shrink-0 border border-border"
-                    style={{ backgroundColor: accentColor }}
-                  />
-                  <SelectValue placeholder="Välj färg" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {PRESET_COLORS.map((c, i) => (
-                  <SelectItem key={i} value={String(i)}>
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-4 h-4 rounded-full shrink-0 border border-border"
-                        style={{ backgroundColor: `rgb(${c.rgb[0]}, ${c.rgb[1]}, ${c.rgb[2]})` }}
-                      />
-                      {c.label}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {lastDevice && (
+          {lastDevice ? (
             <Button
               onClick={handleReconnect}
               disabled={connecting || reconnecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full"
               style={!reconnecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
@@ -278,46 +249,38 @@ const Index = () => {
               <Zap className="w-5 h-5 mr-2" />
               {reconnecting ? "Söker..." : lastDevice.name}
             </Button>
+          ) : (
+            <Button
+              onClick={() => handleConnect(false)}
+              disabled={connecting}
+              size="lg"
+              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full"
+              style={!connecting ? {
+                backgroundColor: accentColor,
+                color: "#121212",
+                boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
+              } : undefined}
+            >
+              {connecting ? "Söker..." : "VÄCK LJUS"}
+            </Button>
           )}
 
-          <Button
-            onClick={() => handleConnect(false)}
+          <button
+            onClick={() => handleConnect(lastDevice ? false : true)}
             disabled={connecting || reconnecting}
-            size={lastDevice ? "sm" : "lg"}
-            variant={lastDevice ? "outline" : "default"}
-            className={lastDevice
-              ? "rounded-full"
-              : "text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300"
-            }
-            style={!lastDevice && !connecting ? {
-              backgroundColor: accentColor,
-              color: "#121212",
-              boxShadow: `0 0 30px rgba(${r},${g},${b},0.3)`,
-            } : undefined}
+            className="text-muted-foreground text-xs hover:text-foreground transition-colors disabled:opacity-50"
           >
-            {connecting ? "Söker..." : lastDevice ? "Ny enhet" : "VÄCK LJUS"}
-          </Button>
-
-          <Button
-            onClick={() => handleConnect(true)}
-            disabled={connecting || reconnecting}
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-          >
-            Sök alla enheter
-          </Button>
+            {lastDevice ? "Ny enhet" : "Sök alla enheter"}
+          </button>
 
           {error && (
             <p className="text-destructive text-sm">{error}</p>
           )}
-
-          <p className="text-muted-foreground text-xs mt-4 leading-relaxed">
-            Kräver Chrome på Android eller dator.
-            <br />
-            Stäng Lotus Lantern-appen innan du ansluter.
-          </p>
         </div>
+
+        <p className="text-muted-foreground/50 text-[10px] absolute bottom-6 text-center leading-relaxed">
+          Kräver Chrome på Android eller dator · Stäng Lotus Lantern först
+        </p>
       </div>
     );
   }
