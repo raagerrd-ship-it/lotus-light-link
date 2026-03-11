@@ -8,6 +8,7 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   externalBpm?: number | null;
   sonosPosition?: { positionMs: number; receivedAt: number } | null;
+  durationMs?: number | null;
 }
 
 // Priority-aware BLE command queue
