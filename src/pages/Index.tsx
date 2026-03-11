@@ -32,7 +32,7 @@ const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [autoConnecting, setAutoConnecting] = useState(false);
+  const [autoConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
