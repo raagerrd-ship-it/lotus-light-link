@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -12,23 +11,28 @@ import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
 
-
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const [reconnecting, setReconnecting] = useState(false);
-  
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
-  
   const [isOn, setIsOn] = useState(true);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
-  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-hide overlay after 3s, show on interaction
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBpmTrackRef = useRef<string | null>(null);
+  const lastArtUrlRef = useRef<string | null>(null);
+  const currentColorRef = useRef(currentColor);
+
+  const lastDevice = getLastDevice();
+  const { nowPlaying } = useSonosNowPlaying();
+
+  useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
+
+  // Auto-hide overlay after 3s
   const resetOverlayTimer = useCallback(() => {
     setShowOverlay(true);
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
@@ -39,75 +43,52 @@ const Index = () => {
     if (connection) resetOverlayTimer();
     return () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); };
   }, [connection, resetOverlayTimer]);
-  const lastBpmTrackRef = useRef<string | null>(null);
-  const lastDevice = getLastDevice();
-  const { nowPlaying } = useSonosNowPlaying();
-  const lastArtUrlRef = useRef<string | null>(null);
-
-
-  const setupDisconnectHandler = useCallback((conn: BLEConnection) => {
-    const handleDisconnect = () => {
-      setConnection(null);
-      setReconnecting(false);
-    };
-    conn.device.addEventListener("gattserverdisconnected", handleDisconnect);
-  }, []);
-
-  const currentColorRef = useRef(currentColor);
-  useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
   const finishConnect = useCallback(async (conn: BLEConnection) => {
     setConnection(conn);
-    setReconnecting(false);
+    setBusy(false);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
     const [r, g, b] = currentColorRef.current;
     await sendColor(conn.characteristic, r, g, b).catch(() => {});
-    setupDisconnectHandler(conn);
-  }, [setupDisconnectHandler]);
-
-  // Auto-reconnect on mount via getDevices() + watchAdvertisements()
-  useEffect(() => {
-    if (connection) return;
-    const saved = getLastDevice();
-    if (!saved) return;
-
-    setReconnecting(true);
-    autoReconnect().then((conn) => {
-      if (conn) {
-        finishConnect(conn);
-      } else {
-        setReconnecting(false);
-      }
+    conn.device.addEventListener("gattserverdisconnected", () => {
+      setConnection(null);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-extract color from Sonos album art
+  // Auto-reconnect on mount
+  useEffect(() => {
+    if (connection || !getLastDevice()) return;
+    setBusy(true);
+    autoReconnect().then((conn) => {
+      if (conn) finishConnect(conn);
+      else setBusy(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Extract color from album art
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-
     extractDominantColor(artUrl).then((color) => {
       if (!color) return;
       setCurrentColor(color);
       if (connection && isOn) {
-        sendColor(connection.characteristic, color[0], color[1], color[2]).catch(() => {});
+        sendColor(connection.characteristic, ...color).catch(() => {});
       }
     });
   }, [nowPlaying?.albumArtUrl, connection, isOn]);
 
-  // BPM lookup when track changes
+  // BPM lookup on track change
   useEffect(() => {
-    const track = nowPlaying?.trackName;
-    const artist = nowPlaying?.artistName;
-    const trackKey = `${track ?? ""}::${artist ?? ""}`;
-    if (!track || trackKey === lastBpmTrackRef.current) return;
-    lastBpmTrackRef.current = trackKey;
+    const { trackName: track, artistName: artist } = nowPlaying ?? {};
+    const key = `${track ?? ""}::${artist ?? ""}`;
+    if (!track || key === lastBpmTrackRef.current) return;
+    lastBpmTrackRef.current = key;
 
-    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bpm-lookup`;
-    fetch(url, {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bpm-lookup`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -116,43 +97,20 @@ const Index = () => {
       body: JSON.stringify({ track, artist }),
     })
       .then((r) => r.json())
-      .then((data) => {
-        if (data.bpm && data.bpm >= 40 && data.bpm <= 220) {
-          console.log(`BPM lookup: ${track} → ${data.bpm} (${data.confidence})`);
-          setSonosBpm(data.bpm);
-        } else {
-          setSonosBpm(null);
-        }
-      })
+      .then((d) => setSonosBpm(d.bpm >= 40 && d.bpm <= 220 ? d.bpm : null))
       .catch(() => setSonosBpm(null));
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
 
   const handleConnect = useCallback(async (scanAll = false) => {
-    setConnecting(true);
+    setBusy(true);
     setError(null);
     try {
-      const conn = await connectBLEDOM(scanAll);
-      await finishConnect(conn);
+      await finishConnect(await connectBLEDOM(scanAll));
     } catch (e: any) {
       setError(e.message || "Kunde inte ansluta");
-    } finally {
-      setConnecting(false);
+      setBusy(false);
     }
   }, [finishConnect]);
-
-  const handleReconnect = useCallback(async () => {
-    setReconnecting(true);
-    setError(null);
-    try {
-      const conn = await connectBLEDOM(false);
-      await finishConnect(conn);
-    } catch (e: any) {
-      setError(e.message || "Kunde inte återansluta");
-    } finally {
-      setReconnecting(false);
-    }
-  }, [finishConnect]);
-
 
   const handlePowerToggle = async () => {
     if (!connection) return;
@@ -162,26 +120,22 @@ const Index = () => {
   };
 
   const [r, g, b] = currentColor;
-  const accentColor = `rgb(${r}, ${g}, ${b})`;
-  const bgGlow = `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)`;
+  const accent = `rgb(${r},${g},${b})`;
   const char = connection?.characteristic;
 
-  // Compute progress fraction for NowPlayingBar
   const progressFraction = (() => {
     if (!nowPlaying?.positionMs || !nowPlaying?.durationMs || nowPlaying.durationMs <= 0) return 0;
     const elapsed = performance.now() - (nowPlaying.receivedAt ?? performance.now());
-    const estimatedMs = nowPlaying.positionMs + elapsed;
-    return Math.min(1, Math.max(0, estimatedMs / nowPlaying.durationMs));
+    return Math.min(1, Math.max(0, (nowPlaying.positionMs + elapsed) / nowPlaying.durationMs));
   })();
 
   return (
     <div
-      className="relative h-[100dvh] bg-background transition-all duration-700 overflow-hidden"
-      style={{ backgroundImage: bgGlow }}
+      className="relative h-[100dvh] bg-background overflow-hidden"
+      style={{ backgroundImage: `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)` }}
       onPointerMove={connection ? resetOverlayTimer : undefined}
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
-      {/* MicPanel always visible */}
       <div className="absolute inset-0">
         <MicPanel
           char={char}
@@ -198,11 +152,11 @@ const Index = () => {
       {!connection && (
         <div className="absolute inset-0 z-30 flex items-center justify-center animate-fade-in" style={{ background: 'hsl(var(--background) / 0.82)' }}>
           <div className="flex flex-col items-center gap-4 text-center px-8">
-            {reconnecting ? (
+            {busy ? (
               <>
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: accentColor }} />
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: accent }} />
                 <p className="text-sm text-muted-foreground">
-                  Återansluter{lastDevice ? ` till ${lastDevice.name}` : '…'}
+                  Ansluter{lastDevice ? ` till ${lastDevice.name}` : '…'}
                 </p>
               </>
             ) : (
@@ -211,45 +165,27 @@ const Index = () => {
                   className="w-14 h-14 rounded-full border border-border flex items-center justify-center"
                   style={{ boxShadow: `0 0 24px rgba(${r},${g},${b},0.15)` }}
                 >
-                  <Bluetooth className="w-6 h-6" style={{ color: accentColor }} />
+                  <Bluetooth className="w-6 h-6" style={{ color: accent }} />
                 </div>
 
-                {lastDevice ? (
-                  <Button
-                    onClick={handleReconnect}
-                    disabled={connecting}
-                    className="text-sm px-6 py-2.5 rounded-full font-bold tracking-wide transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                    style={{
-                      backgroundColor: accentColor,
-                      color: "#121212",
-                      boxShadow: `0 0 20px rgba(${r},${g},${b},0.3)`,
-                    }}
-                  >
-                    <Zap className="w-4 h-4 mr-1.5" />
-                    {connecting ? "Söker…" : lastDevice.name}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={() => handleConnect(false)}
-                    disabled={connecting}
-                    className="text-sm px-6 py-2.5 rounded-full font-bold tracking-wide transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                    style={{
-                      backgroundColor: accentColor,
-                      color: "#121212",
-                      boxShadow: `0 0 20px rgba(${r},${g},${b},0.3)`,
-                    }}
-                  >
-                    {connecting ? "Söker…" : "Anslut"}
-                  </Button>
-                )}
-
-                <button
-                  onClick={() => handleConnect(lastDevice ? false : true)}
-                  disabled={connecting}
-                  className="text-muted-foreground text-[10px] hover:text-foreground transition-colors disabled:opacity-50"
+                <Button
+                  onClick={() => handleConnect(false)}
+                  disabled={busy}
+                  className="text-sm px-6 py-2.5 rounded-full font-bold tracking-wide transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                  style={{ backgroundColor: accent, color: "#121212", boxShadow: `0 0 20px rgba(${r},${g},${b},0.3)` }}
                 >
-                  {lastDevice ? "Ny enhet" : "Sök alla"}
-                </button>
+                  {lastDevice && <Zap className="w-4 h-4 mr-1.5" />}
+                  {lastDevice ? lastDevice.name : "Anslut"}
+                </Button>
+
+                {lastDevice && (
+                  <button
+                    onClick={() => handleConnect(true)}
+                    className="text-muted-foreground text-[10px] hover:text-foreground transition-colors"
+                  >
+                    Ny enhet
+                  </button>
+                )}
 
                 {error && <p className="text-destructive text-xs">{error}</p>}
               </>
@@ -258,47 +194,31 @@ const Index = () => {
         </div>
       )}
 
-      {/* Overlay: compact header */}
+      {/* Header */}
       {connection && (
         <div
           className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] transition-opacity duration-500 backdrop-blur-lg border-b border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
           <div className="flex items-center gap-2">
-            <div
-              className="w-2.5 h-2.5 rounded-full animate-pulse"
-              style={{ backgroundColor: isOn ? accentColor : "hsl(var(--muted-foreground))" }}
-            />
+            <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: isOn ? accent : "hsl(var(--muted-foreground))" }} />
             <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase">
               {connection.device.name || "BLEDOM01"}
             </span>
           </div>
-
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setPunchWhite(!punchWhite)}
-              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
-              style={punchWhite ? { color: accentColor } : undefined}
-            >
+            <Button variant="ghost" size="icon" onClick={() => setPunchWhite(!punchWhite)} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={punchWhite ? { color: accent } : undefined}>
               <Zap className="w-3.5 h-3.5" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handlePowerToggle}
-              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
-              style={isOn ? { color: accentColor } : undefined}
-            >
+            <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
               <Power className="w-4 h-4" />
             </Button>
           </div>
         </div>
       )}
 
-      {/* Overlay: now playing */}
-      {connection && nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
+      {/* Now playing */}
+      {connection && nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
         <div
           className={`absolute bottom-0 left-0 right-0 z-20 pb-[env(safe-area-inset-bottom)] transition-opacity duration-500 backdrop-blur-lg border-t border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.5)' }}
