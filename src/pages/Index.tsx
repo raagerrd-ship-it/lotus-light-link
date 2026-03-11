@@ -153,16 +153,6 @@ const Index = () => {
     }
   }, [finishConnect]);
 
-  const handleColorSelect = useCallback((value: string) => {
-    setSelectedColorIdx(value);
-    const preset = PRESET_COLORS[parseInt(value)];
-    if (!preset) return;
-    const [r, g, b] = preset.rgb;
-    setCurrentColor([r, g, b]);
-    if (connection && isOn) {
-      sendColor(connection.characteristic, r, g, b).catch(() => {});
-    }
-  }, [connection, isOn]);
 
   const handlePowerToggle = async () => {
     if (!connection) return;
