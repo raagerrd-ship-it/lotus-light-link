@@ -536,7 +536,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           const threshold = 85;
 
           // Chart occupies middle band of canvas (centered vertically)
-          const chartHeight = h * 0.5;
+          const chartHeight = h * 0.7;
           const chartTop = (h - chartHeight) / 2;
 
           const yThresh = chartTop + chartHeight - (threshold / 100) * chartHeight;
