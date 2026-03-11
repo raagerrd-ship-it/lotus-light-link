@@ -310,7 +310,7 @@ const Index = () => {
             variant="ghost"
             size="icon"
             onClick={() => setPunchWhite(!punchWhite)}
-            className="rounded-full w-7 h-7"
+            className="rounded-full w-7 h-7 active:scale-90 transition-transform"
             style={punchWhite ? { color: accentColor } : undefined}
           >
             <Zap className="w-3.5 h-3.5" />
