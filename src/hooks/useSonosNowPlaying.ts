@@ -72,13 +72,19 @@ export function useSonosNowPlaying() {
       });
     };
 
+    // RTT smoothing via EMA
+    let smoothedRtt = 150; // initial estimate in ms
+
     // Watchdog: direct API call for fresh position + fast track change detection
     const fetchApi = async () => {
       try {
+        const t0 = performance.now();
         const res = await fetch(`${BREW_URL}/functions/v1/sonos-playback-status`, {
           headers: { Authorization: `Bearer ${BREW_ANON}`, apikey: BREW_ANON, "Content-Type": "application/json" },
           cache: "no-store",
         });
+        const rtt = performance.now() - t0;
+        smoothedRtt = smoothedRtt * 0.7 + rtt * 0.3;
         if (!res.ok) return;
         const s = await res.json();
         if (!s?.ok || !s.trackName) return;
