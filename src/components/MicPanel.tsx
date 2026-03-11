@@ -280,7 +280,12 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
       }
 
       const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
+      const prevPhase = beatPhaseRef.current;
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
+      // Reset predictive flag when phase wraps (beat passed without onset)
+      if (prevPhase < 0.5 && beatPhaseRef.current >= 0.5) {
+        predictiveFiredRef.current = false;
+      }
 
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
