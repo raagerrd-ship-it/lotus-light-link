@@ -37,7 +37,6 @@ const Index = () => {
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
   const [isOn, setIsOn] = useState(true);
-  const [retryCount, setRetryCount] = useState(0);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
@@ -69,16 +68,18 @@ const Index = () => {
     conn.device.addEventListener("gattserverdisconnected", handleDisconnect);
   }, []);
 
+  const currentColorRef = useRef(currentColor);
+  useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
+
   const finishConnect = useCallback(async (conn: BLEConnection) => {
-    setRetryCount(0);
     setConnection(conn);
     setReconnecting(false);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
-    const [r, g, b] = currentColor;
+    const [r, g, b] = currentColorRef.current;
     await sendColor(conn.characteristic, r, g, b).catch(() => {});
     setupDisconnectHandler(conn);
-  }, [currentColor, setupDisconnectHandler]);
+  }, [setupDisconnectHandler]);
 
   // No auto-reconnect — Web Bluetooth requires user gesture for reliable connect
 

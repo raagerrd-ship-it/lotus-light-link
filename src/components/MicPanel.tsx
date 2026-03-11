@@ -194,7 +194,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     } catch {
       // Mic access denied
     }
-  }, [char]);
+    // charRef (not char) is used inside — keep start stable to avoid re-creating audio pipeline
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!active || !lowAnalyserRef.current || !midAnalyserRef.current || !bleQueueRef.current) return;
@@ -697,7 +699,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   useEffect(() => stop, [stop]);
 
-  // Auto-start when char becomes available
+  // Auto-start when char becomes available.
+  // charRef keeps the rAF loop connected to the current BLE characteristic,
+  // so reconnects work implicitly without restarting the audio pipeline.
   useEffect(() => {
     if (char && !active) {
       start();
