@@ -487,8 +487,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       if (vizRef.current) {
         const s = vizRef.current.style;
+        const [cr, cg, cb] = currentColorRef.current;
         s.transform = `scale(${1 + curved * 0.25})`;
-        s.boxShadow = `0 0 ${curved * 80}px ${curved * 25}px hsl(var(--foreground) / ${curved * 0.4})`;
+        s.boxShadow = `0 0 ${curved * 80}px ${curved * 25}px rgba(${cr}, ${cg}, ${cb}, ${curved * 0.5})`;
+        s.borderColor = `rgb(${cr}, ${cg}, ${cb})`;
       }
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
