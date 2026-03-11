@@ -62,25 +62,9 @@ const Index = () => {
 
 
   const setupDisconnectHandler = useCallback((conn: BLEConnection) => {
-    const handleDisconnect = async () => {
+    const handleDisconnect = () => {
       setConnection(null);
-      for (let i = 0; i < 3; i++) {
-        retryCountRef.current = i + 1;
-        setReconnecting(true);
-        await new Promise(res => setTimeout(res, 2000));
-        const retry = await doReconnect();
-        if (retry) {
-          retryCountRef.current = 0;
-          setConnection(retry);
-          setReconnecting(false);
-          await sendPower(retry.characteristic, true).catch(() => {});
-          await sendBrightness(retry.characteristic, 100).catch(() => {});
-          setupDisconnectHandler(retry);
-          return;
-        }
-      }
       setReconnecting(false);
-      retryCountRef.current = 0;
     };
     conn.device.addEventListener("gattserverdisconnected", handleDisconnect);
   }, []);
