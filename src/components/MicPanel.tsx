@@ -40,7 +40,7 @@ function createBleQueue(char: any) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [punchWhite, setPunchWhite] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
