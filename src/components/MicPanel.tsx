@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 
@@ -9,6 +8,8 @@ interface MicPanelProps {
   externalBpm?: number | null;
   sonosPosition?: { positionMs: number; receivedAt: number } | null;
   durationMs?: number | null;
+  punchWhite: boolean;
+  onBpmChange?: (bpm: number | null) => void;
 }
 
 // Priority-aware BLE command queue
