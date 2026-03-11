@@ -356,15 +356,24 @@ const Index = () => {
           </span>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handlePowerToggle}
-          className="rounded-full"
-          style={isOn ? { color: accentColor } : undefined}
-        >
-          <Power className="w-5 h-5" />
-        </Button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox
+              checked={punchWhite}
+              onCheckedChange={(v) => setPunchWhite(!!v)}
+            />
+            <span className="text-xs text-muted-foreground">Vit kick</span>
+          </label>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handlePowerToggle}
+            className="rounded-full"
+            style={isOn ? { color: accentColor } : undefined}
+          >
+            <Power className="w-5 h-5" />
+          </Button>
+        </div>
       </div>
 
       {/* Now playing from Sonos */}
