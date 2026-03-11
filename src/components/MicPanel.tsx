@@ -486,8 +486,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Logarithmic curve: lifts low values so subtle sounds are visible, 
       // but only the strongest hits reach max
       const curved = Math.pow(linear, 0.55);
+
+      // BPM-based fallback pulse when mic doesn't detect strong beats
+      let finalCurved = curved;
+      if (bpmRef.current > 0 && curved < 0.25) {
+        // Generate synthetic pulse from BPM phase
+        const bpmPulse = Math.pow(1 - phase, 2.0);
+        const synthCurved = 0.15 + bpmPulse * 0.35; // gentle 15-50% range
+        finalCurved = Math.max(curved, synthCurved);
+      }
+
       // Apply floor AFTER curve so 10% actually means 10%
-      const floored = Math.max(FLOOR, curved);
+      const floored = Math.max(FLOOR, finalCurved);
 
       const pct = Math.max(3, Math.round(floored * 100));
 
