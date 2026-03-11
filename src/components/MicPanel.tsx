@@ -401,6 +401,59 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
 
+      // Push to intensity history
+      const hist2 = intensityHistoryRef.current;
+      hist2.push(pct);
+      if (hist2.length > HISTORY_LEN) hist2.shift();
+
+      // Draw canvas chart every 3rd frame (~20fps)
+      canvasFrameRef.current++;
+      if (canvasFrameRef.current % 3 === 0 && canvasRef.current) {
+        const canvas = canvasRef.current;
+        const ctx2d = canvas.getContext('2d');
+        if (ctx2d) {
+          const w = canvas.width;
+          const h = canvas.height;
+          const data = hist2;
+          const len2 = data.length;
+
+          ctx2d.clearRect(0, 0, w, h);
+
+          if (len2 > 1) {
+            const step = w / (HISTORY_LEN - 1);
+            const offsetX = (HISTORY_LEN - len2) * step;
+
+            // Filled area
+            ctx2d.beginPath();
+            ctx2d.moveTo(offsetX, h);
+            for (let i = 0; i < len2; i++) {
+              const x = offsetX + i * step;
+              const y = h - (data[i] / 100) * h;
+              ctx2d.lineTo(x, y);
+            }
+            ctx2d.lineTo(offsetX + (len2 - 1) * step, h);
+            ctx2d.closePath();
+            const grad = ctx2d.createLinearGradient(0, 0, 0, h);
+            grad.addColorStop(0, 'hsla(0, 0%, 92%, 0.15)');
+            grad.addColorStop(1, 'hsla(0, 0%, 92%, 0.02)');
+            ctx2d.fillStyle = grad;
+            ctx2d.fill();
+
+            // Line
+            ctx2d.beginPath();
+            for (let i = 0; i < len2; i++) {
+              const x = offsetX + i * step;
+              const y = h - (data[i] / 100) * h;
+              if (i === 0) ctx2d.moveTo(x, y);
+              else ctx2d.lineTo(x, y);
+            }
+            ctx2d.strokeStyle = 'hsla(0, 0%, 92%, 0.5)';
+            ctx2d.lineWidth = 1.5;
+            ctx2d.stroke();
+          }
+        }
+      }
+
       if (now - throttleRef.current >= 25) {
         throttleRef.current = now;
         ble.brightness(pct);
