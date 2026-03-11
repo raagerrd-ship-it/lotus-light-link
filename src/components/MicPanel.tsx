@@ -458,10 +458,17 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
               const y0 = h - (s0.pct / 100) * h;
               const y1 = h - (s1.pct / 100) * h;
               const cr = s1.r, cg = s1.g, cb = s1.b;
+              // Brightness factor: higher pct = brighter color
+              const avgPct = (s0.pct + s1.pct) / 2;
+              const brightFactor = Math.max(0.15, avgPct / 100); // 0.15 at bottom, 1.0 at top
+              // Lighten the color toward white based on brightness
+              const lr = Math.round(cr + (255 - cr) * brightFactor * 0.5);
+              const lg = Math.round(cg + (255 - cg) * brightFactor * 0.5);
+              const lb = Math.round(cb + (255 - cb) * brightFactor * 0.5);
 
-              // Filled area — base color
-              const grad = ctx2d.createLinearGradient(0, 0, 0, h);
-              grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.3)`);
+              // Filled area — brightness-scaled gradient
+              const grad = ctx2d.createLinearGradient(x0, y1, x0, h);
+              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.1 + brightFactor * 0.25})`);
               grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.02)`);
               ctx2d.fillStyle = grad;
               ctx2d.beginPath();
@@ -486,19 +493,17 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
                 ctx2d.fill();
               }
 
-              // Line below threshold — base color
-              const belowY0 = Math.max(y0, yThresh);
-              const belowY1 = Math.max(y1, yThresh);
+              // Line — color gets lighter with intensity
+              const lineAlpha = 0.4 + brightFactor * 0.6;
               ctx2d.beginPath();
-              ctx2d.moveTo(x0, belowY0);
-              ctx2d.lineTo(x1, belowY1);
-              ctx2d.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, 0.8)`;
+              ctx2d.moveTo(x0, Math.max(y0, yThresh));
+              ctx2d.lineTo(x1, Math.max(y1, yThresh));
+              ctx2d.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${lineAlpha})`;
               ctx2d.lineWidth = 1.5;
               ctx2d.stroke();
 
               // Line above threshold — white
               if (punchWhiteRef.current && (s0.pct > threshold || s1.pct > threshold)) {
-                // Clip line to above threshold
                 const aboveY0 = Math.min(y0, yThresh);
                 const aboveY1 = Math.min(y1, yThresh);
                 ctx2d.beginPath();
