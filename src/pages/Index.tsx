@@ -21,6 +21,8 @@ const Index = () => {
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [songSections, setSongSections] = useState<import("@/lib/songSections").SongSection[]>([]);
+  const [songDrops, setSongDrops] = useState<number[]>([]);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
