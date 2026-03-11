@@ -676,7 +676,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       <div className="relative aspect-square w-full max-w-[min(80vw,80vh)] flex items-center justify-center overflow-visible">
         <div
           ref={vizRef}
-          className="absolute left-1/2 top-1/2 w-72 h-72 sm:w-[22rem] sm:h-[22rem] -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
+          className="absolute left-1/2 top-1/2 w-[90%] h-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full will-change-transform pointer-events-none"
           style={{
             background: `radial-gradient(circle, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.28) 0%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.14) 38%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.04) 58%, rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0) 78%)`,
             filter: "blur(22px)",
