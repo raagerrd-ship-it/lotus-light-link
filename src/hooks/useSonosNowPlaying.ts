@@ -24,6 +24,9 @@ export interface SonosNowPlaying {
 export function useSonosNowPlaying() {
   const [data, setData] = useState<SonosNowPlaying | null>(null);
   const prevArtRef = useRef<string | null>(null);
+  const lastUpdatedAtRef = useRef<string | null>(null);
+  const fastPollRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchNowPlaying = async () => {
     const { data: rows } = await brewSupabase
@@ -34,6 +37,9 @@ export function useSonosNowPlaying() {
 
     if (rows && rows.length > 0) {
       const row = rows[0];
+      const changed = row.updated_at !== lastUpdatedAtRef.current;
+      lastUpdatedAtRef.current = row.updated_at;
+
       setData({
         trackName: row.track_name,
         artistName: row.artist_name,
@@ -44,15 +50,41 @@ export function useSonosNowPlaying() {
         positionMs: row.position_ms,
         receivedAt: performance.now(),
       });
+
+      // If we were in fast-poll mode and got a new update, slow back down
+      if (changed && fastPollRef.current) {
+        fastPollRef.current = false;
+        setPollInterval(1500);
+      }
     } else {
       setData(null);
     }
   };
 
+  const setPollInterval = (ms: number) => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(fetchNowPlaying, ms);
+  };
+
+  // Detect when track is near its end and switch to fast polling
+  useEffect(() => {
+    if (!data || !data.durationMs || !data.positionMs) return;
+    if (data.playbackState !== "PLAYBACK_STATE_PLAYING") return;
+
+    const elapsed = performance.now() - data.receivedAt;
+    const estimatedPos = data.positionMs + elapsed;
+    const remaining = data.durationMs - estimatedPos;
+
+    if (remaining < 15000 && !fastPollRef.current) {
+      // Track ending soon — poll every 500ms to catch the change quickly
+      fastPollRef.current = true;
+      setPollInterval(500);
+    }
+  });
+
   useEffect(() => {
     fetchNowPlaying();
 
-    // Subscribe to realtime changes
     const channel = brewSupabase
       .channel("sonos-now-playing-remote")
       .on(
@@ -64,12 +96,11 @@ export function useSonosNowPlaying() {
       )
       .subscribe();
 
-    // Fallback poll every 3s in case realtime lags/fails
-    const interval = setInterval(fetchNowPlaying, 1500);
+    setPollInterval(1500);
 
     return () => {
       channel.unsubscribe();
-      clearInterval(interval);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
