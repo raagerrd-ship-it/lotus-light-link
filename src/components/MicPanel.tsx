@@ -749,9 +749,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           }}
         />
         <svg
+          ref={ringWrapRef}
           viewBox="0 0 140 140"
-          className="absolute w-36 h-36 -rotate-90"
-          style={{ overflow: 'visible' }}
+          className="absolute w-36 h-36"
+          style={{ overflow: 'visible', transform: 'rotate(-90deg)' }}
         >
           {/* Background track */}
           <circle
