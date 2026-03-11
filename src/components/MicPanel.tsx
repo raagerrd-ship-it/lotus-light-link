@@ -319,7 +319,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
         if (performance.now() - silenceStartRef.current > 10000 && bpmRef.current > 0) {
-          if (bpmDisplayRef.current) bpmDisplayRef.current.textContent = '— BPM';
+          onBpmChangeRef.current?.(null);
         }
       } else {
         silenceStartRef.current = 0;
