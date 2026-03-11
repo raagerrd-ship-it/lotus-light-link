@@ -86,7 +86,21 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
 
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
-  // Intensity history for canvas chart
+  // Apply external BPM from Sonos lookup as a strong prior
+  const externalBpmRef = useRef<number | null>(null);
+  useEffect(() => {
+    externalBpmRef.current = externalBpm ?? null;
+    if (externalBpm && externalBpm >= 40 && externalBpm <= 220) {
+      bpmRef.current = externalBpm;
+      bpmConfidenceRef.current = 0.8;
+      const beatMs = 60000 / externalBpm;
+      framesPerBeatRef.current = (beatMs / 1000) * 60;
+      if (bpmDisplayRef.current) {
+        bpmDisplayRef.current.textContent = `${Math.round(externalBpm)} BPM 🎵`;
+      }
+    }
+  }, [externalBpm]);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intensityHistoryRef = useRef<number[]>([]);
   const canvasFrameRef = useRef(0);
