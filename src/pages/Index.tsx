@@ -7,7 +7,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap, Loader2, Music } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
@@ -167,11 +167,16 @@ const Index = () => {
     setReconnecting(true);
     setError(null);
     try {
-      const conn = await reconnectLastDevice();
+      // First try silent reconnect; fallback opens chooser if needed
+      let conn = await reconnectLastDevice();
+      if (!conn) {
+        conn = await connectBLEDOM(false).catch(() => null);
+      }
+
       if (conn) {
         await finishConnect(conn);
       } else {
-        setError("Kunde inte hitta enheten. Prova 'VÄCK LJUS' istället.");
+        setError("Kunde inte återansluta. Prova 'Ny enhet'.");
       }
     } catch (e: any) {
       setError(e.message || "Kunde inte återansluta");
