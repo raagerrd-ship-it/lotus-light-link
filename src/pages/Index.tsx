@@ -386,7 +386,7 @@ const Index = () => {
           className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'linear-gradient(to top, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} />
+          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} />
         </div>
       )}
     </div>
