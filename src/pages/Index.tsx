@@ -327,6 +327,29 @@ const Index = () => {
         </Button>
       </div>
 
+      {/* Now playing from Sonos */}
+      {nowPlaying && nowPlaying.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
+        <div className="flex items-center gap-3 px-4 py-2 shrink-0">
+          {nowPlaying.albumArtUrl && (
+            <img
+              src={nowPlaying.albumArtUrl}
+              alt="Album art"
+              className="w-10 h-10 rounded shadow-md"
+              crossOrigin="anonymous"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground truncate">
+              {nowPlaying.trackName}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {nowPlaying.artistName}
+            </p>
+          </div>
+          <Music className="w-4 h-4 text-muted-foreground shrink-0" />
+        </div>
+      )}
+
       {/* Mic panel takes remaining space */}
       <div className="flex-1 min-h-0">
         <MicPanel char={char} currentColor={currentColor} />
