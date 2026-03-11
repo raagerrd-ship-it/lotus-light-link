@@ -105,21 +105,31 @@ const Index = () => {
     setupDisconnectHandler(conn);
   }, [currentColor, setupDisconnectHandler]);
 
-  // Auto-reconnect on mount
+  // Auto-reconnect on mount — retries every 5s until connected
   useEffect(() => {
     const saved = getLastDevice();
     if (!saved) return;
     let cancelled = false;
-    setAutoConnecting(true);
-    doReconnect().then(conn => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tryConnect = async () => {
+      if (cancelled) return;
+      setAutoConnecting(true);
+      const conn = await doReconnect();
       if (cancelled) return;
       if (conn) {
         finishConnect(conn);
       } else {
-        setAutoConnecting(false);
+        // Retry in 5s
+        timer = setTimeout(tryConnect, 5000);
       }
-    });
-    return () => { cancelled = true; };
+    };
+
+    tryConnect();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   // Auto-extract color from Sonos album art
