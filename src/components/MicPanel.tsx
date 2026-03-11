@@ -497,15 +497,24 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (vizRef.current) {
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
+        // Lift dark colors so the glow is always visible
+        const lift = 0.5;
+        const gr = Math.round(cr + (255 - cr) * lift);
+        const gg = Math.round(cg + (255 - cg) * lift);
+        const gb = Math.round(cb + (255 - cb) * lift);
         s.transform = `translate(-50%, -50%) scale(${1 + finalCurved * 0.32})`;
-        s.opacity = String(0.28 + finalCurved * 0.9);
-        s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.18 + finalCurved * 0.34}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.08 + finalCurved * 0.24}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.02 + finalCurved * 0.08}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
-        s.boxShadow = `0 0 ${18 + finalCurved * 70}px ${6 + finalCurved * 26}px rgba(${cr}, ${cg}, ${cb}, ${0.18 + finalCurved * 0.5})`;
+        s.opacity = String(0.35 + finalCurved * 0.9);
+        s.background = `radial-gradient(circle, rgba(${gr}, ${gg}, ${gb}, ${0.25 + finalCurved * 0.4}) 0%, rgba(${gr}, ${gg}, ${gb}, ${0.12 + finalCurved * 0.28}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.04 + finalCurved * 0.1}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
+        s.boxShadow = `0 0 ${22 + finalCurved * 80}px ${8 + finalCurved * 30}px rgba(${gr}, ${gg}, ${gb}, ${0.22 + finalCurved * 0.55})`;
       }
       if (ringWrapRef.current) {
         const ringStyle = ringWrapRef.current.style;
+        const [cr2, cg2, cb2] = currentColorRef.current;
+        const gr2 = Math.round(cr2 + (255 - cr2) * 0.4);
+        const gg2 = Math.round(cg2 + (255 - cg2) * 0.4);
+        const gb2 = Math.round(cb2 + (255 - cb2) * 0.4);
         ringStyle.transform = `scale(${1 + finalCurved * 0.12}) rotate(-90deg)`;
-        ringStyle.filter = `drop-shadow(0 0 ${4 + finalCurved * 14}px rgba(${currentColorRef.current[0]}, ${currentColorRef.current[1]}, ${currentColorRef.current[2]}, ${0.35 + finalCurved * 0.45}))`;
+        ringStyle.filter = `drop-shadow(0 0 ${6 + finalCurved * 18}px rgba(${gr2}, ${gg2}, ${gb2}, ${0.4 + finalCurved * 0.5}))`;
       }
       const sPos = sonosPositionRef.current;
       const dur = durationMs;
