@@ -115,9 +115,10 @@ export function useSonosNowPlaying() {
         apply({
           ...prev!,
           playbackState: s.playbackState ?? prev!.playbackState,
-          positionMs: s.positionMillis ?? prev!.positionMs,
+          positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + smoothedRtt / 2,
           durationMs: s.durationMillis ?? prev!.durationMs,
           receivedAt: performance.now(),
+          smoothedRtt,
         });
       } catch { /* network error — ignore */ }
     };
