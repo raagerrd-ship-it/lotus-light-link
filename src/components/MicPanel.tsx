@@ -6,6 +6,7 @@ import { Activity } from "lucide-react";
 interface MicPanelProps {
   char: any;
   currentColor: [number, number, number];
+  externalBpm?: number | null;
 }
 
 // Priority-aware BLE command queue
