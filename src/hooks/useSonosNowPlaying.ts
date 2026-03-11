@@ -112,7 +112,7 @@ export function useSonosNowPlaying() {
     // Compensate position for time elapsed since DB row was written
     const dbWriteAge = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
     const compensatedPosition = row.playback_state === "PLAYBACK_STATE_PLAYING"
-      ? (row.position_ms ?? 0) + Math.max(0, dbWriteAge)
+      ? Math.min((row.duration_ms ?? Number.MAX_SAFE_INTEGER), (row.position_ms ?? 0) + Math.max(0, dbWriteAge))
       : (row.position_ms ?? 0);
 
     // Only update position if it wouldn't cause a visible jump backwards
