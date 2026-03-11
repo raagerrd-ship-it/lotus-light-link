@@ -448,25 +448,52 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
     // ─── Sub-function: compute brightness from beat phase ───
     const computeBrightness = (isOnset: boolean, transient: number) => {
+      // Get current section behavior
+      let sectionBehavior = { maxBrightness: 1, beatReactivity: 1, breathingMode: false, punchWhiteOverride: null as boolean | null };
+      const sonosPos = sonosPositionRef.current;
+      let currentSec = 0;
+      if (sonosPos) {
+        const elapsed = performance.now() - sonosPos.receivedAt;
+        currentSec = (sonosPos.positionMs + elapsed) / 1000;
+      }
+      if (songSectionsRef.current.length > 0) {
+        const section = getCurrentSection(songSectionsRef.current, currentSec);
+        sectionBehavior = getSectionBehavior(section);
+      }
+
       const phase = beatPhaseRef.current;
+
+      // Breathing mode: gentle sine wave
+      if (sectionBehavior.breathingMode) {
+        const breathe = 0.3 + 0.2 * Math.sin(performance.now() / 1200);
+        const pct = Math.round(10 + 90 * breathe * sectionBehavior.maxBrightness);
+        return { phase, curved: breathe, finalCurved: breathe, pct, sectionBehavior, currentSec };
+      }
+
       const pulse = Math.pow(1 - phase, 2.5);
       const onsetStrength = isOnset ? Math.min(1, transient / (adaptiveThreshRef.current * 2.5)) : 0;
       const peakLevel = beatPhaseRef.current < 0.02
         ? Math.max(0.45, Math.min(1, 0.45 + onsetStrength * 0.55))
         : (pulseMaxRef.current ?? 0.6);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
-      const linear = peakLevel * pulse;
+      const linear = peakLevel * pulse * sectionBehavior.beatReactivity;
       const curved = Math.pow(linear, 0.55);
 
       let finalCurved = curved;
       if (bpmRef.current > 0 && curved < 0.25) {
         const bpmPulse = Math.pow(1 - phase, 2.0);
-        const synthCurved = 0.15 + bpmPulse * 0.35;
+        const synthCurved = 0.15 + bpmPulse * 0.35 * sectionBehavior.beatReactivity;
         finalCurved = Math.max(curved, synthCurved);
       }
 
+      // Cap by section max brightness
+      finalCurved = Math.min(finalCurved, sectionBehavior.maxBrightness);
+
       const floored = Math.max(0, finalCurved);
       const pct = Math.round(10 + 90 * Math.log1p(floored * 9) / Math.log(10));
+
+      return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
+    };
 
       return { phase, curved, finalCurved, pct };
     };
