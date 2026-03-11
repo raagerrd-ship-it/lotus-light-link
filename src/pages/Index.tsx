@@ -167,11 +167,16 @@ const Index = () => {
     setReconnecting(true);
     setError(null);
     try {
-      const conn = await reconnectLastDevice();
+      // First try silent reconnect; fallback opens chooser if needed
+      let conn = await reconnectLastDevice();
+      if (!conn) {
+        conn = await connectBLEDOM(false).catch(() => null);
+      }
+
       if (conn) {
         await finishConnect(conn);
       } else {
-        setError("Kunde inte hitta enheten. Prova 'VÄCK LJUS' istället.");
+        setError("Kunde inte återansluta. Prova 'Ny enhet'.");
       }
     } catch (e: any) {
       setError(e.message || "Kunde inte återansluta");
