@@ -69,6 +69,7 @@ export function useSonosNowPlaying() {
         durationMs: row.duration_ms,
         positionMs: pos,
         receivedAt: performance.now(),
+        smoothedRtt: 0,
       });
     };
 
