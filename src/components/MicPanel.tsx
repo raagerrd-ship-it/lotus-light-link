@@ -536,7 +536,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           const threshold = 85;
 
           // Chart occupies middle band of canvas (centered vertically)
-          const chartHeight = h * 0.5;
+          const chartHeight = h * 0.7;
           const chartTop = (h - chartHeight) / 2;
 
           const yThresh = chartTop + chartHeight - (threshold / 100) * chartHeight;
@@ -623,70 +623,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               }
             }
 
-            // Draw dashed vertical lines: BPM grid from last detected beat
-            if (bpmRef.current > 0 && len2 > 1) {
-              const framesPerBeat = framesPerBeatRef.current;
-
-              // Find last beat index in history
-              let lastBeatIdx = -1;
-              for (let i = len2 - 1; i >= 0; i--) {
-                if (samples[i].beat) {
-                  lastBeatIdx = i;
-                  break;
-                }
-              }
-
-              if (lastBeatIdx >= 0 && framesPerBeat > 5) {
-                ctx2d.setLineDash([3, 4]);
-                ctx2d.lineWidth = 1;
-
-                // Draw BPM grid: backwards and forwards from last beat
-                // Backwards through history
-                let beatFrame = lastBeatIdx;
-                while (beatFrame >= 0) {
-                  const x = offsetX + beatFrame * step;
-                  if (x >= 0 && x <= w) {
-                    const isActualBeat = samples[Math.round(beatFrame)]?.beat;
-                    ctx2d.strokeStyle = isActualBeat
-                      ? 'rgba(255, 255, 255, 0.35)'
-                      : 'rgba(255, 255, 255, 0.15)';
-                    ctx2d.beginPath();
-                    ctx2d.moveTo(x, chartTop);
-                    ctx2d.lineTo(x, chartTop + chartHeight);
-                    ctx2d.stroke();
-                  }
-                  beatFrame -= framesPerBeat;
-                }
-
-                // Forwards into future zone
-                beatFrame = lastBeatIdx + framesPerBeat;
-                while (beatFrame < totalFrames) {
-                  const x = offsetX + beatFrame * step;
-                  if (x >= 0 && x <= w) {
-                    ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.10)';
-                    ctx2d.beginPath();
-                    ctx2d.moveTo(x, chartTop);
-                    ctx2d.lineTo(x, chartTop + chartHeight);
-                    ctx2d.stroke();
-                  }
-                  beatFrame += framesPerBeat;
-                }
-
-                ctx2d.setLineDash([]);
-              }
-            }
-
-            // Draw "now" marker line
-            if (futureFrames > 0) {
-              const nowX = offsetX + (len2 - 1) * step;
-              ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-              ctx2d.lineWidth = 1;
-              ctx2d.setLineDash([]);
-              ctx2d.beginPath();
-              ctx2d.moveTo(nowX, chartTop);
-              ctx2d.lineTo(nowX, chartTop + chartHeight);
-              ctx2d.stroke();
-            }
           }
         }
       }
