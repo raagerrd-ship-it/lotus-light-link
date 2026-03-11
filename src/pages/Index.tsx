@@ -37,6 +37,8 @@ const Index = () => {
   const [isOn, setIsOn] = useState(true);
   const retryCountRef = useRef(0);
   const [sonosColor, setSonosColor] = useState<[number, number, number] | null>(null);
+  const [sonosBpm, setSonosBpm] = useState<number | null>(null);
+  const lastBpmTrackRef = useRef<string | null>(null);
   const lastDevice = getLastDevice();
   const { nowPlaying } = useSonosNowPlaying();
   const lastArtUrlRef = useRef<string | null>(null);
@@ -117,6 +119,34 @@ const Index = () => {
       }
     });
   }, [nowPlaying?.albumArtUrl, connection, isOn]);
+
+  // BPM lookup when track changes
+  useEffect(() => {
+    const track = nowPlaying?.trackName;
+    const artist = nowPlaying?.artistName;
+    if (!track || track === lastBpmTrackRef.current) return;
+    lastBpmTrackRef.current = track;
+
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bpm-lookup`;
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ track, artist }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.bpm && data.bpm >= 40 && data.bpm <= 220) {
+          console.log(`BPM lookup: ${track} → ${data.bpm} (${data.confidence})`);
+          setSonosBpm(data.bpm);
+        } else {
+          setSonosBpm(null);
+        }
+      })
+      .catch(() => setSonosBpm(null));
+  }, [nowPlaying?.trackName, nowPlaying?.artistName]);
 
   const handleConnect = async (scanAll = false) => {
     setConnecting(true);
@@ -352,7 +382,7 @@ const Index = () => {
 
       {/* Mic panel takes remaining space */}
       <div className="flex-1 min-h-0">
-        <MicPanel char={char} currentColor={currentColor} />
+        <MicPanel char={char} currentColor={currentColor} externalBpm={sonosBpm} />
       </div>
     </div>
   );

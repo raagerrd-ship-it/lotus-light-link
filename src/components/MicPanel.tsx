@@ -6,6 +6,7 @@ import { Activity } from "lucide-react";
 interface MicPanelProps {
   char: any;
   currentColor: [number, number, number];
+  externalBpm?: number | null;
 }
 
 // Priority-aware BLE command queue
@@ -38,7 +39,7 @@ function createBleQueue(char: any) {
   };
 }
 
-export default function MicPanel({ char, currentColor }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [punchWhite, setPunchWhite] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -85,7 +86,21 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
 
   const bpmDisplayRef = useRef<HTMLSpanElement>(null);
 
-  // Intensity history for canvas chart
+  // Apply external BPM from Sonos lookup as a strong prior
+  const externalBpmRef = useRef<number | null>(null);
+  useEffect(() => {
+    externalBpmRef.current = externalBpm ?? null;
+    if (externalBpm && externalBpm >= 40 && externalBpm <= 220) {
+      bpmRef.current = externalBpm;
+      bpmConfidenceRef.current = 0.8;
+      const beatMs = 60000 / externalBpm;
+      framesPerBeatRef.current = (beatMs / 1000) * 60;
+      if (bpmDisplayRef.current) {
+        bpmDisplayRef.current.textContent = `${Math.round(externalBpm)} BPM 🎵`;
+      }
+    }
+  }, [externalBpm]);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intensityHistoryRef = useRef<number[]>([]);
   const canvasFrameRef = useRef(0);
@@ -344,17 +359,25 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             }
 
             if (finalBpm >= 60 && finalBpm <= 200 && finalConf > 0.1) {
-              // Smooth BPM transitions – don't jump wildly
-              if (bpmRef.current > 0) {
+              // If we have an external BPM, only allow small drift corrections
+              const hasExternal = externalBpmRef.current !== null && externalBpmRef.current > 0;
+              
+              if (hasExternal) {
+                // Only nudge slightly toward local detection if it agrees
+                const extBpm = externalBpmRef.current!;
+                const diff = Math.abs(finalBpm - extBpm);
+                if (diff < 8) {
+                  // Local agrees with external — tiny correction
+                  bpmRef.current += (finalBpm - bpmRef.current) * 0.05;
+                }
+                // Otherwise ignore local — trust the external source
+              } else if (bpmRef.current > 0) {
                 const diff = Math.abs(finalBpm - bpmRef.current);
                 if (diff < 5) {
-                  // Small correction – smooth heavily
                   bpmRef.current += (finalBpm - bpmRef.current) * 0.15;
                 } else if (diff < 15) {
-                  // Medium jump – moderate smoothing
                   bpmRef.current += (finalBpm - bpmRef.current) * 0.3;
                 } else {
-                  // Big jump – likely new song, apply if confident
                   if (finalConf > 0.4) {
                     bpmRef.current = finalBpm;
                   }
@@ -368,8 +391,9 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
               framesPerBeatRef.current = (beatMs / 1000) * 60;
               
               if (bpmDisplayRef.current) {
-                const confBar = finalConf > 0.6 ? '●●●' : finalConf > 0.3 ? '●●○' : '●○○';
-                bpmDisplayRef.current.textContent = `${Math.round(bpmRef.current)} BPM ${confBar}`;
+                const hasExt = externalBpmRef.current !== null && externalBpmRef.current > 0;
+                const indicator = hasExt ? '🎵' : (finalConf > 0.6 ? '●●●' : finalConf > 0.3 ? '●●○' : '●○○');
+                bpmDisplayRef.current.textContent = `${Math.round(bpmRef.current)} BPM ${indicator}`;
               }
             }
           }
