@@ -493,7 +493,23 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const [cr, cg, cb] = currentColorRef.current;
         s.transform = `scale(${1 + curved * 0.25})`;
         s.boxShadow = `0 0 ${curved * 80}px ${curved * 25}px rgba(${cr}, ${cg}, ${cb}, ${curved * 0.5})`;
-        s.borderColor = `rgb(${cr}, ${cg}, ${cb})`;
+      }
+      // Update progress ring
+      const sPos = sonosPositionRef.current;
+      const dur = durationMs;
+      if (progressRingRef.current && sPos && dur && dur > 0) {
+        const elapsed = now - sPos.receivedAt;
+        const currentPos = Math.min(sPos.positionMs + elapsed, dur);
+        const fraction = currentPos / dur;
+        const circumference = 2 * Math.PI * 60; // r=60
+        progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
+        // Update time text
+        if (timeTextRef.current) {
+          const remainSec = Math.max(0, Math.floor((dur - currentPos) / 1000));
+          const m = Math.floor(remainSec / 60);
+          const s2 = remainSec % 60;
+          timeTextRef.current.textContent = `-${m}:${s2.toString().padStart(2, '0')}`;
+        }
       }
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
