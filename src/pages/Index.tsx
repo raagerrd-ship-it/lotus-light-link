@@ -193,7 +193,7 @@ const Index = () => {
   if (!connection) {
     return (
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8 animate-fade-in">
-        <div className="flex flex-col items-center gap-10 max-w-sm text-center">
+        <div className="flex flex-col items-center gap-8 max-w-sm text-center">
           <div className="relative">
             <div
               className="w-28 h-28 rounded-full border border-border flex items-center justify-center animate-pulse"
@@ -215,7 +215,7 @@ const Index = () => {
               onClick={handleReconnect}
               disabled={connecting || reconnecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
+              className="text-base px-8 py-5 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
               style={!reconnecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
@@ -230,7 +230,7 @@ const Index = () => {
               onClick={() => handleConnect(false)}
               disabled={connecting}
               size="lg"
-              className="text-lg px-10 py-6 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
+              className="text-base px-8 py-5 rounded-full font-bold tracking-wide transition-all duration-300 w-full hover:scale-[1.02] active:scale-[0.98]"
               style={!connecting ? {
                 backgroundColor: accentColor,
                 color: "#121212",
@@ -310,7 +310,7 @@ const Index = () => {
             variant="ghost"
             size="icon"
             onClick={() => setPunchWhite(!punchWhite)}
-            className="rounded-full w-7 h-7"
+            className="rounded-full w-7 h-7 active:scale-90 transition-transform"
             style={punchWhite ? { color: accentColor } : undefined}
           >
             <Zap className="w-3.5 h-3.5" />
@@ -319,7 +319,7 @@ const Index = () => {
             variant="ghost"
             size="icon"
             onClick={handlePowerToggle}
-            className="rounded-full w-7 h-7"
+            className="rounded-full w-7 h-7 active:scale-90 transition-transform"
             style={isOn ? { color: accentColor } : undefined}
           >
             <Power className="w-4 h-4" />

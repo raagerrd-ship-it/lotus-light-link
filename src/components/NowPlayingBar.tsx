@@ -45,7 +45,10 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, progressFr
           </p>
         </div>
         {bpm != null && (
-          <span className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary px-2 py-0.5 rounded-full shrink-0">
+          <span
+            className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full shrink-0"
+            style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}
+          >
             {bpm} BPM
           </span>
         )}
