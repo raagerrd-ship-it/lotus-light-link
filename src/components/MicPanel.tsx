@@ -135,6 +135,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const HISTORY_LEN = 300;
 
   // Audio nodes
+  const subAnalyserRef = useRef<AnalyserNode | null>(null);
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
   const midAnalyserRef = useRef<AnalyserNode | null>(null);
 
@@ -143,6 +144,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
+    subAnalyserRef.current = null;
     lowAnalyserRef.current = null;
     midAnalyserRef.current = null;
     streamRef.current = null;
@@ -167,15 +169,27 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const ctx = new AudioContext({ latencyHint: "interactive", sampleRate: 8000 });
       const source = ctx.createMediaStreamSource(stream);
 
+      // Sub/Kick band: Lowpass 100 Hz
+      const subFilter = ctx.createBiquadFilter();
+      subFilter.type = "lowpass";
+      subFilter.frequency.value = 100;
+      subFilter.Q.value = 0.7;
+
+      // Bass band: Bandpass 150 Hz
       const lowFilter = ctx.createBiquadFilter();
       lowFilter.type = "bandpass";
-      lowFilter.frequency.value = 60;
-      lowFilter.Q.value = 1.2;
+      lowFilter.frequency.value = 150;
+      lowFilter.Q.value = 0.8;
 
+      // Low-mid band: Bandpass 350 Hz
       const midFilter = ctx.createBiquadFilter();
       midFilter.type = "bandpass";
-      midFilter.frequency.value = 130;
-      midFilter.Q.value = 0.6;
+      midFilter.frequency.value = 350;
+      midFilter.Q.value = 1.0;
+
+      const subAnalyser = ctx.createAnalyser();
+      subAnalyser.fftSize = 32;
+      subAnalyser.smoothingTimeConstant = 0;
 
       const lowAnalyser = ctx.createAnalyser();
       lowAnalyser.fftSize = 32;
@@ -185,12 +199,15 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       midAnalyser.fftSize = 32;
       midAnalyser.smoothingTimeConstant = 0;
 
+      source.connect(subFilter);
       source.connect(lowFilter);
       source.connect(midFilter);
+      subFilter.connect(subAnalyser);
       lowFilter.connect(lowAnalyser);
       midFilter.connect(midAnalyser);
 
       audioContextRef.current = ctx;
+      subAnalyserRef.current = subAnalyser;
       lowAnalyserRef.current = lowAnalyser;
       midAnalyserRef.current = midAnalyser;
       streamRef.current = stream;
@@ -203,23 +220,31 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   }, []);
 
   useEffect(() => {
-    if (!active || !lowAnalyserRef.current || !midAnalyserRef.current || !bleQueueRef.current) return;
+    if (!active || !subAnalyserRef.current || !lowAnalyserRef.current || !midAnalyserRef.current || !bleQueueRef.current) return;
 
+    const subAnalyser = subAnalyserRef.current;
     const lowAnalyser = lowAnalyserRef.current;
     const midAnalyser = midAnalyserRef.current;
     const ble = bleQueueRef.current;
+    const subTD = new Uint8Array(32);
     const lowTD = new Uint8Array(32);
     const midTD = new Uint8Array(32);
 
     const FLOOR = 0.10;
 
-    // ─── Sub-function: sample energy from analysers ───
+    // ─── Sub-function: sample energy from 3-band analysers ───
     const sampleEnergy = () => {
+      subAnalyser.getByteTimeDomainData(subTD);
       lowAnalyser.getByteTimeDomainData(lowTD);
       midAnalyser.getByteTimeDomainData(midTD);
 
-      let lowSum = 0, lowMax = 0, midSum = 0, midMax = 0;
+      let subSum = 0, subMax = 0, lowSum = 0, lowMax = 0, midSum = 0, midMax = 0;
       for (let i = 0; i < 32; i++) {
+        const sv = (subTD[i] - 128) / 128;
+        subSum += sv * sv;
+        const sa = sv < 0 ? -sv : sv;
+        if (sa > subMax) subMax = sa;
+
         const lv = (lowTD[i] - 128) / 128;
         lowSum += lv * lv;
         const la = lv < 0 ? -lv : lv;
@@ -230,10 +255,15 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const ma = mv < 0 ? -mv : mv;
         if (ma > midMax) midMax = ma;
       }
+      const subRms = Math.sqrt(subSum * 0.03125);
       const lowRms = Math.sqrt(lowSum * 0.03125);
       const midRms = Math.sqrt(midSum * 0.03125);
 
-      const rawEnergy = lowRms * 0.3 + midRms * 0.1 + lowMax * 0.45 + midMax * 0.15;
+      // 3-band energy with caps: sub 100%, bass 90%, mid 50%
+      const subEnergy  = subRms * 0.3 + subMax * 0.7;
+      const bassEnergy = (lowRms * 0.3 + lowMax * 0.7) * 0.9;
+      const midEnergy  = (midRms * 0.3 + midMax * 0.7) * 0.5;
+      const rawEnergy  = subEnergy * 0.55 + bassEnergy * 0.30 + midEnergy * 0.15;
 
       const isSilence = rawEnergy < 0.015;
       if (!isSilence) {
