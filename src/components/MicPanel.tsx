@@ -486,23 +486,33 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Logarithmic curve: lifts low values so subtle sounds are visible, 
       // but only the strongest hits reach max
       const curved = Math.pow(linear, 0.55);
+
+      // BPM-based fallback pulse when mic doesn't detect strong beats
+      let finalCurved = curved;
+      if (bpmRef.current > 0 && curved < 0.25) {
+        // Generate synthetic pulse from BPM phase
+        const bpmPulse = Math.pow(1 - phase, 2.0);
+        const synthCurved = 0.15 + bpmPulse * 0.35; // gentle 15-50% range
+        finalCurved = Math.max(curved, synthCurved);
+      }
+
       // Apply floor AFTER curve so 10% actually means 10%
-      const floored = Math.max(FLOOR, curved);
+      const floored = Math.max(FLOOR, finalCurved);
 
       const pct = Math.max(3, Math.round(floored * 100));
 
       if (vizRef.current) {
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
-        s.transform = `translate(-50%, -50%) scale(${1 + curved * 0.32})`;
-        s.opacity = String(0.28 + curved * 0.9);
-        s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.34}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.08 + curved * 0.24}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.02 + curved * 0.08}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
-        s.boxShadow = `0 0 ${18 + curved * 70}px ${6 + curved * 26}px rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.5})`;
+        s.transform = `translate(-50%, -50%) scale(${1 + finalCurved * 0.32})`;
+        s.opacity = String(0.28 + finalCurved * 0.9);
+        s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.18 + finalCurved * 0.34}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.08 + finalCurved * 0.24}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.02 + finalCurved * 0.08}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
+        s.boxShadow = `0 0 ${18 + finalCurved * 70}px ${6 + finalCurved * 26}px rgba(${cr}, ${cg}, ${cb}, ${0.18 + finalCurved * 0.5})`;
       }
       if (ringWrapRef.current) {
         const ringStyle = ringWrapRef.current.style;
-        ringStyle.transform = `scale(${1 + curved * 0.12}) rotate(-90deg)`;
-        ringStyle.filter = `drop-shadow(0 0 ${4 + curved * 14}px rgba(${currentColorRef.current[0]}, ${currentColorRef.current[1]}, ${currentColorRef.current[2]}, ${0.35 + curved * 0.45}))`;
+        ringStyle.transform = `scale(${1 + finalCurved * 0.12}) rotate(-90deg)`;
+        ringStyle.filter = `drop-shadow(0 0 ${4 + finalCurved * 14}px rgba(${currentColorRef.current[0]}, ${currentColorRef.current[1]}, ${currentColorRef.current[2]}, ${0.35 + finalCurved * 0.45}))`;
       }
       const sPos = sonosPositionRef.current;
       const dur = durationMs;
