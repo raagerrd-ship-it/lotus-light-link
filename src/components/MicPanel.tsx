@@ -363,6 +363,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                 Math.round(cg + (255 - cg) * boost),
                 Math.round(cb + (255 - cb) * boost),
               );
+              colorBoostedRef.current = true; // mark so it gets restored
             }
           }
         }
