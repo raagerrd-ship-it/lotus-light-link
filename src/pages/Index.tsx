@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import MicPanel from "@/components/MicPanel";
+import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, reconnectLastDevice, getLastDevice,
   sendColor, sendBrightness, sendPower,
