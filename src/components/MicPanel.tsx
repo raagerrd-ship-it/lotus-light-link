@@ -72,6 +72,11 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
   const adaptiveThreshRef = useRef(0.15);
   const pulseMaxRef = useRef(0.7);
   const transientAvgRef = useRef(0.1);
+  
+  // Predictive beat: pre-fire BLE commands to compensate for latency
+  const BLE_LATENCY_MS = 35; // estimated BLE round-trip
+  const predictiveFiredRef = useRef(false);
+  const lastBeatTimeRef = useRef(0);
 
   // Improved BPM detection refs
   const onsetTimesRef = useRef<number[]>([]);
