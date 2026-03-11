@@ -169,7 +169,7 @@ const Index = () => {
   // Auto-connecting screen
   if (reconnecting) {
     return (
-      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
+      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8 animate-fade-in">
         <div className="flex flex-col items-center gap-6 text-center">
           <div className="relative">
             <div
