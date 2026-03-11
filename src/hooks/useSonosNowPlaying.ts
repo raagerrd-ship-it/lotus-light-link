@@ -65,7 +65,7 @@ export function useSonosNowPlaying() {
       .subscribe();
 
     // Fallback poll every 3s in case realtime lags/fails
-    const interval = setInterval(fetchNowPlaying, 3000);
+    const interval = setInterval(fetchNowPlaying, 1500);
 
     return () => {
       channel.unsubscribe();
