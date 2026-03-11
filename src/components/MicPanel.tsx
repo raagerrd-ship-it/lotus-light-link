@@ -460,7 +460,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       let currentSec = 0;
       if (sonosPos) {
         const elapsed = performance.now() - sonosPos.receivedAt;
-        currentSec = (sonosPos.positionMs + elapsed) / 1000;
+        currentSec = (sonosPos.positionMs + elapsed + syncOffsetMsRef.current) / 1000;
       }
       if (songSectionsRef.current.length > 0) {
         const section = getCurrentSection(songSectionsRef.current, currentSec);
