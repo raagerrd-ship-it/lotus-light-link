@@ -562,12 +562,15 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const cr = s1.r, cg = s1.g, cb = s1.b;
               const avgPct = (s0.pct + s1.pct) / 2;
               const brightFactor = Math.max(0.15, avgPct / 100);
-              // Use base color directly — no lightening toward white
-              const lr = cr, lg = cg, lb = cb;
+              // Lighten dark colors toward white based on intensity so they stay visible
+              const lift = brightFactor * 0.6;
+              const lr = Math.round(cr + (255 - cr) * lift);
+              const lg = Math.round(cg + (255 - cg) * lift);
+              const lb = Math.round(cb + (255 - cb) * lift);
 
               // Filled area — brightness-scaled gradient
               const grad = ctx2d.createLinearGradient(x0, y1, x0, chartBottom);
-              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.15 + brightFactor * 0.35})`);
+              grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.15 + brightFactor * 0.4})`);
               grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
               ctx2d.fillStyle = grad;
               ctx2d.beginPath();
