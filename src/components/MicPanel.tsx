@@ -433,9 +433,10 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             }
             ctx2d.lineTo(offsetX + (len2 - 1) * step, h);
             ctx2d.closePath();
+            const [cr, cg, cb] = currentColorRef.current;
             const grad = ctx2d.createLinearGradient(0, 0, 0, h);
-            grad.addColorStop(0, 'hsla(0, 0%, 92%, 0.15)');
-            grad.addColorStop(1, 'hsla(0, 0%, 92%, 0.02)');
+            grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.25)`);
+            grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
             ctx2d.fillStyle = grad;
             ctx2d.fill();
 
@@ -447,7 +448,7 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
               if (i === 0) ctx2d.moveTo(x, y);
               else ctx2d.lineTo(x, y);
             }
-            ctx2d.strokeStyle = 'hsla(0, 0%, 92%, 0.5)';
+            ctx2d.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, 0.7)`;
             ctx2d.lineWidth = 1.5;
             ctx2d.stroke();
           }
