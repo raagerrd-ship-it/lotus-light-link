@@ -176,20 +176,13 @@ const Index = () => {
   const char = connection?.characteristic;
 
   // Auto-connecting screen
-  if (autoConnecting || reconnecting) {
+  if (reconnecting) {
     return (
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <Loader2 className="w-10 h-10 text-muted-foreground animate-spin" />
           <div>
-            <p className="text-lg font-medium text-foreground">
-              {reconnecting ? "Återansluter..." : `Ansluter till ${lastDevice?.name ?? "enhet"}...`}
-            </p>
-            {reconnecting && retryCountRef.current > 0 && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Försök {retryCountRef.current} av 3
-              </p>
-            )}
+            <p className="text-lg font-medium text-foreground">Återansluter...</p>
           </div>
         </div>
       </div>
