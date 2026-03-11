@@ -53,6 +53,31 @@ export function useSonosNowPlaying() {
   };
 
   const applyNowPlaying = (next: SonosNowPlaying) => {
+    const current = dataRef.current;
+
+    if (
+      current &&
+      current.trackName === next.trackName &&
+      current.artistName === next.artistName
+    ) {
+      const currentEstimated = current.positionMs != null
+        ? current.positionMs + (performance.now() - current.receivedAt)
+        : null;
+
+      // Keep local timer stable on same track; only hard-correct on very large drift
+      if (currentEstimated != null && next.positionMs != null) {
+        const drift = Math.abs(next.positionMs - currentEstimated);
+        if (drift < 8000) {
+          setData({
+            ...next,
+            positionMs: current.positionMs,
+            receivedAt: current.receivedAt,
+          });
+          return;
+        }
+      }
+    }
+
     setData(next);
   };
 
