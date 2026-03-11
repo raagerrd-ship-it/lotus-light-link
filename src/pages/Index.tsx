@@ -374,7 +374,8 @@ const Index = () => {
       </div>
 
       {/* Overlay: compact header */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2"
+      <div
+        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ background: 'linear-gradient(to bottom, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
       >
         <div className="flex items-center gap-2">
