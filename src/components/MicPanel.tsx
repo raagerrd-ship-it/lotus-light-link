@@ -740,7 +740,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         />
         <svg
           viewBox="0 0 140 140"
-          className="absolute inset-0 w-full h-full -rotate-90"
+          className="absolute w-36 h-36 -rotate-90"
+          style={{ overflow: 'visible' }}
         >
           {/* Background track */}
           <circle
@@ -765,7 +766,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           />
         </svg>
         {/* Center content */}
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-1 z-10">
           <Activity
             ref={iconRef}
             className="w-10 h-10"
