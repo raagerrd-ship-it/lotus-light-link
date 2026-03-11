@@ -226,7 +226,7 @@ export function useSonosNowPlaying() {
         const isTrackChange = !currentData || status.trackName !== currentData.trackName;
         if (!isTrackChange && currentData && currentData.positionMs != null) {
           const currentEstimated = currentData.positionMs + (performance.now() - currentData.receivedAt);
-          const diff = Math.abs(newPos - currentEstimated);
+          const diff = Math.abs(clampedPos - currentEstimated);
           if (diff < 3000) return; // interpolation is close enough
         }
 
