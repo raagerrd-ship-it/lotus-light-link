@@ -53,6 +53,31 @@ export function useSonosNowPlaying() {
   };
 
   const applyNowPlaying = (next: SonosNowPlaying) => {
+    const current = dataRef.current;
+
+    if (
+      current &&
+      current.trackName === next.trackName &&
+      current.artistName === next.artistName
+    ) {
+      const currentEstimated = current.positionMs != null
+        ? current.positionMs + (performance.now() - current.receivedAt)
+        : null;
+
+      // Keep local timer stable on same track; only hard-correct on very large drift
+      if (currentEstimated != null && next.positionMs != null) {
+        const drift = Math.abs(next.positionMs - currentEstimated);
+        if (drift < 8000) {
+          setData({
+            ...next,
+            positionMs: current.positionMs,
+            receivedAt: current.receivedAt,
+          });
+          return;
+        }
+      }
+    }
+
     setData(next);
   };
 
@@ -87,7 +112,7 @@ export function useSonosNowPlaying() {
     // Compensate position for time elapsed since DB row was written
     const dbWriteAge = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
     const compensatedPosition = row.playback_state === "PLAYBACK_STATE_PLAYING"
-      ? (row.position_ms ?? 0) + Math.max(0, dbWriteAge)
+      ? Math.min((row.duration_ms ?? Number.MAX_SAFE_INTEGER), (row.position_ms ?? 0) + Math.max(0, dbWriteAge))
       : (row.position_ms ?? 0);
 
     // Only update position if it wouldn't cause a visible jump backwards
@@ -195,12 +220,13 @@ export function useSonosNowPlaying() {
           watchdogTrackRef.current = status.trackName;
         }
         const newPos = status.positionMillis ?? 0;
+        const clampedPos = Math.min(status.durationMillis ?? Number.MAX_SAFE_INTEGER, newPos);
 
         // Skip position-only updates that would cause small jumps
         const isTrackChange = !currentData || status.trackName !== currentData.trackName;
         if (!isTrackChange && currentData && currentData.positionMs != null) {
           const currentEstimated = currentData.positionMs + (performance.now() - currentData.receivedAt);
-          const diff = Math.abs(newPos - currentEstimated);
+          const diff = Math.abs(clampedPos - currentEstimated);
           if (diff < 3000) return; // interpolation is close enough
         }
 
@@ -211,7 +237,7 @@ export function useSonosNowPlaying() {
           albumArtUrl: status.albumArtUrl ?? currentData?.albumArtUrl ?? null,
           playbackState: status.playbackState ?? currentData?.playbackState ?? "PLAYBACK_STATE_PLAYING",
           durationMs: status.durationMillis ?? currentData?.durationMs ?? null,
-          positionMs: newPos,
+          positionMs: clampedPos,
           receivedAt: performance.now(),
         });
       }
