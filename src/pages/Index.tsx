@@ -322,6 +322,14 @@ const Index = () => {
     );
   }
 
+  // Compute progress fraction for NowPlayingBar
+  const progressFraction = (() => {
+    if (!nowPlaying?.positionMs || !nowPlaying?.durationMs || nowPlaying.durationMs <= 0) return 0;
+    const elapsed = performance.now() - (nowPlaying.receivedAt ?? performance.now());
+    const estimatedMs = nowPlaying.positionMs + elapsed;
+    return Math.min(1, Math.max(0, estimatedMs / nowPlaying.durationMs));
+  })();
+
   // Main controller
    return (
     <div
@@ -345,8 +353,8 @@ const Index = () => {
 
       {/* Overlay: compact header */}
       <div
-        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 transition-opacity duration-500 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-        style={{ background: 'linear-gradient(to bottom, hsl(var(--background) / 0.7) 0%, transparent 100%)' }}
+        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 transition-opacity duration-500 backdrop-blur-lg ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        style={{ background: 'hsl(var(--background) / 0.5)' }}
       >
         <div className="flex items-center gap-2">
           <div
