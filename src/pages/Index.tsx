@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MicPanel from "@/components/MicPanel";
@@ -7,7 +7,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
 
 const PRESET_COLORS: { label: string; rgb: [number, number, number] }[] = [
   { label: "Röd", rgb: [255, 0, 0] },
@@ -28,23 +28,74 @@ const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [autoConnecting, setAutoConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
   const [isOn, setIsOn] = useState(true);
+  const retryCountRef = useRef(0);
   const lastDevice = getLastDevice();
 
-  const finishConnect = async (conn: BLEConnection) => {
+  const doReconnect = async (): Promise<BLEConnection | null> => {
+    try {
+      return await reconnectLastDevice();
+    } catch {
+      return null;
+    }
+  };
+
+  const setupDisconnectHandler = useCallback((conn: BLEConnection) => {
+    const handleDisconnect = async () => {
+      setConnection(null);
+      for (let i = 0; i < 3; i++) {
+        retryCountRef.current = i + 1;
+        setReconnecting(true);
+        await new Promise(res => setTimeout(res, 2000));
+        const retry = await doReconnect();
+        if (retry) {
+          retryCountRef.current = 0;
+          setConnection(retry);
+          setReconnecting(false);
+          await sendPower(retry.characteristic, true).catch(() => {});
+          await sendBrightness(retry.characteristic, 100).catch(() => {});
+          setupDisconnectHandler(retry);
+          return;
+        }
+      }
+      setReconnecting(false);
+      retryCountRef.current = 0;
+    };
+    conn.device.addEventListener("gattserverdisconnected", handleDisconnect);
+  }, []);
+
+  const finishConnect = useCallback(async (conn: BLEConnection) => {
+    retryCountRef.current = 0;
     setConnection(conn);
+    setAutoConnecting(false);
+    setReconnecting(false);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
-    // Send initial color
     const [r, g, b] = currentColor;
     await sendColor(conn.characteristic, r, g, b).catch(() => {});
-    conn.device.addEventListener("gattserverdisconnected", () => {
-      setConnection(null);
+    setupDisconnectHandler(conn);
+  }, [currentColor, setupDisconnectHandler]);
+
+  // Auto-reconnect on mount
+  useEffect(() => {
+    const saved = getLastDevice();
+    if (!saved) return;
+    let cancelled = false;
+    setAutoConnecting(true);
+    doReconnect().then(conn => {
+      if (cancelled) return;
+      if (conn) {
+        finishConnect(conn);
+      } else {
+        setAutoConnecting(false);
+      }
     });
-  };
+    return () => { cancelled = true; };
+  }, []);
 
   const handleConnect = async (scanAll = false) => {
     setConnecting(true);
@@ -98,6 +149,27 @@ const Index = () => {
   const accentColor = `rgb(${r}, ${g}, ${b})`;
   const bgGlow = `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)`;
   const char = connection?.characteristic;
+
+  // Auto-connecting screen
+  if (autoConnecting || reconnecting) {
+    return (
+      <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
+        <div className="flex flex-col items-center gap-6 text-center">
+          <Loader2 className="w-10 h-10 text-muted-foreground animate-spin" />
+          <div>
+            <p className="text-lg font-medium text-foreground">
+              {reconnecting ? "Återansluter..." : `Ansluter till ${lastDevice?.name ?? "enhet"}...`}
+            </p>
+            {reconnecting && retryCountRef.current > 0 && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Försök {retryCountRef.current} av 3
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Connect screen
   if (!connection) {
