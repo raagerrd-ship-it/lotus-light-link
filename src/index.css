@@ -9,11 +9,6 @@
     --background: 0 0% 7%;
     --foreground: 0 0% 92%;
 
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 92%;
-
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 92%;
 
     --primary: 0 0% 92%;
     --primary-foreground: 0 0% 7%;
@@ -36,14 +31,6 @@
 
     --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 7%;
-    --sidebar-foreground: 0 0% 92%;
-    --sidebar-primary: 0 0% 92%;
-    --sidebar-primary-foreground: 0 0% 7%;
-    --sidebar-accent: 0 0% 15%;
-    --sidebar-accent-foreground: 0 0% 92%;
-    --sidebar-border: 0 0% 20%;
-    --sidebar-ring: 0 0% 92%;
   }
 }
 
