@@ -72,6 +72,11 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
   const adaptiveThreshRef = useRef(0.15);
   const pulseMaxRef = useRef(0.7);
   const transientAvgRef = useRef(0.1);
+  
+  // Predictive beat: pre-fire BLE commands to compensate for latency
+  const BLE_LATENCY_MS = 35; // estimated BLE round-trip
+  const predictiveFiredRef = useRef(false);
+  const lastBeatTimeRef = useRef(0);
 
   // Improved BPM detection refs
   const onsetTimesRef = useRef<number[]>([]);
@@ -275,7 +280,12 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
       }
 
       const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
+      const prevPhase = beatPhaseRef.current;
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
+      // Reset predictive flag when phase wraps (beat passed without onset)
+      if (prevPhase < 0.5 && beatPhaseRef.current >= 0.5) {
+        predictiveFiredRef.current = false;
+      }
 
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = performance.now();
@@ -298,8 +308,37 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
         beatPhaseRef.current = Math.min(beatPhaseRef.current, 1 - nudge);
       }
 
+      // Predictive BLE: pre-fire brightness boost before expected beat
+      if (bpmRef.current > 0 && bpmConfidenceRef.current > 0.3 && !predictiveFiredRef.current) {
+        const beatMs = 60000 / bpmRef.current;
+        const phaseMs = beatPhaseRef.current * beatMs;
+        const msUntilBeat = beatMs - phaseMs;
+        // Fire when we're BLE_LATENCY_MS before the next expected beat
+        if (msUntilBeat <= BLE_LATENCY_MS && msUntilBeat > 0) {
+          predictiveFiredRef.current = true;
+          // Pre-send a high brightness to arrive just as beat hits
+          const ble = bleQueueRef.current;
+          if (ble) {
+            const predictedPct = Math.max(60, Math.round((pulseMaxRef.current ?? 0.7) * 100));
+            ble.brightness(predictedPct);
+            // Pre-send white color kick if enabled
+            if (punchWhiteRef.current && predictedPct > 85) {
+              const color = currentColorRef.current;
+              const [cr, cg, cb] = color;
+              const boost = Math.min(1, (predictedPct - 85) / 15);
+              ble.color(
+                Math.round(cr + (255 - cr) * boost),
+                Math.round(cg + (255 - cg) * boost),
+                Math.round(cb + (255 - cb) * boost),
+              );
+            }
+          }
+        }
+      }
+
       if (isOnset) {
         beatPhaseRef.current = 0;
+        predictiveFiredRef.current = false; // reset for next beat cycle
 
         if (lastOnsetRef.current > 0) {
           const interval = now - lastOnsetRef.current;
