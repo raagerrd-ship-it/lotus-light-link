@@ -8,6 +8,7 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   externalBpm?: number | null;
   sonosPosition?: { positionMs: number; receivedAt: number } | null;
+  durationMs?: number | null;
 }
 
 // Priority-aware BLE command queue
@@ -40,7 +41,7 @@ function createBleQueue(char: any) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const [punchWhite, setPunchWhite] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -62,6 +63,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const barRef = useRef<HTMLDivElement>(null);
   const pctRef = useRef<HTMLSpanElement>(null);
   const iconRef = useRef<SVGSVGElement>(null);
+  const progressRingRef = useRef<SVGCircleElement>(null);
+  const timeTextRef = useRef<HTMLSpanElement>(null);
 
   // Envelope follower state
   const prevSampleRef = useRef(0);
@@ -490,7 +493,23 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const [cr, cg, cb] = currentColorRef.current;
         s.transform = `scale(${1 + curved * 0.25})`;
         s.boxShadow = `0 0 ${curved * 80}px ${curved * 25}px rgba(${cr}, ${cg}, ${cb}, ${curved * 0.5})`;
-        s.borderColor = `rgb(${cr}, ${cg}, ${cb})`;
+      }
+      // Update progress ring
+      const sPos = sonosPositionRef.current;
+      const dur = durationMs;
+      if (progressRingRef.current && sPos && dur && dur > 0) {
+        const elapsed = now - sPos.receivedAt;
+        const currentPos = Math.min(sPos.positionMs + elapsed, dur);
+        const fraction = currentPos / dur;
+        const circumference = 2 * Math.PI * 60; // r=60
+        progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
+        // Update time text
+        if (timeTextRef.current) {
+          const remainSec = Math.max(0, Math.floor((dur - currentPos) / 1000));
+          const m = Math.floor(remainSec / 60);
+          const s2 = remainSec % 60;
+          timeTextRef.current.textContent = `-${m}:${s2.toString().padStart(2, '0')}`;
+        }
       }
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}%`;
@@ -708,24 +727,56 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4">
-      {/* Bass pulse visualizer */}
+      {/* Bass pulse visualizer with progress ring */}
       <div
         ref={vizRef}
-        className="w-32 h-32 rounded-full border-2 flex items-center justify-center will-change-transform"
+        className="relative w-36 h-36 flex items-center justify-center will-change-transform"
         style={{
-          borderColor: active
-            ? `rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`
-            : "hsl(var(--border))",
           boxShadow: active
             ? `0 0 20px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.3)`
             : undefined,
         }}
       >
-        <Activity
-          ref={iconRef}
-          className="w-12 h-12"
-          style={{ opacity: active ? 0.7 : 0.3 }}
-        />
+        <svg
+          viewBox="0 0 140 140"
+          className="absolute inset-0 w-full h-full -rotate-90"
+        >
+          {/* Background track */}
+          <circle
+            cx="70" cy="70" r="60"
+            fill="none"
+            stroke="hsl(var(--border))"
+            strokeWidth="3"
+            opacity="0.3"
+          />
+          {/* Progress ring */}
+          <circle
+            ref={progressRingRef}
+            cx="70" cy="70" r="60"
+            fill="none"
+            stroke={`rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={String(2 * Math.PI * 60)}
+            strokeDashoffset={String(2 * Math.PI * 60)}
+            className="transition-[stroke] duration-500"
+          />
+        </svg>
+        {/* Center content */}
+        <div className="flex flex-col items-center gap-1">
+          <Activity
+            ref={iconRef}
+            className="w-10 h-10"
+            style={{
+              opacity: active ? 0.7 : 0.3,
+              color: active ? `rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})` : undefined,
+            }}
+          />
+          <span
+            ref={timeTextRef}
+            className="text-[10px] font-mono text-muted-foreground tabular-nums"
+          />
+        </div>
       </div>
 
       {active && (
