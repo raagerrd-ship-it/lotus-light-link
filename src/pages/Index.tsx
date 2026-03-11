@@ -32,7 +32,7 @@ const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [autoConnecting, setAutoConnecting] = useState(false);
+  const [autoConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
   const [selectedColorIdx, setSelectedColorIdx] = useState("0");
@@ -96,7 +96,6 @@ const Index = () => {
   const finishConnect = useCallback(async (conn: BLEConnection) => {
     retryCountRef.current = 0;
     setConnection(conn);
-    setAutoConnecting(false);
     setReconnecting(false);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
@@ -105,32 +104,7 @@ const Index = () => {
     setupDisconnectHandler(conn);
   }, [currentColor, setupDisconnectHandler]);
 
-  // Auto-reconnect on mount — retries every 5s until connected
-  useEffect(() => {
-    const saved = getLastDevice();
-    if (!saved) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const tryConnect = async () => {
-      if (cancelled) return;
-      setAutoConnecting(true);
-      const conn = await doReconnect();
-      if (cancelled) return;
-      if (conn) {
-        finishConnect(conn);
-      } else {
-        // Retry in 5s
-        timer = setTimeout(tryConnect, 5000);
-      }
-    };
-
-    tryConnect();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
+  // No auto-reconnect — Web Bluetooth requires user gesture for reliable connect
 
   // Auto-extract color from Sonos album art
   useEffect(() => {
