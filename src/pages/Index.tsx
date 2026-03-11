@@ -124,8 +124,9 @@ const Index = () => {
   useEffect(() => {
     const track = nowPlaying?.trackName;
     const artist = nowPlaying?.artistName;
-    if (!track || track === lastBpmTrackRef.current) return;
-    lastBpmTrackRef.current = track;
+    const trackKey = `${track ?? ""}::${artist ?? ""}`;
+    if (!track || trackKey === lastBpmTrackRef.current) return;
+    lastBpmTrackRef.current = trackKey;
 
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bpm-lookup`;
     fetch(url, {
