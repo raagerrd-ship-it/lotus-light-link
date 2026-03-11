@@ -556,8 +556,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               const x1 = offsetX + i * step;
               const s0 = samples[i - 1];
               const s1 = samples[i];
-              const y0 = h - (s0.pct / 100) * h;
-              const y1 = h - (s1.pct / 100) * h;
+              const y0 = chartTop + chartHeight - (s0.pct / 100) * chartHeight;
+              const y1 = chartTop + chartHeight - (s1.pct / 100) * chartHeight;
+              const chartBottom = chartTop + chartHeight;
               const cr = s1.r, cg = s1.g, cb = s1.b;
               const avgPct = (s0.pct + s1.pct) / 2;
               const brightFactor = Math.max(0.15, avgPct / 100);
