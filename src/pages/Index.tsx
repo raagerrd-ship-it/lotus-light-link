@@ -143,17 +143,8 @@ const Index = () => {
     setReconnecting(true);
     setError(null);
     try {
-      // First try silent reconnect; fallback opens chooser if needed
-      let conn = await reconnectLastDevice();
-      if (!conn) {
-        conn = await connectBLEDOM(false).catch(() => null);
-      }
-
-      if (conn) {
-        await finishConnect(conn);
-      } else {
-        setError("Kunde inte återansluta. Prova 'Ny enhet'.");
-      }
+      const conn = await connectBLEDOM(false);
+      await finishConnect(conn);
     } catch (e: any) {
       setError(e.message || "Kunde inte återansluta");
     } finally {
