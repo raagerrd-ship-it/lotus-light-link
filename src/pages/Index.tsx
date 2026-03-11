@@ -102,6 +102,22 @@ const Index = () => {
     return () => { cancelled = true; };
   }, []);
 
+  // Auto-extract color from Sonos album art
+  useEffect(() => {
+    const artUrl = nowPlaying?.albumArtUrl;
+    if (!artUrl || artUrl === lastArtUrlRef.current) return;
+    lastArtUrlRef.current = artUrl;
+
+    extractDominantColor(artUrl).then((color) => {
+      if (!color) return;
+      setSonosColor(color);
+      setCurrentColor(color);
+      if (connection && isOn) {
+        sendColor(connection.characteristic, color[0], color[1], color[2]).catch(() => {});
+      }
+    });
+  }, [nowPlaying?.albumArtUrl, connection, isOn]);
+
   const handleConnect = async (scanAll = false) => {
     setConnecting(true);
     setError(null);
