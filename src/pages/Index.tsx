@@ -358,15 +358,16 @@ const Index = () => {
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <Checkbox
-              checked={punchWhite}
-              onCheckedChange={(v) => setPunchWhite(!!v)}
-              className="w-3.5 h-3.5"
-            />
-            <span className="text-[10px] text-muted-foreground">Vit kick</span>
-          </label>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setPunchWhite(!punchWhite)}
+            className="rounded-full w-7 h-7"
+            style={punchWhite ? { color: accentColor } : undefined}
+          >
+            <Zap className="w-3.5 h-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
