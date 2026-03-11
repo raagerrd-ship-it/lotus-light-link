@@ -230,7 +230,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     const lowTD = new Uint8Array(32);
     const midTD = new Uint8Array(32);
 
-    const FLOOR = 0.10;
+    
 
     // ─── Sub-function: sample energy from 3-band analysers ───
     const sampleEnergy = () => {
