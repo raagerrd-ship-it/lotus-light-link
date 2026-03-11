@@ -755,11 +755,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             cx="70" cy="70" r="60"
             fill="none"
             stroke={`rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
-            strokeWidth="3"
+            strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray={String(2 * Math.PI * 60)}
             strokeDashoffset={String(2 * Math.PI * 60)}
             className="transition-[stroke] duration-500"
+            style={{ filter: `drop-shadow(0 0 4px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.5))` }}
           />
         </svg>
         {/* Center content */}
