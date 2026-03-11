@@ -156,20 +156,21 @@ export function useSonosNowPlaying() {
       const status = await fetchPlaybackStatus();
       if (!status?.trackName) return;
 
+      const currentData = dataRef.current;
       const shouldApply =
-        !data ||
-        status.trackName !== data.trackName ||
-        (status.artistName ?? null) !== data.artistName ||
+        !currentData ||
+        status.trackName !== currentData.trackName ||
+        (status.artistName ?? null) !== currentData.artistName ||
         dbStaleMs > 12000;
 
       if (shouldApply) {
         applyNowPlaying({
           trackName: status.trackName ?? null,
           artistName: status.artistName ?? null,
-          albumName: status.albumName ?? data?.albumName ?? null,
-          albumArtUrl: status.albumArtUrl ?? data?.albumArtUrl ?? null,
-          playbackState: status.playbackState ?? data?.playbackState ?? "PLAYBACK_STATE_PLAYING",
-          durationMs: status.durationMillis ?? data?.durationMs ?? null,
+          albumName: status.albumName ?? currentData?.albumName ?? null,
+          albumArtUrl: status.albumArtUrl ?? currentData?.albumArtUrl ?? null,
+          playbackState: status.playbackState ?? currentData?.playbackState ?? "PLAYBACK_STATE_PLAYING",
+          durationMs: status.durationMillis ?? currentData?.durationMs ?? null,
           positionMs: status.positionMillis ?? 0,
           receivedAt: performance.now(),
         });
