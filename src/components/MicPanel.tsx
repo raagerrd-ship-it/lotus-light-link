@@ -615,7 +615,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
                 ctx2d.moveTo(x0, aboveY0);
                 ctx2d.lineTo(x1, aboveY1);
                 ctx2d.strokeStyle = `rgba(255, 255, 255, ${0.3 + whiteT * 0.6})`;
-                ctx2d.lineWidth = 1.5;
+                ctx2d.lineWidth = 2.5;
                 ctx2d.stroke();
               }
             }
