@@ -75,6 +75,15 @@ export function useSonosNowPlaying() {
       lastDbWriteAtMsRef.current = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
     }
 
+    // If watchdog already applied a newer track, skip DB data until DB catches up
+    if (watchdogTrackRef.current && row.track_name !== watchdogTrackRef.current) {
+      return;
+    }
+    // DB caught up — clear watchdog override
+    if (watchdogTrackRef.current && row.track_name === watchdogTrackRef.current) {
+      watchdogTrackRef.current = null;
+    }
+
     applyNowPlaying({
       trackName: row.track_name,
       artistName: row.artist_name,
