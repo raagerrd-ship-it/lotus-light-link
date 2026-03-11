@@ -657,17 +657,33 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (punchWhiteRef.current && curved > 0.98 && beatPhaseRef.current < 0.1 && now - colorThrottleRef.current >= colorFadeMs) {
         colorThrottleRef.current = now;
         colorBoostedRef.current = true;
+        boostStartRef.current = now;
         const [cr, cg, cb] = color;
         const boost = (curved - 0.98) * 25;
-        ble.color(
-          Math.round(cr + (255 - cr) * boost),
-          Math.round(cg + (255 - cg) * boost),
-          Math.round(cb + (255 - cb) * boost),
-        );
-      } else if (curved <= 0.95 && colorBoostedRef.current && now - colorThrottleRef.current >= colorFadeMs) {
+        const br = Math.round(cr + (255 - cr) * boost);
+        const bg = Math.round(cg + (255 - cg) * boost);
+        const bb = Math.round(cb + (255 - cb) * boost);
+        boostColorRef.current = [br, bg, bb];
+        ble.color(br, bg, bb);
+      } else if (colorBoostedRef.current && now - colorThrottleRef.current >= colorFadeMs) {
+        // Logarithmic fade-out from boost color back to base color
+        const fadeDuration = Math.max(80, beatMs * 0.6);
+        const elapsed = now - boostStartRef.current;
+        const tLinear = Math.min(elapsed / fadeDuration, 1);
+        // Cubic ease-out: fast initial drop, slow approach — perceptually even
+        const tLog = 1 - Math.pow(1 - tLinear, 3);
+
+        const [br, bg, bb] = boostColorRef.current;
+        const fr = Math.round(br + (color[0] - br) * tLog);
+        const fg = Math.round(bg + (color[1] - bg) * tLog);
+        const fb = Math.round(bb + (color[2] - bb) * tLog);
+
         colorThrottleRef.current = now;
-        colorBoostedRef.current = false;
-        ble.color(color[0], color[1], color[2]);
+        ble.color(fr, fg, fb);
+
+        if (tLinear >= 1) {
+          colorBoostedRef.current = false;
+        }
       }
 
       rafRef.current = requestAnimationFrame(loop);
