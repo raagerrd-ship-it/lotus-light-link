@@ -540,6 +540,16 @@ export default function MicPanel({ char, currentColor }: MicPanelProps) {
             </label>
             <span ref={bpmDisplayRef} className="text-xs font-mono text-foreground">— BPM</span>
           </div>
+
+          {/* Intensity history chart */}
+          <div className="rounded-lg overflow-hidden" style={{ background: 'hsl(0 0% 15% / 0.3)' }}>
+            <canvas
+              ref={canvasRef}
+              width={320}
+              height={80}
+              className="w-full h-20"
+            />
+          </div>
         </div>
       )}
 
