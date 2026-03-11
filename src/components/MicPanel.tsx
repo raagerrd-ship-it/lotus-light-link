@@ -391,8 +391,9 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
               framesPerBeatRef.current = (beatMs / 1000) * 60;
               
               if (bpmDisplayRef.current) {
-                const confBar = finalConf > 0.6 ? '●●●' : finalConf > 0.3 ? '●●○' : '●○○';
-                bpmDisplayRef.current.textContent = `${Math.round(bpmRef.current)} BPM ${confBar}`;
+                const hasExt = externalBpmRef.current !== null && externalBpmRef.current > 0;
+                const indicator = hasExt ? '🎵' : (finalConf > 0.6 ? '●●●' : finalConf > 0.3 ? '●●○' : '●○○');
+                bpmDisplayRef.current.textContent = `${Math.round(bpmRef.current)} BPM ${indicator}`;
               }
             }
           }
