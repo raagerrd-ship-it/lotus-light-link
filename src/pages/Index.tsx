@@ -96,7 +96,6 @@ const Index = () => {
   const finishConnect = useCallback(async (conn: BLEConnection) => {
     retryCountRef.current = 0;
     setConnection(conn);
-    setAutoConnecting(false);
     setReconnecting(false);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
