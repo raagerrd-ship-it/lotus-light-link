@@ -485,8 +485,12 @@ export default function MicPanel({ char, currentColor, externalBpm }: MicPanelPr
 
           ctx2d.clearRect(0, 0, w, h);
 
+          // Reserve future space: 2 beats after current "now" position
+          const futureFrames = bpmRef.current > 0 ? Math.round(framesPerBeatRef.current * 2) : 0;
+          const totalFrames = HISTORY_LEN + futureFrames;
+
           if (len2 > 1) {
-            const step = w / (HISTORY_LEN - 1);
+            const step = w / (totalFrames - 1);
             const offsetX = (HISTORY_LEN - len2) * step;
 
             for (let i = 1; i < len2; i++) {
