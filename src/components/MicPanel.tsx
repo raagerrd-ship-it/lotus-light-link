@@ -4,6 +4,7 @@ import { Activity } from "lucide-react";
 import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
 import { drawIntensityChart, type ChartSample } from "@/lib/drawChart";
 import { liftColor } from "@/lib/colorUtils";
+import { type SongSection, getCurrentSection, getSectionBehavior, getUpcomingDrop } from "@/lib/songSections";
 
 interface MicPanelProps {
   char: any;
@@ -13,6 +14,8 @@ interface MicPanelProps {
   durationMs?: number | null;
   punchWhite: boolean;
   onBpmChange?: (bpm: number | null) => void;
+  songSections?: SongSection[];
+  songDrops?: number[];
 }
 
 // Priority-aware BLE command queue
