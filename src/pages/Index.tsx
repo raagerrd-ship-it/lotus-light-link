@@ -12,20 +12,6 @@ import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
 
-const PRESET_COLORS: { label: string; rgb: [number, number, number] }[] = [
-  { label: "Röd", rgb: [255, 0, 0] },
-  { label: "Grön", rgb: [0, 255, 0] },
-  { label: "Blå", rgb: [0, 0, 255] },
-  { label: "Gul", rgb: [255, 255, 0] },
-  { label: "Cyan", rgb: [0, 255, 255] },
-  { label: "Magenta", rgb: [255, 0, 255] },
-  { label: "Orange", rgb: [255, 120, 0] },
-  { label: "Rosa", rgb: [255, 60, 120] },
-  { label: "Lila", rgb: [140, 0, 255] },
-  { label: "Varmvit", rgb: [255, 200, 120] },
-  { label: "Kallvit", rgb: [200, 220, 255] },
-  { label: "Vit", rgb: [255, 255, 255] },
-];
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
