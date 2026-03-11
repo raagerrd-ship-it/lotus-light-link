@@ -41,51 +41,58 @@ export async function reconnectLastDevice(): Promise<BLEConnection | null> {
   const lastDevice = getLastDevice();
   if (!lastDevice || !nav.bluetooth) return null;
 
-  // Fast path: getDevices (desktop/newer Chrome)
-  if (nav.bluetooth.getDevices) {
-    const devices = await nav.bluetooth.getDevices();
-    const device = devices.find((d: any) => d.id === lastDevice.id)
-      ?? devices.find((d: any) => d.name === lastDevice.name);
+  if (!nav.bluetooth.getDevices) {
+    console.log('[BLE] getDevices not supported — manual connect needed');
+    return null;
+  }
 
-    if (device?.gatt) {
-      // Strategy 1: direct connect
-      try {
-        const conn = await Promise.race([
-          connectToDevice(device),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-        ]);
-        return conn;
-      } catch {}
+  const devices = await nav.bluetooth.getDevices();
+  const device = devices.find((d: any) => d.id === lastDevice.id)
+    ?? devices.find((d: any) => d.name === lastDevice.name);
 
-      // Strategy 2: wait for advertisement then connect
-      if (device.watchAdvertisements) {
-        const abortController = new AbortController();
-        try {
-          const conn = await Promise.race([
-            new Promise<BLEConnection>((resolve, reject) => {
-              device.addEventListener('advertisementreceived', async () => {
-                try { resolve(await connectToDevice(device)); }
-                catch (e) { reject(e); }
-              }, { once: true });
-              device.watchAdvertisements({ signal: abortController.signal }).catch(reject);
-            }),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
-          ]);
-          return conn;
-        } catch {} finally {
-          abortController.abort();
-        }
-      }
+  if (!device?.gatt) {
+    console.log('[BLE] Saved device not found in paired list');
+    return null;
+  }
+
+  // Strategy 1: direct connect (fast, 4s timeout)
+  try {
+    console.log('[BLE] Trying direct connect...');
+    const conn = await Promise.race([
+      connectToDevice(device),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+    ]);
+    console.log('[BLE] Direct connect succeeded');
+    return conn;
+  } catch (e) {
+    console.log('[BLE] Direct connect failed:', (e as Error).message);
+  }
+
+  // Strategy 2: watchAdvertisements (5s timeout)
+  if (device.watchAdvertisements) {
+    const abortController = new AbortController();
+    try {
+      console.log('[BLE] Watching for advertisements...');
+      const conn = await Promise.race([
+        new Promise<BLEConnection>((resolve, reject) => {
+          device.addEventListener('advertisementreceived', async () => {
+            try { resolve(await connectToDevice(device)); }
+            catch (e) { reject(e); }
+          }, { once: true });
+          device.watchAdvertisements({ signal: abortController.signal }).catch(reject);
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ]);
+      console.log('[BLE] Advertisement connect succeeded');
+      return conn;
+    } catch (e) {
+      console.log('[BLE] Advertisement connect failed:', (e as Error).message);
+    } finally {
+      abortController.abort();
     }
   }
 
-  // Fallback path: platforms without getDevices (or when stored device not found)
-  // Opens chooser filtered to likely BLEDOM devices.
-  try {
-    return await connectBLEDOM(false);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
