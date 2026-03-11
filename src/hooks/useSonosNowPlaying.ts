@@ -237,7 +237,7 @@ export function useSonosNowPlaying() {
           albumArtUrl: status.albumArtUrl ?? currentData?.albumArtUrl ?? null,
           playbackState: status.playbackState ?? currentData?.playbackState ?? "PLAYBACK_STATE_PLAYING",
           durationMs: status.durationMillis ?? currentData?.durationMs ?? null,
-          positionMs: newPos,
+          positionMs: clampedPos,
           receivedAt: performance.now(),
         });
       }
