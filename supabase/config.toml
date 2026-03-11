@@ -1,1 +1,4 @@
 project_id = "pwhmgfyaubpawwezwcyd"
+
+[functions.song-analysis]
+verify_jwt = false
