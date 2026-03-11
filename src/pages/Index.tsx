@@ -219,8 +219,11 @@ const Index = () => {
       <div className="flex flex-col min-h-[100dvh] items-center justify-center bg-background p-8">
         <div className="flex flex-col items-center gap-8 max-w-sm text-center">
           <div className="relative">
-            <div className="w-28 h-28 rounded-full border border-border flex items-center justify-center">
-              <Bluetooth className="w-10 h-10 text-muted-foreground" />
+            <div
+              className="w-28 h-28 rounded-full border border-border flex items-center justify-center animate-pulse"
+              style={{ boxShadow: `0 0 40px rgba(${r},${g},${b},0.2), 0 0 80px rgba(${r},${g},${b},0.08)` }}
+            >
+              <Bluetooth className="w-10 h-10" style={{ color: accentColor }} />
             </div>
           </div>
 
