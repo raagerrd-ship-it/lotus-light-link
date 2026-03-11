@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
-  connectBLEDOM, getLastDevice,
+  connectBLEDOM, getLastDevice, autoReconnect,
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
