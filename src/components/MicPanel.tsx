@@ -64,6 +64,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const pctRef = useRef<HTMLSpanElement>(null);
   const iconRef = useRef<SVGSVGElement>(null);
   const progressRingRef = useRef<SVGCircleElement>(null);
+  const ringWrapRef = useRef<SVGSVGElement>(null);
   const timeTextRef = useRef<HTMLSpanElement>(null);
 
   // Envelope follower state
@@ -496,6 +497,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         s.background = `radial-gradient(circle, rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.34}) 0%, rgba(${cr}, ${cg}, ${cb}, ${0.08 + curved * 0.24}) 38%, rgba(${cr}, ${cg}, ${cb}, ${0.02 + curved * 0.08}) 58%, rgba(${cr}, ${cg}, ${cb}, 0) 78%)`;
         s.boxShadow = `0 0 ${18 + curved * 70}px ${6 + curved * 26}px rgba(${cr}, ${cg}, ${cb}, ${0.18 + curved * 0.5})`;
       }
+      if (ringWrapRef.current) {
+        const ringStyle = ringWrapRef.current.style;
+        ringStyle.transform = `scale(${1 + curved * 0.12}) rotate(-90deg)`;
+        ringStyle.filter = `drop-shadow(0 0 ${4 + curved * 14}px rgba(${currentColorRef.current[0]}, ${currentColorRef.current[1]}, ${currentColorRef.current[2]}, ${0.35 + curved * 0.45}))`;
+      }
       const sPos = sonosPositionRef.current;
       const dur = durationMs;
       if (progressRingRef.current && sPos && dur && dur > 0) {
@@ -743,9 +749,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           }}
         />
         <svg
+          ref={ringWrapRef}
           viewBox="0 0 140 140"
-          className="absolute w-36 h-36 -rotate-90"
-          style={{ overflow: 'visible' }}
+          className="absolute w-36 h-36"
+          style={{ overflow: 'visible', transform: 'rotate(-90deg)' }}
         >
           {/* Background track */}
           <circle
@@ -761,12 +768,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
             cx="70" cy="70" r="60"
             fill="none"
             stroke={`rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})`}
-            strokeWidth="4"
+            strokeWidth="5"
             strokeLinecap="round"
             strokeDasharray={String(2 * Math.PI * 60)}
             strokeDashoffset={String(2 * Math.PI * 60)}
             className="transition-[stroke] duration-500"
-            style={{ filter: `drop-shadow(0 0 4px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.5))` }}
+            style={{ filter: `drop-shadow(0 0 10px rgba(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]}, 0.75))` }}
           />
         </svg>
         {/* Center content */}
