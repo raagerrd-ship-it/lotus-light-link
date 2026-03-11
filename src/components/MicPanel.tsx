@@ -790,10 +790,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
               color: active ? `rgb(${currentColor[0]}, ${currentColor[1]}, ${currentColor[2]})` : undefined,
             }}
           />
-          <span
-            ref={timeTextRef}
-            className="text-[10px] font-mono text-muted-foreground tabular-nums"
-          />
         </div>
       </div>
 
