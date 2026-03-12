@@ -309,6 +309,24 @@ const Index = () => {
             >
               <Zap className="w-3.5 h-3.5" />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const next = !autoHide;
+                setAutoHide(next);
+                localStorage.setItem("autoHide", String(next));
+                if (!next) {
+                  if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+                  setShowOverlay(true);
+                }
+              }}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+              style={autoHide ? { color: accent } : undefined}
+              title={autoHide ? "Auto-hide on" : "Auto-hide off"}
+            >
+              {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </Button>
             <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
               <Power className="w-4 h-4" />
             </Button>
