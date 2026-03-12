@@ -121,9 +121,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const silenceStartRef = useRef(0);
   
   // Sonos position phase-sync
+  const getPositionRef = useRef(getPosition);
+  useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
   const sonosPositionRef = useRef<{ positionMs: number; receivedAt: number } | null>(null);
   const durationMsRef = useRef<number | null | undefined>(durationMs);
   const lastPhaseCorrectionRef = useRef(0);
+  // Update position from getPosition (real-time ref) or fall back to prop
   useEffect(() => { sonosPositionRef.current = sonosPosition ?? null; }, [sonosPosition]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
