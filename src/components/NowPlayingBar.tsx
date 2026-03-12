@@ -30,7 +30,6 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, progressFr
             src={nowPlaying.albumArtUrl}
             alt="Album art"
             className="w-12 h-12 rounded-xl"
-            crossOrigin="anonymous"
             style={{
               boxShadow: `0 0 16px rgba(${r},${g},${b},0.4), 0 0 4px rgba(${r},${g},${b},0.2)`,
             }}
