@@ -154,11 +154,9 @@ const Index = () => {
       paletteIndexRef.current = (paletteIndexRef.current + 1) % palette.length;
       const nextColor = palette[paletteIndexRef.current];
       setCurrentColor(nextColor);
-      if (connection && isOn) {
-        sendColor(connection.characteristic, ...nextColor).catch(() => {});
-      }
+      // BLE color fade is handled by MicPanel's interpolation loop
     }
-  }, [palette, connection, isOn]);
+  }, [palette]);
 
   // Auto-calibration callback from mic drift detection
   const handleSyncDrift = useCallback((driftMs: number) => {

@@ -76,9 +76,19 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     throttle: 0,
   });
 
-  // Ref for currentColor so the rAF loop never restarts on color change
+  // Smooth color transition refs
   const currentColorRef = useRef(currentColor);
-  useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
+  const targetColorRef = useRef(currentColor);
+  const prevColorRef = useRef(currentColor);
+  const colorTransitionStartRef = useRef(0);
+  const COLOR_FADE_MS = 500;
+
+  useEffect(() => {
+    // When the target color changes, start a fade from current interpolated color
+    prevColorRef.current = currentColorRef.current;
+    targetColorRef.current = currentColor;
+    colorTransitionStartRef.current = performance.now();
+  }, [currentColor]);
 
   // Direct DOM refs to avoid React re-renders in hot loop
   const vizRef = useRef<HTMLDivElement>(null);
@@ -681,6 +691,27 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     // ─── Main loop ───
     const loop = () => {
       const now = performance.now();
+
+      // Smooth color transition (lerp over COLOR_FADE_MS)
+      const tStart = colorTransitionStartRef.current;
+      if (tStart > 0) {
+        const t = Math.min(1, (now - tStart) / COLOR_FADE_MS);
+        const ease = t * (2 - t); // ease-out quadratic
+        const prev = prevColorRef.current;
+        const target = targetColorRef.current;
+        currentColorRef.current = [
+          Math.round(prev[0] + (target[0] - prev[0]) * ease),
+          Math.round(prev[1] + (target[1] - prev[1]) * ease),
+          Math.round(prev[2] + (target[2] - prev[2]) * ease),
+        ];
+        // Send interpolated color to BLE during fade (throttled ~40ms)
+        if (!colorBoostRef.current.active && now - throttleRef.current >= 40) {
+          throttleRef.current = now;
+          ble.color(...currentColorRef.current);
+        }
+        if (t >= 1) colorTransitionStartRef.current = 0;
+      }
+
       const { transient, isSilence } = sampleEnergy();
       const isOnset = detectBeatsAndBpm(transient, isSilence, now);
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient);
