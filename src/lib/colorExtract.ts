@@ -122,10 +122,28 @@ export async function extractPalette(
     const colors = extractColorsFromImage(img, count);
     if (colors.length > 0) return colors;
   } catch {
-    // CORS blocked — try proxy
+    // CORS blocked or load failed
   }
 
-  // Fallback: use a CORS proxy
+  // Fallback: fetch as blob (works if server sends CORS headers on fetch but not on img)
+  try {
+    const res = await fetch(imageUrl, { mode: 'cors' });
+    if (res.ok) {
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      try {
+        const img = await loadImage(blobUrl, false);
+        const colors = extractColorsFromImage(img, count);
+        if (colors.length > 0) return colors;
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+    }
+  } catch {
+    // fetch also failed
+  }
+
+  // Last resort: use a CORS proxy
   try {
     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
     const img = await loadImage(proxyUrl, true);
