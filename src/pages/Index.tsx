@@ -209,6 +209,7 @@ const Index = () => {
             currentColor={currentColor}
             externalBpm={sonosBpm}
             sonosPosition={nowPlaying?.positionMs != null ? { positionMs: nowPlaying.positionMs, receivedAt: nowPlaying.receivedAt } : null}
+            getPosition={getPosition}
             durationMs={nowPlaying?.durationMs}
             punchWhite={punchWhite}
             onBpmChange={setLiveBpm}
