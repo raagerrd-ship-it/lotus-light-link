@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
-import { drawIntensityChart, type ChartSample } from "@/lib/drawChart";
+import { drawIntensityChart, resetChartScaler, type ChartSample } from "@/lib/drawChart";
 import { liftColor } from "@/lib/colorUtils";
 import { type SongSection, getCurrentSection, getSectionBehavior, getUpcomingDrop } from "@/lib/songSections";
 
