@@ -58,7 +58,6 @@ export function useSonosNowPlaying() {
 
     const fetchLocal = async () => {
       const proxyUrl = getLocalProxyUrl();
-      setDebugLog(`proxy: ${proxyUrl}`);
 
       try {
         const t0 = performance.now();
