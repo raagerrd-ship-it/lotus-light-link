@@ -110,6 +110,8 @@ export function useSonosNowPlaying() {
             positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
             receivedAt: performance.now(),
             smoothedRtt,
+            nextTrackName: s.nextTrackName ?? null,
+            nextArtistName: s.nextArtistName ?? null,
           });
           // Fetch DB after short delay to get album art
           setTimeout(fetchDb, 800);
