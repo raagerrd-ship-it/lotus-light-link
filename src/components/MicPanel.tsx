@@ -76,9 +76,19 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     throttle: 0,
   });
 
-  // Ref for currentColor so the rAF loop never restarts on color change
+  // Smooth color transition refs
   const currentColorRef = useRef(currentColor);
-  useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
+  const targetColorRef = useRef(currentColor);
+  const prevColorRef = useRef(currentColor);
+  const colorTransitionStartRef = useRef(0);
+  const COLOR_FADE_MS = 500;
+
+  useEffect(() => {
+    // When the target color changes, start a fade from current interpolated color
+    prevColorRef.current = currentColorRef.current;
+    targetColorRef.current = currentColor;
+    colorTransitionStartRef.current = performance.now();
+  }, [currentColor]);
 
   // Direct DOM refs to avoid React re-renders in hot loop
   const vizRef = useRef<HTMLDivElement>(null);
