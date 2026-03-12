@@ -118,6 +118,7 @@ const Index = () => {
     })
       .then((r) => r.json())
       .then((d) => {
+        console.log("[song-analysis]", d);
         setSonosBpm(d.bpm >= 40 && d.bpm <= 220 ? d.bpm : null);
         setSongSections(Array.isArray(d.sections) ? d.sections : []);
         setSongDrops(Array.isArray(d.drops) ? d.drops : []);
