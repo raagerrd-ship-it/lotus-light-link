@@ -142,7 +142,7 @@ export function useSonosNowPlaying() {
       .subscribe();
 
     // Watchdog polls API every 2.5s for fresh position data
-    const watchdog = setInterval(fetchApi, 2500);
+    const watchdog = setInterval(fetchApi, 1500);
 
     return () => {
       channel.unsubscribe();
