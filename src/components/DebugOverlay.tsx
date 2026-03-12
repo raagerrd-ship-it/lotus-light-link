@@ -3,7 +3,7 @@ import type { SongSection } from "@/lib/songSections";
 interface DebugOverlayProps {
   smoothedRtt: number;
   autoDriftMs: number;
-  syncOffsetMs: number;
+  currentSection: SongSection | null;
   currentSection: SongSection | null;
   palette?: [number, number, number][];
   paletteIndex?: number;
