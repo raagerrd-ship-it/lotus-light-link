@@ -305,7 +305,7 @@ const Index = () => {
                 localStorage.setItem("syncOffsetMs", String(clamped));
               }}
               className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${punchWhite ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
-              style={punchWhite ? { color: accent, ringColor: accent } : undefined}
+              style={punchWhite ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
               title={`Punch white${syncOffsetMs ? ` (offset: ${syncOffsetMs}ms)` : ''}`}
             >
               <Zap className="w-3.5 h-3.5" style={punchWhite ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
