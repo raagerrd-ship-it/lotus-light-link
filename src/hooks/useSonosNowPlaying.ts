@@ -33,36 +33,10 @@ export function useSonosNowPlaying() {
   }, []);
 
   useEffect(() => {
-    // Apply new data — always update ref for interpolation.
-    // Only trigger React re-render on meaningful changes (track, art, state, large drift)
+    // Apply new data — always update ref and trigger render
     const apply = (next: SonosNowPlaying) => {
-      const prev = dataRef.current;
-      // Always update ref for real-time position access
       dataRef.current = next;
-
-      // Determine if React re-render is needed
-      const needsRender =
-        !prev ||
-        prev.trackName !== next.trackName ||
-        prev.artistName !== next.artistName ||
-        prev.albumArtUrl !== next.albumArtUrl ||
-        prev.playbackState !== next.playbackState ||
-        prev.durationMs !== next.durationMs ||
-        prev.nextTrackName !== next.nextTrackName ||
-        prev.nextArtistName !== next.nextArtistName;
-
-      if (needsRender) {
-        setData(next);
-        return;
-      }
-
-      // For position-only updates, re-render every 2s for progress bar accuracy
-      if (prev.positionMs != null && next.positionMs != null) {
-        const estimated = prev.positionMs + (performance.now() - prev.receivedAt);
-        if (Math.abs(next.positionMs - estimated) > 2000) {
-          setData(next);
-        }
-      }
+      setData(next);
     };
 
     // RTT smoothing via EMA
