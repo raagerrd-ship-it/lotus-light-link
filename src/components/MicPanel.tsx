@@ -342,7 +342,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
     // ─── Sub-function: beat detection, phase tracking, BPM estimation ───
     const detectBeatsAndBpm = (transient: number, isSilence: boolean, now: number) => {
-      const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
+      // During silence, rapidly decay phase to 1 (= no pulse) instead of cycling
+      const silenceDuration = silenceStartRef.current > 0 ? now - silenceStartRef.current : 0;
+      const phaseStep = isSilence
+        ? (silenceDuration > 300 ? 0.25 : 0.08) // fast fade-out after 300ms silence
+        : (1 / framesPerBeatRef.current);
       const prevPhase = beatPhaseRef.current;
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
       if (prevPhase < 0.5 && beatPhaseRef.current >= 0.5) {
@@ -397,7 +401,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = now;
-        if (now - silenceStartRef.current > 10000 && bpmRef.current > 0) {
+        // Clear BPM after 2s silence (was 10s)
+        if (now - silenceStartRef.current > 2000 && bpmRef.current > 0) {
           onBpmChangeRef.current?.(null);
         }
       } else {
@@ -559,7 +564,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const curved = Math.pow(linear, 0.45); // softer curve = more visible tail
 
       let finalCurved = curved;
-      if (bpmRef.current > 0 && curved < 0.25) {
+      // Synthetic fallback pulse — only when audio is actively playing (not silent)
+      const silenceDur = silenceStartRef.current > 0 ? performance.now() - silenceStartRef.current : 0;
+      if (bpmRef.current > 0 && curved < 0.25 && silenceDur < 200) {
         const bpmPulse = Math.pow(1 - phase, 2.0);
         const synthCurved = 0.05 + bpmPulse * 0.25 * sectionBehavior.beatReactivity;
         finalCurved = Math.max(curved, synthCurved);
