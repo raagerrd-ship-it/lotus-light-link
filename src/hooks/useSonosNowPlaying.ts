@@ -56,11 +56,20 @@ export function useSonosNowPlaying() {
       if (!rows?.length) { dataRef.current = null; setData(null); return; }
       const row = rows[0];
 
-      // Compensate position for time since DB write
+      const prev = dataRef.current;
+
+      // Guard: if API already set a newer track, don't overwrite with stale DB data
+      if (prev && row.track_name && prev.trackName && row.track_name !== prev.trackName) {
+        // DB is stale — only take album art if track matches what we had before
+        return;
+      }
+
+      // Compensate position for time since DB write, capped to duration
       const dbAge = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
-      const pos = row.playback_state === "PLAYBACK_STATE_PLAYING"
-        ? Math.min(row.duration_ms ?? Infinity, (row.position_ms ?? 0) + Math.max(0, dbAge))
+      const rawPos = row.playback_state === "PLAYBACK_STATE_PLAYING"
+        ? (row.position_ms ?? 0) + Math.max(0, Math.min(dbAge, 10000))
         : (row.position_ms ?? 0);
+      const pos = row.duration_ms ? Math.min(row.duration_ms, rawPos) : rawPos;
 
       apply({
         trackName: row.track_name,
@@ -71,9 +80,9 @@ export function useSonosNowPlaying() {
         durationMs: row.duration_ms,
         positionMs: pos,
         receivedAt: performance.now(),
-        smoothedRtt: 0,
-        nextTrackName: null,
-        nextArtistName: null,
+        smoothedRtt: prev?.smoothedRtt ?? 0,
+        nextTrackName: prev?.nextTrackName ?? null,
+        nextArtistName: prev?.nextArtistName ?? null,
       });
     };
 
