@@ -97,7 +97,7 @@ export function useSonosNowPlaying() {
           nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
           source: 'local',
         });
-      } catch { /* local proxy unavailable — no data */ }
+      } catch (e: any) { setDebugLog(`err: ${e?.message?.slice(0, 80)}`); }
     };
 
     // Poll at 200ms
