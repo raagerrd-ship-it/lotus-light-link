@@ -89,6 +89,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     prevColorRef.current = currentColorRef.current;
     targetColorRef.current = currentColor;
     colorTransitionStartRef.current = performance.now();
+    // Immediately send new color to BLE (don't wait for audio loop)
+    if (bleQueueRef.current) {
+      bleQueueRef.current.color(...currentColor);
+    }
   }, [currentColor]);
 
   // Direct DOM refs to avoid React re-renders in hot loop
