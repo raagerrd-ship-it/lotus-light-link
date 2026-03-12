@@ -228,6 +228,7 @@ const Index = () => {
           currentSection={currentSection}
           palette={palette}
           paletteIndex={paletteIndexRef.current}
+          source={nowPlaying?.source}
         />
       )}
 
