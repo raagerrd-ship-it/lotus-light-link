@@ -25,6 +25,7 @@ const Index = () => {
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [songSections, setSongSections] = useState<SongSection[]>([]);
   const [songDrops, setSongDrops] = useState<number[]>([]);
   const [autoDriftMs, setAutoDriftMs] = useState(0);
