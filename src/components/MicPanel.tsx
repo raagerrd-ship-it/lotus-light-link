@@ -342,7 +342,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         predictiveFiredRef.current = false;
       }
 
-      // Sonos position phase correction
+      // Sonos position phase correction — read real-time position from ref
+      const freshPos = getPositionRef.current?.();
+      if (freshPos) sonosPositionRef.current = freshPos;
       const sonosPos = sonosPositionRef.current;
       if (sonosPos && bpmRef.current > 0 && now - lastPhaseCorrectionRef.current > 500) {
         lastPhaseCorrectionRef.current = now;
