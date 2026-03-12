@@ -26,24 +26,9 @@ export function useSonosNowPlaying() {
   const prevArtRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Apply new data with drift protection — avoid small position jumps on same track
-    // Always update ref for interpolation accuracy, but skip React render if close enough
+    // Apply new data — always update for accurate position tracking
+    // With 200ms local polling, position diffs are tiny so no drift guard needed
     const apply = (next: SonosNowPlaying) => {
-      const prev = dataRef.current;
-      if (
-        prev &&
-        prev.trackName === next.trackName &&
-        prev.artistName === next.artistName &&
-        prev.positionMs != null &&
-        next.positionMs != null
-      ) {
-        const estimated = prev.positionMs + (performance.now() - prev.receivedAt);
-        if (Math.abs(next.positionMs - estimated) < 2000) {
-          // Update ref silently for accurate interpolation without triggering re-render
-          dataRef.current = next;
-          return;
-        }
-      }
       dataRef.current = next;
       setData(next);
     };
