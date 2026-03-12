@@ -43,6 +43,9 @@ export function drawIntensityChart(
 
   ctx.clearRect(0, 0, w, h);
 
+  // Apply global brightness as canvas opacity multiplier
+  const gb = Math.max(0, Math.min(1, globalBrightness));
+  ctx.globalAlpha = 0.15 + gb * 0.85; // floor at 15% so chart never fully vanishes
   const totalFrames = historyLen;
 
   if (len <= 1) return;
