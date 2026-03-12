@@ -35,6 +35,7 @@ export function useSonosNowPlaying() {
 
   useEffect(() => {
     // Apply new data with drift protection — avoid small position jumps on same track
+    // Tighter threshold for local proxy (2s) vs cloud (5s)
     const apply = (next: SonosNowPlaying) => {
       const prev = dataRef.current;
       if (
@@ -45,7 +46,8 @@ export function useSonosNowPlaying() {
         next.positionMs != null
       ) {
         const estimated = prev.positionMs + (performance.now() - prev.receivedAt);
-        if (Math.abs(next.positionMs - estimated) < 5000) return; // interpolation is close enough
+        const driftThreshold = next.source === 'local' ? 2000 : 5000;
+        if (Math.abs(next.positionMs - estimated) < driftThreshold) return;
       }
       dataRef.current = next;
       setData(next);
