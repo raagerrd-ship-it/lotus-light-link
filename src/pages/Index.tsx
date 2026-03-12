@@ -50,9 +50,10 @@ const Index = () => {
   // Auto-hide overlay after 3s
   const resetOverlayTimer = useCallback(() => {
     setShowOverlay(true);
+    if (!autoHide) return;
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
-  }, []);
+  }, [autoHide]);
 
   useEffect(() => {
     if (connection) resetOverlayTimer();
