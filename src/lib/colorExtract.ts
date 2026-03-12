@@ -31,12 +31,14 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       if (a < 128) continue;
 
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (lum < 20 || lum > 245) continue;
+      // Reject very dark (< 40) and very light (> 220) pixels
+      if (lum < 40 || lum > 220) continue;
 
       const max = Math.max(r, g, b);
       const min = Math.min(r, g, b);
       const sat = max > 0 ? (max - min) / max : 0;
-      if (sat < 0.08) continue;
+      // Require strong saturation — reject pastels, grays, browns, whites
+      if (sat < 0.35) continue;
 
       const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
       const existing = buckets.get(key);
