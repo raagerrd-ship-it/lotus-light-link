@@ -18,6 +18,8 @@ export interface SonosNowPlaying {
   positionMs: number | null;
   receivedAt: number;
   smoothedRtt: number;
+  nextTrackName: string | null;
+  nextArtistName: string | null;
 }
 
 export function useSonosNowPlaying() {
@@ -70,6 +72,8 @@ export function useSonosNowPlaying() {
         positionMs: pos,
         receivedAt: performance.now(),
         smoothedRtt: 0,
+        nextTrackName: null,
+        nextArtistName: null,
       });
     };
 
@@ -106,6 +110,8 @@ export function useSonosNowPlaying() {
             positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
             receivedAt: performance.now(),
             smoothedRtt,
+            nextTrackName: s.nextTrackName ?? null,
+            nextArtistName: s.nextArtistName ?? null,
           });
           // Fetch DB after short delay to get album art
           setTimeout(fetchDb, 800);
@@ -120,6 +126,8 @@ export function useSonosNowPlaying() {
           durationMs: s.durationMillis ?? prev!.durationMs,
           receivedAt: performance.now(),
           smoothedRtt,
+          nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
+          nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
         });
       } catch { /* network error — ignore */ }
     };
@@ -134,7 +142,7 @@ export function useSonosNowPlaying() {
       .subscribe();
 
     // Watchdog polls API every 2.5s for fresh position data
-    const watchdog = setInterval(fetchApi, 2500);
+    const watchdog = setInterval(fetchApi, 1500);
 
     return () => {
       channel.unsubscribe();
