@@ -81,16 +81,18 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Extract color from album art
+  // Extract palette from album art
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-    extractDominantColor(artUrl).then((color) => {
-      if (!color) return;
-      setCurrentColor(color);
+    extractPalette(artUrl, 4).then((colors) => {
+      if (colors.length === 0) return;
+      setPalette(colors);
+      paletteIndexRef.current = 0;
+      setCurrentColor(colors[0]);
       if (connection && isOn) {
-        sendColor(connection.characteristic, ...color).catch(() => {});
+        sendColor(connection.characteristic, ...colors[0]).catch(() => {});
       }
     });
   }, [nowPlaying?.albumArtUrl, connection, isOn]);
