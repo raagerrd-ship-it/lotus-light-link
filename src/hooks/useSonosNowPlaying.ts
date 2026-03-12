@@ -126,6 +126,8 @@ export function useSonosNowPlaying() {
           durationMs: s.durationMillis ?? prev!.durationMs,
           receivedAt: performance.now(),
           smoothedRtt,
+          nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
+          nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
         });
       } catch { /* network error — ignore */ }
     };
