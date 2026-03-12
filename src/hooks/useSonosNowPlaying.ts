@@ -35,6 +35,7 @@ export function useSonosNowPlaying() {
 
   useEffect(() => {
     // Apply new data with drift protection — avoid small position jumps on same track
+    // Tighter threshold for local proxy (2s) vs cloud (5s)
     const apply = (next: SonosNowPlaying) => {
       const prev = dataRef.current;
       if (
@@ -45,7 +46,8 @@ export function useSonosNowPlaying() {
         next.positionMs != null
       ) {
         const estimated = prev.positionMs + (performance.now() - prev.receivedAt);
-        if (Math.abs(next.positionMs - estimated) < 5000) return; // interpolation is close enough
+        const driftThreshold = next.source === 'local' ? 2000 : 5000;
+        if (Math.abs(next.positionMs - estimated) < driftThreshold) return;
       }
       dataRef.current = next;
       setData(next);
@@ -263,10 +265,10 @@ export function useSonosNowPlaying() {
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "sonos_now_playing" }, fetchDb)
       .subscribe();
 
-    // Fast local poll (500ms) or cloud fallback (1.5s)
+    // Ultra-fast local poll (200ms) or cloud fallback (1.5s)
     let pollTimer: ReturnType<typeof setTimeout>;
     const schedulePoll = () => {
-      const interval = localProxyAvailable ? 500 : 1500;
+      const interval = localProxyAvailable ? 200 : 1500;
       pollTimer = setTimeout(async () => {
         await poll();
         schedulePoll();
@@ -274,6 +276,17 @@ export function useSonosNowPlaying() {
     };
     // Initial poll
     poll().then(schedulePoll);
+
+    // Predictive track change: when near end of track, pre-fetch cloud metadata
+    const predictiveTimer = setInterval(() => {
+      const cur = dataRef.current;
+      if (cur && cur.durationMs && cur.positionMs != null && !cur.nextTrackName) {
+        const remaining = cur.durationMs - (cur.positionMs + (performance.now() - cur.receivedAt));
+        if (remaining > 0 && remaining < 15000) {
+          fetchCloud(); // pre-fetch next track metadata before track ends
+        }
+      }
+    }, 3000);
 
     // Cloud metadata refresh every 5s when local is active (for next track info)
     // Cloud metadata refresh only when local proxy lacks next track info
@@ -285,6 +298,7 @@ export function useSonosNowPlaying() {
       channel.unsubscribe();
       clearTimeout(pollTimer);
       clearInterval(cloudMetaTimer);
+      clearInterval(predictiveTimer);
     };
   }, []);
 
