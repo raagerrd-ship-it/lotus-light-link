@@ -9,7 +9,7 @@ import {
 import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
-import { extractDominantColor } from "@/lib/colorExtract";
+import { extractPalette } from "@/lib/colorExtract";
 import DebugOverlay from "@/components/DebugOverlay";
 import type { SongSection } from "@/lib/songSections";
 
@@ -18,6 +18,8 @@ const Index = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 0, 0]);
+  const [palette, setPalette] = useState<[number, number, number][]>([]);
+  const paletteIndexRef = useRef(0);
   const [isOn, setIsOn] = useState(true);
   const [sonosBpm, setSonosBpm] = useState<number | null>(null);
   const [punchWhite, setPunchWhite] = useState(true);
@@ -79,16 +81,18 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Extract color from album art
+  // Extract palette from album art
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-    extractDominantColor(artUrl).then((color) => {
-      if (!color) return;
-      setCurrentColor(color);
+    extractPalette(artUrl, 4).then((colors) => {
+      if (colors.length === 0) return;
+      setPalette(colors);
+      paletteIndexRef.current = 0;
+      setCurrentColor(colors[0]);
       if (connection && isOn) {
-        sendColor(connection.characteristic, ...color).catch(() => {});
+        sendColor(connection.characteristic, ...colors[0]).catch(() => {});
       }
     });
   }, [nowPlaying?.albumArtUrl, connection, isOn]);
@@ -141,11 +145,23 @@ const Index = () => {
     }).catch(() => {}); // fire-and-forget, result cached in DB
   }, [nowPlaying?.nextTrackName, nowPlaying?.nextArtistName]);
 
+  // Rotate palette color on section change
+  const handleSectionChange = useCallback((section: SongSection | null) => {
+    setCurrentSection(section);
+    if (palette.length > 1 && section) {
+      paletteIndexRef.current = (paletteIndexRef.current + 1) % palette.length;
+      const nextColor = palette[paletteIndexRef.current];
+      setCurrentColor(nextColor);
+      if (connection && isOn) {
+        sendColor(connection.characteristic, ...nextColor).catch(() => {});
+      }
+    }
+  }, [palette, connection, isOn]);
+
   // Auto-calibration callback from mic drift detection
   const handleSyncDrift = useCallback((driftMs: number) => {
     setAutoDriftMs(prev => {
       const clamped = Math.max(-200, Math.min(200, driftMs));
-      // EMA smoothing
       return prev * 0.7 + clamped * 0.3;
     });
   }, []);
@@ -200,7 +216,7 @@ const Index = () => {
             syncOffsetMs={syncOffsetMs + autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
-            onSectionChange={setCurrentSection}
+            onSectionChange={handleSectionChange}
           />
       </div>
 
@@ -210,6 +226,8 @@ const Index = () => {
           autoDriftMs={autoDriftMs}
           syncOffsetMs={syncOffsetMs}
           currentSection={currentSection}
+          palette={palette}
+          paletteIndex={paletteIndexRef.current}
         />
       )}
 

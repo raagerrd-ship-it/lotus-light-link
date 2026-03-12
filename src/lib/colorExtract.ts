@@ -1,16 +1,22 @@
 /**
- * Extract the dominant vibrant color from an image URL.
- * Uses an offscreen canvas to sample pixels.
+ * Extract dominant colors from an image URL.
+ * Uses an offscreen canvas to sample pixels and k-means-style clustering.
  */
 
-function extractFromImage(img: HTMLImageElement): [number, number, number] | null {
+type RGB = [number, number, number];
+
+function colorDistance(a: RGB, b: RGB): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+}
+
+function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
   try {
     const size = 64;
     const canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    if (!ctx) return [];
 
     ctx.drawImage(img, 0, 0, size, size);
     const imageData = ctx.getImageData(0, 0, size, size).data;
@@ -44,11 +50,10 @@ function extractFromImage(img: HTMLImageElement): [number, number, number] | nul
       }
     }
 
-    if (buckets.size === 0) return null;
+    if (buckets.size === 0) return [];
 
-    let bestScore = 0;
-    let bestColor: [number, number, number] = [255, 0, 0];
-
+    // Score and sort buckets
+    const scored: { color: RGB; score: number }[] = [];
     for (const bucket of buckets.values()) {
       const avgR = bucket.r / bucket.count;
       const avgG = bucket.g / bucket.count;
@@ -57,27 +62,36 @@ function extractFromImage(img: HTMLImageElement): [number, number, number] | nul
       const min = Math.min(avgR, avgG, avgB);
       const sat = max > 0 ? (max - min) / max : 0;
       const score = bucket.count * (1 + sat * 2);
-      if (score > bestScore) {
-        bestScore = score;
-        bestColor = [Math.round(avgR), Math.round(avgG), Math.round(avgB)];
+      scored.push({ color: [Math.round(avgR), Math.round(avgG), Math.round(avgB)], score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+
+    // Pick top colors that are visually distinct (min distance 60)
+    const MIN_DIST = 60;
+    const palette: RGB[] = [];
+    for (const { color } of scored) {
+      if (palette.length >= count) break;
+      if (palette.every(existing => colorDistance(existing, color) > MIN_DIST)) {
+        // Boost saturation
+        const [br, bg, bb] = color;
+        const maxC = Math.max(br, bg, bb);
+        const minC = Math.min(br, bg, bb);
+        if (maxC > 0 && maxC - minC < maxC * 0.5) {
+          const mid = (br + bg + bb) / 3;
+          palette.push([
+            Math.round(Math.min(255, Math.max(0, mid + (br - mid) * 1.8))),
+            Math.round(Math.min(255, Math.max(0, mid + (bg - mid) * 1.8))),
+            Math.round(Math.min(255, Math.max(0, mid + (bb - mid) * 1.8))),
+          ]);
+        } else {
+          palette.push(color);
+        }
       }
     }
 
-    const [br, bg, bb] = bestColor;
-    const maxC = Math.max(br, bg, bb);
-    const minC = Math.min(br, bg, bb);
-    if (maxC > 0 && maxC - minC < maxC * 0.5) {
-      const mid = (br + bg + bb) / 3;
-      bestColor = [
-        Math.round(Math.min(255, Math.max(0, mid + (br - mid) * 1.8))),
-        Math.round(Math.min(255, Math.max(0, mid + (bg - mid) * 1.8))),
-        Math.round(Math.min(255, Math.max(0, mid + (bb - mid) * 1.8))),
-      ];
-    }
-
-    return bestColor;
+    return palette;
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -94,11 +108,19 @@ function loadImage(url: string, crossOrigin: boolean): Promise<HTMLImageElement>
 export async function extractDominantColor(
   imageUrl: string
 ): Promise<[number, number, number] | null> {
+  const palette = await extractPalette(imageUrl);
+  return palette.length > 0 ? palette[0] : null;
+}
+
+export async function extractPalette(
+  imageUrl: string,
+  count: number = 4
+): Promise<RGB[]> {
   // Try direct CORS first
   try {
     const img = await loadImage(imageUrl, true);
-    const color = extractFromImage(img);
-    if (color) return color;
+    const colors = extractColorsFromImage(img, count);
+    if (colors.length > 0) return colors;
   } catch {
     // CORS blocked — try proxy
   }
@@ -107,11 +129,11 @@ export async function extractDominantColor(
   try {
     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
     const img = await loadImage(proxyUrl, true);
-    const color = extractFromImage(img);
-    if (color) return color;
+    const colors = extractColorsFromImage(img, count);
+    if (colors.length > 0) return colors;
   } catch {
     // proxy also failed
   }
 
-  return null;
+  return [];
 }
