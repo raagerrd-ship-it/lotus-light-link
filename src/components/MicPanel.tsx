@@ -528,7 +528,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Breathing mode: gentle sine wave
       if (sectionBehavior.breathingMode) {
         const breathe = 0.3 + 0.2 * Math.sin(performance.now() / 1200);
-        const pct = Math.round(10 + 90 * breathe * sectionBehavior.maxBrightness);
+        const pct = Math.round(3 + 97 * breathe * sectionBehavior.maxBrightness);
         return { phase, curved: breathe, finalCurved: breathe, pct, sectionBehavior, currentSec };
       }
 
@@ -552,7 +552,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       finalCurved = Math.min(finalCurved, sectionBehavior.maxBrightness);
 
       const floored = Math.max(0, finalCurved);
-      const pct = Math.round(10 + 90 * Math.log1p(floored * 9) / Math.log(10));
+      const pct = Math.round(3 + 97 * Math.log1p(floored * 9) / Math.log(10));
 
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
     };
