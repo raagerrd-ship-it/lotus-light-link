@@ -649,7 +649,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         }
       }
 
-      const predictiveActive = predictiveFiredRef.current && beatPhaseRef.current < 0.15;
+      const predictiveActive = predictiveFiredRef.current && beatPhaseRef.current < 0.08;
 
       // Normal brightness (throttled)
       if (!predictiveActive && now - throttleRef.current >= 25) {
