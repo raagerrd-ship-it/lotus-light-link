@@ -552,7 +552,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       finalCurved = Math.min(finalCurved, sectionBehavior.maxBrightness);
 
       const floored = Math.max(0, finalCurved);
-      const pct = Math.round(10 + 90 * Math.log1p(floored * 9) / Math.log(10));
+      const pct = Math.round(3 + 97 * Math.log1p(floored * 9) / Math.log(10));
 
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
     };
