@@ -67,7 +67,8 @@ export function useSonosNowPlaying() {
 
     const buildArtUrl = (uriRaw: string | null | undefined): string | null => {
       if (!uriRaw) return null;
-      const uri = String(uriRaw).trim();
+      // Decode XML entities that leak from DIDL parsing (e.g. &amp; → &)
+      const uri = decodeEntities(String(uriRaw).trim()) ?? '';
       if (!uri) return null;
 
       if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
