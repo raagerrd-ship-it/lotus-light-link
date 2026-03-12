@@ -119,6 +119,33 @@ const Index = () => {
       });
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
 
+  // Pre-fetch next track's analysis (fire-and-forget)
+  useEffect(() => {
+    const nextTrack = nowPlaying?.nextTrackName;
+    const nextArtist = nowPlaying?.nextArtistName;
+    const key = `${nextTrack ?? ""}::${nextArtist ?? ""}`;
+    if (!nextTrack || key === lastPrefetchKeyRef.current) return;
+    lastPrefetchKeyRef.current = key;
+
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-analysis`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ track: nextTrack, artist: nextArtist }),
+    }).catch(() => {}); // fire-and-forget, result cached in DB
+  }, [nowPlaying?.nextTrackName, nowPlaying?.nextArtistName]);
+
+  // Auto-calibration callback from mic drift detection
+  const handleSyncDrift = useCallback((driftMs: number) => {
+    setAutoDriftMs(prev => {
+      const clamped = Math.max(-200, Math.min(200, driftMs));
+      // EMA smoothing
+      return prev * 0.7 + clamped * 0.3;
+    });
+  }, []);
+
   const handleConnect = useCallback(async (scanAll = false) => {
     setBusy(true);
     setError(null);
