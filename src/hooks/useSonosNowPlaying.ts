@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // Local proxy URL — set via localStorage("sonosLocalProxy") e.g. "http://192.168.1.100:3000/api/sonos"
 function getLocalProxyUrl(): string | null {
@@ -25,12 +25,44 @@ export function useSonosNowPlaying() {
   const dataRef = useRef<SonosNowPlaying | null>(null);
   const prevArtRef = useRef<string | null>(null);
 
+  // Expose a getter for real-time position reading without requiring React re-render
+  const getPosition = useCallback((): { positionMs: number; receivedAt: number } | null => {
+    const cur = dataRef.current;
+    if (!cur || cur.positionMs == null) return null;
+    return { positionMs: cur.positionMs, receivedAt: cur.receivedAt };
+  }, []);
+
   useEffect(() => {
-    // Apply new data — always update for accurate position tracking
-    // With 200ms local polling, position diffs are tiny so no drift guard needed
+    // Apply new data — always update ref for interpolation.
+    // Only trigger React re-render on meaningful changes (track, art, state, large drift)
     const apply = (next: SonosNowPlaying) => {
+      const prev = dataRef.current;
+      // Always update ref for real-time position access
       dataRef.current = next;
-      setData(next);
+
+      // Determine if React re-render is needed
+      const needsRender =
+        !prev ||
+        prev.trackName !== next.trackName ||
+        prev.artistName !== next.artistName ||
+        prev.albumArtUrl !== next.albumArtUrl ||
+        prev.playbackState !== next.playbackState ||
+        prev.durationMs !== next.durationMs ||
+        prev.nextTrackName !== next.nextTrackName ||
+        prev.nextArtistName !== next.nextArtistName;
+
+      if (needsRender) {
+        setData(next);
+        return;
+      }
+
+      // For position-only updates, re-render every 2s for progress bar accuracy
+      if (prev.positionMs != null && next.positionMs != null) {
+        const estimated = prev.positionMs + (performance.now() - prev.receivedAt);
+        if (Math.abs(next.positionMs - estimated) > 2000) {
+          setData(next);
+        }
+      }
     };
 
     // RTT smoothing via EMA
@@ -109,5 +141,5 @@ export function useSonosNowPlaying() {
   const artChanged = data?.albumArtUrl !== prevArtRef.current;
   prevArtRef.current = data?.albumArtUrl ?? null;
 
-  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 10 };
+  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 10, getPosition };
 }
