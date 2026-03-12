@@ -53,11 +53,13 @@ export function drawIntensityChart(
     const x1 = offsetX + i * step;
     const s0 = samples[i - 1];
     const s1 = samples[i];
-    const y0 = chartTop + chartHeight - (s0.pct / 100) * chartHeight;
-    const y1 = chartTop + chartHeight - (s1.pct / 100) * chartHeight;
+    const p0 = Math.min(100, s0.pct * scale);
+    const p1 = Math.min(100, s1.pct * scale);
+    const y0 = chartTop + chartHeight - (p0 / 100) * chartHeight;
+    const y1 = chartTop + chartHeight - (p1 / 100) * chartHeight;
     const chartBottom = chartTop + chartHeight;
     const { r: cr, g: cg, b: cb } = s1;
-    const avgPct = (s0.pct + s1.pct) / 2;
+    const avgPct = (p0 + p1) / 2;
     const brightFactor = Math.max(0.15, avgPct / 100);
     const lift = brightFactor * 0.6;
     const [lr, lg, lb] = liftColor([cr, cg, cb], lift);
