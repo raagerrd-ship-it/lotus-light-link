@@ -265,10 +265,10 @@ export function useSonosNowPlaying() {
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "sonos_now_playing" }, fetchDb)
       .subscribe();
 
-    // Fast local poll (500ms) or cloud fallback (1.5s)
+    // Ultra-fast local poll (200ms) or cloud fallback (1.5s)
     let pollTimer: ReturnType<typeof setTimeout>;
     const schedulePoll = () => {
-      const interval = localProxyAvailable ? 500 : 1500;
+      const interval = localProxyAvailable ? 200 : 1500;
       pollTimer = setTimeout(async () => {
         await poll();
         schedulePoll();
@@ -276,6 +276,17 @@ export function useSonosNowPlaying() {
     };
     // Initial poll
     poll().then(schedulePoll);
+
+    // Predictive track change: when near end of track, pre-fetch cloud metadata
+    const predictiveTimer = setInterval(() => {
+      const cur = dataRef.current;
+      if (cur && cur.durationMs && cur.positionMs != null && !cur.nextTrackName) {
+        const remaining = cur.durationMs - (cur.positionMs + (performance.now() - cur.receivedAt));
+        if (remaining > 0 && remaining < 15000) {
+          fetchCloud(); // pre-fetch next track metadata before track ends
+        }
+      }
+    }, 3000);
 
     // Cloud metadata refresh every 5s when local is active (for next track info)
     // Cloud metadata refresh only when local proxy lacks next track info
