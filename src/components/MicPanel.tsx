@@ -11,6 +11,7 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   externalBpm?: number | null;
   sonosPosition?: { positionMs: number; receivedAt: number } | null;
+  getPosition?: () => { positionMs: number; receivedAt: number } | null;
   durationMs?: number | null;
   punchWhite: boolean;
   onBpmChange?: (bpm: number | null) => void;
