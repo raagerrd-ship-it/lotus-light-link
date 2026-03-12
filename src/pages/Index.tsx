@@ -212,7 +212,7 @@ const Index = () => {
             onBpmChange={setLiveBpm}
             songSections={songSections}
             songDrops={songDrops}
-            syncOffsetMs={syncOffsetMs + autoDriftMs}
+            syncOffsetMs={autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
             onSectionChange={handleSectionChange}
