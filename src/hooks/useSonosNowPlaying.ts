@@ -276,8 +276,9 @@ export function useSonosNowPlaying() {
     poll().then(schedulePoll);
 
     // Cloud metadata refresh every 5s when local is active (for next track info)
+    // Cloud metadata refresh only when local proxy lacks next track info
     const cloudMetaTimer = setInterval(() => {
-      if (localProxyAvailable) fetchCloud();
+      if (localProxyAvailable && !dataRef.current?.nextTrackName) fetchCloud();
     }, 5000);
 
     return () => {
