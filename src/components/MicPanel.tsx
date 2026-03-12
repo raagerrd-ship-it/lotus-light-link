@@ -735,8 +735,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       }
     };
 
-    // ─── Main loop ───
-    const loop = () => {
+    // ─── Analysis tick (driven by Web Worker — runs in background) ───
+    const analysisTick = () => {
       const now = performance.now();
 
       // Smooth color transition (lerp over COLOR_FADE_MS)
@@ -762,13 +762,32 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const { transient, isSilence } = sampleEnergy();
       const isOnset = detectBeatsAndBpm(transient, isSilence, now);
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient);
-      updateVisuals(finalCurved, pct, isOnset, now);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
-      rafRef.current = requestAnimationFrame(loop);
+
+      // Store result for rAF visual loop
+      lastTickResultRef.current = { finalCurved, pct, isOnset, now };
     };
 
-    rafRef.current = requestAnimationFrame(loop);
+    // ─── Visual loop (rAF — pauses when tab hidden, saves battery) ───
+    const renderLoop = () => {
+      const { finalCurved, pct, isOnset, now } = lastTickResultRef.current;
+      updateVisuals(finalCurved, pct, isOnset, now);
+      rafRef.current = requestAnimationFrame(renderLoop);
+    };
+
+    // Start worker-driven tick
+    const worker = new Worker('/tick-worker.js');
+    worker.onmessage = () => analysisTick();
+    worker.postMessage('start');
+    workerRef.current = worker;
+
+    // Start visual render loop
+    rafRef.current = requestAnimationFrame(renderLoop);
+
     return () => {
+      worker.postMessage('stop');
+      worker.terminate();
+      workerRef.current = null;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [active]);
