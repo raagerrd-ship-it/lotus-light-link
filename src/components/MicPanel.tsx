@@ -704,6 +704,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           Math.round(prev[1] + (target[1] - prev[1]) * ease),
           Math.round(prev[2] + (target[2] - prev[2]) * ease),
         ];
+        // Send interpolated color to BLE during fade (throttled ~40ms)
+        if (!colorBoostRef.current.active && now - throttleRef.current >= 40) {
+          throttleRef.current = now;
+          ble.color(...currentColorRef.current);
+        }
         if (t >= 1) colorTransitionStartRef.current = 0;
       }
 
