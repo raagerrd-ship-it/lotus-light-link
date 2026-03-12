@@ -11,6 +11,7 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   externalBpm?: number | null;
   sonosPosition?: { positionMs: number; receivedAt: number } | null;
+  getPosition?: () => { positionMs: number; receivedAt: number } | null;
   durationMs?: number | null;
   punchWhite: boolean;
   onBpmChange?: (bpm: number | null) => void;
@@ -56,7 +57,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -120,9 +121,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const silenceStartRef = useRef(0);
   
   // Sonos position phase-sync
+  const getPositionRef = useRef(getPosition);
+  useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
   const sonosPositionRef = useRef<{ positionMs: number; receivedAt: number } | null>(null);
   const durationMsRef = useRef<number | null | undefined>(durationMs);
   const lastPhaseCorrectionRef = useRef(0);
+  // Update position from getPosition (real-time ref) or fall back to prop
   useEffect(() => { sonosPositionRef.current = sonosPosition ?? null; }, [sonosPosition]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
@@ -338,7 +342,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         predictiveFiredRef.current = false;
       }
 
-      // Sonos position phase correction
+      // Sonos position phase correction — read real-time position from ref
+      const freshPos = getPositionRef.current?.();
+      if (freshPos) sonosPositionRef.current = freshPos;
       const sonosPos = sonosPositionRef.current;
       if (sonosPos && bpmRef.current > 0 && now - lastPhaseCorrectionRef.current > 500) {
         lastPhaseCorrectionRef.current = now;
