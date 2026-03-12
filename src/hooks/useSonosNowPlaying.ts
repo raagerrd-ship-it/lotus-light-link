@@ -73,9 +73,9 @@ export function useSonosNowPlaying() {
         const prev = dataRef.current;
         const isTrackChange = !prev || s.trackName !== prev.trackName;
 
-        // Build album art URL from local proxy if available
+        // Build album art URL via proxy's /art endpoint to avoid CORS
         const localArt = s.albumArtUri
-          ? (s.albumArtUri.startsWith('http') ? s.albumArtUri : `${proxyUrl}${s.albumArtUri}`)
+          ? `${proxyUrl}/art?url=${encodeURIComponent(s.albumArtUri)}`
           : null;
 
         if (isTrackChange) {
