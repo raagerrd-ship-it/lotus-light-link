@@ -216,7 +216,7 @@ const Index = () => {
             syncOffsetMs={syncOffsetMs + autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
-            onSectionChange={setCurrentSection}
+            onSectionChange={handleSectionChange}
           />
       </div>
 
