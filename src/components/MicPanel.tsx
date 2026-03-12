@@ -133,6 +133,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const onBpmChangeRef = useRef(onBpmChange);
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
+  // Auto-calibration: drift detection
+  const onSyncDriftMsRef = useRef(onSyncDriftMs);
+  useEffect(() => { onSyncDriftMsRef.current = onSyncDriftMs; }, [onSyncDriftMs]);
+  const driftBufferRef = useRef<number[]>([]);
+  const lastDriftReportRef = useRef(0);
+
   // Apply external BPM from Sonos lookup as a strong prior
   const externalBpmRef = useRef<number | null>(null);
   useEffect(() => {
