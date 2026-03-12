@@ -8,7 +8,6 @@ interface DebugOverlayProps {
   palette?: [number, number, number][];
   paletteIndex?: number;
   source?: 'local' | 'cloud';
-  sonosDebug?: string;
 }
 
 export default function DebugOverlay({ smoothedRtt, autoDriftMs, syncOffsetMs, currentSection, palette, paletteIndex = 0, source, sonosDebug }: DebugOverlayProps) {
