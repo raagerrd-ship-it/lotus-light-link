@@ -72,6 +72,8 @@ export function useSonosNowPlaying() {
         positionMs: pos,
         receivedAt: performance.now(),
         smoothedRtt: 0,
+        nextTrackName: null,
+        nextArtistName: null,
       });
     };
 
