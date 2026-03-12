@@ -9,7 +9,7 @@ import {
 import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
-import { extractDominantColor } from "@/lib/colorExtract";
+import { extractPalette } from "@/lib/colorExtract";
 import DebugOverlay from "@/components/DebugOverlay";
 import type { SongSection } from "@/lib/songSections";
 
