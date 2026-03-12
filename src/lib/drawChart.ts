@@ -1,5 +1,13 @@
 import { liftColor } from "./colorUtils";
 
+// Module-level decaying peak-hold for chart normalization
+let heldMax = 30;
+
+/** Reset peak-hold (call on track/color change) */
+export function resetChartScaler() {
+  heldMax = 30;
+}
+
 export interface ChartSample {
   pct: number;
   r: number;
