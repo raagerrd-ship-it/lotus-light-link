@@ -154,9 +154,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const onBpmChangeRef = useRef(onBpmChange);
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
-  // Auto-calibration: drift detection
+  // Auto-calibration: internal autonomous drift accumulator
   const onSyncDriftMsRef = useRef(onSyncDriftMs);
   useEffect(() => { onSyncDriftMsRef.current = onSyncDriftMs; }, [onSyncDriftMs]);
+  const internalOffsetRef = useRef(0); // autonomous accumulated offset (ms)
   const driftBufferRef = useRef<number[]>([]);
   const lastDriftReportRef = useRef(0);
 
@@ -352,34 +353,45 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const freshPos = getPositionRef.current?.();
       if (freshPos) sonosPositionRef.current = freshPos;
       const sonosPos = sonosPositionRef.current;
-      if (sonosPos && bpmRef.current > 0 && now - lastPhaseCorrectionRef.current > 500) {
+      if (sonosPos && bpmRef.current > 0 && now - lastPhaseCorrectionRef.current > 200) {
         lastPhaseCorrectionRef.current = now;
         const elapsed = now - sonosPos.receivedAt;
         const beatIntervalMs = 60000 / bpmRef.current;
-        const estimatedMs = sonosPos.positionMs + elapsed + syncOffsetMsRef.current;
+        // Use internal autonomous offset instead of external prop
+        const estimatedMs = sonosPos.positionMs + elapsed + internalOffsetRef.current;
         const sonosPhase = (estimatedMs % beatIntervalMs) / beatIntervalMs;
         const currentPhase = beatPhaseRef.current;
         let phaseDiff = sonosPhase - currentPhase;
         if (phaseDiff > 0.5) phaseDiff -= 1;
         if (phaseDiff < -0.5) phaseDiff += 1;
 
-        // Drift estimation from phase diff (runs continuously, not only on onsets)
+        // Accumulate drift into internal offset for autonomous correction
         const driftMs = phaseDiff * beatIntervalMs;
         driftBufferRef.current.push(driftMs);
-        if (driftBufferRef.current.length > 16) driftBufferRef.current.shift();
-        if (driftBufferRef.current.length >= 8 && now - lastDriftReportRef.current > 2000) {
+        if (driftBufferRef.current.length > 12) driftBufferRef.current.shift();
+        
+        if (driftBufferRef.current.length >= 4 && now - lastDriftReportRef.current > 500) {
           const buf = driftBufferRef.current;
-          const mean = buf.reduce((s, v) => s + v, 0) / buf.length;
-          const variance = buf.reduce((s, v) => s + (v - mean) ** 2, 0) / buf.length;
+          // Use median for robustness against outliers
+          const sorted = [...buf].sort((a, b) => a - b);
+          const median = sorted[Math.floor(sorted.length / 2)];
+          const variance = buf.reduce((s, v) => s + (v - median) ** 2, 0) / buf.length;
           const stddev = Math.sqrt(variance);
-          if (stddev < 50) {
+          
+          if (stddev < 80) {
             lastDriftReportRef.current = now;
-            onSyncDriftMsRef.current?.(mean);
+            // Aggressive correction: apply 40% of median drift directly
+            const correction = median * 0.4;
+            internalOffsetRef.current = Math.max(-500, Math.min(500, internalOffsetRef.current + correction));
+            // Report to parent for debug display
+            onSyncDriftMsRef.current?.(internalOffsetRef.current);
           }
         }
 
-        if (Math.abs(phaseDiff) > 0.02) {
-          beatPhaseRef.current = ((currentPhase + phaseDiff * 0.15) % 1 + 1) % 1;
+        // More aggressive phase correction: 25% nudge (was 15%)
+        if (Math.abs(phaseDiff) > 0.015) {
+          const strength = Math.abs(phaseDiff) > 0.1 ? 0.4 : 0.25;
+          beatPhaseRef.current = ((currentPhase + phaseDiff * strength) % 1 + 1) % 1;
         }
       }
 
