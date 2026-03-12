@@ -10,6 +10,8 @@ import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractDominantColor } from "@/lib/colorExtract";
+import DebugOverlay from "@/components/DebugOverlay";
+import type { SongSection } from "@/lib/songSections";
 
 const Index = () => {
   const [connection, setConnection] = useState<BLEConnection | null>(null);
@@ -21,9 +23,11 @@ const Index = () => {
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
-  const [songSections, setSongSections] = useState<import("@/lib/songSections").SongSection[]>([]);
+  const [songSections, setSongSections] = useState<SongSection[]>([]);
   const [songDrops, setSongDrops] = useState<number[]>([]);
   const [autoDriftMs, setAutoDriftMs] = useState(0);
+  const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
@@ -180,6 +184,7 @@ const Index = () => {
       style={{ backgroundImage: `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)` }}
       onPointerMove={connection ? resetOverlayTimer : undefined}
       onPointerDown={connection ? resetOverlayTimer : undefined}
+      onClick={(e) => { if (e.detail === 3) setShowDebug(prev => !prev); }}
     >
       <div className="absolute inset-0">
           <MicPanel
@@ -195,8 +200,18 @@ const Index = () => {
             syncOffsetMs={syncOffsetMs + autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
+            onSectionChange={setCurrentSection}
           />
       </div>
+
+      {showDebug && (
+        <DebugOverlay
+          smoothedRtt={smoothedRtt}
+          autoDriftMs={autoDriftMs}
+          syncOffsetMs={syncOffsetMs}
+          currentSection={currentSection}
+        />
+      )}
 
       {/* Connection overlay */}
       {!connection && (

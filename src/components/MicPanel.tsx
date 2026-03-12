@@ -19,6 +19,7 @@ interface MicPanelProps {
   syncOffsetMs?: number;
   smoothedRtt?: number;
   onSyncDriftMs?: (driftMs: number) => void;
+  onSectionChange?: (section: SongSection | null) => void;
 }
 
 // Priority-aware BLE command queue
@@ -55,7 +56,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -138,6 +139,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   useEffect(() => { onSyncDriftMsRef.current = onSyncDriftMs; }, [onSyncDriftMs]);
   const driftBufferRef = useRef<number[]>([]);
   const lastDriftReportRef = useRef(0);
+
+  // Section change callback
+  const onSectionChangeRef = useRef(onSectionChange);
+  useEffect(() => { onSectionChangeRef.current = onSectionChange; }, [onSectionChange]);
+  const lastSectionTypeRef = useRef<string | null>(null);
 
   // Apply external BPM from Sonos lookup as a strong prior
   const externalBpmRef = useRef<number | null>(null);
@@ -495,9 +501,16 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const elapsed = performance.now() - sonosPos.receivedAt;
         currentSec = (sonosPos.positionMs + elapsed + syncOffsetMsRef.current) / 1000;
       }
+      let currentSection: SongSection | null = null;
       if (songSectionsRef.current.length > 0) {
-        const section = getCurrentSection(songSectionsRef.current, currentSec);
-        sectionBehavior = getSectionBehavior(section);
+        currentSection = getCurrentSection(songSectionsRef.current, currentSec);
+        sectionBehavior = getSectionBehavior(currentSection);
+        // Report section changes
+        const sKey = currentSection?.type ?? null;
+        if (sKey !== lastSectionTypeRef.current) {
+          lastSectionTypeRef.current = sKey;
+          onSectionChangeRef.current?.(currentSection);
+        }
       }
 
       const phase = beatPhaseRef.current;
