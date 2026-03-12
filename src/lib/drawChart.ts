@@ -38,6 +38,13 @@ export function drawIntensityChart(
 
   if (len <= 1) return;
 
+  // Auto-normalize: scale so peaks fill the full chart height
+  let maxPct = 0;
+  for (let i = 0; i < len; i++) {
+    if (samples[i].pct > maxPct) maxPct = samples[i].pct;
+  }
+  const scale = maxPct > 5 ? 100 / maxPct : 1;
+
   const step = w / (totalFrames - 1);
   const offsetX = (historyLen - len) * step;
 
