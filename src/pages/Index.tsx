@@ -231,7 +231,6 @@ const Index = () => {
           palette={palette}
           paletteIndex={paletteIndexRef.current}
           source={nowPlaying?.source}
-          sonosDebug={sonosDebug}
         />
       )}
 
