@@ -8,6 +8,11 @@ const brewSupabase = createClient(BREW_URL, BREW_ANON, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
 
+// Local proxy URL — set via localStorage("sonosLocalProxy") e.g. "http://192.168.1.100:3457"
+function getLocalProxyUrl(): string | null {
+  try { return localStorage.getItem("sonosLocalProxy"); } catch { return null; }
+}
+
 export interface SonosNowPlaying {
   trackName: string | null;
   artistName: string | null;
@@ -20,6 +25,7 @@ export interface SonosNowPlaying {
   smoothedRtt: number;
   nextTrackName: string | null;
   nextArtistName: string | null;
+  source: 'local' | 'cloud';
 }
 
 export function useSonosNowPlaying() {
@@ -60,7 +66,6 @@ export function useSonosNowPlaying() {
 
       // Guard: if API already set a newer track, don't overwrite with stale DB data
       if (prev && row.track_name && prev.trackName && row.track_name !== prev.trackName) {
-        // DB is stale — only take album art if track matches what we had before
         return;
       }
 
@@ -83,14 +88,86 @@ export function useSonosNowPlaying() {
         smoothedRtt: prev?.smoothedRtt ?? 0,
         nextTrackName: prev?.nextTrackName ?? null,
         nextArtistName: prev?.nextArtistName ?? null,
+        source: 'cloud',
       });
     };
 
     // RTT smoothing via EMA
-    let smoothedRtt = 150; // initial estimate in ms
+    let smoothedRtt = 150;
+    let localProxyAvailable = !!getLocalProxyUrl();
+    let localFailCount = 0;
+    const MAX_LOCAL_FAILS = 3; // Fall back to cloud after N consecutive failures
 
-    // Watchdog: direct API call for fresh position + fast track change detection
-    const fetchApi = async () => {
+    // ─── Local UPnP proxy fetch (ultra-low latency) ───
+    const fetchLocal = async (): Promise<boolean> => {
+      const proxyUrl = getLocalProxyUrl();
+      if (!proxyUrl) return false;
+
+      try {
+        const t0 = performance.now();
+        const res = await fetch(`${proxyUrl}/status`, { cache: "no-store", signal: AbortSignal.timeout(1000) });
+        const rtt = performance.now() - t0;
+        smoothedRtt = smoothedRtt * 0.5 + rtt * 0.5; // faster convergence for local
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const s = await res.json();
+        if (!s?.ok || !s.trackName) return false;
+
+        localFailCount = 0;
+        localProxyAvailable = true;
+
+        const prev = dataRef.current;
+        const isTrackChange = !prev || s.trackName !== prev.trackName;
+
+        if (isTrackChange) {
+          apply({
+            trackName: s.trackName,
+            artistName: s.artistName ?? null,
+            albumName: s.albumName ?? prev?.albumName ?? null,
+            albumArtUrl: null,
+            playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
+            durationMs: s.durationMillis ?? null,
+            positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
+            receivedAt: performance.now(),
+            smoothedRtt,
+            nextTrackName: null, // local UPnP doesn't have next track
+            nextArtistName: null,
+            source: 'local',
+          });
+          // Still fetch DB for album art + cloud for next track info
+          const tryFetchDb = (attempt: number) => {
+            setTimeout(async () => {
+              await fetchDb();
+              if (!dataRef.current?.albumArtUrl && attempt < 2) tryFetchDb(attempt + 1);
+            }, attempt === 0 ? 800 : 2000);
+          };
+          tryFetchDb(0);
+          // Also fetch cloud API once for next track metadata
+          fetchCloud();
+          return true;
+        }
+
+        // Same track — update position
+        apply({
+          ...prev!,
+          playbackState: s.playbackState ?? prev!.playbackState,
+          positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + smoothedRtt / 2,
+          durationMs: s.durationMillis ?? prev!.durationMs,
+          receivedAt: performance.now(),
+          smoothedRtt,
+          source: 'local',
+        });
+        return true;
+      } catch {
+        localFailCount++;
+        if (localFailCount >= MAX_LOCAL_FAILS) {
+          localProxyAvailable = false;
+        }
+        return false;
+      }
+    };
+
+    // ─── Cloud API fetch (fallback) ───
+    const fetchCloud = async () => {
       try {
         const t0 = performance.now();
         const res = await fetch(`${BREW_URL}/functions/v1/sonos-playback-status`, {
@@ -98,7 +175,9 @@ export function useSonosNowPlaying() {
           cache: "no-store",
         });
         const rtt = performance.now() - t0;
-        smoothedRtt = smoothedRtt * 0.7 + rtt * 0.3;
+        if (!localProxyAvailable) {
+          smoothedRtt = smoothedRtt * 0.7 + rtt * 0.3;
+        }
         if (!res.ok) return;
         const s = await res.json();
         if (!s?.ok || !s.trackName) return;
@@ -106,14 +185,12 @@ export function useSonosNowPlaying() {
         const prev = dataRef.current;
         const isTrackChange = !prev || s.trackName !== prev.trackName;
 
-        // On track change, fetch DB for full metadata (album art URL from Spotify CDN)
         if (isTrackChange) {
-          // Apply immediately with what we have
           apply({
             trackName: s.trackName,
             artistName: s.artistName ?? null,
             albumName: s.albumName ?? prev?.albumName ?? null,
-            albumArtUrl: null, // clear stale art from previous track
+            albumArtUrl: null,
             playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
             durationMs: s.durationMillis ?? null,
             positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
@@ -121,11 +198,10 @@ export function useSonosNowPlaying() {
             smoothedRtt,
             nextTrackName: s.nextTrackName ?? null,
             nextArtistName: s.nextArtistName ?? null,
+            source: 'cloud',
           });
-          // Fetch DB after delay for album art; retry once if stale
           const tryFetchDb = (attempt: number) => {
             setTimeout(async () => {
-              const before = dataRef.current?.albumArtUrl;
               await fetchDb();
               if (!dataRef.current?.albumArtUrl && attempt < 2) tryFetchDb(attempt + 1);
             }, attempt === 0 ? 800 : 2000);
@@ -134,18 +210,36 @@ export function useSonosNowPlaying() {
           return;
         }
 
-        // Same track — only correct if big drift
-        apply({
-          ...prev!,
-          playbackState: s.playbackState ?? prev!.playbackState,
-          positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + smoothedRtt / 2,
-          durationMs: s.durationMillis ?? prev!.durationMs,
-          receivedAt: performance.now(),
-          smoothedRtt,
-          nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
-          nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
-        });
+        // Same track — update position (only if using cloud source or updating next track)
+        if (!localProxyAvailable || !prev?.source || prev.source === 'cloud') {
+          apply({
+            ...prev!,
+            playbackState: s.playbackState ?? prev!.playbackState,
+            positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + smoothedRtt / 2,
+            durationMs: s.durationMillis ?? prev!.durationMs,
+            receivedAt: performance.now(),
+            smoothedRtt,
+            nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
+            nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
+            source: 'cloud',
+          });
+        } else {
+          // Local is active for position — only update next track metadata from cloud
+          if (s.nextTrackName && prev) {
+            dataRef.current = { ...prev, nextTrackName: s.nextTrackName, nextArtistName: s.nextArtistName ?? null };
+            setData(dataRef.current);
+          }
+        }
       } catch { /* network error — ignore */ }
+    };
+
+    // ─── Combined poll: try local first, fall back to cloud ───
+    const poll = async () => {
+      if (localProxyAvailable || getLocalProxyUrl()) {
+        const localOk = await fetchLocal();
+        if (localOk) return;
+      }
+      await fetchCloud();
     };
 
     // Initial load from DB
@@ -157,12 +251,27 @@ export function useSonosNowPlaying() {
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "sonos_now_playing" }, fetchDb)
       .subscribe();
 
-    // Watchdog polls API every 2.5s for fresh position data
-    const watchdog = setInterval(fetchApi, 1500);
+    // Fast local poll (500ms) or cloud fallback (1.5s)
+    let pollTimer: ReturnType<typeof setTimeout>;
+    const schedulePoll = () => {
+      const interval = localProxyAvailable ? 500 : 1500;
+      pollTimer = setTimeout(async () => {
+        await poll();
+        schedulePoll();
+      }, interval);
+    };
+    // Initial poll
+    poll().then(schedulePoll);
+
+    // Cloud metadata refresh every 5s when local is active (for next track info)
+    const cloudMetaTimer = setInterval(() => {
+      if (localProxyAvailable) fetchCloud();
+    }, 5000);
 
     return () => {
       channel.unsubscribe();
-      clearInterval(watchdog);
+      clearTimeout(pollTimer);
+      clearInterval(cloudMetaTimer);
     };
   }, []);
 
