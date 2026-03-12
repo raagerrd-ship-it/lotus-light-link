@@ -572,10 +572,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         finalCurved = Math.max(curved, synthCurved);
       }
 
+      // Smooth fade-to-dim on silence: ease down to baseline over ~1.5s
+      const FADE_DURATION = 1500;
+      const BASELINE = 0.06; // ~8% brightness as resting state
+      if (silenceDur > 0) {
+        const fadeFactor = Math.max(0, 1 - silenceDur / FADE_DURATION);
+        finalCurved = BASELINE + (finalCurved - BASELINE) * fadeFactor;
+      }
+
       // Cap by section max brightness
       finalCurved = Math.min(finalCurved, sectionBehavior.maxBrightness);
 
-      const floored = Math.max(0, finalCurved);
+      const floored = Math.max(BASELINE * (silenceDur > 0 ? 1 : 0), finalCurved);
       const pct = Math.round(3 + 97 * Math.pow(floored, 0.8));
 
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
