@@ -48,12 +48,14 @@ export function useSonosNowPlaying() {
 
       try {
         const t0 = performance.now();
-        const res = await fetch(`${proxyUrl}/status`, { cache: "no-store", signal: AbortSignal.timeout(1000) });
+        const url = `${proxyUrl}/status`;
+        const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(1000) });
         const rtt = performance.now() - t0;
         smoothedRtt = smoothedRtt * 0.5 + rtt * 0.5;
-        if (!res.ok) return;
+        if (!res.ok) { console.warn("[sonos] fetch not ok", res.status); return; }
         const s = await res.json();
-        if (!s?.ok || !s.trackName) return;
+        console.log("[sonos] response", s);
+        if (!s?.ok || !s.trackName) { console.warn("[sonos] no ok/trackName", s); return; }
 
         const prev = dataRef.current;
         const isTrackChange = !prev || s.trackName !== prev.trackName;
