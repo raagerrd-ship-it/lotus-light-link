@@ -184,6 +184,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const canvasFrameRef = useRef(0);
   const HISTORY_LEN = 300;
 
+  // Worker + Wake Lock refs
+  const workerRef = useRef<Worker | null>(null);
+  const wakeLockRef = useRef<any>(null);
+
+  // Shared state between worker-tick (analysis) and rAF (visuals)
+  const lastTickResultRef = useRef<{
+    finalCurved: number;
+    pct: number;
+    isOnset: boolean;
+    now: number;
+  }>({ finalCurved: 0, pct: 3, isOnset: false, now: 0 });
+
   // Audio nodes
   const subAnalyserRef = useRef<AnalyserNode | null>(null);
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
