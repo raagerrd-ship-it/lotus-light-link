@@ -44,7 +44,7 @@ export function useSonosNowPlaying() {
 
     const fetchLocal = async () => {
       const proxyUrl = getLocalProxyUrl();
-      if (!proxyUrl) return;
+      if (!proxyUrl) { console.warn("[sonos] no sonosLocalProxy in localStorage"); return; }
 
       try {
         const t0 = performance.now();
