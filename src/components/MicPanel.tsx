@@ -401,7 +401,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       if (isSilence) {
         if (silenceStartRef.current === 0) silenceStartRef.current = now;
-        if (now - silenceStartRef.current > 10000 && bpmRef.current > 0) {
+        // Clear BPM after 2s silence (was 10s)
+        if (now - silenceStartRef.current > 2000 && bpmRef.current > 0) {
           onBpmChangeRef.current?.(null);
         }
       } else {
