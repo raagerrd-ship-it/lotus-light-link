@@ -108,11 +108,19 @@ function loadImage(url: string, crossOrigin: boolean): Promise<HTMLImageElement>
 export async function extractDominantColor(
   imageUrl: string
 ): Promise<[number, number, number] | null> {
+  const palette = await extractPalette(imageUrl);
+  return palette.length > 0 ? palette[0] : null;
+}
+
+export async function extractPalette(
+  imageUrl: string,
+  count: number = 4
+): Promise<RGB[]> {
   // Try direct CORS first
   try {
     const img = await loadImage(imageUrl, true);
-    const color = extractFromImage(img);
-    if (color) return color;
+    const colors = extractColorsFromImage(img, count);
+    if (colors.length > 0) return colors;
   } catch {
     // CORS blocked — try proxy
   }
@@ -121,11 +129,11 @@ export async function extractDominantColor(
   try {
     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
     const img = await loadImage(proxyUrl, true);
-    const color = extractFromImage(img);
-    if (color) return color;
+    const colors = extractColorsFromImage(img, count);
+    if (colors.length > 0) return colors;
   } catch {
     // proxy also failed
   }
 
-  return null;
+  return [];
 }
