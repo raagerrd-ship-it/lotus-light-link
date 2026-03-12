@@ -163,13 +163,6 @@ const Index = () => {
     });
   }, []);
 
-  const adjustSyncOffset = useCallback((deltaMs: number) => {
-    setSyncOffsetMs(prev => {
-      const clamped = Math.max(-500, Math.min(500, prev + deltaMs));
-      localStorage.setItem("syncOffsetMs", String(clamped));
-      return clamped;
-    });
-  }, []);
 
   const handleConnect = useCallback(async (scanAll = false) => {
     setBusy(true);
