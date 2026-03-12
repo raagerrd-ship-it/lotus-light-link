@@ -691,6 +691,22 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     // ─── Main loop ───
     const loop = () => {
       const now = performance.now();
+
+      // Smooth color transition (lerp over COLOR_FADE_MS)
+      const tStart = colorTransitionStartRef.current;
+      if (tStart > 0) {
+        const t = Math.min(1, (now - tStart) / COLOR_FADE_MS);
+        const ease = t * (2 - t); // ease-out quadratic
+        const prev = prevColorRef.current;
+        const target = targetColorRef.current;
+        currentColorRef.current = [
+          Math.round(prev[0] + (target[0] - prev[0]) * ease),
+          Math.round(prev[1] + (target[1] - prev[1]) * ease),
+          Math.round(prev[2] + (target[2] - prev[2]) * ease),
+        ];
+        if (t >= 1) colorTransitionStartRef.current = 0;
+      }
+
       const { transient, isSilence } = sampleEnergy();
       const isOnset = detectBeatsAndBpm(transient, isSilence, now);
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient);
