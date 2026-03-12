@@ -23,9 +23,11 @@ const Index = () => {
   const [showOverlay, setShowOverlay] = useState(true);
   const [songSections, setSongSections] = useState<import("@/lib/songSections").SongSection[]>([]);
   const [songDrops, setSongDrops] = useState<number[]>([]);
+  const [autoDriftMs, setAutoDriftMs] = useState(0);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
+  const lastPrefetchKeyRef = useRef<string | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
   const currentColorRef = useRef(currentColor);
 
