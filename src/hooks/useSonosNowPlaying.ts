@@ -8,9 +8,10 @@ const brewSupabase = createClient(BREW_URL, BREW_ANON, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
 
-// Local proxy URL — set via localStorage("sonosLocalProxy") e.g. "http://192.168.1.100:3457"
-function getLocalProxyUrl(): string | null {
-  try { return localStorage.getItem("sonosLocalProxy"); } catch { return null; }
+// Local proxy URL — override via localStorage("sonosLocalProxy"), default to localhost bridge
+const DEFAULT_LOCAL_PROXY = "http://localhost:3000/api/sonos";
+function getLocalProxyUrl(): string {
+  try { return localStorage.getItem("sonosLocalProxy") || DEFAULT_LOCAL_PROXY; } catch { return DEFAULT_LOCAL_PROXY; }
 }
 
 export interface SonosNowPlaying {
