@@ -155,12 +155,9 @@ const Index = () => {
     }
   }, [palette]);
 
-  // Auto-calibration callback from mic drift detection
-  const handleSyncDrift = useCallback((driftMs: number) => {
-    setAutoDriftMs(prev => {
-      const clamped = Math.max(-200, Math.min(200, driftMs));
-      return prev * 0.7 + clamped * 0.3;
-    });
+  // Auto-sync drift (reported from MicPanel for debug display only)
+  const handleSyncDrift = useCallback((offsetMs: number) => {
+    setAutoDriftMs(offsetMs);
   }, []);
 
 
