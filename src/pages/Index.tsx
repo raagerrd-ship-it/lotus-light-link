@@ -6,7 +6,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap, Loader2 } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
@@ -25,6 +25,7 @@ const Index = () => {
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [songSections, setSongSections] = useState<SongSection[]>([]);
   const [songDrops, setSongDrops] = useState<number[]>([]);
   const [autoDriftMs, setAutoDriftMs] = useState(0);
@@ -49,9 +50,10 @@ const Index = () => {
   // Auto-hide overlay after 3s
   const resetOverlayTimer = useCallback(() => {
     setShowOverlay(true);
+    if (!autoHide) return;
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
-  }, []);
+  }, [autoHide]);
 
   useEffect(() => {
     if (connection) resetOverlayTimer();
@@ -306,6 +308,24 @@ const Index = () => {
               title={`Punch white${syncOffsetMs ? ` (offset: ${syncOffsetMs}ms)` : ''}`}
             >
               <Zap className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const next = !autoHide;
+                setAutoHide(next);
+                localStorage.setItem("autoHide", String(next));
+                if (!next) {
+                  if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+                  setShowOverlay(true);
+                }
+              }}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+              style={autoHide ? { color: accent } : undefined}
+              title={autoHide ? "Auto-hide on" : "Auto-hide off"}
+            >
+              {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </Button>
             <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
               <Power className="w-4 h-4" />
