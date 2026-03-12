@@ -342,7 +342,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
     // ─── Sub-function: beat detection, phase tracking, BPM estimation ───
     const detectBeatsAndBpm = (transient: number, isSilence: boolean, now: number) => {
-      const phaseStep = isSilence ? 0.08 : (1 / framesPerBeatRef.current);
+      // During silence, rapidly decay phase to 1 (= no pulse) instead of cycling
+      const silenceDuration = silenceStartRef.current > 0 ? now - silenceStartRef.current : 0;
+      const phaseStep = isSilence
+        ? (silenceDuration > 300 ? 0.25 : 0.08) // fast fade-out after 300ms silence
+        : (1 / framesPerBeatRef.current);
       const prevPhase = beatPhaseRef.current;
       beatPhaseRef.current = Math.min(1, beatPhaseRef.current + phaseStep);
       if (prevPhase < 0.5 && beatPhaseRef.current >= 0.5) {
