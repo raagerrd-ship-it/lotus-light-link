@@ -27,6 +27,7 @@ export function useSonosNowPlaying() {
 
   useEffect(() => {
     // Apply new data with drift protection — avoid small position jumps on same track
+    // Always update ref for interpolation accuracy, but skip React render if close enough
     const apply = (next: SonosNowPlaying) => {
       const prev = dataRef.current;
       if (
@@ -37,7 +38,11 @@ export function useSonosNowPlaying() {
         next.positionMs != null
       ) {
         const estimated = prev.positionMs + (performance.now() - prev.receivedAt);
-        if (Math.abs(next.positionMs - estimated) < 2000) return;
+        if (Math.abs(next.positionMs - estimated) < 2000) {
+          // Update ref silently for accurate interpolation without triggering re-render
+          dataRef.current = next;
+          return;
+        }
       }
       dataRef.current = next;
       setData(next);
