@@ -169,6 +169,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Album art proxy — pipes image from Sonos speaker with CORS headers
+  if (req.url.startsWith('/art')) {
+    const urlParam = new URL(req.url, `http://localhost:${PORT}`).searchParams.get('url');
+    if (!urlParam) {
+      res.writeHead(400, CORS_HEADERS);
+      res.end(JSON.stringify({ error: 'missing url param' }));
+      return;
+    }
+    try {
+      // Resolve relative URIs against Sonos speaker
+      const artUrl = urlParam.startsWith('http') ? urlParam : `http://${SONOS_IP}:${SONOS_PORT}${urlParam}`;
+      const parsed = new URL(artUrl);
+      const artReq = http.request({
+        hostname: parsed.hostname,
+        port: parsed.port || 80,
+        path: parsed.pathname + parsed.search,
+        method: 'GET',
+        timeout: 3000,
+      }, (artRes) => {
+        res.writeHead(200, {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': artRes.headers['content-type'] || 'image/jpeg',
+          'Cache-Control': 'public, max-age=3600',
+        });
+        artRes.pipe(res);
+      });
+      artReq.on('error', (e) => {
+        res.writeHead(502, CORS_HEADERS);
+        res.end(JSON.stringify({ error: e.message }));
+      });
+      artReq.on('timeout', () => { artReq.destroy(); });
+      artReq.end();
+    } catch (e) {
+      res.writeHead(500, CORS_HEADERS);
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (req.url === '/health') {
     res.writeHead(200, CORS_HEADERS);
     res.end(JSON.stringify({ ok: true, sonosIp: SONOS_IP }));
