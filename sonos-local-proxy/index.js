@@ -134,6 +134,9 @@ async function getPlaybackStatus() {
   else if (transportState === 'PAUSED_PLAYBACK') playbackState = 'PLAYBACK_STATE_PAUSED';
   else if (transportState === 'TRANSITIONING') playbackState = 'PLAYBACK_STATE_PLAYING';
 
+  // Include albumArtUri for proxying
+  const albumArtUri = meta.albumArtUri || null;
+
   return {
     ok: true,
     source: 'local-upnp',
@@ -143,6 +146,7 @@ async function getPlaybackStatus() {
     trackName: meta.title || null,
     artistName: meta.artist || null,
     albumName: meta.album || null,
+    albumArtUri,
   };
 }
 
