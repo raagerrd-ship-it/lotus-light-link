@@ -80,20 +80,17 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
     for (const { color } of scored) {
       if (palette.length >= count) break;
       if (palette.every(existing => colorDistance(existing, color) > MIN_DIST)) {
-        // Boost saturation
-        const [br, bg, bb] = color;
-        const maxC = Math.max(br, bg, bb);
-        const minC = Math.min(br, bg, bb);
-        if (maxC > 0 && maxC - minC < maxC * 0.5) {
-          const mid = (br + bg + bb) / 3;
-          palette.push([
-            Math.round(Math.min(255, Math.max(0, mid + (br - mid) * 1.8))),
-            Math.round(Math.min(255, Math.max(0, mid + (bg - mid) * 1.8))),
-            Math.round(Math.min(255, Math.max(0, mid + (bb - mid) * 1.8))),
-          ]);
-        } else {
-          palette.push(color);
-        }
+        // Aggressively boost saturation to get vivid LED colors
+        const [cr, cg, cb] = color;
+        const maxC = Math.max(cr, cg, cb);
+        const minC = Math.min(cr, cg, cb);
+        const mid = (cr + cg + cb) / 3;
+        const boostFactor = maxC - minC < maxC * 0.6 ? 2.5 : 1.5;
+        palette.push([
+          Math.round(Math.min(255, Math.max(0, mid + (cr - mid) * boostFactor))),
+          Math.round(Math.min(255, Math.max(0, mid + (cg - mid) * boostFactor))),
+          Math.round(Math.min(255, Math.max(0, mid + (cb - mid) * boostFactor))),
+        ]);
       }
     }
 
