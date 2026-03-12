@@ -4,7 +4,6 @@ interface DebugOverlayProps {
   smoothedRtt: number;
   autoDriftMs: number;
   currentSection: SongSection | null;
-  currentSection: SongSection | null;
   palette?: [number, number, number][];
   paletteIndex?: number;
   source?: 'local' | 'cloud';
