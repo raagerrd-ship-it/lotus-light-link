@@ -55,7 +55,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150 }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
