@@ -10,7 +10,7 @@ interface DebugOverlayProps {
   source?: 'local' | 'cloud';
 }
 
-export default function DebugOverlay({ smoothedRtt, autoDriftMs, syncOffsetMs, currentSection, palette, paletteIndex = 0, source }: DebugOverlayProps) {
+export default function DebugOverlay({ smoothedRtt, autoDriftMs, currentSection, palette, paletteIndex = 0, source }: DebugOverlayProps) {
   return (
     <div className="fixed bottom-16 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none">
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>
