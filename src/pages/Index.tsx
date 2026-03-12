@@ -200,8 +200,18 @@ const Index = () => {
             syncOffsetMs={syncOffsetMs + autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
+            onSectionChange={setCurrentSection}
           />
       </div>
+
+      {showDebug && (
+        <DebugOverlay
+          smoothedRtt={smoothedRtt}
+          autoDriftMs={autoDriftMs}
+          syncOffsetMs={syncOffsetMs}
+          currentSection={currentSection}
+        />
+      )}
 
       {/* Connection overlay */}
       {!connection && (
