@@ -29,50 +29,50 @@ export interface SectionBehavior {
 
 export function getSectionBehavior(section: SongSection | null): SectionBehavior {
   if (!section) {
-    return { maxBrightness: 0.8, punchWhiteOverride: null, breathingMode: false, beatReactivity: 0.8 };
+    return { maxBrightness: 1, punchWhiteOverride: null, breathingMode: false, beatReactivity: 1 };
   }
 
   switch (section.type) {
     case "intro":
     case "outro":
       return {
-        maxBrightness: 0.4 + section.energy * 0.3,
-        punchWhiteOverride: false,
-        breathingMode: section.energy < 0.4,
-        beatReactivity: 0.4,
+        maxBrightness: 0.6 + section.energy * 0.4,
+        punchWhiteOverride: null,
+        breathingMode: section.energy < 0.3,
+        beatReactivity: 0.7,
       };
     case "verse":
       return {
-        maxBrightness: 0.5 + section.energy * 0.3,
+        maxBrightness: 1,
         punchWhiteOverride: null,
-        breathingMode: section.energy < 0.3,
-        beatReactivity: 0.6,
+        breathingMode: false,
+        beatReactivity: 1,
       };
     case "pre-chorus":
       return {
-        maxBrightness: 0.7 + section.energy * 0.2,
+        maxBrightness: 1,
         punchWhiteOverride: null,
         breathingMode: false,
-        beatReactivity: 0.8,
+        beatReactivity: 1,
       };
     case "chorus":
     case "drop":
       return {
-        maxBrightness: 0.85 + section.energy * 0.15,
+        maxBrightness: 1,
         punchWhiteOverride: true,
         breathingMode: false,
-        beatReactivity: 1.0,
+        beatReactivity: 1,
       };
     case "bridge":
     case "breakdown":
       return {
-        maxBrightness: 0.5 + section.energy * 0.3,
-        punchWhiteOverride: false,
-        breathingMode: section.energy < 0.4,
-        beatReactivity: 0.5,
+        maxBrightness: 0.7 + section.energy * 0.3,
+        punchWhiteOverride: null,
+        breathingMode: section.energy < 0.3,
+        beatReactivity: 0.7,
       };
     default:
-      return { maxBrightness: 0.8, punchWhiteOverride: null, breathingMode: false, beatReactivity: 0.8 };
+      return { maxBrightness: 1, punchWhiteOverride: null, breathingMode: false, beatReactivity: 1 };
   }
 }
 
