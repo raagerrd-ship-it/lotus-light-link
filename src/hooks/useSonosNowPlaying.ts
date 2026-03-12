@@ -108,12 +108,12 @@ export function useSonosNowPlaying() {
 
         // On track change, fetch DB for full metadata (album art URL from Spotify CDN)
         if (isTrackChange) {
-          // Apply immediately with what we have, then refresh from DB
+          // Apply immediately with what we have
           apply({
             trackName: s.trackName,
             artistName: s.artistName ?? null,
             albumName: s.albumName ?? prev?.albumName ?? null,
-            albumArtUrl: prev?.albumArtUrl ?? null,
+            albumArtUrl: null, // clear stale art from previous track
             playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
             durationMs: s.durationMillis ?? null,
             positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
@@ -122,8 +122,15 @@ export function useSonosNowPlaying() {
             nextTrackName: s.nextTrackName ?? null,
             nextArtistName: s.nextArtistName ?? null,
           });
-          // Fetch DB after short delay to get album art
-          setTimeout(fetchDb, 800);
+          // Fetch DB after delay for album art; retry once if stale
+          const tryFetchDb = (attempt: number) => {
+            setTimeout(async () => {
+              const before = dataRef.current?.albumArtUrl;
+              await fetchDb();
+              if (!dataRef.current?.albumArtUrl && attempt < 2) tryFetchDb(attempt + 1);
+            }, attempt === 0 ? 800 : 2000);
+          };
+          tryFetchDb(0);
           return;
         }
 
