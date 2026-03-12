@@ -79,6 +79,13 @@ export function useSonosNowPlaying() {
       return `${proxyUrl}/${uri}`;
     };
 
+    const applyStatus = (s: any, rtt: number) => {
+      if (!s?.ok || !s.trackName) return;
+
+      const prev = dataRef.current;
+      const isTrackChange = !prev || s.trackName !== prev.trackName;
+      const localArt = buildArtUrl(resolveAlbumArtUri(s));
+
       if (isTrackChange) {
         apply({
           trackName: s.trackName,
