@@ -35,11 +35,9 @@ export interface SonosNowPlaying {
 
 export function useSonosNowPlaying() {
   const [data, setData] = useState<SonosNowPlaying | null>(null);
-  const [debugLog, setDebugLog] = useState<string>("init");
   const dataRef = useRef<SonosNowPlaying | null>(null);
   const prevArtRef = useRef<string | null>(null);
 
-  // Expose a getter for real-time position reading without requiring React re-render
   const getPosition = useCallback((): { positionMs: number; receivedAt: number } | null => {
     const cur = dataRef.current;
     if (!cur || cur.positionMs == null) return null;
@@ -47,88 +45,121 @@ export function useSonosNowPlaying() {
   }, []);
 
   useEffect(() => {
-    // Apply new data — always update ref and trigger render
+    const proxyUrl = getLocalProxyUrl();
+
     const apply = (next: SonosNowPlaying) => {
       dataRef.current = next;
       setData(next);
     };
 
-    // RTT smoothing via EMA
     let smoothedRtt = 10;
 
-    const fetchLocal = async () => {
-      const proxyUrl = getLocalProxyUrl();
+    // Build art URL — Cast Away now returns albumArtUri as /api/sonos/getaa...
+    const buildArtUrl = (uri: string | null | undefined): string | null => {
+      if (!uri) return null;
+      if (uri.startsWith('http')) return uri;
+      // Relative path from Cast Away (e.g. /api/sonos/getaa?...) — resolve against origin
+      const origin = new URL(proxyUrl).origin;
+      return `${origin}${uri}`;
+    };
 
-      try {
-        const t0 = performance.now();
-        const url = `${proxyUrl}/status`;
-        const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(1000) });
-        const rtt = performance.now() - t0;
-        smoothedRtt = smoothedRtt * 0.5 + rtt * 0.5;
-        if (!res.ok) { setDebugLog(`fetch ${res.status}`); return; }
-        const s = await res.json();
-        if (!s?.ok || !s.trackName) { setDebugLog(`no ok/track: ${JSON.stringify(s).slice(0, 120)}`); return; }
-        setDebugLog(`ok: ${s.trackName}`);
+    const applyStatus = (s: any, rtt: number) => {
+      if (!s?.ok || !s.trackName) return;
 
-        const prev = dataRef.current;
-        const isTrackChange = !prev || s.trackName !== prev.trackName;
+      const prev = dataRef.current;
+      const isTrackChange = !prev || s.trackName !== prev.trackName;
+      const localArt = buildArtUrl(s.albumArtUri);
 
-        // Build album art URL — relative URIs go through proxy, absolute used as-is
-        const localArt = s.albumArtUri
-          ? (s.albumArtUri.startsWith('http') ? s.albumArtUri : `${proxyUrl}${s.albumArtUri}`)
-          : null;
-
-        if (isTrackChange) {
-          apply({
-            trackName: s.trackName,
-            artistName: s.artistName ?? null,
-            albumName: s.albumName ?? prev?.albumName ?? null,
-            albumArtUrl: localArt,
-            playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
-            durationMs: s.durationMillis ?? null,
-            positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
-            receivedAt: performance.now(),
-            smoothedRtt,
-            nextTrackName: s.nextTrackName ?? null,
-            nextArtistName: s.nextArtistName ?? null,
-            source: 'local',
-          });
-          return;
-        }
-
-        // Same track — update position + metadata
+      if (isTrackChange) {
         apply({
-          ...prev!,
-          playbackState: s.playbackState ?? prev!.playbackState,
-          positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + smoothedRtt / 2,
-          durationMs: s.durationMillis ?? prev!.durationMs,
-          albumArtUrl: localArt ?? prev!.albumArtUrl,
+          trackName: s.trackName,
+          artistName: s.artistName ?? null,
+          albumName: s.albumName ?? prev?.albumName ?? null,
+          albumArtUrl: localArt,
+          playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
+          durationMs: s.durationMillis ?? null,
+          positionMs: (s.positionMillis ?? 0) + rtt / 2,
           receivedAt: performance.now(),
-          smoothedRtt,
-          nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
-          nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
+          smoothedRtt: rtt,
+          nextTrackName: s.nextTrackName ?? null,
+          nextArtistName: s.nextArtistName ?? null,
           source: 'local',
         });
-      } catch (e: any) { setDebugLog(`err: ${e?.message?.slice(0, 80)}`); }
+        return;
+      }
+
+      apply({
+        ...prev!,
+        playbackState: s.playbackState ?? prev!.playbackState,
+        positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + rtt / 2,
+        durationMs: s.durationMillis ?? prev!.durationMs,
+        albumArtUrl: localArt ?? prev!.albumArtUrl,
+        receivedAt: performance.now(),
+        smoothedRtt: rtt,
+        nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
+        nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
+        source: 'local',
+      });
     };
 
-    // Poll at 200ms
-    let pollTimer: ReturnType<typeof setTimeout>;
-    const schedulePoll = () => {
-      pollTimer = setTimeout(async () => {
-        await fetchLocal();
-        schedulePoll();
-      }, 200);
+    // --- SSE connection (primary) ---
+    let es: EventSource | null = null;
+    let sseAlive = false;
+
+    const connectSSE = () => {
+      es = new EventSource(`${proxyUrl}/events`);
+      es.onmessage = (e) => {
+        sseAlive = true;
+        try {
+          const s = JSON.parse(e.data);
+          // SSE has ~0 RTT since it's push-based
+          applyStatus(s, 2);
+        } catch { /* ignore parse errors */ }
+      };
+      es.onerror = () => {
+        sseAlive = false;
+        // EventSource auto-reconnects
+      };
     };
-    fetchLocal().then(schedulePoll);
+
+    connectSSE();
+
+    // --- Position poll fallback (every 500ms) ---
+    // SSE gives metadata changes instantly, but position needs polling
+    // Poll less frequently since SSE handles track changes
+    let pollTimer: ReturnType<typeof setTimeout>;
+
+    const fetchPosition = async () => {
+      try {
+        const t0 = performance.now();
+        const res = await fetch(`${proxyUrl}/status`, { cache: "no-store", signal: AbortSignal.timeout(1000) });
+        const rtt = performance.now() - t0;
+        smoothedRtt = smoothedRtt * 0.5 + rtt * 0.5;
+        if (!res.ok) return;
+        const s = await res.json();
+        applyStatus(s, smoothedRtt);
+      } catch { /* proxy unavailable */ }
+    };
+
+    const schedulePoll = () => {
+      // Poll faster if SSE is down, slower if SSE is working
+      const interval = sseAlive ? 500 : 200;
+      pollTimer = setTimeout(async () => {
+        await fetchPosition();
+        schedulePoll();
+      }, interval);
+    };
+
+    fetchPosition().then(schedulePoll);
 
     return () => {
       clearTimeout(pollTimer);
+      if (es) { es.close(); es = null; }
     };
   }, []);
 
   const artChanged = data?.albumArtUrl !== prevArtRef.current;
   prevArtRef.current = data?.albumArtUrl ?? null;
 
-  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 10, getPosition, debugLog };
+  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 10, getPosition };
 }
