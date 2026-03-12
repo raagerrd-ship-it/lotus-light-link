@@ -118,8 +118,8 @@ export function useSonosNowPlaying() {
         albumArtUrl: localArt ?? prev!.albumArtUrl,
         receivedAt: performance.now(),
         smoothedRtt: rtt,
-        nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
-        nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
+        nextTrackName: decodeEntities(s.nextTrackName) ?? prev!.nextTrackName ?? null,
+        nextArtistName: decodeEntities(s.nextArtistName) ?? prev!.nextArtistName ?? null,
         source: 'local',
       });
     };
