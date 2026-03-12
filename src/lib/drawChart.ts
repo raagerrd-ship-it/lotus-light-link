@@ -34,8 +34,7 @@ export function drawIntensityChart(
 
   ctx.clearRect(0, 0, w, h);
 
-  const futureFrames = bpm > 0 ? Math.round(framesPerBeat * 2) : 0;
-  const totalFrames = historyLen + futureFrames;
+  const totalFrames = historyLen;
 
   if (len <= 1) return;
 
