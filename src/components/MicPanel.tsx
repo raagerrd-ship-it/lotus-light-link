@@ -532,14 +532,16 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         return { phase, curved: breathe, finalCurved: breathe, pct, sectionBehavior, currentSec };
       }
 
-      const pulse = Math.pow(1 - phase, 2.5);
+      // Asymmetric envelope: instant attack, slow decay
+      // phase 0 = beat onset, phase 1 = next beat
+      const decay = Math.pow(1 - phase, 1.8); // gentler exponent = longer tail
       const onsetStrength = isOnset ? Math.min(1, transient / (adaptiveThreshRef.current * 2.5)) : 0;
       const peakLevel = beatPhaseRef.current < 0.02
         ? Math.max(0.45, Math.min(1, 0.45 + onsetStrength * 0.55))
         : (pulseMaxRef.current ?? 0.6);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
-      const linear = peakLevel * pulse * sectionBehavior.beatReactivity;
-      const curved = Math.pow(linear, 0.55);
+      const linear = peakLevel * decay * sectionBehavior.beatReactivity;
+      const curved = Math.pow(linear, 0.45); // softer curve = more visible tail
 
       let finalCurved = curved;
       if (bpmRef.current > 0 && curved < 0.25) {
