@@ -544,7 +544,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       let finalCurved = curved;
       if (bpmRef.current > 0 && curved < 0.25) {
         const bpmPulse = Math.pow(1 - phase, 2.0);
-        const synthCurved = 0.15 + bpmPulse * 0.35 * sectionBehavior.beatReactivity;
+        const synthCurved = 0.05 + bpmPulse * 0.25 * sectionBehavior.beatReactivity;
         finalCurved = Math.max(curved, synthCurved);
       }
 
@@ -552,7 +552,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       finalCurved = Math.min(finalCurved, sectionBehavior.maxBrightness);
 
       const floored = Math.max(0, finalCurved);
-      const pct = Math.round(3 + 97 * Math.log1p(floored * 9) / Math.log(10));
+      const pct = Math.round(3 + 97 * Math.pow(floored, 0.8));
 
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
     };
