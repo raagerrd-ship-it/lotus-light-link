@@ -27,6 +27,7 @@ export function drawIntensityChart(
   framesPerBeat: number,
   bpm: number,
   punchWhite: boolean,
+  globalBrightness: number = 1, // 0-1, fades entire chart opacity
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
