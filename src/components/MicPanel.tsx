@@ -154,9 +154,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const onBpmChangeRef = useRef(onBpmChange);
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
-  // Auto-calibration: drift detection
+  // Auto-calibration: internal autonomous drift accumulator
   const onSyncDriftMsRef = useRef(onSyncDriftMs);
   useEffect(() => { onSyncDriftMsRef.current = onSyncDriftMs; }, [onSyncDriftMs]);
+  const internalOffsetRef = useRef(0); // autonomous accumulated offset (ms)
   const driftBufferRef = useRef<number[]>([]);
   const lastDriftReportRef = useRef(0);
 
