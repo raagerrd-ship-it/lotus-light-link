@@ -626,6 +626,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Draw canvas chart every 3rd frame (~20fps)
       canvasFrameRef.current++;
       if (canvasFrameRef.current % 3 === 0 && canvasRef.current) {
+        // Pass current brightness (finalCurved) to fade chart with the light
+        const chartBrightness = silenceStartRef.current > 0
+          ? Math.max(0, 1 - (performance.now() - silenceStartRef.current) / 1500)
+          : 1;
         drawIntensityChart(
           canvasRef.current,
           hist2,
@@ -633,6 +637,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           framesPerBeatRef.current,
           bpmRef.current,
           punchWhiteRef.current,
+          chartBrightness,
         );
       }
     };
