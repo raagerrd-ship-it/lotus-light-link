@@ -27,21 +27,15 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, progressFr
       <div className="flex items-center gap-3 px-4 py-3">
         {nowPlaying.albumArtUrl && (
           <img
+            key={nowPlaying.albumArtUrl}
             src={nowPlaying.albumArtUrl}
             alt="Album art"
             className="w-12 h-12 rounded-xl"
             onError={(e) => {
               const img = e.currentTarget;
-              if (img.dataset.fallbackApplied === "1") {
-                img.style.display = "none";
-                return;
-              }
-              if (img.src.includes("/api/sonos/getaa")) {
-                img.dataset.fallbackApplied = "1";
-                img.src = img.src.replace("/api/sonos/getaa", "/getaa");
-                return;
-              }
-              img.style.display = "none";
+              if (img.dataset.fallbackApplied === "1") return;
+              img.dataset.fallbackApplied = "1";
+              img.src = "/placeholder.svg";
             }}
             style={{
               boxShadow: `0 0 16px rgba(${r},${g},${b},0.4), 0 0 4px rgba(${r},${g},${b},0.2)`,
