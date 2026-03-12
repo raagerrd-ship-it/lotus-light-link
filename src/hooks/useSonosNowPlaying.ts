@@ -22,6 +22,7 @@ export interface SonosNowPlaying {
 
 export function useSonosNowPlaying() {
   const [data, setData] = useState<SonosNowPlaying | null>(null);
+  const [debugLog, setDebugLog] = useState<string>("init");
   const dataRef = useRef<SonosNowPlaying | null>(null);
   const prevArtRef = useRef<string | null>(null);
 
