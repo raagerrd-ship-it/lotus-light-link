@@ -355,14 +355,30 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (sonosPos && bpmRef.current > 0 && now - lastPhaseCorrectionRef.current > 500) {
         lastPhaseCorrectionRef.current = now;
         const elapsed = now - sonosPos.receivedAt;
-        const estimatedMs = sonosPos.positionMs + elapsed;
         const beatIntervalMs = 60000 / bpmRef.current;
+        const estimatedMs = sonosPos.positionMs + elapsed + syncOffsetMsRef.current;
         const sonosPhase = (estimatedMs % beatIntervalMs) / beatIntervalMs;
         const currentPhase = beatPhaseRef.current;
         let phaseDiff = sonosPhase - currentPhase;
         if (phaseDiff > 0.5) phaseDiff -= 1;
         if (phaseDiff < -0.5) phaseDiff += 1;
-        if (Math.abs(phaseDiff) > 0.05) {
+
+        // Drift estimation from phase diff (runs continuously, not only on onsets)
+        const driftMs = phaseDiff * beatIntervalMs;
+        driftBufferRef.current.push(driftMs);
+        if (driftBufferRef.current.length > 16) driftBufferRef.current.shift();
+        if (driftBufferRef.current.length >= 8 && now - lastDriftReportRef.current > 2000) {
+          const buf = driftBufferRef.current;
+          const mean = buf.reduce((s, v) => s + v, 0) / buf.length;
+          const variance = buf.reduce((s, v) => s + (v - mean) ** 2, 0) / buf.length;
+          const stddev = Math.sqrt(variance);
+          if (stddev < 50) {
+            lastDriftReportRef.current = now;
+            onSyncDriftMsRef.current?.(mean);
+          }
+        }
+
+        if (Math.abs(phaseDiff) > 0.02) {
           beatPhaseRef.current = ((currentPhase + phaseDiff * 0.15) % 1 + 1) % 1;
         }
       }
