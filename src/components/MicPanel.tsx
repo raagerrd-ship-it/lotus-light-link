@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { sendBrightness, sendColor } from "@/lib/bledom";
 import { Activity } from "lucide-react";
 import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
-import { drawIntensityChart, type ChartSample } from "@/lib/drawChart";
+import { drawIntensityChart, resetChartScaler, type ChartSample } from "@/lib/drawChart";
 import { liftColor } from "@/lib/colorUtils";
 import { type SongSection, getCurrentSection, getSectionBehavior, getUpcomingDrop } from "@/lib/songSections";
 
@@ -89,6 +89,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     prevColorRef.current = currentColorRef.current;
     targetColorRef.current = currentColor;
     colorTransitionStartRef.current = performance.now();
+    // Reset chart normalization on track/section change
+    resetChartScaler();
     // Immediately send new color to BLE (don't wait for audio loop)
     if (bleQueueRef.current) {
       bleQueueRef.current.color(...currentColor);

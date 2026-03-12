@@ -1,5 +1,13 @@
 import { liftColor } from "./colorUtils";
 
+// Module-level decaying peak-hold for chart normalization
+let heldMax = 30;
+
+/** Reset peak-hold (call on track/color change) */
+export function resetChartScaler() {
+  heldMax = 30;
+}
+
 export interface ChartSample {
   pct: number;
   r: number;
@@ -38,12 +46,13 @@ export function drawIntensityChart(
 
   if (len <= 1) return;
 
-  // Auto-normalize: scale so peaks fill the full chart height
+  // Decaying peak-hold normalization: preserves dynamics across sections
   let maxPct = 0;
   for (let i = 0; i < len; i++) {
     if (samples[i].pct > maxPct) maxPct = samples[i].pct;
   }
-  const scale = maxPct > 5 ? 100 / maxPct : 1;
+  heldMax = Math.max(heldMax * 0.997, maxPct, 30);
+  const scale = heldMax > 5 ? 100 / heldMax : 1;
 
   const step = w / (totalFrames - 1);
   const offsetX = (historyLen - len) * step;
