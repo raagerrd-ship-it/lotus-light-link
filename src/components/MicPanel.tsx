@@ -18,6 +18,7 @@ interface MicPanelProps {
   songDrops?: number[];
   syncOffsetMs?: number;
   smoothedRtt?: number;
+  onSyncDriftMs?: (driftMs: number) => void;
 }
 
 // Priority-aware BLE command queue
