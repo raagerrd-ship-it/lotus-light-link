@@ -18,6 +18,8 @@ export interface SonosNowPlaying {
   positionMs: number | null;
   receivedAt: number;
   smoothedRtt: number;
+  nextTrackName: string | null;
+  nextArtistName: string | null;
 }
 
 export function useSonosNowPlaying() {
