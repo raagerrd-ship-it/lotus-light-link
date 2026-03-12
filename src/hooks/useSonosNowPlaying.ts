@@ -45,7 +45,7 @@ export function useSonosNowPlaying() {
 
     const fetchLocal = async () => {
       const proxyUrl = getLocalProxyUrl();
-      if (!proxyUrl) { console.warn("[sonos] no sonosLocalProxy in localStorage"); return; }
+      if (!proxyUrl) { setDebugLog("no sonosLocalProxy in localStorage"); return; }
 
       try {
         const t0 = performance.now();
@@ -53,10 +53,10 @@ export function useSonosNowPlaying() {
         const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(1000) });
         const rtt = performance.now() - t0;
         smoothedRtt = smoothedRtt * 0.5 + rtt * 0.5;
-        if (!res.ok) { console.warn("[sonos] fetch not ok", res.status); return; }
+        if (!res.ok) { setDebugLog(`fetch ${res.status}`); return; }
         const s = await res.json();
-        console.log("[sonos] response", s);
-        if (!s?.ok || !s.trackName) { console.warn("[sonos] no ok/trackName", s); return; }
+        if (!s?.ok || !s.trackName) { setDebugLog(`no ok/track: ${JSON.stringify(s).slice(0, 120)}`); return; }
+        setDebugLog(`ok: ${s.trackName}`);
 
         const prev = dataRef.current;
         const isTrackChange = !prev || s.trackName !== prev.trackName;
