@@ -223,7 +223,7 @@ const Index = () => {
         <DebugOverlay
           smoothedRtt={smoothedRtt}
           autoDriftMs={autoDriftMs}
-          syncOffsetMs={syncOffsetMs}
+          syncOffsetMs={0}
           currentSection={currentSection}
           palette={palette}
           paletteIndex={paletteIndexRef.current}
