@@ -119,30 +119,40 @@ export function useSonosNowPlaying() {
         const isTrackChange = !prev || s.trackName !== prev.trackName;
 
         if (isTrackChange) {
+          // Build album art URL from local proxy if available
+          const localArt = s.albumArtUri
+            ? (s.albumArtUri.startsWith('http') ? s.albumArtUri : `${proxyUrl}${s.albumArtUri}`)
+            : null;
+
           apply({
             trackName: s.trackName,
             artistName: s.artistName ?? null,
             albumName: s.albumName ?? prev?.albumName ?? null,
-            albumArtUrl: null,
+            albumArtUrl: localArt,
             playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
             durationMs: s.durationMillis ?? null,
             positionMs: (s.positionMillis ?? 0) + smoothedRtt / 2,
             receivedAt: performance.now(),
             smoothedRtt,
-            nextTrackName: null, // local UPnP doesn't have next track
-            nextArtistName: null,
+            nextTrackName: s.nextTrackName ?? null,
+            nextArtistName: s.nextArtistName ?? null,
             source: 'local',
           });
-          // Still fetch DB for album art + cloud for next track info
-          const tryFetchDb = (attempt: number) => {
-            setTimeout(async () => {
-              await fetchDb();
-              if (!dataRef.current?.albumArtUrl && attempt < 2) tryFetchDb(attempt + 1);
-            }, attempt === 0 ? 800 : 2000);
-          };
-          tryFetchDb(0);
-          // Also fetch cloud API once for next track metadata
-          fetchCloud();
+
+          // Only fetch DB if local proxy didn't provide album art
+          if (!localArt) {
+            const tryFetchDb = (attempt: number) => {
+              setTimeout(async () => {
+                await fetchDb();
+                if (!dataRef.current?.albumArtUrl && attempt < 2) tryFetchDb(attempt + 1);
+              }, attempt === 0 ? 800 : 2000);
+            };
+            tryFetchDb(0);
+          }
+          // Only fetch cloud if local proxy didn't provide next track
+          if (!s.nextTrackName) {
+            fetchCloud();
+          }
           return true;
         }
 
