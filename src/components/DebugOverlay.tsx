@@ -18,6 +18,7 @@ export default function DebugOverlay({ smoothedRtt, autoDriftMs, syncOffsetMs, c
       <div>drift: <span className="text-foreground">{autoDriftMs >= 0 ? "+" : ""}{Math.round(autoDriftMs)}ms</span></div>
       <div>offset: <span className="text-foreground">{syncOffsetMs >= 0 ? "+" : ""}{syncOffsetMs}ms</span></div>
       <div>section: <span className="text-foreground">{currentSection ? `${currentSection.type} (e${currentSection.energy.toFixed(1)})` : "—"}</span></div>
+      {sonosDebug && <div>sonos: <span className="text-foreground">{sonosDebug}</span></div>}
       {palette && palette.length > 0 && (
         <div className="flex items-center gap-1 mt-0.5">
           <span>palette:</span>
