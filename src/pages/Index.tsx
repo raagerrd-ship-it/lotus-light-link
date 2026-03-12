@@ -39,7 +39,7 @@ const Index = () => {
   const currentColorRef = useRef(currentColor);
 
   const lastDevice = getLastDevice();
-  const { nowPlaying, smoothedRtt } = useSonosNowPlaying();
+  const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
   const [syncOffsetMs, setSyncOffsetMs] = useState(() => {
     const stored = localStorage.getItem("syncOffsetMs");
     return stored ? parseInt(stored, 10) : 0;
