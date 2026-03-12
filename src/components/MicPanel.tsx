@@ -89,6 +89,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     prevColorRef.current = currentColorRef.current;
     targetColorRef.current = currentColor;
     colorTransitionStartRef.current = performance.now();
+    // Reset chart normalization on track/section change
+    resetChartScaler();
     // Immediately send new color to BLE (don't wait for audio loop)
     if (bleQueueRef.current) {
       bleQueueRef.current.color(...currentColor);
