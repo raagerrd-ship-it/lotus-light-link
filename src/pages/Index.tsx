@@ -226,6 +226,8 @@ const Index = () => {
           autoDriftMs={autoDriftMs}
           syncOffsetMs={syncOffsetMs}
           currentSection={currentSection}
+          palette={palette}
+          paletteIndex={paletteIndexRef.current}
         />
       )}
 
