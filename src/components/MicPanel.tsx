@@ -203,6 +203,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    workerRef.current?.postMessage('stop');
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
