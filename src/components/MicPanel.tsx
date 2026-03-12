@@ -564,7 +564,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const curved = Math.pow(linear, 0.45); // softer curve = more visible tail
 
       let finalCurved = curved;
-      if (bpmRef.current > 0 && curved < 0.25) {
+      // Synthetic fallback pulse — only when audio is actively playing (not silent)
+      const silenceDur = silenceStartRef.current > 0 ? performance.now() - silenceStartRef.current : 0;
+      if (bpmRef.current > 0 && curved < 0.25 && silenceDur < 200) {
         const bpmPulse = Math.pow(1 - phase, 2.0);
         const synthCurved = 0.05 + bpmPulse * 0.25 * sectionBehavior.beatReactivity;
         finalCurved = Math.max(curved, synthCurved);
