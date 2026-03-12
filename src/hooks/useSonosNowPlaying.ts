@@ -1,8 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// Local proxy URL — set via localStorage("sonosLocalProxy") e.g. "http://192.168.1.100:3000/api/sonos"
-function getLocalProxyUrl(): string | null {
-  try { return localStorage.getItem("sonosLocalProxy"); } catch { return null; }
+// Local proxy URL — auto-fallback to localhost if localStorage key is missing
+const DEFAULT_LOCAL_PROXY_URL = "http://localhost:3000/api/sonos";
+
+function normalizeProxyUrl(url: string): string {
+  return url.trim().replace(/\/status\/?$/, "").replace(/\/$/, "");
+}
+
+function getLocalProxyUrl(): string {
+  try {
+    const stored = localStorage.getItem("sonosLocalProxy");
+    const normalized = normalizeProxyUrl(stored || DEFAULT_LOCAL_PROXY_URL);
+    if (!stored) localStorage.setItem("sonosLocalProxy", normalized);
+    return normalized;
+  } catch {
+    return normalizeProxyUrl(DEFAULT_LOCAL_PROXY_URL);
+  }
 }
 
 export interface SonosNowPlaying {
