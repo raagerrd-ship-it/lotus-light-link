@@ -280,6 +280,23 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       streamRef.current = stream;
       bleQueueRef.current = createBleQueue(charRef);
       setActive(true);
+
+      // Wake Lock: keep screen on
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          // Re-acquire on visibility change
+          const reacquire = async () => {
+            if (document.visibilityState === 'visible' && !wakeLockRef.current) {
+              try {
+                wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+              } catch {}
+            }
+          };
+          wakeLockRef.current?.addEventListener('release', () => { wakeLockRef.current = null; });
+          document.addEventListener('visibilitychange', reacquire);
+        }
+      } catch {}
     } catch {
       // Mic access denied
     }
