@@ -23,9 +23,11 @@ const Index = () => {
   const [punchWhite, setPunchWhite] = useState(true);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
-  const [songSections, setSongSections] = useState<import("@/lib/songSections").SongSection[]>([]);
+  const [songSections, setSongSections] = useState<SongSection[]>([]);
   const [songDrops, setSongDrops] = useState<number[]>([]);
   const [autoDriftMs, setAutoDriftMs] = useState(0);
+  const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);

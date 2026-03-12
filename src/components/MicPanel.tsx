@@ -501,9 +501,16 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const elapsed = performance.now() - sonosPos.receivedAt;
         currentSec = (sonosPos.positionMs + elapsed + syncOffsetMsRef.current) / 1000;
       }
+      let currentSection: SongSection | null = null;
       if (songSectionsRef.current.length > 0) {
-        const section = getCurrentSection(songSectionsRef.current, currentSec);
-        sectionBehavior = getSectionBehavior(section);
+        currentSection = getCurrentSection(songSectionsRef.current, currentSec);
+        sectionBehavior = getSectionBehavior(currentSection);
+        // Report section changes
+        const sKey = currentSection?.type ?? null;
+        if (sKey !== lastSectionTypeRef.current) {
+          lastSectionTypeRef.current = sKey;
+          onSectionChangeRef.current?.(currentSection);
+        }
       }
 
       const phase = beatPhaseRef.current;
