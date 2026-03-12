@@ -28,7 +28,7 @@ export function drawIntensityChart(
   const len = samples.length;
   const threshold = 85;
 
-  const chartHeight = h * 0.7;
+  const chartHeight = h * 0.95;
   const chartTop = (h - chartHeight) / 2;
   const yThresh = chartTop + chartHeight - (threshold / 100) * chartHeight;
 
