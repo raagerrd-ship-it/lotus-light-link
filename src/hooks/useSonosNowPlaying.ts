@@ -22,6 +22,7 @@ export interface SonosNowPlaying {
 
 export function useSonosNowPlaying() {
   const [data, setData] = useState<SonosNowPlaying | null>(null);
+  const [debugLog, setDebugLog] = useState<string>("init");
   const dataRef = useRef<SonosNowPlaying | null>(null);
   const prevArtRef = useRef<string | null>(null);
 
@@ -44,7 +45,7 @@ export function useSonosNowPlaying() {
 
     const fetchLocal = async () => {
       const proxyUrl = getLocalProxyUrl();
-      if (!proxyUrl) { console.warn("[sonos] no sonosLocalProxy in localStorage"); return; }
+      if (!proxyUrl) { setDebugLog("no sonosLocalProxy in localStorage"); return; }
 
       try {
         const t0 = performance.now();
@@ -52,10 +53,10 @@ export function useSonosNowPlaying() {
         const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(1000) });
         const rtt = performance.now() - t0;
         smoothedRtt = smoothedRtt * 0.5 + rtt * 0.5;
-        if (!res.ok) { console.warn("[sonos] fetch not ok", res.status); return; }
+        if (!res.ok) { setDebugLog(`fetch ${res.status}`); return; }
         const s = await res.json();
-        console.log("[sonos] response", s);
-        if (!s?.ok || !s.trackName) { console.warn("[sonos] no ok/trackName", s); return; }
+        if (!s?.ok || !s.trackName) { setDebugLog(`no ok/track: ${JSON.stringify(s).slice(0, 120)}`); return; }
+        setDebugLog(`ok: ${s.trackName}`);
 
         const prev = dataRef.current;
         const isTrackChange = !prev || s.trackName !== prev.trackName;
@@ -96,7 +97,7 @@ export function useSonosNowPlaying() {
           nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
           source: 'local',
         });
-      } catch { /* local proxy unavailable — no data */ }
+      } catch (e: any) { setDebugLog(`err: ${e?.message?.slice(0, 80)}`); }
     };
 
     // Poll at 200ms
@@ -117,5 +118,5 @@ export function useSonosNowPlaying() {
   const artChanged = data?.albumArtUrl !== prevArtRef.current;
   prevArtRef.current = data?.albumArtUrl ?? null;
 
-  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 10, getPosition };
+  return { nowPlaying: data, artChanged, smoothedRtt: data?.smoothedRtt ?? 10, getPosition, debugLog };
 }
