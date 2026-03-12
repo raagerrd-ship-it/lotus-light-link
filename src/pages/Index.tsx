@@ -145,11 +145,23 @@ const Index = () => {
     }).catch(() => {}); // fire-and-forget, result cached in DB
   }, [nowPlaying?.nextTrackName, nowPlaying?.nextArtistName]);
 
+  // Rotate palette color on section change
+  const handleSectionChange = useCallback((section: SongSection | null) => {
+    setCurrentSection(section);
+    if (palette.length > 1 && section) {
+      paletteIndexRef.current = (paletteIndexRef.current + 1) % palette.length;
+      const nextColor = palette[paletteIndexRef.current];
+      setCurrentColor(nextColor);
+      if (connection && isOn) {
+        sendColor(connection.characteristic, ...nextColor).catch(() => {});
+      }
+    }
+  }, [palette, connection, isOn]);
+
   // Auto-calibration callback from mic drift detection
   const handleSyncDrift = useCallback((driftMs: number) => {
     setAutoDriftMs(prev => {
       const clamped = Math.max(-200, Math.min(200, driftMs));
-      // EMA smoothing
       return prev * 0.7 + clamped * 0.3;
     });
   }, []);
