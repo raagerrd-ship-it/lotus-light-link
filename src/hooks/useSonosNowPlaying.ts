@@ -54,6 +54,12 @@ export function useSonosNowPlaying() {
 
     let smoothedRtt = 10;
 
+    // Decode XML entities that may leak from DIDL parsing
+    const decodeEntities = (s: string | null | undefined): string | null => {
+      if (!s) return null;
+      return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+    };
+
     // Build art URL from Cast Away payloads (supports multiple field/key variants)
     const resolveAlbumArtUri = (s: any): string | null => {
       return s?.albumArtUri ?? s?.albumArtURI ?? s?.albumArtUrl ?? s?.album_art_uri ?? null;
@@ -88,17 +94,17 @@ export function useSonosNowPlaying() {
 
       if (isTrackChange) {
         apply({
-          trackName: s.trackName,
-          artistName: s.artistName ?? null,
-          albumName: s.albumName ?? prev?.albumName ?? null,
+          trackName: decodeEntities(s.trackName),
+          artistName: decodeEntities(s.artistName),
+          albumName: decodeEntities(s.albumName) ?? prev?.albumName ?? null,
           albumArtUrl: localArt,
           playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
           durationMs: s.durationMillis ?? null,
           positionMs: (s.positionMillis ?? 0) + rtt / 2,
           receivedAt: performance.now(),
           smoothedRtt: rtt,
-          nextTrackName: s.nextTrackName ?? null,
-          nextArtistName: s.nextArtistName ?? null,
+          nextTrackName: decodeEntities(s.nextTrackName),
+          nextArtistName: decodeEntities(s.nextArtistName),
           source: 'local',
         });
         return;
@@ -112,8 +118,8 @@ export function useSonosNowPlaying() {
         albumArtUrl: localArt ?? prev!.albumArtUrl,
         receivedAt: performance.now(),
         smoothedRtt: rtt,
-        nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
-        nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
+        nextTrackName: decodeEntities(s.nextTrackName) ?? prev!.nextTrackName ?? null,
+        nextArtistName: decodeEntities(s.nextArtistName) ?? prev!.nextArtistName ?? null,
         source: 'local',
       });
     };
