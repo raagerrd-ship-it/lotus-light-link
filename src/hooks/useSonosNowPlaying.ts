@@ -54,21 +54,30 @@ export function useSonosNowPlaying() {
 
     let smoothedRtt = 10;
 
-    // Build art URL — Cast Away now returns albumArtUri as /api/sonos/getaa...
-    const buildArtUrl = (uri: string | null | undefined): string | null => {
-      if (!uri) return null;
-      if (uri.startsWith('http')) return uri;
-      // Relative path from Cast Away (e.g. /api/sonos/getaa?...) — resolve against origin
-      const origin = new URL(proxyUrl).origin;
-      return `${origin}${uri}`;
+    // Build art URL from Cast Away payloads (supports multiple field/key variants)
+    const resolveAlbumArtUri = (s: any): string | null => {
+      return s?.albumArtUri ?? s?.albumArtURI ?? s?.albumArtUrl ?? s?.album_art_uri ?? null;
     };
 
-    const applyStatus = (s: any, rtt: number) => {
-      if (!s?.ok || !s.trackName) return;
+    const buildArtUrl = (uriRaw: string | null | undefined): string | null => {
+      if (!uriRaw) return null;
+      const uri = String(uriRaw).trim();
+      if (!uri) return null;
 
-      const prev = dataRef.current;
-      const isTrackChange = !prev || s.trackName !== prev.trackName;
-      const localArt = buildArtUrl(s.albumArtUri);
+      if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
+
+      const origin = new URL(proxyUrl).origin;
+
+      // New Cast Away format: /api/sonos/getaa?... -> keep as-is on same origin
+      if (uri.startsWith('/api/sonos/')) return `${origin}${uri}`;
+
+      // Raw Sonos URI from DIDL: /getaa?... -> route via configured proxy path
+      if (uri.startsWith('/getaa')) return `${proxyUrl}${uri}`;
+      if (uri.startsWith('getaa')) return `${proxyUrl}/${uri}`;
+
+      if (uri.startsWith('/')) return `${origin}${uri}`;
+      return `${proxyUrl}/${uri}`;
+    };
 
       if (isTrackChange) {
         apply({
