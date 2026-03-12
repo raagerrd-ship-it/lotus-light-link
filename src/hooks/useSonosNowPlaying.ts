@@ -94,17 +94,17 @@ export function useSonosNowPlaying() {
 
       if (isTrackChange) {
         apply({
-          trackName: s.trackName,
-          artistName: s.artistName ?? null,
-          albumName: s.albumName ?? prev?.albumName ?? null,
+          trackName: decodeEntities(s.trackName),
+          artistName: decodeEntities(s.artistName),
+          albumName: decodeEntities(s.albumName) ?? prev?.albumName ?? null,
           albumArtUrl: localArt,
           playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
           durationMs: s.durationMillis ?? null,
           positionMs: (s.positionMillis ?? 0) + rtt / 2,
           receivedAt: performance.now(),
           smoothedRtt: rtt,
-          nextTrackName: s.nextTrackName ?? null,
-          nextArtistName: s.nextArtistName ?? null,
+          nextTrackName: decodeEntities(s.nextTrackName),
+          nextArtistName: decodeEntities(s.nextArtistName),
           source: 'local',
         });
         return;
