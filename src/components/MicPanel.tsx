@@ -499,31 +499,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         }
         lastOnsetRef.current = now;
 
-        // Drift detection: compare onset timing to BPM grid from Sonos position
-        const sonosPos2 = sonosPositionRef.current;
-        if (sonosPos2 && bpmRef.current > 0) {
-          const elapsed = now - sonosPos2.receivedAt;
-          const currentMs = sonosPos2.positionMs + elapsed + syncOffsetMsRef.current;
-          const beatIntervalMs2 = 60000 / bpmRef.current;
-          // Distance to nearest expected beat
-          const phaseInBeat = currentMs % beatIntervalMs2;
-          let drift = phaseInBeat;
-          if (drift > beatIntervalMs2 / 2) drift -= beatIntervalMs2; // wrap to ±half
-          driftBufferRef.current.push(drift);
-          if (driftBufferRef.current.length > 16) driftBufferRef.current.shift();
-
-          // Report drift if we have enough samples and it's stable
-          if (driftBufferRef.current.length >= 8 && now - lastDriftReportRef.current > 2000) {
-            const buf = driftBufferRef.current;
-            const mean = buf.reduce((s, v) => s + v, 0) / buf.length;
-            const variance = buf.reduce((s, v) => s + (v - mean) ** 2, 0) / buf.length;
-            const stddev = Math.sqrt(variance);
-            if (stddev < 30) {
-              lastDriftReportRef.current = now;
-              onSyncDriftMsRef.current?.(mean);
-            }
-          }
-        }
       }
 
       return isOnset;

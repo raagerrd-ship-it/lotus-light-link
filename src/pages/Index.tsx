@@ -305,18 +305,34 @@ const Index = () => {
               variant="ghost"
               size="icon"
               onClick={() => setPunchWhite(!punchWhite)}
+              onDoubleClick={() => adjustSyncOffset(50)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                const next = syncOffsetMs + (e.shiftKey ? -50 : 50);
-                const clamped = Math.max(-500, Math.min(500, next));
-                setSyncOffsetMs(clamped);
-                localStorage.setItem("syncOffsetMs", String(clamped));
+                adjustSyncOffset(e.shiftKey ? -50 : 50);
               }}
               className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${punchWhite ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
               style={punchWhite ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
-              title={`Punch white — ${punchWhite ? 'PÅ' : 'AV'}${syncOffsetMs ? ` (offset: ${syncOffsetMs}ms)` : ''}`}
+              title={`Punch white — ${punchWhite ? 'PÅ' : 'AV'}${syncOffsetMs ? ` (offset: ${syncOffsetMs}ms)` : ''}. Dubbeltryck: +50ms, högerklick: ±50ms`}
             >
               <Zap className="w-3.5 h-3.5" style={punchWhite ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => adjustSyncOffset(-50)}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform text-xs font-bold"
+              title="Offset -50ms"
+            >
+              −
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => adjustSyncOffset(50)}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform text-xs font-bold"
+              title="Offset +50ms"
+            >
+              +
             </Button>
             <Button
               variant="ghost"
