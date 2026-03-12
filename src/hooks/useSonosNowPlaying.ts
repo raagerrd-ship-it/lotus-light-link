@@ -298,6 +298,7 @@ export function useSonosNowPlaying() {
       channel.unsubscribe();
       clearTimeout(pollTimer);
       clearInterval(cloudMetaTimer);
+      clearInterval(predictiveTimer);
     };
   }, []);
 
