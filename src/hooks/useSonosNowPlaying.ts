@@ -156,7 +156,7 @@ export function useSonosNowPlaying() {
           return true;
         }
 
-        // Same track — update position
+        // Same track — update position + next track metadata
         apply({
           ...prev!,
           playbackState: s.playbackState ?? prev!.playbackState,
@@ -164,6 +164,8 @@ export function useSonosNowPlaying() {
           durationMs: s.durationMillis ?? prev!.durationMs,
           receivedAt: performance.now(),
           smoothedRtt,
+          nextTrackName: s.nextTrackName ?? prev!.nextTrackName ?? null,
+          nextArtistName: s.nextArtistName ?? prev!.nextArtistName ?? null,
           source: 'local',
         });
         return true;
