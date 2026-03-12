@@ -184,6 +184,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const canvasFrameRef = useRef(0);
   const HISTORY_LEN = 300;
 
+  // Worker + Wake Lock refs
+  const workerRef = useRef<Worker | null>(null);
+  const wakeLockRef = useRef<any>(null);
+
+  // Shared state between worker-tick (analysis) and rAF (visuals)
+  const lastTickResultRef = useRef<{
+    finalCurved: number;
+    pct: number;
+    isOnset: boolean;
+    now: number;
+  }>({ finalCurved: 0, pct: 3, isOnset: false, now: 0 });
+
   // Audio nodes
   const subAnalyserRef = useRef<AnalyserNode | null>(null);
   const lowAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -191,6 +203,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    workerRef.current?.postMessage('stop');
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
@@ -263,6 +280,23 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       streamRef.current = stream;
       bleQueueRef.current = createBleQueue(charRef);
       setActive(true);
+
+      // Wake Lock: keep screen on
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          // Re-acquire on visibility change
+          const reacquire = async () => {
+            if (document.visibilityState === 'visible' && !wakeLockRef.current) {
+              try {
+                wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+              } catch {}
+            }
+          };
+          wakeLockRef.current?.addEventListener('release', () => { wakeLockRef.current = null; });
+          document.addEventListener('visibilitychange', reacquire);
+        }
+      } catch {}
     } catch {
       // Mic access denied
     }
@@ -718,8 +752,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       }
     };
 
-    // ─── Main loop ───
-    const loop = () => {
+    // ─── Analysis tick (driven by Web Worker — runs in background) ───
+    const analysisTick = () => {
       const now = performance.now();
 
       // Smooth color transition (lerp over COLOR_FADE_MS)
@@ -745,13 +779,32 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const { transient, isSilence } = sampleEnergy();
       const isOnset = detectBeatsAndBpm(transient, isSilence, now);
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient);
-      updateVisuals(finalCurved, pct, isOnset, now);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
-      rafRef.current = requestAnimationFrame(loop);
+
+      // Store result for rAF visual loop
+      lastTickResultRef.current = { finalCurved, pct, isOnset, now };
     };
 
-    rafRef.current = requestAnimationFrame(loop);
+    // ─── Visual loop (rAF — pauses when tab hidden, saves battery) ───
+    const renderLoop = () => {
+      const { finalCurved, pct, isOnset, now } = lastTickResultRef.current;
+      updateVisuals(finalCurved, pct, isOnset, now);
+      rafRef.current = requestAnimationFrame(renderLoop);
+    };
+
+    // Start worker-driven tick
+    const worker = new Worker('/tick-worker.js');
+    worker.onmessage = () => analysisTick();
+    worker.postMessage('start');
+    workerRef.current = worker;
+
+    // Start visual render loop
+    rafRef.current = requestAnimationFrame(renderLoop);
+
     return () => {
+      worker.postMessage('stop');
+      worker.terminate();
+      workerRef.current = null;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [active]);

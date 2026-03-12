@@ -1,0 +1,12 @@
+// Background tick worker — continues running when tab is hidden
+let intervalId = null;
+
+self.onmessage = (e) => {
+  if (e.data === 'start') {
+    if (intervalId) clearInterval(intervalId);
+    intervalId = setInterval(() => self.postMessage('tick'), 25);
+  } else if (e.data === 'stop') {
+    if (intervalId) clearInterval(intervalId);
+    intervalId = null;
+  }
+};
