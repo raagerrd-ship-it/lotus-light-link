@@ -54,7 +54,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
 
     if (buckets.size === 0) return [];
 
-    // Score and sort buckets
+    // Score buckets — heavily favor saturated, vivid colors
     const scored: { color: RGB; score: number }[] = [];
     for (const bucket of buckets.values()) {
       const avgR = bucket.r / bucket.count;
@@ -63,7 +63,13 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       const max = Math.max(avgR, avgG, avgB);
       const min = Math.min(avgR, avgG, avgB);
       const sat = max > 0 ? (max - min) / max : 0;
-      const score = bucket.count * (1 + sat * 2);
+      const lum = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+
+      // Skip muddy/brown colors (low sat + mid luminance)
+      if (sat < 0.4 && lum > 60 && lum < 160) continue;
+
+      // Score: saturation matters most, then pixel count
+      const score = bucket.count * (sat ** 2) * 4;
       scored.push({ color: [Math.round(avgR), Math.round(avgG), Math.round(avgB)], score });
     }
     scored.sort((a, b) => b.score - a.score);
