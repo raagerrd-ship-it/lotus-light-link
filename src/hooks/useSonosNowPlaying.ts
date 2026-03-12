@@ -54,6 +54,12 @@ export function useSonosNowPlaying() {
 
     let smoothedRtt = 10;
 
+    // Decode XML entities that may leak from DIDL parsing
+    const decodeEntities = (s: string | null | undefined): string | null => {
+      if (!s) return null;
+      return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+    };
+
     // Build art URL from Cast Away payloads (supports multiple field/key variants)
     const resolveAlbumArtUri = (s: any): string | null => {
       return s?.albumArtUri ?? s?.albumArtURI ?? s?.albumArtUrl ?? s?.album_art_uri ?? null;
