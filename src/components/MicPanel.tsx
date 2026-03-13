@@ -41,6 +41,8 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const agcMinRef = useRef(initCal.agcMin);
   const lastVolumeRef = useRef(sonosVolume);
   const agcSaveTimerRef = useRef(0);
+  // Peak max: the loudest agcMax we've ever seen — very slow decay, never resets on volume change
+  const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
 
   useEffect(() => {
     colorRef.current = currentColor;
