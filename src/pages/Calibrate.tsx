@@ -86,7 +86,7 @@ async function sendBlack(char: BluetoothRemoteGATTCharacteristic) {
 
 interface PulseResult {
   durationMs: number;
-  seen: boolean | null; // null = not yet answered
+  answer: 'all' | 'partial' | 'none';
 }
 
 function BleSpeedTab({ conn }: { conn: any }) {
