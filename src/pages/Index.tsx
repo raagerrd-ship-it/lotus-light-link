@@ -39,10 +39,6 @@ const Index = () => {
   const [volCalibration, setVolCalibration] = useState<{ volume: number; gain: number } | null>(() => {
     try { const s = localStorage.getItem("volCalibration"); return s ? JSON.parse(s) : null; } catch { return null; }
   });
-  const [maxBrightness, setMaxBrightness] = useState(() => {
-    const stored = localStorage.getItem("maxBrightness");
-    return stored ? parseInt(stored, 10) : 100;
-  });
   const [dynamicDamping, setDynamicDamping] = useState(() => {
     const stored = localStorage.getItem("dynamicDamping");
     return stored ? parseFloat(stored) : 1.0;
