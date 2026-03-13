@@ -5,6 +5,7 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendColor, sendBrightness, sendPower, setActiveChar, getLastTickToWriteMs,
+  setBleMinInterval,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
@@ -13,7 +14,10 @@ import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
-
+import {
+  loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
+  applyColorCalibration, getCalibration
+} from "@/lib/lightCalibration";
 const Index = () => {
   const navigate = useNavigate();
   const [connection, setConnection] = useState<BLEConnection | null>(null);
