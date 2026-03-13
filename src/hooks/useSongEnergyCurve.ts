@@ -57,16 +57,18 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("energy_curve")
+      .select("energy_curve, recorded_volume")
       .eq("track_name", track.trackName)
       .eq("artist_name", track.artistName)
       .maybeSingle()
       .then(({ data }) => {
-        if (trackRef.current !== key) return; // stale
+        if (trackRef.current !== key) return;
         const parsed = data?.energy_curve as unknown as EnergySample[] | null;
         const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
+        const vol = (data as any)?.recorded_volume as number | null;
         curveCache.set(key, valid);
         setCurve(valid);
+        setRecordedVolume(vol ?? null);
         setLoading(false);
       });
   }, [track?.trackName, track?.artistName]);
