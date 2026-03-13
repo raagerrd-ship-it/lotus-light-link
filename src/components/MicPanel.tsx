@@ -31,7 +31,7 @@ const CURVE_RECORD_INTERVAL_MS = 100;
 // FFT band boundaries (bin indices for 512-point FFT at 48kHz)
 // Each bin = sampleRate / fftSize ≈ 93.75 Hz
 // Low: 0-300 Hz → bins 0-3, Mid: 300-2000 Hz → bins 3-21, Hi: 2000+ Hz → bins 21+
-function computeBands(analyser: AnalyserNode, freqData: Float32Array): { lo: number; mid: number; hi: number } {
+function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer>): { lo: number; mid: number; hi: number } {
   analyser.getFloatFrequencyData(freqData);
   const sampleRate = analyser.context.sampleRate;
   const binWidth = sampleRate / analyser.fftSize;
