@@ -31,6 +31,17 @@ const Index = () => {
   const [autoDriftMs, setAutoDriftMs] = useState(0);
   const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [agcEnabled, setAgcEnabled] = useState(() => localStorage.getItem("agcEnabled") !== "false");
+  const [manualGain, setManualGain] = useState(() => {
+    const stored = localStorage.getItem("manualGain");
+    return stored ? parseFloat(stored) : 5;
+  });
+  const [calibration, setCalibration] = useState<{ volume: number; gain: number } | null>(() => {
+    try {
+      const stored = localStorage.getItem("gainCalibration");
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
