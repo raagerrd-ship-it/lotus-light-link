@@ -813,7 +813,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const beatMs = 60000 / bpmRef.current;
         const phaseMs = beatPhaseRef.current * beatMs;
         const msUntilBeat = beatMs - phaseMs;
-        if (msUntilBeat <= BLE_LATENCY_MS && msUntilBeat > 0) {
+        if (msUntilBeat <= calRef.current.bleLatencyMs && msUntilBeat > 0) {
           predictiveFiredRef.current = true;
           const predictedPct = Math.max(40, Math.round((pulseMaxRef.current ?? 0.7) * 100));
           ble.brightness(predictedPct);
