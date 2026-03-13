@@ -721,7 +721,13 @@ export default function Calibrate() {
           </>
         )}
 
-        {tab === 'ble' && <BleSpeedTab conn={conn} />}
+        {tab === 'ble' && <BleSpeedTab conn={conn} onSpeedSave={(bests) => {
+          const deviceName = conn?.device?.name;
+          if (deviceName) {
+            const worst = Math.max(...(Object.values(bests) as number[]));
+            saveBleSpeedToCloud(deviceName, worst, bests as Record<string, number>);
+          }
+        }} />}
 
         {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms) => update({ bleLatencyMs: ms })} />}
       </div>
