@@ -513,6 +513,14 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
           }
           chartDirtyRef.current = true;
+
+          // Notify live session
+          onLiveStatusRef.current?.({
+            brightness: bright,
+            color: [r, g, b],
+            sectionType: undefined,
+            isWhiteKick: performance.now() < whiteKickUntilRef.current,
+          });
         });
 
         worker.postMessage("start");
