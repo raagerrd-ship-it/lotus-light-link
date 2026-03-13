@@ -238,6 +238,11 @@ const Index = () => {
           source={nowPlaying?.source}
           sonosVolume={nowPlaying?.volume}
           gainMode={agcEnabled ? 'agc' : 'manual'}
+          liveBpm={liveBpm}
+          maxBrightness={maxBrightness}
+          bleConnected={!!connection}
+          bleDeviceName={connection?.device?.name}
+          bleReconnectStatus={bleReconnectStatus}
         />
       )}
 
