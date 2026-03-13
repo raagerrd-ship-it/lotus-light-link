@@ -242,6 +242,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
+        tickToWriteMs={tickToWriteMs}
       />
     </div>
   );
