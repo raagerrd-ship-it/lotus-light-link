@@ -276,9 +276,10 @@ async function _flush() {
   _lastWriteTime = performance.now();
 
   try {
-    // Write ONE command per slot; prioritize brightness for responsiveness
-    // IMPORTANT: Always send color BEFORE brightness so the lamp
-    // doesn't briefly flash the old color at new brightness.
+    // Send BOTH color and brightness in the same slot when both are pending.
+    // GATT writes take ~5ms each, and our min interval is typically 10-50ms,
+    // so there's plenty of room. Color always goes first to avoid flashing
+    // old color at new brightness.
     if (writeColor && _pendingColor) {
       _colorBuf[4] = _pendingColor[0] & 0xff;
       _colorBuf[5] = _pendingColor[1] & 0xff;
@@ -287,19 +288,19 @@ async function _flush() {
       _lastSentColor = [..._pendingColor];
       _pendingColor = null;
       _writeCount++;
-      const writeEnd = performance.now();
-      _lastActualWriteMs = writeEnd - _lastWriteTime;
-      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
-    } else if (writeBright && _pendingBright != null) {
+    }
+
+    if (writeBright && _pendingBright != null) {
       _brightBuf[3] = Math.max(0, Math.min(100, Math.round(_pendingBright)));
       await _char.writeValueWithoutResponse(_brightBuf);
       _lastSentBright = _pendingBright;
       _pendingBright = null;
       _writeCount++;
-      const writeEnd = performance.now();
-      _lastActualWriteMs = writeEnd - _lastWriteTime;
-      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
     }
+
+    const writeEnd = performance.now();
+    _lastActualWriteMs = writeEnd - _lastWriteTime;
+    if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
   } catch {
     // GATT write failed — don't crash
   }
