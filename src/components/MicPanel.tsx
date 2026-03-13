@@ -415,15 +415,26 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
           // White kick logic
           const now = performance.now();
           const inWhiteKick = now < whiteKickUntilRef.current;
+          const currentDrops = dropsRef.current;
+          const inDropZone = currentDrops && posSec2 != null ? isInDrop(currentDrops, posSec2) : false;
+          const buildUp = currentDrops && posSec2 != null ? getBuildUpIntensity(currentDrops, posSec2) : 0;
+
+          // During build-up: gradually increase brightness
+          if (buildUp > 0) {
+            pct = Math.min(100, Math.round(pct + buildUp * 20));
+          }
 
           if (hasCurve) {
             // Curve mode: use saved kick timestamps, gated by section
-            if (curveKick && !inWhiteKick && sectionParams.kickEnabled) {
-              whiteKickUntilRef.current = now + cal.whiteKickMs;
+            // In drop zone: lower kick threshold for more frequent kicks
+            const effectiveKickEnabled = inDropZone || sectionParams.kickEnabled;
+            if (curveKick && !inWhiteKick && effectiveKickEnabled) {
+              whiteKickUntilRef.current = now + (inDropZone ? cal.whiteKickMs * 0.7 : cal.whiteKickMs);
             }
           } else {
             // Mic mode: use section-aware threshold
-            if (pct > sectionParams.kickThreshold && !inWhiteKick && sectionParams.kickEnabled) {
+            const effectiveThreshold = inDropZone ? Math.min(sectionParams.kickThreshold, 88) : sectionParams.kickThreshold;
+            if (pct > effectiveThreshold && !inWhiteKick && sectionParams.kickEnabled) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
           }
@@ -440,8 +451,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
               const calibrated = applyColorCalibration(...colorRef.current, cal);
               // Apply frequency-based color modulation with section-aware strength
               let finalColor: [number, number, number] = calibrated;
+              const modStrength = inDropZone ? Math.min(0.6, sectionParams.colorModStrength + 0.2) : sectionParams.colorModStrength;
               if (hasCurve && (curveLo > 0 || curveHi > 0)) {
-                finalColor = modulateColor(...calibrated, curveLo, curveMid, curveHi, sectionParams.colorModStrength);
+                finalColor = modulateColor(...calibrated, curveLo, curveMid, curveHi, modStrength);
               }
               sendColorAndBrightness(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
