@@ -1,11 +1,13 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import type { SonosNowPlaying } from "@/hooks/useSonosNowPlaying";
+import { getCurrentSection, type SongSection } from "@/lib/sectionLighting";
 
 interface Props {
   nowPlaying: SonosNowPlaying;
   bpm?: number | null;
   accentColor?: [number, number, number];
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
+  sections?: SongSection[] | null;
 }
 
 export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition }: Props) {
