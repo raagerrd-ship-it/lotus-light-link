@@ -10,6 +10,7 @@ import {
 import { setBleConnection } from "@/lib/bleStore";
 import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
+import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
 
@@ -214,6 +215,19 @@ const Index = () => {
           <NowPlayingBar nowPlaying={nowPlaying} bpm={null} accentColor={currentColor} getPosition={getPosition} />
         </div>
       )}
+
+      {/* Debug overlay */}
+      <DebugOverlay
+        smoothedRtt={smoothedRtt}
+        autoDriftMs={0}
+        currentSection={null}
+        palette={palette}
+        paletteIndex={paletteIndexRef.current}
+        sonosVolume={nowPlaying?.volume}
+        bleConnected={!!connection}
+        bleDeviceName={connection?.device?.name}
+        bleReconnectStatus={bleReconnectStatus}
+      />
     </div>
   );
 };
