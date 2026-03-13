@@ -235,11 +235,12 @@ const Index = () => {
         <DebugOverlay
           smoothedRtt={smoothedRtt}
           autoDriftMs={autoDriftMs}
-          
           currentSection={currentSection}
           palette={palette}
           paletteIndex={paletteIndexRef.current}
           source={nowPlaying?.source}
+          sonosVolume={nowPlaying?.volume}
+          gainMode={calibration ? 'cal' : agcEnabled ? 'agc' : 'manual'}
         />
       )}
 

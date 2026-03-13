@@ -11,12 +11,13 @@ interface DebugOverlayProps {
   gainMode?: string;
 }
 
-export default function DebugOverlay({ smoothedRtt, autoDriftMs, currentSection, palette, paletteIndex = 0, source }: DebugOverlayProps) {
+export default function DebugOverlay({ smoothedRtt, autoDriftMs, currentSection, palette, paletteIndex = 0, source, sonosVolume, gainMode }: DebugOverlayProps) {
   return (
     <div className="fixed bottom-16 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none">
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>
       <div>auto-sync: <span className="text-foreground">{autoDriftMs >= 0 ? "+" : ""}{Math.round(autoDriftMs)}ms</span></div>
       <div>section: <span className="text-foreground">{currentSection ? `${currentSection.type} (e${currentSection.energy.toFixed(1)})` : "—"}</span></div>
+      {sonosVolume != null && <div>vol: <span className="text-foreground">{sonosVolume}%</span> <span className="text-muted-foreground">{gainMode}</span></div>}
       {palette && palette.length > 0 && (
         <div className="flex items-center gap-1 mt-0.5">
           <span>palette:</span>
