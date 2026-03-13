@@ -30,7 +30,11 @@ interface MicPanelProps {
 }
 
 // Priority-aware BLE command queue
-function createBleQueue(charRef: { current: any }) {
+function createBleQueue(
+  charRef: { current: any },
+  onBrightnessSent?: (val: number) => void,
+  onColorSent?: (rgb: [number, number, number]) => void,
+) {
   let busy = false;
   let pendingBrightness: (() => Promise<void>) | null = null;
   let pendingColor: (() => Promise<void>) | null = null;
@@ -57,13 +61,20 @@ function createBleQueue(charRef: { current: any }) {
     brightness(val: number) {
       const c = charRef.current;
       if (!c) return;
-      pendingBrightness = () => sendBrightness(c, val);
+      pendingBrightness = async () => {
+        await sendBrightness(c, val);
+        onBrightnessSent?.(val);
+      };
       process();
     },
     color(r: number, g: number, b: number) {
       const c = charRef.current;
       if (!c) return;
-      pendingColor = () => sendColor(c, r, g, b);
+      pendingColor = async () => {
+        const [cr, cg, cb] = applyColorCalibration(r, g, b);
+        await sendColor(c, cr, cg, cb, true);
+        onColorSent?.([cr, cg, cb]);
+      };
       process();
     },
   };
