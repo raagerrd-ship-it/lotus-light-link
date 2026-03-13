@@ -21,6 +21,7 @@ interface DebugOverlayProps {
   curveStatus?: 'none' | 'recording' | 'saved' | 'loading';
   curveTrackName?: string | null;
   curveSamples?: number;
+  deviceRole?: 'master' | 'monitor';
 }
 
 const phaseLabels: Record<string, string> = {
@@ -36,7 +37,7 @@ export default function DebugOverlay({
   smoothedRtt, autoDriftMs, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
-  curveStatus, curveTrackName, curveSamples
+  curveStatus, curveTrackName, curveSamples, deviceRole
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
@@ -51,6 +52,8 @@ export default function DebugOverlay({
 
   return (
     <div className="fixed bottom-16 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
+      {/* Role */}
+      <div>roll: <span className={deviceRole === 'master' ? 'text-green-400' : 'text-yellow-400'}>{deviceRole ?? '?'}</span></div>
       {/* BLE */}
       <div>
         BLE: {bleConnected

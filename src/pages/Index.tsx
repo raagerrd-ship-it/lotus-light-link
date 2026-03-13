@@ -322,6 +322,7 @@ const Index = () => {
         }
         curveTrackName={nowPlaying?.trackName ?? null}
         curveSamples={energyCurve?.length}
+        deviceRole="master"
       />
     </div>
   );
