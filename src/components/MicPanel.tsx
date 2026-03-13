@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { sendColor, sendBrightness, setActiveChar, setPipelineTimings } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
-import { getCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
+import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
+import { getActiveDeviceName } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
@@ -34,10 +35,12 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const lastBaseColorRef = useRef<[number, number, number]>(currentColor);
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
-  // Learned AGC state — persists until volume changes
-  const agcMaxRef = useRef(0.01);
-  const agcMinRef = useRef(0);
+  // Learned AGC state — initialized from saved calibration, persists until volume changes
+  const initCal = calRef.current;
+  const agcMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
+  const agcMinRef = useRef(initCal.agcMin);
   const lastVolumeRef = useRef(sonosVolume);
+  const agcSaveTimerRef = useRef(0);
 
   useEffect(() => {
     colorRef.current = currentColor;
@@ -213,6 +216,15 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
           }
           chartDirtyRef.current = true;
+
+          // Save AGC state every 10 seconds (fire-and-forget)
+          const nowMs = performance.now();
+          if (nowMs - agcSaveTimerRef.current > 10_000) {
+            agcSaveTimerRef.current = nowMs;
+            const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
+            calRef.current = updated;
+            saveCalibration(updated, getActiveDeviceName() ?? undefined);
+          }
         };
 
         worker.postMessage("start");
