@@ -19,6 +19,7 @@ interface MicPanelProps {
   savedAgcState?: AgcState | null;
   bpm?: number | null;
   sections?: SongSection[] | null;
+  drops?: Drop[] | null;
 }
 
 const HISTORY_LEN = 120;
