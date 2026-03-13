@@ -268,10 +268,16 @@ const Index = () => {
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: isOn ? accent : "hsl(var(--muted-foreground))" }} />
-            <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase">
-              {connection.device.name || "BLEDOM01"}
-            </span>
+            {connection ? (
+              <>
+                <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: isOn ? accent : "hsl(var(--muted-foreground))" }} />
+                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase">
+                  {connection.device.name || "BLEDOM01"}
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">Ej ansluten</span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button
