@@ -89,15 +89,15 @@ export default function Calibrate() {
     update(patches[tabKey]);
   }, [update]);
 
-  // Send test color to BLE (throttled)
+  // Send test color to BLE continuously while on calibration page
   useEffect(() => {
     if (!conn) return;
-    const now = performance.now();
-    if (now - bleThrottleRef.current < 50) return;
-    bleThrottleRef.current = now;
-    const [r, g, b] = applyColorCalibration(...testColor, cal);
-    sendColor(conn.characteristic, r, g, b).catch(() => {});
-    sendBrightness(conn.characteristic, cal.maxBrightness).catch(() => {});
+    const interval = setInterval(() => {
+      const [r, g, b] = applyColorCalibration(...testColor, cal);
+      sendColor(conn.characteristic, r, g, b).catch(() => {});
+      sendBrightness(conn.characteristic, cal.maxBrightness).catch(() => {});
+    }, 80);
+    return () => clearInterval(interval);
   }, [testColor, cal, conn]);
 
   const handleConnect = async () => {
