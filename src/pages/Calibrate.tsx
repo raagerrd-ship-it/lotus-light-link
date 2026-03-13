@@ -64,7 +64,8 @@ const COLOR_BUF = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const BRIGHT_BUF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
 // Pulse durations to test (ms) — how long the white flash stays on
-const PULSE_DURATIONS = [200, 150, 100, 80, 60, 50, 40, 30, 20, 15, 10];
+const PULSES_PER_STEP = 3;
+const PULSE_GAP_MS = 800; // dark gap between pulses
 
 async function bleWrite(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array) {
   await char.writeValueWithoutResponse(buf as any);
