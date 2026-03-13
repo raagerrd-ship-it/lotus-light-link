@@ -191,12 +191,15 @@ function BleSpeedTab({ conn }: { conn: any }) {
         <div className="text-center py-4 space-y-3">
           <p className="text-sm font-medium text-foreground">Såg du {PULSES_PER_STEP} tydliga blinkar?</p>
           <p className="text-xs text-muted-foreground">Puls: {currentDuration}ms × {PULSES_PER_STEP}</p>
-          <div className="flex gap-3 justify-center">
-            <Button size="sm" onClick={() => answer(true)} className="px-6 text-xs">
-              ✓ Ja
+          <div className="flex gap-2 justify-center flex-wrap">
+            <Button size="sm" onClick={() => answer('all')} className="px-4 text-xs">
+              ✓ Alla 3
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => answer(false)} className="px-6 text-xs">
-              ✗ Nej
+            <Button size="sm" variant="outline" onClick={() => answer('partial')} className="px-4 text-xs">
+              ◐ Bara 1–2
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => answer('none')} className="px-4 text-xs">
+              ✗ Ingen
             </Button>
           </div>
         </div>
