@@ -1,0 +1,1 @@
+ALTER TABLE public.song_analysis ADD COLUMN IF NOT EXISTS recorded_volume integer;
