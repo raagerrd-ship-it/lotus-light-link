@@ -831,8 +831,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         ble.brightness(pct);
       }
 
-      // Color kick / fade-back
-      const color = currentColorRef.current;
+      // Color kick / fade-back — always use targetColorRef (latest palette color)
+      const color = targetColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorFadeMs = Math.max(50, beatMs * 0.15);
 
