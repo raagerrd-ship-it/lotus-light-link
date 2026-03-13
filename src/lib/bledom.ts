@@ -259,14 +259,9 @@ async function _flush() {
     writeBright = true;
   }
 
-  // Write color if it changed (tick loop always sends, so changes are caught)
+  // Always send color — prevents drift, tick loop sets it every tick
   if (_pendingColor) {
-    const [r, g, b] = _pendingColor;
-    if (r !== _lastSentColor[0] || g !== _lastSentColor[1] || b !== _lastSentColor[2]) {
-      writeColor = true;
-    } else {
-      _pendingColor = null;
-    }
+    writeColor = true;
   }
 
   if (!writeBright && !writeColor) {
