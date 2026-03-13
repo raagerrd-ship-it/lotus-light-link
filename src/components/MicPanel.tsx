@@ -856,8 +856,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       const predictiveActive = predictiveFiredRef.current && beatPhaseRef.current < 0.08;
 
-      // Normal brightness (throttled to 40Hz)
-      if (!predictiveActive && now - throttleRef.current >= 25) {
+      // Normal brightness (throttled to ~20Hz — BLEDOM handles ~25 cmd/s max)
+      if (!predictiveActive && now - throttleRef.current >= 50) {
       // Attack/release smoothing using calibration values
         const alpha = pct > smoothedBrightRef.current ? calRef.current.attackAlpha : calRef.current.releaseAlpha;
         smoothedBrightRef.current += (pct - smoothedBrightRef.current) * alpha;
