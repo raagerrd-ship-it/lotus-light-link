@@ -201,6 +201,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
       if (testedValues.length > 0) {
         const worst = Math.max(...testedValues);
         setBleMinInterval(worst);
+        onSpeedSave?.(newBests);
       }
 
       setPhase('done');
