@@ -74,6 +74,15 @@ export function useLiveSessionWriter() {
 /** Monitor: subscribes to realtime changes */
 export function useLiveSessionMonitor() {
   const [state, setState] = useState<LiveSessionState | null>(null);
+  const stateRef = useRef<LiveSessionState | null>(null);
+
+  // Merge helper: never go from valid state → null
+  const mergeState = useCallback((incoming: any) => {
+    if (!incoming) return;
+    const next = { ...(stateRef.current ?? {}), ...incoming } as LiveSessionState;
+    stateRef.current = next;
+    setState(next);
+  }, []);
 
   useEffect(() => {
     supabase
@@ -82,9 +91,9 @@ export function useLiveSessionMonitor() {
       .eq("id", SESSION_ID)
       .single()
       .then(({ data }) => {
-        if (data) setState(data as any as LiveSessionState);
+        if (data) mergeState(data);
       });
-  }, []);
+  }, [mergeState]);
 
   useEffect(() => {
     const channel = supabase
@@ -92,23 +101,19 @@ export function useLiveSessionMonitor() {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "live_session", filter: `id=eq.${SESSION_ID}` },
-        (payload) => {
-          setState(payload.new as any as LiveSessionState);
-        }
+        (payload) => mergeState(payload.new)
       )
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "live_session", filter: `id=eq.${SESSION_ID}` },
-        (payload) => {
-          setState(payload.new as any as LiveSessionState);
-        }
+        (payload) => mergeState(payload.new)
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [mergeState]);
 
   return state;
 }
