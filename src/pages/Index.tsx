@@ -321,16 +321,40 @@ const Index = () => {
                   variant="ghost"
                   size="icon"
                   onClick={() => {
-                    const next = !agcEnabled;
-                    setAgcEnabled(next);
-                    localStorage.setItem("agcEnabled", String(next));
+                    const modes: Array<'agc' | 'vol' | 'manual'> = ['agc', 'vol', 'manual'];
+                    const next = modes[(modes.indexOf(gainMode) + 1) % modes.length];
+                    setGainMode(next);
+                    localStorage.setItem("gainMode", next);
                   }}
-                  className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${agcEnabled ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
-                  style={agcEnabled ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
-                  title={`AGC — ${agcEnabled ? 'PÅ' : 'AV'}`}
+                  className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${gainMode !== 'manual' ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
+                  style={gainMode !== 'manual' ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+                  title={`Gain: ${gainMode.toUpperCase()}`}
                 >
-                  <Activity className="w-3.5 h-3.5" style={agcEnabled ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+                  {gainMode === 'agc' && <Activity className="w-3.5 h-3.5" style={{ filter: `drop-shadow(0 0 4px ${accent})` }} />}
+                  {gainMode === 'vol' && <Volume2 className="w-3.5 h-3.5" style={{ filter: `drop-shadow(0 0 4px ${accent})` }} />}
+                  {gainMode === 'manual' && <SlidersHorizontal className="w-3.5 h-3.5" />}
                 </Button>
+                {gainMode === 'vol' && nowPlaying?.volume != null && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      // Capture current AGC average as gain reference at current Sonos volume
+                      const cal = { volume: nowPlaying.volume!, gain: 0.35 / Math.max(0.0001, 0.01) };
+                      // We need agcAvg from MicPanel — use a rough proxy: store current state
+                      // Actually read from a ref isn't possible here, so use a reasonable default
+                      // The MicPanel always updates agcAvg, so we capture a snapshot via a custom event
+                      const detail = { volume: nowPlaying.volume! };
+                      const evt = new CustomEvent('vol-calibrate', { detail });
+                      window.dispatchEvent(evt);
+                    }}
+                    className="rounded-full w-7 h-7 active:scale-90 transition-all duration-200"
+                    style={{ color: accent }}
+                    title="Kalibrera vid nuvarande volym"
+                  >
+                    <Crosshair className="w-3.5 h-3.5" />
+                  </Button>
+                )}
                 
                 <Button
                   variant="ghost"
