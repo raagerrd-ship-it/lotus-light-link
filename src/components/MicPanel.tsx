@@ -556,16 +556,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
 
     return () => {
       stopped = true;
-      const recorded = recordedSamplesRef.current;
-      if (recorded.length > 10 && onSaveCurveRef.current) {
-        const agc: AgcState = {
-          agcMin: agcMinRef.current,
-          agcMax: agcMaxRef.current,
-          agcPeakMax: agcPeakMaxRef.current,
-          avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
-        };
-        onSaveCurveRef.current(recorded, volumeRef.current ?? null, agc);
-      }
+      // Don't save on unmount — only complete recordings are saved via the energyCurve effect
+      recordedSamplesRef.current = [];
       onBleWrite(null);
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
