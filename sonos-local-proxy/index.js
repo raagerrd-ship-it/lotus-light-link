@@ -165,6 +165,7 @@ async function getPlaybackStatus() {
     artistName: meta.artist || null,
     albumName: meta.album || null,
     albumArtUri,
+    volume,
   };
 }
 

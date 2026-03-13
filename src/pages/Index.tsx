@@ -224,6 +224,10 @@ const Index = () => {
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
             onSectionChange={handleSectionChange}
+            agcEnabled={agcEnabled}
+            manualGain={manualGain}
+            sonosVolume={nowPlaying?.volume ?? null}
+            calibration={calibration}
           />
       </div>
 

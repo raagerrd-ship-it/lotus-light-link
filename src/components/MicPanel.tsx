@@ -633,11 +633,24 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Silence handling
       const silenceDur = silenceStartRef.current > 0 ? performance.now() - silenceStartRef.current : 0;
 
-      // AGC-normalized ambient for zone 1
-      const agcAmbient = ambientEnergy * (agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1);
+      // AGC-normalized ambient for zone 1 (using same effective gain as main energy)
+      const cal2 = calibrationRef.current;
+      const vol2 = sonosVolumeRef.current;
+      let ambientGain: number;
+      if (cal2 && vol2 != null && vol2 > 0) {
+        ambientGain = cal2.gain * Math.pow(cal2.volume / vol2, 2.5);
+      } else if (!agcEnabledRef.current) {
+        ambientGain = manualGainRef.current;
+      } else {
+        ambientGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      }
+      const agcAmbient = ambientEnergy * Math.min(ambientGain, 30);
+
+      // EMA smoothing for ambient to reduce jitter
+      smoothedAmbientRef.current = smoothedAmbientRef.current * 0.85 + agcAmbient * 0.15;
 
       // Zone 1: Ambient (0–30%) — always active, broad frequency, logarithmic
-      const ambientPct = 30 * Math.log1p(Math.min(agcAmbient, 1) * 12) / Math.log(13);
+      const ambientPct = 30 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
 
       // Zone 2: Groove (30–60%) — requires beat (phase < 0.3 = recent onset, tighter gating)
       const groovePct = (phase < 0.3 && bpmRef.current > 0)
