@@ -11,7 +11,7 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
-const MicPanel = ({ char, currentColor }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
