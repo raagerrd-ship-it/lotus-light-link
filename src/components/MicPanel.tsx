@@ -367,7 +367,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, o
       // Save any recorded energy samples on unmount
       const recorded = recordedSamplesRef.current;
       if (recorded.length > 10 && onSaveCurveRef.current) {
-        onSaveCurveRef.current(recorded);
+        onSaveCurveRef.current(recorded, volumeRef.current ?? null);
       }
       onBleWrite(null);
       workerRef.current?.postMessage("stop");
