@@ -30,7 +30,7 @@ const Index = () => {
   const [songDrops, setSongDrops] = useState<number[]>([]);
   const [autoDriftMs, setAutoDriftMs] = useState(0);
   const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
-  const [showDebug, setShowDebug] = useState(false);
+  const [showDebug] = useState(true);
   const [agcEnabled, setAgcEnabled] = useState(() => localStorage.getItem("agcEnabled") !== "false");
   const [maxBrightness, setMaxBrightness] = useState(() => {
     const stored = localStorage.getItem("maxBrightness");
@@ -205,7 +205,6 @@ const Index = () => {
       style={{ backgroundImage: `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)` }}
       onPointerMove={connection ? resetOverlayTimer : undefined}
       onPointerDown={connection ? resetOverlayTimer : undefined}
-      onClick={(e) => { if (e.detail === 3) setShowDebug(prev => !prev); }}
     >
       <div className="absolute inset-0">
           <MicPanel
