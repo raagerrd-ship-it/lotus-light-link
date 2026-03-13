@@ -25,6 +25,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const volumeRef = useRef(sonosVolume);
 
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
+  useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
   useEffect(() => {
     charRef.current = char;
     if (char) {
