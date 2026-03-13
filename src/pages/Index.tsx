@@ -82,9 +82,10 @@ const Index = () => {
 
     const ac = new AbortController();
     setBusy(true);
-    autoReconnect(ac.signal).then((conn) => {
+    autoReconnect(ac.signal, setBleReconnectStatus).then((conn) => {
       if (conn) finishConnect(conn);
       else setBusy(false);
+      setBleReconnectStatus(null);
     });
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
