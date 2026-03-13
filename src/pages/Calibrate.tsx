@@ -65,6 +65,8 @@ const BRIGHT_BUF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 
 
 // Pulse durations to test (ms) — how long the white flash stays on
 const PULSE_DURATIONS = [200, 150, 100, 80, 60, 50, 40, 30, 20, 15, 10];
+const PULSES_PER_STEP = 3;
+const PULSE_GAP_MS = 800;
 
 async function bleWrite(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array) {
   await char.writeValueWithoutResponse(buf as any);
@@ -97,18 +99,16 @@ function BleSpeedTab({ conn }: { conn: any }) {
 
   const currentDuration = PULSE_DURATIONS[currentIdx] ?? 0;
 
-  const sendPulse = useCallback(async (durationMs: number) => {
+  const sendPulses = useCallback(async (durationMs: number) => {
     if (!conn?.characteristic) return;
     const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
     
     // Ensure lamp is dark first
     await sendBlack(char);
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 600));
     
-    // Random delay 1-3s so user can't predict
-    const delay = 1000 + Math.random() * 2000;
-    
-    // Countdown
+    // Random delay 1-2s
+    const delay = 1000 + Math.random() * 1000;
     const steps = Math.ceil(delay / 1000);
     for (let i = steps; i > 0; i--) {
       setCountdown(i);
@@ -116,20 +116,26 @@ function BleSpeedTab({ conn }: { conn: any }) {
     }
     setCountdown(0);
     
-    // Flash white
-    await sendWhite(char);
-    await new Promise(r => setTimeout(r, durationMs));
-    await sendBlack(char);
+    // Send 3 pulses with gaps
+    for (let p = 0; p < PULSES_PER_STEP; p++) {
+      await sendWhite(char);
+      await new Promise(r => setTimeout(r, durationMs));
+      await sendBlack(char);
+      if (p < PULSES_PER_STEP - 1) {
+        await new Promise(r => setTimeout(r, PULSE_GAP_MS));
+      }
+    }
   }, [conn]);
 
   const startTest = useCallback(async () => {
     setPhase('waiting');
     setCurrentIdx(0);
     setResults([]);
+    setSaved(false);
     
-    await sendPulse(PULSE_DURATIONS[0]);
+    await sendPulses(PULSE_DURATIONS[0]);
     setPhase('asking');
-  }, [sendPulse]);
+  }, [sendPulses]);
 
   const answer = useCallback(async (seen: boolean) => {
     const duration = PULSE_DURATIONS[currentIdx];
@@ -137,9 +143,7 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setResults(newResults);
 
     if (!seen || currentIdx >= PULSE_DURATIONS.length - 1) {
-      // Done — user didn't see it, or we've tested all intervals
       setPhase('done');
-      // Turn lamp back on at 50%
       if (conn?.characteristic) {
         BRIGHT_BUF[3] = 50;
         try { await bleWrite(conn.characteristic, BRIGHT_BUF); } catch {}
@@ -147,13 +151,12 @@ function BleSpeedTab({ conn }: { conn: any }) {
       return;
     }
 
-    // Next pulse
     const nextIdx = currentIdx + 1;
     setCurrentIdx(nextIdx);
     setPhase('waiting');
-    await sendPulse(PULSE_DURATIONS[nextIdx]);
+    await sendPulses(PULSE_DURATIONS[nextIdx]);
     setPhase('asking');
-  }, [currentIdx, results, sendPulse, conn]);
+  }, [currentIdx, results, sendPulses, conn]);
 
   const lastSeen = [...results].reverse().find(r => r.seen);
   const firstMissed = results.find(r => !r.seen);
@@ -161,7 +164,7 @@ function BleSpeedTab({ conn }: { conn: any }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Lampan blinkar vitt i allt kortare pulser. Svara om du såg blinken. Testet hittar kortaste synliga puls.
+        Lampan blinkar vitt {PULSES_PER_STEP} gånger i allt kortare pulser. Svara om du såg alla {PULSES_PER_STEP} blinkar tydligt (både på och av).
       </p>
 
       {!conn && <p className="text-xs text-destructive">Anslut BLE-lampan först.</p>}
@@ -178,15 +181,15 @@ function BleSpeedTab({ conn }: { conn: any }) {
             {countdown > 0 ? `Gör dig redo… ${countdown}` : 'Titta på lampan!'}
           </p>
           <p className="text-xs text-muted-foreground">
-            Puls: {PULSE_DURATIONS[currentIdx]}ms
+            Puls: {PULSE_DURATIONS[currentIdx]}ms × {PULSES_PER_STEP}
           </p>
         </div>
       )}
 
       {phase === 'asking' && (
         <div className="text-center py-4 space-y-3">
-          <p className="text-sm font-medium text-foreground">Såg du blinken?</p>
-          <p className="text-xs text-muted-foreground">Puls: {currentDuration}ms</p>
+          <p className="text-sm font-medium text-foreground">Såg du {PULSES_PER_STEP} tydliga blinkar?</p>
+          <p className="text-xs text-muted-foreground">Puls: {currentDuration}ms × {PULSES_PER_STEP}</p>
           <div className="flex gap-3 justify-center">
             <Button size="sm" onClick={() => answer(true)} className="px-6 text-xs">
               ✓ Ja
