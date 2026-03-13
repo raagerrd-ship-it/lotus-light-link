@@ -73,6 +73,7 @@ const Index = () => {
 
   const finishConnect = useCallback(async (conn: BLEConnection) => {
     setConnection(conn);
+    setBleConnection(conn);
     setBusy(false);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
@@ -80,6 +81,7 @@ const Index = () => {
     await sendColor(conn.characteristic, r, g, b).catch(() => {});
     conn.device.addEventListener("gattserverdisconnected", () => {
       setConnection(null);
+      setBleConnection(null);
       setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || undefined });
     });
   }, []);
