@@ -676,8 +676,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         totalPct = BASELINE_PCT + (totalPct - BASELINE_PCT) * fadeFactor;
       }
 
-      // Cap by section max brightness
-      totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100);
+      // Cap by section max brightness and user max brightness setting
+      totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100, maxBrightnessRef.current);
 
       const pct = Math.round(Math.max(3, Math.min(100, totalPct)));
       const finalCurved = pct / 100; // normalized 0-1 for visuals
