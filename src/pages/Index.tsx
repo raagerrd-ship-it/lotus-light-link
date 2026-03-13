@@ -81,7 +81,7 @@ const Index = () => {
     });
   }, []);
 
-  // Auto-reconnect on mount — keeps retrying in background
+  // Auto-reconnect whenever we are disconnected
   useEffect(() => {
     if (connection) return;
     const nav = navigator as any;
@@ -107,8 +107,7 @@ const Index = () => {
       }
     });
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connection, finishConnect]);
 
   // Extract palette from album art
   useEffect(() => {
