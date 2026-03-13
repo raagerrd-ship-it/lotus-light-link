@@ -25,6 +25,7 @@ const MicPanel = ({ char, currentColor }: MicPanelProps) => {
   const workerRef = useRef<Worker | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
+  const whiteKickUntilRef = useRef(0);
 
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
   useEffect(() => {
