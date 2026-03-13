@@ -65,9 +65,9 @@ export default function Calibrate() {
   const [tab, setTab] = useState<Tab>('color');
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [testColor, setTestColor] = useState<[number, number, number]>([255, 0, 0]);
-  const [conn, setConn] = useState<BLEConnection | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const bleThrottleRef = useRef(0);
+  // Use global BLE connection
+  const [conn, setConn] = useState(getBleConnection);
+  useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
   // Persist on every change
   const update = useCallback((patch: Partial<LightCalibration>) => {
