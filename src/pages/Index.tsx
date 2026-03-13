@@ -336,40 +336,29 @@ const Index = () => {
         </div>
       )}
 
-      {/* Gain slider (visible when AGC off) */}
-      {connection && !agcEnabled && showOverlay && (
+      {/* Max brightness slider */}
+      {connection && showOverlay && (
         <div
           className="absolute top-12 left-0 right-0 z-20 flex items-center gap-3 px-4 py-2 transition-opacity duration-500 backdrop-blur-lg"
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
-          <span className="text-[10px] text-muted-foreground font-mono w-8 shrink-0">
-            {manualGain.toFixed(1)}×
+          <span className="text-[10px] text-muted-foreground font-mono w-10 shrink-0">
+            Max {maxBrightness}%
           </span>
           <input
             type="range"
-            min="0.5"
-            max="20"
-            step="0.5"
-            value={manualGain}
+            min="10"
+            max="100"
+            step="5"
+            value={maxBrightness}
             onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setManualGain(v);
-              localStorage.setItem("manualGain", String(v));
+              const v = parseInt(e.target.value, 10);
+              setMaxBrightness(v);
+              localStorage.setItem("maxBrightness", String(v));
             }}
             className="flex-1 h-1 accent-current"
             style={{ color: accent }}
           />
-          {calibration && (
-            <button
-              onClick={() => {
-                setCalibration(null);
-                localStorage.removeItem("gainCalibration");
-              }}
-              className="text-[9px] text-muted-foreground hover:text-foreground"
-            >
-              Rensa
-            </button>
-          )}
         </div>
       )}
 
