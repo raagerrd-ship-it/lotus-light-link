@@ -400,6 +400,8 @@ const Index = () => {
             className="flex-1 h-1 accent-current"
             style={{ color: accent }}
           />
+        </div>
+      )}
 
       {/* Now playing */}
       {connection && nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
