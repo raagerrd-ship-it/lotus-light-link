@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
-  sendColor, sendBrightness, sendPower,
+  sendColor, sendBrightness, sendPower, setActiveChar,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
