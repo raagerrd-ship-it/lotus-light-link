@@ -249,48 +249,14 @@ const Index = () => {
         />
       )}
 
-      {/* Connection overlay */}
-      {!connection && (
+      {/* Connection overlay — only when busy auto-connecting */}
+      {!connection && busy && (
         <div className="absolute inset-0 z-30 flex items-center justify-center animate-fade-in" style={{ background: 'hsl(var(--background) / 0.82)' }}>
           <div className="flex flex-col items-center gap-4 text-center px-8">
-            {busy ? (
-              <>
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: accent }} />
-                <p className="text-sm text-muted-foreground">
-                  Ansluter{lastDevice ? ` till ${lastDevice.name}` : '…'}
-                </p>
-              </>
-            ) : (
-              <>
-                <div
-                  className="w-14 h-14 rounded-full border border-border flex items-center justify-center"
-                  style={{ boxShadow: `0 0 24px rgba(${r},${g},${b},0.15)` }}
-                >
-                  <Bluetooth className="w-6 h-6" style={{ color: accent }} />
-                </div>
-
-                <Button
-                  onClick={() => handleConnect(false)}
-                  disabled={busy}
-                  className="text-sm px-6 py-2.5 rounded-full font-bold tracking-wide transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                  style={{ backgroundColor: accent, color: "#121212", boxShadow: `0 0 20px rgba(${r},${g},${b},0.3)` }}
-                >
-                  {lastDevice && <Zap className="w-4 h-4 mr-1.5" />}
-                  {lastDevice ? lastDevice.name : "Anslut"}
-                </Button>
-
-                {lastDevice && (
-                  <button
-                    onClick={() => handleConnect(true)}
-                    className="text-muted-foreground text-[10px] hover:text-foreground transition-colors"
-                  >
-                    Ny enhet
-                  </button>
-                )}
-
-                {error && <p className="text-destructive text-xs">{error}</p>}
-              </>
-            )}
+            <Loader2 className="w-8 h-8 animate-spin" style={{ color: accent }} />
+            <p className="text-sm text-muted-foreground">
+              Ansluter{lastDevice ? ` till ${lastDevice.name}` : '…'}
+            </p>
           </div>
         </div>
       )}
