@@ -35,6 +35,13 @@ export default function DebugOverlay({
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus
 }: DebugOverlayProps) {
+  const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0 });
+
+  useEffect(() => {
+    const id = setInterval(() => setBleStats(getBleWriteStats()), 500);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div className="fixed bottom-16 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
       {/* BLE */}
