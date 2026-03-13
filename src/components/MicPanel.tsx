@@ -287,11 +287,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       lowFilter.frequency.value = 150;
       lowFilter.Q.value = 0.8;
 
-      // Low-mid band: Bandpass 350 Hz
+      // Low-mid band: Bandpass 500 Hz (wider capture for ambient liveliness)
       const midFilter = ctx.createBiquadFilter();
       midFilter.type = "bandpass";
-      midFilter.frequency.value = 350;
-      midFilter.Q.value = 1.0;
+      midFilter.frequency.value = 500;
+      midFilter.Q.value = 0.7;
 
       const subAnalyser = ctx.createAnalyser();
       subAnalyser.fftSize = 32;
@@ -385,10 +385,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // 3-band energy with caps: sub 100%, bass 90%, mid 50%
       const subEnergy  = subRms * 0.3 + subMax * 0.7;
       const bassEnergy = (lowRms * 0.3 + lowMax * 0.7) * 0.9;
-      const midEnergy  = (midRms * 0.3 + midMax * 0.7) * 0.5;
+      const midEnergy  = (midRms * 0.3 + midMax * 0.7) * 0.6;
       const rawEnergy  = subEnergy * 0.55 + bassEnergy * 0.30 + midEnergy * 0.15;
-      // Ambient energy: broader frequency mix for the always-on zone
-      const ambientEnergy = subEnergy * 0.25 + bassEnergy * 0.35 + midEnergy * 0.40;
+      // Ambient energy: heavier mid-weight for liveliness in the 0-50% zone
+      const ambientEnergy = subEnergy * 0.20 + bassEnergy * 0.30 + midEnergy * 0.50;
 
       const isSilence = rawEnergy < 0.015;
 
@@ -660,12 +660,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // EMA smoothing for ambient to reduce jitter
       smoothedAmbientRef.current = smoothedAmbientRef.current * 0.85 + agcAmbient * 0.15;
 
-      // Zone 1: Ambient (0–30%) — always active, broad frequency, logarithmic
-      const ambientPct = 30 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
+      // Zone 1: Ambient (0–50%) — always active, broad frequency, logarithmic
+      const ambientPct = 50 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
 
-      // Zone 2: Groove (30–60%) — requires beat (phase < 0.3 = recent onset, tighter gating)
+      // Zone 2: Groove (50–75%) — requires beat (phase < 0.3 = recent onset, tighter gating)
       const groovePct = (phase < 0.3 && bpmRef.current > 0)
-        ? 30 * curved * sectionBehavior.beatReactivity
+        ? 25 * curved * sectionBehavior.beatReactivity
         : 0;
 
       // Phase-gating threshold for impact/punch
