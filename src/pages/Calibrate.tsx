@@ -65,36 +65,27 @@ async function sendPulseForMode(
   durationMs: number,
 ) {
   if (mode === 'brightness') {
-    // White color, toggle brightness 0→100→0
     COLOR_BUF[4] = 255; COLOR_BUF[5] = 255; COLOR_BUF[6] = 255;
-    await bleWrite(char, COLOR_BUF);
-    BRIGHT_BUF[3] = 100;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 100);
     await new Promise(r => setTimeout(r, durationMs));
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 0);
   } else if (mode === 'color') {
-    // Set color first while dark, then raise brightness
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    // Dark first, set color, then raise brightness
+    COLOR_BUF[4] = 0; COLOR_BUF[5] = 0; COLOR_BUF[6] = 0;
+    await bleColorThenBright(char, 0);
+    await new Promise(r => setTimeout(r, BLE_CMD_GAP));
     const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
     COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
-    await bleWrite(char, COLOR_BUF);
-    BRIGHT_BUF[3] = 100;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 100);
     await new Promise(r => setTimeout(r, durationMs));
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 0);
   } else {
     // Combined: color + brightness
     const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
     COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
-    await bleWrite(char, COLOR_BUF);
-    BRIGHT_BUF[3] = 100;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 100);
     await new Promise(r => setTimeout(r, durationMs));
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 0);
   }
 }
 
