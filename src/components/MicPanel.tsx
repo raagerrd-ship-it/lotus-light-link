@@ -118,6 +118,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const BLE_LATENCY_MS = 50;
   const predictiveFiredRef = useRef(false);
   const lastBeatTimeRef = useRef(0);
+  
+  // Impact/Punch hold refs for minimum visible duration
+  const impactFiredRef = useRef(0);
+  const impactLevelRef = useRef(0);
+  const punchFiredRef = useRef(0);
+  const punchLevelRef = useRef(0);
 
   // Improved BPM detection refs
   const onsetTimesRef = useRef<number[]>([]);
