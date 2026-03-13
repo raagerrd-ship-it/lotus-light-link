@@ -166,10 +166,14 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
   // Gain control refs
-  const agcEnabledRef = useRef(agcEnabled);
+  const gainModeRef = useRef(gainMode);
+  const sonosVolumeRef = useRef(sonosVolume);
+  const volCalibrationRef = useRef(volCalibration);
   const maxBrightnessRef = useRef(maxBrightness);
   const dynamicDampingRef = useRef(dynamicDamping);
-  useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
+  useEffect(() => { gainModeRef.current = gainMode; }, [gainMode]);
+  useEffect(() => { sonosVolumeRef.current = sonosVolume; }, [sonosVolume]);
+  useEffect(() => { volCalibrationRef.current = volCalibration; }, [volCalibration]);
   useEffect(() => { maxBrightnessRef.current = maxBrightness; }, [maxBrightness]);
   useEffect(() => { dynamicDampingRef.current = dynamicDamping; }, [dynamicDamping]);
 
