@@ -92,12 +92,20 @@ const Index = () => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-    extractPalette(artUrl, 4).then((colors) => {
-      if (colors.length === 0) return;
-      setPalette(colors);
-      paletteIndexRef.current = 0;
-      setCurrentColor(colors[0]);
-    });
+    // Run palette extraction off the critical path
+    const run = () => {
+      extractPalette(artUrl, 4).then((colors) => {
+        if (colors.length === 0) return;
+        setPalette(colors);
+        paletteIndexRef.current = 0;
+        setCurrentColor(colors[0]);
+      });
+    };
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(run, { timeout: 500 });
+    } else {
+      setTimeout(run, 0);
+    }
   }, [nowPlaying?.albumArtUrl]);
 
   const handleConnect = useCallback(async (scanAll = false) => {

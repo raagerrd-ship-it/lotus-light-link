@@ -90,6 +90,7 @@ export default function DebugOverlay({
       <div className="mt-0.5 border-t border-border/30 pt-0.5">
         <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> drop: <span className="text-foreground">{bleStats.droppedPerSec}</span></div>
         <div>write: <span className="text-foreground">{bleStats.lastWriteMs}ms</span> queue: <span className="text-foreground">{bleStats.queueAgeMs}ms</span></div>
+        {tickToWriteMs != null && <div>e2e: <span className="text-foreground">{Math.round(tickToWriteMs)}ms</span></div>}
       </div>
     </div>
   );

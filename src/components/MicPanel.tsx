@@ -28,6 +28,9 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   // Track last sent color state to avoid redundant color writes
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
   const lastBaseColorRef = useRef<[number, number, number]>(currentColor);
+  // Flag for chart: new sample ready
+  const chartDirtyRef = useRef(false);
+  const rafIdRef = useRef(0);
 
   useEffect(() => {
     colorRef.current = currentColor;
@@ -56,6 +59,22 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Decoupled chart rendering via rAF
+  useEffect(() => {
+    const drawLoop = () => {
+      if (chartDirtyRef.current) {
+        chartDirtyRef.current = false;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
+        }
+      }
+      rafIdRef.current = requestAnimationFrame(drawLoop);
+    };
+    rafIdRef.current = requestAnimationFrame(drawLoop);
+    return () => cancelAnimationFrame(rafIdRef.current);
   }, []);
 
   useEffect(() => {
@@ -132,7 +151,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
             sendBrightness(c, isWhite ? 100 : pct);
           }
 
-          // Chart visualization
+          // Push sample for chart (rAF loop will draw)
           const [cr2, cg2, cb2] = isWhite ? [255, 255, 255] as const : colorRef.current;
           const scale = pct / 100;
           samplesRef.current.push({
@@ -144,10 +163,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           if (samplesRef.current.length > HISTORY_LEN) {
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
           }
-          const canvas = canvasRef.current;
-          if (canvas) {
-            drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
-          }
+          chartDirtyRef.current = true;
         };
 
         worker.postMessage("start");
