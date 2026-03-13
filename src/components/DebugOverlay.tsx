@@ -21,6 +21,7 @@ interface DebugOverlayProps {
   curveStatus?: 'none' | 'recording' | 'saved' | 'loading';
   curveTrackName?: string | null;
   curveSamples?: number;
+  deviceRole?: 'master' | 'monitor';
 }
 
 const phaseLabels: Record<string, string> = {
