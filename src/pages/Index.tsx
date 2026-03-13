@@ -31,6 +31,7 @@ const Index = () => {
   const [autoDriftMs, setAutoDriftMs] = useState(0);
   const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
   const [showDebug] = useState(true);
+  const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [agcEnabled, setAgcEnabled] = useState(() => localStorage.getItem("agcEnabled") !== "false");
   const [maxBrightness, setMaxBrightness] = useState(() => {
     const stored = localStorage.getItem("maxBrightness");
