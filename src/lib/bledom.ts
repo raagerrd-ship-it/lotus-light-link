@@ -258,13 +258,9 @@ async function _flush() {
     writeBright = true;
   }
 
+  // Always write color when pending — no dedup, prevents drift
   if (_pendingColor) {
-    const [r, g, b] = _pendingColor;
-    if (r !== _lastSentColor[0] || g !== _lastSentColor[1] || b !== _lastSentColor[2]) {
-      writeColor = true;
-    } else {
-      _pendingColor = null;
-    }
+    writeColor = true;
   }
 
   if (!writeBright && !writeColor) {
