@@ -166,49 +166,141 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-// Write queue — ensures only one GATT write at a time, coalesces to latest values
-let _writePromise: Promise<void> = Promise.resolve();
-let _pendingColor: [number, number, number] | null = null;
-let _pendingBright: number | null = null;
-let _drainScheduled = false;
+// --- Frame scheduler: max 1 BLE write per MIN_INTERVAL_MS ---
+const MIN_INTERVAL_MS = 50;
 
-function _drainQueue(char: any) {
-  if (_drainScheduled) return;
-  _drainScheduled = true;
-  _writePromise = _writePromise.then(async () => {
-    _drainScheduled = false;
-    const c = _pendingColor;
-    const b = _pendingBright;
-    _pendingColor = null;
-    _pendingBright = null;
-    try {
-      if (c) {
-        _colorBuf[4] = c[0] & 0xff;
-        _colorBuf[5] = c[1] & 0xff;
-        _colorBuf[6] = c[2] & 0xff;
-        await char.writeValueWithoutResponse(_colorBuf);
-      }
-      if (b != null) {
-        _brightBuf[3] = Math.max(0, Math.min(100, Math.round(b)));
-        await char.writeValueWithoutResponse(_brightBuf);
-      }
-    } catch {}
-    // If new values arrived while writing, drain again
-    if (_pendingColor || _pendingBright != null) {
-      _drainQueue(char);
-    }
-  });
+let _char: any = null;
+let _pendingBright: number | null = null;
+let _pendingColor: [number, number, number] | null = null;
+let _lastSentBright = -1;
+let _lastSentColor: [number, number, number] = [-1, -1, -1];
+let _writing = false;
+let _timer: ReturnType<typeof setTimeout> | null = null;
+let _lastWriteTime = 0;
+
+// Debug stats
+export interface BleWriteStats {
+  writesPerSec: number;
+  droppedPerSec: number;
+  lastWriteMs: number;
+  queueAgeMs: number;
+}
+let _writeCount = 0;
+let _dropCount = 0;
+let _statsStart = performance.now();
+let _queuedAt = 0;
+let _lastActualWriteMs = 0;
+
+export function getBleWriteStats(): BleWriteStats {
+  const elapsed = (performance.now() - _statsStart) / 1000;
+  const wps = elapsed > 0 ? _writeCount / elapsed : 0;
+  const dps = elapsed > 0 ? _dropCount / elapsed : 0;
+  // Reset every 2s to keep stats fresh
+  if (elapsed > 2) {
+    _writeCount = 0;
+    _dropCount = 0;
+    _statsStart = performance.now();
+  }
+  return {
+    writesPerSec: Math.round(wps),
+    droppedPerSec: Math.round(dps),
+    lastWriteMs: Math.round(_lastActualWriteMs),
+    queueAgeMs: _queuedAt ? Math.round(performance.now() - _queuedAt) : 0,
+  };
 }
 
-export function sendColor(char: any, r: number, g: number, b: number) {
+async function _flush() {
+  if (_writing || !_char) return;
+
+  const now = performance.now();
+  const elapsed = now - _lastWriteTime;
+  if (elapsed < MIN_INTERVAL_MS) {
+    // Schedule next flush at the right time
+    if (!_timer) {
+      _timer = setTimeout(() => { _timer = null; _flush(); }, MIN_INTERVAL_MS - elapsed);
+    }
+    return;
+  }
+
+  // Decide what to write: brightness has priority, color only on change
+  let writeBright = false;
+  let writeColor = false;
+
+  if (_pendingBright != null && _pendingBright !== _lastSentBright) {
+    // Deadband: skip if change is ≤1%
+    if (Math.abs(_pendingBright - _lastSentBright) > 1 || _lastSentBright < 0) {
+      writeBright = true;
+    } else {
+      _dropCount++;
+      _pendingBright = null;
+    }
+  }
+
+  if (_pendingColor) {
+    const [r, g, b] = _pendingColor;
+    if (r !== _lastSentColor[0] || g !== _lastSentColor[1] || b !== _lastSentColor[2]) {
+      writeColor = true;
+    } else {
+      _dropCount++;
+      _pendingColor = null;
+    }
+  }
+
+  if (!writeBright && !writeColor) return;
+
+  _writing = true;
+  _lastWriteTime = performance.now();
+
+  try {
+    // Write ONE command per slot; prioritize brightness for responsiveness
+    if (writeBright && _pendingBright != null) {
+      _brightBuf[3] = Math.max(0, Math.min(100, Math.round(_pendingBright)));
+      await _char.writeValueWithoutResponse(_brightBuf);
+      _lastSentBright = _pendingBright;
+      _pendingBright = null;
+      _writeCount++;
+      _lastActualWriteMs = performance.now() - _lastWriteTime;
+    } else if (writeColor && _pendingColor) {
+      _colorBuf[4] = _pendingColor[0] & 0xff;
+      _colorBuf[5] = _pendingColor[1] & 0xff;
+      _colorBuf[6] = _pendingColor[2] & 0xff;
+      await _char.writeValueWithoutResponse(_colorBuf);
+      _lastSentColor = [..._pendingColor];
+      _pendingColor = null;
+      _writeCount++;
+      _lastActualWriteMs = performance.now() - _lastWriteTime;
+    }
+  } catch {
+    // GATT write failed — don't crash
+  }
+
+  _writing = false;
+
+  // If there's still pending data, schedule next write
+  if (_pendingBright != null || _pendingColor) {
+    if (!_timer) {
+      _timer = setTimeout(() => { _timer = null; _flush(); }, MIN_INTERVAL_MS);
+    }
+  }
+}
+
+export function setActiveChar(char: any) {
+  _char = char;
+  _lastSentBright = -1;
+  _lastSentColor = [-1, -1, -1];
+}
+
+export function sendColor(_char_unused: any, r: number, g: number, b: number) {
   _pendingColor = [r, g, b];
-  _drainQueue(char);
+  if (!_queuedAt) _queuedAt = performance.now();
+  _flush();
   return Promise.resolve();
 }
 
-export function sendBrightness(char: any, brightness: number) {
+export function sendBrightness(_char_unused: any, brightness: number) {
   _pendingBright = brightness;
-  _drainQueue(char);
+  if (!_queuedAt) _queuedAt = performance.now();
+  _flush();
   return Promise.resolve();
 }
 
