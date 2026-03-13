@@ -19,37 +19,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'latency', label: 'Latens' },
 ];
 
-interface SliderRowProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit?: string;
-  onChange: (v: number) => void;
-}
-
-function SliderRow({ label, value, min, max, step, unit = '', onChange }: SliderRowProps) {
-  return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="text-xs text-muted-foreground font-mono w-28 shrink-0">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="flex-1 h-1.5 accent-current text-primary"
-      />
-      <span className="text-xs font-mono text-foreground w-14 text-right">
-        {Number.isInteger(step) || step >= 1 ? Math.round(value) : value.toFixed(2)}{unit}
-      </span>
-    </div>
-  );
-}
-
-// --- BLE Perceptual Latency Test ---
+// BLE Perceptual Speed Test buffers
 
 const COLOR_BUF = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const BRIGHT_BUF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
