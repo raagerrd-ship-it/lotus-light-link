@@ -1,9 +1,9 @@
-// Light calibration system — all tuneable parameters with localStorage persistence
+// Light calibration — simplified for RMS→brightness model
 
 const STORAGE_KEY = 'light-calibration';
 
 export interface LightCalibration {
-  // Color
+  // Color correction
   gammaR: number;      // 0.5–2.5
   gammaG: number;
   gammaB: number;
@@ -12,26 +12,15 @@ export interface LightCalibration {
   offsetB: number;
   saturationBoost: number; // 0.5–2.0
 
-  // Brightness & Dynamics
+  // Brightness & dynamics
   minBrightness: number;   // 0–30 (%)
   maxBrightness: number;   // 30–100 (%)
-  attackAlpha: number;     // 0.1–0.9
-  releaseAlpha: number;    // 0.02–0.2
-  dynamicDamping: number;  // 1.0–3.0
+  attackAlpha: number;      // 0.05–0.9
+  releaseAlpha: number;     // 0.01–0.3
 
-  // Beat & Timing
-  punchWhiteThreshold: number; // 60–95 (%)
-  fadeBackDuration: number;    // 100–800 (ms, minimum)
-  bleLatencyMs: number;        // 0–150 (ms)
-  groovePhaseGate: number;     // 0.1–0.5
-
-  // Ambient
-  ambientEma: number;       // 0.7–0.98
-  silenceFadeMs: number;    // 500–5000 (ms)
-  baselinePct: number;      // 3–20 (%)
-
-  // Auto-calibration
-  latencyOffsetMs: number;   // -500 to +500 (ms)
+  // White kick
+  whiteKickThreshold: number; // 80–100 (%)
+  whiteKickMs: number;        // 50–300 (ms)
 }
 
 export const DEFAULT_CALIBRATION: LightCalibration = {
@@ -45,20 +34,11 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   minBrightness: 3,
   maxBrightness: 100,
-  attackAlpha: 0.5,
-  releaseAlpha: 0.08,
-  dynamicDamping: 1.0,
+  attackAlpha: 0.3,
+  releaseAlpha: 0.05,
 
-  punchWhiteThreshold: 85,
-  fadeBackDuration: 320,
-  bleLatencyMs: 50,
-  groovePhaseGate: 0.3,
-
-  ambientEma: 0.85,
-  silenceFadeMs: 1500,
-  baselinePct: 6,
-
-  latencyOffsetMs: 0,
+  whiteKickThreshold: 95,
+  whiteKickMs: 100,
 };
 
 export function getCalibration(): LightCalibration {
@@ -89,7 +69,6 @@ export function applyColorCalibration(
 ): [number, number, number] {
   const c = cal ?? getCalibration();
 
-  // Saturation boost in HSL-ish space
   let rr = r, gg = g, bb = b;
   if (c.saturationBoost !== 1.0) {
     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
@@ -98,7 +77,6 @@ export function applyColorCalibration(
     bb = gray + (b - gray) * c.saturationBoost;
   }
 
-  // Gamma + offset per channel
   const apply = (val: number, gamma: number, offset: number) => {
     const normalized = Math.max(0, Math.min(1, val / 255));
     const corrected = Math.pow(normalized, gamma) * 255 + offset;

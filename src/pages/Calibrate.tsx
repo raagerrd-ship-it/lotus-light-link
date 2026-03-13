@@ -1,25 +1,20 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RotateCcw } from "lucide-react";
-import DynamicsPreview from "@/components/DynamicsPreview";
-import AutoCalibratePanel from "@/components/AutoCalibratePanel";
 import {
-  getCalibration, saveCalibration, resetCalibration,
+  getCalibration, saveCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
   type LightCalibration,
 } from "@/lib/lightCalibration";
 import { sendColor, sendBrightness } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'auto' | 'color' | 'dynamics' | 'timing' | 'ambient';
+type Tab = 'color' | 'dynamics';
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'auto', label: 'Auto' },
   { key: 'color', label: 'Färg' },
   { key: 'dynamics', label: 'Dynamik' },
-  { key: 'timing', label: 'Timing' },
-  { key: 'ambient', label: 'Ambient' },
 ];
 
 const TEST_COLORS: { label: string; color: [number, number, number] }[] = [
@@ -66,12 +61,10 @@ export default function Calibrate() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('color');
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
-  const [testColor, setTestColor] = useState<[number, number, number]>([255, 0, 0]);
-  // Use global BLE connection
+  const [testColor, setTestColor] = useState<[number, number, number]>([255, 80, 0]);
   const [conn, setConn] = useState(getBleConnection);
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
-  // Persist on every change
   const update = useCallback((patch: Partial<LightCalibration>) => {
     setCal((prev) => {
       const next = { ...prev, ...patch };
@@ -83,20 +76,18 @@ export default function Calibrate() {
   const handleReset = useCallback((tabKey: Tab) => {
     const full = { ...DEFAULT_CALIBRATION };
     const patches: Record<Tab, Partial<LightCalibration>> = {
-      auto: { latencyOffsetMs: full.latencyOffsetMs, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, dynamicDamping: full.dynamicDamping },
       color: { gammaR: full.gammaR, gammaG: full.gammaG, gammaB: full.gammaB, offsetR: full.offsetR, offsetG: full.offsetG, offsetB: full.offsetB, saturationBoost: full.saturationBoost },
-      dynamics: { minBrightness: full.minBrightness, maxBrightness: full.maxBrightness, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, dynamicDamping: full.dynamicDamping },
-      timing: { punchWhiteThreshold: full.punchWhiteThreshold, fadeBackDuration: full.fadeBackDuration, bleLatencyMs: full.bleLatencyMs, groovePhaseGate: full.groovePhaseGate },
-      ambient: { ambientEma: full.ambientEma, silenceFadeMs: full.silenceFadeMs, baselinePct: full.baselinePct },
+      dynamics: { minBrightness: full.minBrightness, maxBrightness: full.maxBrightness, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, whiteKickThreshold: full.whiteKickThreshold, whiteKickMs: full.whiteKickMs },
     };
     update(patches[tabKey]);
   }, [update]);
 
-  // Send test color to BLE continuously while on calibration page
+  // Send test color to BLE while on page
   useEffect(() => {
     if (!conn) return;
     const interval = setInterval(() => {
-      sendColor(conn.characteristic, ...testColor).catch(() => {});
+      const calibrated = applyColorCalibration(...testColor, cal);
+      sendColor(conn.characteristic, ...calibrated).catch(() => {});
       sendBrightness(conn.characteristic, cal.maxBrightness).catch(() => {});
     }, 80);
     return () => clearInterval(interval);
@@ -115,12 +106,12 @@ export default function Calibrate() {
         <div className="flex-1" />
         {conn
           ? <span className="text-[10px] font-mono text-primary/70">{conn.device?.name || 'Ansluten'}</span>
-          : <span className="text-[10px] font-mono text-muted-foreground">Ej ansluten — anslut från startsidan</span>
+          : <span className="text-[10px] font-mono text-muted-foreground">Ej ansluten</span>
         }
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 overflow-x-auto">
+      <div className="flex gap-1 mb-4">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -138,22 +129,14 @@ export default function Calibrate() {
 
       {/* Tab content */}
       <div className="space-y-1">
-        {/* Reset button (not for auto tab) */}
-        {tab !== 'auto' && (
-          <div className="flex justify-end mb-2">
-            <Button variant="ghost" size="sm" onClick={() => handleReset(tab)} className="text-xs gap-1 text-muted-foreground">
-              <RotateCcw className="w-3 h-3" /> Återställ
-            </Button>
-          </div>
-        )}
-
-        {tab === 'auto' && (
-          <AutoCalibratePanel cal={cal} onUpdate={update} />
-        )}
+        <div className="flex justify-end mb-2">
+          <Button variant="ghost" size="sm" onClick={() => handleReset(tab)} className="text-xs gap-1 text-muted-foreground">
+            <RotateCcw className="w-3 h-3" /> Återställ
+          </Button>
+        </div>
 
         {tab === 'color' && (
           <>
-            {/* Test color preview */}
             <div className="flex items-center gap-3 mb-3">
               <div className="flex gap-1.5">
                 {TEST_COLORS.map((tc) => (
@@ -187,29 +170,13 @@ export default function Calibrate() {
 
         {tab === 'dynamics' && (
           <>
-            <DynamicsPreview cal={cal} bleChar={conn?.characteristic} />
             <SliderRow label="Min ljusstyrka" value={cal.minBrightness} min={0} max={30} step={1} unit="%" onChange={(v) => update({ minBrightness: v })} />
             <SliderRow label="Max ljusstyrka" value={cal.maxBrightness} min={30} max={100} step={1} unit="%" onChange={(v) => update({ maxBrightness: v })} />
-            <SliderRow label="Attack" value={cal.attackAlpha} min={0.1} max={0.9} step={0.01} onChange={(v) => update({ attackAlpha: v })} />
-            <SliderRow label="Release" value={cal.releaseAlpha} min={0.02} max={0.2} step={0.005} onChange={(v) => update({ releaseAlpha: v })} />
-            <SliderRow label="Dämpning" value={cal.dynamicDamping} min={1.0} max={3.0} step={0.1} unit="x" onChange={(v) => update({ dynamicDamping: v })} />
-          </>
-        )}
-
-        {tab === 'timing' && (
-          <>
-            <SliderRow label="Punch-tröskel" value={cal.punchWhiteThreshold} min={60} max={95} step={1} unit="%" onChange={(v) => update({ punchWhiteThreshold: v })} />
-            <SliderRow label="Fade-back" value={cal.fadeBackDuration} min={100} max={800} step={10} unit="ms" onChange={(v) => update({ fadeBackDuration: v })} />
-            <SliderRow label="BLE-latens" value={cal.bleLatencyMs} min={0} max={150} step={5} unit="ms" onChange={(v) => update({ bleLatencyMs: v })} />
-            <SliderRow label="Groove-gate" value={cal.groovePhaseGate} min={0.1} max={0.5} step={0.01} onChange={(v) => update({ groovePhaseGate: v })} />
-          </>
-        )}
-
-        {tab === 'ambient' && (
-          <>
-            <SliderRow label="Ambient EMA" value={cal.ambientEma} min={0.7} max={0.98} step={0.01} onChange={(v) => update({ ambientEma: v })} />
-            <SliderRow label="Tystnad fade" value={cal.silenceFadeMs} min={500} max={5000} step={100} unit="ms" onChange={(v) => update({ silenceFadeMs: v })} />
-            <SliderRow label="Baseline" value={cal.baselinePct} min={3} max={20} step={1} unit="%" onChange={(v) => update({ baselinePct: v })} />
+            <SliderRow label="Attack" value={cal.attackAlpha} min={0.05} max={0.9} step={0.01} onChange={(v) => update({ attackAlpha: v })} />
+            <SliderRow label="Release" value={cal.releaseAlpha} min={0.01} max={0.3} step={0.005} onChange={(v) => update({ releaseAlpha: v })} />
+            <div className="border-t border-border/20 my-3" />
+            <SliderRow label="Kick-tröskel" value={cal.whiteKickThreshold} min={80} max={100} step={1} unit="%" onChange={(v) => update({ whiteKickThreshold: v })} />
+            <SliderRow label="Kick-tid" value={cal.whiteKickMs} min={50} max={300} step={10} unit="ms" onChange={(v) => update({ whiteKickMs: v })} />
           </>
         )}
       </div>
