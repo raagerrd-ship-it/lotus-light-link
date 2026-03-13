@@ -407,8 +407,9 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number, latency:
     await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
 
     for (let i = 0; i < FLASHES_PER_ROUND; i++) {
-      // Send BLE flash immediately
+      // Color first, then brightness, with 1ms gap
       await char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any);
+      await new Promise(r => setTimeout(r, BLE_CMD_GAP));
       await char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any);
 
       // Screen flash delayed by offset
