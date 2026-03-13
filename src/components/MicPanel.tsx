@@ -128,8 +128,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
   const recordedVolumeRef = useRef(recordedVolume);
   const savedAgcStateRef = useRef(savedAgcState);
   const bpmRef = useRef(bpm);
+  const beatGridRef = useRef(beatGrid);
   const sectionsRef = useRef(sections);
   const dropsRef = useRef(drops);
+  const sonosRttRef = useRef(sonosRtt);
+  const pipelineSumRef = useRef(0);
+  const pipelineCountRef = useRef(0);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
@@ -137,8 +141,10 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
   useEffect(() => { recordedVolumeRef.current = recordedVolume; }, [recordedVolume]);
   useEffect(() => { savedAgcStateRef.current = savedAgcState; }, [savedAgcState]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { beatGridRef.current = beatGrid; }, [beatGrid]);
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { dropsRef.current = drops; }, [drops]);
+  useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
