@@ -37,6 +37,12 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
+  // Poll e2e latency metric
+  useEffect(() => {
+    const id = setInterval(() => setTickToWriteMs(getLastTickToWriteMs()), 500);
+    return () => clearInterval(id);
+  }, []);
+
   // Auto-hide overlay after 3s
   const resetOverlayTimer = useCallback(() => {
     setShowOverlay(true);
