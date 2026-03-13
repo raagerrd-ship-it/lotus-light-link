@@ -87,7 +87,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const targetColorRef = useRef(currentColor);
   const prevColorRef = useRef(currentColor);
   const colorTransitionStartRef = useRef(0);
-  const COLOR_FADE_MS = 120;
+  const COLOR_FADE_MS = 5000;
 
   useEffect(() => {
     // Snap ALL color refs to the new color immediately — no fade
