@@ -24,14 +24,22 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
       const pos = getPosition();
       if (pos && barRef.current) {
         const elapsed = performance.now() - pos.receivedAt;
-        const fraction = Math.min(1, Math.max(0, (pos.positionMs + elapsed) / dur));
+        const currentMs = pos.positionMs + elapsed;
+        const fraction = Math.min(1, Math.max(0, currentMs / dur));
         barRef.current.style.width = `${fraction * 100}%`;
+
+        // Update section label every ~500ms
+        if (sections && sections.length > 0) {
+          const sec = getCurrentSection(sections, currentMs / 1000);
+          const label = sec ? sectionTypeLabel(sec.type) : null;
+          setSectionLabel(prev => prev !== label ? label : prev);
+        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [nowPlaying.durationMs, getPosition]);
+  }, [nowPlaying.durationMs, getPosition, sections]);
 
   return (
     <div className="shrink-0">
