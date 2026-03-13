@@ -677,6 +677,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         totalPct = BASELINE_PCT + (totalPct - BASELINE_PCT) * fadeFactor;
       }
 
+      // Apply dynamic damping curve (power curve makes it harder to reach peak)
+      if (dynamicDampingRef.current > 1) {
+        totalPct = 100 * Math.pow(totalPct / 100, dynamicDampingRef.current);
+      }
+
       // Cap by section max brightness and user max brightness setting
       totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100, maxBrightnessRef.current);
 
