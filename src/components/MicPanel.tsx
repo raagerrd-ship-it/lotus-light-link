@@ -5,7 +5,7 @@ import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
 import { drawIntensityChart, resetChartScaler, type ChartSample } from "@/lib/drawChart";
 import { liftColor } from "@/lib/colorUtils";
 import { type SongSection, getCurrentSection, getSectionBehavior, getUpcomingDrop } from "@/lib/songSections";
-import { getCalibration, type LightCalibration } from "@/lib/lightCalibration";
+import { getCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char: any;
@@ -30,7 +30,11 @@ interface MicPanelProps {
 }
 
 // Priority-aware BLE command queue
-function createBleQueue(charRef: { current: any }) {
+function createBleQueue(
+  charRef: { current: any },
+  onBrightnessSent?: (val: number) => void,
+  onColorSent?: (rgb: [number, number, number]) => void,
+) {
   let busy = false;
   let pendingBrightness: (() => Promise<void>) | null = null;
   let pendingColor: (() => Promise<void>) | null = null;
@@ -57,13 +61,20 @@ function createBleQueue(charRef: { current: any }) {
     brightness(val: number) {
       const c = charRef.current;
       if (!c) return;
-      pendingBrightness = () => sendBrightness(c, val);
+      pendingBrightness = async () => {
+        await sendBrightness(c, val);
+        onBrightnessSent?.(val);
+      };
       process();
     },
     color(r: number, g: number, b: number) {
       const c = charRef.current;
       if (!c) return;
-      pendingColor = () => sendColor(c, r, g, b);
+      pendingColor = async () => {
+        const [cr, cg, cb] = applyColorCalibration(r, g, b);
+        await sendColor(c, cr, cg, cb, true);
+        onColorSent?.([cr, cg, cb]);
+      };
       process();
     },
   };
@@ -76,6 +87,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const rafRef = useRef<number>(0);
   const throttleRef = useRef<number>(0);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
+  const sentBrightnessRef = useRef(3);
+  const sentColorRef = useRef<[number, number, number]>([255, 0, 0]);
   const charRef = useRef<any>(char);
   useEffect(() => { charRef.current = char; }, [char]);
   const punchWhiteRef = useRef(true);
@@ -332,7 +345,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       lowAnalyserRef.current = lowAnalyser;
       midAnalyserRef.current = midAnalyser;
       streamRef.current = stream;
-      bleQueueRef.current = createBleQueue(charRef);
+      bleQueueRef.current = createBleQueue(
+        charRef,
+        (val) => { sentBrightnessRef.current = val; },
+        (rgb) => { sentColorRef.current = rgb; },
+      );
       setActive(true);
 
       // Wake Lock: keep screen on
@@ -919,12 +936,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient, ambientEnergy);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
 
-      // Store result for rAF visual loop — blePct/bleColor = what was actually sent
-      const blePct = Math.round(smoothedBrightRef.current);
-      const boost = colorBoostRef.current;
-      const bleColor: [number, number, number] = boost.active
-        ? [boost.color[0], boost.color[1], boost.color[2]]
-        : [...targetColorRef.current];
+      // Store result for rAF visual loop — what was actually written to BLE
+      const blePct = sentBrightnessRef.current;
+      const bleColor: [number, number, number] = [
+        sentColorRef.current[0],
+        sentColorRef.current[1],
+        sentColorRef.current[2],
+      ];
       lastTickResultRef.current = { finalCurved, pct, isOnset, now, blePct, bleColor };
     };
 
