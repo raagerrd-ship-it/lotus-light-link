@@ -828,8 +828,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       // Normal brightness (throttled)
       if (!predictiveActive && now - throttleRef.current >= 25) {
+      // Attack/release smoothing: fast rise (0.5), slow fall (0.08) for smooth decay
+        const alpha = pct > smoothedBrightRef.current ? 0.5 : 0.08;
+        smoothedBrightRef.current += (pct - smoothedBrightRef.current) * alpha;
+        const smoothPct = Math.round(Math.max(3, smoothedBrightRef.current));
         throttleRef.current = now;
-        ble.brightness(pct);
+        ble.brightness(smoothPct);
       }
 
       // Color kick / fade-back — always use targetColorRef (latest palette color)
