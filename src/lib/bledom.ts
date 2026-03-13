@@ -359,7 +359,6 @@ export function sendColorAndBrightness(_char_unused: any, r: number, g: number, 
   _lastTickToWriteMs = 0;
   return Promise.resolve();
 }
-}
 
 export async function sendPower(char: any, on: boolean) {
   const cmd = on ? 0x23 : 0x24;
