@@ -5,6 +5,7 @@ import { getCalibration, saveCalibration, applyColorCalibration, type LightCalib
 import { getActiveDeviceName } from "@/lib/lightCalibration";
 import { interpolateEnergy, hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
+import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
