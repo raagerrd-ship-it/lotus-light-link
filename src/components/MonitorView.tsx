@@ -84,6 +84,24 @@ function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: str
   );
 }
 
+// Rewrite localhost art URLs to use monitor's own proxy or skip
+function rewriteArtUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      // Try to use monitor's own sonosLocalProxy setting
+      const monitorProxy = localStorage.getItem('sonosLocalProxy');
+      if (monitorProxy) {
+        const proxyOrigin = new URL(monitorProxy).origin;
+        return `${proxyOrigin}${parsed.pathname}${parsed.search}`;
+      }
+      // Fallback: use current page origin (won't work but avoids broken img)
+      return `${window.location.origin}${parsed.pathname}${parsed.search}`;
+    }
+  } catch { /* not a valid URL, return as-is */ }
+  return url;
+}
+
 const SECTION_LABELS: Record<string, string> = {
   intro: 'Intro', verse: 'Vers', pre_chorus: 'Pre-chorus',
   chorus: 'Refräng', bridge: 'Bridge', drop: 'Drop',
@@ -176,8 +194,8 @@ export default function MonitorView() {
       {/* Now playing */}
       {track_name ? (
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
-          {album_art_url && (
-            <img src={album_art_url} alt="Album art" className="w-14 h-14 rounded-xl"
+      {album_art_url && (
+            <img src={rewriteArtUrl(album_art_url)} alt="Album art" className="w-14 h-14 rounded-xl"
               style={{ boxShadow: `0 0 20px rgba(${r},${g},${b},0.4)` }} />
           )}
           <div className="min-w-0 flex-1">
