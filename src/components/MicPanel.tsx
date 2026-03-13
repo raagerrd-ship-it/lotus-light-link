@@ -930,8 +930,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
     // ─── Visual loop (rAF — pauses when tab hidden, saves battery) ───
     const renderLoop = () => {
-      const { finalCurved, pct, isOnset, now } = lastTickResultRef.current;
-      updateVisuals(finalCurved, pct, isOnset, now);
+      const { finalCurved, pct, isOnset, now, blePct, bleColor } = lastTickResultRef.current;
+      updateVisuals(finalCurved, pct, isOnset, now, blePct, bleColor);
       rafRef.current = requestAnimationFrame(renderLoop);
     };
 
