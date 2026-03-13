@@ -1,0 +1,1 @@
+ALTER TABLE public.device_calibration ADD COLUMN IF NOT EXISTS latency_results jsonb;
