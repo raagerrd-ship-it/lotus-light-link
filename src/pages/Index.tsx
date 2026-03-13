@@ -26,6 +26,7 @@ const Index = () => {
   const [showOverlay, setShowOverlay] = useState(true);
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
+  const [tickToWriteMs, setTickToWriteMs] = useState(0);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
