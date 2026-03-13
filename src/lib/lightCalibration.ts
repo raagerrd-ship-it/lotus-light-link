@@ -57,6 +57,8 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   ambientEma: 0.85,
   silenceFadeMs: 1500,
   baselinePct: 6,
+
+  latencyOffsetMs: 0,
 };
 
 export function getCalibration(): LightCalibration {
