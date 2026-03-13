@@ -12,6 +12,8 @@ const RELEASE = 0.05;
 const MIN_BRIGHT = 3;
 const MAX_BRIGHT = 100;
 const HISTORY_LEN = 120;
+const WHITE_KICK_THRESHOLD = 95; // pct threshold
+const WHITE_KICK_MS = 100;
 
 const MicPanel = ({ char, currentColor }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,6 +25,7 @@ const MicPanel = ({ char, currentColor }: MicPanelProps) => {
   const workerRef = useRef<Worker | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
+  const whiteKickUntilRef = useRef(0);
 
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
   useEffect(() => {
@@ -72,13 +75,25 @@ const MicPanel = ({ char, currentColor }: MicPanelProps) => {
           const normalized = Math.min(1, smoothed / 0.25);
           const pct = Math.round(MIN_BRIGHT + normalized * (MAX_BRIGHT - MIN_BRIGHT));
 
+          // White kick: if pct >= 95, send white for 100ms
+          const now = performance.now();
+          const inWhiteKick = now < whiteKickUntilRef.current;
+          if (pct >= WHITE_KICK_THRESHOLD && !inWhiteKick) {
+            whiteKickUntilRef.current = now + WHITE_KICK_MS;
+          }
+          const isWhite = now < whiteKickUntilRef.current;
+
           const c = charRef.current;
           if (c) {
-            const [cr, cg, cb] = colorRef.current;
-            sendColor(c, cr, cg, cb).then(() => sendBrightness(c, pct)).catch(() => {});
+            if (isWhite) {
+              sendColor(c, 255, 255, 255).then(() => sendBrightness(c, 100)).catch(() => {});
+            } else {
+              const [cr, cg, cb] = colorRef.current;
+              sendColor(c, cr, cg, cb).then(() => sendBrightness(c, pct)).catch(() => {});
+            }
           }
 
-          const [cr2, cg2, cb2] = colorRef.current;
+          const [cr2, cg2, cb2] = isWhite ? [255, 255, 255] as const : colorRef.current;
           const scale = pct / 100;
           samplesRef.current.push({
             pct,
