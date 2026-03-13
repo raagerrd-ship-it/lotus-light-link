@@ -15,7 +15,9 @@ interface MicPanelProps {
   /** Pre-recorded energy curve for the current song (null = first listen, record mode) */
   energyCurve?: EnergySample[] | null;
   /** Callback to save recorded energy samples when song ends / changes */
-  onSaveEnergyCurve?: (samples: EnergySample[]) => void;
+  onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null) => void;
+  /** Volume the saved curve was recorded at (for compensation) */
+  recordedVolume?: number | null;
 }
 
 const HISTORY_LEN = 120;
@@ -30,7 +32,7 @@ const PEAK_MAX_DECAY = 0.9998;
 // Energy curve recording interval (~100ms)
 const CURVE_RECORD_INTERVAL_MS = 100;
 
-const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, onSaveEnergyCurve }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, recordedVolume, onSaveEnergyCurve }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -60,17 +62,19 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, o
   const recordedSamplesRef = useRef<EnergySample[]>([]);
   const lastRecordTimeRef = useRef(0);
   const onSaveCurveRef = useRef(onSaveEnergyCurve);
+  const recordedVolumeRef = useRef(recordedVolume);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
   useEffect(() => { onSaveCurveRef.current = onSaveEnergyCurve; }, [onSaveEnergyCurve]);
+  useEffect(() => { recordedVolumeRef.current = recordedVolume; }, [recordedVolume]);
 
   // When energy curve changes (new song with saved curve, or first song without),
   // flush previously recorded samples
   useEffect(() => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
-      onSaveCurveRef.current(prev);
+      onSaveCurveRef.current(prev, volumeRef.current ?? null);
     }
     recordedSamplesRef.current = [];
     lastRecordTimeRef.current = 0;
@@ -187,9 +191,17 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, o
             // ── Curve-driven mode: interpolate pre-recorded energy ──
             const posSec = getSongPositionSec();
             if (posSec != null) {
-              rms = interpolateEnergy(curve!, posSec);
+              let e = interpolateEnergy(curve!, posSec);
+              // Volume compensation: scale energy by current/recorded volume ratio
+              const recVol = recordedVolumeRef.current;
+              const curVol = volumeRef.current;
+              if (recVol != null && recVol > 0 && curVol != null && curVol > 0) {
+                // Volume is roughly logarithmic, but ratio works well enough
+                e *= (curVol / recVol);
+                e = Math.min(1, e);
+              }
               // Scale to match mic RMS range using AGC state
-              rms *= Math.max(0.01, agcMaxRef.current);
+              rms = e * Math.max(0.01, agcMaxRef.current);
             } else {
               rms = 0;
             }
@@ -365,7 +377,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, o
       // Save any recorded energy samples on unmount
       const recorded = recordedSamplesRef.current;
       if (recorded.length > 10 && onSaveCurveRef.current) {
-        onSaveCurveRef.current(recorded);
+        onSaveCurveRef.current(recorded, volumeRef.current ?? null);
       }
       onBleWrite(null);
       workerRef.current?.postMessage("stop");

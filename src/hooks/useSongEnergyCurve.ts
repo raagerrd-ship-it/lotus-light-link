@@ -14,10 +14,12 @@ interface TrackKey {
 interface SongEnergyCurveResult {
   /** Saved curve from DB, or null if first listen */
   curve: EnergySample[] | null;
+  /** Volume (0-100) the curve was recorded at, or null */
+  recordedVolume: number | null;
   /** True while fetching */
   loading: boolean;
   /** Save/update the energy curve for the current track */
-  saveCurve: (samples: EnergySample[]) => void;
+  saveCurve: (samples: EnergySample[], volume: number | null) => void;
 }
 
 // In-memory cache: "track|artist" → curve or null
@@ -29,12 +31,14 @@ function cacheKey(t: TrackKey): string {
 
 export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResult {
   const [curve, setCurve] = useState<EnergySample[] | null>(null);
+  const [recordedVolume, setRecordedVolume] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const trackRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!track) {
       setCurve(null);
+      setRecordedVolume(null);
       trackRef.current = null;
       return;
     }
@@ -53,28 +57,30 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("energy_curve")
+      .select("energy_curve, recorded_volume")
       .eq("track_name", track.trackName)
       .eq("artist_name", track.artistName)
       .maybeSingle()
       .then(({ data }) => {
-        if (trackRef.current !== key) return; // stale
+        if (trackRef.current !== key) return;
         const parsed = data?.energy_curve as unknown as EnergySample[] | null;
         const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
+        const vol = (data as any)?.recorded_volume as number | null;
         curveCache.set(key, valid);
         setCurve(valid);
+        setRecordedVolume(vol ?? null);
         setLoading(false);
       });
   }, [track?.trackName, track?.artistName]);
 
   const saveCurve = useCallback(
-    (samples: EnergySample[]) => {
+    (samples: EnergySample[], volume: number | null) => {
       if (!track || samples.length < 10) return;
       const key = cacheKey(track);
       curveCache.set(key, samples);
       setCurve(samples);
+      setRecordedVolume(volume);
 
-      // Upsert: check if row exists, then insert or update
       supabase
         .from("song_analysis")
         .select("id")
@@ -82,26 +88,27 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         .eq("artist_name", track.artistName)
         .maybeSingle()
         .then(({ data: existing }) => {
+          const payload = { energy_curve: samples as any, recorded_volume: volume } as any;
           if (existing) {
             supabase
               .from("song_analysis")
-              .update({ energy_curve: samples as any })
+              .update(payload)
               .eq("id", existing.id)
-              .then(() => console.log("[EnergyCurve] updated", track.trackName));
+              .then(() => console.log("[EnergyCurve] updated", track.trackName, "vol:", volume));
           } else {
             supabase
               .from("song_analysis")
               .insert({
                 track_name: track.trackName,
                 artist_name: track.artistName,
-                energy_curve: samples as any,
+                ...payload,
               })
-              .then(() => console.log("[EnergyCurve] inserted", track.trackName));
+              .then(() => console.log("[EnergyCurve] inserted", track.trackName, "vol:", volume));
           }
         });
     },
     [track?.trackName, track?.artistName],
   );
 
-  return { curve, loading, saveCurve };
+  return { curve, recordedVolume, loading, saveCurve };
 }

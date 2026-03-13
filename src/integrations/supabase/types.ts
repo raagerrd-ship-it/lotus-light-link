@@ -53,6 +53,7 @@ export type Database = {
           energy_curve: Json | null
           id: string
           key: string | null
+          recorded_volume: number | null
           sections: Json | null
           track_name: string
         }
@@ -64,6 +65,7 @@ export type Database = {
           energy_curve?: Json | null
           id?: string
           key?: string | null
+          recorded_volume?: number | null
           sections?: Json | null
           track_name: string
         }
@@ -75,6 +77,7 @@ export type Database = {
           energy_curve?: Json | null
           id?: string
           key?: string | null
+          recorded_volume?: number | null
           sections?: Json | null
           track_name?: string
         }
