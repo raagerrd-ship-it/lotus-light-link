@@ -57,24 +57,26 @@ const MicPanel = ({ char, currentColor }: MicPanelProps) => {
           const an = analyserRef.current;
           if (!an) return;
 
+          const cal = getCalibration();
+
           an.getFloatTimeDomainData(buf);
           let sum = 0;
           for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
           const rms = Math.sqrt(sum / buf.length);
 
           const prev = smoothedRef.current;
-          const alpha = rms > prev ? ATTACK : RELEASE;
+          const alpha = rms > prev ? cal.attackAlpha : cal.releaseAlpha;
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
           const normalized = Math.min(1, smoothed / 0.25);
-          const pct = Math.round(MIN_BRIGHT + normalized * (MAX_BRIGHT - MIN_BRIGHT));
+          const pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
 
-          // White kick: if pct >= 95, send white for 100ms
+          // White kick
           const now = performance.now();
           const inWhiteKick = now < whiteKickUntilRef.current;
-          if (pct >= WHITE_KICK_THRESHOLD && !inWhiteKick) {
-            whiteKickUntilRef.current = now + WHITE_KICK_MS;
+          if (pct >= cal.whiteKickThreshold && !inWhiteKick) {
+            whiteKickUntilRef.current = now + cal.whiteKickMs;
           }
           const isWhite = now < whiteKickUntilRef.current;
 
@@ -83,8 +85,8 @@ const MicPanel = ({ char, currentColor }: MicPanelProps) => {
             if (isWhite) {
               sendColor(c, 255, 255, 255).then(() => sendBrightness(c, 100)).catch(() => {});
             } else {
-              const [cr, cg, cb] = colorRef.current;
-              sendColor(c, cr, cg, cb).then(() => sendBrightness(c, pct)).catch(() => {});
+              const calibrated = applyColorCalibration(...colorRef.current, cal);
+              sendColor(c, ...calibrated).then(() => sendBrightness(c, pct)).catch(() => {});
             }
           }
 
