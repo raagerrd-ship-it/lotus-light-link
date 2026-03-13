@@ -40,6 +40,13 @@ const Index = () => {
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
 
+  // Energy curve: lookup saved curve for current track
+  const trackKey = useMemo(() => {
+    if (!nowPlaying?.trackName || !nowPlaying?.artistName) return null;
+    return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
+  }, [nowPlaying?.trackName, nowPlaying?.artistName]);
+  const { curve: energyCurve, saveCurve } = useSongEnergyCurve(trackKey);
+
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
   // Poll e2e latency metric
