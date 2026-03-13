@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Play, Square, Check, RefreshCw } from "lucide-react";
+import { ArrowLeft, Play, Square, Check, RefreshCw, Music, Trash2 } from "lucide-react";
 import {
   getCalibration, saveCalibration,
   setActiveDeviceName, loadCalibrationFromCloud,
@@ -10,15 +10,16 @@ import {
   DEFAULT_CALIBRATION,
   type LightCalibration, type LatencyResults,
 } from "@/lib/lightCalibration";
-import { Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'ble' | 'latency';
+type Tab = 'ble' | 'latency' | 'songs';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ble', label: 'BLE-hastighet' },
   { key: 'latency', label: 'Latens' },
+  { key: 'songs', label: 'Inspelade låtar' },
 ];
 
 // BLE Perceptual Speed Test buffers
@@ -779,6 +780,107 @@ function CalibrationHistory({ deviceName }: { deviceName: string | null }) {
   );
 }
 
+function RecordedSongsTab() {
+  const [songs, setSongs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("song_analysis")
+      .select("id, track_name, artist_name, recorded_volume, energy_curve, created_at")
+      .not("energy_curve", "is", null)
+      .order("created_at", { ascending: false });
+    setSongs(data ?? []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    setDeleting(id);
+    await supabase
+      .from("song_analysis")
+      .update({ energy_curve: null, recorded_volume: null } as any)
+      .eq("id", id);
+    setSongs(prev => prev.filter(s => s.id !== id));
+    setDeleting(null);
+  }, []);
+
+  const curveLength = (curve: any): number => {
+    if (!Array.isArray(curve)) return 0;
+    return curve.length;
+  };
+
+  const curveDuration = (curve: any): string => {
+    if (!Array.isArray(curve) || curve.length === 0) return "—";
+    const last = curve[curve.length - 1];
+    const secs = last?.t ?? 0;
+    const m = Math.floor(secs / 60);
+    const s = Math.round(secs % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Låtar med inspelade energikurvor. Nästa gång de spelas styrs lampan direkt från kurvan.
+        </p>
+        <button onClick={load} className="text-muted-foreground hover:text-foreground p-1">
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {loading && <p className="text-xs text-muted-foreground">Laddar…</p>}
+
+      {!loading && songs.length === 0 && (
+        <div className="text-center py-8">
+          <Music className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+          <p className="text-xs text-muted-foreground">Inga inspelade låtar ännu.</p>
+          <p className="text-[10px] text-muted-foreground/60 mt-1">Spela musik med mikrofonen aktiv — kurvan sparas automatiskt.</p>
+        </div>
+      )}
+
+      {!loading && songs.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[10px] text-muted-foreground font-bold">{songs.length} låt{songs.length !== 1 ? 'ar' : ''}</p>
+          <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+            {songs.map((s) => {
+              const samples = curveLength(s.energy_curve);
+              const dur = curveDuration(s.energy_curve);
+              const date = s.created_at ? new Date(s.created_at) : null;
+              return (
+                <div key={s.id} className="border border-border/30 rounded-md px-3 py-2 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground truncate">{s.track_name}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{s.artist_name}</p>
+                    <div className="flex gap-3 mt-0.5 text-[10px] font-mono text-foreground/50">
+                      <span>{dur}</span>
+                      <span>{samples} samples</span>
+                      {s.recorded_volume != null && <span>Vol {s.recorded_volume}</span>}
+                      {date && <span>{date.toLocaleDateString('sv')}</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(s.id)}
+                    disabled={deleting === s.id}
+                    className="text-muted-foreground hover:text-destructive p-1.5 rounded-full hover:bg-destructive/10 transition-colors shrink-0 disabled:opacity-50"
+                    title="Ta bort inspelning"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Calibrate() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('ble');
@@ -852,6 +954,8 @@ export default function Calibrate() {
           const deviceName = conn?.device?.name;
           if (deviceName) saveLatencyToCloud(deviceName, latency);
         }} />}
+
+        {tab === 'songs' && <RecordedSongsTab />}
       </div>
 
       {/* Current calibration + history */}
