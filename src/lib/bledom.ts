@@ -264,24 +264,10 @@ async function _flush() {
     return;
   }
 
-  let writeBright = false;
-  let writeColor = false;
+  const writeColor = !!_pendingColor;
+  const writeBright = _pendingBright != null;
 
-  // Always send color — prevents drift, tick loop sets it every tick
-  if (_pendingColor) {
-    writeColor = true;
-  }
-
-  // Important: resend brightness whenever color is sent.
-  // Some strips effectively apply color at near-full intensity unless brightness follows.
-  if (_pendingBright != null && (writeColor || _pendingBright !== _lastSentBright)) {
-    writeBright = true;
-  }
-
-  if (!writeBright && !writeColor) {
-    _pendingBright = null;
-    return;
-  }
+  if (!writeColor && !writeBright) return;
 
   _writing = true;
   _dirtyWhileWriting = false;
