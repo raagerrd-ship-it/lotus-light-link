@@ -51,7 +51,7 @@ const Index = () => {
     if (!nowPlaying?.trackName || !nowPlaying?.artistName) return null;
     return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
-  const { curve: energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, saveCurve } = useSongEnergyCurve(trackKey);
+  const { curve: energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading: curveLoading, saveCurve } = useSongEnergyCurve(trackKey);
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
