@@ -194,6 +194,17 @@ const Index = () => {
     setAutoDriftMs(offsetMs);
   }, []);
 
+  // Listen for vol-calibrate-result from MicPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const cal = (e as CustomEvent).detail as { volume: number; gain: number };
+      setVolCalibration(cal);
+      localStorage.setItem("volCalibration", JSON.stringify(cal));
+      console.log("[vol-calibrate]", cal);
+    };
+    window.addEventListener('vol-calibrate-result', handler);
+    return () => window.removeEventListener('vol-calibrate-result', handler);
+  }, []);
 
   const handleConnect = useCallback(async (scanAll = false) => {
     setBusy(true);
