@@ -38,6 +38,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   useEffect(() => {
     if (!track) {
       setCurve(null);
+      setRecordedVolume(null);
       trackRef.current = null;
       return;
     }
