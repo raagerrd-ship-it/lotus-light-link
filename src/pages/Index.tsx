@@ -52,6 +52,7 @@ const Index = () => {
     setConnection(conn);
     setBleConnection(conn);
     setBusy(false);
+    setActiveChar(conn.characteristic);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
     const [r, g, b] = currentColorRef.current;
