@@ -1,4 +1,4 @@
-import { useLiveSessionMonitor, type LiveSessionState } from "@/hooks/useLiveSession";
+import { useLiveSessionMonitor, type LiveSessionState, type MasterDebugState } from "@/hooks/useLiveSession";
 import { Wifi, WifiOff } from "lucide-react";
 
 function timeSince(isoString?: string): string {
@@ -8,6 +8,36 @@ function timeSince(isoString?: string): string {
   if (diff < 60000) return `${Math.round(diff / 1000)}s sedan`;
   return "offline";
 }
+
+function DebugPanel({ d, updated }: { d: MasterDebugState; updated?: string }) {
+  const status = timeSince(updated);
+  return (
+    <div className="font-mono text-[10px] leading-tight text-foreground/70 px-3 py-2 space-y-0.5">
+      <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Master debug</div>
+      <div>BLE: {d.bleConnected ? <span className="text-green-400">{d.bleDeviceName || 'ok'}</span> : <span className="text-red-400">ej ansluten</span>}</div>
+      <div>sonos: {d.sonosConnected ? <span className="text-green-400">ok</span> : <span className="text-red-400">offline</span>} {d.sonosRtt != null && <span>RTT {Math.round(d.sonosRtt)}ms</span>}</div>
+      <div>
+        kurva:{' '}
+        {d.curveStatus === 'recording' && <span className="text-orange-400">⏺ spelar in{d.curveSamples ? ` (${d.curveSamples})` : ''}</span>}
+        {d.curveStatus === 'saved' && <span className="text-green-400">✓ sparad{d.curveSamples ? ` (${d.curveSamples} st)` : ''}</span>}
+        {d.curveStatus === 'loading' && <span className="text-yellow-400">↓ laddar…</span>}
+        {d.curveStatus === 'none' && <span className="text-muted-foreground">—</span>}
+      </div>
+      {d.curveTrackName && <div className="truncate text-foreground/50">{d.curveTrackName}</div>}
+      <div className="border-t border-border/30 pt-0.5 mt-1">
+        BLE w/s: <span className="text-foreground">{d.bleWritesPerSec ?? 0}</span> skip: <span className="text-foreground">{d.bleDropsPerSec ?? 0}</span>
+      </div>
+      <div>write: <span className="text-foreground">{d.bleLastWriteMs ?? 0}ms</span> e2e: <span className="text-foreground">{Math.round(d.e2eMs ?? 0)}ms</span></div>
+      <div>rms: <span className="text-foreground">{(d.rmsMs ?? 0).toFixed(1)}ms</span> tick: <span className="text-foreground">{(d.totalTickMs ?? 0).toFixed(1)}ms</span></div>
+    </div>
+  );
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  intro: 'Intro', verse: 'Vers', pre_chorus: 'Pre-chorus',
+  chorus: 'Refräng', bridge: 'Bridge', drop: 'Drop',
+  build_up: 'Build-up', break: 'Break', outro: 'Outro',
+};
 
 export default function MonitorView() {
   const session = useLiveSessionMonitor();
@@ -23,20 +53,13 @@ export default function MonitorView() {
     );
   }
 
-  const { color_r: r, color_g: g, color_b: b, brightness, track_name, artist_name, album_art_url, section_type, bpm, is_playing } = session;
-  const accent = `rgb(${r},${g},${b})`;
+  const { color_r: r, color_g: g, color_b: b, brightness, track_name, artist_name, album_art_url, section_type, bpm, is_playing, debug_state } = session;
   const scaledR = Math.round(r * (brightness / 100));
   const scaledG = Math.round(g * (brightness / 100));
   const scaledB = Math.round(b * (brightness / 100));
   const liveColor = `rgb(${scaledR},${scaledG},${scaledB})`;
   const status = timeSince((session as any).updated_at);
   const isLive = status === "live";
-
-  const SECTION_LABELS: Record<string, string> = {
-    intro: 'Intro', verse: 'Vers', pre_chorus: 'Pre-chorus',
-    chorus: 'Refräng', bridge: 'Bridge', drop: 'Drop',
-    build_up: 'Build-up', break: 'Break', outro: 'Outro',
-  };
 
   return (
     <div
@@ -67,25 +90,18 @@ export default function MonitorView() {
             boxShadow: `0 0 ${brightness}px ${liveColor}, 0 0 ${brightness * 2}px rgba(${scaledR},${scaledG},${scaledB},0.3)`,
           }}
         />
-        {/* Brightness % */}
         <span className="absolute bottom-8 text-xs font-mono text-muted-foreground/60">
           {brightness}%
         </span>
       </div>
 
       {/* Now playing footer */}
-      <div className="shrink-0 backdrop-blur-lg border-t border-border/30 pb-[env(safe-area-inset-bottom)]" style={{ background: 'hsl(var(--background) / 0.6)' }}>
+      <div className="shrink-0 backdrop-blur-lg border-t border-border/30" style={{ background: 'hsl(var(--background) / 0.6)' }}>
         {track_name ? (
           <div className="flex items-center gap-3 px-4 py-3">
             {album_art_url && (
-              <img
-                src={album_art_url}
-                alt="Album art"
-                className="w-12 h-12 rounded-xl"
-                style={{
-                  boxShadow: `0 0 16px rgba(${r},${g},${b},0.4)`,
-                }}
-              />
+              <img src={album_art_url} alt="Album art" className="w-12 h-12 rounded-xl"
+                style={{ boxShadow: `0 0 16px rgba(${r},${g},${b},0.4)` }} />
             )}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground truncate">{track_name}</p>
@@ -93,18 +109,14 @@ export default function MonitorView() {
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {section_type && (
-                <span
-                  className="text-[10px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-2 py-0.5 rounded-full uppercase"
-                  style={{ borderColor: `rgba(${r},${g},${b},0.2)` }}
-                >
+                <span className="text-[10px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-2 py-0.5 rounded-full uppercase"
+                  style={{ borderColor: `rgba(${r},${g},${b},0.2)` }}>
                   {SECTION_LABELS[section_type] ?? section_type}
                 </span>
               )}
               {bpm != null && (
-                <span
-                  className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full"
-                  style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}
-                >
+                <span className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full"
+                  style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}>
                   {bpm} BPM
                 </span>
               )}
@@ -118,6 +130,13 @@ export default function MonitorView() {
           </div>
         )}
       </div>
+
+      {/* Debug panel from master */}
+      {debug_state && (
+        <div className="shrink-0 border-t border-border/30 bg-background/80 pb-[env(safe-area-inset-bottom)]">
+          <DebugPanel d={debug_state} updated={(session as any).updated_at} />
+        </div>
+      )}
     </div>
   );
 }
