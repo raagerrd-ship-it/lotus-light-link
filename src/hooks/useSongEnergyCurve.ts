@@ -93,7 +93,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("id, energy_curve, recorded_volume, agc_state, bpm, sections")
+      .select("id, energy_curve, recorded_volume, agc_state, bpm, sections, drops")
       .eq("track_name", track.trackName)
       .eq("artist_name", track.artistName)
       .maybeSingle()
