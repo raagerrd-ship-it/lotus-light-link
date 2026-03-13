@@ -41,6 +41,8 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const agcMinRef = useRef(initCal.agcMin);
   const lastVolumeRef = useRef(sonosVolume);
   const agcSaveTimerRef = useRef(0);
+  // Peak max: the loudest agcMax we've ever seen — very slow decay, never resets on volume change
+  const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
 
   useEffect(() => {
     colorRef.current = currentColor;
@@ -164,7 +166,19 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
 
           const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
           const normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
-          const pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
+
+          // Peak max tracks the loudest we've ever seen — decays extremely slowly
+          if (agcMaxRef.current > agcPeakMaxRef.current) {
+            agcPeakMaxRef.current = agcMaxRef.current;
+          } else {
+            agcPeakMaxRef.current *= 0.999999; // ~hours to decay
+          }
+
+          // Absolute factor: quiet songs get proportionally less brightness range
+          // A song at 30% of peak loudness → brightness varies over ~30% of full range
+          const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
+          const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+          const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
 
           // White kick detection
           const now = performance.now();
