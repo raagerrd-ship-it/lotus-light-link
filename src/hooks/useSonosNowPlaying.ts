@@ -68,23 +68,23 @@ export function useSonosNowPlaying() {
 
     const buildArtUrl = (uriRaw: string | null | undefined): string | null => {
       if (!uriRaw) return null;
-      // Decode XML entities that leak from DIDL parsing (e.g. &amp; → &)
       const uri = decodeEntities(String(uriRaw).trim()) ?? '';
       if (!uri) return null;
 
       if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
 
-      const origin = new URL(proxyUrl).origin;
+      const proxyOrigin = new URL(proxyUrl).origin;
+      // Replace localhost/127.0.0.1 with the actual LAN hostname so other devices can reach it
+      const lanOrigin = (proxyOrigin.includes('localhost') || proxyOrigin.includes('127.0.0.1'))
+        ? proxyOrigin.replace(/localhost|127\.0\.0\.1/, location.hostname)
+        : proxyOrigin;
+      const lanProxy = proxyUrl.replace(proxyOrigin, lanOrigin);
 
-      // New Cast Away format: /api/sonos/getaa?... -> keep as-is on same origin
-      if (uri.startsWith('/api/sonos/')) return `${origin}${uri}`;
-
-      // Raw Sonos URI from DIDL: /getaa?... -> route via configured proxy path
-      if (uri.startsWith('/getaa')) return `${proxyUrl}${uri}`;
-      if (uri.startsWith('getaa')) return `${proxyUrl}/${uri}`;
-
-      if (uri.startsWith('/')) return `${origin}${uri}`;
-      return `${proxyUrl}/${uri}`;
+      if (uri.startsWith('/api/sonos/')) return `${lanOrigin}${uri}`;
+      if (uri.startsWith('/getaa')) return `${lanProxy}${uri}`;
+      if (uri.startsWith('getaa')) return `${lanProxy}/${uri}`;
+      if (uri.startsWith('/')) return `${lanOrigin}${uri}`;
+      return `${lanProxy}/${uri}`;
     };
 
     const applyStatus = (s: any, rtt: number) => {
