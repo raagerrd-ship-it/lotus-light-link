@@ -36,6 +36,7 @@ interface CacheEntry {
   agc: AgcState | null;
   bpm: number | null;
   sections: SongSection[] | null;
+  drops: Drop[] | null;
   songId: string | null;
 }
 
