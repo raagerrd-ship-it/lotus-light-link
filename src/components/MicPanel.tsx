@@ -179,7 +179,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           if (agcMaxRef.current > agcPeakMaxRef.current) {
             agcPeakMaxRef.current = agcMaxRef.current;
           } else {
-            agcPeakMaxRef.current *= 0.999999; // ~hours to decay
+            agcPeakMaxRef.current *= PEAK_MAX_DECAY; // ~1.5 min half-life
           }
 
           // Absolute factor: quiet songs get proportionally less brightness range
