@@ -858,7 +858,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         ble.color(...lifted);
       } else if (boost.active && now - boost.throttle >= 25) {
         // Smoother fade-back: longer tail + smoothstep easing (no hard drop)
-        const fadeDuration = Math.max(320, beatMs * 1.15);
+        const fadeDuration = Math.max(calRef.current.fadeBackDuration, beatMs * 1.15);
         const elapsed = now - boost.startTime;
         const tLinear = Math.min(elapsed / fadeDuration, 1);
         // smoothstep: starts/ends with zero slope for softer return
