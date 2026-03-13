@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
@@ -6,7 +7,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity, Volume2, SlidersHorizontal, Crosshair } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity, Volume2, SlidersHorizontal, Crosshair, Settings } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
@@ -14,6 +15,7 @@ import DebugOverlay from "@/components/DebugOverlay";
 import type { SongSection } from "@/lib/songSections";
 
 const Index = () => {
+  const navigate = useNavigate();
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -386,6 +388,9 @@ const Index = () => {
                   title={autoHide ? "Auto-hide on" : "Auto-hide off"}
                 >
                   {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => navigate('/calibrate')} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
+                  <Settings className="w-3.5 h-3.5" />
                 </Button>
                 <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
                   <Power className="w-4 h-4" />

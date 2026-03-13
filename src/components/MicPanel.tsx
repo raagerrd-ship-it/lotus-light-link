@@ -5,6 +5,7 @@ import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
 import { drawIntensityChart, resetChartScaler, type ChartSample } from "@/lib/drawChart";
 import { liftColor } from "@/lib/colorUtils";
 import { type SongSection, getCurrentSection, getSectionBehavior, getUpcomingDrop } from "@/lib/songSections";
+import { getCalibration, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char: any;
@@ -123,7 +124,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const transientAvgRef = useRef(0.1);
   
   // Predictive beat: pre-fire BLE commands to compensate for latency
-  const BLE_LATENCY_MS = 50;
+  const calRef = useRef<LightCalibration>(getCalibration());
+  // Re-read calibration periodically (when user returns from /calibrate)
+  useEffect(() => {
+    const interval = setInterval(() => { calRef.current = getCalibration(); }, 2000);
+    return () => clearInterval(interval);
+  }, []);
   const predictiveFiredRef = useRef(false);
   const lastBeatTimeRef = useRef(0);
   
@@ -659,13 +665,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const agcAmbient = ambientEnergy * Math.min(ambientGain, 30);
 
       // EMA smoothing for ambient to reduce jitter
-      smoothedAmbientRef.current = smoothedAmbientRef.current * 0.85 + agcAmbient * 0.15;
+      smoothedAmbientRef.current = smoothedAmbientRef.current * calRef.current.ambientEma + agcAmbient * (1 - calRef.current.ambientEma);
 
       // Zone 1: Ambient (0–50%) — always active, broad frequency, logarithmic
       const ambientPct = 50 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
 
-      // Zone 2: Groove (50–75%) — requires beat (phase < 0.3 = recent onset, tighter gating)
-      const groovePct = (phase < 0.3 && bpmRef.current > 0)
+      // Zone 2: Groove (50–75%) — requires beat (phase < groovePhaseGate = recent onset)
+      const groovePct = (phase < calRef.current.groovePhaseGate && bpmRef.current > 0)
         ? 25 * curved * sectionBehavior.beatReactivity
         : 0;
 
@@ -708,8 +714,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       }
 
       // Smooth fade-to-dim on silence
-      const FADE_DURATION = 1500;
-      const BASELINE_PCT = 6;
+      const FADE_DURATION = calRef.current.silenceFadeMs;
+      const BASELINE_PCT = calRef.current.baselinePct;
       if (silenceDur > 0) {
         const fadeFactor = Math.max(0, 1 - silenceDur / FADE_DURATION);
         totalPct = BASELINE_PCT + (totalPct - BASELINE_PCT) * fadeFactor;
@@ -723,7 +729,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Cap by section max brightness and user max brightness setting
       totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100, maxBrightnessRef.current);
 
-      const pct = Math.round(Math.max(3, Math.min(100, totalPct)));
+      const pct = Math.round(Math.max(calRef.current.minBrightness, Math.min(100, totalPct)));
       const finalCurved = pct / 100; // normalized 0-1 for visuals
 
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
@@ -807,13 +813,14 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const beatMs = 60000 / bpmRef.current;
         const phaseMs = beatPhaseRef.current * beatMs;
         const msUntilBeat = beatMs - phaseMs;
-        if (msUntilBeat <= BLE_LATENCY_MS && msUntilBeat > 0) {
+        if (msUntilBeat <= calRef.current.bleLatencyMs && msUntilBeat > 0) {
           predictiveFiredRef.current = true;
           const predictedPct = Math.max(40, Math.round((pulseMaxRef.current ?? 0.7) * 100));
           ble.brightness(predictedPct);
-          if (effectivePunchWhite && predictedPct > 85) {
+          if (effectivePunchWhite && predictedPct > calRef.current.punchWhiteThreshold) {
             const color = targetColorRef.current;
-            const boostFactor = Math.min(1, (predictedPct - 85) / 15);
+            const thresh = calRef.current.punchWhiteThreshold;
+            const boostFactor = Math.min(1, (predictedPct - thresh) / (100 - thresh));
             const lifted = liftColor(color, boostFactor);
             ble.color(...lifted);
             boost.active = true;
@@ -828,10 +835,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       // Normal brightness (throttled)
       if (!predictiveActive && now - throttleRef.current >= 25) {
-      // Attack/release smoothing: fast rise (0.5), slow fall (0.08) for smooth decay
-        const alpha = pct > smoothedBrightRef.current ? 0.5 : 0.08;
+      // Attack/release smoothing using calibration values
+        const alpha = pct > smoothedBrightRef.current ? calRef.current.attackAlpha : calRef.current.releaseAlpha;
         smoothedBrightRef.current += (pct - smoothedBrightRef.current) * alpha;
-        const smoothPct = Math.round(Math.max(3, smoothedBrightRef.current));
+        const smoothPct = Math.round(Math.max(calRef.current.minBrightness, smoothedBrightRef.current));
         throttleRef.current = now;
         ble.brightness(smoothPct);
       }
@@ -841,9 +848,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorKickThrottle = Math.max(40, beatMs * 0.12);
 
-      if (!predictiveActive && effectivePunchWhite && pct > 85 && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorKickThrottle) {
+      if (!predictiveActive && effectivePunchWhite && pct > calRef.current.punchWhiteThreshold && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorKickThrottle) {
         boost.throttle = now;
-        const boostFactor = Math.min(1, (pct - 85) / 15);
+        const thresh = calRef.current.punchWhiteThreshold;
+        const boostFactor = Math.min(1, (pct - thresh) / (100 - thresh));
         const lifted = liftColor(color, boostFactor);
         boost.active = true;
         boost.startTime = now;
@@ -851,7 +859,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         ble.color(...lifted);
       } else if (boost.active && now - boost.throttle >= 25) {
         // Smoother fade-back: longer tail + smoothstep easing (no hard drop)
-        const fadeDuration = Math.max(320, beatMs * 1.15);
+        const fadeDuration = Math.max(calRef.current.fadeBackDuration, beatMs * 1.15);
         const elapsed = now - boost.startTime;
         const tLinear = Math.min(elapsed / fadeDuration, 1);
         // smoothstep: starts/ends with zero slope for softer return
