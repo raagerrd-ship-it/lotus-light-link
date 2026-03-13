@@ -6,7 +6,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity, Crosshair } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
