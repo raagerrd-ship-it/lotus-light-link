@@ -139,7 +139,7 @@ interface PulseResult {
 // Per-mode best result: the shortest duration where all 3 pulses were seen
 type ModeBests = Partial<Record<TestMode, number>>;
 
-function BleSpeedTab({ conn }: { conn: any }) {
+function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: ModeBests) => void }) {
   const [mode, setMode] = useState<TestMode>('brightness');
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'asking' | 'done'>('idle');
   const [currentIdx, setCurrentIdx] = useState(0);
