@@ -593,13 +593,27 @@ export default function Calibrate() {
   const [conn, setConn] = useState(getBleConnection);
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
+  // Sync calibration from cloud when device connects
+  useEffect(() => {
+    const deviceName = conn?.device?.name;
+    if (!deviceName) return;
+    setActiveDeviceName(deviceName);
+    loadCalibrationFromCloud(deviceName).then((data) => {
+      if (data) {
+        setCal(data.calibration);
+        if (data.bleMinIntervalMs) setBleMinInterval(data.bleMinIntervalMs);
+        console.log(`[calibration] loaded from cloud for ${deviceName}`);
+      }
+    });
+  }, [conn?.device?.name]);
+
   const update = useCallback((patch: Partial<LightCalibration>) => {
     setCal((prev) => {
       const next = { ...prev, ...patch };
-      saveCalibration(next);
+      saveCalibration(next, conn?.device?.name);
       return next;
     });
-  }, []);
+  }, [conn?.device?.name]);
 
   const handleReset = useCallback((tabKey: Tab) => {
     if (tabKey === 'ble') return;
