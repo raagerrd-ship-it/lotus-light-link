@@ -10,12 +10,13 @@ import {
 import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'color' | 'dynamics' | 'ble';
+type Tab = 'color' | 'dynamics' | 'ble' | 'latency';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'color', label: 'Färg' },
   { key: 'dynamics', label: 'Dynamik' },
   { key: 'ble', label: 'BLE' },
+  { key: 'latency', label: 'Latens' },
 ];
 
 const TEST_COLORS: { label: string; color: [number, number, number] }[] = [
@@ -369,6 +370,218 @@ function BleSpeedTab({ conn }: { conn: any }) {
   );
 }
 
+// --- Latency Calibration Tab ---
+
+const LATENCY_COLOR_BUF = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 255, 255, 255, 0x00, 0xef]);
+const LATENCY_BRIGHT_ON = new Uint8Array([0x7e, 0x04, 0x01, 100, 0x01, 0xff, 0x00, 0x00, 0xef]);
+const LATENCY_BRIGHT_OFF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
+
+function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void }) {
+  const [testMode, setTestMode] = useState<'tap' | 'metronome'>('tap');
+
+  // TAP-SYNC
+  const [tapPhase, setTapPhase] = useState<'idle' | 'waiting' | 'asking' | 'done'>('idle');
+  const [tapOffset, setTapOffset] = useState(0);
+  const [tapLow, setTapLow] = useState(-20);
+  const [tapHigh, setTapHigh] = useState(200);
+  const [tapRound, setTapRound] = useState(0);
+  const [tapHistory, setTapHistory] = useState<{ offset: number; answer: string }[]>([]);
+  const [screenFlash, setScreenFlash] = useState(false);
+  const MAX_TAP_ROUNDS = 8;
+
+  // METRONOME
+  const [metroRunning, setMetroRunning] = useState(false);
+  const [metroOffset, setMetroOffset] = useState(50);
+  const [metroFlash, setMetroFlash] = useState(false);
+  const metroRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const metroOffsetRef = useRef(50);
+  const METRO_BPM = 120;
+
+  // RESULTS
+  const [tapResult, setTapResult] = useState<number | null>(null);
+  const [metroResult, setMetroResult] = useState<number | null>(null);
+
+  useEffect(() => { metroOffsetRef.current = metroOffset; }, [metroOffset]);
+
+  // TAP-SYNC
+  const doTapFlash = useCallback(async (offsetMs: number) => {
+    if (!conn?.characteristic) return;
+    const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
+
+    await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any);
+    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 1000 + Math.random() * 1500));
+
+    // Send BLE flash
+    await char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any);
+    await char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any);
+
+    // Screen flash with offset delay
+    setTimeout(() => { setScreenFlash(true); setTimeout(() => setScreenFlash(false), 100); }, Math.max(0, offsetMs));
+
+    // Turn off lamp after 100ms
+    setTimeout(async () => { try { await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any); } catch {} }, 100);
+  }, [conn]);
+
+  const startTap = useCallback(async () => {
+    const low = -20, high = 200, mid = Math.round((low + high) / 2);
+    setTapLow(low); setTapHigh(high); setTapOffset(mid);
+    setTapRound(1); setTapHistory([]); setTapResult(null);
+    setTapPhase('waiting');
+    await doTapFlash(mid);
+    setTapPhase('asking');
+  }, [doTapFlash]);
+
+  const tapAnswer = useCallback(async (ans: 'before' | 'sync' | 'after') => {
+    const newHistory = [...tapHistory, { offset: tapOffset, answer: ans }];
+    setTapHistory(newHistory);
+
+    if (ans === 'sync' || tapRound >= MAX_TAP_ROUNDS || Math.abs(tapHigh - tapLow) <= 5) {
+      setTapResult(tapOffset); setTapPhase('done');
+      if (conn?.characteristic) try { await conn.characteristic.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any); } catch {}
+      return;
+    }
+
+    let nLow = tapLow, nHigh = tapHigh;
+    if (ans === 'before') nHigh = tapOffset; else nLow = tapOffset;
+    const nMid = Math.round((nLow + nHigh) / 2);
+
+    setTapLow(nLow); setTapHigh(nHigh); setTapOffset(nMid); setTapRound(tapRound + 1);
+    setTapPhase('waiting');
+    await doTapFlash(nMid);
+    setTapPhase('asking');
+  }, [tapHistory, tapOffset, tapRound, tapLow, tapHigh, doTapFlash, conn]);
+
+  // METRONOME
+  const startMetro = useCallback(() => {
+    if (!conn?.characteristic) return;
+    const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
+    const intervalMs = (60 / METRO_BPM) * 1000;
+    setMetroRunning(true); setMetroResult(null);
+
+    char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any).catch(() => {});
+
+    const tick = () => {
+      char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any).catch(() => {});
+      setTimeout(() => { char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any).catch(() => {}); }, 80);
+      setTimeout(() => { setMetroFlash(true); setTimeout(() => setMetroFlash(false), 80); }, metroOffsetRef.current);
+    };
+    tick();
+    metroRef.current = setInterval(tick, intervalMs);
+  }, [conn]);
+
+  const stopMetro = useCallback(() => {
+    if (metroRef.current) clearInterval(metroRef.current);
+    metroRef.current = null;
+    setMetroRunning(false);
+    setMetroResult(metroOffset);
+  }, [metroOffset]);
+
+  useEffect(() => () => { if (metroRef.current) clearInterval(metroRef.current); }, []);
+
+  const bestResult = tapResult != null && metroResult != null
+    ? Math.round((tapResult + metroResult) / 2)
+    : tapResult ?? metroResult;
+
+  return (
+    <div className="space-y-4">
+      {(screenFlash || metroFlash) && <div className="fixed inset-0 z-[100] bg-white pointer-events-none" />}
+
+      <div className="flex gap-1">
+        <button onClick={() => { if (!metroRunning) setTestMode('tap'); }} className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-wide transition-colors ${testMode === 'tap' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
+          Tap-sync
+        </button>
+        <button onClick={() => { if (tapPhase === 'idle' || tapPhase === 'done') setTestMode('metronome'); }} className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-wide transition-colors ${testMode === 'metronome' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
+          Metronom
+        </button>
+      </div>
+
+      {!conn && <p className="text-xs text-destructive">Anslut BLE-lampan först.</p>}
+
+      {testMode === 'tap' && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Lampan och skärmen blinkar. Svara om lampan var före, efter eller synk med skärmen. Binärsökning hittar latensen (~{MAX_TAP_ROUNDS} rundor).
+          </p>
+          {tapPhase === 'idle' && (
+            <Button size="sm" onClick={startTap} disabled={!conn} className="gap-1.5 text-xs"><Play className="w-3 h-3" /> Starta</Button>
+          )}
+          {tapPhase === 'waiting' && (
+            <div className="text-center py-6">
+              <p className="text-sm text-muted-foreground animate-pulse">Titta på lampan och skärmen…</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Runda {tapRound}/{MAX_TAP_ROUNDS} — offset {tapOffset}ms [{tapLow}–{tapHigh}]</p>
+            </div>
+          )}
+          {tapPhase === 'asking' && (
+            <div className="text-center py-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">Lampan vs skärmen?</p>
+              <p className="text-[10px] text-muted-foreground">Runda {tapRound}/{MAX_TAP_ROUNDS} — offset {tapOffset}ms</p>
+              <div className="flex gap-2 justify-center flex-wrap">
+                <Button size="sm" variant="secondary" onClick={() => tapAnswer('before')} className="px-3 text-xs">← Lampan före</Button>
+                <Button size="sm" onClick={() => tapAnswer('sync')} className="px-4 text-xs">✓ Synk</Button>
+                <Button size="sm" variant="secondary" onClick={() => tapAnswer('after')} className="px-3 text-xs">Lampan efter →</Button>
+              </div>
+            </div>
+          )}
+          {tapPhase === 'done' && tapResult != null && (
+            <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
+              <p className="text-xs font-bold text-primary">Tap-sync: <span className="font-mono">{tapResult}ms</span></p>
+              <Button size="sm" variant="secondary" onClick={() => { setTapPhase('idle'); setTapHistory([]); }} className="text-xs mt-1">Kör igen</Button>
+            </div>
+          )}
+          {tapHistory.length > 0 && (
+            <div className="text-[10px] font-mono text-muted-foreground">
+              {tapHistory.map((h, i) => <span key={i} className="mr-2">{h.offset}ms:{h.answer === 'sync' ? '✓' : h.answer === 'before' ? '←' : '→'}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {testMode === 'metronome' && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Lampan och skärmen pulserar i {METRO_BPM} BPM. Dra slidern tills de känns synkade.
+          </p>
+          <Button size="sm" onClick={metroRunning ? stopMetro : startMetro} disabled={!conn} className="gap-1.5 text-xs">
+            {metroRunning ? <><Square className="w-3 h-3" /> Stoppa & spara</> : <><Play className="w-3 h-3" /> Starta</>}
+          </Button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground font-mono w-14 shrink-0">Offset</span>
+            <input type="range" min={0} max={200} step={5} value={metroOffset} onChange={(e) => setMetroOffset(parseInt(e.target.value))} className="flex-1 h-1.5 accent-current text-primary" />
+            <span className="text-xs font-mono text-foreground w-14 text-right">{metroOffset}ms</span>
+          </div>
+          {metroResult != null && !metroRunning && (
+            <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
+              <p className="text-xs font-bold text-primary">Metronom: <span className="font-mono">{metroResult}ms</span></p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(tapResult != null || metroResult != null) && (
+        <div className="border-t border-border/20 pt-3 space-y-2">
+          <p className="text-[10px] font-bold text-foreground/70">Sammanfattning</p>
+          <div className="text-[10px] font-mono space-y-0.5">
+            <div className="flex justify-between"><span>Tap-sync</span><span>{tapResult != null ? `${tapResult}ms` : '—'}</span></div>
+            <div className="flex justify-between"><span>Metronom</span><span>{metroResult != null ? `${metroResult}ms` : '—'}</span></div>
+            {bestResult != null && (
+              <div className="flex justify-between font-bold border-t border-border/20 pt-1">
+                <span>{tapResult != null && metroResult != null ? 'Medelvärde' : 'Resultat'}</span>
+                <span className="text-primary">{bestResult}ms</span>
+              </div>
+            )}
+          </div>
+          {bestResult != null && (
+            <Button size="sm" onClick={() => onSave(bestResult)} className="text-xs gap-1 w-full">
+              Spara latenskompensation ({bestResult}ms)
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Calibrate() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('color');
@@ -396,7 +609,7 @@ export default function Calibrate() {
   }, [update]);
 
   useEffect(() => {
-    if (!conn || tab === 'ble') return;
+    if (!conn || tab === 'ble' || tab === 'latency') return;
     const interval = setInterval(() => {
       const calibrated = applyColorCalibration(...testColor, cal);
       sendColor(conn.characteristic, ...calibrated).catch(() => {});
@@ -492,6 +705,8 @@ export default function Calibrate() {
         )}
 
         {tab === 'ble' && <BleSpeedTab conn={conn} />}
+
+        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms) => update({ bleLatencyMs: ms })} />}
       </div>
     </div>
   );
