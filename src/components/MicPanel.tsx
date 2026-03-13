@@ -14,6 +14,7 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   sonosVolume?: number;
   sonosRtt?: number;
+  isPlaying?: boolean;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
   onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
@@ -96,7 +97,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -134,6 +135,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
   const dropsRef = useRef(drops);
   const sonosRttRef = useRef(sonosRtt);
   const onLiveStatusRef = useRef(onLiveStatus);
+  const isPlayingRef = useRef(isPlaying);
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
 
@@ -148,6 +150,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
   useEffect(() => { dropsRef.current = drops; }, [drops]);
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
@@ -269,6 +272,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
 
         worker.onmessage = () => {
           if (stopped) return;
+          if (!isPlayingRef.current) return; // Don't process when paused
           const an = analyserRef.current;
           if (!an) return;
 
