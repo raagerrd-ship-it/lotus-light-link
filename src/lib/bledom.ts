@@ -307,6 +307,11 @@ async function _flush() {
 
     _writeCount++; // Count per slot, not per GATT write
     _lastActualWriteMs = performance.now() - writeStart;
+
+    // Notify listener with actually-sent values
+    if (_onWriteCallback) {
+      _onWriteCallback(_lastSentBright, _lastSentColor[0], _lastSentColor[1], _lastSentColor[2]);
+    }
   } catch (e: any) {
     _errorCount++;
     _lastError = e?.message || 'GATT write failed';
