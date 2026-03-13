@@ -114,9 +114,19 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
         const audioCtx = new AudioContext({ latencyHint: 'interactive' });
         ctxRef.current = audioCtx;
         const source = audioCtx.createMediaStreamSource(stream);
+
+        // High-shelf filter: boost frequencies above 2kHz by +6dB
+        // This makes hi-hats, snares, vocals contribute more to RMS
+        const hiShelf = audioCtx.createBiquadFilter();
+        hiShelf.type = 'highshelf';
+        hiShelf.frequency.value = 2000;
+        hiShelf.gain.value = 6;
+
         const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 1024;
-        source.connect(analyser);
+        analyser.fftSize = 512; // ~11ms window — captures fast transients
+        analyser.smoothingTimeConstant = 0; // no built-in smoothing, we do our own
+        source.connect(hiShelf);
+        hiShelf.connect(analyser);
         analyserRef.current = analyser;
 
         const worker = new Worker("/tick-worker.js");
