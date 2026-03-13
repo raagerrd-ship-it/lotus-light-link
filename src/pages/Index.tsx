@@ -224,11 +224,6 @@ const Index = () => {
   const accent = `rgb(${r},${g},${b})`;
   const char = connection?.characteristic;
 
-  const progressFraction = (() => {
-    if (!nowPlaying?.positionMs || !nowPlaying?.durationMs || nowPlaying.durationMs <= 0) return 0;
-    const elapsed = performance.now() - (nowPlaying.receivedAt ?? performance.now());
-    return Math.min(1, Math.max(0, (nowPlaying.positionMs + elapsed) / nowPlaying.durationMs));
-  })();
 
   return (
     <div
