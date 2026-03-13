@@ -78,14 +78,26 @@ const Index = () => {
   useEffect(() => {
     if (connection) return;
     const nav = navigator as any;
-    if (!nav.bluetooth?.getDevices) return;
+    if (!nav.bluetooth) {
+      setBleReconnectStatus({ attempt: 0, maxAttempts: 0, phase: 'failed', error: 'Web Bluetooth API saknas' });
+      return;
+    }
+    if (!nav.bluetooth.getDevices) {
+      setBleReconnectStatus({ attempt: 0, maxAttempts: 0, phase: 'failed', error: 'getDevices() stöds ej' });
+      return;
+    }
 
     const ac = new AbortController();
     setBusy(true);
+    setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'getDevices' });
     autoReconnect(ac.signal, setBleReconnectStatus).then((conn) => {
-      if (conn) finishConnect(conn);
-      else setBusy(false);
-      setBleReconnectStatus(null);
+      if (conn) {
+        finishConnect(conn);
+        setBleReconnectStatus({ attempt: 0, maxAttempts: 0, phase: 'done', targetName: conn.device?.name });
+      } else {
+        setBusy(false);
+        setBleReconnectStatus(prev => prev?.phase === 'done' ? prev : { attempt: 0, maxAttempts: 0, phase: 'failed', error: 'Gav upp efter alla försök' });
+      }
     });
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
