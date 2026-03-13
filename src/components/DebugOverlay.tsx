@@ -37,9 +37,13 @@ export default function DebugOverlay({
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0 });
+  const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
 
   useEffect(() => {
-    const id = setInterval(() => setBleStats(getBleWriteStats()), 500);
+    const id = setInterval(() => {
+      setBleStats(getBleWriteStats());
+      setPipeline(getPipelineTimings());
+    }, 500);
     return () => clearInterval(id);
   }, []);
 
