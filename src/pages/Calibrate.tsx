@@ -99,18 +99,16 @@ function BleSpeedTab({ conn }: { conn: any }) {
 
   const currentDuration = PULSE_DURATIONS[currentIdx] ?? 0;
 
-  const sendPulse = useCallback(async (durationMs: number) => {
+  const sendPulses = useCallback(async (durationMs: number) => {
     if (!conn?.characteristic) return;
     const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
     
     // Ensure lamp is dark first
     await sendBlack(char);
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 600));
     
-    // Random delay 1-3s so user can't predict
-    const delay = 1000 + Math.random() * 2000;
-    
-    // Countdown
+    // Random delay 1-2s
+    const delay = 1000 + Math.random() * 1000;
     const steps = Math.ceil(delay / 1000);
     for (let i = steps; i > 0; i--) {
       setCountdown(i);
@@ -118,10 +116,15 @@ function BleSpeedTab({ conn }: { conn: any }) {
     }
     setCountdown(0);
     
-    // Flash white
-    await sendWhite(char);
-    await new Promise(r => setTimeout(r, durationMs));
-    await sendBlack(char);
+    // Send 3 pulses with gaps
+    for (let p = 0; p < PULSES_PER_STEP; p++) {
+      await sendWhite(char);
+      await new Promise(r => setTimeout(r, durationMs));
+      await sendBlack(char);
+      if (p < PULSES_PER_STEP - 1) {
+        await new Promise(r => setTimeout(r, PULSE_GAP_MS));
+      }
+    }
   }, [conn]);
 
   const startTest = useCallback(async () => {
