@@ -86,6 +86,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       setSavedAgcState(cached.agc);
       setBpm(cached.bpm);
       setSections(cached.sections);
+      setDrops(cached.drops);
       return;
     }
 
