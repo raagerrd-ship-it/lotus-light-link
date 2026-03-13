@@ -6,11 +6,12 @@ import { getCalibration, applyColorCalibration } from "@/lib/lightCalibration";
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
+  sonosVolume?: number; // 0–100
 }
 
 const HISTORY_LEN = 120;
 
-const MicPanel = ({ char, currentColor }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -21,8 +22,10 @@ const MicPanel = ({ char, currentColor }: MicPanelProps) => {
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const whiteKickUntilRef = useRef(0);
+  const volumeRef = useRef(sonosVolume);
 
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
+  useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
   useEffect(() => {
     charRef.current = char;
     if (char) {
@@ -69,7 +72,10 @@ const MicPanel = ({ char, currentColor }: MicPanelProps) => {
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          const normalized = Math.min(1, smoothed / 0.25);
+          // Scale RMS divisor by Sonos volume — lower volume = lower divisor = same brightness range
+          const vol = volumeRef.current;
+          const rmsDivisor = vol != null ? Math.max(0.01, 0.25 * (vol / 100)) : 0.25;
+          const normalized = Math.min(1, smoothed / rmsDivisor);
           const pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
 
           // White kick
