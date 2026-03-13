@@ -1,0 +1,1 @@
+CREATE POLICY "Public delete" ON public.song_analysis FOR DELETE USING (true);
