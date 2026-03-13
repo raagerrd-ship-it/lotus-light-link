@@ -11,10 +11,11 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
-// Adaptive auto-gain: learns the RMS range over a sliding window
-const AGC_WINDOW_SEC = 4; // seconds to track min/max
-const AGC_TICK_MS = 25; // assumed tick interval
-const AGC_WINDOW_LEN = Math.round((AGC_WINDOW_SEC * 1000) / AGC_TICK_MS);
+// Learned AGC: slow-adapting min/max that persists across songs
+const AGC_MAX_DECAY = 0.9998;   // max shrinks very slowly (~5s to halve)
+const AGC_MIN_RISE = 0.9995;    // min rises very slowly toward current
+const AGC_ATTACK = 0.05;        // how fast max grows when exceeded
+const AGC_FLOOR = 0.002;        // absolute minimum range to prevent div/0
 
 const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,18 +29,15 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const ctxRef = useRef<AudioContext | null>(null);
   const whiteKickUntilRef = useRef(0);
   const volumeRef = useRef(sonosVolume);
-  // Cached calibration — read once, update on storage change
   const calRef = useRef<LightCalibration>(getCalibration());
-  // Track last sent color state to avoid redundant color writes
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
   const lastBaseColorRef = useRef<[number, number, number]>(currentColor);
-  // Flag for chart: new sample ready
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
-  // Auto-gain: sliding window of recent RMS values
-  const rmsHistoryRef = useRef<Float32Array>(new Float32Array(AGC_WINDOW_LEN));
-  const rmsHistoryIdxRef = useRef(0);
-  const rmsHistoryCountRef = useRef(0);
+  // Learned AGC state — persists until volume changes
+  const agcMaxRef = useRef(0.01);
+  const agcMinRef = useRef(0);
+  const lastVolumeRef = useRef(sonosVolume);
 
   useEffect(() => {
     colorRef.current = currentColor;
@@ -135,23 +133,34 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          // Auto-gain: track RMS in a sliding window to learn the dynamic range
-          const rmsHist = rmsHistoryRef.current;
-          const idx = rmsHistoryIdxRef.current;
-          rmsHist[idx] = smoothed;
-          rmsHistoryIdxRef.current = (idx + 1) % AGC_WINDOW_LEN;
-          if (rmsHistoryCountRef.current < AGC_WINDOW_LEN) rmsHistoryCountRef.current++;
-
-          const count = rmsHistoryCountRef.current;
-          let rmsMin = Infinity, rmsMax = -Infinity;
-          for (let j = 0; j < count; j++) {
-            const v = rmsHist[j];
-            if (v < rmsMin) rmsMin = v;
-            if (v > rmsMax) rmsMax = v;
+          // Learned AGC: slowly adapting min/max that persists across songs
+          // Reset if Sonos volume changed significantly
+          const vol = volumeRef.current;
+          const prevVol = lastVolumeRef.current;
+          if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
+            agcMaxRef.current = smoothed + 0.01;
+            agcMinRef.current = smoothed;
+            lastVolumeRef.current = vol;
+          } else if (prevVol == null && vol != null) {
+            lastVolumeRef.current = vol;
           }
-          // Use the observed range to normalize, with a floor to avoid division by ~0
-          const range = Math.max(0.005, rmsMax - rmsMin);
-          const normalized = Math.min(1, Math.max(0, (smoothed - rmsMin) / range));
+
+          // Update max: fast attack, very slow decay
+          if (smoothed > agcMaxRef.current) {
+            agcMaxRef.current += (smoothed - agcMaxRef.current) * AGC_ATTACK;
+          } else {
+            agcMaxRef.current *= AGC_MAX_DECAY;
+          }
+
+          // Update min: slowly rises toward current, instant drop
+          if (smoothed < agcMinRef.current || agcMinRef.current === 0) {
+            agcMinRef.current = smoothed;
+          } else {
+            agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
+          }
+
+          const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
+          const normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
           const pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
 
           // White kick detection
