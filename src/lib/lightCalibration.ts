@@ -133,6 +133,8 @@ export async function loadCalibrationFromCloud(deviceName: string): Promise<{
       .from('device_calibration')
       .select('calibration, ble_min_interval_ms, ble_speed_results, latency_results')
       .eq('device_name', deviceName)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (error || !data) return null;
     const cal = { ...DEFAULT_CALIBRATION, ...(data.calibration as object) };
