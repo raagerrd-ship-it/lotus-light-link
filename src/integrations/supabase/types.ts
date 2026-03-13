@@ -21,6 +21,7 @@ export type Database = {
           calibration: Json
           device_name: string
           id: string
+          latency_results: Json | null
           updated_at: string
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           calibration?: Json
           device_name: string
           id?: string
+          latency_results?: Json | null
           updated_at?: string
         }
         Update: {
@@ -37,6 +39,7 @@ export type Database = {
           calibration?: Json
           device_name?: string
           id?: string
+          latency_results?: Json | null
           updated_at?: string
         }
         Relationships: []

@@ -1,15 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, RotateCcw, Play, Square } from "lucide-react";
+import { ArrowLeft, RotateCcw, Play, Square, Check, RefreshCw } from "lucide-react";
 import {
   getCalibration, saveCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
   setActiveDeviceName, loadCalibrationFromCloud,
-  saveBleSpeedToCloud,
-  type LightCalibration,
+  saveBleSpeedToCloud, saveLatencyToCloud,
+  type LightCalibration, type LatencyResults,
 } from "@/lib/lightCalibration";
-import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
+import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval, getBleWriteStats } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 type Tab = 'color' | 'dynamics' | 'ble' | 'latency';
@@ -379,26 +379,37 @@ const LATENCY_COLOR_BUF = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 255, 255, 255,
 const LATENCY_BRIGHT_ON = new Uint8Array([0x7e, 0x04, 0x01, 100, 0x01, 0xff, 0x00, 0x00, 0xef]);
 const LATENCY_BRIGHT_OFF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void }) {
-  const [testMode, setTestMode] = useState<'tap' | 'metronome'>('tap');
+const FLASHES_PER_ROUND = 3;
+const FLASH_GAP_MS = 900;
+const MAX_TAP_ROUNDS = 8;
+const VERIFY_FLASHES = 5;
+const METRO_BPM = 120;
 
-  // TAP-SYNC
+function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number, latency: LatencyResults) => void }) {
+  const [testMode, setTestMode] = useState<'tap' | 'metronome' | 'verify'>('tap');
+
+  // TAP-SYNC state
   const [tapPhase, setTapPhase] = useState<'idle' | 'waiting' | 'asking' | 'done'>('idle');
   const [tapOffset, setTapOffset] = useState(0);
-  const [tapLow, setTapLow] = useState(-20);
-  const [tapHigh, setTapHigh] = useState(200);
+  const [tapLow, setTapLow] = useState(0);
+  const [tapHigh, setTapHigh] = useState(300);
   const [tapRound, setTapRound] = useState(0);
   const [tapHistory, setTapHistory] = useState<{ offset: number; answer: string }[]>([]);
   const [screenFlash, setScreenFlash] = useState(false);
-  const MAX_TAP_ROUNDS = 8;
+  const [gattRoundtrip, setGattRoundtrip] = useState<number | null>(null);
 
-  // METRONOME
+  // METRONOME state
   const [metroRunning, setMetroRunning] = useState(false);
   const [metroOffset, setMetroOffset] = useState(50);
   const [metroFlash, setMetroFlash] = useState(false);
-  const metroRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const metroTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const metroOffsetRef = useRef(50);
-  const METRO_BPM = 120;
+  const metroRunningRef = useRef(false);
+
+  // VERIFY state
+  const [verifyPhase, setVerifyPhase] = useState<'idle' | 'running' | 'done'>('idle');
+  const [verifyCount, setVerifyCount] = useState(0);
+  const [verified, setVerified] = useState<boolean | null>(null);
 
   // RESULTS
   const [tapResult, setTapResult] = useState<number | null>(null);
@@ -406,34 +417,64 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
 
   useEffect(() => { metroOffsetRef.current = metroOffset; }, [metroOffset]);
 
-  // TAP-SYNC
-  const doTapFlash = useCallback(async (offsetMs: number) => {
+  // Measure GATT roundtrip on mount
+  useEffect(() => {
+    if (!conn?.characteristic) return;
+    const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
+    (async () => {
+      try {
+        const times: number[] = [];
+        for (let i = 0; i < 5; i++) {
+          const t0 = performance.now();
+          await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any);
+          times.push(performance.now() - t0);
+          await new Promise(r => setTimeout(r, 50));
+        }
+        times.sort((a, b) => a - b);
+        const median = times[Math.floor(times.length / 2)];
+        setGattRoundtrip(Math.round(median));
+      } catch {}
+    })();
+  }, [conn?.characteristic]);
+
+  // TAP-SYNC: fire 3 flashes per round
+  const doTapFlashes = useCallback(async (offsetMs: number) => {
     if (!conn?.characteristic) return;
     const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
 
     await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any);
-    await new Promise(r => setTimeout(r, 800));
-    await new Promise(r => setTimeout(r, 1000 + Math.random() * 1500));
+    await new Promise(r => setTimeout(r, 600));
+    // Random wait
+    await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
 
-    // Send BLE flash
-    await char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any);
-    await char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any);
+    for (let i = 0; i < FLASHES_PER_ROUND; i++) {
+      // Send BLE flash immediately
+      await char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any);
+      await char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any);
 
-    // Screen flash with offset delay
-    setTimeout(() => { setScreenFlash(true); setTimeout(() => setScreenFlash(false), 100); }, Math.max(0, offsetMs));
+      // Screen flash delayed by offset
+      setTimeout(() => { setScreenFlash(true); setTimeout(() => setScreenFlash(false), 100); }, Math.max(0, offsetMs));
 
-    // Turn off lamp after 100ms
-    setTimeout(async () => { try { await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any); } catch {} }, 100);
+      // Turn off lamp after 100ms
+      await new Promise(r => setTimeout(r, 100));
+      await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any);
+
+      if (i < FLASHES_PER_ROUND - 1) {
+        await new Promise(r => setTimeout(r, FLASH_GAP_MS));
+      }
+    }
   }, [conn]);
 
   const startTap = useCallback(async () => {
-    const low = -20, high = 200, mid = Math.round((low + high) / 2);
+    // Use GATT roundtrip as initial guess if available, else midpoint
+    const low = 0, high = 300;
+    const mid = gattRoundtrip != null ? Math.min(high, Math.max(low, gattRoundtrip * 3)) : Math.round((low + high) / 2);
     setTapLow(low); setTapHigh(high); setTapOffset(mid);
     setTapRound(1); setTapHistory([]); setTapResult(null);
     setTapPhase('waiting');
-    await doTapFlash(mid);
+    await doTapFlashes(mid);
     setTapPhase('asking');
-  }, [doTapFlash]);
+  }, [doTapFlashes, gattRoundtrip]);
 
   const tapAnswer = useCallback(async (ans: 'before' | 'sync' | 'after') => {
     const newHistory = [...tapHistory, { offset: tapOffset, answer: ans }];
@@ -451,40 +492,82 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
 
     setTapLow(nLow); setTapHigh(nHigh); setTapOffset(nMid); setTapRound(tapRound + 1);
     setTapPhase('waiting');
-    await doTapFlash(nMid);
+    await doTapFlashes(nMid);
     setTapPhase('asking');
-  }, [tapHistory, tapOffset, tapRound, tapLow, tapHigh, doTapFlash, conn]);
+  }, [tapHistory, tapOffset, tapRound, tapLow, tapHigh, doTapFlashes, conn]);
 
-  // METRONOME
+  // METRONOME — setTimeout chain instead of setInterval
   const startMetro = useCallback(() => {
     if (!conn?.characteristic) return;
     const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
     const intervalMs = (60 / METRO_BPM) * 1000;
     setMetroRunning(true); setMetroResult(null);
+    metroRunningRef.current = true;
 
     char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any).catch(() => {});
 
     const tick = () => {
+      if (!metroRunningRef.current) return;
       char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any).catch(() => {});
       setTimeout(() => { char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any).catch(() => {}); }, 80);
       setTimeout(() => { setMetroFlash(true); setTimeout(() => setMetroFlash(false), 80); }, metroOffsetRef.current);
+      // Schedule next tick with setTimeout for lower jitter
+      metroTimeoutRef.current = setTimeout(tick, intervalMs);
     };
     tick();
-    metroRef.current = setInterval(tick, intervalMs);
   }, [conn]);
 
   const stopMetro = useCallback(() => {
-    if (metroRef.current) clearInterval(metroRef.current);
-    metroRef.current = null;
+    metroRunningRef.current = false;
+    if (metroTimeoutRef.current) clearTimeout(metroTimeoutRef.current);
+    metroTimeoutRef.current = null;
     setMetroRunning(false);
     setMetroResult(metroOffset);
   }, [metroOffset]);
 
-  useEffect(() => () => { if (metroRef.current) clearInterval(metroRef.current); }, []);
+  useEffect(() => () => {
+    metroRunningRef.current = false;
+    if (metroTimeoutRef.current) clearTimeout(metroTimeoutRef.current);
+  }, []);
 
+  // VERIFY — run synced flashes with saved offset
   const bestResult = tapResult != null && metroResult != null
     ? Math.round((tapResult + metroResult) / 2)
     : tapResult ?? metroResult;
+
+  const startVerify = useCallback(async () => {
+    if (!conn?.characteristic || bestResult == null) return;
+    const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
+    setVerifyPhase('running'); setVerifyCount(0); setVerified(null);
+
+    await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any);
+    await new Promise(r => setTimeout(r, 500));
+
+    for (let i = 0; i < VERIFY_FLASHES; i++) {
+      setVerifyCount(i + 1);
+      // BLE flash
+      await char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any);
+      await char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any);
+      // Screen flash with calibrated offset
+      setTimeout(() => { setScreenFlash(true); setTimeout(() => setScreenFlash(false), 100); }, Math.max(0, bestResult));
+      await new Promise(r => setTimeout(r, 100));
+      await char.writeValueWithoutResponse(LATENCY_BRIGHT_OFF as any);
+      await new Promise(r => setTimeout(r, 900));
+    }
+    setVerifyPhase('done');
+  }, [conn, bestResult]);
+
+  const handleSave = useCallback(() => {
+    if (bestResult == null) return;
+    const latency: LatencyResults = {
+      tapMs: tapResult,
+      metroMs: metroResult,
+      gattRoundtripMs: gattRoundtrip,
+      verifiedAt: verified ? new Date().toISOString() : null,
+      verified: verified === true,
+    };
+    onSave(bestResult, latency);
+  }, [bestResult, tapResult, metroResult, gattRoundtrip, verified, onSave]);
 
   return (
     <div className="space-y-4">
@@ -497,14 +580,24 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
         <button onClick={() => { if (tapPhase === 'idle' || tapPhase === 'done') setTestMode('metronome'); }} className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-wide transition-colors ${testMode === 'metronome' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
           Metronom
         </button>
+        {bestResult != null && (
+          <button onClick={() => setTestMode('verify')} className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-wide transition-colors ${testMode === 'verify' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
+            Verifiera
+          </button>
+        )}
       </div>
 
       {!conn && <p className="text-xs text-destructive">Anslut BLE-lampan först.</p>}
 
+      {/* GATT roundtrip info */}
+      {gattRoundtrip != null && (
+        <p className="text-[10px] text-muted-foreground font-mono">GATT roundtrip: {gattRoundtrip}ms</p>
+      )}
+
       {testMode === 'tap' && (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Lampan och skärmen blinkar. Svara om lampan var före, efter eller synk med skärmen. Binärsökning hittar latensen (~{MAX_TAP_ROUNDS} rundor).
+            Lampan och skärmen blinkar {FLASHES_PER_ROUND} gånger per runda. Svara om lampan var före, efter eller synk med skärmen. Binärsökning ~{MAX_TAP_ROUNDS} rundor.
           </p>
           {tapPhase === 'idle' && (
             <Button size="sm" onClick={startTap} disabled={!conn} className="gap-1.5 text-xs"><Play className="w-3 h-3" /> Starta</Button>
@@ -550,12 +643,46 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
           </Button>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground font-mono w-14 shrink-0">Offset</span>
-            <input type="range" min={0} max={200} step={5} value={metroOffset} onChange={(e) => setMetroOffset(parseInt(e.target.value))} className="flex-1 h-1.5 accent-current text-primary" />
+            <input type="range" min={0} max={300} step={5} value={metroOffset} onChange={(e) => setMetroOffset(parseInt(e.target.value))} className="flex-1 h-1.5 accent-current text-primary" />
             <span className="text-xs font-mono text-foreground w-14 text-right">{metroOffset}ms</span>
           </div>
           {metroResult != null && !metroRunning && (
             <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
               <p className="text-xs font-bold text-primary">Metronom: <span className="font-mono">{metroResult}ms</span></p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {testMode === 'verify' && bestResult != null && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Verifierar latenskompensation ({bestResult}ms). {VERIFY_FLASHES} synkade blinkar — lampan och skärmen ska matcha.
+          </p>
+          {verifyPhase === 'idle' && (
+            <Button size="sm" onClick={startVerify} disabled={!conn} className="gap-1.5 text-xs">
+              <RefreshCw className="w-3 h-3" /> Kör verifiering
+            </Button>
+          )}
+          {verifyPhase === 'running' && (
+            <div className="text-center py-6">
+              <p className="text-sm text-muted-foreground animate-pulse">Blink {verifyCount}/{VERIFY_FLASHES}…</p>
+            </div>
+          )}
+          {verifyPhase === 'done' && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-foreground">Såg lampan och skärmen synkade ut?</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => { setVerified(true); setVerifyPhase('idle'); }} className="gap-1 text-xs">
+                  <Check className="w-3 h-3" /> Ja, synkat
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => { setVerified(false); setVerifyPhase('idle'); setTestMode('tap'); }} className="text-xs">
+                  Nej, kör om
+                </Button>
+              </div>
+              {verified === true && (
+                <p className="text-[10px] text-primary font-mono">✓ Verifierad</p>
+              )}
             </div>
           )}
         </div>
@@ -567,15 +694,17 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
           <div className="text-[10px] font-mono space-y-0.5">
             <div className="flex justify-between"><span>Tap-sync</span><span>{tapResult != null ? `${tapResult}ms` : '—'}</span></div>
             <div className="flex justify-between"><span>Metronom</span><span>{metroResult != null ? `${metroResult}ms` : '—'}</span></div>
+            {gattRoundtrip != null && <div className="flex justify-between"><span>GATT roundtrip</span><span>{gattRoundtrip}ms</span></div>}
             {bestResult != null && (
               <div className="flex justify-between font-bold border-t border-border/20 pt-1">
                 <span>{tapResult != null && metroResult != null ? 'Medelvärde' : 'Resultat'}</span>
                 <span className="text-primary">{bestResult}ms</span>
               </div>
             )}
+            {verified === true && <div className="text-primary">✓ Verifierad</div>}
           </div>
           {bestResult != null && (
-            <Button size="sm" onClick={() => onSave(bestResult)} className="text-xs gap-1 w-full">
+            <Button size="sm" onClick={handleSave} className="text-xs gap-1 w-full">
               Spara latenskompensation ({bestResult}ms)
             </Button>
           )}
@@ -729,7 +858,11 @@ export default function Calibrate() {
           }
         }} />}
 
-        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms) => update({ bleLatencyMs: ms })} />}
+        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms, latency) => {
+          update({ bleLatencyMs: ms });
+          const deviceName = conn?.device?.name;
+          if (deviceName) saveLatencyToCloud(deviceName, latency);
+        }} />}
       </div>
     </div>
   );
