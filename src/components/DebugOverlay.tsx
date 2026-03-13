@@ -18,6 +18,9 @@ interface DebugOverlayProps {
   bleConnected?: boolean;
   bleDeviceName?: string | null;
   bleReconnectStatus?: BleReconnectStatus | null;
+  curveStatus?: 'none' | 'recording' | 'saved' | 'loading';
+  curveTrackName?: string | null;
+  curveSamples?: number;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -32,7 +35,8 @@ const phaseLabels: Record<string, string> = {
 export default function DebugOverlay({
   smoothedRtt, autoDriftMs, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
-  bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs
+  bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
+  curveStatus, curveTrackName, curveSamples
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
@@ -84,6 +88,20 @@ export default function DebugOverlay({
               }}
             />
           ))}
+        </div>
+      )}
+
+      {/* Curve / analysis status */}
+      {curveStatus && (
+        <div className="mt-0.5 border-t border-border/30 pt-0.5">
+          <div>
+            kurva:{' '}
+            {curveStatus === 'recording' && <span className="text-orange-400">⏺ spelar in{curveSamples ? ` (${curveSamples})` : ''}</span>}
+            {curveStatus === 'saved' && <span className="text-green-400">✓ sparad{curveSamples ? ` (${curveSamples} st)` : ''}</span>}
+            {curveStatus === 'loading' && <span className="text-yellow-400">↓ laddar…</span>}
+            {curveStatus === 'none' && <span className="text-muted-foreground">—</span>}
+          </div>
+          {curveTrackName && <div className="truncate text-foreground/50">{curveTrackName}</div>}
         </div>
       )}
 
