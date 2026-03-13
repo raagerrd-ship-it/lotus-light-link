@@ -582,6 +582,7 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
   );
 }
 
+export default function Calibrate() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('color');
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
