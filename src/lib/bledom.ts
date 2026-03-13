@@ -273,7 +273,9 @@ async function _flush() {
       _lastSentColor = [..._pendingColor];
       _pendingColor = null;
       _writeCount++;
-      _lastActualWriteMs = performance.now() - _lastWriteTime;
+      const writeEnd = performance.now();
+      _lastActualWriteMs = writeEnd - _lastWriteTime;
+      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
     }
   } catch {
     // GATT write failed — don't crash
