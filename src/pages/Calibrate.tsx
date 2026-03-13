@@ -608,7 +608,7 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
   }, [update]);
 
   useEffect(() => {
-    if (!conn || tab === 'ble') return;
+    if (!conn || tab === 'ble' || tab === 'latency') return;
     const interval = setInterval(() => {
       const calibrated = applyColorCalibration(...testColor, cal);
       sendColor(conn.characteristic, ...calibrated).catch(() => {});
