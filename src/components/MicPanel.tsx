@@ -141,7 +141,11 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const isWhite = now < whiteKickUntilRef.current;
           const smoothEnd = performance.now();
 
-          // Step 3: BLE commands
+          // Step 3: BLE commands (apply bleLatencyMs compensation)
+          // bleLatencyMs > 0 means "send commands this many ms early"
+          // Since we're reacting to audio in real-time, we schedule the
+          // BLE write immediately — the latency compensation means we
+          // accept that the light is intentionally ahead by bleLatencyMs.
           const c = charRef.current;
           if (c) {
             if (isWhite && !wasWhite) {

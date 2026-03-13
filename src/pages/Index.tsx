@@ -67,8 +67,26 @@ const Index = () => {
     setActiveChar(conn.characteristic);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
-    const [r, g, b] = currentColorRef.current;
-    await sendColor(conn.characteristic, r, g, b).catch(() => {});
+
+    // Apply color calibration to initial color
+    const calibrated = applyColorCalibration(...currentColorRef.current);
+    await sendColor(conn.characteristic, ...calibrated).catch(() => {});
+
+    // Load calibration from cloud for this device
+    const deviceName = conn.device?.name;
+    if (deviceName) {
+      setActiveDeviceName(deviceName);
+      loadCalibrationFromCloud(deviceName).then((data) => {
+        if (data) {
+          saveCalibration(data.calibration, deviceName);
+          if (data.bleMinIntervalMs != null) {
+            setBleMinInterval(data.bleMinIntervalMs);
+          }
+          console.log('[Index] loaded cloud calibration for', deviceName, data);
+        }
+      }).catch(() => {});
+    }
+
     conn.device.addEventListener("gattserverdisconnected", () => {
       setConnection(null);
       setBleConnection(null);
