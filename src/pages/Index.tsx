@@ -4,7 +4,7 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendColor, sendBrightness, sendPower,
-  type BLEConnection
+  type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
