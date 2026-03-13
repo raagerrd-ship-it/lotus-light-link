@@ -211,7 +211,9 @@ let _dropCount = 0;
 let _statsStart = performance.now();
 let _lastActualWriteMs = 0;
 let _lastTickToWriteMs = 0;
-let _dirtyWhileWriting = false; // Flag: new data arrived during async write
+let _dirtyWhileWriting = false;
+let _errorCount = 0;
+let _lastError = '';
 
 export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
