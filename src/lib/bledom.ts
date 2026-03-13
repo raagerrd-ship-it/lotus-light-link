@@ -166,10 +166,16 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-export async function sendColor(char: any, r: number, g: number, b: number) {
-  _colorBuf[4] = r & 0xff;
-  _colorBuf[5] = g & 0xff;
-  _colorBuf[6] = b & 0xff;
+export async function sendColor(char: any, r: number, g: number, b: number, skipCalibration = false) {
+  let cr = r, cg = g, cb = b;
+  if (!skipCalibration) {
+    // Lazy import to avoid circular deps — applyColorCalibration is cheap
+    const { applyColorCalibration } = await import('@/lib/lightCalibration');
+    [cr, cg, cb] = applyColorCalibration(r, g, b);
+  }
+  _colorBuf[4] = cr & 0xff;
+  _colorBuf[5] = cg & 0xff;
+  _colorBuf[6] = cb & 0xff;
   await char.writeValueWithoutResponse(_colorBuf);
 }
 
