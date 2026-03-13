@@ -25,6 +25,7 @@ interface MicPanelProps {
   beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
+  trackName?: string | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
 }
 
