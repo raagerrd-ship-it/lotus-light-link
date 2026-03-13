@@ -22,6 +22,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const whiteKickUntilRef = useRef(0);
+  const volumeRef = useRef(sonosVolume);
 
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
   useEffect(() => {
