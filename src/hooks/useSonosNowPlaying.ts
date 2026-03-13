@@ -113,10 +113,18 @@ export function useSonosNowPlaying() {
         return;
       }
 
+      // For non-track-change updates: interpolate position if not provided
+      const prevPos = prev!.positionMs ?? 0;
+      const timeSinceLastUpdate = performance.now() - prev!.receivedAt;
+      const hasNewPosition = s.positionMillis != null;
+      const interpolatedPos = hasNewPosition
+        ? (s.positionMillis + rtt / 2)
+        : (prevPos + timeSinceLastUpdate);
+
       apply({
         ...prev!,
         playbackState: s.playbackState ?? prev!.playbackState,
-        positionMs: (s.positionMillis ?? prev!.positionMs ?? 0) + rtt / 2,
+        positionMs: interpolatedPos,
         durationMs: s.durationMillis ?? prev!.durationMs,
         albumArtUrl: localArt ?? prev!.albumArtUrl,
         receivedAt: performance.now(),
