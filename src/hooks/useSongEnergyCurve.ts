@@ -59,6 +59,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   const [savedAgcState, setSavedAgcState] = useState<AgcState | null>(null);
   const [bpm, setBpm] = useState<number | null>(null);
   const [sections, setSections] = useState<SongSection[] | null>(null);
+  const [drops, setDrops] = useState<Drop[] | null>(null);
   const [loading, setLoading] = useState(false);
   const trackRef = useRef<string | null>(null);
 
@@ -69,6 +70,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       setSavedAgcState(null);
       setBpm(null);
       setSections(null);
+      setDrops(null);
       trackRef.current = null;
       return;
     }
