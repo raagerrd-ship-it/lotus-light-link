@@ -16,6 +16,8 @@ interface MicPanelProps {
   onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
   recordedVolume?: number | null;
   savedAgcState?: AgcState | null;
+  bpm?: number | null;
+  sections?: SongSection[] | null;
 }
 
 const HISTORY_LEN = 120;
