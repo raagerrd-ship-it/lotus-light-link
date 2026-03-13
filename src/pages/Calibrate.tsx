@@ -10,7 +10,7 @@ import {
   DEFAULT_CALIBRATION,
   type LightCalibration, type LatencyResults,
 } from "@/lib/lightCalibration";
-import { Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
