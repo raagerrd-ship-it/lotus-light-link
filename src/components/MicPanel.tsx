@@ -67,6 +67,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
   useEffect(() => { onSaveCurveRef.current = onSaveEnergyCurve; }, [onSaveEnergyCurve]);
+  useEffect(() => { recordedVolumeRef.current = recordedVolume; }, [recordedVolume]);
 
   // When energy curve changes (new song with saved curve, or first song without),
   // flush previously recorded samples
