@@ -704,6 +704,8 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number) => void 
         )}
 
         {tab === 'ble' && <BleSpeedTab conn={conn} />}
+
+        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms) => update({ bleLatencyMs: ms })} />}
       </div>
     </div>
   );
