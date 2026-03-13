@@ -92,7 +92,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, sections, onSaveEnergyCurve }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, sections, drops, onSaveEnergyCurve }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
