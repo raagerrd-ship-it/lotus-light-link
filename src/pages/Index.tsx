@@ -301,6 +301,38 @@ const Index = () => {
             <Button
               variant="ghost"
               size="icon"
+              onClick={() => {
+                const next = !agcEnabled;
+                setAgcEnabled(next);
+                localStorage.setItem("agcEnabled", String(next));
+              }}
+              className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${agcEnabled ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
+              style={agcEnabled ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+              title={`AGC — ${agcEnabled ? 'PÅ' : 'AV'}`}
+            >
+              <Activity className="w-3.5 h-3.5" style={agcEnabled ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+            </Button>
+            {!agcEnabled && nowPlaying?.volume != null && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const vol = nowPlaying?.volume;
+                  if (vol == null) return;
+                  const cal = { volume: vol, gain: manualGain };
+                  setCalibration(cal);
+                  localStorage.setItem("gainCalibration", JSON.stringify(cal));
+                }}
+                className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${calibration ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
+                style={calibration ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+                title={calibration ? `Kalibrerad vid ${calibration.volume}%` : 'Kalibrera'}
+              >
+                <Crosshair className="w-3.5 h-3.5" style={calibration ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setPunchWhite(!punchWhite)}
               className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${punchWhite ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
               style={punchWhite ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
@@ -330,6 +362,43 @@ const Index = () => {
               <Power className="w-4 h-4" />
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Gain slider (visible when AGC off) */}
+      {connection && !agcEnabled && showOverlay && (
+        <div
+          className="absolute top-12 left-0 right-0 z-20 flex items-center gap-3 px-4 py-2 transition-opacity duration-500 backdrop-blur-lg"
+          style={{ background: 'hsl(var(--background) / 0.5)' }}
+        >
+          <span className="text-[10px] text-muted-foreground font-mono w-8 shrink-0">
+            {manualGain.toFixed(1)}×
+          </span>
+          <input
+            type="range"
+            min="0.5"
+            max="20"
+            step="0.5"
+            value={manualGain}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setManualGain(v);
+              localStorage.setItem("manualGain", String(v));
+            }}
+            className="flex-1 h-1 accent-current"
+            style={{ color: accent }}
+          />
+          {calibration && (
+            <button
+              onClick={() => {
+                setCalibration(null);
+                localStorage.removeItem("gainCalibration");
+              }}
+              className="text-[9px] text-muted-foreground hover:text-foreground"
+            >
+              Rensa
+            </button>
+          )}
         </div>
       )}
 
