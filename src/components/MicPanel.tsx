@@ -133,8 +133,15 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const rmsEnd = performance.now();
 
           // Step 2: Smoothing + normalization
+          // Quiet songs get more reactive smoothing to stay "alive"
+          const prevAbsFactor = agcPeakMaxRef.current > 0
+            ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current)
+            : 1;
+          const reactivity = 1 + (1 - prevAbsFactor) * 2; // quiet → up to 3x more reactive
           const prev = smoothedRef.current;
-          const alpha = rms > prev ? cal.attackAlpha : cal.releaseAlpha;
+          const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
+          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
+          const alpha = rms > prev ? attackA : releaseA;
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
