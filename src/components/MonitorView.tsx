@@ -221,7 +221,7 @@ export default function MonitorView() {
             {songs.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">Inga inspelningar ännu</p>
             ) : (
-              <SongList songs={songs} />
+              <SongList songs={songs} onDelete={handleDeleteSong} />
             )}
           </div>
         )}
