@@ -222,11 +222,8 @@ const Index = () => {
             syncOffsetMs={autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
-            onSectionChange={handleSectionChange}
             agcEnabled={agcEnabled}
-            manualGain={manualGain}
-            sonosVolume={nowPlaying?.volume ?? null}
-            calibration={calibration}
+            maxBrightness={maxBrightness}
           />
       </div>
 
