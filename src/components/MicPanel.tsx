@@ -871,15 +871,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         }
       }
 
+      // Use SMOOTHED brightness for punch-white trigger — only white at actual peaks
+      const smoothedPct = smoothedBrightRef.current;
+
       // Color kick / fade-back — always use targetColorRef (latest palette color)
       const color = targetColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
       const colorKickThrottle = Math.max(40, beatMs * 0.12);
 
-      if (!predictiveActive && effectivePunchWhite && pct > calRef.current.punchWhiteThreshold && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorKickThrottle) {
+      if (!predictiveActive && effectivePunchWhite && smoothedPct > calRef.current.punchWhiteThreshold && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorKickThrottle) {
         boost.throttle = now;
         const thresh = calRef.current.punchWhiteThreshold;
-        const boostFactor = Math.min(1, (pct - thresh) / (100 - thresh));
+        const boostFactor = Math.min(1, (smoothedPct - thresh) / (100 - thresh));
         const lifted = liftColor(color, boostFactor);
         boost.active = true;
         boost.startTime = now;
