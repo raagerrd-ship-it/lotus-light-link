@@ -116,11 +116,13 @@ const Index = () => {
       <div className="relative h-[100dvh]">
         <MonitorView />
         <button
-          onClick={toggleRole}
-          className="absolute top-3 right-3 z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase bg-secondary/80 text-muted-foreground backdrop-blur-lg border border-border/50 active:scale-95 transition-transform"
-          style={{ paddingTop: 'max(0.375rem, env(safe-area-inset-top))' }}
+          onClick={() => {
+            localStorage.setItem("deviceRole", "master");
+            setIsMaster(true);
+          }}
+          className="absolute top-4 right-4 z-[100] flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold tracking-widest uppercase bg-secondary text-foreground backdrop-blur-lg border border-border active:scale-95 transition-transform cursor-pointer"
         >
-          <Radio className="w-3 h-3" />
+          <Radio className="w-3.5 h-3.5" />
           Byt till Master
         </button>
       </div>
