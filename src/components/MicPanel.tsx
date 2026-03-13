@@ -918,8 +918,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient, ambientEnergy);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
 
-      // Store result for rAF visual loop
-      lastTickResultRef.current = { finalCurved, pct, isOnset, now };
+      // Store result for rAF visual loop — blePct/bleColor = what was actually sent
+      const blePct = Math.round(smoothedBrightRef.current);
+      const boost = colorBoostRef.current;
+      const bleColor: [number, number, number] = boost.active
+        ? [boost.color[0], boost.color[1], boost.color[2]]
+        : [...targetColorRef.current];
+      lastTickResultRef.current = { finalCurved, pct, isOnset, now, blePct, bleColor };
     };
 
     // ─── Visual loop (rAF — pauses when tab hidden, saves battery) ───
