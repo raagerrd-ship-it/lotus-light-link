@@ -247,6 +247,7 @@ const Index = () => {
             syncOffsetMs={autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
+            onSectionChange={handleSectionChange}
             gainMode={gainMode}
             sonosVolume={nowPlaying?.volume}
             volCalibration={volCalibration}
