@@ -150,36 +150,7 @@ export function useSonosNowPlaying() {
 
     connectSSE();
 
-    // --- Position poll fallback (every 500ms) ---
-    // SSE gives metadata changes instantly, but position needs polling
-    // Poll less frequently since SSE handles track changes
-    let pollTimer: ReturnType<typeof setTimeout>;
-
-    const fetchPosition = async () => {
-      try {
-        const t0 = performance.now();
-        const res = await fetch(`${proxyUrl}/status`, { cache: "no-store", signal: AbortSignal.timeout(1000) });
-        const rtt = performance.now() - t0;
-        smoothedRtt = smoothedRtt * 0.5 + rtt * 0.5;
-        if (!res.ok) return;
-        const s = await res.json();
-        applyStatus(s, smoothedRtt);
-      } catch { /* proxy unavailable */ }
-    };
-
-    const schedulePoll = () => {
-      // Poll faster if SSE is down, slower if SSE is working
-      const interval = sseAlive ? 500 : 200;
-      pollTimer = setTimeout(async () => {
-        await fetchPosition();
-        schedulePoll();
-      }, interval);
-    };
-
-    fetchPosition().then(schedulePoll);
-
     return () => {
-      clearTimeout(pollTimer);
       if (es) { es.close(); es = null; }
     };
   }, []);
