@@ -187,7 +187,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const driftBufferRef = useRef<number[]>([]);
   const lastDriftReportRef = useRef(0);
 
-  // Section change callback
+  // Vol-calibrate event listener: capture current agcAvg on demand
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const cal = { volume: detail.volume, gain: 0.35 / Math.max(0.0001, agcAvgRef.current) };
+      window.dispatchEvent(new CustomEvent('vol-calibrate-result', { detail: cal }));
+    };
+    window.addEventListener('vol-calibrate', handler);
+    return () => window.removeEventListener('vol-calibrate', handler);
+  }, []);
+
+
   const onSectionChangeRef = useRef(onSectionChange);
   useEffect(() => { onSectionChangeRef.current = onSectionChange; }, [onSectionChange]);
   const lastSectionTypeRef = useRef<string | null>(null);
