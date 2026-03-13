@@ -156,6 +156,16 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
+  // Restore AGC from saved state when curve loads
+  useEffect(() => {
+    if (savedAgcState) {
+      agcMaxRef.current = savedAgcState.agcMax;
+      agcMinRef.current = savedAgcState.agcMin;
+      agcPeakMaxRef.current = savedAgcState.agcPeakMax;
+      console.log('[MicPanel] restored AGC from saved state', savedAgcState);
+    }
+  }, [savedAgcState]);
+
   const flushRecordedSamples = (reason: 'track-change' | 'playback-stop' | 'unmount') => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
