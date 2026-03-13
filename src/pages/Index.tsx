@@ -383,8 +383,23 @@ const Index = () => {
             className="flex-1 h-1 accent-current"
             style={{ color: accent }}
           />
-        </div>
-      )}
+          <span className="text-[10px] text-muted-foreground font-mono w-14 shrink-0">
+            Dämpa {dynamicDamping.toFixed(1)}x
+          </span>
+          <input
+            type="range"
+            min="1.0"
+            max="3.0"
+            step="0.1"
+            value={dynamicDamping}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setDynamicDamping(v);
+              localStorage.setItem("dynamicDamping", String(v));
+            }}
+            className="flex-1 h-1 accent-current"
+            style={{ color: accent }}
+          />
 
       {/* Now playing */}
       {connection && nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (

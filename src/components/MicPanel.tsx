@@ -166,8 +166,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   // Gain control refs
   const agcEnabledRef = useRef(agcEnabled);
   const maxBrightnessRef = useRef(maxBrightness);
+  const dynamicDampingRef = useRef(dynamicDamping);
   useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
   useEffect(() => { maxBrightnessRef.current = maxBrightness; }, [maxBrightness]);
+  useEffect(() => { dynamicDampingRef.current = dynamicDamping; }, [dynamicDamping]);
 
   // Ambient smoothing EMA ref
   const smoothedAmbientRef = useRef(0);
