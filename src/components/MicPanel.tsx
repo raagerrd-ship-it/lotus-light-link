@@ -206,10 +206,11 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           // accept that the light is intentionally ahead by bleLatencyMs.
           const c = charRef.current;
           if (c) {
-            if (isWhite && !wasWhite) {
+            // Always send color every tick — prevents drift
+            if (isWhite) {
               sendColor(c, 255, 255, 255);
               lastColorStateRef.current = 'white';
-            } else if (!isWhite && wasWhite) {
+            } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
               sendColor(c, ...calibrated);
               lastColorStateRef.current = 'normal';
