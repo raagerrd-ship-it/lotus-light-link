@@ -9,7 +9,8 @@ interface DebugOverlayProps {
   paletteIndex?: number;
   source?: 'local' | 'cloud';
   sonosVolume?: number | null;
-  gainMode?: string;
+  gainMode?: 'agc' | 'vol' | 'manual';
+  volCalibrationVol?: number | null;
   liveBpm?: number | null;
   maxBrightness?: number;
   dynamicDamping?: number;
