@@ -238,10 +238,10 @@ async function _flush() {
 
   const now = performance.now();
   const elapsed = now - _lastWriteTime;
-  if (elapsed < MIN_INTERVAL_MS) {
+  if (elapsed < _minIntervalMs) {
     // Schedule next flush at the right time
     if (!_timer) {
-      _timer = setTimeout(() => { _timer = null; _flush(); }, MIN_INTERVAL_MS - elapsed);
+      _timer = setTimeout(() => { _timer = null; _flush(); }, _minIntervalMs - elapsed);
     }
     return;
   }
