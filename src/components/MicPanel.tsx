@@ -370,25 +370,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       const isSilence = rawEnergy < 0.015;
 
-      // Gain calculation: calibration > manual > AGC
+      // Gain calculation: AGC (always on now)
       let effectiveGain: number;
-      const cal = calibrationRef.current;
-      const vol = sonosVolumeRef.current;
-      if (cal && vol != null && vol > 0) {
-        // Calibrated mode: extrapolate gain from calibration point
-        const volumeRatio = Math.pow(cal.volume / vol, 2.5);
-        effectiveGain = cal.gain * volumeRatio;
-      } else if (!agcEnabledRef.current) {
-        // Manual mode
-        effectiveGain = manualGainRef.current;
-      } else {
-        // AGC mode (original logic)
-        if (!isSilence) {
-          const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
-          agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
-        }
-        effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      if (!isSilence) {
+        const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
+        agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       }
+      effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
       const energy = rawEnergy * Math.min(effectiveGain, 30);
 
       // Track energy history for auto-correlation BPM
