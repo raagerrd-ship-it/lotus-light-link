@@ -213,6 +213,7 @@ const Index = () => {
     }
 
     conn.device.addEventListener("gattserverdisconnected", () => {
+      clearActiveChar(); // Stop all pending BLE writes immediately
       setConnection(null);
       setBleConnection(null);
       setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || undefined });
