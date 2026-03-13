@@ -84,6 +84,24 @@ function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: str
   );
 }
 
+// Rewrite localhost art URLs to use monitor's own proxy or skip
+function rewriteArtUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      // Try to use monitor's own sonosLocalProxy setting
+      const monitorProxy = localStorage.getItem('sonosLocalProxy');
+      if (monitorProxy) {
+        const proxyOrigin = new URL(monitorProxy).origin;
+        return `${proxyOrigin}${parsed.pathname}${parsed.search}`;
+      }
+      // Fallback: use current page origin (won't work but avoids broken img)
+      return `${window.location.origin}${parsed.pathname}${parsed.search}`;
+    }
+  } catch { /* not a valid URL, return as-is */ }
+  return url;
+}
+
 const SECTION_LABELS: Record<string, string> = {
   intro: 'Intro', verse: 'Vers', pre_chorus: 'Pre-chorus',
   chorus: 'Refräng', bridge: 'Bridge', drop: 'Drop',
