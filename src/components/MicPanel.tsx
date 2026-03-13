@@ -670,8 +670,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Zone 1: Ambient (0–50%) — always active, broad frequency, logarithmic
       const ambientPct = 50 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
 
-      // Zone 2: Groove (50–75%) — requires beat (phase < 0.3 = recent onset, tighter gating)
-      const groovePct = (phase < 0.3 && bpmRef.current > 0)
+      // Zone 2: Groove (50–75%) — requires beat (phase < groovePhaseGate = recent onset)
+      const groovePct = (phase < calRef.current.groovePhaseGate && bpmRef.current > 0)
         ? 25 * curved * sectionBehavior.beatReactivity
         : 0;
 
