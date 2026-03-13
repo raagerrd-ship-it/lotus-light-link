@@ -259,12 +259,12 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
         onBleWrite((bright) => {
           if (stopped) return;
           const [cr, cg, cb] = colorRef.current;
-          const scale = bright / 100;
+          // Always use full palette color — brightness controls intensity, not color darkness
           samplesRef.current.push({
             pct: bright,
-            r: Math.round(cr * scale),
-            g: Math.round(cg * scale),
-            b: Math.round(cb * scale),
+            r: cr,
+            g: cg,
+            b: cb,
           });
           if (samplesRef.current.length > HISTORY_LEN) {
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
