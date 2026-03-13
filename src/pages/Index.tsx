@@ -32,15 +32,9 @@ const Index = () => {
   const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [agcEnabled, setAgcEnabled] = useState(() => localStorage.getItem("agcEnabled") !== "false");
-  const [manualGain, setManualGain] = useState(() => {
-    const stored = localStorage.getItem("manualGain");
-    return stored ? parseFloat(stored) : 5;
-  });
-  const [calibration, setCalibration] = useState<{ volume: number; gain: number } | null>(() => {
-    try {
-      const stored = localStorage.getItem("gainCalibration");
-      return stored ? JSON.parse(stored) : null;
-    } catch { return null; }
+  const [maxBrightness, setMaxBrightness] = useState(() => {
+    const stored = localStorage.getItem("maxBrightness");
+    return stored ? parseInt(stored, 10) : 100;
   });
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
