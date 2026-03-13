@@ -126,6 +126,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
   const savedAgcStateRef = useRef(savedAgcState);
   const bpmRef = useRef(bpm);
   const sectionsRef = useRef(sections);
+  const dropsRef = useRef(drops);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
