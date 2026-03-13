@@ -729,7 +729,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Cap by section max brightness and user max brightness setting
       totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100, maxBrightnessRef.current);
 
-      const pct = Math.round(Math.max(3, Math.min(100, totalPct)));
+      const pct = Math.round(Math.max(calRef.current.minBrightness, Math.min(100, totalPct)));
       const finalCurved = pct / 100; // normalized 0-1 for visuals
 
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
