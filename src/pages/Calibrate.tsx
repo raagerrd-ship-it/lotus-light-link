@@ -14,11 +14,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'ble' | 'latency';
+type Tab = 'ble' | 'latency' | 'songs';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ble', label: 'BLE-hastighet' },
   { key: 'latency', label: 'Latens' },
+  { key: 'songs', label: 'Inspelade låtar' },
 ];
 
 // BLE Perceptual Speed Test buffers
