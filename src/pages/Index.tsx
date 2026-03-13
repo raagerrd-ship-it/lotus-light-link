@@ -5,6 +5,7 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendColor, sendBrightness, sendPower, setActiveChar, getLastTickToWriteMs,
+  setBleMinInterval,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
@@ -13,7 +14,10 @@ import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
-
+import {
+  loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
+  applyColorCalibration, getCalibration
+} from "@/lib/lightCalibration";
 const Index = () => {
   const navigate = useNavigate();
   const [connection, setConnection] = useState<BLEConnection | null>(null);
@@ -63,8 +67,26 @@ const Index = () => {
     setActiveChar(conn.characteristic);
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
-    const [r, g, b] = currentColorRef.current;
-    await sendColor(conn.characteristic, r, g, b).catch(() => {});
+
+    // Apply color calibration to initial color
+    const calibrated = applyColorCalibration(...currentColorRef.current);
+    await sendColor(conn.characteristic, ...calibrated).catch(() => {});
+
+    // Load calibration from cloud for this device
+    const deviceName = conn.device?.name;
+    if (deviceName) {
+      setActiveDeviceName(deviceName);
+      loadCalibrationFromCloud(deviceName).then((data) => {
+        if (data) {
+          saveCalibration(data.calibration, deviceName);
+          if (data.bleMinIntervalMs != null) {
+            setBleMinInterval(data.bleMinIntervalMs);
+          }
+          console.log('[Index] loaded cloud calibration for', deviceName, data);
+        }
+      }).catch(() => {});
+    }
+
     conn.device.addEventListener("gattserverdisconnected", () => {
       setConnection(null);
       setBleConnection(null);
