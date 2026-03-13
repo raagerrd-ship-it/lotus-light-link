@@ -262,7 +262,9 @@ async function _flush() {
       _lastSentBright = _pendingBright;
       _pendingBright = null;
       _writeCount++;
-      _lastActualWriteMs = performance.now() - _lastWriteTime;
+      const writeEnd = performance.now();
+      _lastActualWriteMs = writeEnd - _lastWriteTime;
+      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
     } else if (writeColor && _pendingColor) {
       _colorBuf[4] = _pendingColor[0] & 0xff;
       _colorBuf[5] = _pendingColor[1] & 0xff;
