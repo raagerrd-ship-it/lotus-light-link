@@ -389,11 +389,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
           const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0);
           pct = Math.round(pct * sectionParams.brightnessScale);
 
-          // Beat-synced pulse
+          // Beat-synced pulse — use beat grid for precise phase if available
           const currentBpm = bpmRef.current;
+          const grid = beatGridRef.current;
           if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
-            const pulse = beatPulse(posSec2, currentBpm);
-            const pulseBoost = pulse * sectionParams.beatPulseStrength * 15; // max ~15% brightness boost
+            const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
+            const pulse = Math.exp(-phase * 4); // sharp attack, smooth decay
+            const pulseBoost = pulse * sectionParams.beatPulseStrength * 15;
             pct = Math.min(100, Math.round(pct + pulseBoost));
           }
 
