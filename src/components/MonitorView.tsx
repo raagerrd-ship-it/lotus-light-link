@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useLiveSessionMonitor, type MasterDebugState } from "@/hooks/useLiveSession";
 import { supabase } from "@/integrations/supabase/client";
-import { Wifi, WifiOff, ChevronDown, ChevronUp, Music } from "lucide-react";
+import { Wifi, WifiOff, ChevronDown, ChevronUp, Music, Trash2 } from "lucide-react";
 
 interface SongRecord {
+  id: string;
   track_name: string;
   artist_name: string;
   bpm: number | null;
@@ -50,23 +51,32 @@ function DebugPanel({ d }: { d: MasterDebugState }) {
   );
 }
 
-function SongList({ songs }: { songs: SongRecord[] }) {
+function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: string, name: string) => void }) {
   return (
     <div className="space-y-1">
-      {songs.map((s, i) => (
-        <div key={i} className="flex items-center gap-2 py-1 px-1 rounded-md bg-secondary/30">
+      {songs.map((s) => (
+        <div key={s.id} className="flex items-center gap-2 py-1 px-1 rounded-md bg-secondary/30 group">
           <Music className="w-3 h-3 shrink-0 text-muted-foreground/50" />
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium text-foreground truncate">{s.track_name}</p>
             <p className="text-[10px] text-muted-foreground truncate">{s.artist_name}</p>
           </div>
-          <div className="shrink-0 text-right">
-            <div className="flex items-center gap-1">
-              {s.bpm && <span className="text-[9px] font-mono text-muted-foreground">{s.bpm}bpm</span>}
-              {s.has_sections && <span className="text-[8px] text-green-400">§</span>}
-              {s.has_drops && <span className="text-[8px] text-orange-400">⚡</span>}
+          <div className="shrink-0 flex items-center gap-1.5">
+            <div className="text-right">
+              <div className="flex items-center gap-1">
+                {s.bpm && <span className="text-[9px] font-mono text-muted-foreground">{s.bpm}bpm</span>}
+                {s.has_sections && <span className="text-[8px] text-green-400">§</span>}
+                {s.has_drops && <span className="text-[8px] text-orange-400">⚡</span>}
+              </div>
+              <p className="text-[9px] text-muted-foreground/60">{formatDate(s.created_at)}</p>
             </div>
-            <p className="text-[9px] text-muted-foreground/60">{formatDate(s.created_at)}</p>
+            <button
+              onClick={() => onDelete(s.id, s.track_name)}
+              className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 active:scale-90 transition-all"
+              title="Ta bort inspelning"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
           </div>
         </div>
       ))}
@@ -91,12 +101,13 @@ export default function MonitorView() {
     const fetchSongs = () => {
       supabase
         .from("song_analysis")
-        .select("track_name, artist_name, bpm, created_at, sections, drops")
+        .select("id, track_name, artist_name, bpm, created_at, sections, drops")
         .order("created_at", { ascending: false })
         .limit(50)
         .then(({ data }) => {
           if (data) {
             setSongs(data.map((d: any) => ({
+              id: d.id,
               track_name: d.track_name,
               artist_name: d.artist_name,
               bpm: d.bpm,
@@ -111,6 +122,16 @@ export default function MonitorView() {
     const id = setInterval(fetchSongs, 10000); // refresh every 10s
     return () => clearInterval(id);
   }, []);
+
+  const handleDeleteSong = async (songId: string, name: string) => {
+    if (!confirm(`Ta bort inspelningen "${name}"?\nDen spelas in igen nästa gång låten körs.`)) return;
+    const { error } = await supabase.from("song_analysis").delete().eq("id", songId);
+    if (error) {
+      console.error("[Monitor] delete failed", error);
+      return;
+    }
+    setSongs(prev => prev.filter(s => s.id !== songId));
+  };
 
   if (!session) {
     return (
@@ -210,7 +231,7 @@ export default function MonitorView() {
             {songs.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">Inga inspelningar ännu</p>
             ) : (
-              <SongList songs={songs} />
+              <SongList songs={songs} onDelete={handleDeleteSong} />
             )}
           </div>
         )}
