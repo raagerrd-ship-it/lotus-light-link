@@ -90,18 +90,16 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const COLOR_FADE_MS = 5000;
 
   useEffect(() => {
-    // Start a smooth fade from current displayed color to the new target
-    prevColorRef.current = currentColorRef.current; // freeze current as start point
+    // Snap ALL refs to the new color — beat code reads targetColorRef directly
+    const prev = currentColorRef.current;
+    prevColorRef.current = prev;
     targetColorRef.current = currentColor;
+    currentColorRef.current = currentColor;
     colorTransitionStartRef.current = performance.now();
-    // Reset any active boost so fade-back uses interpolated color
+    // Reset any active boost so it uses the NEW color immediately
     colorBoostRef.current.active = false;
-    // Reset chart normalization on track/section change
     resetChartScaler();
-    // Send new color to BLE immediately (first frame of fade)
-    if (bleQueueRef.current) {
-      bleQueueRef.current.color(...currentColor);
-    }
+    console.log(`[color] ${prev.join(',')} → ${currentColor.join(',')}`);
   }, [currentColor]);
 
   // Direct DOM refs to avoid React re-renders in hot loop
@@ -863,6 +861,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         if (tLinear >= 1) {
           boost.active = false;
         }
+      } else if (!boost.active && now - boost.throttle >= 200) {
+        // No boost active — periodically send base color to keep BLE in sync
+        boost.throttle = now;
+        ble.color(...color);
       }
     };
 
