@@ -287,11 +287,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       lowFilter.frequency.value = 150;
       lowFilter.Q.value = 0.8;
 
-      // Low-mid band: Bandpass 350 Hz
+      // Low-mid band: Bandpass 500 Hz (wider capture for ambient liveliness)
       const midFilter = ctx.createBiquadFilter();
       midFilter.type = "bandpass";
-      midFilter.frequency.value = 350;
-      midFilter.Q.value = 1.0;
+      midFilter.frequency.value = 500;
+      midFilter.Q.value = 0.7;
 
       const subAnalyser = ctx.createAnalyser();
       subAnalyser.fftSize = 32;
