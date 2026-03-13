@@ -45,7 +45,7 @@ const Index = () => {
     if (!nowPlaying?.trackName || !nowPlaying?.artistName) return null;
     return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
-  const { curve: energyCurve, recordedVolume, saveCurve } = useSongEnergyCurve(trackKey);
+  const { curve: energyCurve, recordedVolume, savedAgcState, saveCurve } = useSongEnergyCurve(trackKey);
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
@@ -175,7 +175,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} onSaveEnergyCurve={saveCurve} />
+        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} onSaveEnergyCurve={saveCurve} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}

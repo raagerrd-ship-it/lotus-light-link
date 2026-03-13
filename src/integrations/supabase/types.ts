@@ -46,6 +46,7 @@ export type Database = {
       }
       song_analysis: {
         Row: {
+          agc_state: Json | null
           artist_name: string
           bpm: number | null
           created_at: string | null
@@ -58,6 +59,7 @@ export type Database = {
           track_name: string
         }
         Insert: {
+          agc_state?: Json | null
           artist_name: string
           bpm?: number | null
           created_at?: string | null
@@ -70,6 +72,7 @@ export type Database = {
           track_name: string
         }
         Update: {
+          agc_state?: Json | null
           artist_name?: string
           bpm?: number | null
           created_at?: string | null
