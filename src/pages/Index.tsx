@@ -236,7 +236,7 @@ const Index = () => {
           paletteIndex={paletteIndexRef.current}
           source={nowPlaying?.source}
           sonosVolume={nowPlaying?.volume}
-          gainMode={calibration ? 'cal' : agcEnabled ? 'agc' : 'manual'}
+          gainMode={agcEnabled ? 'agc' : 'manual'}
         />
       )}
 
