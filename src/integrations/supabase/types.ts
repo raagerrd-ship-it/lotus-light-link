@@ -20,6 +20,7 @@ export type Database = {
           bpm: number | null
           created_at: string | null
           drops: Json | null
+          energy_curve: Json | null
           id: string
           key: string | null
           sections: Json | null
@@ -30,6 +31,7 @@ export type Database = {
           bpm?: number | null
           created_at?: string | null
           drops?: Json | null
+          energy_curve?: Json | null
           id?: string
           key?: string | null
           sections?: Json | null
@@ -40,6 +42,7 @@ export type Database = {
           bpm?: number | null
           created_at?: string | null
           drops?: Json | null
+          energy_curve?: Json | null
           id?: string
           key?: string | null
           sections?: Json | null

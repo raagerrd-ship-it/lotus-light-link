@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import DynamicsPreview from "@/components/DynamicsPreview";
+import AutoCalibratePanel from "@/components/AutoCalibratePanel";
 import {
   getCalibration, saveCalibration, resetCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
@@ -11,9 +12,10 @@ import {
 import { sendColor, sendBrightness } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'color' | 'dynamics' | 'timing' | 'ambient';
+type Tab = 'auto' | 'color' | 'dynamics' | 'timing' | 'ambient';
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: 'auto', label: 'Auto' },
   { key: 'color', label: 'Färg' },
   { key: 'dynamics', label: 'Dynamik' },
   { key: 'timing', label: 'Timing' },
@@ -81,6 +83,7 @@ export default function Calibrate() {
   const handleReset = useCallback((tabKey: Tab) => {
     const full = { ...DEFAULT_CALIBRATION };
     const patches: Record<Tab, Partial<LightCalibration>> = {
+      auto: { latencyOffsetMs: full.latencyOffsetMs, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, dynamicDamping: full.dynamicDamping },
       color: { gammaR: full.gammaR, gammaG: full.gammaG, gammaB: full.gammaB, offsetR: full.offsetR, offsetG: full.offsetG, offsetB: full.offsetB, saturationBoost: full.saturationBoost },
       dynamics: { minBrightness: full.minBrightness, maxBrightness: full.maxBrightness, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, dynamicDamping: full.dynamicDamping },
       timing: { punchWhiteThreshold: full.punchWhiteThreshold, fadeBackDuration: full.fadeBackDuration, bleLatencyMs: full.bleLatencyMs, groovePhaseGate: full.groovePhaseGate },
@@ -135,12 +138,18 @@ export default function Calibrate() {
 
       {/* Tab content */}
       <div className="space-y-1">
-        {/* Reset button */}
-        <div className="flex justify-end mb-2">
-          <Button variant="ghost" size="sm" onClick={() => handleReset(tab)} className="text-xs gap-1 text-muted-foreground">
-            <RotateCcw className="w-3 h-3" /> Återställ
-          </Button>
-        </div>
+        {/* Reset button (not for auto tab) */}
+        {tab !== 'auto' && (
+          <div className="flex justify-end mb-2">
+            <Button variant="ghost" size="sm" onClick={() => handleReset(tab)} className="text-xs gap-1 text-muted-foreground">
+              <RotateCcw className="w-3 h-3" /> Återställ
+            </Button>
+          </div>
+        )}
+
+        {tab === 'auto' && (
+          <AutoCalibratePanel cal={cal} onUpdate={update} />
+        )}
 
         {tab === 'color' && (
           <>

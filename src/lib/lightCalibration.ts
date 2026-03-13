@@ -29,6 +29,9 @@ export interface LightCalibration {
   ambientEma: number;       // 0.7–0.98
   silenceFadeMs: number;    // 500–5000 (ms)
   baselinePct: number;      // 3–20 (%)
+
+  // Auto-calibration
+  latencyOffsetMs: number;   // -500 to +500 (ms)
 }
 
 export const DEFAULT_CALIBRATION: LightCalibration = {
@@ -54,6 +57,8 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   ambientEma: 0.85,
   silenceFadeMs: 1500,
   baselinePct: 6,
+
+  latencyOffsetMs: 0,
 };
 
 export function getCalibration(): LightCalibration {
