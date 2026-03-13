@@ -21,6 +21,9 @@ export interface LightCalibration {
   // White kick
   whiteKickThreshold: number; // 80–100 (%)
   whiteKickMs: number;        // 50–300 (ms)
+
+  // BLE latency compensation (ms)
+  bleLatencyMs: number;
 }
 
 export const DEFAULT_CALIBRATION: LightCalibration = {
@@ -39,6 +42,8 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   whiteKickThreshold: 95,
   whiteKickMs: 100,
+
+  bleLatencyMs: 0,
 };
 
 export function getCalibration(): LightCalibration {
