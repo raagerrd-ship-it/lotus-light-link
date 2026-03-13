@@ -307,7 +307,7 @@ async function _flush() {
   // If there's still pending data, schedule next write
   if (_pendingBright != null || _pendingColor) {
     if (!_timer) {
-      _timer = setTimeout(() => { _timer = null; _flush(); }, MIN_INTERVAL_MS);
+      _timer = setTimeout(() => { _timer = null; _flush(); }, _minIntervalMs);
     }
   }
 }
