@@ -224,11 +224,6 @@ const Index = () => {
   const accent = `rgb(${r},${g},${b})`;
   const char = connection?.characteristic;
 
-  const progressFraction = (() => {
-    if (!nowPlaying?.positionMs || !nowPlaying?.durationMs || nowPlaying.durationMs <= 0) return 0;
-    const elapsed = performance.now() - (nowPlaying.receivedAt ?? performance.now());
-    return Math.min(1, Math.max(0, (nowPlaying.positionMs + elapsed) / nowPlaying.durationMs));
-  })();
 
   return (
     <div
@@ -432,7 +427,7 @@ const Index = () => {
           className={`absolute bottom-0 left-0 right-0 z-20 pb-[env(safe-area-inset-bottom)] transition-opacity duration-500 backdrop-blur-lg border-t border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} progressFraction={progressFraction} />
+          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} getPosition={getPosition} />
         </div>
       )}
     </div>
