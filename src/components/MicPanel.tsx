@@ -87,7 +87,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const targetColorRef = useRef(currentColor);
   const prevColorRef = useRef(currentColor);
   const colorTransitionStartRef = useRef(0);
-  const COLOR_FADE_MS = 500;
+  const COLOR_FADE_MS = 120;
 
   useEffect(() => {
     // When the target color changes, start a fade from current interpolated color
@@ -878,10 +878,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           Math.round(prev[1] + (target[1] - prev[1]) * ease),
           Math.round(prev[2] + (target[2] - prev[2]) * ease),
         ];
-        // Send interpolated color to BLE during fade (throttled ~40ms)
-        if (!colorBoostRef.current.active && now - throttleRef.current >= 40) {
+        // Send interpolated color to BLE during fade (throttled ~25ms, even during boost)
+        if (now - throttleRef.current >= 25) {
           throttleRef.current = now;
           ble.color(...currentColorRef.current);
+          colorBoostRef.current.active = false; // interrupt boost to show new color
         }
         if (t >= 1) colorTransitionStartRef.current = 0;
       }
