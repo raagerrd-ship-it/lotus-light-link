@@ -674,9 +674,8 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number, latency:
 
 export default function Calibrate() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>('color');
+  const [tab, setTab] = useState<Tab>('ble');
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
-  const [testColor, setTestColor] = useState<[number, number, number]>([255, 80, 0]);
   const [conn, setConn] = useState(getBleConnection);
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
@@ -702,35 +701,13 @@ export default function Calibrate() {
     });
   }, [conn?.device?.name]);
 
-  const handleReset = useCallback((tabKey: Tab) => {
-    if (tabKey === 'ble') return;
-    const full = { ...DEFAULT_CALIBRATION };
-    const patches: Record<string, Partial<LightCalibration>> = {
-      color: { gammaR: full.gammaR, gammaG: full.gammaG, gammaB: full.gammaB, offsetR: full.offsetR, offsetG: full.offsetG, offsetB: full.offsetB, saturationBoost: full.saturationBoost },
-      dynamics: { minBrightness: full.minBrightness, maxBrightness: full.maxBrightness, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, whiteKickThreshold: full.whiteKickThreshold, whiteKickMs: full.whiteKickMs },
-    };
-    if (patches[tabKey]) update(patches[tabKey]);
-  }, [update]);
-
-  useEffect(() => {
-    if (!conn || tab === 'ble' || tab === 'latency') return;
-    const interval = setInterval(() => {
-      const calibrated = applyColorCalibration(...testColor, cal);
-      sendColor(conn.characteristic, ...calibrated).catch(() => {});
-      sendBrightness(conn.characteristic, cal.maxBrightness).catch(() => {});
-    }, 80);
-    return () => clearInterval(interval);
-  }, [testColor, cal, conn, tab]);
-
-  const calibrated = applyColorCalibration(...testColor, cal);
-
   return (
     <div className="min-h-[100dvh] bg-background text-foreground px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       <div className="flex items-center gap-3 mb-4">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="rounded-full w-8 h-8">
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <h1 className="text-sm font-bold tracking-widest uppercase text-foreground/80">Kalibrering</h1>
+        <h1 className="text-sm font-bold tracking-widest uppercase text-foreground/80">Bas-kalibrering</h1>
         <div className="flex-1" />
         {conn
           ? <span className="text-[10px] font-mono text-primary/70">{conn.device?.name || 'Ansluten'}</span>
@@ -755,37 +732,23 @@ export default function Calibrate() {
       </div>
 
       <div className="space-y-1">
-        {tab !== 'ble' && (
-          <div className="flex justify-end mb-2">
-            <Button variant="ghost" size="sm" onClick={() => handleReset(tab)} className="text-xs gap-1 text-muted-foreground">
-              <RotateCcw className="w-3 h-3" /> Återställ
-            </Button>
-          </div>
-        )}
+        {tab === 'ble' && <BleSpeedTab conn={conn} onSpeedSave={(bests) => {
+          const deviceName = conn?.device?.name;
+          if (deviceName) {
+            const worst = Math.max(...(Object.values(bests) as number[]));
+            saveBleSpeedToCloud(deviceName, worst, bests as Record<string, number>);
+          }
+        }} />}
 
-        {tab === 'color' && (
-          <>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex gap-1.5">
-                {TEST_COLORS.map((tc) => (
-                  <button
-                    key={tc.label}
-                    onClick={() => setTestColor(tc.color)}
-                    className="w-7 h-7 rounded-full border border-border/50 transition-transform active:scale-90"
-                    style={{ backgroundColor: `rgb(${tc.color.join(',')})` }}
-                    title={tc.label}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-3 mb-4">
-              <div className="flex-1 rounded-lg h-16 border border-border/30 flex items-center justify-center" style={{ backgroundColor: `rgb(${testColor.join(',')})` }}>
-                <span className="text-[9px] font-mono opacity-60 mix-blend-difference text-white">MÅL</span>
-              </div>
-              <div className="flex-1 rounded-lg h-16 border border-border/30 flex items-center justify-center" style={{ backgroundColor: `rgb(${calibrated.join(',')})` }}>
-                <span className="text-[9px] font-mono opacity-60 mix-blend-difference text-white">KALIBRERAD</span>
-              </div>
-            </div>
+        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms, latency) => {
+          update({ bleLatencyMs: ms });
+          const deviceName = conn?.device?.name;
+          if (deviceName) saveLatencyToCloud(deviceName, latency);
+        }} />}
+      </div>
+    </div>
+  );
+}
             <SliderRow label="Gamma R" value={cal.gammaR} min={0.5} max={2.5} step={0.05} onChange={(v) => update({ gammaR: v })} />
             <SliderRow label="Gamma G" value={cal.gammaG} min={0.5} max={2.5} step={0.05} onChange={(v) => update({ gammaG: v })} />
             <SliderRow label="Gamma B" value={cal.gammaB} min={0.5} max={2.5} step={0.05} onChange={(v) => update({ gammaB: v })} />
