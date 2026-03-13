@@ -30,8 +30,15 @@ const PULSE_DURATIONS = [30, 25, 20, 18, 15, 12, 10, 8, 6, 5, 4, 3, 2, 1];
 const PULSES_PER_STEP = 3;
 const PULSE_GAP_MS = 800;
 
+const BLE_CMD_GAP = 1; // ms between color and brightness commands
 async function bleWrite(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array) {
   await char.writeValueWithoutResponse(buf as any);
+}
+async function bleColorThenBright(char: BluetoothRemoteGATTCharacteristic, brightness: number) {
+  await bleWrite(char, COLOR_BUF);
+  await new Promise(r => setTimeout(r, BLE_CMD_GAP));
+  BRIGHT_BUF[3] = brightness;
+  await bleWrite(char, BRIGHT_BUF);
 }
 
 // Color cycle: R → G → B
@@ -58,36 +65,27 @@ async function sendPulseForMode(
   durationMs: number,
 ) {
   if (mode === 'brightness') {
-    // White color, toggle brightness 0→100→0
     COLOR_BUF[4] = 255; COLOR_BUF[5] = 255; COLOR_BUF[6] = 255;
-    await bleWrite(char, COLOR_BUF);
-    BRIGHT_BUF[3] = 100;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 100);
     await new Promise(r => setTimeout(r, durationMs));
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 0);
   } else if (mode === 'color') {
-    // Set color first while dark, then raise brightness
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    // Dark first, set color, then raise brightness
+    COLOR_BUF[4] = 0; COLOR_BUF[5] = 0; COLOR_BUF[6] = 0;
+    await bleColorThenBright(char, 0);
+    await new Promise(r => setTimeout(r, BLE_CMD_GAP));
     const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
     COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
-    await bleWrite(char, COLOR_BUF);
-    BRIGHT_BUF[3] = 100;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 100);
     await new Promise(r => setTimeout(r, durationMs));
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 0);
   } else {
     // Combined: color + brightness
     const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
     COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
-    await bleWrite(char, COLOR_BUF);
-    BRIGHT_BUF[3] = 100;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 100);
     await new Promise(r => setTimeout(r, durationMs));
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
+    await bleColorThenBright(char, 0);
   }
 }
 
@@ -409,8 +407,9 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number, latency:
     await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
 
     for (let i = 0; i < FLASHES_PER_ROUND; i++) {
-      // Send BLE flash immediately
+      // Color first, then brightness, with 1ms gap
       await char.writeValueWithoutResponse(LATENCY_COLOR_BUF as any);
+      await new Promise(r => setTimeout(r, BLE_CMD_GAP));
       await char.writeValueWithoutResponse(LATENCY_BRIGHT_ON as any);
 
       // Screen flash delayed by offset
