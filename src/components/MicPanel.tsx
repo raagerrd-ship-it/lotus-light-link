@@ -345,7 +345,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       lowAnalyserRef.current = lowAnalyser;
       midAnalyserRef.current = midAnalyser;
       streamRef.current = stream;
-      bleQueueRef.current = createBleQueue(charRef);
+      bleQueueRef.current = createBleQueue(
+        charRef,
+        (val) => { sentBrightnessRef.current = val; },
+        (rgb) => { sentColorRef.current = rgb; },
+      );
       setActive(true);
 
       // Wake Lock: keep screen on
