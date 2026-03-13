@@ -82,12 +82,44 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
             {nowPlaying.artistName}
           </p>
         </div>
-        {bpm != null && (
-          <span
-            className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full shrink-0"
-            style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}
-          >
-            {bpm} BPM
+        <div className="flex items-center gap-1.5 shrink-0">
+          {sectionLabel && (
+            <span
+              className="text-[10px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-2 py-0.5 rounded-full uppercase"
+              style={{ borderColor: `rgba(${r},${g},${b},0.2)` }}
+            >
+              {sectionLabel}
+            </span>
+          )}
+          {bpm != null && (
+            <span
+              className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full"
+              style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}
+            >
+              {bpm} BPM
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  intro: 'Intro',
+  verse: 'Vers',
+  pre_chorus: 'Pre-chorus',
+  chorus: 'Refräng',
+  bridge: 'Bridge',
+  drop: 'Drop',
+  build_up: 'Build-up',
+  break: 'Break',
+  outro: 'Outro',
+};
+
+function sectionTypeLabel(type: string): string {
+  return SECTION_LABELS[type] ?? type;
+}
           </span>
         )}
       </div>
