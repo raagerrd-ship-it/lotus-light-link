@@ -68,16 +68,16 @@ const VOLUME_SOAP = `<?xml version="1.0" encoding="utf-8"?>
   </s:Body>
 </s:Envelope>`;
 
-function soapRequest(body, action) {
+function soapRequest(body, action, controlPath = '/MediaRenderer/AVTransport/Control', serviceType = 'AVTransport') {
   return new Promise((resolve, reject) => {
     const req = http.request({
       hostname: SONOS_IP,
       port: SONOS_PORT,
-      path: '/MediaRenderer/AVTransport/Control',
+      path: controlPath,
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml; charset="utf-8"',
-        'SOAPAction': `"urn:schemas-upnp-org:service:AVTransport:1#${action}"`,
+        'SOAPAction': `"urn:schemas-upnp-org:service:${serviceType}:1#${action}"`,
         'Content-Length': Buffer.byteLength(body),
       },
       timeout: 2000,
