@@ -31,6 +31,7 @@ function cacheKey(t: TrackKey): string {
 
 export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResult {
   const [curve, setCurve] = useState<EnergySample[] | null>(null);
+  const [recordedVolume, setRecordedVolume] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const trackRef = useRef<string | null>(null);
 
