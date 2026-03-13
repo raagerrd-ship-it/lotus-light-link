@@ -59,7 +59,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       .maybeSingle()
       .then(({ data }) => {
         if (trackRef.current !== key) return; // stale
-        const parsed = data?.energy_curve as EnergySample[] | null;
+        const parsed = data?.energy_curve as unknown as EnergySample[] | null;
         const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
         curveCache.set(key, valid);
         setCurve(valid);
