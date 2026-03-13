@@ -21,7 +21,9 @@ interface MicPanelProps {
   smoothedRtt?: number;
   onSyncDriftMs?: (driftMs: number) => void;
   onSectionChange?: (section: SongSection | null) => void;
-  agcEnabled?: boolean;
+  gainMode?: 'agc' | 'vol' | 'manual';
+  sonosVolume?: number | null;
+  volCalibration?: { volume: number; gain: number } | null;
   maxBrightness?: number;
   dynamicDamping?: number;
 }
