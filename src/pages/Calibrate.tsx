@@ -137,12 +137,12 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setPhase('asking');
   }, [sendPulses]);
 
-  const answer = useCallback(async (seen: boolean) => {
+  const answer = useCallback(async (ans: 'all' | 'partial' | 'none') => {
     const duration = PULSE_DURATIONS[currentIdx];
-    const newResults = [...results, { durationMs: duration, seen }];
+    const newResults = [...results, { durationMs: duration, answer: ans }];
     setResults(newResults);
 
-    if (!seen || currentIdx >= PULSE_DURATIONS.length - 1) {
+    if (ans !== 'all' || currentIdx >= PULSE_DURATIONS.length - 1) {
       setPhase('done');
       if (conn?.characteristic) {
         BRIGHT_BUF[3] = 50;
@@ -158,8 +158,9 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setPhase('asking');
   }, [currentIdx, results, sendPulses, conn]);
 
-  const lastSeen = [...results].reverse().find(r => r.seen);
-  const firstMissed = results.find(r => !r.seen);
+  const lastAll = [...results].reverse().find(r => r.answer === 'all');
+  const firstFail = results.find(r => r.answer !== 'all');
+  const firstFailType = firstFail?.answer;
 
   return (
     <div className="space-y-4">
