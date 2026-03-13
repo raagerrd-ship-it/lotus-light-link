@@ -92,6 +92,7 @@ function BleSpeedTab({ conn }: { conn: any }) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [results, setResults] = useState<PulseResult[]>([]);
   const [countdown, setCountdown] = useState(0);
+  const [saved, setSaved] = useState(false);
   const acRef = useRef<AbortController | null>(null);
 
   const currentDuration = PULSE_DURATIONS[currentIdx] ?? 0;
