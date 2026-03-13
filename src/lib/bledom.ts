@@ -193,6 +193,8 @@ export interface BleWriteStats {
   droppedPerSec: number;
   lastWriteMs: number;
   queueAgeMs: number;
+  errorCount: number;
+  lastError: string;
 }
 
 // Pipeline step timings (set externally by MicPanel tick loop)
@@ -211,7 +213,9 @@ let _dropCount = 0;
 let _statsStart = performance.now();
 let _lastActualWriteMs = 0;
 let _lastTickToWriteMs = 0;
-let _dirtyWhileWriting = false; // Flag: new data arrived during async write
+let _dirtyWhileWriting = false;
+let _errorCount = 0;
+let _lastError = '';
 
 export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
@@ -229,6 +233,8 @@ export function getBleWriteStats(): BleWriteStats {
     droppedPerSec: Math.round(dps),
     lastWriteMs: Math.round(_lastActualWriteMs),
     queueAgeMs: Math.round(_lastTickToWriteMs),
+    errorCount: _errorCount,
+    lastError: _lastError,
   };
 }
 
@@ -293,8 +299,10 @@ async function _flush() {
     }
 
     _lastActualWriteMs = performance.now() - writeStart;
-  } catch {
-    // GATT write failed
+  } catch (e: any) {
+    _errorCount++;
+    _lastError = e?.message || 'GATT write failed';
+    console.warn('[BLE] write error:', _lastError);
   }
 
   _writing = false;

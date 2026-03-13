@@ -34,7 +34,7 @@ export default function DebugOverlay({
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs
 }: DebugOverlayProps) {
-  const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0 });
+  const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
 
   useEffect(() => {
@@ -92,6 +92,7 @@ export default function DebugOverlay({
         <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> <span title="Avsiktliga skip — brightness ändrades ≤1%, ingen BLE-skrivning behövdes">skip: <span className="text-foreground">{bleStats.droppedPerSec}</span></span></div>
         <div>write: <span className="text-foreground">{bleStats.lastWriteMs}ms</span> queue: <span className="text-foreground">{bleStats.queueAgeMs}ms</span></div>
         {tickToWriteMs != null && <div>e2e: <span className="text-foreground">{Math.round(tickToWriteMs)}ms</span></div>}
+        {bleStats.errorCount > 0 && <div className="text-red-400">err: {bleStats.errorCount} — {bleStats.lastError}</div>}
       </div>
 
       {/* Pipeline step timings */}
