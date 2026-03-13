@@ -15,6 +15,7 @@ import DebugOverlay from "@/components/DebugOverlay";
 import type { SongSection } from "@/lib/songSections";
 
 const Index = () => {
+  const navigate = useNavigate();
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
