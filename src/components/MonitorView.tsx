@@ -1,5 +1,16 @@
-import { useLiveSessionMonitor, type LiveSessionState, type MasterDebugState } from "@/hooks/useLiveSession";
-import { Wifi, WifiOff } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useLiveSessionMonitor, type MasterDebugState } from "@/hooks/useLiveSession";
+import { supabase } from "@/integrations/supabase/client";
+import { Wifi, WifiOff, ChevronDown, ChevronUp, Music } from "lucide-react";
+
+interface SongRecord {
+  track_name: string;
+  artist_name: string;
+  bpm: number | null;
+  created_at: string;
+  has_sections: boolean;
+  has_drops: boolean;
+}
 
 function timeSince(isoString?: string): string {
   if (!isoString) return "";
@@ -9,11 +20,21 @@ function timeSince(isoString?: string): string {
   return "offline";
 }
 
-function DebugPanel({ d, updated }: { d: MasterDebugState; updated?: string }) {
-  const status = timeSince(updated);
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const time = d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return `Idag ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Igår ${time}`;
+  return d.toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }) + ' ' + time;
+}
+
+function DebugPanel({ d }: { d: MasterDebugState }) {
   return (
-    <div className="font-mono text-[10px] leading-tight text-foreground/70 px-3 py-2 space-y-0.5">
-      <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1">Master debug</div>
+    <div className="font-mono text-[10px] leading-tight text-foreground/70 space-y-0.5">
       <div>BLE: {d.bleConnected ? <span className="text-green-400">{d.bleDeviceName || 'ok'}</span> : <span className="text-red-400">ej ansluten</span>}</div>
       <div>sonos: {d.sonosConnected ? <span className="text-green-400">ok</span> : <span className="text-red-400">offline</span>} {d.sonosRtt != null && <span>RTT {Math.round(d.sonosRtt)}ms</span>}</div>
       <div>
@@ -24,11 +45,31 @@ function DebugPanel({ d, updated }: { d: MasterDebugState; updated?: string }) {
         {d.curveStatus === 'none' && <span className="text-muted-foreground">—</span>}
       </div>
       {d.curveTrackName && <div className="truncate text-foreground/50">{d.curveTrackName}</div>}
-      <div className="border-t border-border/30 pt-0.5 mt-1">
-        BLE w/s: <span className="text-foreground">{d.bleWritesPerSec ?? 0}</span> skip: <span className="text-foreground">{d.bleDropsPerSec ?? 0}</span>
-      </div>
-      <div>write: <span className="text-foreground">{d.bleLastWriteMs ?? 0}ms</span> e2e: <span className="text-foreground">{Math.round(d.e2eMs ?? 0)}ms</span></div>
-      <div>rms: <span className="text-foreground">{(d.rmsMs ?? 0).toFixed(1)}ms</span> tick: <span className="text-foreground">{(d.totalTickMs ?? 0).toFixed(1)}ms</span></div>
+      <div>BLE w/s: <span className="text-foreground">{d.bleWritesPerSec ?? 0}</span> e2e: <span className="text-foreground">{Math.round(d.e2eMs ?? 0)}ms</span> tick: <span className="text-foreground">{(d.totalTickMs ?? 0).toFixed(1)}ms</span></div>
+    </div>
+  );
+}
+
+function SongList({ songs }: { songs: SongRecord[] }) {
+  return (
+    <div className="space-y-1">
+      {songs.map((s, i) => (
+        <div key={i} className="flex items-center gap-2 py-1 px-1 rounded-md bg-secondary/30">
+          <Music className="w-3 h-3 shrink-0 text-muted-foreground/50" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-foreground truncate">{s.track_name}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{s.artist_name}</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <div className="flex items-center gap-1">
+              {s.bpm && <span className="text-[9px] font-mono text-muted-foreground">{s.bpm}bpm</span>}
+              {s.has_sections && <span className="text-[8px] text-green-400">§</span>}
+              {s.has_drops && <span className="text-[8px] text-orange-400">⚡</span>}
+            </div>
+            <p className="text-[9px] text-muted-foreground/60">{formatDate(s.created_at)}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -41,6 +82,35 @@ const SECTION_LABELS: Record<string, string> = {
 
 export default function MonitorView() {
   const session = useLiveSessionMonitor();
+  const [songs, setSongs] = useState<SongRecord[]>([]);
+  const [showSongs, setShowSongs] = useState(true);
+  const [showDebug, setShowDebug] = useState(true);
+
+  // Fetch song list
+  useEffect(() => {
+    const fetchSongs = () => {
+      supabase
+        .from("song_analysis")
+        .select("track_name, artist_name, bpm, created_at, sections, drops")
+        .order("created_at", { ascending: false })
+        .limit(50)
+        .then(({ data }) => {
+          if (data) {
+            setSongs(data.map((d: any) => ({
+              track_name: d.track_name,
+              artist_name: d.artist_name,
+              bpm: d.bpm,
+              created_at: d.created_at,
+              has_sections: !!d.sections,
+              has_drops: !!d.drops,
+            })));
+          }
+        });
+    };
+    fetchSongs();
+    const id = setInterval(fetchSongs, 10000); // refresh every 10s
+    return () => clearInterval(id);
+  }, []);
 
   if (!session) {
     return (
@@ -63,80 +133,88 @@ export default function MonitorView() {
 
   return (
     <div
-      className="h-[100dvh] bg-background overflow-hidden flex flex-col"
+      className="h-[100dvh] bg-background overflow-y-auto flex flex-col"
       style={{
-        backgroundImage: `radial-gradient(ellipse at 50% 40%, rgba(${scaledR},${scaledG},${scaledB},0.15) 0%, transparent 70%)`,
+        backgroundImage: `radial-gradient(ellipse at 50% 20%, rgba(${scaledR},${scaledG},${scaledB},0.12) 0%, transparent 60%)`,
       }}
     >
       {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-lg border-b border-border/30" style={{ background: 'hsl(var(--background) / 0.6)' }}>
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-lg border-b border-border/30" style={{ background: 'hsl(var(--background) / 0.85)' }}>
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${isLive ? 'animate-pulse' : ''}`} style={{ backgroundColor: isLive ? '#22c55e' : 'hsl(var(--muted-foreground))' }} />
           <span className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
             Monitor {status !== "live" ? `· ${status}` : ""}
           </span>
         </div>
-        <Wifi className="w-3.5 h-3.5 text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full" style={{ background: liveColor, boxShadow: `0 0 8px ${liveColor}` }} />
+          <span className="text-[10px] font-mono text-muted-foreground">{brightness}%</span>
+        </div>
       </div>
 
-      {/* Main glow area */}
-      <div className="flex-1 flex items-center justify-center relative">
-        <div
-          className="rounded-full transition-all duration-300"
-          style={{
-            width: Math.max(80, brightness * 2.5),
-            height: Math.max(80, brightness * 2.5),
-            background: `radial-gradient(circle, ${liveColor} 0%, rgba(${scaledR},${scaledG},${scaledB},0.3) 50%, transparent 70%)`,
-            boxShadow: `0 0 ${brightness}px ${liveColor}, 0 0 ${brightness * 2}px rgba(${scaledR},${scaledG},${scaledB},0.3)`,
-          }}
-        />
-        <span className="absolute bottom-8 text-xs font-mono text-muted-foreground/60">
-          {brightness}%
-        </span>
-      </div>
-
-      {/* Now playing footer */}
-      <div className="shrink-0 backdrop-blur-lg border-t border-border/30" style={{ background: 'hsl(var(--background) / 0.6)' }}>
-        {track_name ? (
-          <div className="flex items-center gap-3 px-4 py-3">
-            {album_art_url && (
-              <img src={album_art_url} alt="Album art" className="w-12 h-12 rounded-xl"
-                style={{ boxShadow: `0 0 16px rgba(${r},${g},${b},0.4)` }} />
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground truncate">{track_name}</p>
-              <p className="text-xs text-muted-foreground truncate">{artist_name}</p>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
+      {/* Now playing */}
+      {track_name ? (
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
+          {album_art_url && (
+            <img src={album_art_url} alt="Album art" className="w-14 h-14 rounded-xl"
+              style={{ boxShadow: `0 0 20px rgba(${r},${g},${b},0.4)` }} />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground truncate">{track_name}</p>
+            <p className="text-xs text-muted-foreground truncate">{artist_name}</p>
+            <div className="flex items-center gap-1.5 mt-1">
               {section_type && (
-                <span className="text-[10px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-2 py-0.5 rounded-full uppercase"
+                <span className="text-[9px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-1.5 py-0.5 rounded-full uppercase"
                   style={{ borderColor: `rgba(${r},${g},${b},0.2)` }}>
                   {SECTION_LABELS[section_type] ?? section_type}
                 </span>
               )}
               {bpm != null && (
-                <span className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full"
+                <span className="text-[9px] font-mono font-bold text-muted-foreground bg-secondary border px-1.5 py-0.5 rounded-full"
                   style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}>
                   {bpm} BPM
                 </span>
               )}
             </div>
           </div>
-        ) : (
-          <div className="px-4 py-4 text-center">
-            <p className="text-xs text-muted-foreground">
-              {is_playing ? "Spelar…" : "Inget spelas"}
-            </p>
+        </div>
+      ) : (
+        <div className="px-4 py-4 text-center border-b border-border/20">
+          <p className="text-xs text-muted-foreground">{is_playing ? "Spelar…" : "Inget spelas"}</p>
+        </div>
+      )}
+
+      {/* Debug panel */}
+      {debug_state && (
+        <div className="border-b border-border/20">
+          <button onClick={() => setShowDebug(p => !p)} className="w-full flex items-center justify-between px-4 py-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
+            <span>Master debug</span>
+            {showDebug ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {showDebug && (
+            <div className="px-4 pb-2">
+              <DebugPanel d={debug_state} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Song library */}
+      <div className="flex-1">
+        <button onClick={() => setShowSongs(p => !p)} className="w-full flex items-center justify-between px-4 py-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
+          <span>Inspelningar ({songs.length})</span>
+          {showSongs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        </button>
+        {showSongs && (
+          <div className="px-3 pb-4">
+            {songs.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">Inga inspelningar ännu</p>
+            ) : (
+              <SongList songs={songs} />
+            )}
           </div>
         )}
       </div>
-
-      {/* Debug panel from master */}
-      {debug_state && (
-        <div className="shrink-0 border-t border-border/30 bg-background/80 pb-[env(safe-area-inset-bottom)]">
-          <DebugPanel d={debug_state} updated={(session as any).updated_at} />
-        </div>
-      )}
     </div>
   );
 }
