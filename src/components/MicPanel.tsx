@@ -22,9 +22,7 @@ interface MicPanelProps {
   onSyncDriftMs?: (driftMs: number) => void;
   onSectionChange?: (section: SongSection | null) => void;
   agcEnabled?: boolean;
-  manualGain?: number;
-  sonosVolume?: number | null;
-  calibration?: { volume: number; gain: number } | null;
+  maxBrightness?: number;
 }
 
 // Priority-aware BLE command queue
@@ -61,7 +59,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange, agcEnabled = true, manualGain = 5, sonosVolume, calibration }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange, agcEnabled = true, maxBrightness = 100 }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -166,13 +164,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   // Gain control refs
   const agcEnabledRef = useRef(agcEnabled);
-  const manualGainRef = useRef(manualGain);
-  const sonosVolumeRef = useRef<number | null>(sonosVolume ?? null);
-  const calibrationRef = useRef<{ volume: number; gain: number } | null>(calibration ?? null);
+  const maxBrightnessRef = useRef(maxBrightness);
   useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
-  useEffect(() => { manualGainRef.current = manualGain; }, [manualGain]);
-  useEffect(() => { sonosVolumeRef.current = sonosVolume ?? null; }, [sonosVolume]);
-  useEffect(() => { calibrationRef.current = calibration ?? null; }, [calibration]);
+  useEffect(() => { maxBrightnessRef.current = maxBrightness; }, [maxBrightness]);
 
   // Ambient smoothing EMA ref
   const smoothedAmbientRef = useRef(0);
@@ -376,25 +370,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       const isSilence = rawEnergy < 0.015;
 
-      // Gain calculation: calibration > manual > AGC
+      // Gain calculation: AGC (always on now)
       let effectiveGain: number;
-      const cal = calibrationRef.current;
-      const vol = sonosVolumeRef.current;
-      if (cal && vol != null && vol > 0) {
-        // Calibrated mode: extrapolate gain from calibration point
-        const volumeRatio = Math.pow(cal.volume / vol, 2.5);
-        effectiveGain = cal.gain * volumeRatio;
-      } else if (!agcEnabledRef.current) {
-        // Manual mode
-        effectiveGain = manualGainRef.current;
-      } else {
-        // AGC mode (original logic)
-        if (!isSilence) {
-          const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
-          agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
-        }
-        effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      if (!isSilence) {
+        const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
+        agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       }
+      effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
       const energy = rawEnergy * Math.min(effectiveGain, 30);
 
       // Track energy history for auto-correlation BPM
@@ -633,17 +615,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Silence handling
       const silenceDur = silenceStartRef.current > 0 ? performance.now() - silenceStartRef.current : 0;
 
-      // AGC-normalized ambient for zone 1 (using same effective gain as main energy)
-      const cal2 = calibrationRef.current;
-      const vol2 = sonosVolumeRef.current;
-      let ambientGain: number;
-      if (cal2 && vol2 != null && vol2 > 0) {
-        ambientGain = cal2.gain * Math.pow(cal2.volume / vol2, 2.5);
-      } else if (!agcEnabledRef.current) {
-        ambientGain = manualGainRef.current;
-      } else {
-        ambientGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
-      }
+      // AGC-normalized ambient for zone 1
+      const ambientGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
       const agcAmbient = ambientEnergy * Math.min(ambientGain, 30);
 
       // EMA smoothing for ambient to reduce jitter
@@ -703,8 +676,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         totalPct = BASELINE_PCT + (totalPct - BASELINE_PCT) * fadeFactor;
       }
 
-      // Cap by section max brightness
-      totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100);
+      // Cap by section max brightness and user max brightness setting
+      totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100, maxBrightnessRef.current);
 
       const pct = Math.round(Math.max(3, Math.min(100, totalPct)));
       const finalCurved = pct / 100; // normalized 0-1 for visuals
