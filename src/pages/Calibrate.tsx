@@ -23,7 +23,7 @@ const TABS: { key: Tab; label: string }[] = [
 const COLOR_BUF = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const BRIGHT_BUF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-const PULSE_DURATIONS = [200, 150, 100, 80, 60, 50, 40, 30, 20, 15, 10];
+const PULSE_DURATIONS = [30, 25, 20, 18, 15, 12, 10, 8, 6, 5, 4, 3, 2, 1];
 const PULSES_PER_STEP = 3;
 const PULSE_GAP_MS = 800;
 
