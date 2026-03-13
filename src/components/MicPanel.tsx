@@ -792,7 +792,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (upcomingDrop !== null && !dropFiredRef.current.has(upcomingDrop)) {
         dropFiredRef.current.add(upcomingDrop);
         ble.brightness(100);
-        const color = currentColorRef.current;
+        const color = targetColorRef.current;
         const lifted = liftColor(color, 1.0);
         ble.color(...lifted);
         boost.active = true;
