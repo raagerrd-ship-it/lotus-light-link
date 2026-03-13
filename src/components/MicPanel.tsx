@@ -15,6 +15,7 @@ interface MicPanelProps {
   sonosVolume?: number;
   sonosRtt?: number;
   isPlaying?: boolean;
+  durationMs?: number | null;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
   onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
