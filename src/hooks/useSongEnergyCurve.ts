@@ -14,10 +14,12 @@ interface TrackKey {
 interface SongEnergyCurveResult {
   /** Saved curve from DB, or null if first listen */
   curve: EnergySample[] | null;
+  /** Volume (0-100) the curve was recorded at, or null */
+  recordedVolume: number | null;
   /** True while fetching */
   loading: boolean;
   /** Save/update the energy curve for the current track */
-  saveCurve: (samples: EnergySample[]) => void;
+  saveCurve: (samples: EnergySample[], volume: number | null) => void;
 }
 
 // In-memory cache: "track|artist" → curve or null
