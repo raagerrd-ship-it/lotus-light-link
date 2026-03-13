@@ -154,7 +154,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => { dropsRef.current = drops; }, [drops]);
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
-  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
   // Restore AGC from saved state when curve loads
@@ -167,10 +166,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     }
   }, [savedAgcState]);
 
-  // Flush recorded samples on track change — only save complete recordings
-  // Using trackName instead of energyCurve as trigger, because energyCurve
-  // stays null between consecutive unsaved songs and the effect wouldn't fire.
-  useEffect(() => {
+  const flushRecordedSamples = (reason: 'track-change' | 'playback-stop' | 'unmount') => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
       const dur = durationMsRef.current;
@@ -181,7 +177,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
       const startedEarly = firstT < 15;
       const finishedLate = durationSec > 0 && lastT > (durationSec - 15);
       const isComplete = startedEarly && finishedLate;
-      
+
       if (isComplete) {
         const agc: AgcState = {
           agcMin: agcMinRef.current,
@@ -189,16 +185,35 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           agcPeakMax: agcPeakMaxRef.current,
           avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
         };
-        console.log('[MicPanel] ✓ complete recording', prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+        console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
         onSaveCurveRef.current(prev, volumeRef.current ?? null, agc);
       } else {
-        console.log('[MicPanel] ✗ discarding incomplete recording', prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+        console.log(`[MicPanel] ✗ discarding incomplete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
       }
     }
     recordedSamplesRef.current = [];
     recordingStartPosRef.current = null;
     lastRecordTimeRef.current = 0;
+  };
+
+  // Flush on playback stop (not just on track-name changes)
+  useEffect(() => {
+    const wasPlaying = isPlayingRef.current;
+    isPlayingRef.current = isPlaying;
+    if (wasPlaying && !isPlaying) {
+      flushRecordedSamples('playback-stop');
+    }
+  }, [isPlaying]);
+
+  // Flush recorded samples on track change
+  useEffect(() => {
+    flushRecordedSamples('track-change');
   }, [trackName]);
+
+  // Safety: flush any buffered recording when component unmounts
+  useEffect(() => {
+    return () => flushRecordedSamples('unmount');
+  }, []);
 
   useEffect(() => {
     colorRef.current = currentColor;
