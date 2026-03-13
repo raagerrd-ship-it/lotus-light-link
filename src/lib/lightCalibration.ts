@@ -106,16 +106,33 @@ export function saveBleSpeedToCloud(deviceName: string, bleMinIntervalMs: number
   });
 }
 
+export interface LatencyResults {
+  tapMs: number | null;
+  metroMs: number | null;
+  gattRoundtripMs: number | null;
+  verifiedAt: string | null;
+  verified: boolean;
+}
+
+/** Save detailed latency results to cloud. */
+export function saveLatencyToCloud(deviceName: string, latency: LatencyResults) {
+  _upsertCloud(deviceName, {
+    latency_results: latency,
+    calibration: getCalibration(),
+  });
+}
+
 /** Load calibration from cloud for a device. Returns null if not found. */
 export async function loadCalibrationFromCloud(deviceName: string): Promise<{
   calibration: LightCalibration;
   bleMinIntervalMs: number | null;
   bleSpeedResults: Record<string, number> | null;
+  latencyResults: LatencyResults | null;
 } | null> {
   try {
     const { data, error } = await (supabase as any)
       .from('device_calibration')
-      .select('calibration, ble_min_interval_ms, ble_speed_results')
+      .select('calibration, ble_min_interval_ms, ble_speed_results, latency_results')
       .eq('device_name', deviceName)
       .maybeSingle();
     if (error || !data) return null;
@@ -126,6 +143,7 @@ export async function loadCalibrationFromCloud(deviceName: string): Promise<{
       calibration: cal as LightCalibration,
       bleMinIntervalMs: data.ble_min_interval_ms,
       bleSpeedResults: data.ble_speed_results as Record<string, number> | null,
+      latencyResults: data.latency_results as LatencyResults | null,
     };
   } catch {
     return null;
