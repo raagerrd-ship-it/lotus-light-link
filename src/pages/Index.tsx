@@ -205,7 +205,6 @@ const Index = () => {
       style={{ backgroundImage: `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)` }}
       onPointerMove={connection ? resetOverlayTimer : undefined}
       onPointerDown={connection ? resetOverlayTimer : undefined}
-      onClick={(e) => { if (e.detail === 3) setShowDebug(prev => !prev); }}
     >
       <div className="absolute inset-0">
           <MicPanel
