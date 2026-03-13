@@ -70,11 +70,10 @@ function createBleQueue(
     color(r: number, g: number, b: number) {
       const c = charRef.current;
       if (!c) return;
-      pendingColor = async () => {
-        const [cr, cg, cb] = applyColorCalibration(r, g, b);
-        await sendColor(c, cr, cg, cb, true);
-        onColorSent?.([cr, cg, cb]);
-      };
+      // Apply calibration synchronously and update sent-color immediately
+      const calibrated = applyColorCalibration(r, g, b);
+      onColorSent?.(calibrated);
+      pendingColor = () => sendColor(c, calibrated[0], calibrated[1], calibrated[2], true);
       process();
     },
   };
