@@ -348,6 +348,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const bassEnergy = (lowRms * 0.3 + lowMax * 0.7) * 0.9;
       const midEnergy  = (midRms * 0.3 + midMax * 0.7) * 0.5;
       const rawEnergy  = subEnergy * 0.55 + bassEnergy * 0.30 + midEnergy * 0.15;
+      // Ambient energy: broader frequency mix for the always-on zone
+      const ambientEnergy = subEnergy * 0.25 + bassEnergy * 0.35 + midEnergy * 0.40;
 
       const isSilence = rawEnergy < 0.015;
       if (!isSilence) {
@@ -371,7 +373,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         adaptiveThreshRef.current = Math.max(0.10, transientAvgRef.current * 3.0);
       }
 
-      return { energy, transient, isSilence, rawEnergy };
+      return { energy, transient, isSilence, rawEnergy, ambientEnergy };
     };
 
     // ─── Sub-function: beat detection, phase tracking, BPM estimation ───
@@ -548,8 +550,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       return isOnset;
     };
 
-    // ─── Sub-function: compute brightness from beat phase ───
-    const computeBrightness = (isOnset: boolean, transient: number) => {
+    // ─── Sub-function: compute brightness from beat phase (4-zone model) ───
+    const computeBrightness = (isOnset: boolean, transient: number, ambientEnergy: number) => {
       // Get current section behavior
       let sectionBehavior = { maxBrightness: 1, beatReactivity: 1, breathingMode: false, punchWhiteOverride: null as boolean | null };
       const sonosPos = sonosPositionRef.current;
@@ -562,7 +564,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (songSectionsRef.current.length > 0) {
         currentSection = getCurrentSection(songSectionsRef.current, currentSec);
         sectionBehavior = getSectionBehavior(currentSection);
-        // Report section changes
         const sKey = currentSection?.type ?? null;
         if (sKey !== lastSectionTypeRef.current) {
           lastSectionTypeRef.current = sKey;
@@ -580,38 +581,68 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       }
 
       // Asymmetric envelope: instant attack, slow decay
-      // phase 0 = beat onset, phase 1 = next beat
-      const decay = Math.pow(1 - phase, 1.8); // gentler exponent = longer tail
+      const decay = Math.pow(1 - phase, 1.8);
       const onsetStrength = isOnset ? Math.min(1, transient / (adaptiveThreshRef.current * 2.5)) : 0;
       const peakLevel = beatPhaseRef.current < 0.02
         ? Math.max(0.45, Math.min(1, 0.45 + onsetStrength * 0.55))
         : (pulseMaxRef.current ?? 0.6);
       if (beatPhaseRef.current < 0.02) pulseMaxRef.current = peakLevel;
       const linear = peakLevel * decay * sectionBehavior.beatReactivity;
-      const curved = Math.pow(linear, 0.45); // softer curve = more visible tail
+      const curved = Math.pow(linear, 0.45);
 
-      let finalCurved = curved;
-      // Synthetic fallback pulse — only when audio is actively playing (not silent)
+      // ── 4-ZONE BRIGHTNESS MODEL ──
+
+      // Silence handling
       const silenceDur = silenceStartRef.current > 0 ? performance.now() - silenceStartRef.current : 0;
-      if (bpmRef.current > 0 && curved < 0.25 && silenceDur < 200) {
+
+      // AGC-normalized ambient for zone 1
+      const agcAmbient = ambientEnergy * (agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1);
+
+      // Zone 1: Ambient (0–30%) — always active, broad frequency, logarithmic
+      const ambientPct = 30 * Math.log1p(Math.min(agcAmbient, 1) * 12) / Math.log(13);
+
+      // Zone 2: Groove (30–60%) — requires beat (phase < 0.5 = recent onset)
+      const groovePct = (phase < 0.5 && bpmRef.current > 0)
+        ? 30 * curved * sectionBehavior.beatReactivity
+        : 0;
+
+      // Phase-gating threshold for impact/punch
+      const nearBeat = phase < 0.25 || phase > 0.75;
+      const gatedThreshold = nearBeat ? adaptiveThreshRef.current : adaptiveThreshRef.current * 1.3;
+
+      // Zone 3: Impact (60–90%) — requires strong transient (>1.5x threshold)
+      const impactStrength = transient / (gatedThreshold * 1.5);
+      const impactPct = (isOnset && impactStrength >= 1)
+        ? 30 * Math.min(1, (impactStrength - 1) * 1.5 + 0.5)
+        : (phase < 0.15 && impactStrength >= 0.8 ? 30 * curved * 0.5 : 0);
+
+      // Zone 4: Punch (90–100%) — requires very strong transient (>2.5x threshold)
+      const punchStrength = transient / (gatedThreshold * 2.5);
+      const punchPct = (isOnset && punchStrength >= 1)
+        ? 10 * Math.min(1, punchStrength)
+        : 0;
+
+      let totalPct = ambientPct + groovePct + impactPct + punchPct;
+
+      // Synthetic fallback pulse when audio playing but between beats
+      if (bpmRef.current > 0 && totalPct < 25 && silenceDur < 200) {
         const bpmPulse = Math.pow(1 - phase, 2.0);
-        const synthCurved = 0.05 + bpmPulse * 0.25 * sectionBehavior.beatReactivity;
-        finalCurved = Math.max(curved, synthCurved);
+        totalPct = Math.max(totalPct, 10 + bpmPulse * 15 * sectionBehavior.beatReactivity);
       }
 
-      // Smooth fade-to-dim on silence: ease down to baseline over ~1.5s
+      // Smooth fade-to-dim on silence
       const FADE_DURATION = 1500;
-      const BASELINE = 0.06; // ~8% brightness as resting state
+      const BASELINE_PCT = 6;
       if (silenceDur > 0) {
         const fadeFactor = Math.max(0, 1 - silenceDur / FADE_DURATION);
-        finalCurved = BASELINE + (finalCurved - BASELINE) * fadeFactor;
+        totalPct = BASELINE_PCT + (totalPct - BASELINE_PCT) * fadeFactor;
       }
 
       // Cap by section max brightness
-      finalCurved = Math.min(finalCurved, sectionBehavior.maxBrightness);
+      totalPct = Math.min(totalPct, sectionBehavior.maxBrightness * 100);
 
-      const floored = Math.max(BASELINE * (silenceDur > 0 ? 1 : 0), finalCurved);
-      const pct = Math.round(3 + 97 * Math.pow(floored, 0.8));
+      const pct = Math.round(Math.max(3, Math.min(100, totalPct)));
+      const finalCurved = pct / 100; // normalized 0-1 for visuals
 
       return { phase, curved, finalCurved, pct, sectionBehavior, currentSec };
     };
@@ -776,9 +807,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         if (t >= 1) colorTransitionStartRef.current = 0;
       }
 
-      const { transient, isSilence } = sampleEnergy();
+      const { transient, isSilence, ambientEnergy } = sampleEnergy();
       const isOnset = detectBeatsAndBpm(transient, isSilence, now);
-      const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient);
+      const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient, ambientEnergy);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
 
       // Store result for rAF visual loop
