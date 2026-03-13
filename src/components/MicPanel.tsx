@@ -373,7 +373,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         adaptiveThreshRef.current = Math.max(0.10, transientAvgRef.current * 3.0);
       }
 
-      return { energy, transient, isSilence, rawEnergy };
+      return { energy, transient, isSilence, rawEnergy, ambientEnergy };
     };
 
     // ─── Sub-function: beat detection, phase tracking, BPM estimation ───
