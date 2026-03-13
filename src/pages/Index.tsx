@@ -25,7 +25,12 @@ import { getCurrentSection } from "@/lib/sectionLighting";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [isMaster, setIsMaster] = useState(() => localStorage.getItem("deviceRole") !== "monitor");
+  const [isMaster, setIsMaster] = useState(() => {
+    const forcedRole = new URLSearchParams(window.location.search).get("role");
+    if (forcedRole === "master") return true;
+    if (forcedRole === "monitor") return false;
+    return localStorage.getItem("deviceRole") !== "monitor";
+  });
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
