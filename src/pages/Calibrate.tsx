@@ -12,23 +12,11 @@ import {
 import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval, getBleWriteStats } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'color' | 'dynamics' | 'ble' | 'latency';
+type Tab = 'ble' | 'latency';
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'color', label: 'Färg' },
-  { key: 'dynamics', label: 'Dynamik' },
-  { key: 'ble', label: 'BLE' },
+  { key: 'ble', label: 'BLE-hastighet' },
   { key: 'latency', label: 'Latens' },
-];
-
-const TEST_COLORS: { label: string; color: [number, number, number] }[] = [
-  { label: 'Röd', color: [255, 0, 0] },
-  { label: 'Grön', color: [0, 255, 0] },
-  { label: 'Blå', color: [0, 0, 255] },
-  { label: 'Vit', color: [255, 255, 255] },
-  { label: 'Gul', color: [255, 255, 0] },
-  { label: 'Cyan', color: [0, 255, 255] },
-  { label: 'Magenta', color: [255, 0, 255] },
 ];
 
 interface SliderRowProps {
