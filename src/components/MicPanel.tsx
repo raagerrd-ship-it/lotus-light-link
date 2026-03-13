@@ -868,7 +868,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     const analysisTick = () => {
       const now = performance.now();
 
-      // Smooth color transition (lerp over COLOR_FADE_MS)
+      // Smooth color transition for visuals (lerp over COLOR_FADE_MS)
+      // BLE color is handled by dispatchBle using targetColorRef directly
       const tStart = colorTransitionStartRef.current;
       if (tStart > 0) {
         const t = Math.min(1, (now - tStart) / COLOR_FADE_MS);
@@ -880,12 +881,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           Math.round(prev[1] + (target[1] - prev[1]) * ease),
           Math.round(prev[2] + (target[2] - prev[2]) * ease),
         ];
-        // Send interpolated color to BLE during fade (throttled ~25ms, even during boost)
-        if (now - throttleRef.current >= 25) {
-          throttleRef.current = now;
-          ble.color(...currentColorRef.current);
-          colorBoostRef.current.active = false; // interrupt boost to show new color
-        }
         if (t >= 1) colorTransitionStartRef.current = 0;
       }
 
