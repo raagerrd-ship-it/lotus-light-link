@@ -30,8 +30,15 @@ const PULSE_DURATIONS = [30, 25, 20, 18, 15, 12, 10, 8, 6, 5, 4, 3, 2, 1];
 const PULSES_PER_STEP = 3;
 const PULSE_GAP_MS = 800;
 
+const BLE_CMD_GAP = 1; // ms between color and brightness commands
 async function bleWrite(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array) {
   await char.writeValueWithoutResponse(buf as any);
+}
+async function bleColorThenBright(char: BluetoothRemoteGATTCharacteristic, brightness: number) {
+  await bleWrite(char, COLOR_BUF);
+  await new Promise(r => setTimeout(r, BLE_CMD_GAP));
+  BRIGHT_BUF[3] = brightness;
+  await bleWrite(char, BRIGHT_BUF);
 }
 
 // Color cycle: R → G → B
