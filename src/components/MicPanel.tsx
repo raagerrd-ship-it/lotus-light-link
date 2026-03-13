@@ -135,6 +135,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const dropsRef = useRef(drops);
   const sonosRttRef = useRef(sonosRtt);
   const onLiveStatusRef = useRef(onLiveStatus);
+  const isPlayingRef = useRef(isPlaying);
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
 
