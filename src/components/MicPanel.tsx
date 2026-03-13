@@ -745,7 +745,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
 
     // ─── Sub-function: update DOM visuals (glow, ring, canvas) ───
-    const updateVisuals = (finalCurved: number, pct: number, isOnset: boolean, now: number) => {
+    const updateVisuals = (finalCurved: number, pct: number, isOnset: boolean, now: number, blePct: number, bleColor: [number, number, number]) => {
       if (vizRef.current) {
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
