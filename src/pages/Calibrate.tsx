@@ -138,12 +138,18 @@ export default function Calibrate() {
 
       {/* Tab content */}
       <div className="space-y-1">
-        {/* Reset button */}
-        <div className="flex justify-end mb-2">
-          <Button variant="ghost" size="sm" onClick={() => handleReset(tab)} className="text-xs gap-1 text-muted-foreground">
-            <RotateCcw className="w-3 h-3" /> Återställ
-          </Button>
-        </div>
+        {/* Reset button (not for auto tab) */}
+        {tab !== 'auto' && (
+          <div className="flex justify-end mb-2">
+            <Button variant="ghost" size="sm" onClick={() => handleReset(tab)} className="text-xs gap-1 text-muted-foreground">
+              <RotateCcw className="w-3 h-3" /> Återställ
+            </Button>
+          </div>
+        )}
+
+        {tab === 'auto' && (
+          <AutoCalibratePanel cal={cal} onUpdate={update} />
+        )}
 
         {tab === 'color' && (
           <>
