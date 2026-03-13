@@ -369,7 +369,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
 
           const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-          const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
+          let pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
+
+          // Section-aware adjustments
+          const posSec2 = getSongPositionSec();
+          const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0);
+          pct = Math.round(pct * sectionParams.brightnessScale);
+
+          // Beat-synced pulse
+          const currentBpm = bpmRef.current;
+          if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
+            const pulse = beatPulse(posSec2, currentBpm);
+            const pulseBoost = pulse * sectionParams.beatPulseStrength * 15; // max ~15% brightness boost
+            pct = Math.min(100, Math.round(pct + pulseBoost));
+          }
 
           // Record energy sample for first-listen curve
           if (!hasCurve) {
@@ -382,7 +395,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
                 lastRecordTimeRef.current = now;
                 // Compute frequency bands
                 const bands = computeBands(an, freqBuf);
-                const isKick = pct > 95;
+                const isKick = pct > sectionParams.kickThreshold;
                 recordedSamplesRef.current.push({
                   t: posSec,
                   e: normalized,
@@ -400,13 +413,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
           const inWhiteKick = now < whiteKickUntilRef.current;
 
           if (hasCurve) {
-            // Curve mode: use saved kick timestamps
-            if (curveKick && !inWhiteKick) {
+            // Curve mode: use saved kick timestamps, gated by section
+            if (curveKick && !inWhiteKick && sectionParams.kickEnabled) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
           } else {
-            // Mic mode: use pct threshold
-            if (pct > 95 && !inWhiteKick) {
+            // Mic mode: use section-aware threshold
+            if (pct > sectionParams.kickThreshold && !inWhiteKick && sectionParams.kickEnabled) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
           }
@@ -421,10 +434,10 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              // Apply frequency-based color modulation in curve mode
+              // Apply frequency-based color modulation with section-aware strength
               let finalColor: [number, number, number] = calibrated;
               if (hasCurve && (curveLo > 0 || curveHi > 0)) {
-                finalColor = modulateColor(...calibrated, curveLo, curveMid, curveHi);
+                finalColor = modulateColor(...calibrated, curveLo, curveMid, curveHi, sectionParams.colorModStrength);
               }
               sendColorAndBrightness(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
