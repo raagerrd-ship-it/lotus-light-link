@@ -124,7 +124,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const transientAvgRef = useRef(0.1);
   
   // Predictive beat: pre-fire BLE commands to compensate for latency
-  const BLE_LATENCY_MS = 50;
+  const calRef = useRef<LightCalibration>(getCalibration());
+  // Re-read calibration periodically (when user returns from /calibrate)
+  useEffect(() => {
+    const interval = setInterval(() => { calRef.current = getCalibration(); }, 2000);
+    return () => clearInterval(interval);
+  }, []);
   const predictiveFiredRef = useRef(false);
   const lastBeatTimeRef = useRef(0);
   
