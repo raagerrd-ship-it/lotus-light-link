@@ -37,12 +37,18 @@ function createBleQueue(charRef: { current: any }) {
 
   const process = async () => {
     if (busy) return;
-    const cmd = pendingBrightness || pendingColor;
-    if (!cmd) return;
-    if (pendingBrightness) pendingBrightness = null;
-    else pendingColor = null;
+    const brightnessCmd = pendingBrightness;
+    const colorCmd = pendingColor;
+    if (!brightnessCmd && !colorCmd) return;
+
+    pendingBrightness = null;
+    pendingColor = null;
     busy = true;
-    try { await cmd(); } catch {}
+    try {
+      // Keep brightness priority, but never starve color
+      if (brightnessCmd) await brightnessCmd();
+      if (colorCmd) await colorCmd();
+    } catch {}
     busy = false;
     process();
   };
