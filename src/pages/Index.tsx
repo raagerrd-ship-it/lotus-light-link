@@ -7,6 +7,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
+import { setBleConnection } from "@/lib/bleStore";
 import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity, Volume2, SlidersHorizontal, Crosshair, Settings } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
