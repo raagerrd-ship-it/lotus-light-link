@@ -110,13 +110,17 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const an = analyserRef.current;
           if (!an) return;
 
-          const cal = calRef.current; // cached, no localStorage read
+          const tickStart = performance.now();
+          const cal = calRef.current;
 
+          // Step 1: RMS calculation
           an.getFloatTimeDomainData(buf);
           let sum = 0;
           for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
           const rms = Math.sqrt(sum / buf.length);
+          const rmsEnd = performance.now();
 
+          // Step 2: Smoothing + normalization
           const prev = smoothedRef.current;
           const alpha = rms > prev ? cal.attackAlpha : cal.releaseAlpha;
           const smoothed = prev + alpha * (rms - prev);
@@ -135,10 +139,11 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
             whiteKickUntilRef.current = now + cal.whiteKickMs;
           }
           const isWhite = now < whiteKickUntilRef.current;
+          const smoothEnd = performance.now();
 
+          // Step 3: BLE commands
           const c = charRef.current;
           if (c) {
-            // Send color ONLY on state transitions (normal↔white, or base color change)
             if (isWhite && !wasWhite) {
               sendColor(c, 255, 255, 255);
               lastColorStateRef.current = 'white';
@@ -147,9 +152,17 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
               sendColor(c, ...calibrated);
               lastColorStateRef.current = 'normal';
             }
-            // Always send brightness (scheduler handles deadband/dedup)
             sendBrightness(c, isWhite ? 100 : pct);
           }
+          const bleEnd = performance.now();
+
+          // Report pipeline timings
+          setPipelineTimings({
+            rmsMs: rmsEnd - tickStart,
+            smoothMs: smoothEnd - rmsEnd,
+            bleCallMs: bleEnd - smoothEnd,
+            totalTickMs: bleEnd - tickStart,
+          });
 
           // Push sample for chart (rAF loop will draw)
           const [cr2, cg2, cb2] = isWhite ? [255, 255, 255] as const : colorRef.current;
