@@ -15,7 +15,9 @@ interface MicPanelProps {
   /** Pre-recorded energy curve for the current song (null = first listen, record mode) */
   energyCurve?: EnergySample[] | null;
   /** Callback to save recorded energy samples when song ends / changes */
-  onSaveEnergyCurve?: (samples: EnergySample[]) => void;
+  onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null) => void;
+  /** Volume the saved curve was recorded at (for compensation) */
+  recordedVolume?: number | null;
 }
 
 const HISTORY_LEN = 120;
