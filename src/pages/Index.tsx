@@ -81,7 +81,10 @@ const Index = () => {
 
   // Auto-reconnect on mount
   useEffect(() => {
-    if (connection || !getLastDevice()) return;
+    if (connection) return;
+    const nav = navigator as any;
+    if (!nav.bluetooth?.getDevices) return;
+
     setBusy(true);
     autoReconnect().then((conn) => {
       if (conn) finishConnect(conn);
