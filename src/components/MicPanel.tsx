@@ -834,9 +834,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Color kick / fade-back — always use targetColorRef (latest palette color)
       const color = targetColorRef.current;
       const beatMs = bpmRef.current > 0 ? 60000 / bpmRef.current : 500;
-      const colorFadeMs = Math.max(50, beatMs * 0.15);
+      const colorKickThrottle = Math.max(40, beatMs * 0.12);
 
-      if (!predictiveActive && effectivePunchWhite && pct > 85 && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorFadeMs) {
+      if (!predictiveActive && effectivePunchWhite && pct > 85 && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorKickThrottle) {
         boost.throttle = now;
         const boostFactor = Math.min(1, (pct - 85) / 15);
         const lifted = liftColor(color, boostFactor);
@@ -844,16 +844,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         boost.startTime = now;
         boost.color = lifted;
         ble.color(...lifted);
-      } else if (boost.active && now - boost.throttle >= colorFadeMs) {
-        const fadeDuration = Math.max(80, beatMs * 0.6);
+      } else if (boost.active && now - boost.throttle >= 25) {
+        // Smooth fade-back: update every 25ms over ~80% of beat duration
+        const fadeDuration = Math.max(200, beatMs * 0.8);
         const elapsed = now - boost.startTime;
         const tLinear = Math.min(elapsed / fadeDuration, 1);
-        const tLog = 1 - Math.pow(1 - tLinear, 3);
+        // Cubic ease-out for perceptually smooth decay
+        const tSmooth = 1 - Math.pow(1 - tLinear, 3);
 
         const [br, bg, bb] = boost.color;
-        const fr = Math.round(br + (color[0] - br) * tLog);
-        const fg = Math.round(bg + (color[1] - bg) * tLog);
-        const fb = Math.round(bb + (color[2] - bb) * tLog);
+        const fr = Math.round(br + (color[0] - br) * tSmooth);
+        const fg = Math.round(bg + (color[1] - bg) * tSmooth);
+        const fb = Math.round(bb + (color[2] - bb) * tSmooth);
 
         boost.throttle = now;
         ble.color(fr, fg, fb);
