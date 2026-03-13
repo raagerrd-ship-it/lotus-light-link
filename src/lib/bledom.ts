@@ -333,6 +333,14 @@ export function setActiveChar(char: any) {
   _lastSentColor = [-1, -1, -1];
 }
 
+/** Clear active char on disconnect to prevent stale GATT writes */
+export function clearActiveChar() {
+  _char = null;
+  _pendingBright = null;
+  _pendingColor = null;
+  if (_timer) { clearTimeout(_timer); _timer = null; }
+}
+
 export function sendColor(_char_unused: any, r: number, g: number, b: number) {
   _pendingColor = [r, g, b];
   // Don't flush here — let sendBrightness or sendColorAndBrightness trigger it
