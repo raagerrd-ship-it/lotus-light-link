@@ -8,7 +8,8 @@ import {
   applyColorCalibration, DEFAULT_CALIBRATION,
   type LightCalibration,
 } from "@/lib/lightCalibration";
-import { connectBLEDOM, sendColor, sendBrightness, type BLEConnection } from "@/lib/bledom";
+import { sendColor, sendBrightness } from "@/lib/bledom";
+import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 type Tab = 'color' | 'dynamics' | 'timing' | 'ambient';
 
