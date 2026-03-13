@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { sendColor, sendBrightness, setActiveChar } from "@/lib/bledom";
+import { sendColor, sendBrightness, setActiveChar, setPipelineTimings } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { getCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 
