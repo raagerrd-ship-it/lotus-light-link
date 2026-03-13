@@ -12,11 +12,12 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
-// Learned AGC: slow-adapting min/max that persists across songs
-const AGC_MAX_DECAY = 0.9998;   // max shrinks very slowly (~5s to halve)
-const AGC_MIN_RISE = 0.99995;   // min rises VERY slowly — preserves low end
-const AGC_ATTACK = 0.05;        // how fast max grows when exceeded
+// Learned AGC: adapts to song dynamics
+const AGC_MAX_DECAY = 0.995;    // max shrinks with ~3.5s half-life (adapts between songs)
+const AGC_MIN_RISE = 0.9999;    // min rises slowly — preserves low end (~17s half-life)
+const AGC_ATTACK = 0.1;         // how fast max grows when exceeded
 const AGC_FLOOR = 0.002;        // absolute minimum range to prevent div/0
+const PEAK_MAX_DECAY = 0.9998;  // peak max decays over ~1.5 minutes
 
 const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
