@@ -11,6 +11,11 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
+// Adaptive auto-gain: learns the RMS range over a sliding window
+const AGC_WINDOW_SEC = 4; // seconds to track min/max
+const AGC_TICK_MS = 25; // assumed tick interval
+const AGC_WINDOW_LEN = Math.round((AGC_WINDOW_SEC * 1000) / AGC_TICK_MS);
+
 const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -31,6 +36,10 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   // Flag for chart: new sample ready
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
+  // Auto-gain: sliding window of recent RMS values
+  const rmsHistoryRef = useRef<Float32Array>(new Float32Array(AGC_WINDOW_LEN));
+  const rmsHistoryIdxRef = useRef(0);
+  const rmsHistoryCountRef = useRef(0);
 
   useEffect(() => {
     colorRef.current = currentColor;
@@ -126,9 +135,23 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          const vol = volumeRef.current;
-          const rmsDivisor = vol != null ? Math.max(0.01, 0.25 * (vol / 100)) : 0.25;
-          const normalized = Math.min(1, smoothed / rmsDivisor);
+          // Auto-gain: track RMS in a sliding window to learn the dynamic range
+          const rmsHist = rmsHistoryRef.current;
+          const idx = rmsHistoryIdxRef.current;
+          rmsHist[idx] = smoothed;
+          rmsHistoryIdxRef.current = (idx + 1) % AGC_WINDOW_LEN;
+          if (rmsHistoryCountRef.current < AGC_WINDOW_LEN) rmsHistoryCountRef.current++;
+
+          const count = rmsHistoryCountRef.current;
+          let rmsMin = Infinity, rmsMax = -Infinity;
+          for (let j = 0; j < count; j++) {
+            const v = rmsHist[j];
+            if (v < rmsMin) rmsMin = v;
+            if (v > rmsMax) rmsMax = v;
+          }
+          // Use the observed range to normalize, with a floor to avoid division by ~0
+          const range = Math.max(0.005, rmsMax - rmsMin);
+          const normalized = Math.min(1, Math.max(0, (smoothed - rmsMin) / range));
           const pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
 
           // White kick detection
