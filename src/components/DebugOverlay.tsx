@@ -12,6 +12,7 @@ interface DebugOverlayProps {
   gainMode?: string;
   liveBpm?: number | null;
   maxBrightness?: number;
+  dynamicDamping?: number;
   bleConnected?: boolean;
   bleDeviceName?: string | null;
   bleReconnectStatus?: BleReconnectStatus | null;
