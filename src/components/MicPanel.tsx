@@ -811,7 +811,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
           const predictedPct = Math.max(40, Math.round((pulseMaxRef.current ?? 0.7) * 100));
           ble.brightness(predictedPct);
           if (effectivePunchWhite && predictedPct > 85) {
-            const color = currentColorRef.current;
+            const color = targetColorRef.current;
             const boostFactor = Math.min(1, (predictedPct - 85) / 15);
             const lifted = liftColor(color, boostFactor);
             ble.color(...lifted);
