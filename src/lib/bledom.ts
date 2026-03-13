@@ -82,10 +82,11 @@ export async function autoReconnect(signal?: AbortSignal): Promise<BLEConnection
   const RETRY_DELAY = 1000;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    if (signal?.aborted) return null;
+    if (signal?.aborted) { console.log('[BLE] auto-reconnect aborted'); return null; }
 
     try {
       const devices = await nav.bluetooth.getDevices();
+      console.log(`[BLE] attempt ${attempt + 1}, paired devices: ${devices.length}`, devices.map((d: any) => d.name || d.id));
       if (!devices.length) return null; // no permission at all — give up
 
       const saved = getLastDevice();
@@ -97,14 +98,17 @@ export async function autoReconnect(signal?: AbortSignal): Promise<BLEConnection
 
       // Try direct GATT first (fast if device is nearby)
       try {
+        console.log(`[BLE] trying direct GATT to ${target.name || target.id}...`);
         return await connectToDevice(target);
-      } catch {
+      } catch (e: any) {
+        console.log(`[BLE] direct GATT failed: ${e.message}, trying advertisements...`);
         // Fall back to advertisement watching (up to 20s)
         const conn = await connectAfterAdvertisement(target, 20000);
         if (conn) return conn;
+        console.log('[BLE] advertisement scan timed out, retrying...');
       }
-    } catch {
-      // ignore and retry
+    } catch (e: any) {
+      console.log(`[BLE] attempt ${attempt + 1} error: ${e.message}`);
     }
 
     // Wait before retrying
