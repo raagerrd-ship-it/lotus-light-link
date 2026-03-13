@@ -100,15 +100,6 @@ export default function Calibrate() {
     return () => clearInterval(interval);
   }, [testColor, cal, conn]);
 
-  const handleConnect = async () => {
-    setConnecting(true);
-    try {
-      const c = await connectBLEDOM();
-      setConn(c);
-    } catch {}
-    setConnecting(false);
-  };
-
   const calibrated = applyColorCalibration(...testColor, cal);
 
   return (
@@ -120,12 +111,10 @@ export default function Calibrate() {
         </Button>
         <h1 className="text-sm font-bold tracking-widest uppercase text-foreground/80">Kalibrering</h1>
         <div className="flex-1" />
-        {!conn && (
-          <Button variant="outline" size="sm" onClick={handleConnect} disabled={connecting} className="text-xs">
-            {connecting ? 'Ansluter…' : 'Anslut BLE'}
-          </Button>
-        )}
-        {conn && <span className="text-[10px] text-green-400 font-mono">{conn.device?.name || 'Ansluten'}</span>}
+        {conn
+          ? <span className="text-[10px] font-mono text-primary/70">{conn.device?.name || 'Ansluten'}</span>
+          : <span className="text-[10px] font-mono text-muted-foreground">Ej ansluten — anslut från startsidan</span>
+        }
       </div>
 
       {/* Tabs */}
