@@ -8,7 +8,8 @@ import {
   applyColorCalibration, DEFAULT_CALIBRATION,
   type LightCalibration,
 } from "@/lib/lightCalibration";
-import { connectBLEDOM, sendColor, sendBrightness, type BLEConnection } from "@/lib/bledom";
+import { sendColor, sendBrightness } from "@/lib/bledom";
+import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 type Tab = 'color' | 'dynamics' | 'timing' | 'ambient';
 
@@ -64,9 +65,9 @@ export default function Calibrate() {
   const [tab, setTab] = useState<Tab>('color');
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [testColor, setTestColor] = useState<[number, number, number]>([255, 0, 0]);
-  const [conn, setConn] = useState<BLEConnection | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const bleThrottleRef = useRef(0);
+  // Use global BLE connection
+  const [conn, setConn] = useState(getBleConnection);
+  useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
   // Persist on every change
   const update = useCallback((patch: Partial<LightCalibration>) => {
@@ -88,25 +89,16 @@ export default function Calibrate() {
     update(patches[tabKey]);
   }, [update]);
 
-  // Send test color to BLE (throttled)
+  // Send test color to BLE continuously while on calibration page
   useEffect(() => {
     if (!conn) return;
-    const now = performance.now();
-    if (now - bleThrottleRef.current < 50) return;
-    bleThrottleRef.current = now;
-    const [r, g, b] = applyColorCalibration(...testColor, cal);
-    sendColor(conn.characteristic, r, g, b).catch(() => {});
-    sendBrightness(conn.characteristic, cal.maxBrightness).catch(() => {});
+    const interval = setInterval(() => {
+      const [r, g, b] = applyColorCalibration(...testColor, cal);
+      sendColor(conn.characteristic, r, g, b).catch(() => {});
+      sendBrightness(conn.characteristic, cal.maxBrightness).catch(() => {});
+    }, 80);
+    return () => clearInterval(interval);
   }, [testColor, cal, conn]);
-
-  const handleConnect = async () => {
-    setConnecting(true);
-    try {
-      const c = await connectBLEDOM();
-      setConn(c);
-    } catch {}
-    setConnecting(false);
-  };
 
   const calibrated = applyColorCalibration(...testColor, cal);
 
@@ -119,12 +111,10 @@ export default function Calibrate() {
         </Button>
         <h1 className="text-sm font-bold tracking-widest uppercase text-foreground/80">Kalibrering</h1>
         <div className="flex-1" />
-        {!conn && (
-          <Button variant="outline" size="sm" onClick={handleConnect} disabled={connecting} className="text-xs">
-            {connecting ? 'Ansluter…' : 'Anslut BLE'}
-          </Button>
-        )}
-        {conn && <span className="text-[10px] text-green-400 font-mono">{conn.device?.name || 'Ansluten'}</span>}
+        {conn
+          ? <span className="text-[10px] font-mono text-primary/70">{conn.device?.name || 'Ansluten'}</span>
+          : <span className="text-[10px] font-mono text-muted-foreground">Ej ansluten — anslut från startsidan</span>
+        }
       </div>
 
       {/* Tabs */}
