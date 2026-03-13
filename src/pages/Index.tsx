@@ -427,7 +427,7 @@ const Index = () => {
           className={`absolute bottom-0 left-0 right-0 z-20 pb-[env(safe-area-inset-bottom)] transition-opacity duration-500 backdrop-blur-lg border-t border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} progressFraction={progressFraction} />
+          <NowPlayingBar nowPlaying={nowPlaying} bpm={liveBpm} accentColor={currentColor} getPosition={getPosition} />
         </div>
       )}
     </div>
