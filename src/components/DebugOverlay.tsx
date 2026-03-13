@@ -96,6 +96,12 @@ export default function DebugOverlay({
         <div>write: <span className="text-foreground">{bleStats.lastWriteMs}ms</span> queue: <span className="text-foreground">{bleStats.queueAgeMs}ms</span></div>
         {tickToWriteMs != null && <div>e2e: <span className="text-foreground">{Math.round(tickToWriteMs)}ms</span></div>}
       </div>
+
+      {/* Pipeline step timings */}
+      <div className="mt-0.5 border-t border-border/30 pt-0.5">
+        <div>rms: <span className="text-foreground">{pipeline.rmsMs.toFixed(1)}ms</span> smooth: <span className="text-foreground">{pipeline.smoothMs.toFixed(1)}ms</span></div>
+        <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
+      </div>
     </div>
   );
 }
