@@ -807,9 +807,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         if (t >= 1) colorTransitionStartRef.current = 0;
       }
 
-      const { transient, isSilence } = sampleEnergy();
+      const { transient, isSilence, ambientEnergy } = sampleEnergy();
       const isOnset = detectBeatsAndBpm(transient, isSilence, now);
-      const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient);
+      const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient, ambientEnergy);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
 
       // Store result for rAF visual loop
