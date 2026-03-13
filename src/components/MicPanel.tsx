@@ -137,6 +137,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const sonosRttRef = useRef(sonosRtt);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
+  const durationMsRef = useRef(durationMs);
+  const recordingStartPosRef = useRef<number | null>(null); // position when recording started
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
 
