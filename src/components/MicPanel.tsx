@@ -21,7 +21,9 @@ interface MicPanelProps {
   smoothedRtt?: number;
   onSyncDriftMs?: (driftMs: number) => void;
   onSectionChange?: (section: SongSection | null) => void;
-  agcEnabled?: boolean;
+  gainMode?: 'agc' | 'vol' | 'manual';
+  sonosVolume?: number | null;
+  volCalibration?: { volume: number; gain: number } | null;
   maxBrightness?: number;
   dynamicDamping?: number;
 }
@@ -60,7 +62,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange, agcEnabled = true, maxBrightness = 100, dynamicDamping = 1 }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange, gainMode = 'agc', sonosVolume, volCalibration, maxBrightness = 100, dynamicDamping = 1 }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -164,10 +166,14 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
   // Gain control refs
-  const agcEnabledRef = useRef(agcEnabled);
+  const gainModeRef = useRef(gainMode);
+  const sonosVolumeRef = useRef(sonosVolume);
+  const volCalibrationRef = useRef(volCalibration);
   const maxBrightnessRef = useRef(maxBrightness);
   const dynamicDampingRef = useRef(dynamicDamping);
-  useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
+  useEffect(() => { gainModeRef.current = gainMode; }, [gainMode]);
+  useEffect(() => { sonosVolumeRef.current = sonosVolume; }, [sonosVolume]);
+  useEffect(() => { volCalibrationRef.current = volCalibration; }, [volCalibration]);
   useEffect(() => { maxBrightnessRef.current = maxBrightness; }, [maxBrightness]);
   useEffect(() => { dynamicDampingRef.current = dynamicDamping; }, [dynamicDamping]);
 
@@ -181,7 +187,18 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const driftBufferRef = useRef<number[]>([]);
   const lastDriftReportRef = useRef(0);
 
-  // Section change callback
+  // Vol-calibrate event listener: capture current agcAvg on demand
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const cal = { volume: detail.volume, gain: 0.35 / Math.max(0.0001, agcAvgRef.current) };
+      window.dispatchEvent(new CustomEvent('vol-calibrate-result', { detail: cal }));
+    };
+    window.addEventListener('vol-calibrate', handler);
+    return () => window.removeEventListener('vol-calibrate', handler);
+  }, []);
+
+
   const onSectionChangeRef = useRef(onSectionChange);
   useEffect(() => { onSectionChangeRef.current = onSectionChange; }, [onSectionChange]);
   const lastSectionTypeRef = useRef<string | null>(null);
@@ -373,13 +390,29 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       const isSilence = rawEnergy < 0.015;
 
-      // Gain calculation: AGC (always on now)
+      // Gain calculation: branch on gainMode
       let effectiveGain: number;
+      // Always update AGC average (needed for VOL calibration capture)
       if (!isSilence) {
         const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
         agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
       }
-      effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      const mode = gainModeRef.current;
+      if (mode === 'vol') {
+        const cal = volCalibrationRef.current;
+        const vol = sonosVolumeRef.current;
+        if (cal && vol && vol > 0) {
+          effectiveGain = cal.gain * Math.pow(cal.volume / vol, 2.5);
+        } else {
+          // Fallback to AGC if no calibration or volume data
+          effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+        }
+      } else if (mode === 'manual') {
+        effectiveGain = 1;
+      } else {
+        // AGC mode
+        effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      }
       const energy = rawEnergy * Math.min(effectiveGain, 30);
 
       // Track energy history for auto-correlation BPM

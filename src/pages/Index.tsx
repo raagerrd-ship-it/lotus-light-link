@@ -6,7 +6,7 @@ import {
   sendColor, sendBrightness, sendPower,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
-import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity } from "lucide-react";
+import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity, Volume2, SlidersHorizontal, Crosshair } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
@@ -32,7 +32,13 @@ const Index = () => {
   const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
   const [showDebug] = useState(true);
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
-  const [agcEnabled, setAgcEnabled] = useState(() => localStorage.getItem("agcEnabled") !== "false");
+  const [gainMode, setGainMode] = useState<'agc' | 'vol' | 'manual'>(() => {
+    const stored = localStorage.getItem("gainMode");
+    return (stored === 'agc' || stored === 'vol' || stored === 'manual') ? stored : 'agc';
+  });
+  const [volCalibration, setVolCalibration] = useState<{ volume: number; gain: number } | null>(() => {
+    try { const s = localStorage.getItem("volCalibration"); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
   const [maxBrightness, setMaxBrightness] = useState(() => {
     const stored = localStorage.getItem("maxBrightness");
     return stored ? parseInt(stored, 10) : 100;
@@ -188,6 +194,17 @@ const Index = () => {
     setAutoDriftMs(offsetMs);
   }, []);
 
+  // Listen for vol-calibrate-result from MicPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const cal = (e as CustomEvent).detail as { volume: number; gain: number };
+      setVolCalibration(cal);
+      localStorage.setItem("volCalibration", JSON.stringify(cal));
+      console.log("[vol-calibrate]", cal);
+    };
+    window.addEventListener('vol-calibrate-result', handler);
+    return () => window.removeEventListener('vol-calibrate-result', handler);
+  }, []);
 
   const handleConnect = useCallback(async (scanAll = false) => {
     setBusy(true);
@@ -225,7 +242,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-          <MicPanel
+            <MicPanel
             char={char}
             currentColor={currentColor}
             externalBpm={sonosBpm}
@@ -239,7 +256,9 @@ const Index = () => {
             syncOffsetMs={autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
-            agcEnabled={agcEnabled}
+            gainMode={gainMode}
+            sonosVolume={nowPlaying?.volume}
+            volCalibration={volCalibration}
             maxBrightness={maxBrightness}
             dynamicDamping={dynamicDamping}
           />
@@ -254,7 +273,8 @@ const Index = () => {
           paletteIndex={paletteIndexRef.current}
           source={nowPlaying?.source}
           sonosVolume={nowPlaying?.volume}
-          gainMode={agcEnabled ? 'agc' : 'manual'}
+          gainMode={gainMode}
+          volCalibrationVol={volCalibration?.volume}
           liveBpm={liveBpm}
           maxBrightness={maxBrightness}
           dynamicDamping={dynamicDamping}
@@ -312,16 +332,40 @@ const Index = () => {
                   variant="ghost"
                   size="icon"
                   onClick={() => {
-                    const next = !agcEnabled;
-                    setAgcEnabled(next);
-                    localStorage.setItem("agcEnabled", String(next));
+                    const modes: Array<'agc' | 'vol' | 'manual'> = ['agc', 'vol', 'manual'];
+                    const next = modes[(modes.indexOf(gainMode) + 1) % modes.length];
+                    setGainMode(next);
+                    localStorage.setItem("gainMode", next);
                   }}
-                  className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${agcEnabled ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
-                  style={agcEnabled ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
-                  title={`AGC — ${agcEnabled ? 'PÅ' : 'AV'}`}
+                  className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${gainMode !== 'manual' ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
+                  style={gainMode !== 'manual' ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+                  title={`Gain: ${gainMode.toUpperCase()}`}
                 >
-                  <Activity className="w-3.5 h-3.5" style={agcEnabled ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+                  {gainMode === 'agc' && <Activity className="w-3.5 h-3.5" style={{ filter: `drop-shadow(0 0 4px ${accent})` }} />}
+                  {gainMode === 'vol' && <Volume2 className="w-3.5 h-3.5" style={{ filter: `drop-shadow(0 0 4px ${accent})` }} />}
+                  {gainMode === 'manual' && <SlidersHorizontal className="w-3.5 h-3.5" />}
                 </Button>
+                {gainMode === 'vol' && nowPlaying?.volume != null && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      // Capture current AGC average as gain reference at current Sonos volume
+                      const cal = { volume: nowPlaying.volume!, gain: 0.35 / Math.max(0.0001, 0.01) };
+                      // We need agcAvg from MicPanel — use a rough proxy: store current state
+                      // Actually read from a ref isn't possible here, so use a reasonable default
+                      // The MicPanel always updates agcAvg, so we capture a snapshot via a custom event
+                      const detail = { volume: nowPlaying.volume! };
+                      const evt = new CustomEvent('vol-calibrate', { detail });
+                      window.dispatchEvent(evt);
+                    }}
+                    className="rounded-full w-7 h-7 active:scale-90 transition-all duration-200"
+                    style={{ color: accent }}
+                    title="Kalibrera vid nuvarande volym"
+                  >
+                    <Crosshair className="w-3.5 h-3.5" />
+                  </Button>
+                )}
                 
                 <Button
                   variant="ghost"

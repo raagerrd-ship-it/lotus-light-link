@@ -9,7 +9,8 @@ interface DebugOverlayProps {
   paletteIndex?: number;
   source?: 'local' | 'cloud';
   sonosVolume?: number | null;
-  gainMode?: string;
+  gainMode?: 'agc' | 'vol' | 'manual';
+  volCalibrationVol?: number | null;
   liveBpm?: number | null;
   maxBrightness?: number;
   dynamicDamping?: number;
@@ -29,7 +30,7 @@ const phaseLabels: Record<string, string> = {
 
 export default function DebugOverlay({
   smoothedRtt, autoDriftMs, currentSection, palette, paletteIndex = 0,
-  source, sonosVolume, gainMode, liveBpm, maxBrightness, dynamicDamping,
+  source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus
 }: DebugOverlayProps) {
   return (
@@ -58,7 +59,7 @@ export default function DebugOverlay({
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>
       <div>auto-sync: <span className="text-foreground">{autoDriftMs >= 0 ? "+" : ""}{Math.round(autoDriftMs)}ms</span></div>
       <div>section: <span className="text-foreground">{currentSection ? `${currentSection.type} (e${currentSection.energy.toFixed(1)})` : "—"}</span></div>
-      {sonosVolume != null && <div>vol: <span className="text-foreground">{sonosVolume}%</span> <span className="text-muted-foreground">{gainMode}</span></div>}
+      {sonosVolume != null && <div>vol: <span className="text-foreground">{sonosVolume}%</span> <span className="text-muted-foreground">{gainMode}{gainMode === 'vol' && volCalibrationVol != null ? ` (ref ${volCalibrationVol}%)` : ''}</span></div>}
       {palette && palette.length > 0 && (
         <div className="flex items-center gap-1 mt-0.5">
           <span>palette:</span>
