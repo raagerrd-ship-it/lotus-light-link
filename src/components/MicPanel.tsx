@@ -5,6 +5,7 @@ import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
 import { drawIntensityChart, resetChartScaler, type ChartSample } from "@/lib/drawChart";
 import { liftColor } from "@/lib/colorUtils";
 import { type SongSection, getCurrentSection, getSectionBehavior, getUpcomingDrop } from "@/lib/songSections";
+import { getCalibration, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char: any;
