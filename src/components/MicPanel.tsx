@@ -254,6 +254,22 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           }
         };
 
+        // Register BLE write callback — pushes chart sample only when HW actually receives data
+        onBleWrite((bright, r, g, b) => {
+          if (stopped) return;
+          const scale = bright / 100;
+          samplesRef.current.push({
+            pct: bright,
+            r: Math.round(r * scale),
+            g: Math.round(g * scale),
+            b: Math.round(b * scale),
+          });
+          if (samplesRef.current.length > HISTORY_LEN) {
+            samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
+          }
+          chartDirtyRef.current = true;
+        });
+
         worker.postMessage("start");
       } catch (e) {
         console.error("[MicPanel] mic init failed", e);
