@@ -88,9 +88,8 @@ export function getActiveDeviceName(): string | null {
 
 async function _upsertCloud(deviceName: string, patch: Record<string, unknown>) {
   try {
-    await (supabase as any).from('device_calibration').upsert(
+    await (supabase as any).from('device_calibration').insert(
       { device_name: deviceName, ...patch, updated_at: new Date().toISOString() },
-      { onConflict: 'device_name' },
     );
   } catch (e) {
     console.warn('[calibration] cloud upsert failed', e);
