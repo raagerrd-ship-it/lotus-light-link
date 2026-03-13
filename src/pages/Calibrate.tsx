@@ -1,15 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, RotateCcw, Play, Square } from "lucide-react";
+import { ArrowLeft, RotateCcw, Play, Square, Check, RefreshCw } from "lucide-react";
 import {
   getCalibration, saveCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
   setActiveDeviceName, loadCalibrationFromCloud,
-  saveBleSpeedToCloud,
-  type LightCalibration,
+  saveBleSpeedToCloud, saveLatencyToCloud,
+  type LightCalibration, type LatencyResults,
 } from "@/lib/lightCalibration";
-import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
+import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval, getBleWriteStats } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 type Tab = 'color' | 'dynamics' | 'ble' | 'latency';
