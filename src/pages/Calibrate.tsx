@@ -858,7 +858,11 @@ export default function Calibrate() {
           }
         }} />}
 
-        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms) => update({ bleLatencyMs: ms })} />}
+        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms, latency) => {
+          update({ bleLatencyMs: ms });
+          const deviceName = conn?.device?.name;
+          if (deviceName) saveLatencyToCloud(deviceName, latency);
+        }} />}
       </div>
     </div>
   );
