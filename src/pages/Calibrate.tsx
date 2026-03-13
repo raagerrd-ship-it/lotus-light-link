@@ -954,6 +954,8 @@ export default function Calibrate() {
           const deviceName = conn?.device?.name;
           if (deviceName) saveLatencyToCloud(deviceName, latency);
         }} />}
+
+        {tab === 'songs' && <RecordedSongsTab />}
       </div>
 
       {/* Current calibration + history */}
