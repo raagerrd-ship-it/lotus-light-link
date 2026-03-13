@@ -277,22 +277,24 @@ async function _flush() {
 
   try {
     // Write ONE command per slot; prioritize brightness for responsiveness
-    if (writeBright && _pendingBright != null) {
-      _brightBuf[3] = Math.max(0, Math.min(100, Math.round(_pendingBright)));
-      await _char.writeValueWithoutResponse(_brightBuf);
-      _lastSentBright = _pendingBright;
-      _pendingBright = null;
-      _writeCount++;
-      const writeEnd = performance.now();
-      _lastActualWriteMs = writeEnd - _lastWriteTime;
-      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
-    } else if (writeColor && _pendingColor) {
+    // IMPORTANT: Always send color BEFORE brightness so the lamp
+    // doesn't briefly flash the old color at new brightness.
+    if (writeColor && _pendingColor) {
       _colorBuf[4] = _pendingColor[0] & 0xff;
       _colorBuf[5] = _pendingColor[1] & 0xff;
       _colorBuf[6] = _pendingColor[2] & 0xff;
       await _char.writeValueWithoutResponse(_colorBuf);
       _lastSentColor = [..._pendingColor];
       _pendingColor = null;
+      _writeCount++;
+      const writeEnd = performance.now();
+      _lastActualWriteMs = writeEnd - _lastWriteTime;
+      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
+    } else if (writeBright && _pendingBright != null) {
+      _brightBuf[3] = Math.max(0, Math.min(100, Math.round(_pendingBright)));
+      await _char.writeValueWithoutResponse(_brightBuf);
+      _lastSentBright = _pendingBright;
+      _pendingBright = null;
       _writeCount++;
       const writeEnd = performance.now();
       _lastActualWriteMs = writeEnd - _lastWriteTime;
