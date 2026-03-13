@@ -275,30 +275,38 @@ async function _flush() {
   _lastWriteTime = writeStart;
 
   try {
+    // Capture exact values that go to GATT
+    let sentR = _lastSentColor[0], sentG = _lastSentColor[1], sentB = _lastSentColor[2];
+    let sentBright = _lastSentBright;
+
     // Color → 1ms → brightness (matches calibration protocol)
     if (writeColor && _pendingColor) {
-      _colorBuf[4] = _pendingColor[0] & 0xff;
-      _colorBuf[5] = _pendingColor[1] & 0xff;
-      _colorBuf[6] = _pendingColor[2] & 0xff;
+      sentR = _pendingColor[0] & 0xff;
+      sentG = _pendingColor[1] & 0xff;
+      sentB = _pendingColor[2] & 0xff;
+      _colorBuf[4] = sentR;
+      _colorBuf[5] = sentG;
+      _colorBuf[6] = sentB;
       await _char.writeValueWithoutResponse(_colorBuf);
-      _lastSentColor = [..._pendingColor];
+      _lastSentColor = [sentR, sentG, sentB];
       _pendingColor = null;
       if (writeBright) await new Promise(r => setTimeout(r, 1));
     }
 
     if (writeBright && _pendingBright != null) {
-      _brightBuf[3] = Math.max(0, Math.min(100, Math.round(_pendingBright)));
+      sentBright = Math.max(0, Math.min(100, Math.round(_pendingBright)));
+      _brightBuf[3] = sentBright;
       await _char.writeValueWithoutResponse(_brightBuf);
-      _lastSentBright = _pendingBright;
+      _lastSentBright = sentBright;
       _pendingBright = null;
     }
 
-    _writeCount++; // Count per slot, not per GATT write
+    _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
 
-    // Notify listener with actually-sent values
+    // Notify with EXACT GATT values — this is what the lamp received
     if (_onWriteCallback) {
-      _onWriteCallback(_lastSentBright, _lastSentColor[0], _lastSentColor[1], _lastSentColor[2]);
+      _onWriteCallback(sentBright, sentR, sentG, sentB);
     }
   } catch (e: any) {
     _errorCount++;
