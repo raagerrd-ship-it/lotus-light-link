@@ -43,7 +43,7 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
   return { device, characteristic };
 }
 
-async function connectAfterAdvertisement(device: any, timeoutMs = 5000): Promise<BLEConnection | null> {
+async function connectAfterAdvertisement(device: any, timeoutMs = 20000): Promise<BLEConnection | null> {
   if (!device?.watchAdvertisements) return null;
 
   return new Promise((resolve) => {
@@ -72,30 +72,47 @@ async function connectAfterAdvertisement(device: any, timeoutMs = 5000): Promise
   });
 }
 
-// Auto-reconnect using getDevices() — no picker needed when permission already exists
-export async function autoReconnect(): Promise<BLEConnection | null> {
+// Auto-reconnect: retry loop — keeps trying until connected or unmounted
+// Returns a promise that resolves when connected, or null if aborted via signal
+export async function autoReconnect(signal?: AbortSignal): Promise<BLEConnection | null> {
   const nav = navigator as any;
   if (!nav.bluetooth?.getDevices) return null;
 
-  try {
-    const devices = await nav.bluetooth.getDevices();
-    if (!devices.length) return null;
+  const MAX_ATTEMPTS = 100; // effectively forever (~30min)
+  const RETRY_DELAY = 1000;
 
-    const saved = getLastDevice();
-    const namedMatch = devices.find(
-      (d: any) => typeof d.name === 'string' && /^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(d.name)
-    );
-    const target = devices.find((d: any) => d.id === saved?.id) ?? namedMatch ?? devices[0];
-    if (!target) return null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (signal?.aborted) return null;
 
     try {
-      return await connectToDevice(target);
+      const devices = await nav.bluetooth.getDevices();
+      if (!devices.length) return null; // no permission at all — give up
+
+      const saved = getLastDevice();
+      const namedMatch = devices.find(
+        (d: any) => typeof d.name === 'string' && /^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(d.name)
+      );
+      const target = devices.find((d: any) => d.id === saved?.id) ?? namedMatch ?? devices[0];
+      if (!target) return null;
+
+      // Try direct GATT first (fast if device is nearby)
+      try {
+        return await connectToDevice(target);
+      } catch {
+        // Fall back to advertisement watching (up to 20s)
+        const conn = await connectAfterAdvertisement(target, 20000);
+        if (conn) return conn;
+      }
     } catch {
-      return await connectAfterAdvertisement(target);
+      // ignore and retry
     }
-  } catch {
-    return null;
+
+    // Wait before retrying
+    if (signal?.aborted) return null;
+    await new Promise((r) => setTimeout(r, RETRY_DELAY));
   }
+
+  return null;
 }
 
 export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {

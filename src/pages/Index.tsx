@@ -79,17 +79,19 @@ const Index = () => {
     });
   }, []);
 
-  // Auto-reconnect on mount
+  // Auto-reconnect on mount — keeps retrying in background
   useEffect(() => {
     if (connection) return;
     const nav = navigator as any;
     if (!nav.bluetooth?.getDevices) return;
 
+    const ac = new AbortController();
     setBusy(true);
-    autoReconnect().then((conn) => {
+    autoReconnect(ac.signal).then((conn) => {
       if (conn) finishConnect(conn);
       else setBusy(false);
     });
+    return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
