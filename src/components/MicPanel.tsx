@@ -771,10 +771,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
       }
 
-      // Store base color for chart
-      const baseColor = currentColorRef.current;
+      // Store what BLE actually gets for chart (smoothed brightness + actual color)
       const hist2 = intensityHistoryRef.current;
-      hist2.push({ pct, r: baseColor[0], g: baseColor[1], b: baseColor[2], beat: isOnset });
+      hist2.push({ pct: blePct, r: bleColor[0], g: bleColor[1], b: bleColor[2], beat: isOnset });
       if (hist2.length > HISTORY_LEN) hist2.shift();
 
       // Draw canvas chart every 3rd frame (~20fps)
