@@ -11,6 +11,11 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
+// Adaptive auto-gain: learns the RMS range over a sliding window
+const AGC_WINDOW_SEC = 4; // seconds to track min/max
+const AGC_TICK_MS = 25; // assumed tick interval
+const AGC_WINDOW_LEN = Math.round((AGC_WINDOW_SEC * 1000) / AGC_TICK_MS);
+
 const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -31,6 +36,10 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   // Flag for chart: new sample ready
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
+  // Auto-gain: sliding window of recent RMS values
+  const rmsHistoryRef = useRef<Float32Array>(new Float32Array(AGC_WINDOW_LEN));
+  const rmsHistoryIdxRef = useRef(0);
+  const rmsHistoryCountRef = useRef(0);
 
   useEffect(() => {
     colorRef.current = currentColor;
