@@ -51,23 +51,32 @@ function DebugPanel({ d }: { d: MasterDebugState }) {
   );
 }
 
-function SongList({ songs }: { songs: SongRecord[] }) {
+function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: string, name: string) => void }) {
   return (
     <div className="space-y-1">
-      {songs.map((s, i) => (
-        <div key={i} className="flex items-center gap-2 py-1 px-1 rounded-md bg-secondary/30">
+      {songs.map((s) => (
+        <div key={s.id} className="flex items-center gap-2 py-1 px-1 rounded-md bg-secondary/30 group">
           <Music className="w-3 h-3 shrink-0 text-muted-foreground/50" />
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium text-foreground truncate">{s.track_name}</p>
             <p className="text-[10px] text-muted-foreground truncate">{s.artist_name}</p>
           </div>
-          <div className="shrink-0 text-right">
-            <div className="flex items-center gap-1">
-              {s.bpm && <span className="text-[9px] font-mono text-muted-foreground">{s.bpm}bpm</span>}
-              {s.has_sections && <span className="text-[8px] text-green-400">§</span>}
-              {s.has_drops && <span className="text-[8px] text-orange-400">⚡</span>}
+          <div className="shrink-0 flex items-center gap-1.5">
+            <div className="text-right">
+              <div className="flex items-center gap-1">
+                {s.bpm && <span className="text-[9px] font-mono text-muted-foreground">{s.bpm}bpm</span>}
+                {s.has_sections && <span className="text-[8px] text-green-400">§</span>}
+                {s.has_drops && <span className="text-[8px] text-orange-400">⚡</span>}
+              </div>
+              <p className="text-[9px] text-muted-foreground/60">{formatDate(s.created_at)}</p>
             </div>
-            <p className="text-[9px] text-muted-foreground/60">{formatDate(s.created_at)}</p>
+            <button
+              onClick={() => onDelete(s.id, s.track_name)}
+              className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 active:scale-90 transition-all"
+              title="Ta bort inspelning"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
           </div>
         </div>
       ))}
