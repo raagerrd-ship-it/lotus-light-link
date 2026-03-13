@@ -42,18 +42,31 @@ export function drawIntensityChart(
   const chartTop = (h - chartHeight) / 2;
   const step = w / (historyLen - 1);
   const offsetX = (historyLen - len) * step;
-  const dotRadius = Math.max(1.8, step * 0.5);
+  const dotRadius = Math.max(1, step * 0.35);
 
   for (let i = 0; i < len; i++) {
     const x = offsetX + i * step;
     const s = samples[i];
-    // No normalization — raw pct (0–100) maps directly to height
     const y = chartTop + chartHeight - (s.pct / 100) * chartHeight;
+    const color = `rgb(${s.r}, ${s.g}, ${s.b})`;
 
-    // Dot in exact BLE color
+    // Line to previous
+    if (i > 0) {
+      const prevS = samples[i - 1];
+      const prevX = offsetX + (i - 1) * step;
+      const prevY = chartTop + chartHeight - (prevS.pct / 100) * chartHeight;
+      ctx.beginPath();
+      ctx.moveTo(prevX, prevY);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = dotRadius * 2;
+      ctx.stroke();
+    }
+
+    // Dot
     ctx.beginPath();
     ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-    ctx.fillStyle = `rgb(${s.r}, ${s.g}, ${s.b})`;
+    ctx.fillStyle = color;
     ctx.fill();
   }
 
