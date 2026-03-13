@@ -255,7 +255,7 @@ const Index = () => {
             gainMode={gainMode}
             sonosVolume={nowPlaying?.volume}
             volCalibration={volCalibration}
-            maxBrightness={maxBrightness}
+            maxBrightness={100}
             dynamicDamping={dynamicDamping}
           />
       </div>
