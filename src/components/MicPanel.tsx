@@ -348,6 +348,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const bassEnergy = (lowRms * 0.3 + lowMax * 0.7) * 0.9;
       const midEnergy  = (midRms * 0.3 + midMax * 0.7) * 0.5;
       const rawEnergy  = subEnergy * 0.55 + bassEnergy * 0.30 + midEnergy * 0.15;
+      // Ambient energy: broader frequency mix for the always-on zone
+      const ambientEnergy = subEnergy * 0.25 + bassEnergy * 0.35 + midEnergy * 0.40;
 
       const isSilence = rawEnergy < 0.015;
       if (!isSilence) {
