@@ -190,6 +190,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
             recorded_volume: volume,
             ...(agcState ? { agc_state: agcState as any } : {}),
             ...(newBpm ? { bpm: newBpm } : {}),
+            ...(newDrops.length > 0 ? { drops: newDrops as any } : {}),
           } as any;
           if (existing) {
             supabase
