@@ -246,7 +246,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     pct: number;
     isOnset: boolean;
     now: number;
-  }>({ finalCurved: 0, pct: 3, isOnset: false, now: 0 });
+    blePct: number;
+    bleColor: [number, number, number];
+  }>({ finalCurved: 0, pct: 3, isOnset: false, now: 0, blePct: 3, bleColor: [255, 0, 0] });
 
   // Audio nodes
   const subAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -743,7 +745,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
 
     // ─── Sub-function: update DOM visuals (glow, ring, canvas) ───
-    const updateVisuals = (finalCurved: number, pct: number, isOnset: boolean, now: number) => {
+    const updateVisuals = (finalCurved: number, pct: number, isOnset: boolean, now: number, blePct: number, bleColor: [number, number, number]) => {
       if (vizRef.current) {
         const s = vizRef.current.style;
         const [cr, cg, cb] = currentColorRef.current;
@@ -769,10 +771,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         progressRingRef.current.style.strokeDashoffset = String(circumference * (1 - fraction));
       }
 
-      // Store base color for chart
-      const baseColor = currentColorRef.current;
+      // Store what BLE actually gets for chart (smoothed brightness + actual color)
       const hist2 = intensityHistoryRef.current;
-      hist2.push({ pct, r: baseColor[0], g: baseColor[1], b: baseColor[2], beat: isOnset });
+      hist2.push({ pct: blePct, r: bleColor[0], g: bleColor[1], b: bleColor[2], beat: isOnset });
       if (hist2.length > HISTORY_LEN) hist2.shift();
 
       // Draw canvas chart every 3rd frame (~20fps)
@@ -918,14 +919,19 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient, ambientEnergy);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
 
-      // Store result for rAF visual loop
-      lastTickResultRef.current = { finalCurved, pct, isOnset, now };
+      // Store result for rAF visual loop — blePct/bleColor = what was actually sent
+      const blePct = Math.round(smoothedBrightRef.current);
+      const boost = colorBoostRef.current;
+      const bleColor: [number, number, number] = boost.active
+        ? [boost.color[0], boost.color[1], boost.color[2]]
+        : [...targetColorRef.current];
+      lastTickResultRef.current = { finalCurved, pct, isOnset, now, blePct, bleColor };
     };
 
     // ─── Visual loop (rAF — pauses when tab hidden, saves battery) ───
     const renderLoop = () => {
-      const { finalCurved, pct, isOnset, now } = lastTickResultRef.current;
-      updateVisuals(finalCurved, pct, isOnset, now);
+      const { finalCurved, pct, isOnset, now, blePct, bleColor } = lastTickResultRef.current;
+      updateVisuals(finalCurved, pct, isOnset, now, blePct, bleColor);
       rafRef.current = requestAnimationFrame(renderLoop);
     };
 
