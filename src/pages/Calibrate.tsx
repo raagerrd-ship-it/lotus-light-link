@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import DynamicsPreview from "@/components/DynamicsPreview";
+import AutoCalibratePanel from "@/components/AutoCalibratePanel";
 import {
   getCalibration, saveCalibration, resetCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
@@ -11,9 +12,10 @@ import {
 import { sendColor, sendBrightness } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'color' | 'dynamics' | 'timing' | 'ambient';
+type Tab = 'auto' | 'color' | 'dynamics' | 'timing' | 'ambient';
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: 'auto', label: 'Auto' },
   { key: 'color', label: 'Färg' },
   { key: 'dynamics', label: 'Dynamik' },
   { key: 'timing', label: 'Timing' },
