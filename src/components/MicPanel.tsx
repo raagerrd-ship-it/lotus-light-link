@@ -216,6 +216,15 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
           }
           chartDirtyRef.current = true;
+
+          // Save AGC state every 10 seconds (fire-and-forget)
+          const nowMs = performance.now();
+          if (nowMs - agcSaveTimerRef.current > 10_000) {
+            agcSaveTimerRef.current = nowMs;
+            const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
+            calRef.current = updated;
+            saveCalibration(updated, getActiveDeviceName() ?? undefined);
+          }
         };
 
         worker.postMessage("start");
