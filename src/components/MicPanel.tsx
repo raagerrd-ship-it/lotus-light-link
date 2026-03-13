@@ -280,6 +280,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
 
     return () => {
       stopped = true;
+      onBleWrite(null); // unregister callback
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
       streamRef.current?.getTracks().forEach(t => t.stop());
