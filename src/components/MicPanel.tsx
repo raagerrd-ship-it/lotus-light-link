@@ -72,6 +72,7 @@ function createBleQueue(
         const [r, g, b] = pendingColor;
         pendingColor = null;
         await sendColor(c, r, g, b, true);
+        onColorSent?.([r, g, b]);
       } else if (pendingBrightness !== null) {
         const val = pendingBrightness;
         pendingBrightness = null;
@@ -95,9 +96,7 @@ function createBleQueue(
     },
     color(r: number, g: number, b: number) {
       if (!charRef.current) return;
-      // Apply calibration immediately so chart reflects intended BLE output
       const calibrated = applyColorCalibration(r, g, b);
-      onColorSent?.(calibrated);
       pendingColor = calibrated;
       schedule();
     },
