@@ -339,14 +339,24 @@ export function setActiveChar(char: any) {
 
 export function sendColor(_char_unused: any, r: number, g: number, b: number) {
   _pendingColor = [r, g, b];
-  if (_writing) { _dirtyWhileWriting = true; } else { _flush(); }
-  _lastTickToWriteMs = 0; // reset; will be measured by caller if needed
+  // Don't flush here — let sendBrightness or sendColorAndBrightness trigger it
+  if (_writing) { _dirtyWhileWriting = true; }
+  _lastTickToWriteMs = 0;
   return Promise.resolve();
 }
 
 export function sendBrightness(_char_unused: any, brightness: number) {
   _pendingBright = brightness;
   if (_writing) { _dirtyWhileWriting = true; } else { _flush(); }
+  return Promise.resolve();
+}
+
+/** Atomic: set both color + brightness pending, then flush once */
+export function sendColorAndBrightness(_char_unused: any, r: number, g: number, b: number, brightness: number) {
+  _pendingColor = [r, g, b];
+  _pendingBright = brightness;
+  if (_writing) { _dirtyWhileWriting = true; } else { _flush(); }
+  _lastTickToWriteMs = 0;
   return Promise.resolve();
 }
 
