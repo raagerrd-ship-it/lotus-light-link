@@ -13,12 +13,14 @@ interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
   sonosVolume?: number;
+  sonosRtt?: number;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
   onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
   recordedVolume?: number | null;
   savedAgcState?: AgcState | null;
   bpm?: number | null;
+  beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
 }
