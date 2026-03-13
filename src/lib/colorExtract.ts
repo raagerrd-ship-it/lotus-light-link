@@ -31,13 +31,11 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       if (a < 128) continue;
 
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      // Reject very dark (< 40) and very light (> 220) pixels
       if (lum < 40 || lum > 220) continue;
 
       const max = Math.max(r, g, b);
       const min = Math.min(r, g, b);
       const sat = max > 0 ? (max - min) / max : 0;
-      // Require strong saturation — reject pastels, grays, browns, whites
       if (sat < 0.35) continue;
 
       const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
@@ -54,7 +52,6 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
 
     if (buckets.size === 0) return [];
 
-    // Score buckets — heavily favor saturated, vivid colors
     const scored: { color: RGB; score: number }[] = [];
     for (const bucket of buckets.values()) {
       const avgR = bucket.r / bucket.count;
@@ -65,22 +62,18 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       const sat = max > 0 ? (max - min) / max : 0;
       const lum = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
 
-      // Skip muddy/brown colors (low sat + mid luminance)
       if (sat < 0.4 && lum > 60 && lum < 160) continue;
 
-      // Score: saturation matters most, then pixel count
       const score = bucket.count * (sat ** 2) * 4;
       scored.push({ color: [Math.round(avgR), Math.round(avgG), Math.round(avgB)], score });
     }
     scored.sort((a, b) => b.score - a.score);
 
-    // Pick top colors that are visually distinct (min distance 60)
     const MIN_DIST = 60;
     const palette: RGB[] = [];
     for (const { color } of scored) {
       if (palette.length >= count) break;
       if (palette.every(existing => colorDistance(existing, color) > MIN_DIST)) {
-        // Aggressively boost saturation to get vivid LED colors
         const [cr, cg, cb] = color;
         const maxC = Math.max(cr, cg, cb);
         const minC = Math.min(cr, cg, cb);
@@ -100,14 +93,23 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
   }
 }
 
-function loadImage(url: string, crossOrigin: boolean): Promise<HTMLImageElement> {
+/** Load image with a timeout (default 3s) */
+function loadImage(url: string, crossOrigin: boolean, timeoutMs = 3000): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    const timer = setTimeout(() => { img.src = ''; reject(new Error('timeout')); }, timeoutMs);
     if (crossOrigin) img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("load failed"));
+    img.onload = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error("load failed")); };
     img.src = url;
   });
+}
+
+/** Fetch with AbortController timeout */
+function fetchWithTimeout(url: string, timeoutMs = 3000): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  return fetch(url, { mode: 'cors', signal: ac.signal }).finally(() => clearTimeout(timer));
 }
 
 export async function extractDominantColor(
@@ -121,42 +123,74 @@ export async function extractPalette(
   imageUrl: string,
   count: number = 4
 ): Promise<RGB[]> {
-  // Try direct CORS first
-  try {
-    const img = await loadImage(imageUrl, true);
-    const colors = extractColorsFromImage(img, count);
-    if (colors.length > 0) return colors;
-  } catch {
-    // CORS blocked or load failed
-  }
+  const t0 = performance.now();
+  const isLocal = imageUrl.startsWith('http://localhost') || imageUrl.startsWith('http://127.');
 
-  // Fallback: fetch as blob (works if server sends CORS headers on fetch but not on img)
-  try {
-    const res = await fetch(imageUrl, { mode: 'cors' });
-    if (res.ok) {
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      try {
-        const img = await loadImage(blobUrl, false);
-        const colors = extractColorsFromImage(img, count);
-        if (colors.length > 0) return colors;
-      } finally {
-        URL.revokeObjectURL(blobUrl);
+  // For local URLs, try blob-fetch first (most reliable, avoids canvas CORS taint)
+  if (isLocal) {
+    try {
+      const res = await fetchWithTimeout(imageUrl, 2000);
+      if (res.ok) {
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        try {
+          const img = await loadImage(blobUrl, false, 2000);
+          const colors = extractColorsFromImage(img, count);
+          if (colors.length > 0) {
+            console.log(`[palette] local blob ${Math.round(performance.now() - t0)}ms, ${colors.length} colors`);
+            return colors;
+          }
+        } finally {
+          URL.revokeObjectURL(blobUrl);
+        }
       }
-    }
-  } catch {
-    // fetch also failed
+    } catch { /* continue */ }
   }
 
-  // Last resort: use a CORS proxy
+  // Try direct CORS load (fast for external URLs with proper headers)
   try {
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
-    const img = await loadImage(proxyUrl, true);
+    const img = await loadImage(imageUrl, true, 3000);
     const colors = extractColorsFromImage(img, count);
-    if (colors.length > 0) return colors;
-  } catch {
-    // proxy also failed
+    if (colors.length > 0) {
+      console.log(`[palette] direct ${Math.round(performance.now() - t0)}ms, ${colors.length} colors`);
+      return colors;
+    }
+  } catch { /* continue */ }
+
+  // Fallback: fetch as blob
+  if (!isLocal) {
+    try {
+      const res = await fetchWithTimeout(imageUrl, 3000);
+      if (res.ok) {
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        try {
+          const img = await loadImage(blobUrl, false, 2000);
+          const colors = extractColorsFromImage(img, count);
+          if (colors.length > 0) {
+            console.log(`[palette] blob ${Math.round(performance.now() - t0)}ms, ${colors.length} colors`);
+            return colors;
+          }
+        } finally {
+          URL.revokeObjectURL(blobUrl);
+        }
+      }
+    } catch { /* continue */ }
   }
 
+  // Last resort: CORS proxy (only for non-local URLs)
+  if (!isLocal) {
+    try {
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
+      const img = await loadImage(proxyUrl, true, 4000);
+      const colors = extractColorsFromImage(img, count);
+      if (colors.length > 0) {
+        console.log(`[palette] proxy ${Math.round(performance.now() - t0)}ms, ${colors.length} colors`);
+        return colors;
+      }
+    } catch { /* continue */ }
+  }
+
+  console.warn(`[palette] failed after ${Math.round(performance.now() - t0)}ms`);
   return [];
 }
