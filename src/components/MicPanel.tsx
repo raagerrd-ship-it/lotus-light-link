@@ -25,6 +25,7 @@ interface MicPanelProps {
   beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
+  trackName?: string | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
 }
 
@@ -98,7 +99,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, trackName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -166,7 +167,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     }
   }, [savedAgcState]);
 
-  // Flush recorded samples on curve change — only save complete recordings
+  // Flush recorded samples on track change — only save complete recordings
+  // Using trackName instead of energyCurve as trigger, because energyCurve
+  // stays null between consecutive unsaved songs and the effect wouldn't fire.
   useEffect(() => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
@@ -195,7 +198,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     recordedSamplesRef.current = [];
     recordingStartPosRef.current = null;
     lastRecordTimeRef.current = 0;
-  }, [energyCurve]);
+  }, [trackName]);
 
   useEffect(() => {
     colorRef.current = currentColor;
