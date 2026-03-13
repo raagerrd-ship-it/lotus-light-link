@@ -615,17 +615,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Silence handling
       const silenceDur = silenceStartRef.current > 0 ? performance.now() - silenceStartRef.current : 0;
 
-      // AGC-normalized ambient for zone 1 (using same effective gain as main energy)
-      const cal2 = calibrationRef.current;
-      const vol2 = sonosVolumeRef.current;
-      let ambientGain: number;
-      if (cal2 && vol2 != null && vol2 > 0) {
-        ambientGain = cal2.gain * Math.pow(cal2.volume / vol2, 2.5);
-      } else if (!agcEnabledRef.current) {
-        ambientGain = manualGainRef.current;
-      } else {
-        ambientGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
-      }
+      // AGC-normalized ambient for zone 1
+      const ambientGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
       const agcAmbient = ambientEnergy * Math.min(ambientGain, 30);
 
       // EMA smoothing for ambient to reduce jitter
