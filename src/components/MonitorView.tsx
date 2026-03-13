@@ -101,12 +101,13 @@ export default function MonitorView() {
     const fetchSongs = () => {
       supabase
         .from("song_analysis")
-        .select("track_name, artist_name, bpm, created_at, sections, drops")
+        .select("id, track_name, artist_name, bpm, created_at, sections, drops")
         .order("created_at", { ascending: false })
         .limit(50)
         .then(({ data }) => {
           if (data) {
             setSongs(data.map((d: any) => ({
+              id: d.id,
               track_name: d.track_name,
               artist_name: d.artist_name,
               bpm: d.bpm,
