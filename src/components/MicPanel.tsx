@@ -23,6 +23,7 @@ interface MicPanelProps {
   onSectionChange?: (section: SongSection | null) => void;
   agcEnabled?: boolean;
   maxBrightness?: number;
+  dynamicDamping?: number;
 }
 
 // Priority-aware BLE command queue
@@ -59,7 +60,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange, agcEnabled = true, maxBrightness = 100 }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange, agcEnabled = true, maxBrightness = 100, dynamicDamping = 1 }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -165,8 +166,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   // Gain control refs
   const agcEnabledRef = useRef(agcEnabled);
   const maxBrightnessRef = useRef(maxBrightness);
+  const dynamicDampingRef = useRef(dynamicDamping);
   useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
   useEffect(() => { maxBrightnessRef.current = maxBrightness; }, [maxBrightness]);
+  useEffect(() => { dynamicDampingRef.current = dynamicDamping; }, [dynamicDamping]);
 
   // Ambient smoothing EMA ref
   const smoothedAmbientRef = useRef(0);
@@ -674,6 +677,11 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       if (silenceDur > 0) {
         const fadeFactor = Math.max(0, 1 - silenceDur / FADE_DURATION);
         totalPct = BASELINE_PCT + (totalPct - BASELINE_PCT) * fadeFactor;
+      }
+
+      // Apply dynamic damping curve (power curve makes it harder to reach peak)
+      if (dynamicDampingRef.current > 1) {
+        totalPct = 100 * Math.pow(totalPct / 100, dynamicDampingRef.current);
       }
 
       // Cap by section max brightness and user max brightness setting

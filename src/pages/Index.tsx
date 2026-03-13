@@ -37,6 +37,10 @@ const Index = () => {
     const stored = localStorage.getItem("maxBrightness");
     return stored ? parseInt(stored, 10) : 100;
   });
+  const [dynamicDamping, setDynamicDamping] = useState(() => {
+    const stored = localStorage.getItem("dynamicDamping");
+    return stored ? parseFloat(stored) : 1.0;
+  });
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
@@ -237,6 +241,7 @@ const Index = () => {
             onSyncDriftMs={handleSyncDrift}
             agcEnabled={agcEnabled}
             maxBrightness={maxBrightness}
+            dynamicDamping={dynamicDamping}
           />
       </div>
 
@@ -252,6 +257,7 @@ const Index = () => {
           gainMode={agcEnabled ? 'agc' : 'manual'}
           liveBpm={liveBpm}
           maxBrightness={maxBrightness}
+          dynamicDamping={dynamicDamping}
           bleConnected={!!connection}
           bleDeviceName={connection?.device?.name}
           bleReconnectStatus={bleReconnectStatus}
@@ -373,6 +379,23 @@ const Index = () => {
               const v = parseInt(e.target.value, 10);
               setMaxBrightness(v);
               localStorage.setItem("maxBrightness", String(v));
+            }}
+            className="flex-1 h-1 accent-current"
+            style={{ color: accent }}
+          />
+          <span className="text-[10px] text-muted-foreground font-mono w-14 shrink-0">
+            Dämpa {dynamicDamping.toFixed(1)}x
+          </span>
+          <input
+            type="range"
+            min="1.0"
+            max="3.0"
+            step="0.1"
+            value={dynamicDamping}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setDynamicDamping(v);
+              localStorage.setItem("dynamicDamping", String(v));
             }}
             className="flex-1 h-1 accent-current"
             style={{ color: accent }}
