@@ -168,8 +168,9 @@ const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 
 
 // --- Frame scheduler: max 1 BLE write per MIN_INTERVAL_MS ---
 const BLE_INTERVAL_KEY = 'ble-min-interval-ms';
+const BLE_MIN_FLOOR = 50; // 20 slots/sec max
 let _minIntervalMs = (() => {
-  try { const v = localStorage.getItem(BLE_INTERVAL_KEY); return v ? parseInt(v, 10) : 50; } catch { return 50; }
+  try { const v = localStorage.getItem(BLE_INTERVAL_KEY); return Math.max(BLE_MIN_FLOOR, v ? parseInt(v, 10) : BLE_MIN_FLOOR); } catch { return BLE_MIN_FLOOR; }
 })();
 
 export function getBleMinInterval(): number { return _minIntervalMs; }
