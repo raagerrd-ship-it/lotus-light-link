@@ -57,16 +57,27 @@ const MEDIA_SOAP = `<?xml version="1.0" encoding="utf-8"?>
   </s:Body>
 </s:Envelope>`;
 
-function soapRequest(body, action) {
+const VOLUME_SOAP = `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+      <InstanceID>0</InstanceID>
+      <Channel>Master</Channel>
+    </u:GetVolume>
+  </s:Body>
+</s:Envelope>`;
+
+function soapRequest(body, action, controlPath = '/MediaRenderer/AVTransport/Control', serviceType = 'AVTransport') {
   return new Promise((resolve, reject) => {
     const req = http.request({
       hostname: SONOS_IP,
       port: SONOS_PORT,
-      path: '/MediaRenderer/AVTransport/Control',
+      path: controlPath,
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml; charset="utf-8"',
-        'SOAPAction': `"urn:schemas-upnp-org:service:AVTransport:1#${action}"`,
+        'SOAPAction': `"urn:schemas-upnp-org:service:${serviceType}:1#${action}"`,
         'Content-Length': Buffer.byteLength(body),
       },
       timeout: 2000,
@@ -116,10 +127,17 @@ function extractDidl(xml) {
 
 async function getPlaybackStatus() {
   // Parallel requests for position, transport state, and media info
-  const [posXml, transXml] = await Promise.all([
+  const [posXml, transXml, volXml] = await Promise.all([
     soapRequest(POSITION_SOAP, 'GetPositionInfo'),
     soapRequest(TRANSPORT_SOAP, 'GetTransportInfo'),
+    soapRequest(VOLUME_SOAP, 'GetVolume', '/MediaRenderer/RenderingControl/Control', 'RenderingControl').catch(() => null),
   ]);
+
+  // Parse volume (0–100)
+  let volume = null;
+  if (volXml) {
+    const volStr = extractTag(volXml, 'CurrentVolume');
+    if (volStr !== null) volume = parseInt(volStr, 10);
 
   const positionMs = parseTime(extractTag(posXml, 'RelTime'));
   const durationMs = parseTime(extractTag(posXml, 'TrackDuration'));
@@ -147,6 +165,7 @@ async function getPlaybackStatus() {
     artistName: meta.artist || null,
     albumName: meta.album || null,
     albumArtUri,
+    volume,
   };
 }
 

@@ -21,6 +21,10 @@ interface MicPanelProps {
   smoothedRtt?: number;
   onSyncDriftMs?: (driftMs: number) => void;
   onSectionChange?: (section: SongSection | null) => void;
+  agcEnabled?: boolean;
+  manualGain?: number;
+  sonosVolume?: number | null;
+  calibration?: { volume: number; gain: number } | null;
 }
 
 // Priority-aware BLE command queue
@@ -57,7 +61,7 @@ function createBleQueue(charRef: { current: any }) {
   };
 }
 
-export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange }: MicPanelProps) {
+export default function MicPanel({ char, currentColor, externalBpm, sonosPosition, getPosition, durationMs, punchWhite, onBpmChange, songSections, songDrops, syncOffsetMs = 0, smoothedRtt = 150, onSyncDriftMs, onSectionChange, agcEnabled = true, manualGain = 5, sonosVolume, calibration }: MicPanelProps) {
   const [active, setActive] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -159,6 +163,19 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   const onBpmChangeRef = useRef(onBpmChange);
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
+
+  // Gain control refs
+  const agcEnabledRef = useRef(agcEnabled);
+  const manualGainRef = useRef(manualGain);
+  const sonosVolumeRef = useRef<number | null>(sonosVolume ?? null);
+  const calibrationRef = useRef<{ volume: number; gain: number } | null>(calibration ?? null);
+  useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
+  useEffect(() => { manualGainRef.current = manualGain; }, [manualGain]);
+  useEffect(() => { sonosVolumeRef.current = sonosVolume ?? null; }, [sonosVolume]);
+  useEffect(() => { calibrationRef.current = calibration ?? null; }, [calibration]);
+
+  // Ambient smoothing EMA ref
+  const smoothedAmbientRef = useRef(0);
 
   // Auto-calibration: internal autonomous drift accumulator
   const onSyncDriftMsRef = useRef(onSyncDriftMs);
@@ -358,12 +375,27 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const ambientEnergy = subEnergy * 0.25 + bassEnergy * 0.35 + midEnergy * 0.40;
 
       const isSilence = rawEnergy < 0.015;
-      if (!isSilence) {
-        const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
-        agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
+
+      // Gain calculation: calibration > manual > AGC
+      let effectiveGain: number;
+      const cal = calibrationRef.current;
+      const vol = sonosVolumeRef.current;
+      if (cal && vol != null && vol > 0) {
+        // Calibrated mode: extrapolate gain from calibration point
+        const volumeRatio = Math.pow(cal.volume / vol, 2.5);
+        effectiveGain = cal.gain * volumeRatio;
+      } else if (!agcEnabledRef.current) {
+        // Manual mode
+        effectiveGain = manualGainRef.current;
+      } else {
+        // AGC mode (original logic)
+        if (!isSilence) {
+          const agcAlpha = rawEnergy > agcAvgRef.current ? 0.05 : 0.002;
+          agcAvgRef.current += (rawEnergy - agcAvgRef.current) * agcAlpha;
+        }
+        effectiveGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
       }
-      const agcGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
-      const energy = rawEnergy * Math.min(agcGain, 30);
+      const energy = rawEnergy * Math.min(effectiveGain, 30);
 
       // Track energy history for auto-correlation BPM
       const hist = energyHistoryRef.current;
@@ -601,14 +633,27 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // Silence handling
       const silenceDur = silenceStartRef.current > 0 ? performance.now() - silenceStartRef.current : 0;
 
-      // AGC-normalized ambient for zone 1
-      const agcAmbient = ambientEnergy * (agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1);
+      // AGC-normalized ambient for zone 1 (using same effective gain as main energy)
+      const cal2 = calibrationRef.current;
+      const vol2 = sonosVolumeRef.current;
+      let ambientGain: number;
+      if (cal2 && vol2 != null && vol2 > 0) {
+        ambientGain = cal2.gain * Math.pow(cal2.volume / vol2, 2.5);
+      } else if (!agcEnabledRef.current) {
+        ambientGain = manualGainRef.current;
+      } else {
+        ambientGain = agcAvgRef.current > 0.0001 ? 0.35 / agcAvgRef.current : 1;
+      }
+      const agcAmbient = ambientEnergy * Math.min(ambientGain, 30);
+
+      // EMA smoothing for ambient to reduce jitter
+      smoothedAmbientRef.current = smoothedAmbientRef.current * 0.85 + agcAmbient * 0.15;
 
       // Zone 1: Ambient (0–30%) — always active, broad frequency, logarithmic
-      const ambientPct = 30 * Math.log1p(Math.min(agcAmbient, 1) * 12) / Math.log(13);
+      const ambientPct = 30 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
 
-      // Zone 2: Groove (30–60%) — requires beat (phase < 0.5 = recent onset)
-      const groovePct = (phase < 0.5 && bpmRef.current > 0)
+      // Zone 2: Groove (30–60%) — requires beat (phase < 0.3 = recent onset, tighter gating)
+      const groovePct = (phase < 0.3 && bpmRef.current > 0)
         ? 30 * curved * sectionBehavior.beatReactivity
         : 0;
 

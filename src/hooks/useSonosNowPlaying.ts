@@ -30,6 +30,7 @@ export interface SonosNowPlaying {
   smoothedRtt: number;
   nextTrackName: string | null;
   nextArtistName: string | null;
+  volume: number | null;
   source: 'local';
 }
 
@@ -106,6 +107,7 @@ export function useSonosNowPlaying() {
           smoothedRtt: rtt,
           nextTrackName: decodeEntities(s.nextTrackName),
           nextArtistName: decodeEntities(s.nextArtistName),
+          volume: s.volume ?? prev?.volume ?? null,
           source: 'local',
         });
         return;
@@ -121,6 +123,7 @@ export function useSonosNowPlaying() {
         smoothedRtt: rtt,
         nextTrackName: decodeEntities(s.nextTrackName) ?? prev!.nextTrackName ?? null,
         nextArtistName: decodeEntities(s.nextArtistName) ?? prev!.nextArtistName ?? null,
+        volume: s.volume ?? prev!.volume ?? null,
         source: 'local',
       });
     };
