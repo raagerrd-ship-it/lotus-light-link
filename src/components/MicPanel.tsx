@@ -29,52 +29,77 @@ interface MicPanelProps {
   dynamicDamping?: number;
 }
 
-// Priority-aware BLE command queue
+// Coalescing BLE queue: keeps only latest values and rate-limits writes
 function createBleQueue(
   charRef: { current: any },
   onBrightnessSent?: (val: number) => void,
   onColorSent?: (rgb: [number, number, number]) => void,
 ) {
   let busy = false;
-  let pendingBrightness: (() => Promise<void>) | null = null;
-  let pendingColor: (() => Promise<void>) | null = null;
+  let scheduled = false;
+  let pendingBrightness: number | null = null;
+  let pendingColor: [number, number, number] | null = null;
+  let lastSentAt = 0;
+  const MIN_COMMAND_GAP_MS = 40; // ~25 cmd/s hard cap to avoid BLE backlog
+
+  const schedule = (delayMs = 0) => {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(() => {
+      scheduled = false;
+      void process();
+    }, delayMs);
+  };
 
   const process = async () => {
     if (busy) return;
-    const brightnessCmd = pendingBrightness;
-    const colorCmd = pendingColor;
-    if (!brightnessCmd && !colorCmd) return;
+    if (pendingColor === null && pendingBrightness === null) return;
 
-    pendingBrightness = null;
-    pendingColor = null;
+    const now = performance.now();
+    const elapsed = now - lastSentAt;
+    if (elapsed < MIN_COMMAND_GAP_MS) {
+      schedule(MIN_COMMAND_GAP_MS - elapsed);
+      return;
+    }
+
+    const c = charRef.current;
+    if (!c) return;
+
     busy = true;
     try {
-      // Keep brightness priority, but never starve color
-      if (brightnessCmd) await brightnessCmd();
-      if (colorCmd) await colorCmd();
+      // Color gets priority to fix visible drift faster
+      if (pendingColor !== null) {
+        const [r, g, b] = pendingColor;
+        pendingColor = null;
+        await sendColor(c, r, g, b, true);
+      } else if (pendingBrightness !== null) {
+        const val = pendingBrightness;
+        pendingBrightness = null;
+        await sendBrightness(c, val);
+        onBrightnessSent?.(val);
+      }
+      lastSentAt = performance.now();
     } catch {}
     busy = false;
-    process();
+
+    if (pendingColor !== null || pendingBrightness !== null) {
+      schedule();
+    }
   };
 
   return {
     brightness(val: number) {
-      const c = charRef.current;
-      if (!c) return;
-      pendingBrightness = async () => {
-        await sendBrightness(c, val);
-        onBrightnessSent?.(val);
-      };
-      process();
+      if (!charRef.current) return;
+      pendingBrightness = val;
+      schedule();
     },
     color(r: number, g: number, b: number) {
-      const c = charRef.current;
-      if (!c) return;
-      // Apply calibration synchronously and update sent-color immediately
+      if (!charRef.current) return;
+      // Apply calibration immediately so chart reflects intended BLE output
       const calibrated = applyColorCalibration(r, g, b);
       onColorSent?.(calibrated);
-      pendingColor = () => sendColor(c, calibrated[0], calibrated[1], calibrated[2], true);
-      process();
+      pendingColor = calibrated;
+      schedule();
     },
   };
 }
