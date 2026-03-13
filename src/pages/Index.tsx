@@ -10,6 +10,7 @@ import {
 import { setBleConnection } from "@/lib/bleStore";
 import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
+import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
 
