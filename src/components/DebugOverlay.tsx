@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
-import type { SongSection } from "@/lib/songSections";
 import type { BleReconnectStatus } from "@/lib/bledom";
 import { getBleWriteStats, getPipelineTimings, type BleWriteStats, type PipelineTimings } from "@/lib/bledom";
 
 interface DebugOverlayProps {
   smoothedRtt: number;
   autoDriftMs: number;
-  currentSection: SongSection | null;
   palette?: [number, number, number][];
   paletteIndex?: number;
   source?: 'local' | 'cloud';
