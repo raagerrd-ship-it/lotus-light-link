@@ -841,6 +841,10 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const smoothPct = Math.round(Math.max(calRef.current.minBrightness, smoothedBrightRef.current));
         throttleRef.current = now;
         ble.brightness(smoothPct);
+        // Always re-send color with brightness to prevent BLEDOM color drift
+        if (!boost.active) {
+          ble.color(...targetColorRef.current);
+        }
       }
 
       // Color kick / fade-back — always use targetColorRef (latest palette color)
