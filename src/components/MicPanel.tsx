@@ -246,7 +246,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
     pct: number;
     isOnset: boolean;
     now: number;
-  }>({ finalCurved: 0, pct: 3, isOnset: false, now: 0 });
+  }>({ finalCurved: 0, pct: 3, isOnset: false, now: 0, blePct: 3, bleColor: [255, 0, 0] as [number, number, number] });
 
   // Audio nodes
   const subAnalyserRef = useRef<AnalyserNode | null>(null);
