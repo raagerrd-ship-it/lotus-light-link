@@ -272,6 +272,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
 
         worker.onmessage = () => {
           if (stopped) return;
+          if (!isPlayingRef.current) return; // Don't process when paused
           const an = analyserRef.current;
           if (!an) return;
 
