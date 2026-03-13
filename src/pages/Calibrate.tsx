@@ -131,10 +131,11 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setPhase('waiting');
     setCurrentIdx(0);
     setResults([]);
+    setSaved(false);
     
-    await sendPulse(PULSE_DURATIONS[0]);
+    await sendPulses(PULSE_DURATIONS[0]);
     setPhase('asking');
-  }, [sendPulse]);
+  }, [sendPulses]);
 
   const answer = useCallback(async (seen: boolean) => {
     const duration = PULSE_DURATIONS[currentIdx];
@@ -142,9 +143,7 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setResults(newResults);
 
     if (!seen || currentIdx >= PULSE_DURATIONS.length - 1) {
-      // Done — user didn't see it, or we've tested all intervals
       setPhase('done');
-      // Turn lamp back on at 50%
       if (conn?.characteristic) {
         BRIGHT_BUF[3] = 50;
         try { await bleWrite(conn.characteristic, BRIGHT_BUF); } catch {}
@@ -152,13 +151,12 @@ function BleSpeedTab({ conn }: { conn: any }) {
       return;
     }
 
-    // Next pulse
     const nextIdx = currentIdx + 1;
     setCurrentIdx(nextIdx);
     setPhase('waiting');
-    await sendPulse(PULSE_DURATIONS[nextIdx]);
+    await sendPulses(PULSE_DURATIONS[nextIdx]);
     setPhase('asking');
-  }, [currentIdx, results, sendPulse, conn]);
+  }, [currentIdx, results, sendPulses, conn]);
 
   const lastSeen = [...results].reverse().find(r => r.seen);
   const firstMissed = results.find(r => !r.seen);
