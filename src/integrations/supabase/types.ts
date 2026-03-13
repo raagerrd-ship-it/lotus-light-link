@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      device_calibration: {
+        Row: {
+          ble_min_interval_ms: number | null
+          ble_speed_results: Json | null
+          calibration: Json
+          device_name: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          ble_min_interval_ms?: number | null
+          ble_speed_results?: Json | null
+          calibration?: Json
+          device_name: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          ble_min_interval_ms?: number | null
+          ble_speed_results?: Json | null
+          calibration?: Json
+          device_name?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       song_analysis: {
         Row: {
           artist_name: string

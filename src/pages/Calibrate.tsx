@@ -5,6 +5,8 @@ import { ArrowLeft, RotateCcw, Play, Square } from "lucide-react";
 import {
   getCalibration, saveCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
+  setActiveDeviceName, loadCalibrationFromCloud,
+  saveBleSpeedToCloud,
   type LightCalibration,
 } from "@/lib/lightCalibration";
 import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
@@ -137,7 +139,7 @@ interface PulseResult {
 // Per-mode best result: the shortest duration where all 3 pulses were seen
 type ModeBests = Partial<Record<TestMode, number>>;
 
-function BleSpeedTab({ conn }: { conn: any }) {
+function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: ModeBests) => void }) {
   const [mode, setMode] = useState<TestMode>('brightness');
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'asking' | 'done'>('idle');
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -199,6 +201,7 @@ function BleSpeedTab({ conn }: { conn: any }) {
       if (testedValues.length > 0) {
         const worst = Math.max(...testedValues);
         setBleMinInterval(worst);
+        onSpeedSave?.(newBests);
       }
 
       setPhase('done');
@@ -590,13 +593,27 @@ export default function Calibrate() {
   const [conn, setConn] = useState(getBleConnection);
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
+  // Sync calibration from cloud when device connects
+  useEffect(() => {
+    const deviceName = conn?.device?.name;
+    if (!deviceName) return;
+    setActiveDeviceName(deviceName);
+    loadCalibrationFromCloud(deviceName).then((data) => {
+      if (data) {
+        setCal(data.calibration);
+        if (data.bleMinIntervalMs) setBleMinInterval(data.bleMinIntervalMs);
+        console.log(`[calibration] loaded from cloud for ${deviceName}`);
+      }
+    });
+  }, [conn?.device?.name]);
+
   const update = useCallback((patch: Partial<LightCalibration>) => {
     setCal((prev) => {
       const next = { ...prev, ...patch };
-      saveCalibration(next);
+      saveCalibration(next, conn?.device?.name);
       return next;
     });
-  }, []);
+  }, [conn?.device?.name]);
 
   const handleReset = useCallback((tabKey: Tab) => {
     if (tabKey === 'ble') return;
@@ -704,7 +721,13 @@ export default function Calibrate() {
           </>
         )}
 
-        {tab === 'ble' && <BleSpeedTab conn={conn} />}
+        {tab === 'ble' && <BleSpeedTab conn={conn} onSpeedSave={(bests) => {
+          const deviceName = conn?.device?.name;
+          if (deviceName) {
+            const worst = Math.max(...(Object.values(bests) as number[]));
+            saveBleSpeedToCloud(deviceName, worst, bests as Record<string, number>);
+          }
+        }} />}
 
         {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms) => update({ bleLatencyMs: ms })} />}
       </div>
