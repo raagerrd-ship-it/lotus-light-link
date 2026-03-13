@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import NowPlayingBar from "@/components/NowPlayingBar";
@@ -13,6 +13,7 @@ import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
+import { useSongEnergyCurve } from "@/hooks/useSongEnergyCurve";
 import { extractPalette } from "@/lib/colorExtract";
 import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
@@ -38,6 +39,13 @@ const Index = () => {
 
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
+
+  // Energy curve: lookup saved curve for current track
+  const trackKey = useMemo(() => {
+    if (!nowPlaying?.trackName || !nowPlaying?.artistName) return null;
+    return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
+  }, [nowPlaying?.trackName, nowPlaying?.artistName]);
+  const { curve: energyCurve, saveCurve } = useSongEnergyCurve(trackKey);
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
@@ -167,7 +175,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} />
+        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} getPosition={getPosition} energyCurve={energyCurve} onSaveEnergyCurve={saveCurve} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
