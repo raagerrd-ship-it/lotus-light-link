@@ -32,7 +32,13 @@ const Index = () => {
   const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
   const [showDebug] = useState(true);
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
-  const [agcEnabled, setAgcEnabled] = useState(() => localStorage.getItem("agcEnabled") !== "false");
+  const [gainMode, setGainMode] = useState<'agc' | 'vol' | 'manual'>(() => {
+    const stored = localStorage.getItem("gainMode");
+    return (stored === 'agc' || stored === 'vol' || stored === 'manual') ? stored : 'agc';
+  });
+  const [volCalibration, setVolCalibration] = useState<{ volume: number; gain: number } | null>(() => {
+    try { const s = localStorage.getItem("volCalibration"); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
   const [maxBrightness, setMaxBrightness] = useState(() => {
     const stored = localStorage.getItem("maxBrightness");
     return stored ? parseInt(stored, 10) : 100;
