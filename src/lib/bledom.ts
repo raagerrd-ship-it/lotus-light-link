@@ -4,21 +4,29 @@ const SERVICE_UUID = 0xfff0;
 const CHAR_UUID = 0xfff3;
 const STORAGE_KEY = 'bledom-last-device';
 
+type LastDevice = { id: string; name: string };
+
 export interface BLEConnection {
   device: any;
   characteristic: any;
 }
 
 export function saveLastDevice(device: any) {
-  if (device?.id && device?.name) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: device.id, name: device.name }));
+  if (device?.id) {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ id: device.id, name: device.name || 'Senast ansluten' })
+    );
   }
 }
 
-export function getLastDevice(): { id: string; name: string } | null {
+export function getLastDevice(): LastDevice | null {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (!parsed?.id) return null;
+    return { id: parsed.id, name: parsed.name || 'Senast ansluten' };
   } catch {
     return null;
   }
@@ -35,38 +43,56 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
   return { device, characteristic };
 }
 
-// Auto-reconnect using getDevices() + watchAdvertisements() — no picker needed
+async function connectAfterAdvertisement(device: any, timeoutMs = 5000): Promise<BLEConnection | null> {
+  if (!device?.watchAdvertisements) return null;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const settle = (result: BLEConnection | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      device.removeEventListener('advertisementreceived', onAdvert);
+      resolve(result);
+    };
+
+    const onAdvert = async () => {
+      try {
+        settle(await connectToDevice(device));
+      } catch {
+        settle(null);
+      }
+    };
+
+    timeout = setTimeout(() => settle(null), timeoutMs);
+    device.addEventListener('advertisementreceived', onAdvert);
+    device.watchAdvertisements({ signal: AbortSignal.timeout(timeoutMs) }).catch(() => settle(null));
+  });
+}
+
+// Auto-reconnect using getDevices() — no picker needed when permission already exists
 export async function autoReconnect(): Promise<BLEConnection | null> {
   const nav = navigator as any;
   if (!nav.bluetooth?.getDevices) return null;
 
   try {
     const devices = await nav.bluetooth.getDevices();
+    if (!devices.length) return null;
+
     const saved = getLastDevice();
-    const target = devices.find((d: any) => d.id === saved?.id) ?? devices[0];
+    const namedMatch = devices.find(
+      (d: any) => typeof d.name === 'string' && /^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(d.name)
+    );
+    const target = devices.find((d: any) => d.id === saved?.id) ?? namedMatch ?? devices[0];
     if (!target) return null;
 
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        target.removeEventListener('advertisementreceived', onAdvert);
-        resolve(null);
-      }, 5000);
-
-      const onAdvert = async () => {
-        clearTimeout(timeout);
-        target.removeEventListener('advertisementreceived', onAdvert);
-        try {
-          const conn = await connectToDevice(target);
-          resolve(conn);
-        } catch { resolve(null); }
-      };
-
-      target.addEventListener('advertisementreceived', onAdvert);
-      target.watchAdvertisements({ signal: AbortSignal.timeout(5000) }).catch(() => {
-        clearTimeout(timeout);
-        resolve(null);
-      });
-    });
+    try {
+      return await connectToDevice(target);
+    } catch {
+      return await connectAfterAdvertisement(target);
+    }
   } catch {
     return null;
   }
