@@ -5,6 +5,8 @@ import { ArrowLeft, RotateCcw, Play, Square } from "lucide-react";
 import {
   getCalibration, saveCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
+  setActiveDeviceName, loadCalibrationFromCloud,
+  saveBleSpeedToCloud,
   type LightCalibration,
 } from "@/lib/lightCalibration";
 import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
