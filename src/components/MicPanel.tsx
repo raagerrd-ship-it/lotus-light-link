@@ -164,6 +164,19 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const onBpmChangeRef = useRef(onBpmChange);
   useEffect(() => { onBpmChangeRef.current = onBpmChange; }, [onBpmChange]);
 
+  // Gain control refs
+  const agcEnabledRef = useRef(agcEnabled);
+  const manualGainRef = useRef(manualGain);
+  const sonosVolumeRef = useRef<number | null>(sonosVolume ?? null);
+  const calibrationRef = useRef<{ volume: number; gain: number } | null>(calibration ?? null);
+  useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
+  useEffect(() => { manualGainRef.current = manualGain; }, [manualGain]);
+  useEffect(() => { sonosVolumeRef.current = sonosVolume ?? null; }, [sonosVolume]);
+  useEffect(() => { calibrationRef.current = calibration ?? null; }, [calibration]);
+
+  // Ambient smoothing EMA ref
+  const smoothedAmbientRef = useRef(0);
+
   // Auto-calibration: internal autonomous drift accumulator
   const onSyncDriftMsRef = useRef(onSyncDriftMs);
   useEffect(() => { onSyncDriftMsRef.current = onSyncDriftMs; }, [onSyncDriftMs]);
