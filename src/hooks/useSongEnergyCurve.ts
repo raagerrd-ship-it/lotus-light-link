@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { AgcState } from "@/lib/energyInterpolate";
 
 export interface EnergySample {
-  t: number; // seconds from song start
-  e: number; // 0.0–1.0 normalized energy
+  t: number;
+  e: number;
+  kick?: boolean;
+  lo?: number;
+  mid?: number;
+  hi?: number;
 }
 
 interface TrackKey {
@@ -12,18 +17,14 @@ interface TrackKey {
 }
 
 interface SongEnergyCurveResult {
-  /** Saved curve from DB, or null if first listen */
   curve: EnergySample[] | null;
-  /** Volume (0-100) the curve was recorded at, or null */
   recordedVolume: number | null;
-  /** True while fetching */
+  savedAgcState: AgcState | null;
   loading: boolean;
-  /** Save/update the energy curve for the current track */
-  saveCurve: (samples: EnergySample[], volume: number | null) => void;
+  saveCurve: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
 }
 
-// In-memory cache: "track|artist" → curve or null
-const curveCache = new Map<string, EnergySample[] | null>();
+const curveCache = new Map<string, { curve: EnergySample[] | null; vol: number | null; agc: AgcState | null }>();
 
 function cacheKey(t: TrackKey): string {
   return `${t.trackName}|${t.artistName}`;
@@ -32,6 +33,7 @@ function cacheKey(t: TrackKey): string {
 export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResult {
   const [curve, setCurve] = useState<EnergySample[] | null>(null);
   const [recordedVolume, setRecordedVolume] = useState<number | null>(null);
+  const [savedAgcState, setSavedAgcState] = useState<AgcState | null>(null);
   const [loading, setLoading] = useState(false);
   const trackRef = useRef<string | null>(null);
 
@@ -39,25 +41,27 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     if (!track) {
       setCurve(null);
       setRecordedVolume(null);
+      setSavedAgcState(null);
       trackRef.current = null;
       return;
     }
 
     const key = cacheKey(track);
-    if (key === trackRef.current) return; // same track
+    if (key === trackRef.current) return;
     trackRef.current = key;
 
-    // Check cache first
     if (curveCache.has(key)) {
-      setCurve(curveCache.get(key) ?? null);
+      const cached = curveCache.get(key)!;
+      setCurve(cached.curve);
+      setRecordedVolume(cached.vol);
+      setSavedAgcState(cached.agc);
       return;
     }
 
-    // Fetch from DB
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("energy_curve, recorded_volume")
+      .select("energy_curve, recorded_volume, agc_state")
       .eq("track_name", track.trackName)
       .eq("artist_name", track.artistName)
       .maybeSingle()
@@ -66,20 +70,23 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         const parsed = data?.energy_curve as unknown as EnergySample[] | null;
         const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
         const vol = (data as any)?.recorded_volume as number | null;
-        curveCache.set(key, valid);
+        const agc = (data as any)?.agc_state as AgcState | null;
+        curveCache.set(key, { curve: valid, vol: vol ?? null, agc: agc ?? null });
         setCurve(valid);
         setRecordedVolume(vol ?? null);
+        setSavedAgcState(agc ?? null);
         setLoading(false);
       });
   }, [track?.trackName, track?.artistName]);
 
   const saveCurve = useCallback(
-    (samples: EnergySample[], volume: number | null) => {
+    (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => {
       if (!track || samples.length < 10) return;
       const key = cacheKey(track);
-      curveCache.set(key, samples);
+      curveCache.set(key, { curve: samples, vol: volume, agc: agcState ?? null });
       setCurve(samples);
       setRecordedVolume(volume);
+      if (agcState) setSavedAgcState(agcState);
 
       supabase
         .from("song_analysis")
@@ -88,13 +95,17 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         .eq("artist_name", track.artistName)
         .maybeSingle()
         .then(({ data: existing }) => {
-          const payload = { energy_curve: samples as any, recorded_volume: volume } as any;
+          const payload = {
+            energy_curve: samples as any,
+            recorded_volume: volume,
+            ...(agcState ? { agc_state: agcState as any } : {}),
+          } as any;
           if (existing) {
             supabase
               .from("song_analysis")
               .update(payload)
               .eq("id", existing.id)
-              .then(() => console.log("[EnergyCurve] updated", track.trackName, "vol:", volume));
+              .then(() => console.log("[EnergyCurve] updated", track.trackName));
           } else {
             supabase
               .from("song_analysis")
@@ -103,12 +114,12 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
                 artist_name: track.artistName,
                 ...payload,
               })
-              .then(() => console.log("[EnergyCurve] inserted", track.trackName, "vol:", volume));
+              .then(() => console.log("[EnergyCurve] inserted", track.trackName));
           }
         });
     },
     [track?.trackName, track?.artistName],
   );
 
-  return { curve, recordedVolume, loading, saveCurve };
+  return { curve, recordedVolume, savedAgcState, loading, saveCurve };
 }
