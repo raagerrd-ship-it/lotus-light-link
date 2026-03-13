@@ -255,14 +255,16 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
         };
 
         // Register BLE write callback — pushes chart sample only when HW actually receives data
-        onBleWrite((bright, r, g, b) => {
+        // Use palette color (colorRef) for chart display, not calibrated BLE color
+        onBleWrite((bright) => {
           if (stopped) return;
+          const [cr, cg, cb] = colorRef.current;
           const scale = bright / 100;
           samplesRef.current.push({
             pct: bright,
-            r: Math.round(r * scale),
-            g: Math.round(g * scale),
-            b: Math.round(b * scale),
+            r: Math.round(cr * scale),
+            g: Math.round(cg * scale),
+            b: Math.round(cb * scale),
           });
           if (samplesRef.current.length > HISTORY_LEN) {
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
