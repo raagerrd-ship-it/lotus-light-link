@@ -31,7 +31,7 @@ const Index = () => {
   const lastArtUrlRef = useRef<string | null>(null);
   const currentColorRef = useRef(currentColor);
 
-  const lastDevice = getLastDevice();
+  const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
