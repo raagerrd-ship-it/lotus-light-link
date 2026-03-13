@@ -47,9 +47,14 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
 
   useEffect(() => {
     colorRef.current = currentColor;
-    // Color changed → force a color send on next tick
     lastBaseColorRef.current = currentColor;
-    lastColorStateRef.current = 'normal'; // reset to trigger re-send
+    lastColorStateRef.current = 'normal';
+    // Song/color change → soft-reset AGC so it re-learns the new song's dynamics
+    agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
+    agcMinRef.current = 0;
+    // Clear chart samples for fresh start
+    samplesRef.current = [];
+    resetChartScaler();
   }, [currentColor]);
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
