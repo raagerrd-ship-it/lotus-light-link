@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { sendColor, sendBrightness, setActiveChar, setPipelineTimings } from "@/lib/bledom";
+import { sendColor, sendBrightness, setActiveChar, setPipelineTimings, onBleWrite } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 import { getActiveDeviceName } from "@/lib/lightCalibration";
@@ -242,19 +242,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
             totalTickMs: bleEnd - tickStart,
           });
 
-          // Push sample for chart (rAF loop will draw)
-          const [cr2, cg2, cb2] = isWhite ? [255, 255, 255] as const : colorRef.current;
-          const scale = pct / 100;
-          samplesRef.current.push({
-            pct,
-            r: Math.round(cr2 * scale),
-            g: Math.round(cg2 * scale),
-            b: Math.round(cb2 * scale),
-          });
-          if (samplesRef.current.length > HISTORY_LEN) {
-            samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
-          }
-          chartDirtyRef.current = true;
+          // Chart samples are pushed via onBleWrite callback (see below)
 
           // Save AGC state every 10 seconds (fire-and-forget)
           const nowMs = performance.now();
@@ -266,6 +254,22 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           }
         };
 
+        // Register BLE write callback — pushes chart sample only when HW actually receives data
+        onBleWrite((bright, r, g, b) => {
+          if (stopped) return;
+          const scale = bright / 100;
+          samplesRef.current.push({
+            pct: bright,
+            r: Math.round(r * scale),
+            g: Math.round(g * scale),
+            b: Math.round(b * scale),
+          });
+          if (samplesRef.current.length > HISTORY_LEN) {
+            samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
+          }
+          chartDirtyRef.current = true;
+        });
+
         worker.postMessage("start");
       } catch (e) {
         console.error("[MicPanel] mic init failed", e);
@@ -276,6 +280,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
 
     return () => {
       stopped = true;
+      onBleWrite(null); // unregister callback
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
       streamRef.current?.getTracks().forEach(t => t.stop());

@@ -194,6 +194,12 @@ let _lastSentColor: [number, number, number] = [-1, -1, -1];
 let _writing = false;
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _lastWriteTime = 0;
+let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
+
+/** Register callback invoked after each actual BLE write with the sent values */
+export function onBleWrite(cb: ((bright: number, r: number, g: number, b: number) => void) | null) {
+  _onWriteCallback = cb;
+}
 
 // Debug stats
 export interface BleWriteStats {
@@ -301,6 +307,11 @@ async function _flush() {
 
     _writeCount++; // Count per slot, not per GATT write
     _lastActualWriteMs = performance.now() - writeStart;
+
+    // Notify listener with actually-sent values
+    if (_onWriteCallback) {
+      _onWriteCallback(_lastSentBright, _lastSentColor[0], _lastSentColor[1], _lastSentColor[2]);
+    }
   } catch (e: any) {
     _errorCount++;
     _lastError = e?.message || 'GATT write failed';
