@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RotateCcw } from "lucide-react";
+import DynamicsPreview from "@/components/DynamicsPreview";
 import {
   getCalibration, saveCalibration, resetCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
