@@ -272,7 +272,7 @@ const Index = () => {
           gainMode={gainMode}
           volCalibrationVol={volCalibration?.volume}
           liveBpm={liveBpm}
-          maxBrightness={maxBrightness}
+          maxBrightness={100}
           dynamicDamping={dynamicDamping}
           bleConnected={!!connection}
           bleDeviceName={connection?.device?.name}
