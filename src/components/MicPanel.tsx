@@ -849,7 +849,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       if (!predictiveActive && effectivePunchWhite && pct > calRef.current.punchWhiteThreshold && beatPhaseRef.current < 0.1 && now - boost.throttle >= colorKickThrottle) {
         boost.throttle = now;
-        const boostFactor = Math.min(1, (pct - 85) / 15);
+        const thresh = calRef.current.punchWhiteThreshold;
+        const boostFactor = Math.min(1, (pct - thresh) / (100 - thresh));
         const lifted = liftColor(color, boostFactor);
         boost.active = true;
         boost.startTime = now;
