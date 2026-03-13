@@ -15,6 +15,7 @@ interface MicPanelProps {
   sonosVolume?: number;
   sonosRtt?: number;
   isPlaying?: boolean;
+  durationMs?: number | null;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
   onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
@@ -97,7 +98,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -136,6 +137,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const sonosRttRef = useRef(sonosRtt);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
+  const durationMsRef = useRef(durationMs);
+  const recordingStartPosRef = useRef<number | null>(null); // position when recording started
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
 
@@ -151,6 +154,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
@@ -162,19 +166,34 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     }
   }, [savedAgcState]);
 
-  // Flush recorded samples on curve change
+  // Flush recorded samples on curve change — only save complete recordings
   useEffect(() => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
-      const agc: AgcState = {
-        agcMin: agcMinRef.current,
-        agcMax: agcMaxRef.current,
-        agcPeakMax: agcPeakMaxRef.current,
-        avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
-      };
-      onSaveCurveRef.current(prev, volumeRef.current ?? null, agc);
+      const dur = durationMsRef.current;
+      const firstT = prev[0].t;
+      const lastT = prev[prev.length - 1].t;
+      const durationSec = dur ? dur / 1000 : 0;
+      // Complete = started within first 15s AND reached last 15s of song
+      const startedEarly = firstT < 15;
+      const finishedLate = durationSec > 0 && lastT > (durationSec - 15);
+      const isComplete = startedEarly && finishedLate;
+      
+      if (isComplete) {
+        const agc: AgcState = {
+          agcMin: agcMinRef.current,
+          agcMax: agcMaxRef.current,
+          agcPeakMax: agcPeakMaxRef.current,
+          avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
+        };
+        console.log('[MicPanel] ✓ complete recording', prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+        onSaveCurveRef.current(prev, volumeRef.current ?? null, agc);
+      } else {
+        console.log('[MicPanel] ✗ discarding incomplete recording', prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+      }
     }
     recordedSamplesRef.current = [];
+    recordingStartPosRef.current = null;
     lastRecordTimeRef.current = 0;
   }, [energyCurve]);
 
@@ -537,16 +556,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
 
     return () => {
       stopped = true;
-      const recorded = recordedSamplesRef.current;
-      if (recorded.length > 10 && onSaveCurveRef.current) {
-        const agc: AgcState = {
-          agcMin: agcMinRef.current,
-          agcMax: agcMaxRef.current,
-          agcPeakMax: agcPeakMaxRef.current,
-          avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
-        };
-        onSaveCurveRef.current(recorded, volumeRef.current ?? null, agc);
-      }
+      // Don't save on unmount — only complete recordings are saved via the energyCurve effect
+      recordedSamplesRef.current = [];
       onBleWrite(null);
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
