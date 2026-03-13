@@ -291,69 +291,73 @@ const Index = () => {
               <Bluetooth className="w-3.5 h-3.5 mr-1" />
               {connection ? 'Byt' : lastDevice ? lastDevice.name : 'Anslut'}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                const next = !agcEnabled;
-                setAgcEnabled(next);
-                localStorage.setItem("agcEnabled", String(next));
-              }}
-              className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${agcEnabled ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
-              style={agcEnabled ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
-              title={`AGC — ${agcEnabled ? 'PÅ' : 'AV'}`}
-            >
-              <Activity className="w-3.5 h-3.5" style={agcEnabled ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
-            </Button>
-            {!agcEnabled && nowPlaying?.volume != null && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  const vol = nowPlaying?.volume;
-                  if (vol == null) return;
-                  const cal = { volume: vol, gain: manualGain };
-                  setCalibration(cal);
-                  localStorage.setItem("gainCalibration", JSON.stringify(cal));
-                }}
-                className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${calibration ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
-                style={calibration ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
-                title={calibration ? `Kalibrerad vid ${calibration.volume}%` : 'Kalibrera'}
-              >
-                <Crosshair className="w-3.5 h-3.5" style={calibration ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
-              </Button>
+            {connection && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    const next = !agcEnabled;
+                    setAgcEnabled(next);
+                    localStorage.setItem("agcEnabled", String(next));
+                  }}
+                  className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${agcEnabled ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
+                  style={agcEnabled ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+                  title={`AGC — ${agcEnabled ? 'PÅ' : 'AV'}`}
+                >
+                  <Activity className="w-3.5 h-3.5" style={agcEnabled ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+                </Button>
+                {!agcEnabled && nowPlaying?.volume != null && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const vol = nowPlaying?.volume;
+                      if (vol == null) return;
+                      const cal = { volume: vol, gain: manualGain };
+                      setCalibration(cal);
+                      localStorage.setItem("gainCalibration", JSON.stringify(cal));
+                    }}
+                    className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${calibration ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
+                    style={calibration ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+                    title={calibration ? `Kalibrerad vid ${calibration.volume}%` : 'Kalibrera'}
+                  >
+                    <Crosshair className="w-3.5 h-3.5" style={calibration ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPunchWhite(!punchWhite)}
+                  className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${punchWhite ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
+                  style={punchWhite ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+                  title={`Punch white — ${punchWhite ? 'PÅ' : 'AV'}`}
+                >
+                  <Zap className="w-3.5 h-3.5" style={punchWhite ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    const next = !autoHide;
+                    setAutoHide(next);
+                    localStorage.setItem("autoHide", String(next));
+                    if (!next) {
+                      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+                      setShowOverlay(true);
+                    }
+                  }}
+                  className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+                  style={autoHide ? { color: accent } : undefined}
+                  title={autoHide ? "Auto-hide on" : "Auto-hide off"}
+                >
+                  {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
+                  <Power className="w-4 h-4" />
+                </Button>
+              </>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setPunchWhite(!punchWhite)}
-              className={`rounded-full w-7 h-7 active:scale-90 transition-all duration-200 ${punchWhite ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-40'}`}
-              style={punchWhite ? { color: accent, '--tw-ring-color': accent } as React.CSSProperties : undefined}
-              title={`Punch white — ${punchWhite ? 'PÅ' : 'AV'}`}
-            >
-              <Zap className="w-3.5 h-3.5" style={punchWhite ? { filter: `drop-shadow(0 0 4px ${accent})` } : undefined} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                const next = !autoHide;
-                setAutoHide(next);
-                localStorage.setItem("autoHide", String(next));
-                if (!next) {
-                  if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-                  setShowOverlay(true);
-                }
-              }}
-              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
-              style={autoHide ? { color: accent } : undefined}
-              title={autoHide ? "Auto-hide on" : "Auto-hide off"}
-            >
-              {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
-              <Power className="w-4 h-4" />
-            </Button>
           </div>
         </div>
       )}
