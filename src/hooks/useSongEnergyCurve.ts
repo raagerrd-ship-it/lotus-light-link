@@ -169,12 +169,14 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       if (!track || samples.length < 10) return;
       const key = cacheKey(track);
       const newBpm = estimateBpm(samples);
+      const newDrops = detectDrops(samples);
       const cached = curveCache.get(key);
-      curveCache.set(key, { curve: samples, vol: volume, agc: agcState ?? null, bpm: newBpm, sections: cached?.sections ?? null, songId: cached?.songId ?? null });
+      curveCache.set(key, { curve: samples, vol: volume, agc: agcState ?? null, bpm: newBpm, sections: cached?.sections ?? null, drops: newDrops.length > 0 ? newDrops : null, songId: cached?.songId ?? null });
       setCurve(samples);
       setRecordedVolume(volume);
       if (agcState) setSavedAgcState(agcState);
       if (newBpm) setBpm(newBpm);
+      if (newDrops.length > 0) setDrops(newDrops);
 
       supabase
         .from("song_analysis")
