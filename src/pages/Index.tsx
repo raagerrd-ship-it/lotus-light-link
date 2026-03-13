@@ -261,8 +261,8 @@ const Index = () => {
         </div>
       )}
 
-      {/* Header */}
-      {connection && (
+      {/* Header — always visible */}
+      {(connection || !busy) && (
         <div
           className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] transition-opacity duration-500 backdrop-blur-lg border-b border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.5)' }}
