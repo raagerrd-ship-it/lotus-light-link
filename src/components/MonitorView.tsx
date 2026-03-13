@@ -176,8 +176,8 @@ export default function MonitorView() {
       {/* Now playing */}
       {track_name ? (
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
-          {album_art_url && (
-            <img src={album_art_url} alt="Album art" className="w-14 h-14 rounded-xl"
+      {album_art_url && (
+            <img src={rewriteArtUrl(album_art_url)} alt="Album art" className="w-14 h-14 rounded-xl"
               style={{ boxShadow: `0 0 20px rgba(${r},${g},${b},0.4)` }} />
           )}
           <div className="min-w-0 flex-1">
