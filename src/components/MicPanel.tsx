@@ -72,7 +72,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, o
   useEffect(() => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
-      onSaveCurveRef.current(prev);
+      onSaveCurveRef.current(prev, volumeRef.current ?? null);
     }
     recordedSamplesRef.current = [];
     lastRecordTimeRef.current = 0;
