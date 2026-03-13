@@ -63,7 +63,6 @@ function SliderRow({ label, value, min, max, step, unit = '', onChange }: Slider
 const COLOR_BUF = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const BRIGHT_BUF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-// Pulse durations to test (ms) — how long the white flash stays on
 const PULSE_DURATIONS = [200, 150, 100, 80, 60, 50, 40, 30, 20, 15, 10];
 const PULSES_PER_STEP = 3;
 const PULSE_GAP_MS = 800;
@@ -72,41 +71,87 @@ async function bleWrite(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array
   await char.writeValueWithoutResponse(buf as any);
 }
 
-async function sendWhite(char: BluetoothRemoteGATTCharacteristic) {
-  COLOR_BUF[4] = 255; COLOR_BUF[5] = 255; COLOR_BUF[6] = 255;
-  await bleWrite(char, COLOR_BUF);
-  BRIGHT_BUF[3] = 100;
-  await bleWrite(char, BRIGHT_BUF);
-}
+// Color cycle: R → G → B
+const CYCLE_COLORS: [number, number, number][] = [[255, 0, 0], [0, 255, 0], [0, 0, 255]];
 
-async function sendBlack(char: BluetoothRemoteGATTCharacteristic) {
-  BRIGHT_BUF[3] = 0;
-  await bleWrite(char, BRIGHT_BUF);
+type TestMode = 'brightness' | 'color' | 'combined';
+
+const MODE_LABELS: Record<TestMode, string> = {
+  brightness: 'Brightness 0↔100%',
+  color: 'Färgbyte R→G→B',
+  combined: 'Färg + Brightness',
+};
+
+const MODE_DESC: Record<TestMode, string> = {
+  brightness: 'Testar hur snabbt lampan kan växla brightness 0%↔100%. Lampan hålls på vit färg.',
+  color: 'Testar hur snabbt lampan kan byta färg (R→G→B) vid 100% brightness.',
+  combined: 'Testar färgbyte + brightness-växling samtidigt (R→G→B, 0%↔100%).',
+};
+
+async function sendPulseForMode(
+  char: BluetoothRemoteGATTCharacteristic,
+  mode: TestMode,
+  pulseIndex: number,
+  durationMs: number,
+) {
+  if (mode === 'brightness') {
+    // White color, toggle brightness 0→100→0
+    COLOR_BUF[4] = 255; COLOR_BUF[5] = 255; COLOR_BUF[6] = 255;
+    await bleWrite(char, COLOR_BUF);
+    BRIGHT_BUF[3] = 100;
+    await bleWrite(char, BRIGHT_BUF);
+    await new Promise(r => setTimeout(r, durationMs));
+    BRIGHT_BUF[3] = 0;
+    await bleWrite(char, BRIGHT_BUF);
+  } else if (mode === 'color') {
+    // 100% brightness, cycle through R→G→B
+    BRIGHT_BUF[3] = 100;
+    await bleWrite(char, BRIGHT_BUF);
+    const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
+    COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
+    await bleWrite(char, COLOR_BUF);
+    await new Promise(r => setTimeout(r, durationMs));
+    // "Off" = black (brightness 0)
+    BRIGHT_BUF[3] = 0;
+    await bleWrite(char, BRIGHT_BUF);
+  } else {
+    // Combined: color + brightness
+    const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
+    COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
+    await bleWrite(char, COLOR_BUF);
+    BRIGHT_BUF[3] = 100;
+    await bleWrite(char, BRIGHT_BUF);
+    await new Promise(r => setTimeout(r, durationMs));
+    BRIGHT_BUF[3] = 0;
+    await bleWrite(char, BRIGHT_BUF);
+  }
 }
 
 interface PulseResult {
   durationMs: number;
   answer: 'all' | 'partial' | 'none';
+  mode: TestMode;
 }
 
 function BleSpeedTab({ conn }: { conn: any }) {
+  const [mode, setMode] = useState<TestMode>('brightness');
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'asking' | 'done'>('idle');
   const [currentIdx, setCurrentIdx] = useState(0);
   const [results, setResults] = useState<PulseResult[]>([]);
   const [countdown, setCountdown] = useState(0);
   const [saved, setSaved] = useState(false);
-  const acRef = useRef<AbortController | null>(null);
 
   const currentDuration = PULSE_DURATIONS[currentIdx] ?? 0;
 
-  const sendPulses = useCallback(async (durationMs: number) => {
+  const sendPulses = useCallback(async (durationMs: number, testMode: TestMode) => {
     if (!conn?.characteristic) return;
     const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
-    
-    // Ensure lamp is dark first
-    await sendBlack(char);
+
+    // Ensure lamp is dark
+    BRIGHT_BUF[3] = 0;
+    await bleWrite(char, BRIGHT_BUF);
     await new Promise(r => setTimeout(r, 600));
-    
+
     // Random delay 1-2s
     const delay = 1000 + Math.random() * 1000;
     const steps = Math.ceil(delay / 1000);
@@ -115,12 +160,10 @@ function BleSpeedTab({ conn }: { conn: any }) {
       await new Promise(r => setTimeout(r, Math.min(1000, delay / steps)));
     }
     setCountdown(0);
-    
-    // Send 3 pulses with gaps
+
+    // Send 3 pulses
     for (let p = 0; p < PULSES_PER_STEP; p++) {
-      await sendWhite(char);
-      await new Promise(r => setTimeout(r, durationMs));
-      await sendBlack(char);
+      await sendPulseForMode(char, testMode, p, durationMs);
       if (p < PULSES_PER_STEP - 1) {
         await new Promise(r => setTimeout(r, PULSE_GAP_MS));
       }
@@ -132,14 +175,13 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setCurrentIdx(0);
     setResults([]);
     setSaved(false);
-    
-    await sendPulses(PULSE_DURATIONS[0]);
+    await sendPulses(PULSE_DURATIONS[0], mode);
     setPhase('asking');
-  }, [sendPulses]);
+  }, [sendPulses, mode]);
 
   const answer = useCallback(async (ans: 'all' | 'partial' | 'none') => {
     const duration = PULSE_DURATIONS[currentIdx];
-    const newResults = [...results, { durationMs: duration, answer: ans }];
+    const newResults = [...results, { durationMs: duration, answer: ans, mode }];
     setResults(newResults);
 
     if (ans !== 'all' || currentIdx >= PULSE_DURATIONS.length - 1) {
@@ -154,19 +196,40 @@ function BleSpeedTab({ conn }: { conn: any }) {
     const nextIdx = currentIdx + 1;
     setCurrentIdx(nextIdx);
     setPhase('waiting');
-    await sendPulses(PULSE_DURATIONS[nextIdx]);
+    await sendPulses(PULSE_DURATIONS[nextIdx], mode);
     setPhase('asking');
-  }, [currentIdx, results, sendPulses, conn]);
+  }, [currentIdx, results, sendPulses, conn, mode]);
 
   const lastAll = [...results].reverse().find(r => r.answer === 'all');
   const firstFail = results.find(r => r.answer !== 'all');
   const firstFailType = firstFail?.answer;
 
+  const questionText = mode === 'color'
+    ? `Såg du ${PULSES_PER_STEP} tydliga färgbyten (R→G→B)?`
+    : mode === 'combined'
+    ? `Såg du ${PULSES_PER_STEP} tydliga färg+blinkar?`
+    : `Såg du ${PULSES_PER_STEP} tydliga blinkar?`;
+
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Lampan blinkar vitt {PULSES_PER_STEP} gånger i allt kortare pulser. Svara om du såg alla {PULSES_PER_STEP} blinkar tydligt (både på och av).
-      </p>
+      {/* Mode selector */}
+      <div className="flex gap-1 flex-wrap">
+        {(Object.keys(MODE_LABELS) as TestMode[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => { if (phase === 'idle' || phase === 'done') setMode(m); }}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide transition-colors ${
+              mode === m
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-secondary-foreground hover:bg-accent'
+            } ${phase !== 'idle' && phase !== 'done' ? 'opacity-50' : ''}`}
+          >
+            {MODE_LABELS[m]}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-muted-foreground">{MODE_DESC[mode]}</p>
 
       {!conn && <p className="text-xs text-destructive">Anslut BLE-lampan först.</p>}
 
@@ -182,15 +245,15 @@ function BleSpeedTab({ conn }: { conn: any }) {
             {countdown > 0 ? `Gör dig redo… ${countdown}` : 'Titta på lampan!'}
           </p>
           <p className="text-xs text-muted-foreground">
-            Puls: {PULSE_DURATIONS[currentIdx]}ms × {PULSES_PER_STEP}
+            {MODE_LABELS[mode]} — {PULSE_DURATIONS[currentIdx]}ms × {PULSES_PER_STEP}
           </p>
         </div>
       )}
 
       {phase === 'asking' && (
         <div className="text-center py-4 space-y-3">
-          <p className="text-sm font-medium text-foreground">Såg du {PULSES_PER_STEP} tydliga blinkar?</p>
-          <p className="text-xs text-muted-foreground">Puls: {currentDuration}ms × {PULSES_PER_STEP}</p>
+          <p className="text-sm font-medium text-foreground">{questionText}</p>
+          <p className="text-xs text-muted-foreground">{MODE_LABELS[mode]} — {currentDuration}ms × {PULSES_PER_STEP}</p>
           <div className="flex gap-2 justify-center flex-wrap">
             <Button size="sm" onClick={() => answer('all')} className="px-4 text-xs">
               ✓ Alla 3
@@ -208,36 +271,34 @@ function BleSpeedTab({ conn }: { conn: any }) {
       {phase === 'done' && (
         <div className="space-y-3">
           <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
-            <p className="text-xs font-bold text-primary">Resultat</p>
+            <p className="text-xs font-bold text-primary">Resultat — {MODE_LABELS[mode]}</p>
             {lastAll && firstFail ? (
               <>
                 <p className="text-xs text-foreground/80 mt-1">
                   Kortaste med alla 3: <span className="font-mono font-bold">{lastAll.durationMs}ms</span>
                   <br />
                   Missade vid: <span className="font-mono font-bold">{firstFail.durationMs}ms</span>
-                  {firstFailType === 'partial' && <span className="text-yellow-400"> (bara 1–2 syntes → lampan hänger kvar)</span>}
+                  {firstFailType === 'partial' && <span className="text-yellow-400"> (lampan hänger kvar)</span>}
                   {firstFailType === 'none' && <span className="text-red-400"> (ingen syntes)</span>}
-                  <br />
-                  <span className="text-muted-foreground">→ Säkert BLE-intervall ≈ {lastAll.durationMs}ms</span>
                 </p>
                 <div className="flex gap-2 mt-2">
                   <Button size="sm" onClick={() => { setBleMinInterval(lastAll.durationMs); setSaved(true); }} className="text-xs gap-1">
                     Spara ({lastAll.durationMs}ms)
                   </Button>
                 </div>
-                {saved && <p className="text-[10px] text-primary mt-1">✓ Sparat! Scheduler använder nu {getBleMinInterval()}ms</p>}
+                {saved && <p className="text-[10px] text-primary mt-1">✓ Scheduler: {getBleMinInterval()}ms</p>}
               </>
             ) : lastAll ? (
               <>
                 <p className="text-xs text-foreground/80 mt-1">
-                  Alla pulser syntes! Minsta testad: <span className="font-mono font-bold">{lastAll.durationMs}ms</span>
+                  Alla syntes! Minsta: <span className="font-mono font-bold">{lastAll.durationMs}ms</span>
                 </p>
                 <div className="flex gap-2 mt-2">
                   <Button size="sm" onClick={() => { setBleMinInterval(lastAll.durationMs); setSaved(true); }} className="text-xs gap-1">
                     Spara ({lastAll.durationMs}ms)
                   </Button>
                 </div>
-                {saved && <p className="text-[10px] text-primary mt-1">✓ Sparat! Scheduler använder nu {getBleMinInterval()}ms</p>}
+                {saved && <p className="text-[10px] text-primary mt-1">✓ Scheduler: {getBleMinInterval()}ms</p>}
               </>
             ) : (
               <p className="text-xs text-foreground/80 mt-1">Ingen puls syntes.</p>
@@ -252,7 +313,6 @@ function BleSpeedTab({ conn }: { conn: any }) {
         </div>
       )}
 
-      {/* Results log */}
       {results.length > 0 && (
         <div className="border border-border/30 rounded-md overflow-hidden">
           <table className="w-full text-[10px] font-mono">
