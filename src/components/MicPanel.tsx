@@ -665,7 +665,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const agcAmbient = ambientEnergy * Math.min(ambientGain, 30);
 
       // EMA smoothing for ambient to reduce jitter
-      smoothedAmbientRef.current = smoothedAmbientRef.current * 0.85 + agcAmbient * 0.15;
+      smoothedAmbientRef.current = smoothedAmbientRef.current * calRef.current.ambientEma + agcAmbient * (1 - calRef.current.ambientEma);
 
       // Zone 1: Ambient (0–50%) — always active, broad frequency, logarithmic
       const ambientPct = 50 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
