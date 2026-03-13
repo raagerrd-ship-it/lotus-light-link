@@ -611,15 +611,29 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const gatedThreshold = nearBeat ? adaptiveThreshRef.current : adaptiveThreshRef.current * 1.3;
 
       // Zone 3: Impact (60–90%) — requires strong transient (>1.5x threshold)
+      // Minimum hold time so the white kick is visible
+      const IMPACT_HOLD_MS = 80;
+      const PUNCH_HOLD_MS = 120;
+      const now = performance.now();
       const impactStrength = transient / (gatedThreshold * 1.5);
-      const impactPct = (isOnset && impactStrength >= 1)
-        ? 30 * Math.min(1, (impactStrength - 1) * 1.5 + 0.5)
+      if (isOnset && impactStrength >= 1) {
+        impactFiredRef.current = now;
+        impactLevelRef.current = Math.min(1, (impactStrength - 1) * 1.5 + 0.5);
+      }
+      const impactAge = now - impactFiredRef.current;
+      const impactPct = impactAge < IMPACT_HOLD_MS
+        ? 30 * impactLevelRef.current * Math.max(0, 1 - impactAge / (IMPACT_HOLD_MS * 2))
         : (phase < 0.15 && impactStrength >= 0.8 ? 30 * curved * 0.5 : 0);
 
       // Zone 4: Punch (90–100%) — requires very strong transient (>2.5x threshold)
       const punchStrength = transient / (gatedThreshold * 2.5);
-      const punchPct = (isOnset && punchStrength >= 1)
-        ? 10 * Math.min(1, punchStrength)
+      if (isOnset && punchStrength >= 1) {
+        punchFiredRef.current = now;
+        punchLevelRef.current = Math.min(1, punchStrength);
+      }
+      const punchAge = now - punchFiredRef.current;
+      const punchPct = punchAge < PUNCH_HOLD_MS
+        ? 10 * punchLevelRef.current * Math.max(0.3, 1 - punchAge / (PUNCH_HOLD_MS * 2))
         : 0;
 
       let totalPct = ambientPct + groovePct + impactPct + punchPct;
