@@ -661,12 +661,15 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number, latency:
             {verified === true && <div className="text-primary">✓ Verifierad</div>}
           </div>
           {bestResult != null && (
-            <Button size="sm" onClick={handleSave} className="text-xs gap-1 w-full">
-              Spara latenskompensation ({bestResult}ms)
-            </Button>
+            <div className="sticky bottom-4 z-10 pt-2">
+              <Button size="sm" onClick={handleSave} className="text-xs gap-1 w-full shadow-lg">
+                Spara latenskompensation ({bestResult}ms)
+              </Button>
+            </div>
           )}
         </div>
       )}
+      <div className="h-24" />
     </div>
   );
 }
