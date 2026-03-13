@@ -714,8 +714,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       }
 
       // Smooth fade-to-dim on silence
-      const FADE_DURATION = 1500;
-      const BASELINE_PCT = 6;
+      const FADE_DURATION = calRef.current.silenceFadeMs;
+      const BASELINE_PCT = calRef.current.baselinePct;
       if (silenceDur > 0) {
         const fadeFactor = Math.max(0, 1 - silenceDur / FADE_DURATION);
         totalPct = BASELINE_PCT + (totalPct - BASELINE_PCT) * fadeFactor;
