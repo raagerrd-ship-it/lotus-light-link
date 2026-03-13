@@ -112,6 +112,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const prevSampleRef = useRef(0);
   const agcAvgRef = useRef(0.01);
 
+  // Smoothed BLE brightness (attack/release EMA)
+  const smoothedBrightRef = useRef(3);
+
   // Beat-phase pulse model
   const beatPhaseRef = useRef(1);
   const framesPerBeatRef = useRef(60);
