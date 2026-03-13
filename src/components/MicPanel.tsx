@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { sendColor, sendBrightness } from "@/lib/bledom";
+import { sendColor, sendBrightness, setActiveChar } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
-import { getCalibration, applyColorCalibration } from "@/lib/lightCalibration";
+import { getCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
@@ -23,27 +23,58 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const ctxRef = useRef<AudioContext | null>(null);
   const whiteKickUntilRef = useRef(0);
   const volumeRef = useRef(sonosVolume);
+  // Cached calibration — read once, update on storage change
+  const calRef = useRef<LightCalibration>(getCalibration());
+  // Track last sent color state to avoid redundant color writes
+  const lastColorStateRef = useRef<'normal' | 'white'>('normal');
+  const lastBaseColorRef = useRef<[number, number, number]>(currentColor);
 
-  useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
+  useEffect(() => {
+    colorRef.current = currentColor;
+    // Color changed → force a color send on next tick
+    lastBaseColorRef.current = currentColor;
+    lastColorStateRef.current = 'normal'; // reset to trigger re-send
+  }, [currentColor]);
+
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
+
   useEffect(() => {
     charRef.current = char;
     if (char) {
+      setActiveChar(char);
       const [r, g, b] = colorRef.current;
-      sendColor(char, r, g, b).catch(() => {});
+      sendColor(char, r, g, b);
     }
   }, [char]);
+
+  // Listen for calibration changes (from Calibrate page)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'light-calibration') {
+        calRef.current = getCalibration();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     let stopped = false;
 
     const init = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Low-latency mic: disable all processing
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          }
+        });
         if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
 
-        const audioCtx = new AudioContext();
+        const audioCtx = new AudioContext({ latencyHint: 'interactive' });
         ctxRef.current = audioCtx;
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
@@ -60,7 +91,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const an = analyserRef.current;
           if (!an) return;
 
-          const cal = getCalibration();
+          const cal = calRef.current; // cached, no localStorage read
 
           an.getFloatTimeDomainData(buf);
           let sum = 0;
@@ -72,14 +103,14 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          // Scale RMS divisor by Sonos volume — lower volume = lower divisor = same brightness range
           const vol = volumeRef.current;
           const rmsDivisor = vol != null ? Math.max(0.01, 0.25 * (vol / 100)) : 0.25;
           const normalized = Math.min(1, smoothed / rmsDivisor);
           const pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
 
-          // White kick
+          // White kick detection
           const now = performance.now();
+          const wasWhite = lastColorStateRef.current === 'white';
           const inWhiteKick = now < whiteKickUntilRef.current;
           if (pct >= cal.whiteKickThreshold && !inWhiteKick) {
             whiteKickUntilRef.current = now + cal.whiteKickMs;
@@ -88,16 +119,20 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
 
           const c = charRef.current;
           if (c) {
-            if (isWhite) {
+            // Send color ONLY on state transitions (normal↔white, or base color change)
+            if (isWhite && !wasWhite) {
               sendColor(c, 255, 255, 255);
-              sendBrightness(c, 100);
-            } else {
+              lastColorStateRef.current = 'white';
+            } else if (!isWhite && wasWhite) {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
               sendColor(c, ...calibrated);
-              sendBrightness(c, pct);
+              lastColorStateRef.current = 'normal';
             }
+            // Always send brightness (scheduler handles deadband/dedup)
+            sendBrightness(c, isWhite ? 100 : pct);
           }
 
+          // Chart visualization
           const [cr2, cg2, cb2] = isWhite ? [255, 255, 255] as const : colorRef.current;
           const scale = pct / 100;
           samplesRef.current.push({
