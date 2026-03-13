@@ -23,6 +23,7 @@ interface MicPanelProps {
   onSectionChange?: (section: SongSection | null) => void;
   agcEnabled?: boolean;
   maxBrightness?: number;
+  dynamicDamping?: number;
 }
 
 // Priority-aware BLE command queue
