@@ -6,6 +6,7 @@ import { getCalibration, applyColorCalibration } from "@/lib/lightCalibration";
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
+  sonosVolume?: number; // 0–100
 }
 
 const HISTORY_LEN = 120;
