@@ -193,6 +193,8 @@ export interface BleWriteStats {
   droppedPerSec: number;
   lastWriteMs: number;
   queueAgeMs: number;
+  errorCount: number;
+  lastError: string;
 }
 
 // Pipeline step timings (set externally by MicPanel tick loop)
