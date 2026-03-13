@@ -233,6 +233,8 @@ export function getBleWriteStats(): BleWriteStats {
     droppedPerSec: Math.round(dps),
     lastWriteMs: Math.round(_lastActualWriteMs),
     queueAgeMs: Math.round(_lastTickToWriteMs),
+    errorCount: _errorCount,
+    lastError: _lastError,
   };
 }
 
