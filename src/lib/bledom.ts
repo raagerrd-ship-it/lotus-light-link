@@ -190,6 +190,9 @@ let _dropCount = 0;
 let _statsStart = performance.now();
 let _queuedAt = 0;
 let _lastActualWriteMs = 0;
+let _lastTickToWriteMs = 0;
+
+export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
 export function getBleWriteStats(): BleWriteStats {
   const elapsed = (performance.now() - _statsStart) / 1000;
@@ -259,7 +262,9 @@ async function _flush() {
       _lastSentBright = _pendingBright;
       _pendingBright = null;
       _writeCount++;
-      _lastActualWriteMs = performance.now() - _lastWriteTime;
+      const writeEnd = performance.now();
+      _lastActualWriteMs = writeEnd - _lastWriteTime;
+      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
     } else if (writeColor && _pendingColor) {
       _colorBuf[4] = _pendingColor[0] & 0xff;
       _colorBuf[5] = _pendingColor[1] & 0xff;
@@ -268,7 +273,9 @@ async function _flush() {
       _lastSentColor = [..._pendingColor];
       _pendingColor = null;
       _writeCount++;
-      _lastActualWriteMs = performance.now() - _lastWriteTime;
+      const writeEnd = performance.now();
+      _lastActualWriteMs = writeEnd - _lastWriteTime;
+      if (_queuedAt) { _lastTickToWriteMs = writeEnd - _queuedAt; _queuedAt = 0; }
     }
   } catch {
     // GATT write failed — don't crash

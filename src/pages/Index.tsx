@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
-  sendColor, sendBrightness, sendPower, setActiveChar,
+  sendColor, sendBrightness, sendPower, setActiveChar, getLastTickToWriteMs,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
@@ -26,15 +26,22 @@ const Index = () => {
   const [showOverlay, setShowOverlay] = useState(true);
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
+  const [tickToWriteMs, setTickToWriteMs] = useState(0);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
   const currentColorRef = useRef(currentColor);
 
-  const lastDevice = getLastDevice();
+  const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
+
+  // Poll e2e latency metric
+  useEffect(() => {
+    const id = setInterval(() => setTickToWriteMs(getLastTickToWriteMs()), 500);
+    return () => clearInterval(id);
+  }, []);
 
   // Auto-hide overlay after 3s
   const resetOverlayTimer = useCallback(() => {
@@ -92,12 +99,20 @@ const Index = () => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-    extractPalette(artUrl, 4).then((colors) => {
-      if (colors.length === 0) return;
-      setPalette(colors);
-      paletteIndexRef.current = 0;
-      setCurrentColor(colors[0]);
-    });
+    // Run palette extraction off the critical path
+    const run = () => {
+      extractPalette(artUrl, 4).then((colors) => {
+        if (colors.length === 0) return;
+        setPalette(colors);
+        paletteIndexRef.current = 0;
+        setCurrentColor(colors[0]);
+      });
+    };
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(run, { timeout: 500 });
+    } else {
+      setTimeout(run, 0);
+    }
   }, [nowPlaying?.albumArtUrl]);
 
   const handleConnect = useCallback(async (scanAll = false) => {
@@ -227,6 +242,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
+        tickToWriteMs={tickToWriteMs}
       />
     </div>
   );
