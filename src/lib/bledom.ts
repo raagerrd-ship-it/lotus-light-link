@@ -254,12 +254,7 @@ async function _flush() {
   let writeColor = false;
 
   if (_pendingBright != null && _pendingBright !== _lastSentBright) {
-    if (Math.abs(_pendingBright - _lastSentBright) > 1 || _lastSentBright < 0) {
-      writeBright = true;
-    } else {
-      _dropCount++;
-      _pendingBright = null;
-    }
+    writeBright = true;
   }
 
   if (_pendingColor) {
@@ -267,12 +262,14 @@ async function _flush() {
     if (r !== _lastSentColor[0] || g !== _lastSentColor[1] || b !== _lastSentColor[2]) {
       writeColor = true;
     } else {
-      _dropCount++;
       _pendingColor = null;
     }
   }
 
-  if (!writeBright && !writeColor) return;
+  if (!writeBright && !writeColor) {
+    _pendingBright = null;
+    return;
+  }
 
   _writing = true;
   _dirtyWhileWriting = false;
