@@ -10,6 +10,22 @@ interface Props {
   sections?: SongSection[] | null;
 }
 
+const SECTION_LABELS: Record<string, string> = {
+  intro: 'Intro',
+  verse: 'Vers',
+  pre_chorus: 'Pre-chorus',
+  chorus: 'Refräng',
+  bridge: 'Bridge',
+  drop: 'Drop',
+  build_up: 'Build-up',
+  break: 'Break',
+  outro: 'Outro',
+};
+
+function sectionTypeLabel(type: string): string {
+  return SECTION_LABELS[type] ?? type;
+}
+
 export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition, sections }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
   const barRef = useRef<HTMLDivElement>(null);
@@ -28,7 +44,6 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
         const fraction = Math.min(1, Math.max(0, currentMs / dur));
         barRef.current.style.width = `${fraction * 100}%`;
 
-        // Update section label every ~500ms
         if (sections && sections.length > 0) {
           const sec = getCurrentSection(sections, currentMs / 1000);
           const label = sec ? sectionTypeLabel(sec.type) : null;
@@ -43,7 +58,6 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
 
   return (
     <div className="shrink-0">
-      {/* Progress bar — top edge */}
       <div className="h-[2px] bg-border/30 overflow-hidden">
         <div
           ref={barRef}
@@ -100,28 +114,6 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
             </span>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-const SECTION_LABELS: Record<string, string> = {
-  intro: 'Intro',
-  verse: 'Vers',
-  pre_chorus: 'Pre-chorus',
-  chorus: 'Refräng',
-  bridge: 'Bridge',
-  drop: 'Drop',
-  build_up: 'Build-up',
-  break: 'Break',
-  outro: 'Outro',
-};
-
-function sectionTypeLabel(type: string): string {
-  return SECTION_LABELS[type] ?? type;
-}
-          </span>
-        )}
       </div>
     </div>
   );
