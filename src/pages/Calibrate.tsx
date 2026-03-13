@@ -64,14 +64,15 @@ async function sendPulseForMode(
     BRIGHT_BUF[3] = 0;
     await bleWrite(char, BRIGHT_BUF);
   } else if (mode === 'color') {
-    // 100% brightness, cycle through R→G→B
-    BRIGHT_BUF[3] = 100;
+    // Set color first while dark, then raise brightness
+    BRIGHT_BUF[3] = 0;
     await bleWrite(char, BRIGHT_BUF);
     const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
     COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
     await bleWrite(char, COLOR_BUF);
+    BRIGHT_BUF[3] = 100;
+    await bleWrite(char, BRIGHT_BUF);
     await new Promise(r => setTimeout(r, durationMs));
-    // "Off" = black (brightness 0)
     BRIGHT_BUF[3] = 0;
     await bleWrite(char, BRIGHT_BUF);
   } else {
