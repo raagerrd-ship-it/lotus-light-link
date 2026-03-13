@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RotateCcw } from "lucide-react";
+import DynamicsPreview from "@/components/DynamicsPreview";
 import {
   getCalibration, saveCalibration, resetCalibration,
   applyColorCalibration, DEFAULT_CALIBRATION,
@@ -188,6 +189,7 @@ export default function Calibrate() {
 
         {tab === 'dynamics' && (
           <>
+            <DynamicsPreview cal={cal} bleChar={conn?.characteristic} />
             <SliderRow label="Min ljusstyrka" value={cal.minBrightness} min={0} max={30} step={1} unit="%" onChange={(v) => update({ minBrightness: v })} />
             <SliderRow label="Max ljusstyrka" value={cal.maxBrightness} min={30} max={100} step={1} unit="%" onChange={(v) => update({ maxBrightness: v })} />
             <SliderRow label="Attack" value={cal.attackAlpha} min={0.1} max={0.9} step={0.01} onChange={(v) => update({ attackAlpha: v })} />
