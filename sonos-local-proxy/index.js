@@ -127,10 +127,17 @@ function extractDidl(xml) {
 
 async function getPlaybackStatus() {
   // Parallel requests for position, transport state, and media info
-  const [posXml, transXml] = await Promise.all([
+  const [posXml, transXml, volXml] = await Promise.all([
     soapRequest(POSITION_SOAP, 'GetPositionInfo'),
     soapRequest(TRANSPORT_SOAP, 'GetTransportInfo'),
+    soapRequest(VOLUME_SOAP, 'GetVolume', '/MediaRenderer/RenderingControl/Control', 'RenderingControl').catch(() => null),
   ]);
+
+  // Parse volume (0–100)
+  let volume = null;
+  if (volXml) {
+    const volStr = extractTag(volXml, 'CurrentVolume');
+    if (volStr !== null) volume = parseInt(volStr, 10);
 
   const positionMs = parseTime(extractTag(posXml, 'RelTime'));
   const durationMs = parseTime(extractTag(posXml, 'TrackDuration'));
