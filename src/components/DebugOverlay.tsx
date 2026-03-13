@@ -89,7 +89,7 @@ export default function DebugOverlay({
 
       {/* BLE write stats */}
       <div className="mt-0.5 border-t border-border/30 pt-0.5">
-        <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> drop: <span className="text-foreground">{bleStats.droppedPerSec}</span></div>
+        <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> <span title="Avsiktliga skip — brightness ändrades ≤1%, ingen BLE-skrivning behövdes">skip: <span className="text-foreground">{bleStats.droppedPerSec}</span></span></div>
         <div>write: <span className="text-foreground">{bleStats.lastWriteMs}ms</span> queue: <span className="text-foreground">{bleStats.queueAgeMs}ms</span></div>
         {tickToWriteMs != null && <div>e2e: <span className="text-foreground">{Math.round(tickToWriteMs)}ms</span></div>}
       </div>
