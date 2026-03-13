@@ -83,6 +83,7 @@ export default function Calibrate() {
   const handleReset = useCallback((tabKey: Tab) => {
     const full = { ...DEFAULT_CALIBRATION };
     const patches: Record<Tab, Partial<LightCalibration>> = {
+      auto: { latencyOffsetMs: full.latencyOffsetMs, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, dynamicDamping: full.dynamicDamping },
       color: { gammaR: full.gammaR, gammaG: full.gammaG, gammaB: full.gammaB, offsetR: full.offsetR, offsetG: full.offsetG, offsetB: full.offsetB, saturationBoost: full.saturationBoost },
       dynamics: { minBrightness: full.minBrightness, maxBrightness: full.maxBrightness, attackAlpha: full.attackAlpha, releaseAlpha: full.releaseAlpha, dynamicDamping: full.dynamicDamping },
       timing: { punchWhiteThreshold: full.punchWhiteThreshold, fadeBackDuration: full.fadeBackDuration, bleLatencyMs: full.bleLatencyMs, groovePhaseGate: full.groovePhaseGate },
