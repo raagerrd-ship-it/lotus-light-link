@@ -18,6 +18,9 @@ interface DebugOverlayProps {
   bleConnected?: boolean;
   bleDeviceName?: string | null;
   bleReconnectStatus?: BleReconnectStatus | null;
+  curveStatus?: 'none' | 'recording' | 'saved' | 'loading';
+  curveTrackName?: string | null;
+  curveSamples?: number;
 }
 
 const phaseLabels: Record<string, string> = {
