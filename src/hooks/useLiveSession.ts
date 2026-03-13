@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface LiveSessionState {
@@ -21,7 +21,6 @@ const SESSION_ID = "default";
 
 /** Master: writes live status to DB ~2x/sec */
 export function useLiveSessionWriter() {
-  const lastWriteRef = useRef(0);
   const pendingRef = useRef<Partial<LiveSessionState> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -30,9 +29,10 @@ export function useLiveSessionWriter() {
     if (!data) return;
     pendingRef.current = null;
 
+    const row = { id: SESSION_ID, ...data, updated_at: new Date().toISOString() };
     const { error } = await supabase
-      .from("live_session")
-      .upsert({ id: SESSION_ID, ...data, updated_at: new Date().toISOString() }, { onConflict: "id" });
+      .from("live_session" as any)
+      .upsert(row as any, { onConflict: "id" });
 
     if (error) console.warn("[LiveSession] write error", error.message);
   }, []);
@@ -41,7 +41,7 @@ export function useLiveSessionWriter() {
     timerRef.current = setInterval(flush, 500);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      flush(); // final flush
+      flush();
     };
   }, [flush]);
 
@@ -54,18 +54,44 @@ export function useLiveSessionWriter() {
 
 /** Monitor: subscribes to realtime changes */
 export function useLiveSessionMonitor() {
-  const [state, setState] = useRef<LiveSessionState | null>(null);
-  // Use a separate useState to trigger re-renders
-  const { current: _notUsed } = useRef(0);
+  const [state, setState] = useState<LiveSessionState | null>(null);
 
-  // Actually use useState for reactivity
-  return useLiveSessionMonitorImpl();
-}
+  // Initial fetch
+  useEffect(() => {
+    supabase
+      .from("live_session" as any)
+      .select("*")
+      .eq("id", SESSION_ID)
+      .single()
+      .then(({ data }) => {
+        if (data) setState(data as any as LiveSessionState);
+      });
+  }, []);
 
-function useLiveSessionMonitorImpl() {
-  const stateRef = useRef<LiveSessionState | null>(null);
-  const [, setTick] = useRef(0) as any; // won't work, let's use proper state
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel("live_session_monitor")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "live_session", filter: `id=eq.${SESSION_ID}` },
+        (payload) => {
+          setState(payload.new as any as LiveSessionState);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "live_session", filter: `id=eq.${SESSION_ID}` },
+        (payload) => {
+          setState(payload.new as any as LiveSessionState);
+        }
+      )
+      .subscribe();
 
-  // Let me just write it properly with useState
-  return null as any; // placeholder
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  return state;
 }

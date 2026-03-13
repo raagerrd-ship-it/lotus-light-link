@@ -44,6 +44,60 @@ export type Database = {
         }
         Relationships: []
       }
+      live_session: {
+        Row: {
+          album_art_url: string | null
+          artist_name: string | null
+          bpm: number | null
+          brightness: number | null
+          color_b: number | null
+          color_g: number | null
+          color_r: number | null
+          device_name: string | null
+          duration_ms: number | null
+          id: string
+          is_playing: boolean | null
+          position_ms: number | null
+          section_type: string | null
+          track_name: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          album_art_url?: string | null
+          artist_name?: string | null
+          bpm?: number | null
+          brightness?: number | null
+          color_b?: number | null
+          color_g?: number | null
+          color_r?: number | null
+          device_name?: string | null
+          duration_ms?: number | null
+          id?: string
+          is_playing?: boolean | null
+          position_ms?: number | null
+          section_type?: string | null
+          track_name?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          album_art_url?: string | null
+          artist_name?: string | null
+          bpm?: number | null
+          brightness?: number | null
+          color_b?: number | null
+          color_g?: number | null
+          color_r?: number | null
+          device_name?: string | null
+          duration_ms?: number | null
+          id?: string
+          is_playing?: boolean | null
+          position_ms?: number | null
+          section_type?: string | null
+          track_name?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       song_analysis: {
         Row: {
           agc_state: Json | null
