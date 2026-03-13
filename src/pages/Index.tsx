@@ -257,7 +257,6 @@ const Index = () => {
       <DebugOverlay
         smoothedRtt={smoothedRtt}
         autoDriftMs={0}
-        currentSection={null}
         palette={palette}
         paletteIndex={paletteIndexRef.current}
         sonosVolume={nowPlaying?.volume}
