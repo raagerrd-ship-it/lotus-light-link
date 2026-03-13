@@ -902,8 +902,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         if (tLinear >= 1) {
           boost.active = false;
         }
-      } else if (!boost.active && now - boost.throttle >= 200) {
-        // No boost active — periodically send base color to keep BLE in sync
+      } else if (!boost.active && now - boost.throttle >= 500) {
+        // No boost active — periodic color keep-alive (low rate to avoid flooding)
         boost.throttle = now;
         ble.color(...color);
       }
