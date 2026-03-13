@@ -88,9 +88,8 @@ export function getActiveDeviceName(): string | null {
 
 async function _upsertCloud(deviceName: string, patch: Record<string, unknown>) {
   try {
-    await (supabase as any).from('device_calibration').upsert(
+    await (supabase as any).from('device_calibration').insert(
       { device_name: deviceName, ...patch, updated_at: new Date().toISOString() },
-      { onConflict: 'device_name' },
     );
   } catch (e) {
     console.warn('[calibration] cloud upsert failed', e);
@@ -134,6 +133,8 @@ export async function loadCalibrationFromCloud(deviceName: string): Promise<{
       .from('device_calibration')
       .select('calibration, ble_min_interval_ms, ble_speed_results, latency_results')
       .eq('device_name', deviceName)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (error || !data) return null;
     const cal = { ...DEFAULT_CALIBRATION, ...(data.calibration as object) };
