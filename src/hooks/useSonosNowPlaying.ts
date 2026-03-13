@@ -30,6 +30,7 @@ export interface SonosNowPlaying {
   smoothedRtt: number;
   nextTrackName: string | null;
   nextArtistName: string | null;
+  volume: number | null;
   source: 'local';
 }
 
