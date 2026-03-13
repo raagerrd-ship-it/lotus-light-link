@@ -1,0 +1,1 @@
+ALTER TABLE public.device_calibration DROP CONSTRAINT IF EXISTS device_calibration_device_name_key;
