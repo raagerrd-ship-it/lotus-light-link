@@ -61,72 +61,71 @@ export function drawIntensityChart(
   const step = w / (totalFrames - 1);
   const offsetX = (historyLen - len) * step;
 
-  for (let i = 1; i < len; i++) {
-    const x0 = offsetX + (i - 1) * step;
-    const x1 = offsetX + i * step;
-    const s0 = samples[i - 1];
-    const s1 = samples[i];
-    const p0 = Math.min(100, s0.pct * scale);
-    const p1 = Math.min(100, s1.pct * scale);
-    const y0 = chartTop + chartHeight - (p0 / 100) * chartHeight;
-    const y1 = chartTop + chartHeight - (p1 / 100) * chartHeight;
-    const chartBottom = chartTop + chartHeight;
-    const { r: cr, g: cg, b: cb } = s1;
-    const avgPct = (p0 + p1) / 2;
-    const brightFactor = Math.max(0.15, avgPct / 100);
-    const lift = brightFactor * 0.6;
-    const [lr, lg, lb] = liftColor([cr, cg, cb], lift);
+  // Draw each sample as a dot at its BLE brightness, in its BLE color
+  const dotRadius = Math.max(1.5, step * 0.45);
 
-    // Fill gradient
-    const grad = ctx.createLinearGradient(x0, y1, x0, chartBottom);
-    grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.15 + brightFactor * 0.4})`);
-    grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.03)`);
+  for (let i = 0; i < len; i++) {
+    const x = offsetX + i * step;
+    const s = samples[i];
+    const p = Math.min(100, s.pct * scale);
+    const y = chartTop + chartHeight - (p / 100) * chartHeight;
+    const { r: cr, g: cg, b: cb } = s;
+
+    // Vertical fill from bottom to dot (subtle glow)
+    const brightFactor = Math.max(0.1, p / 100);
+    const [lr, lg, lb] = liftColor([cr, cg, cb], brightFactor * 0.5);
+    const grad = ctx.createLinearGradient(x, y, x, chartTop + chartHeight);
+    grad.addColorStop(0, `rgba(${lr}, ${lg}, ${lb}, ${0.08 + brightFactor * 0.18})`);
+    grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.01)`);
     ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(x0, chartBottom);
-    ctx.lineTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.lineTo(x1, chartBottom);
-    ctx.closePath();
-    ctx.fill();
+    ctx.fillRect(x - step * 0.4, y, step * 0.8, chartTop + chartHeight - y);
 
-    // White punch above threshold
-    if (punchWhite && (s0.pct > threshold || s1.pct > threshold)) {
-      const clipY0 = Math.min(y0, yThresh);
-      const clipY1 = Math.min(y1, yThresh);
-      const whiteT = Math.min(1, (avgPct - threshold) / (100 - threshold));
-      const fillGrad = ctx.createLinearGradient(0, yThresh, 0, Math.min(clipY0, clipY1));
-      fillGrad.addColorStop(0, `rgba(255, 255, 255, 0.05)`);
-      fillGrad.addColorStop(1, `rgba(255, 255, 255, ${0.1 + whiteT * 0.4})`);
-      ctx.fillStyle = fillGrad;
+    // Connecting line to previous sample
+    if (i > 0) {
+      const prevS = samples[i - 1];
+      const prevP = Math.min(100, prevS.pct * scale);
+      const prevX = offsetX + (i - 1) * step;
+      const prevY = chartTop + chartHeight - (prevP / 100) * chartHeight;
       ctx.beginPath();
-      ctx.moveTo(x0, yThresh);
-      ctx.lineTo(x0, clipY0);
-      ctx.lineTo(x1, clipY1);
-      ctx.lineTo(x1, yThresh);
-      ctx.closePath();
+      ctx.moveTo(prevX, prevY);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, ${0.2 + brightFactor * 0.3})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // The dot — exact BLE color, size proportional to brightness
+    const radius = dotRadius * (0.6 + brightFactor * 0.6);
+
+    // Punch-white: if above threshold, dot goes white
+    const isPunch = punchWhite && s.pct > threshold;
+    if (isPunch) {
+      const whiteT = Math.min(1, (s.pct - threshold) / (100 - threshold));
+      const wr = Math.round(cr + (255 - cr) * whiteT);
+      const wg = Math.round(cg + (255 - cg) * whiteT);
+      const wb = Math.round(cb + (255 - cb) * whiteT);
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 1.3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${wr}, ${wg}, ${wb}, ${0.7 + whiteT * 0.3})`;
+      ctx.fill();
+      // Glow
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.05 + whiteT * 0.15})`;
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lr}, ${lg}, ${lb}, ${0.5 + brightFactor * 0.5})`;
       ctx.fill();
     }
 
-    // Line below threshold
-    const lineAlpha = 0.4 + brightFactor * 0.6;
-    ctx.beginPath();
-    ctx.moveTo(x0, Math.max(y0, yThresh));
-    ctx.lineTo(x1, Math.max(y1, yThresh));
-    ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, ${lineAlpha})`;
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    // White line above threshold
-    if (punchWhite && (s0.pct > threshold || s1.pct > threshold)) {
-      const aboveY0 = Math.min(y0, yThresh);
-      const aboveY1 = Math.min(y1, yThresh);
-      const whiteT = Math.min(1, (avgPct - threshold) / (100 - threshold));
+    // Beat marker — slightly brighter ring
+    if (s.beat) {
       ctx.beginPath();
-      ctx.moveTo(x0, aboveY0);
-      ctx.lineTo(x1, aboveY1);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.3 + whiteT * 0.6})`;
-      ctx.lineWidth = 2.5;
+      ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${lr}, ${lg}, ${lb}, 0.6)`;
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
   }
