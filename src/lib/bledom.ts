@@ -170,7 +170,13 @@ const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 
 const BLE_INTERVAL_KEY = 'ble-min-interval-ms';
 const BLE_MIN_FLOOR = 50; // 20 slots/sec max
 let _minIntervalMs = (() => {
-  try { const v = localStorage.getItem(BLE_INTERVAL_KEY); return Math.max(BLE_MIN_FLOOR, v ? parseInt(v, 10) : BLE_MIN_FLOOR); } catch { return BLE_MIN_FLOOR; }
+  try {
+    const v = localStorage.getItem(BLE_INTERVAL_KEY);
+    const parsed = v ? parseInt(v, 10) : BLE_MIN_FLOOR;
+    const result = Math.max(BLE_MIN_FLOOR, isNaN(parsed) ? BLE_MIN_FLOOR : parsed);
+    console.log(`[BLE] interval from storage: ${v}, using: ${result}ms`);
+    return result;
+  } catch { return BLE_MIN_FLOOR; }
 })();
 
 export function getBleMinInterval(): number { return _minIntervalMs; }
