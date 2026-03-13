@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -20,7 +21,7 @@ import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
-import { useLiveSessionWriter } from "@/hooks/useLiveSession";
+import { useLiveSessionWriter, type MasterDebugState } from "@/hooks/useLiveSession";
 import { getCurrentSection } from "@/lib/sectionLighting";
 
 const Index = () => {
@@ -63,9 +64,38 @@ const Index = () => {
   // Poll e2e latency metric
   useEffect(() => {
     if (!isMaster) return;
-    const id = setInterval(() => setTickToWriteMs(getLastTickToWriteMs()), 500);
+    const id = setInterval(() => {
+      setTickToWriteMs(getLastTickToWriteMs());
+      // Push debug state to live session
+      const bleStats = getBleWriteStats();
+      const pipeline = getPipelineTimings();
+      const curveStatus: MasterDebugState['curveStatus'] =
+        curveLoading ? 'loading'
+        : !nowPlaying?.trackName ? 'none'
+        : energyCurve ? 'saved'
+        : 'recording';
+      updateLiveSession({
+        debug_state: {
+          bleConnected: !!connection,
+          bleDeviceName: connection?.device?.name ?? null,
+          bleWritesPerSec: bleStats.writesPerSec,
+          bleDropsPerSec: bleStats.droppedPerSec,
+          bleLastWriteMs: bleStats.lastWriteMs,
+          e2eMs: getLastTickToWriteMs(),
+          rmsMs: pipeline.rmsMs,
+          smoothMs: pipeline.smoothMs,
+          bleCallMs: pipeline.bleCallMs,
+          totalTickMs: pipeline.totalTickMs,
+          curveStatus,
+          curveTrackName: nowPlaying?.trackName ?? null,
+          curveSamples: energyCurve?.length,
+          sonosConnected: !!nowPlaying?.trackName,
+          sonosRtt: smoothedRtt,
+        },
+      });
+    }, 500);
     return () => clearInterval(id);
-  }, [isMaster]);
+  }, [isMaster, connection, nowPlaying?.trackName, energyCurve, curveLoading, smoothedRtt]);
 
   // Push now-playing info to live session when master
   useEffect(() => {
