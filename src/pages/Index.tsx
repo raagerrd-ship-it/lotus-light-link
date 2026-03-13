@@ -257,6 +257,7 @@ const Index = () => {
           gainMode={agcEnabled ? 'agc' : 'manual'}
           liveBpm={liveBpm}
           maxBrightness={maxBrightness}
+          dynamicDamping={dynamicDamping}
           bleConnected={!!connection}
           bleDeviceName={connection?.device?.name}
           bleReconnectStatus={bleReconnectStatus}
