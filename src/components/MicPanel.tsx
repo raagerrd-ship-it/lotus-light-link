@@ -164,13 +164,9 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
   // Gain control refs
   const agcEnabledRef = useRef(agcEnabled);
-  const manualGainRef = useRef(manualGain);
-  const sonosVolumeRef = useRef<number | null>(sonosVolume ?? null);
-  const calibrationRef = useRef<{ volume: number; gain: number } | null>(calibration ?? null);
+  const maxBrightnessRef = useRef(maxBrightness);
   useEffect(() => { agcEnabledRef.current = agcEnabled; }, [agcEnabled]);
-  useEffect(() => { manualGainRef.current = manualGain; }, [manualGain]);
-  useEffect(() => { sonosVolumeRef.current = sonosVolume ?? null; }, [sonosVolume]);
-  useEffect(() => { calibrationRef.current = calibration ?? null; }, [calibration]);
+  useEffect(() => { maxBrightnessRef.current = maxBrightness; }, [maxBrightness]);
 
   // Ambient smoothing EMA ref
   const smoothedAmbientRef = useRef(0);
