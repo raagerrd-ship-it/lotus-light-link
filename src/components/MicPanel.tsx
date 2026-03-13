@@ -32,7 +32,7 @@ const PEAK_MAX_DECAY = 0.9998;
 // Energy curve recording interval (~100ms)
 const CURVE_RECORD_INTERVAL_MS = 100;
 
-const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, onSaveEnergyCurve }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, recordedVolume, onSaveEnergyCurve }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
