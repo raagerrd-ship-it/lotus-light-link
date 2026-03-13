@@ -10,12 +10,13 @@ import {
 import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'color' | 'dynamics' | 'ble';
+type Tab = 'color' | 'dynamics' | 'ble' | 'latency';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'color', label: 'Färg' },
   { key: 'dynamics', label: 'Dynamik' },
   { key: 'ble', label: 'BLE' },
+  { key: 'latency', label: 'Latens' },
 ];
 
 const TEST_COLORS: { label: string; color: [number, number, number] }[] = [
