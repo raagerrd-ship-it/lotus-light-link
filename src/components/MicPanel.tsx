@@ -258,12 +258,13 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
         // Use palette color (colorRef) for chart display, not calibrated BLE color
         onBleWrite((bright, r, g, b) => {
           if (stopped) return;
-          // Show exact BLE-sent color at full intensity — brightness shown via Y-axis
+          // Exact BLE truth: color scaled by brightness = what the lamp actually shows
+          const scale = bright / 100;
           samplesRef.current.push({
             pct: bright,
-            r,
-            g,
-            b,
+            r: Math.round(r * scale),
+            g: Math.round(g * scale),
+            b: Math.round(b * scale),
           });
           if (samplesRef.current.length > HISTORY_LEN) {
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
