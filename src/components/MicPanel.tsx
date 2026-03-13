@@ -242,19 +242,7 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
             totalTickMs: bleEnd - tickStart,
           });
 
-          // Push sample for chart (rAF loop will draw)
-          const [cr2, cg2, cb2] = isWhite ? [255, 255, 255] as const : colorRef.current;
-          const scale = pct / 100;
-          samplesRef.current.push({
-            pct,
-            r: Math.round(cr2 * scale),
-            g: Math.round(cg2 * scale),
-            b: Math.round(cb2 * scale),
-          });
-          if (samplesRef.current.length > HISTORY_LEN) {
-            samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
-          }
-          chartDirtyRef.current = true;
+          // Chart samples are pushed via onBleWrite callback (see below)
 
           // Save AGC state every 10 seconds (fire-and-forget)
           const nowMs = performance.now();
