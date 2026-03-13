@@ -936,12 +936,13 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       const { curved, finalCurved, pct, sectionBehavior, currentSec } = computeBrightness(isOnset, transient, ambientEnergy);
       dispatchBle(pct, curved, now, sectionBehavior, currentSec);
 
-      // Store result for rAF visual loop — blePct/bleColor = what was actually sent
-      const blePct = Math.round(smoothedBrightRef.current);
-      const boost = colorBoostRef.current;
-      const bleColor: [number, number, number] = boost.active
-        ? [boost.color[0], boost.color[1], boost.color[2]]
-        : [...targetColorRef.current];
+      // Store result for rAF visual loop — what was actually written to BLE
+      const blePct = sentBrightnessRef.current;
+      const bleColor: [number, number, number] = [
+        sentColorRef.current[0],
+        sentColorRef.current[1],
+        sentColorRef.current[2],
+      ];
       lastTickResultRef.current = { finalCurved, pct, isOnset, now, blePct, bleColor };
     };
 

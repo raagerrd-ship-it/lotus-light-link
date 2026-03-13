@@ -93,8 +93,7 @@ export default function Calibrate() {
   useEffect(() => {
     if (!conn) return;
     const interval = setInterval(() => {
-      const [r, g, b] = applyColorCalibration(...testColor, cal);
-      sendColor(conn.characteristic, r, g, b).catch(() => {});
+      sendColor(conn.characteristic, ...testColor).catch(() => {});
       sendBrightness(conn.characteristic, cal.maxBrightness).catch(() => {});
     }, 80);
     return () => clearInterval(interval);
