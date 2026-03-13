@@ -10,10 +10,11 @@ interface Props {
   sections?: SongSection[] | null;
 }
 
-export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition }: Props) {
+export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition, sections }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
   const barRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
+  const [sectionLabel, setSectionLabel] = useState<string | null>(null);
 
   useEffect(() => {
     const dur = nowPlaying.durationMs;
