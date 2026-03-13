@@ -194,6 +194,12 @@ let _lastSentColor: [number, number, number] = [-1, -1, -1];
 let _writing = false;
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _lastWriteTime = 0;
+let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
+
+/** Register callback invoked after each actual BLE write with the sent values */
+export function onBleWrite(cb: ((bright: number, r: number, g: number, b: number) => void) | null) {
+  _onWriteCallback = cb;
+}
 
 // Debug stats
 export interface BleWriteStats {
