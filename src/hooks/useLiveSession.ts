@@ -1,6 +1,24 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+export interface MasterDebugState {
+  bleConnected?: boolean;
+  bleDeviceName?: string | null;
+  bleWritesPerSec?: number;
+  bleDropsPerSec?: number;
+  bleLastWriteMs?: number;
+  e2eMs?: number;
+  rmsMs?: number;
+  smoothMs?: number;
+  bleCallMs?: number;
+  totalTickMs?: number;
+  curveStatus?: 'none' | 'recording' | 'saved' | 'loading';
+  curveTrackName?: string | null;
+  curveSamples?: number;
+  sonosConnected?: boolean;
+  sonosRtt?: number;
+}
+
 export interface LiveSessionState {
   device_name?: string | null;
   track_name?: string | null;
@@ -15,6 +33,7 @@ export interface LiveSessionState {
   is_playing: boolean;
   position_ms: number;
   duration_ms: number;
+  debug_state?: MasterDebugState | null;
 }
 
 const SESSION_ID = "default";
@@ -56,7 +75,6 @@ export function useLiveSessionWriter() {
 export function useLiveSessionMonitor() {
   const [state, setState] = useState<LiveSessionState | null>(null);
 
-  // Initial fetch
   useEffect(() => {
     supabase
       .from("live_session" as any)
@@ -68,7 +86,6 @@ export function useLiveSessionMonitor() {
       });
   }, []);
 
-  // Realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel("live_session_monitor")
