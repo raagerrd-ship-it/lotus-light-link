@@ -164,7 +164,7 @@ function BleSpeedTab({ conn }: { conn: any }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Lampan blinkar vitt i allt kortare pulser. Svara om du såg blinken. Testet hittar kortaste synliga puls.
+        Lampan blinkar vitt {PULSES_PER_STEP} gånger i allt kortare pulser. Svara om du såg alla {PULSES_PER_STEP} blinkar tydligt (både på och av).
       </p>
 
       {!conn && <p className="text-xs text-destructive">Anslut BLE-lampan först.</p>}
@@ -181,15 +181,15 @@ function BleSpeedTab({ conn }: { conn: any }) {
             {countdown > 0 ? `Gör dig redo… ${countdown}` : 'Titta på lampan!'}
           </p>
           <p className="text-xs text-muted-foreground">
-            Puls: {PULSE_DURATIONS[currentIdx]}ms
+            Puls: {PULSE_DURATIONS[currentIdx]}ms × {PULSES_PER_STEP}
           </p>
         </div>
       )}
 
       {phase === 'asking' && (
         <div className="text-center py-4 space-y-3">
-          <p className="text-sm font-medium text-foreground">Såg du blinken?</p>
-          <p className="text-xs text-muted-foreground">Puls: {currentDuration}ms</p>
+          <p className="text-sm font-medium text-foreground">Såg du {PULSES_PER_STEP} tydliga blinkar?</p>
+          <p className="text-xs text-muted-foreground">Puls: {currentDuration}ms × {PULSES_PER_STEP}</p>
           <div className="flex gap-3 justify-center">
             <Button size="sm" onClick={() => answer(true)} className="px-6 text-xs">
               ✓ Ja
