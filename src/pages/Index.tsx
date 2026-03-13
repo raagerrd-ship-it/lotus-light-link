@@ -241,6 +241,7 @@ const Index = () => {
             onSyncDriftMs={handleSyncDrift}
             agcEnabled={agcEnabled}
             maxBrightness={maxBrightness}
+            dynamicDamping={dynamicDamping}
           />
       </div>
 
