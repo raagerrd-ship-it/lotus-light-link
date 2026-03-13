@@ -190,6 +190,9 @@ let _dropCount = 0;
 let _statsStart = performance.now();
 let _queuedAt = 0;
 let _lastActualWriteMs = 0;
+let _lastTickToWriteMs = 0;
+
+export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
 export function getBleWriteStats(): BleWriteStats {
   const elapsed = (performance.now() - _statsStart) / 1000;
