@@ -106,6 +106,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         const songId = data?.id ?? null;
         let savedBpm = data?.bpm as number | null;
         const savedSections = (data?.sections as unknown as SongSection[] | null) ?? null;
+        let savedDrops = (data?.drops as unknown as Drop[] | null) ?? null;
 
         // Estimate BPM if not saved yet
         if (!savedBpm && valid) {
@@ -116,13 +117,23 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
           }
         }
 
-        const entry: CacheEntry = { curve: valid, vol: vol ?? null, agc: agc ?? null, bpm: savedBpm, sections: savedSections, songId };
+        // Detect drops if not saved yet
+        if (!savedDrops && valid) {
+          savedDrops = detectDrops(valid);
+          if (savedDrops.length > 0 && songId) {
+            supabase.from("song_analysis").update({ drops: savedDrops as any } as any).eq("id", songId)
+              .then(() => console.log("[EnergyCurve] saved drops", savedDrops!.length));
+          }
+        }
+
+        const entry: CacheEntry = { curve: valid, vol: vol ?? null, agc: agc ?? null, bpm: savedBpm, sections: savedSections, drops: savedDrops, songId };
         curveCache.set(key, entry);
         setCurve(valid);
         setRecordedVolume(vol ?? null);
         setSavedAgcState(agc ?? null);
         setBpm(savedBpm);
         setSections(savedSections);
+        setDrops(savedDrops);
         setLoading(false);
 
         // Trigger section analysis if we have curve but no sections
