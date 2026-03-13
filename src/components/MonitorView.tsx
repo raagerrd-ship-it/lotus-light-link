@@ -123,6 +123,16 @@ export default function MonitorView() {
     return () => clearInterval(id);
   }, []);
 
+  const handleDeleteSong = async (songId: string, name: string) => {
+    if (!confirm(`Ta bort inspelningen "${name}"?\nDen spelas in igen nästa gång låten körs.`)) return;
+    const { error } = await supabase.from("song_analysis").delete().eq("id", songId);
+    if (error) {
+      console.error("[Monitor] delete failed", error);
+      return;
+    }
+    setSongs(prev => prev.filter(s => s.id !== songId));
+  };
+
   if (!session) {
     return (
       <div className="h-[100dvh] bg-background flex items-center justify-center">
