@@ -30,7 +30,12 @@ const Index = () => {
     const forcedRole = new URLSearchParams(window.location.search).get("role");
     if (forcedRole === "master") return true;
     if (forcedRole === "monitor") return false;
-    return localStorage.getItem("deviceRole") !== "monitor";
+
+    // Safer default: monitor unless explicitly set to master on this device.
+    const storedRole = localStorage.getItem("deviceRole");
+    if (storedRole === "master") return true;
+    if (storedRole === "monitor") return false;
+    return false;
   });
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,6 +69,9 @@ const Index = () => {
   // Poll e2e latency metric
   useEffect(() => {
     if (!isMaster) return;
+    // Prevent idle/stale master tabs from overwriting active session state.
+    if (!connection && !nowPlaying?.trackName) return;
+
     const id = setInterval(() => {
       setTickToWriteMs(getLastTickToWriteMs());
       // Push debug state to live session
@@ -100,6 +108,9 @@ const Index = () => {
   // Push now-playing info to live session when master
   useEffect(() => {
     if (!isMaster) return;
+    // Prevent idle/stale master tabs from overwriting active session state.
+    if (!connection && !nowPlaying?.trackName) return;
+
     const posFn = getPosition;
     const pos = posFn?.();
     updateLiveSession({
@@ -112,7 +123,7 @@ const Index = () => {
       duration_ms: nowPlaying?.durationMs ?? 0,
       device_name: connection?.device?.name ?? null,
     });
-  }, [isMaster, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, bpm, connection?.device?.name]);
+  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, nowPlaying?.durationMs, bpm, connection?.device?.name]);
 
   // Live status callback from MicPanel
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => {
