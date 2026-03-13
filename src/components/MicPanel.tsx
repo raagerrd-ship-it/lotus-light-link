@@ -99,7 +99,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, trackName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
