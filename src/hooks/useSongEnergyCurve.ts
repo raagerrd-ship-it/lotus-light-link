@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { AgcState } from "@/lib/energyInterpolate";
 import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
+import { detectDrops, type Drop } from "@/lib/dropDetect";
 
 export interface EnergySample {
   t: number;
