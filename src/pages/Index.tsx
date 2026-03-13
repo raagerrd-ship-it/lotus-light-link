@@ -39,10 +39,6 @@ const Index = () => {
   const [volCalibration, setVolCalibration] = useState<{ volume: number; gain: number } | null>(() => {
     try { const s = localStorage.getItem("volCalibration"); return s ? JSON.parse(s) : null; } catch { return null; }
   });
-  const [maxBrightness, setMaxBrightness] = useState(() => {
-    const stored = localStorage.getItem("maxBrightness");
-    return stored ? parseInt(stored, 10) : 100;
-  });
   const [dynamicDamping, setDynamicDamping] = useState(() => {
     const stored = localStorage.getItem("dynamicDamping");
     return stored ? parseFloat(stored) : 1.0;
@@ -259,7 +255,7 @@ const Index = () => {
             gainMode={gainMode}
             sonosVolume={nowPlaying?.volume}
             volCalibration={volCalibration}
-            maxBrightness={maxBrightness}
+            maxBrightness={100}
             dynamicDamping={dynamicDamping}
           />
       </div>
@@ -276,7 +272,7 @@ const Index = () => {
           gainMode={gainMode}
           volCalibrationVol={volCalibration?.volume}
           liveBpm={liveBpm}
-          maxBrightness={maxBrightness}
+          maxBrightness={100}
           dynamicDamping={dynamicDamping}
           bleConnected={!!connection}
           bleDeviceName={connection?.device?.name}
@@ -404,29 +400,12 @@ const Index = () => {
         </div>
       )}
 
-      {/* Max brightness slider */}
+      {/* Damping slider */}
       {connection && showOverlay && (
         <div
           className="absolute top-12 left-0 right-0 z-20 flex items-center gap-3 px-4 py-2 transition-opacity duration-500 backdrop-blur-lg"
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
-          <span className="text-[10px] text-muted-foreground font-mono w-10 shrink-0">
-            Max {maxBrightness}%
-          </span>
-          <input
-            type="range"
-            min="10"
-            max="100"
-            step="5"
-            value={maxBrightness}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
-              setMaxBrightness(v);
-              localStorage.setItem("maxBrightness", String(v));
-            }}
-            className="flex-1 h-1 accent-current"
-            style={{ color: accent }}
-          />
           <span className="text-[10px] text-muted-foreground font-mono w-14 shrink-0">
             Dämpa {dynamicDamping.toFixed(1)}x
           </span>
