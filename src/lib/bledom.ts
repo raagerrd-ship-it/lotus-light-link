@@ -185,6 +185,18 @@ export interface BleWriteStats {
   lastWriteMs: number;
   queueAgeMs: number;
 }
+
+// Pipeline step timings (set externally by MicPanel tick loop)
+export interface PipelineTimings {
+  rmsMs: number;
+  smoothMs: number;
+  bleCallMs: number;
+  totalTickMs: number;
+}
+let _pipelineTimings: PipelineTimings = { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 };
+export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
+export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
+
 let _writeCount = 0;
 let _dropCount = 0;
 let _statsStart = performance.now();

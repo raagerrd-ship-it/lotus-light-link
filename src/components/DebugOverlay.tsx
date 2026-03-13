@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SongSection } from "@/lib/songSections";
 import type { BleReconnectStatus } from "@/lib/bledom";
-import { getBleWriteStats, type BleWriteStats } from "@/lib/bledom";
+import { getBleWriteStats, getPipelineTimings, type BleWriteStats, type PipelineTimings } from "@/lib/bledom";
 
 interface DebugOverlayProps {
   smoothedRtt: number;
@@ -37,9 +37,13 @@ export default function DebugOverlay({
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0 });
+  const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
 
   useEffect(() => {
-    const id = setInterval(() => setBleStats(getBleWriteStats()), 500);
+    const id = setInterval(() => {
+      setBleStats(getBleWriteStats());
+      setPipeline(getPipelineTimings());
+    }, 500);
     return () => clearInterval(id);
   }, []);
 
@@ -91,6 +95,12 @@ export default function DebugOverlay({
         <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> drop: <span className="text-foreground">{bleStats.droppedPerSec}</span></div>
         <div>write: <span className="text-foreground">{bleStats.lastWriteMs}ms</span> queue: <span className="text-foreground">{bleStats.queueAgeMs}ms</span></div>
         {tickToWriteMs != null && <div>e2e: <span className="text-foreground">{Math.round(tickToWriteMs)}ms</span></div>}
+      </div>
+
+      {/* Pipeline step timings */}
+      <div className="mt-0.5 border-t border-border/30 pt-0.5">
+        <div>rms: <span className="text-foreground">{pipeline.rmsMs.toFixed(1)}ms</span> smooth: <span className="text-foreground">{pipeline.smoothMs.toFixed(1)}ms</span></div>
+        <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
       </div>
     </div>
   );
