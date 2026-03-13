@@ -130,7 +130,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const targetColorRef = useRef(currentColor);
   const prevColorRef = useRef(currentColor);
   const colorTransitionStartRef = useRef(0);
-  const COLOR_FADE_MS = 5000;
+  const COLOR_FADE_MS = 250;
 
   useEffect(() => {
     // Snap ALL refs to the new color — beat code reads targetColorRef directly
