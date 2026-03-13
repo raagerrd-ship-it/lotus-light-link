@@ -231,7 +231,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-          <MicPanel
+            <MicPanel
             char={char}
             currentColor={currentColor}
             externalBpm={sonosBpm}
@@ -245,7 +245,9 @@ const Index = () => {
             syncOffsetMs={autoDriftMs}
             smoothedRtt={smoothedRtt}
             onSyncDriftMs={handleSyncDrift}
-            agcEnabled={agcEnabled}
+            gainMode={gainMode}
+            sonosVolume={nowPlaying?.volume}
+            volCalibration={volCalibration}
             maxBrightness={maxBrightness}
             dynamicDamping={dynamicDamping}
           />
