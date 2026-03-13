@@ -67,7 +67,7 @@ const BRIGHT_BUF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 
 const PULSE_DURATIONS = [200, 150, 100, 80, 60, 50, 40, 30, 20, 15, 10];
 
 async function bleWrite(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array) {
-  await char.writeValueWithoutResponse(buf);
+  await char.writeValueWithoutResponse(buf as any);
 }
 
 async function sendWhite(char: BluetoothRemoteGATTCharacteristic) {
