@@ -7,7 +7,7 @@ import {
   applyColorCalibration, DEFAULT_CALIBRATION,
   type LightCalibration,
 } from "@/lib/lightCalibration";
-import { sendColor, sendBrightness } from "@/lib/bledom";
+import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 type Tab = 'color' | 'dynamics' | 'ble';
