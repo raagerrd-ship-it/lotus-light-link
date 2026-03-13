@@ -37,6 +37,10 @@ const Index = () => {
     const stored = localStorage.getItem("maxBrightness");
     return stored ? parseInt(stored, 10) : 100;
   });
+  const [dynamicDamping, setDynamicDamping] = useState(() => {
+    const stored = localStorage.getItem("dynamicDamping");
+    return stored ? parseFloat(stored) : 1.0;
+  });
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmTrackRef = useRef<string | null>(null);
