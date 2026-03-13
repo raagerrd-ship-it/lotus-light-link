@@ -168,8 +168,9 @@ const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 
 
 // --- Frame scheduler: max 1 BLE write per MIN_INTERVAL_MS ---
 const BLE_INTERVAL_KEY = 'ble-min-interval-ms';
+const BLE_MIN_FLOOR = 50; // 20 slots/sec max
 let _minIntervalMs = (() => {
-  try { const v = localStorage.getItem(BLE_INTERVAL_KEY); return v ? parseInt(v, 10) : 50; } catch { return 50; }
+  try { const v = localStorage.getItem(BLE_INTERVAL_KEY); return Math.max(BLE_MIN_FLOOR, v ? parseInt(v, 10) : BLE_MIN_FLOOR); } catch { return BLE_MIN_FLOOR; }
 })();
 
 export function getBleMinInterval(): number { return _minIntervalMs; }
@@ -258,9 +259,14 @@ async function _flush() {
     writeBright = true;
   }
 
-  // Always write color when pending — no dedup, prevents drift
+  // Write color if it changed (tick loop always sends, so changes are caught)
   if (_pendingColor) {
-    writeColor = true;
+    const [r, g, b] = _pendingColor;
+    if (r !== _lastSentColor[0] || g !== _lastSentColor[1] || b !== _lastSentColor[2]) {
+      writeColor = true;
+    } else {
+      _pendingColor = null;
+    }
   }
 
   if (!writeBright && !writeColor) {
@@ -274,7 +280,7 @@ async function _flush() {
   _lastWriteTime = writeStart;
 
   try {
-    // Always: color → 1ms → brightness (matches calibration protocol)
+    // Color → 1ms → brightness (matches calibration protocol)
     if (writeColor && _pendingColor) {
       _colorBuf[4] = _pendingColor[0] & 0xff;
       _colorBuf[5] = _pendingColor[1] & 0xff;
@@ -282,8 +288,6 @@ async function _flush() {
       await _char.writeValueWithoutResponse(_colorBuf);
       _lastSentColor = [..._pendingColor];
       _pendingColor = null;
-      _writeCount++;
-      // 1ms gap before brightness so lamp processes color first
       if (writeBright) await new Promise(r => setTimeout(r, 1));
     }
 
@@ -292,9 +296,9 @@ async function _flush() {
       await _char.writeValueWithoutResponse(_brightBuf);
       _lastSentBright = _pendingBright;
       _pendingBright = null;
-      _writeCount++;
     }
 
+    _writeCount++; // Count per slot, not per GATT write
     _lastActualWriteMs = performance.now() - writeStart;
   } catch (e: any) {
     _errorCount++;
