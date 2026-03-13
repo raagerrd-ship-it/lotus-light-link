@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { AgcState } from "@/lib/energyInterpolate";
+import { estimateBpmFromHistory } from "@/lib/bpmEstimate";
+import type { SongSection } from "@/lib/sectionLighting";
 
 export interface EnergySample {
   t: number;
@@ -20,20 +22,40 @@ interface SongEnergyCurveResult {
   curve: EnergySample[] | null;
   recordedVolume: number | null;
   savedAgcState: AgcState | null;
+  bpm: number | null;
+  sections: SongSection[] | null;
   loading: boolean;
   saveCurve: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
 }
 
-const curveCache = new Map<string, { curve: EnergySample[] | null; vol: number | null; agc: AgcState | null }>();
+interface CacheEntry {
+  curve: EnergySample[] | null;
+  vol: number | null;
+  agc: AgcState | null;
+  bpm: number | null;
+  sections: SongSection[] | null;
+  songId: string | null;
+}
+
+const curveCache = new Map<string, CacheEntry>();
 
 function cacheKey(t: TrackKey): string {
   return `${t.trackName}|${t.artistName}`;
+}
+
+function estimateBpm(curve: EnergySample[]): number | null {
+  if (curve.length < 120) return null;
+  const history = curve.map(s => s.e);
+  const result = estimateBpmFromHistory(history);
+  return result ? Math.round(result.bpm) : null;
 }
 
 export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResult {
   const [curve, setCurve] = useState<EnergySample[] | null>(null);
   const [recordedVolume, setRecordedVolume] = useState<number | null>(null);
   const [savedAgcState, setSavedAgcState] = useState<AgcState | null>(null);
+  const [bpm, setBpm] = useState<number | null>(null);
+  const [sections, setSections] = useState<SongSection[] | null>(null);
   const [loading, setLoading] = useState(false);
   const trackRef = useRef<string | null>(null);
 
@@ -42,6 +64,8 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       setCurve(null);
       setRecordedVolume(null);
       setSavedAgcState(null);
+      setBpm(null);
+      setSections(null);
       trackRef.current = null;
       return;
     }
@@ -55,13 +79,15 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       setCurve(cached.curve);
       setRecordedVolume(cached.vol);
       setSavedAgcState(cached.agc);
+      setBpm(cached.bpm);
+      setSections(cached.sections);
       return;
     }
 
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("energy_curve, recorded_volume, agc_state")
+      .select("id, energy_curve, recorded_volume, agc_state, bpm, sections")
       .eq("track_name", track.trackName)
       .eq("artist_name", track.artistName)
       .maybeSingle()
@@ -71,22 +97,67 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
         const vol = (data as any)?.recorded_volume as number | null;
         const agc = (data as any)?.agc_state as AgcState | null;
-        curveCache.set(key, { curve: valid, vol: vol ?? null, agc: agc ?? null });
+        const songId = data?.id ?? null;
+        let savedBpm = data?.bpm as number | null;
+        const savedSections = (data?.sections as unknown as SongSection[] | null) ?? null;
+
+        // Estimate BPM if not saved yet
+        if (!savedBpm && valid) {
+          savedBpm = estimateBpm(valid);
+          if (savedBpm && songId) {
+            supabase.from("song_analysis").update({ bpm: savedBpm } as any).eq("id", songId)
+              .then(() => console.log("[EnergyCurve] saved BPM", savedBpm));
+          }
+        }
+
+        const entry: CacheEntry = { curve: valid, vol: vol ?? null, agc: agc ?? null, bpm: savedBpm, sections: savedSections, songId };
+        curveCache.set(key, entry);
         setCurve(valid);
         setRecordedVolume(vol ?? null);
         setSavedAgcState(agc ?? null);
+        setBpm(savedBpm);
+        setSections(savedSections);
         setLoading(false);
+
+        // Trigger section analysis if we have curve but no sections
+        if (valid && !savedSections && songId) {
+          triggerSectionAnalysis(songId, key);
+        }
       });
   }, [track?.trackName, track?.artistName]);
+
+  const triggerSectionAnalysis = useCallback(async (songId: string, key: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-sections', {
+        body: { songId },
+      });
+      if (error) {
+        console.error('[sections] analysis failed', error);
+        return;
+      }
+      const newSections = data?.sections as SongSection[] | null;
+      if (newSections && newSections.length > 0) {
+        console.log('[sections] got', newSections.length, 'sections');
+        setSections(newSections);
+        const cached = curveCache.get(key);
+        if (cached) curveCache.set(key, { ...cached, sections: newSections });
+      }
+    } catch (e) {
+      console.error('[sections] error', e);
+    }
+  }, []);
 
   const saveCurve = useCallback(
     (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => {
       if (!track || samples.length < 10) return;
       const key = cacheKey(track);
-      curveCache.set(key, { curve: samples, vol: volume, agc: agcState ?? null });
+      const newBpm = estimateBpm(samples);
+      const cached = curveCache.get(key);
+      curveCache.set(key, { curve: samples, vol: volume, agc: agcState ?? null, bpm: newBpm, sections: cached?.sections ?? null, songId: cached?.songId ?? null });
       setCurve(samples);
       setRecordedVolume(volume);
       if (agcState) setSavedAgcState(agcState);
+      if (newBpm) setBpm(newBpm);
 
       supabase
         .from("song_analysis")
@@ -99,13 +170,18 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
             energy_curve: samples as any,
             recorded_volume: volume,
             ...(agcState ? { agc_state: agcState as any } : {}),
+            ...(newBpm ? { bpm: newBpm } : {}),
           } as any;
           if (existing) {
             supabase
               .from("song_analysis")
               .update(payload)
               .eq("id", existing.id)
-              .then(() => console.log("[EnergyCurve] updated", track.trackName));
+              .then(() => {
+                console.log("[EnergyCurve] updated", track.trackName);
+                // Trigger section analysis after update
+                if (!cached?.sections) triggerSectionAnalysis(existing.id, key);
+              });
           } else {
             supabase
               .from("song_analysis")
@@ -114,12 +190,22 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
                 artist_name: track.artistName,
                 ...payload,
               })
-              .then(() => console.log("[EnergyCurve] inserted", track.trackName));
+              .select("id")
+              .single()
+              .then(({ data: inserted }) => {
+                console.log("[EnergyCurve] inserted", track.trackName);
+                if (inserted?.id) {
+                  const k = cacheKey(track);
+                  const c = curveCache.get(k);
+                  if (c) curveCache.set(k, { ...c, songId: inserted.id });
+                  triggerSectionAnalysis(inserted.id, k);
+                }
+              });
           }
         });
     },
-    [track?.trackName, track?.artistName],
+    [track?.trackName, track?.artistName, triggerSectionAnalysis],
   );
 
-  return { curve, recordedVolume, savedAgcState, loading, saveCurve };
+  return { curve, recordedVolume, savedAgcState, bpm, sections, loading, saveCurve };
 }

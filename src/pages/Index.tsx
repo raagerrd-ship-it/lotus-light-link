@@ -45,7 +45,7 @@ const Index = () => {
     if (!nowPlaying?.trackName || !nowPlaying?.artistName) return null;
     return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
-  const { curve: energyCurve, recordedVolume, savedAgcState, saveCurve } = useSongEnergyCurve(trackKey);
+  const { curve: energyCurve, recordedVolume, savedAgcState, bpm, sections, saveCurve } = useSongEnergyCurve(trackKey);
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
@@ -175,7 +175,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} onSaveEnergyCurve={saveCurve} />
+        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} sections={sections} onSaveEnergyCurve={saveCurve} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
@@ -257,7 +257,7 @@ const Index = () => {
           className={`absolute bottom-0 left-0 right-0 z-20 pb-[env(safe-area-inset-bottom)] transition-opacity duration-500 backdrop-blur-lg border-t border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.5)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} bpm={null} accentColor={currentColor} getPosition={getPosition} />
+          <NowPlayingBar nowPlaying={nowPlaying} bpm={bpm} accentColor={currentColor} getPosition={getPosition} sections={sections} />
         </div>
       )}
 

@@ -5,6 +5,7 @@ import { getCalibration, saveCalibration, applyColorCalibration, type LightCalib
 import { getActiveDeviceName } from "@/lib/lightCalibration";
 import { interpolateEnergy, hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
+import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
@@ -15,6 +16,8 @@ interface MicPanelProps {
   onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
   recordedVolume?: number | null;
   savedAgcState?: AgcState | null;
+  bpm?: number | null;
+  sections?: SongSection[] | null;
 }
 
 const HISTORY_LEN = 120;
@@ -87,7 +90,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, recordedVolume, savedAgcState, onSaveEnergyCurve }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, sections, onSaveEnergyCurve }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -119,12 +122,16 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
   const onSaveCurveRef = useRef(onSaveEnergyCurve);
   const recordedVolumeRef = useRef(recordedVolume);
   const savedAgcStateRef = useRef(savedAgcState);
+  const bpmRef = useRef(bpm);
+  const sectionsRef = useRef(sections);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
   useEffect(() => { onSaveCurveRef.current = onSaveEnergyCurve; }, [onSaveEnergyCurve]);
   useEffect(() => { recordedVolumeRef.current = recordedVolume; }, [recordedVolume]);
   useEffect(() => { savedAgcStateRef.current = savedAgcState; }, [savedAgcState]);
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { sectionsRef.current = sections; }, [sections]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
@@ -362,7 +369,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
 
           const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-          const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
+          let pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
+
+          // Section-aware adjustments
+          const posSec2 = getSongPositionSec();
+          const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0);
+          pct = Math.round(pct * sectionParams.brightnessScale);
+
+          // Beat-synced pulse
+          const currentBpm = bpmRef.current;
+          if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
+            const pulse = beatPulse(posSec2, currentBpm);
+            const pulseBoost = pulse * sectionParams.beatPulseStrength * 15; // max ~15% brightness boost
+            pct = Math.min(100, Math.round(pct + pulseBoost));
+          }
 
           // Record energy sample for first-listen curve
           if (!hasCurve) {
@@ -375,7 +395,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
                 lastRecordTimeRef.current = now;
                 // Compute frequency bands
                 const bands = computeBands(an, freqBuf);
-                const isKick = pct > 95;
+                const isKick = pct > sectionParams.kickThreshold;
                 recordedSamplesRef.current.push({
                   t: posSec,
                   e: normalized,
@@ -393,13 +413,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
           const inWhiteKick = now < whiteKickUntilRef.current;
 
           if (hasCurve) {
-            // Curve mode: use saved kick timestamps
-            if (curveKick && !inWhiteKick) {
+            // Curve mode: use saved kick timestamps, gated by section
+            if (curveKick && !inWhiteKick && sectionParams.kickEnabled) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
           } else {
-            // Mic mode: use pct threshold
-            if (pct > 95 && !inWhiteKick) {
+            // Mic mode: use section-aware threshold
+            if (pct > sectionParams.kickThreshold && !inWhiteKick && sectionParams.kickEnabled) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
           }
@@ -414,10 +434,10 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              // Apply frequency-based color modulation in curve mode
+              // Apply frequency-based color modulation with section-aware strength
               let finalColor: [number, number, number] = calibrated;
               if (hasCurve && (curveLo > 0 || curveHi > 0)) {
-                finalColor = modulateColor(...calibrated, curveLo, curveMid, curveHi);
+                finalColor = modulateColor(...calibrated, curveLo, curveMid, curveHi, sectionParams.colorModStrength);
               }
               sendColorAndBrightness(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';

@@ -1,17 +1,36 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import type { SonosNowPlaying } from "@/hooks/useSonosNowPlaying";
+import { getCurrentSection, type SongSection } from "@/lib/sectionLighting";
 
 interface Props {
   nowPlaying: SonosNowPlaying;
   bpm?: number | null;
   accentColor?: [number, number, number];
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
+  sections?: SongSection[] | null;
 }
 
-export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition }: Props) {
+const SECTION_LABELS: Record<string, string> = {
+  intro: 'Intro',
+  verse: 'Vers',
+  pre_chorus: 'Pre-chorus',
+  chorus: 'Refräng',
+  bridge: 'Bridge',
+  drop: 'Drop',
+  build_up: 'Build-up',
+  break: 'Break',
+  outro: 'Outro',
+};
+
+function sectionTypeLabel(type: string): string {
+  return SECTION_LABELS[type] ?? type;
+}
+
+export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition, sections }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
   const barRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
+  const [sectionLabel, setSectionLabel] = useState<string | null>(null);
 
   useEffect(() => {
     const dur = nowPlaying.durationMs;
@@ -21,18 +40,24 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
       const pos = getPosition();
       if (pos && barRef.current) {
         const elapsed = performance.now() - pos.receivedAt;
-        const fraction = Math.min(1, Math.max(0, (pos.positionMs + elapsed) / dur));
+        const currentMs = pos.positionMs + elapsed;
+        const fraction = Math.min(1, Math.max(0, currentMs / dur));
         barRef.current.style.width = `${fraction * 100}%`;
+
+        if (sections && sections.length > 0) {
+          const sec = getCurrentSection(sections, currentMs / 1000);
+          const label = sec ? sectionTypeLabel(sec.type) : null;
+          setSectionLabel(prev => prev !== label ? label : prev);
+        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [nowPlaying.durationMs, getPosition]);
+  }, [nowPlaying.durationMs, getPosition, sections]);
 
   return (
     <div className="shrink-0">
-      {/* Progress bar — top edge */}
       <div className="h-[2px] bg-border/30 overflow-hidden">
         <div
           ref={barRef}
@@ -71,14 +96,24 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
             {nowPlaying.artistName}
           </p>
         </div>
-        {bpm != null && (
-          <span
-            className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full shrink-0"
-            style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}
-          >
-            {bpm} BPM
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {sectionLabel && (
+            <span
+              className="text-[10px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-2 py-0.5 rounded-full uppercase"
+              style={{ borderColor: `rgba(${r},${g},${b},0.2)` }}
+            >
+              {sectionLabel}
+            </span>
+          )}
+          {bpm != null && (
+            <span
+              className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground bg-secondary border px-2 py-0.5 rounded-full"
+              style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}
+            >
+              {bpm} BPM
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
