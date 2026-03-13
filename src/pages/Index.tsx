@@ -262,7 +262,8 @@ const Index = () => {
           paletteIndex={paletteIndexRef.current}
           source={nowPlaying?.source}
           sonosVolume={nowPlaying?.volume}
-          gainMode={agcEnabled ? 'agc' : 'manual'}
+          gainMode={gainMode}
+          volCalibrationVol={volCalibration?.volume}
           liveBpm={liveBpm}
           maxBrightness={maxBrightness}
           dynamicDamping={dynamicDamping}
