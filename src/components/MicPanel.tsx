@@ -399,6 +399,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
             pct = Math.min(100, Math.round(pct + pulseBoost));
           }
 
+          // Track pipeline latency
+          const tickTotal = performance.now() - tickStart;
+          pipelineSumRef.current += tickTotal;
+          pipelineCountRef.current++;
+
           // Record energy sample for first-listen curve
           if (!hasCurve) {
             const posSec = getSongPositionSec();
@@ -415,9 +420,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
                   t: posSec,
                   e: normalized,
                   kick: isKick || undefined,
+                  kickT: isKick ? posSec : undefined,
                   lo: bands.lo,
                   mid: bands.mid,
                   hi: bands.hi,
+                  rtt: sonosRttRef.current ?? undefined,
                 });
               }
             }
