@@ -135,6 +135,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
   useEffect(() => { savedAgcStateRef.current = savedAgcState; }, [savedAgcState]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
+  useEffect(() => { dropsRef.current = drops; }, [drops]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
