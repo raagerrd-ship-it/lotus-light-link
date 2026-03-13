@@ -1,0 +1,1 @@
+CREATE POLICY "Public delete" ON public.device_calibration FOR DELETE TO public USING (true);
