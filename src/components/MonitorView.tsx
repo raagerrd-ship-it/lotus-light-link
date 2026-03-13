@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Wifi, WifiOff, ChevronDown, ChevronUp, Music } from "lucide-react";
 
 interface SongRecord {
+  id: string;
   track_name: string;
   artist_name: string;
   bpm: number | null;
