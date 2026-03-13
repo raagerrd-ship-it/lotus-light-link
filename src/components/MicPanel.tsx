@@ -856,7 +856,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       const predictiveActive = predictiveFiredRef.current && beatPhaseRef.current < 0.08;
 
-      // Normal brightness (throttled)
+      // Normal brightness (throttled to 40Hz)
       if (!predictiveActive && now - throttleRef.current >= 25) {
       // Attack/release smoothing using calibration values
         const alpha = pct > smoothedBrightRef.current ? calRef.current.attackAlpha : calRef.current.releaseAlpha;
@@ -864,10 +864,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const smoothPct = Math.round(Math.max(calRef.current.minBrightness, smoothedBrightRef.current));
         throttleRef.current = now;
         ble.brightness(smoothPct);
-        // Always re-send color with brightness to prevent BLEDOM color drift
-        if (!boost.active) {
-          ble.color(...targetColorRef.current);
-        }
       }
 
       // Use SMOOTHED brightness for punch-white trigger — only white at actual peaks
