@@ -7,7 +7,7 @@ import {
   applyColorCalibration, DEFAULT_CALIBRATION,
   type LightCalibration,
 } from "@/lib/lightCalibration";
-import { sendColor, sendBrightness } from "@/lib/bledom";
+import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 type Tab = 'color' | 'dynamics' | 'ble';
@@ -92,6 +92,7 @@ function BleSpeedTab({ conn }: { conn: any }) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [results, setResults] = useState<PulseResult[]>([]);
   const [countdown, setCountdown] = useState(0);
+  const [saved, setSaved] = useState(false);
   const acRef = useRef<AbortController | null>(null);
 
   const currentDuration = PULSE_DURATIONS[currentIdx] ?? 0;
@@ -202,24 +203,43 @@ function BleSpeedTab({ conn }: { conn: any }) {
           <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
             <p className="text-xs font-bold text-primary">Resultat</p>
             {lastSeen && firstMissed ? (
-              <p className="text-xs text-foreground/80 mt-1">
-                Kortaste synliga puls: <span className="font-mono font-bold">{lastSeen.durationMs}ms</span>
-                <br />
-                Första missade: <span className="font-mono font-bold">{firstMissed.durationMs}ms</span>
-                <br />
-                <span className="text-muted-foreground">→ Lampans effektiva latens ≈ {lastSeen.durationMs}ms</span>
-              </p>
+              <>
+                <p className="text-xs text-foreground/80 mt-1">
+                  Kortaste synliga puls: <span className="font-mono font-bold">{lastSeen.durationMs}ms</span>
+                  <br />
+                  Första missade: <span className="font-mono font-bold">{firstMissed.durationMs}ms</span>
+                  <br />
+                  <span className="text-muted-foreground">→ Lampans effektiva latens ≈ {lastSeen.durationMs}ms</span>
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <Button size="sm" onClick={() => { setBleMinInterval(lastSeen.durationMs); setSaved(true); }} className="text-xs gap-1">
+                    Spara som BLE-intervall ({lastSeen.durationMs}ms)
+                  </Button>
+                </div>
+                {saved && <p className="text-[10px] text-primary mt-1">✓ Sparat! Scheduler använder nu {getBleMinInterval()}ms</p>}
+              </>
             ) : lastSeen ? (
-              <p className="text-xs text-foreground/80 mt-1">
-                Alla pulser syntes! Minsta testad: <span className="font-mono font-bold">{lastSeen.durationMs}ms</span>
-              </p>
+              <>
+                <p className="text-xs text-foreground/80 mt-1">
+                  Alla pulser syntes! Minsta testad: <span className="font-mono font-bold">{lastSeen.durationMs}ms</span>
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <Button size="sm" onClick={() => { setBleMinInterval(lastSeen.durationMs); setSaved(true); }} className="text-xs gap-1">
+                    Spara som BLE-intervall ({lastSeen.durationMs}ms)
+                  </Button>
+                </div>
+                {saved && <p className="text-[10px] text-primary mt-1">✓ Sparat! Scheduler använder nu {getBleMinInterval()}ms</p>}
+              </>
             ) : (
               <p className="text-xs text-foreground/80 mt-1">Ingen puls syntes.</p>
             )}
           </div>
-          <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs">
-            Kör igen
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); setSaved(false); }} className="text-xs">
+              Kör igen
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Nuvarande BLE-intervall: <span className="font-mono">{getBleMinInterval()}ms</span></p>
         </div>
       )}
 

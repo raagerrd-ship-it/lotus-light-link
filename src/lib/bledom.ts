@@ -167,7 +167,16 @@ const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
 // --- Frame scheduler: max 1 BLE write per MIN_INTERVAL_MS ---
-const MIN_INTERVAL_MS = 50;
+const BLE_INTERVAL_KEY = 'ble-min-interval-ms';
+let _minIntervalMs = (() => {
+  try { const v = localStorage.getItem(BLE_INTERVAL_KEY); return v ? parseInt(v, 10) : 50; } catch { return 50; }
+})();
+
+export function getBleMinInterval(): number { return _minIntervalMs; }
+export function setBleMinInterval(ms: number) {
+  _minIntervalMs = Math.max(10, Math.min(200, Math.round(ms)));
+  try { localStorage.setItem(BLE_INTERVAL_KEY, String(_minIntervalMs)); } catch {}
+}
 
 let _char: any = null;
 let _pendingBright: number | null = null;
@@ -229,10 +238,10 @@ async function _flush() {
 
   const now = performance.now();
   const elapsed = now - _lastWriteTime;
-  if (elapsed < MIN_INTERVAL_MS) {
+  if (elapsed < _minIntervalMs) {
     // Schedule next flush at the right time
     if (!_timer) {
-      _timer = setTimeout(() => { _timer = null; _flush(); }, MIN_INTERVAL_MS - elapsed);
+      _timer = setTimeout(() => { _timer = null; _flush(); }, _minIntervalMs - elapsed);
     }
     return;
   }
@@ -298,7 +307,7 @@ async function _flush() {
   // If there's still pending data, schedule next write
   if (_pendingBright != null || _pendingColor) {
     if (!_timer) {
-      _timer = setTimeout(() => { _timer = null; _flush(); }, MIN_INTERVAL_MS);
+      _timer = setTimeout(() => { _timer = null; _flush(); }, _minIntervalMs);
     }
   }
 }
