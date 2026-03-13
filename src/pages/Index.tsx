@@ -215,6 +215,19 @@ const Index = () => {
           <NowPlayingBar nowPlaying={nowPlaying} bpm={null} accentColor={currentColor} getPosition={getPosition} />
         </div>
       )}
+
+      {/* Debug overlay */}
+      <DebugOverlay
+        smoothedRtt={smoothedRtt}
+        autoDriftMs={0}
+        currentSection={null}
+        palette={palette}
+        paletteIndex={paletteIndexRef.current}
+        sonosVolume={nowPlaying?.volume}
+        bleConnected={!!connection}
+        bleDeviceName={connection?.device?.name}
+        bleReconnectStatus={bleReconnectStatus}
+      />
     </div>
   );
 };
