@@ -8,7 +8,7 @@ import {
   saveBleSpeedToCloud, saveLatencyToCloud,
   type LightCalibration, type LatencyResults,
 } from "@/lib/lightCalibration";
-import { sendColor, sendBrightness, getBleMinInterval, setBleMinInterval, getBleWriteStats } from "@/lib/bledom";
+import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 type Tab = 'ble' | 'latency';
