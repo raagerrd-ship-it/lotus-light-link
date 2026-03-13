@@ -312,6 +312,11 @@ const Index = () => {
                     variant="ghost"
                     size="icon"
                     onClick={() => {
+                      if (calibration) {
+                        setCalibration(null);
+                        localStorage.removeItem("gainCalibration");
+                        return;
+                      }
                       const vol = nowPlaying?.volume;
                       if (vol == null) return;
                       const cal = { volume: vol, gain: manualGain };
