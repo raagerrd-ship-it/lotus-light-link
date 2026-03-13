@@ -89,10 +89,12 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const c = charRef.current;
           if (c) {
             if (isWhite) {
-              sendColor(c, 255, 255, 255).then(() => sendBrightness(c, 100)).catch(() => {});
+              sendColor(c, 255, 255, 255);
+              sendBrightness(c, 100);
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              sendColor(c, ...calibrated).then(() => sendBrightness(c, pct)).catch(() => {});
+              sendColor(c, ...calibrated);
+              sendBrightness(c, pct);
             }
           }
 

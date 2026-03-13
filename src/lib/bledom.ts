@@ -166,22 +166,50 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-export async function sendColor(char: any, r: number, g: number, b: number, skipCalibration = false) {
-  let cr = r, cg = g, cb = b;
-  if (!skipCalibration) {
-    // Lazy import to avoid circular deps — applyColorCalibration is cheap
-    const { applyColorCalibration } = await import('@/lib/lightCalibration');
-    [cr, cg, cb] = applyColorCalibration(r, g, b);
-  }
-  _colorBuf[4] = cr & 0xff;
-  _colorBuf[5] = cg & 0xff;
-  _colorBuf[6] = cb & 0xff;
-  await char.writeValueWithoutResponse(_colorBuf);
+// Write queue — ensures only one GATT write at a time, coalesces to latest values
+let _writePromise: Promise<void> = Promise.resolve();
+let _pendingColor: [number, number, number] | null = null;
+let _pendingBright: number | null = null;
+let _drainScheduled = false;
+
+function _drainQueue(char: any) {
+  if (_drainScheduled) return;
+  _drainScheduled = true;
+  _writePromise = _writePromise.then(async () => {
+    _drainScheduled = false;
+    const c = _pendingColor;
+    const b = _pendingBright;
+    _pendingColor = null;
+    _pendingBright = null;
+    try {
+      if (c) {
+        _colorBuf[4] = c[0] & 0xff;
+        _colorBuf[5] = c[1] & 0xff;
+        _colorBuf[6] = c[2] & 0xff;
+        await char.writeValueWithoutResponse(_colorBuf);
+      }
+      if (b != null) {
+        _brightBuf[3] = Math.max(0, Math.min(100, Math.round(b)));
+        await char.writeValueWithoutResponse(_brightBuf);
+      }
+    } catch {}
+    // If new values arrived while writing, drain again
+    if (_pendingColor || _pendingBright != null) {
+      _drainQueue(char);
+    }
+  });
 }
 
-export async function sendBrightness(char: any, brightness: number) {
-  _brightBuf[3] = Math.max(0, Math.min(100, Math.round(brightness)));
-  await char.writeValueWithoutResponse(_brightBuf);
+export function sendColor(char: any, r: number, g: number, b: number) {
+  _pendingColor = [r, g, b];
+  _drainQueue(char);
+  return Promise.resolve();
+}
+
+export function sendBrightness(char: any, brightness: number) {
+  _pendingBright = brightness;
+  _drainQueue(char);
+  return Promise.resolve();
 }
 
 export async function sendPower(char: any, on: boolean) {
