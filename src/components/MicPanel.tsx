@@ -856,7 +856,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
 
       const predictiveActive = predictiveFiredRef.current && beatPhaseRef.current < 0.08;
 
-      // Normal brightness (throttled)
+      // Normal brightness (throttled to 40Hz)
       if (!predictiveActive && now - throttleRef.current >= 25) {
       // Attack/release smoothing using calibration values
         const alpha = pct > smoothedBrightRef.current ? calRef.current.attackAlpha : calRef.current.releaseAlpha;
@@ -864,10 +864,6 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         const smoothPct = Math.round(Math.max(calRef.current.minBrightness, smoothedBrightRef.current));
         throttleRef.current = now;
         ble.brightness(smoothPct);
-        // Always re-send color with brightness to prevent BLEDOM color drift
-        if (!boost.active) {
-          ble.color(...targetColorRef.current);
-        }
       }
 
       // Use SMOOTHED brightness for punch-white trigger — only white at actual peaks
@@ -887,7 +883,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         boost.startTime = now;
         boost.color = lifted;
         ble.color(...lifted);
-      } else if (boost.active && now - boost.throttle >= 25) {
+      } else if (boost.active && now - boost.throttle >= 50) {
         // Smoother fade-back: longer tail + smoothstep easing (no hard drop)
         const fadeDuration = Math.max(calRef.current.fadeBackDuration, beatMs * 1.15);
         const elapsed = now - boost.startTime;
@@ -906,8 +902,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
         if (tLinear >= 1) {
           boost.active = false;
         }
-      } else if (!boost.active && now - boost.throttle >= 200) {
-        // No boost active — periodically send base color to keep BLE in sync
+      } else if (!boost.active && now - boost.throttle >= 500) {
+        // No boost active — periodic color keep-alive (low rate to avoid flooding)
         boost.throttle = now;
         ble.color(...color);
       }
