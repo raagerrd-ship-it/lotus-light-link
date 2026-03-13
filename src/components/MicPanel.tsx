@@ -528,6 +528,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
           agcMin: agcMinRef.current,
           agcMax: agcMaxRef.current,
           agcPeakMax: agcPeakMaxRef.current,
+          avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
         };
         onSaveCurveRef.current(recorded, volumeRef.current ?? null, agc);
       }
