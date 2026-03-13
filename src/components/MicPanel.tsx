@@ -35,10 +35,12 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
   const lastBaseColorRef = useRef<[number, number, number]>(currentColor);
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
-  // Learned AGC state — persists until volume changes
-  const agcMaxRef = useRef(0.01);
-  const agcMinRef = useRef(0);
+  // Learned AGC state — initialized from saved calibration, persists until volume changes
+  const initCal = calRef.current;
+  const agcMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
+  const agcMinRef = useRef(initCal.agcMin);
   const lastVolumeRef = useRef(sonosVolume);
+  const agcSaveTimerRef = useRef(0);
 
   useEffect(() => {
     colorRef.current = currentColor;
