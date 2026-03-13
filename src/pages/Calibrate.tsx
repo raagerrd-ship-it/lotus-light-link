@@ -86,7 +86,7 @@ async function sendBlack(char: BluetoothRemoteGATTCharacteristic) {
 
 interface PulseResult {
   durationMs: number;
-  seen: boolean | null; // null = not yet answered
+  answer: 'all' | 'partial' | 'none';
 }
 
 function BleSpeedTab({ conn }: { conn: any }) {
@@ -137,12 +137,12 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setPhase('asking');
   }, [sendPulses]);
 
-  const answer = useCallback(async (seen: boolean) => {
+  const answer = useCallback(async (ans: 'all' | 'partial' | 'none') => {
     const duration = PULSE_DURATIONS[currentIdx];
-    const newResults = [...results, { durationMs: duration, seen }];
+    const newResults = [...results, { durationMs: duration, answer: ans }];
     setResults(newResults);
 
-    if (!seen || currentIdx >= PULSE_DURATIONS.length - 1) {
+    if (ans !== 'all' || currentIdx >= PULSE_DURATIONS.length - 1) {
       setPhase('done');
       if (conn?.characteristic) {
         BRIGHT_BUF[3] = 50;
@@ -158,8 +158,9 @@ function BleSpeedTab({ conn }: { conn: any }) {
     setPhase('asking');
   }, [currentIdx, results, sendPulses, conn]);
 
-  const lastSeen = [...results].reverse().find(r => r.seen);
-  const firstMissed = results.find(r => !r.seen);
+  const lastAll = [...results].reverse().find(r => r.answer === 'all');
+  const firstFail = results.find(r => r.answer !== 'all');
+  const firstFailType = firstFail?.answer;
 
   return (
     <div className="space-y-4">
@@ -190,12 +191,15 @@ function BleSpeedTab({ conn }: { conn: any }) {
         <div className="text-center py-4 space-y-3">
           <p className="text-sm font-medium text-foreground">Såg du {PULSES_PER_STEP} tydliga blinkar?</p>
           <p className="text-xs text-muted-foreground">Puls: {currentDuration}ms × {PULSES_PER_STEP}</p>
-          <div className="flex gap-3 justify-center">
-            <Button size="sm" onClick={() => answer(true)} className="px-6 text-xs">
-              ✓ Ja
+          <div className="flex gap-2 justify-center flex-wrap">
+            <Button size="sm" onClick={() => answer('all')} className="px-4 text-xs">
+              ✓ Alla 3
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => answer(false)} className="px-6 text-xs">
-              ✗ Nej
+            <Button size="sm" variant="outline" onClick={() => answer('partial')} className="px-4 text-xs">
+              ◐ Bara 1–2
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => answer('none')} className="px-4 text-xs">
+              ✗ Ingen
             </Button>
           </div>
         </div>
@@ -205,30 +209,32 @@ function BleSpeedTab({ conn }: { conn: any }) {
         <div className="space-y-3">
           <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
             <p className="text-xs font-bold text-primary">Resultat</p>
-            {lastSeen && firstMissed ? (
+            {lastAll && firstFail ? (
               <>
                 <p className="text-xs text-foreground/80 mt-1">
-                  Kortaste synliga puls: <span className="font-mono font-bold">{lastSeen.durationMs}ms</span>
+                  Kortaste med alla 3: <span className="font-mono font-bold">{lastAll.durationMs}ms</span>
                   <br />
-                  Första missade: <span className="font-mono font-bold">{firstMissed.durationMs}ms</span>
+                  Missade vid: <span className="font-mono font-bold">{firstFail.durationMs}ms</span>
+                  {firstFailType === 'partial' && <span className="text-yellow-400"> (bara 1–2 syntes → lampan hänger kvar)</span>}
+                  {firstFailType === 'none' && <span className="text-red-400"> (ingen syntes)</span>}
                   <br />
-                  <span className="text-muted-foreground">→ Lampans effektiva latens ≈ {lastSeen.durationMs}ms</span>
+                  <span className="text-muted-foreground">→ Säkert BLE-intervall ≈ {lastAll.durationMs}ms</span>
                 </p>
                 <div className="flex gap-2 mt-2">
-                  <Button size="sm" onClick={() => { setBleMinInterval(lastSeen.durationMs); setSaved(true); }} className="text-xs gap-1">
-                    Spara som BLE-intervall ({lastSeen.durationMs}ms)
+                  <Button size="sm" onClick={() => { setBleMinInterval(lastAll.durationMs); setSaved(true); }} className="text-xs gap-1">
+                    Spara ({lastAll.durationMs}ms)
                   </Button>
                 </div>
                 {saved && <p className="text-[10px] text-primary mt-1">✓ Sparat! Scheduler använder nu {getBleMinInterval()}ms</p>}
               </>
-            ) : lastSeen ? (
+            ) : lastAll ? (
               <>
                 <p className="text-xs text-foreground/80 mt-1">
-                  Alla pulser syntes! Minsta testad: <span className="font-mono font-bold">{lastSeen.durationMs}ms</span>
+                  Alla pulser syntes! Minsta testad: <span className="font-mono font-bold">{lastAll.durationMs}ms</span>
                 </p>
                 <div className="flex gap-2 mt-2">
-                  <Button size="sm" onClick={() => { setBleMinInterval(lastSeen.durationMs); setSaved(true); }} className="text-xs gap-1">
-                    Spara som BLE-intervall ({lastSeen.durationMs}ms)
+                  <Button size="sm" onClick={() => { setBleMinInterval(lastAll.durationMs); setSaved(true); }} className="text-xs gap-1">
+                    Spara ({lastAll.durationMs}ms)
                   </Button>
                 </div>
                 {saved && <p className="text-[10px] text-primary mt-1">✓ Sparat! Scheduler använder nu {getBleMinInterval()}ms</p>}
@@ -253,14 +259,14 @@ function BleSpeedTab({ conn }: { conn: any }) {
             <thead>
               <tr className="text-muted-foreground border-b border-border/20">
                 <th className="px-2 py-1 text-left">Puls</th>
-                <th className="px-2 py-1 text-right">Syntes</th>
+                <th className="px-2 py-1 text-right">Svar</th>
               </tr>
             </thead>
             <tbody>
               {results.map((r, i) => (
-                <tr key={i} className={`border-b border-border/10 ${r.seen ? '' : 'text-red-400'}`}>
+                <tr key={i} className={`border-b border-border/10 ${r.answer === 'all' ? '' : r.answer === 'partial' ? 'text-yellow-400' : 'text-red-400'}`}>
                   <td className="px-2 py-0.5">{r.durationMs}ms</td>
-                  <td className="px-2 py-0.5 text-right">{r.seen ? '✓' : '✗'}</td>
+                  <td className="px-2 py-0.5 text-right">{r.answer === 'all' ? '✓ 3/3' : r.answer === 'partial' ? '◐ 1–2' : '✗ 0'}</td>
                 </tr>
               ))}
             </tbody>
