@@ -166,19 +166,34 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     }
   }, [savedAgcState]);
 
-  // Flush recorded samples on curve change
+  // Flush recorded samples on curve change — only save complete recordings
   useEffect(() => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
-      const agc: AgcState = {
-        agcMin: agcMinRef.current,
-        agcMax: agcMaxRef.current,
-        agcPeakMax: agcPeakMaxRef.current,
-        avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
-      };
-      onSaveCurveRef.current(prev, volumeRef.current ?? null, agc);
+      const dur = durationMsRef.current;
+      const firstT = prev[0].t;
+      const lastT = prev[prev.length - 1].t;
+      const durationSec = dur ? dur / 1000 : 0;
+      // Complete = started within first 15s AND reached last 15s of song
+      const startedEarly = firstT < 15;
+      const finishedLate = durationSec > 0 && lastT > (durationSec - 15);
+      const isComplete = startedEarly && finishedLate;
+      
+      if (isComplete) {
+        const agc: AgcState = {
+          agcMin: agcMinRef.current,
+          agcMax: agcMaxRef.current,
+          agcPeakMax: agcPeakMaxRef.current,
+          avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
+        };
+        console.log('[MicPanel] ✓ complete recording', prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+        onSaveCurveRef.current(prev, volumeRef.current ?? null, agc);
+      } else {
+        console.log('[MicPanel] ✗ discarding incomplete recording', prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+      }
     }
     recordedSamplesRef.current = [];
+    recordingStartPosRef.current = null;
     lastRecordTimeRef.current = 0;
   }, [energyCurve]);
 
