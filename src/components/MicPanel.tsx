@@ -72,7 +72,10 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          const normalized = Math.min(1, smoothed / 0.25);
+          // Scale RMS divisor by Sonos volume — lower volume = lower divisor = same brightness range
+          const vol = volumeRef.current;
+          const rmsDivisor = vol != null ? Math.max(0.01, 0.25 * (vol / 100)) : 0.25;
+          const normalized = Math.min(1, smoothed / rmsDivisor);
           const pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
 
           // White kick
