@@ -25,6 +25,7 @@ interface SongEnergyCurveResult {
   savedAgcState: AgcState | null;
   bpm: number | null;
   sections: SongSection[] | null;
+  drops: Drop[] | null;
   loading: boolean;
   saveCurve: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
 }
