@@ -1,0 +1,1 @@
+ALTER TABLE public.live_session ADD COLUMN IF NOT EXISTS debug_state jsonb;

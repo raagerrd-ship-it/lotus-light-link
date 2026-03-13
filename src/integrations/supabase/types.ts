@@ -53,6 +53,7 @@ export type Database = {
           color_b: number | null
           color_g: number | null
           color_r: number | null
+          debug_state: Json | null
           device_name: string | null
           duration_ms: number | null
           id: string
@@ -70,6 +71,7 @@ export type Database = {
           color_b?: number | null
           color_g?: number | null
           color_r?: number | null
+          debug_state?: Json | null
           device_name?: string | null
           duration_ms?: number | null
           id?: string
@@ -87,6 +89,7 @@ export type Database = {
           color_b?: number | null
           color_g?: number | null
           color_r?: number | null
+          debug_state?: Json | null
           device_name?: string | null
           duration_ms?: number | null
           id?: string
