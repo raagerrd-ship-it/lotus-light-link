@@ -35,8 +35,7 @@ export function drawIntensityChart(
   if (len <= 1) return;
 
   ctx.clearRect(0, 0, w, h);
-  const gb = Math.max(0, Math.min(1, globalBrightness));
-  ctx.globalAlpha = 0.15 + gb * 0.85;
+  ctx.globalAlpha = 1;
 
   const chartHeight = h * 0.92;
   const chartTop = (h - chartHeight) / 2;
