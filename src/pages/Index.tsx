@@ -4,7 +4,7 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendColor, sendBrightness, sendPower,
-  type BLEConnection
+  type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { Power, Bluetooth, Zap, Loader2, Eye, EyeOff, Activity } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
@@ -31,6 +31,7 @@ const Index = () => {
   const [autoDriftMs, setAutoDriftMs] = useState(0);
   const [currentSection, setCurrentSection] = useState<SongSection | null>(null);
   const [showDebug] = useState(true);
+  const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [agcEnabled, setAgcEnabled] = useState(() => localStorage.getItem("agcEnabled") !== "false");
   const [maxBrightness, setMaxBrightness] = useState(() => {
     const stored = localStorage.getItem("maxBrightness");
@@ -81,9 +82,10 @@ const Index = () => {
 
     const ac = new AbortController();
     setBusy(true);
-    autoReconnect(ac.signal).then((conn) => {
+    autoReconnect(ac.signal, setBleReconnectStatus).then((conn) => {
       if (conn) finishConnect(conn);
       else setBusy(false);
+      setBleReconnectStatus(null);
     });
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -236,6 +238,11 @@ const Index = () => {
           source={nowPlaying?.source}
           sonosVolume={nowPlaying?.volume}
           gainMode={agcEnabled ? 'agc' : 'manual'}
+          liveBpm={liveBpm}
+          maxBrightness={maxBrightness}
+          bleConnected={!!connection}
+          bleDeviceName={connection?.device?.name}
+          bleReconnectStatus={bleReconnectStatus}
         />
       )}
 

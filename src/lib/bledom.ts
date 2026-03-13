@@ -72,22 +72,37 @@ async function connectAfterAdvertisement(device: any, timeoutMs = 20000): Promis
   });
 }
 
+// Auto-reconnect status for UI feedback
+export interface BleReconnectStatus {
+  attempt: number;
+  maxAttempts: number;
+  phase: 'getDevices' | 'directGatt' | 'advScan' | 'waiting' | 'done' | 'failed';
+  targetName?: string;
+  error?: string;
+}
+
 // Auto-reconnect: retry loop — keeps trying until connected or unmounted
 // Returns a promise that resolves when connected, or null if aborted via signal
-export async function autoReconnect(signal?: AbortSignal): Promise<BLEConnection | null> {
+export async function autoReconnect(signal?: AbortSignal, onStatus?: (s: BleReconnectStatus) => void): Promise<BLEConnection | null> {
   const nav = navigator as any;
   if (!nav.bluetooth?.getDevices) return null;
 
-  const MAX_ATTEMPTS = 100; // effectively forever (~30min)
+  const MAX_ATTEMPTS = 100;
   const RETRY_DELAY = 1000;
+
+  const report = (s: BleReconnectStatus) => { onStatus?.(s); };
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (signal?.aborted) { console.log('[BLE] auto-reconnect aborted'); return null; }
 
     try {
+      report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'getDevices' });
       const devices = await nav.bluetooth.getDevices();
       console.log(`[BLE] attempt ${attempt + 1}, paired devices: ${devices.length}`, devices.map((d: any) => d.name || d.id));
-      if (!devices.length) return null; // no permission at all — give up
+      if (!devices.length) {
+        report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'failed', error: 'Inga ihopparade enheter' });
+        return null;
+      }
 
       const saved = getLastDevice();
       const namedMatch = devices.find(
@@ -95,23 +110,31 @@ export async function autoReconnect(signal?: AbortSignal): Promise<BLEConnection
       );
       const target = devices.find((d: any) => d.id === saved?.id) ?? namedMatch ?? devices[0];
       if (!target) return null;
+      const targetName = target.name || target.id;
 
-      // Try direct GATT first (fast if device is nearby)
+      // Try direct GATT first
       try {
-        console.log(`[BLE] trying direct GATT to ${target.name || target.id}...`);
-        return await connectToDevice(target);
+        report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'directGatt', targetName });
+        console.log(`[BLE] trying direct GATT to ${targetName}...`);
+        const conn = await connectToDevice(target);
+        report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'done', targetName });
+        return conn;
       } catch (e: any) {
         console.log(`[BLE] direct GATT failed: ${e.message}, trying advertisements...`);
-        // Fall back to advertisement watching (up to 20s)
+        report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'advScan', targetName, error: e.message });
         const conn = await connectAfterAdvertisement(target, 20000);
-        if (conn) return conn;
+        if (conn) {
+          report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'done', targetName });
+          return conn;
+        }
         console.log('[BLE] advertisement scan timed out, retrying...');
       }
     } catch (e: any) {
       console.log(`[BLE] attempt ${attempt + 1} error: ${e.message}`);
+      report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'failed', error: e.message });
     }
 
-    // Wait before retrying
+    report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'waiting' });
     if (signal?.aborted) return null;
     await new Promise((r) => setTimeout(r, RETRY_DELAY));
   }
