@@ -87,7 +87,7 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const targetColorRef = useRef(currentColor);
   const prevColorRef = useRef(currentColor);
   const colorTransitionStartRef = useRef(0);
-  const COLOR_FADE_MS = 500;
+  const COLOR_FADE_MS = 120;
 
   useEffect(() => {
     // When the target color changes, start a fade from current interpolated color
