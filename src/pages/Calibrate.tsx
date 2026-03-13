@@ -1,10 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, RotateCcw, Play, Square, Check, RefreshCw } from "lucide-react";
+import { ArrowLeft, Play, Square, Check, RefreshCw } from "lucide-react";
 import {
   getCalibration, saveCalibration,
-  applyColorCalibration, DEFAULT_CALIBRATION,
   setActiveDeviceName, loadCalibrationFromCloud,
   saveBleSpeedToCloud, saveLatencyToCloud,
   type LightCalibration, type LatencyResults,
