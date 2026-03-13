@@ -23,6 +23,7 @@ interface MicPanelProps {
   beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
 }
 
 const HISTORY_LEN = 120;
