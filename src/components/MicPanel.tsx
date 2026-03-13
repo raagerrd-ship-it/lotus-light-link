@@ -23,6 +23,7 @@ interface MicPanelProps {
   beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
 }
 
 const HISTORY_LEN = 120;
@@ -95,7 +96,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -132,6 +133,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
   const sectionsRef = useRef(sections);
   const dropsRef = useRef(drops);
   const sonosRttRef = useRef(sonosRtt);
+  const onLiveStatusRef = useRef(onLiveStatus);
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
 
@@ -145,6 +147,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { dropsRef.current = drops; }, [drops]);
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
+  useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
@@ -510,6 +513,14 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, ener
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
           }
           chartDirtyRef.current = true;
+
+          // Notify live session
+          onLiveStatusRef.current?.({
+            brightness: bright,
+            color: [r, g, b],
+            sectionType: undefined,
+            isWhiteKick: performance.now() < whiteKickUntilRef.current,
+          });
         });
 
         worker.postMessage("start");

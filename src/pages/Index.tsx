@@ -9,8 +9,9 @@ import {
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
-import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings } from "lucide-react";
+import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor, Radio } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
+import MonitorView from "@/components/MonitorView";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { useSongEnergyCurve } from "@/hooks/useSongEnergyCurve";
@@ -19,8 +20,12 @@ import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
+import { useLiveSessionWriter } from "@/hooks/useLiveSession";
+import { getCurrentSection } from "@/lib/sectionLighting";
+
 const Index = () => {
   const navigate = useNavigate();
+  const [isMaster, setIsMaster] = useState(() => localStorage.getItem("deviceRole") !== "monitor");
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +44,7 @@ const Index = () => {
 
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
+  const { update: updateLiveSession } = useLiveSessionWriter();
 
   // Energy curve: lookup saved curve for current track
   const trackKey = useMemo(() => {
@@ -51,24 +57,87 @@ const Index = () => {
 
   // Poll e2e latency metric
   useEffect(() => {
+    if (!isMaster) return;
     const id = setInterval(() => setTickToWriteMs(getLastTickToWriteMs()), 500);
     return () => clearInterval(id);
+  }, [isMaster]);
+
+  // Push now-playing info to live session when master
+  useEffect(() => {
+    if (!isMaster) return;
+    const posFn = getPosition;
+    const pos = posFn?.();
+    updateLiveSession({
+      track_name: nowPlaying?.trackName ?? null,
+      artist_name: nowPlaying?.artistName ?? null,
+      album_art_url: nowPlaying?.albumArtUrl ?? null,
+      bpm: bpm ?? null,
+      is_playing: nowPlaying?.playbackState === "PLAYBACK_STATE_PLAYING",
+      position_ms: pos?.positionMs ?? 0,
+      duration_ms: nowPlaying?.durationMs ?? 0,
+      device_name: connection?.device?.name ?? null,
+    });
+  }, [isMaster, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, bpm, connection?.device?.name]);
+
+  // Live status callback from MicPanel
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => {
+    if (!isMaster) return;
+    const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
+    // Get current section
+    const posFn = getPosition;
+    const pos = posFn?.();
+    let sectionType: string | undefined;
+    if (sections && pos) {
+      const elapsed = performance.now() - pos.receivedAt;
+      const sec = getCurrentSection(sections, (pos.positionMs + elapsed) / 1000);
+      sectionType = sec?.type;
+    }
+    updateLiveSession({
+      color_r: r,
+      color_g: g,
+      color_b: b,
+      brightness: status.brightness,
+      section_type: sectionType ?? null,
+    });
+  }, [isMaster, updateLiveSession, getPosition, sections]);
+
+  // Toggle role
+  const toggleRole = useCallback(() => {
+    setIsMaster(prev => {
+      const next = !prev;
+      localStorage.setItem("deviceRole", next ? "master" : "monitor");
+      return next;
+    });
   }, []);
 
+  // If monitor mode, render MonitorView
+  if (!isMaster) {
+    return (
+      <div className="relative h-[100dvh]">
+        <MonitorView />
+        <button
+          onClick={toggleRole}
+          className="absolute top-3 right-3 z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase bg-secondary/80 text-muted-foreground backdrop-blur-lg border border-border/50 active:scale-95 transition-transform"
+          style={{ paddingTop: 'max(0.375rem, env(safe-area-inset-top))' }}
+        >
+          <Radio className="w-3 h-3" />
+          Byt till Master
+        </button>
+      </div>
+    );
+  }
+
   // Auto-hide overlay after 3s
-  const resetOverlayTimer = useCallback(() => {
+  const resetOverlayTimer = () => {
     setShowOverlay(true);
     if (!autoHide) return;
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
-  }, [autoHide]);
+  };
 
-  useEffect(() => {
-    if (connection) resetOverlayTimer();
-    return () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); };
-  }, [connection, resetOverlayTimer]);
+  // ── Master mode (existing UI) ──
 
-  const finishConnect = useCallback(async (conn: BLEConnection) => {
+  const finishConnect = async (conn: BLEConnection) => {
     setConnection(conn);
     setBleConnection(conn);
     setBusy(false);
@@ -76,11 +145,9 @@ const Index = () => {
     await sendPower(conn.characteristic, true);
     await sendBrightness(conn.characteristic, 100);
 
-    // Apply color calibration to initial color
     const calibrated = applyColorCalibration(...currentColorRef.current);
     await sendColor(conn.characteristic, ...calibrated).catch(() => {});
 
-    // Load calibration from cloud for this device
     const deviceName = conn.device?.name;
     if (deviceName) {
       setActiveDeviceName(deviceName);
@@ -90,7 +157,6 @@ const Index = () => {
           if (data.bleMinIntervalMs != null) {
             setBleMinInterval(data.bleMinIntervalMs);
           }
-          console.log('[Index] loaded cloud calibration for', deviceName, data);
         }
       }).catch(() => {});
     }
@@ -100,52 +166,9 @@ const Index = () => {
       setBleConnection(null);
       setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || undefined });
     });
-  }, []);
+  };
 
-  // Auto-reconnect whenever disconnected
-  useEffect(() => {
-    if (connection) return;
-    const nav = navigator as any;
-    if (!nav.bluetooth) return;
-    if (!nav.bluetooth.getDevices) return;
-
-    const ac = new AbortController();
-    setBusy(true);
-    setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'getDevices' });
-    autoReconnect(ac.signal, setBleReconnectStatus).then((conn) => {
-      if (conn) {
-        finishConnect(conn);
-        setBleReconnectStatus({ attempt: 0, maxAttempts: 0, phase: 'done', targetName: conn.device?.name });
-      } else {
-        setBusy(false);
-        setBleReconnectStatus(prev => prev?.phase === 'done' ? prev : { attempt: 0, maxAttempts: 0, phase: 'failed', error: 'Gav upp efter alla försök' });
-      }
-    });
-    return () => ac.abort();
-  }, [connection, finishConnect]);
-
-  // Extract palette from album art
-  useEffect(() => {
-    const artUrl = nowPlaying?.albumArtUrl;
-    if (!artUrl || artUrl === lastArtUrlRef.current) return;
-    lastArtUrlRef.current = artUrl;
-    // Run palette extraction off the critical path
-    const run = () => {
-      extractPalette(artUrl, 4).then((colors) => {
-        if (colors.length === 0) return;
-        setPalette(colors);
-        paletteIndexRef.current = 0;
-        setCurrentColor(colors[0]);
-      });
-    };
-    if ('requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(run, { timeout: 500 });
-    } else {
-      setTimeout(run, 0);
-    }
-  }, [nowPlaying?.albumArtUrl]);
-
-  const handleConnect = useCallback(async (scanAll = false) => {
+  const handleConnect = async (scanAll = false) => {
     setBusy(true);
     setError(null);
     try {
@@ -154,7 +177,7 @@ const Index = () => {
       setError(e.message || "Kunde inte ansluta");
       setBusy(false);
     }
-  }, [finishConnect]);
+  };
 
   const handlePowerToggle = async () => {
     if (!connection) return;
@@ -175,7 +198,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} onSaveEnergyCurve={saveCurve} />
+        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
@@ -209,6 +232,15 @@ const Index = () => {
             )}
           </div>
           <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleRole}
+              className="rounded-full h-7 px-2.5 text-[10px] font-bold tracking-wide active:scale-90 transition-all duration-200 text-muted-foreground"
+            >
+              <Monitor className="w-3.5 h-3.5 mr-1" />
+              Monitor
+            </Button>
             <Button
               variant="ghost"
               size="sm"
