@@ -678,6 +678,108 @@ function LatencyTab({ conn, onSave }: { conn: any; onSave: (ms: number, latency:
   );
 }
 
+function CurrentCalibrationPanel({ cal }: { cal: LightCalibration }) {
+  const changed = (key: keyof LightCalibration) => cal[key] !== DEFAULT_CALIBRATION[key];
+  const row = (label: string, key: keyof LightCalibration, unit = '') => (
+    <div className={`flex justify-between text-[10px] font-mono ${changed(key) ? 'text-foreground' : 'text-muted-foreground'}`}>
+      <span>{label}</span>
+      <span>{typeof cal[key] === 'number' ? (cal[key] as number).toFixed(key.startsWith('gamma') || key === 'saturationBoost' ? 2 : 0) : String(cal[key])}{unit}</span>
+    </div>
+  );
+
+  return (
+    <div className="border border-border/30 rounded-md px-3 py-2 space-y-0.5">
+      <p className="text-[10px] font-bold text-foreground/70 mb-1">Aktuell kalibrering</p>
+      <div className="grid grid-cols-2 gap-x-4">
+        <div className="space-y-0.5">
+          <p className="text-[9px] text-muted-foreground font-bold">Färg</p>
+          {row('Gamma R', 'gammaR')}
+          {row('Gamma G', 'gammaG')}
+          {row('Gamma B', 'gammaB')}
+          {row('Offset R', 'offsetR')}
+          {row('Offset G', 'offsetG')}
+          {row('Offset B', 'offsetB')}
+          {row('Mättnad', 'saturationBoost', '×')}
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-[9px] text-muted-foreground font-bold">Ljus & dynamik</p>
+          {row('Min ljus', 'minBrightness', '%')}
+          {row('Max ljus', 'maxBrightness', '%')}
+          {row('Attack α', 'attackAlpha')}
+          {row('Release α', 'releaseAlpha')}
+          {row('Kick tröskel', 'whiteKickThreshold', '%')}
+          {row('Kick tid', 'whiteKickMs', 'ms')}
+          {row('BLE latens', 'bleLatencyMs', 'ms')}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalibrationHistory({ deviceName }: { deviceName: string | null }) {
+  const [entries, setEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!deviceName) return;
+    setLoading(true);
+    const data = await listCalibrationsFromCloud(deviceName);
+    setEntries(data);
+    setLoading(false);
+  }, [deviceName]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    await deleteCalibrationFromCloud(id);
+    setEntries(prev => prev.filter(e => e.id !== id));
+  }, []);
+
+  if (!deviceName) return <p className="text-[10px] text-muted-foreground">Anslut BLE-lampa för att se historik.</p>;
+
+  return (
+    <div className="border border-border/30 rounded-md px-3 py-2">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[10px] font-bold text-foreground/70">Historik — {deviceName}</p>
+        <button onClick={load} className="text-[10px] text-muted-foreground hover:text-foreground">
+          <RefreshCw className="w-3 h-3" />
+        </button>
+      </div>
+      {loading && <p className="text-[10px] text-muted-foreground">Laddar…</p>}
+      {!loading && entries.length === 0 && <p className="text-[10px] text-muted-foreground">Inga poster.</p>}
+      {!loading && entries.length > 0 && (
+        <div className="space-y-1 max-h-60 overflow-y-auto">
+          {entries.map((e) => {
+            const cal = e.calibration as Record<string, number> | null;
+            const lat = e.latency_results as LatencyResults | null;
+            const spd = e.ble_speed_results as Record<string, number> | null;
+            const date = new Date(e.updated_at);
+            return (
+              <div key={e.id} className="border border-border/20 rounded px-2 py-1.5 text-[10px] font-mono space-y-0.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">{date.toLocaleDateString('sv')} {date.toLocaleTimeString('sv', { hour: '2-digit', minute: '2-digit' })}</span>
+                  <button onClick={() => handleDelete(e.id)} className="text-muted-foreground hover:text-destructive p-0.5">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-foreground/70">
+                  {e.ble_min_interval_ms != null && <span>BLE: {e.ble_min_interval_ms}ms</span>}
+                  {cal?.bleLatencyMs != null && <span>Latens: {cal.bleLatencyMs}ms</span>}
+                  {lat?.tapMs != null && <span>Tap: {lat.tapMs}ms</span>}
+                  {lat?.metroMs != null && <span>Metro: {lat.metroMs}ms</span>}
+                  {lat?.gattRoundtripMs != null && <span>GATT: {lat.gattRoundtripMs}ms</span>}
+                  {lat?.verified && <span className="text-primary">✓</span>}
+                  {spd && Object.entries(spd).map(([k, v]) => <span key={k}>{k}: {v}ms</span>)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Calibrate() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('ble');
@@ -751,6 +853,12 @@ export default function Calibrate() {
           const deviceName = conn?.device?.name;
           if (deviceName) saveLatencyToCloud(deviceName, latency);
         }} />}
+      </div>
+
+      {/* Current calibration + history */}
+      <div className="mt-6 space-y-3">
+        <CurrentCalibrationPanel cal={cal} />
+        <CalibrationHistory deviceName={conn?.device?.name ?? null} />
       </div>
     </div>
   );
