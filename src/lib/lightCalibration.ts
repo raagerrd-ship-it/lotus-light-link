@@ -105,6 +105,38 @@ export function saveBleSpeedToCloud(deviceName: string, bleMinIntervalMs: number
   });
 }
 
+/** List all calibration entries for a device, newest first. */
+export async function listCalibrationsFromCloud(deviceName: string) {
+  try {
+    const { data, error } = await (supabase as any)
+      .from('device_calibration')
+      .select('id, device_name, calibration, ble_min_interval_ms, ble_speed_results, latency_results, updated_at')
+      .eq('device_name', deviceName)
+      .order('updated_at', { ascending: false });
+    if (error || !data) return [];
+    return data as Array<{
+      id: string;
+      device_name: string;
+      calibration: any;
+      ble_min_interval_ms: number | null;
+      ble_speed_results: Record<string, number> | null;
+      latency_results: LatencyResults | null;
+      updated_at: string;
+    }>;
+  } catch {
+    return [];
+  }
+}
+
+/** Delete a calibration entry by id. */
+export async function deleteCalibrationFromCloud(id: string) {
+  try {
+    await (supabase as any).from('device_calibration').delete().eq('id', id);
+  } catch (e) {
+    console.warn('[calibration] cloud delete failed', e);
+  }
+}
+
 export interface LatencyResults {
   tapMs: number | null;
   metroMs: number | null;
