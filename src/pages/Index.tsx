@@ -21,7 +21,7 @@ import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
-import { useLiveSessionWriter } from "@/hooks/useLiveSession";
+import { useLiveSessionWriter, type MasterDebugState } from "@/hooks/useLiveSession";
 import { getCurrentSection } from "@/lib/sectionLighting";
 
 const Index = () => {
