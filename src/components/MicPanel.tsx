@@ -167,7 +167,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     }
   }, [savedAgcState]);
 
-  // Flush recorded samples on curve change — only save complete recordings
+  // Flush recorded samples on track change — only save complete recordings
+  // Using trackName instead of energyCurve as trigger, because energyCurve
+  // stays null between consecutive unsaved songs and the effect wouldn't fire.
   useEffect(() => {
     const prev = recordedSamplesRef.current;
     if (prev.length > 10 && onSaveCurveRef.current) {
@@ -196,7 +198,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     recordedSamplesRef.current = [];
     recordingStartPosRef.current = null;
     lastRecordTimeRef.current = 0;
-  }, [energyCurve]);
+  }, [trackName]);
 
   useEffect(() => {
     colorRef.current = currentColor;
