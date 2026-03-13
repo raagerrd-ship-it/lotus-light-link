@@ -87,6 +87,8 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
   const rafRef = useRef<number>(0);
   const throttleRef = useRef<number>(0);
   const bleQueueRef = useRef<ReturnType<typeof createBleQueue> | null>(null);
+  const sentBrightnessRef = useRef(3);
+  const sentColorRef = useRef<[number, number, number]>([255, 0, 0]);
   const charRef = useRef<any>(char);
   useEffect(() => { charRef.current = char; }, [char]);
   const punchWhiteRef = useRef(true);
