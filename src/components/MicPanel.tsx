@@ -1,19 +1,14 @@
 import { useEffect, useRef } from "react";
 import { sendColor, sendBrightness } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
+import { getCalibration, applyColorCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
 }
 
-const ATTACK = 0.3;
-const RELEASE = 0.05;
-const MIN_BRIGHT = 3;
-const MAX_BRIGHT = 100;
 const HISTORY_LEN = 120;
-const WHITE_KICK_THRESHOLD = 95; // pct threshold
-const WHITE_KICK_MS = 100;
 
 const MicPanel = ({ char, currentColor }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
