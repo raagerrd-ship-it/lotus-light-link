@@ -16,6 +16,7 @@ export interface ChartSample {
 
 /**
  * Draw the intensity chart — each dot = exact BLE color at exact BLE brightness %.
+ * pct is clamped to 0–100 to prevent drawing outside the chart area.
  */
 export function drawIntensityChart(
   canvas: HTMLCanvasElement,
@@ -41,24 +42,27 @@ export function drawIntensityChart(
   const chartTop = (h - chartHeight) / 2;
   const step = w / (historyLen - 1);
   const offsetX = (historyLen - len) * step;
-  const dotRadius = Math.max(1, step * 0.35);
+  const dotRadius = Math.max(1, Math.min(step * 0.35, 4));
+  const lineWidth = Math.max(1, Math.min(dotRadius * 1.5, 3));
+
+  const clampPct = (p: number) => Math.max(0, Math.min(100, p));
+  const yForPct = (p: number) => chartTop + chartHeight - (clampPct(p) / 100) * chartHeight;
 
   for (let i = 0; i < len; i++) {
     const x = offsetX + i * step;
     const s = samples[i];
-    const y = chartTop + chartHeight - (s.pct / 100) * chartHeight;
+    const y = yForPct(s.pct);
     const color = `rgb(${s.r}, ${s.g}, ${s.b})`;
 
     // Line to previous
     if (i > 0) {
-      const prevS = samples[i - 1];
       const prevX = offsetX + (i - 1) * step;
-      const prevY = chartTop + chartHeight - (prevS.pct / 100) * chartHeight;
+      const prevY = yForPct(samples[i - 1].pct);
       ctx.beginPath();
       ctx.moveTo(prevX, prevY);
       ctx.lineTo(x, y);
       ctx.strokeStyle = color;
-      ctx.lineWidth = dotRadius * 2;
+      ctx.lineWidth = lineWidth;
       ctx.stroke();
     }
 
