@@ -277,6 +277,7 @@ async function _flush() {
   _lastWriteTime = writeStart;
 
   try {
+    // Always: color → 1ms → brightness (matches calibration protocol)
     if (writeColor && _pendingColor) {
       _colorBuf[4] = _pendingColor[0] & 0xff;
       _colorBuf[5] = _pendingColor[1] & 0xff;
@@ -285,6 +286,8 @@ async function _flush() {
       _lastSentColor = [..._pendingColor];
       _pendingColor = null;
       _writeCount++;
+      // 1ms gap before brightness so lamp processes color first
+      if (writeBright) await new Promise(r => setTimeout(r, 1));
     }
 
     if (writeBright && _pendingBright != null) {
