@@ -21,6 +21,10 @@ interface MicPanelProps {
   smoothedRtt?: number;
   onSyncDriftMs?: (driftMs: number) => void;
   onSectionChange?: (section: SongSection | null) => void;
+  agcEnabled?: boolean;
+  manualGain?: number;
+  sonosVolume?: number | null;
+  calibration?: { volume: number; gain: number } | null;
 }
 
 // Priority-aware BLE command queue
