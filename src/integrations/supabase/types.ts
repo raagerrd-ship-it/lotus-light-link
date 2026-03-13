@@ -48,6 +48,7 @@ export type Database = {
         Row: {
           agc_state: Json | null
           artist_name: string
+          beat_grid: Json | null
           bpm: number | null
           created_at: string | null
           drops: Json | null
@@ -61,6 +62,7 @@ export type Database = {
         Insert: {
           agc_state?: Json | null
           artist_name: string
+          beat_grid?: Json | null
           bpm?: number | null
           created_at?: string | null
           drops?: Json | null
@@ -74,6 +76,7 @@ export type Database = {
         Update: {
           agc_state?: Json | null
           artist_name?: string
+          beat_grid?: Json | null
           bpm?: number | null
           created_at?: string | null
           drops?: Json | null

@@ -7,17 +7,20 @@ import { interpolateEnergy, hasKickNear, interpolateSample } from "@/lib/energyI
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
 import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
+import { beatGridPhase, type BeatGrid } from "@/lib/bpmEstimate";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
   sonosVolume?: number;
+  sonosRtt?: number;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
   onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
   recordedVolume?: number | null;
   savedAgcState?: AgcState | null;
   bpm?: number | null;
+  beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
 }
@@ -92,7 +95,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, sections, drops, onSaveEnergyCurve }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, onSaveEnergyCurve }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -125,8 +128,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
   const recordedVolumeRef = useRef(recordedVolume);
   const savedAgcStateRef = useRef(savedAgcState);
   const bpmRef = useRef(bpm);
+  const beatGridRef = useRef(beatGrid);
   const sectionsRef = useRef(sections);
   const dropsRef = useRef(drops);
+  const sonosRttRef = useRef(sonosRtt);
+  const pipelineSumRef = useRef(0);
+  const pipelineCountRef = useRef(0);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
@@ -134,8 +141,10 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
   useEffect(() => { recordedVolumeRef.current = recordedVolume; }, [recordedVolume]);
   useEffect(() => { savedAgcStateRef.current = savedAgcState; }, [savedAgcState]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { beatGridRef.current = beatGrid; }, [beatGrid]);
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { dropsRef.current = drops; }, [drops]);
+  useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
@@ -155,6 +164,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
         agcMin: agcMinRef.current,
         agcMax: agcMaxRef.current,
         agcPeakMax: agcPeakMaxRef.current,
+        avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
       };
       onSaveCurveRef.current(prev, volumeRef.current ?? null, agc);
     }
@@ -380,13 +390,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
           const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0);
           pct = Math.round(pct * sectionParams.brightnessScale);
 
-          // Beat-synced pulse
+          // Beat-synced pulse — use beat grid for precise phase if available
           const currentBpm = bpmRef.current;
+          const grid = beatGridRef.current;
           if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
-            const pulse = beatPulse(posSec2, currentBpm);
-            const pulseBoost = pulse * sectionParams.beatPulseStrength * 15; // max ~15% brightness boost
+            const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
+            const pulse = Math.exp(-phase * 4); // sharp attack, smooth decay
+            const pulseBoost = pulse * sectionParams.beatPulseStrength * 15;
             pct = Math.min(100, Math.round(pct + pulseBoost));
           }
+
+          // Track pipeline latency
+          const tickTotal = performance.now() - tickStart;
+          pipelineSumRef.current += tickTotal;
+          pipelineCountRef.current++;
 
           // Record energy sample for first-listen curve
           if (!hasCurve) {
@@ -404,9 +421,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
                   t: posSec,
                   e: normalized,
                   kick: isKick || undefined,
+                  kickT: isKick ? posSec : undefined,
                   lo: bands.lo,
                   mid: bands.mid,
                   hi: bands.hi,
+                  rtt: sonosRttRef.current ?? undefined,
                 });
               }
             }
@@ -509,6 +528,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
           agcMin: agcMinRef.current,
           agcMax: agcMaxRef.current,
           agcPeakMax: agcPeakMaxRef.current,
+          avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
         };
         onSaveCurveRef.current(recorded, volumeRef.current ?? null, agc);
       }
