@@ -9,7 +9,7 @@ import {
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
-import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor, Radio } from "lucide-react";
+import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import MonitorView from "@/components/MonitorView";
 import DebugOverlay from "@/components/DebugOverlay";
@@ -25,7 +25,12 @@ import { getCurrentSection } from "@/lib/sectionLighting";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [isMaster, setIsMaster] = useState(() => localStorage.getItem("deviceRole") !== "monitor");
+  const [isMaster, setIsMaster] = useState(() => {
+    const forcedRole = new URLSearchParams(window.location.search).get("role");
+    if (forcedRole === "master") return true;
+    if (forcedRole === "monitor") return false;
+    return localStorage.getItem("deviceRole") !== "monitor";
+  });
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,21 +115,24 @@ const Index = () => {
     });
   }, []);
 
+  const activateMaster = useCallback(() => {
+    localStorage.setItem("deviceRole", "master");
+    setIsMaster(true);
+  }, []);
+
   // If monitor mode, render MonitorView
   if (!isMaster) {
     return (
       <div className="relative h-[100dvh]">
         <MonitorView />
-        <button
-          onClick={() => {
-            localStorage.setItem("deviceRole", "master");
-            setIsMaster(true);
-          }}
-          className="absolute top-4 right-4 z-[100] flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold tracking-widest uppercase bg-secondary text-foreground backdrop-blur-lg border border-border active:scale-95 transition-transform cursor-pointer"
-        >
-          <Radio className="w-3.5 h-3.5" />
-          Byt till Master
-        </button>
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[200] px-4 flex justify-center">
+          <button
+            onClick={activateMaster}
+            className="pointer-events-auto w-full max-w-sm h-11 rounded-full text-sm font-bold tracking-wide uppercase bg-secondary text-foreground border border-border shadow-lg active:scale-95 transition-transform"
+          >
+            Aktivera Master på denna enhet
+          </button>
+        </div>
       </div>
     );
   }
