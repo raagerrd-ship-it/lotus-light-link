@@ -115,21 +115,24 @@ const Index = () => {
     });
   }, []);
 
+  const activateMaster = useCallback(() => {
+    localStorage.setItem("deviceRole", "master");
+    setIsMaster(true);
+  }, []);
+
   // If monitor mode, render MonitorView
   if (!isMaster) {
     return (
       <div className="relative h-[100dvh]">
         <MonitorView />
-        <button
-          onClick={() => {
-            localStorage.setItem("deviceRole", "master");
-            setIsMaster(true);
-          }}
-          className="absolute top-4 right-4 z-[100] flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold tracking-widest uppercase bg-secondary text-foreground backdrop-blur-lg border border-border active:scale-95 transition-transform cursor-pointer"
-        >
-          <Radio className="w-3.5 h-3.5" />
-          Byt till Master
-        </button>
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[200] px-4 flex justify-center">
+          <button
+            onClick={activateMaster}
+            className="pointer-events-auto w-full max-w-sm h-11 rounded-full text-sm font-bold tracking-wide uppercase bg-secondary text-foreground border border-border shadow-lg active:scale-95 transition-transform"
+          >
+            Aktivera Master på denna enhet
+          </button>
+        </div>
       </div>
     );
   }
