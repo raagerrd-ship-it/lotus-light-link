@@ -191,9 +191,17 @@ const MicPanel = ({ char, currentColor, sonosVolume, getPosition, energyCurve, r
             // ── Curve-driven mode: interpolate pre-recorded energy ──
             const posSec = getSongPositionSec();
             if (posSec != null) {
-              rms = interpolateEnergy(curve!, posSec);
+              let e = interpolateEnergy(curve!, posSec);
+              // Volume compensation: scale energy by current/recorded volume ratio
+              const recVol = recordedVolumeRef.current;
+              const curVol = volumeRef.current;
+              if (recVol != null && recVol > 0 && curVol != null && curVol > 0) {
+                // Volume is roughly logarithmic, but ratio works well enough
+                e *= (curVol / recVol);
+                e = Math.min(1, e);
+              }
               // Scale to match mic RMS range using AGC state
-              rms *= Math.max(0.01, agcMaxRef.current);
+              rms = e * Math.max(0.01, agcMaxRef.current);
             } else {
               rms = 0;
             }
