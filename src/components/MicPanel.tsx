@@ -660,12 +660,12 @@ export default function MicPanel({ char, currentColor, externalBpm, sonosPositio
       // EMA smoothing for ambient to reduce jitter
       smoothedAmbientRef.current = smoothedAmbientRef.current * 0.85 + agcAmbient * 0.15;
 
-      // Zone 1: Ambient (0–30%) — always active, broad frequency, logarithmic
-      const ambientPct = 30 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
+      // Zone 1: Ambient (0–50%) — always active, broad frequency, logarithmic
+      const ambientPct = 50 * Math.log1p(Math.min(smoothedAmbientRef.current, 1) * 12) / Math.log(13);
 
-      // Zone 2: Groove (30–60%) — requires beat (phase < 0.3 = recent onset, tighter gating)
+      // Zone 2: Groove (50–75%) — requires beat (phase < 0.3 = recent onset, tighter gating)
       const groovePct = (phase < 0.3 && bpmRef.current > 0)
-        ? 30 * curved * sectionBehavior.beatReactivity
+        ? 25 * curved * sectionBehavior.beatReactivity
         : 0;
 
       // Phase-gating threshold for impact/punch
