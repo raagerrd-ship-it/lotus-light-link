@@ -304,6 +304,14 @@ const Index = () => {
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
         tickToWriteMs={tickToWriteMs}
+        curveStatus={
+          curveLoading ? 'loading'
+          : !nowPlaying?.trackName ? 'none'
+          : energyCurve ? 'saved'
+          : 'recording'
+        }
+        curveTrackName={nowPlaying?.trackName ?? null}
+        curveSamples={energyCurve?.length}
       />
     </div>
   );
