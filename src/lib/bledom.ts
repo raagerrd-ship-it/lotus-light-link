@@ -209,9 +209,9 @@ export function getPipelineTimings(): PipelineTimings { return _pipelineTimings;
 let _writeCount = 0;
 let _dropCount = 0;
 let _statsStart = performance.now();
-let _queuedAt = 0;
 let _lastActualWriteMs = 0;
 let _lastTickToWriteMs = 0;
+let _dirtyWhileWriting = false; // Flag: new data arrived during async write
 
 export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
