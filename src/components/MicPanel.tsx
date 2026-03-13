@@ -203,12 +203,10 @@ const MicPanel = ({ char, currentColor, sonosVolume }: MicPanelProps) => {
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
           const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
 
-          // White kick: only trigger on absolute loud moments (absoluteFactor > 0.7)
-          // This prevents white kicks on quiet songs
+          // White kick: only when computed brightness > 95%
           const now = performance.now();
-          const wasWhite = lastColorStateRef.current === 'white';
           const inWhiteKick = now < whiteKickUntilRef.current;
-          if (pct >= cal.whiteKickThreshold && absoluteFactor > 0.7 && !inWhiteKick) {
+          if (pct > 95 && !inWhiteKick) {
             whiteKickUntilRef.current = now + cal.whiteKickMs;
           }
           const isWhite = now < whiteKickUntilRef.current;
