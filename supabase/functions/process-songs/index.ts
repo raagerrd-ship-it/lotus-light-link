@@ -630,9 +630,25 @@ serve(async (req) => {
 
       // Sanitize: remove artifact spikes before any analysis
       const curve = sanitizeCurve(rawCurve);
+      const curveWasCleaned = curve !== rawCurve && curve.some((s, i) => s.rawRms !== rawCurve[i].rawRms);
 
       const updates: Record<string, unknown> = {};
       let needsUpdate = false;
+
+      // If curve was cleaned, save it back and force full reprocessing
+      if (curveWasCleaned) {
+        updates.energy_curve = curve;
+        updates.bpm = null;
+        updates.beat_grid = null;
+        updates.drops = null;
+        updates.dynamic_range = null;
+        updates.transitions = null;
+        updates.beat_strengths = null;
+        updates.sections = null;
+        updates.brightness_curve = null;
+        needsUpdate = true;
+        console.log(`[process-songs] cleaned curve for "${song.track_name}" — forcing full reprocess`);
+      }
 
       // BPM
       let bpm = song.bpm as number | null;
