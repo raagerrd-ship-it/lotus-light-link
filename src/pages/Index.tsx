@@ -73,6 +73,12 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
+  // Pause auto-sync while latency slider is open
+  useEffect(() => {
+    setAutoSyncPaused(showLatencySlider);
+    return () => setAutoSyncPaused(false);
+  }, [showLatencySlider]);
+
   // Extract palette from album art when track changes
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
