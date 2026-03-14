@@ -77,11 +77,13 @@ const Index = () => {
       // Push debug state to live session
       const bleStats = getBleWriteStats();
       const pipeline = getPipelineTimings();
+      const isPlaying = nowPlaying?.playbackState === "PLAYBACK_STATE_PLAYING";
       const curveStatus: MasterDebugState['curveStatus'] =
         curveLoading ? 'loading'
         : !nowPlaying?.trackName ? 'none'
         : energyCurve ? 'saved'
-        : 'recording';
+        : isPlaying ? 'recording'
+        : 'none';
       updateLiveSession({
         debug_state: {
           bleConnected: !!connection,
@@ -103,7 +105,7 @@ const Index = () => {
       });
     }, 500);
     return () => clearInterval(id);
-  }, [isMaster, connection, nowPlaying?.trackName, energyCurve, curveLoading, smoothedRtt]);
+  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.playbackState, energyCurve, curveLoading, smoothedRtt]);
 
   // Push now-playing info to live session when master
   useEffect(() => {
