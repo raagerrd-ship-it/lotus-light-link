@@ -28,7 +28,7 @@ function sectionTypeLabel(type: string): string {
   return SECTION_LABELS[type] ?? type;
 }
 
-export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition, sections }: Props) {
+export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition, sections, processing }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
   const barRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
