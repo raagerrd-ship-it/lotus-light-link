@@ -8,6 +8,7 @@ import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
 import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
 import { beatGridPhase, type BeatGrid } from "@/lib/bpmEstimate";
+import { reportLiveOnset, tickAutoSync, getAutoSyncDriftMs, resetAutoSync } from "@/lib/autoSync";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
@@ -243,6 +244,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     agcMinRef.current = 0;
     samplesRef.current = [];
     resetChartScaler();
+    resetAutoSync();
   }, [currentColor]);
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
@@ -290,10 +292,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     const elapsed = performance.now() - pos.receivedAt;
     const cal = calRef.current;
     const hasCurve = Array.isArray(energyCurveRef.current) && energyCurveRef.current.length > 10;
-    // In curve mode: add chainLatencyMs as look-ahead (compensates full Sonos→lamp chain)
+    // In curve mode: add chainLatencyMs as look-ahead + autoSync drift
     // In mic mode: add bleLatencyMs only (mic already hears the delayed audio)
     const lookAheadMs = hasCurve ? cal.chainLatencyMs : cal.bleLatencyMs;
-    return (pos.positionMs + elapsed + lookAheadMs) / 1000;
+    const driftMs = hasCurve ? getAutoSyncDriftMs() : 0;
+    return (pos.positionMs + elapsed + lookAheadMs + driftMs) / 1000;
   };
 
   useEffect(() => {
@@ -373,12 +376,18 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             }
             rmsEnd = performance.now();
 
-            // Also read mic for curve improvement
+            // Also read mic for curve improvement + auto-sync
             an.getFloatTimeDomainData(buf);
             let sum = 0;
             for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
             const micRms = Math.sqrt(sum / buf.length);
             const bands = computeBands(an, freqBuf);
+
+            // Auto-sync: report mic onset for beat correlation
+            if (posSec != null) {
+              reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
+            }
+            tickAutoSync();
 
             if (posSec != null && micRms > 0.001) {
               const now = performance.now();
