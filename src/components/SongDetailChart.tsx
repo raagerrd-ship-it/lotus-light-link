@@ -106,7 +106,13 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     const sectionBarH = 14;
     const sectionBarTop = chartBottom + 2;
 
+    // Volume normalization: scale all curves as if recorded at reference volume
+    const REFERENCE_VOL = 50;
+    const recVol = data.recorded_volume;
+    const volScale = (recVol && recVol > 0) ? (recVol / REFERENCE_VOL) : 1;
+
     const tToX = (t: number) => (t / maxT) * w;
+    const eToY = (e: number) => chartBottom - Math.min(1, e * volScale) * chartH;
 
     // Draw sections as colored bars
     if (sections && sections.length > 0) {
@@ -162,7 +168,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     ctx.lineWidth = 1;
     for (let i = 0; i < curve.length; i++) {
       const x = tToX(curve[i].t);
-      const y = chartBottom - curve[i].e * chartH;
+      const y = eToY(curve[i].e);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -180,7 +186,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     for (const s of curve) {
       if (s.kick) {
         const x = tToX(s.t);
-        const y = chartBottom - s.e * chartH;
+        const y = eToY(s.e);
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
         ctx.arc(x, y, 1.5, 0, Math.PI * 2);
