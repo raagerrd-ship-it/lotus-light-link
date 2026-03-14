@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
+import { getBleWriteStats, getPipelineTimings, getBleMinInterval } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
