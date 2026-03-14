@@ -488,6 +488,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             color: [r, g, b],
             isWhiteKick: performance.now() < whiteKickUntilRef.current,
             isDrop: performance.now() < dropActiveUntilRef.current,
+            bassLevel: bassRef.current,
+            midHiLevel: midHiRef.current,
           });
         });
 
