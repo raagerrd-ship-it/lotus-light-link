@@ -83,7 +83,7 @@ export default function DebugOverlay({
       <div>drop: {dropActive ? <span className="text-red-400 font-bold animate-pulse">🔥 DROP</span> : <span className="text-foreground/50">—</span>}</div>
 
       {/* Track traits & effects */}
-      {(energy != null || danceability != null || happiness != null) && (
+      {(energy != null || danceability != null || happiness != null || loudness != null) && (
         <div className="mt-0.5 border-t border-border/30 pt-0.5">
           <div className="text-foreground/40 mb-0.5">traits →</div>
           {energy != null && (
@@ -101,6 +101,16 @@ export default function DebugOverlay({
               <span className="text-foreground/40"> mod‑{((0.2 + (happiness / 100) * 0.25)).toFixed(2)} wb‑{Math.round(200 + (1 - happiness / 100) * 55)}</span>
             </div>
           )}
+          {loudness != null && (() => {
+            const m = loudness.match(/-?\d+(\.\d+)?/);
+            const db = m ? parseFloat(m[0]) : null;
+            const factor = db != null ? Math.max(0.4, Math.min(2.0, 1.0 + (db - (-9)) * 0.06)) : null;
+            return (
+              <div>loud: <span className="text-foreground">{loudness}</span>
+                {factor != null && <span className="text-foreground/40"> agc×{factor.toFixed(2)}</span>}
+              </div>
+            );
+          })()}
         </div>
       )}
       <div>max ljus: <span className="text-foreground">{maxBrightness ?? 100}%</span></div>
