@@ -688,6 +688,13 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // Support force-rebake via body
+    let forceRebake = false;
+    try {
+      const body = await req.json();
+      if (body?.reprocess || body?.rebake) forceRebake = true;
+    } catch { /* no body */ }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
