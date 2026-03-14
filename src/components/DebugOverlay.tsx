@@ -80,6 +80,28 @@ export default function DebugOverlay({
       {/* Audio */}
       <div>BPM: <span className="text-foreground">{liveBpm ? Math.round(liveBpm) : '—'}</span></div>
       <div>drop: {dropActive ? <span className="text-red-400 font-bold animate-pulse">🔥 DROP</span> : <span className="text-foreground/50">—</span>}</div>
+
+      {/* Track traits & effects */}
+      {(energy != null || danceability != null || happiness != null) && (
+        <div className="mt-0.5 border-t border-border/30 pt-0.5">
+          <div className="text-foreground/40 mb-0.5">traits →</div>
+          {energy != null && (
+            <div>nrg: <span className="text-foreground">{energy}</span>
+              <span className="text-foreground/40"> kick‑{Math.round((1.0 - (energy / 100) * 0.35) * 100)}% drop+{Math.round((energy / 100) * 50)}%</span>
+            </div>
+          )}
+          {danceability != null && (
+            <div>dnc: <span className="text-foreground">{danceability}</span>
+              <span className="text-foreground/40"> sync‑{Math.round((0.9 - (danceability / 100) * 0.15) * 100)}% kick‑{Math.round((0.12 + (danceability / 100) * 0.08) * 100)}%</span>
+            </div>
+          )}
+          {happiness != null && (
+            <div>hpy: <span className="text-foreground">{happiness}</span>
+              <span className="text-foreground/40"> mod‑{((0.2 + (happiness / 100) * 0.25)).toFixed(2)} wb‑{Math.round(200 + (1 - happiness / 100) * 55)}</span>
+            </div>
+          )}
+        </div>
+      )}
       <div>max ljus: <span className="text-foreground">{maxBrightness ?? 100}%</span></div>
       {dynamicDamping != null && dynamicDamping > 1 && <div>dämpa: <span className="text-foreground">{dynamicDamping.toFixed(1)}x</span></div>}
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>
