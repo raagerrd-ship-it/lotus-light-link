@@ -346,73 +346,47 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           const curve = energyCurveRef.current;
           const hasCurve = Array.isArray(curve) && curve.length > 10;
 
-          let rms: number;
+          let rms: number = 0;
           let rmsEnd: number;
           let curveKick = false;
           let curveLo = 0, curveMid = 0, curveHi = 0;
+          let pct: number;
 
           if (hasCurve) {
-            // ── Curve-driven mode ──
+            // ── Curve mode: deterministic brightness, mic only for sync ──
             const posSec = getSongPositionSec();
+            rmsEnd = performance.now();
+
+            // Read mic solely for auto-sync beat correlation
+            an.getFloatTimeDomainData(buf);
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+            const micRms = Math.sqrt(sum / buf.length);
+
+            if (posSec != null) {
+              reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
+            }
+            tickAutoSync();
+            // Keep smoothedRef updated for onset baseline
+            smoothedRef.current = micRms;
+
+            // Brightness from saved curve — no AGC
+            let normalized = 0;
             if (posSec != null) {
               const sample = interpolateSample(curve!, posSec);
-              let e = sample.e;
+              normalized = sample.e;
+              curveKick = hasKickNear(curve!, posSec);
+              curveLo = sample.lo ?? 0;
+              curveMid = sample.mid ?? 0;
+              curveHi = sample.hi ?? 0;
 
               // Volume compensation
               const recVol = recordedVolumeRef.current;
               const curVol = volumeRef.current;
               if (recVol != null && recVol > 0 && curVol != null && curVol > 0) {
-                e *= (curVol / recVol);
-                e = Math.min(1, e);
+                normalized *= (curVol / recVol);
+                normalized = Math.min(1, normalized);
               }
-
-              rms = e * Math.max(0.01, agcMaxRef.current);
-              curveKick = hasKickNear(curve!, posSec);
-              curveLo = sample.lo ?? 0;
-              curveMid = sample.mid ?? 0;
-              curveHi = sample.hi ?? 0;
-            } else {
-              rms = 0;
-            }
-            rmsEnd = performance.now();
-
-            // Also read mic for curve improvement + auto-sync
-            an.getFloatTimeDomainData(buf);
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-            const micRms = Math.sqrt(sum / buf.length);
-            const bands = computeBands(an, freqBuf);
-
-            // Auto-sync: report mic onset for beat correlation (mic's only role in curve mode)
-            if (posSec != null) {
-              reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
-            }
-            tickAutoSync();
-            // No curve blending — saved curve stays pristine
-          } else {
-            // ── Mic-driven mode ──
-            an.getFloatTimeDomainData(buf);
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-            rms = Math.sqrt(sum / buf.length);
-            rmsEnd = performance.now();
-          }
-
-          let pct: number;
-
-          if (hasCurve) {
-            // ── Curve mode: deterministic brightness from saved curve ──
-            // The curve already provides normalized energy (0–1) — no AGC needed
-            const posSec = getSongPositionSec();
-            const sample = posSec != null ? interpolateSample(curve!, posSec) : null;
-            let normalized = sample?.e ?? 0;
-
-            // Volume compensation
-            const recVol = recordedVolumeRef.current;
-            const curVol = volumeRef.current;
-            if (recVol != null && recVol > 0 && curVol != null && curVol > 0) {
-              normalized *= (curVol / recVol);
-              normalized = Math.min(1, normalized);
             }
 
             // Dynamic damping
@@ -421,9 +395,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             }
 
             pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
-
-            // Keep smoothedRef updated for auto-sync onset baseline
-            smoothedRef.current = rms;
           } else {
             // ── Mic mode: full AGC pipeline ──
             const prevAbsFactor = agcPeakMaxRef.current > 0
