@@ -97,6 +97,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bassRef = useRef(0);
   const brightPctRef = useRef(0);
   const sunRef = useRef<HTMLDivElement>(null);
+  const bpmRef = useRef(bpm);
+  const beatPhaseRef = useRef(0);
+  const lastBeatTimeRef = useRef(0);
 
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
