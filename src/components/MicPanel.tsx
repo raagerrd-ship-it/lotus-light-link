@@ -456,24 +456,27 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           let energyNorm = bassNorm * 0.7 + midHiNorm * 0.3;
 
           // Adaptive center so dynamics still work even if laptop mic compression narrows range
-          const center = dynamicCenterRef.current + (energyNorm - dynamicCenterRef.current) * 0.03;
+          const center = dynamicCenterRef.current + (energyNorm - dynamicCenterRef.current) * 0.008;
           dynamicCenterRef.current = center;
 
           // Dynamic control around adaptive center:
           //   <0 = expand contrast (more punch)
           //    0 = neutral
           //   >0 = compress contrast (smoother)
-          if (cal.dynamicDamping !== 0) {
-            const amount = Math.min(1, Math.abs(cal.dynamicDamping) / 3); // normalize -2..+3 to ~0..1
-            if (cal.dynamicDamping < 0) {
-              const contrast = 1 + amount * 2.5; // up to 3.5x around center
-              energyNorm = center + (energyNorm - center) * contrast;
-            } else {
-              const compression = 1 / (1 + amount * 2.5); // down to ~0.29x around center
-              energyNorm = center + (energyNorm - center) * compression;
-            }
-            energyNorm = Math.max(0, Math.min(1, energyNorm));
+          if (cal.dynamicDamping < 0) {
+            const amount = Math.min(1, Math.abs(cal.dynamicDamping) / 2); // -2 => full strength
+            const gain = 1 + amount * 10; // max 11x slope around center
+            const centered = energyNorm - center;
+            const denom = Math.tanh(0.5 * gain) || 1;
+            const expanded = center + 0.5 * (Math.tanh(centered * gain) / denom);
+            energyNorm = energyNorm * (1 - amount) + expanded * amount;
+          } else if (cal.dynamicDamping > 0) {
+            const amount = Math.min(1, cal.dynamicDamping / 3); // +3 => full smooth
+            const compression = 1 / (1 + amount * 4); // down to 0.2x around center
+            energyNorm = center + (energyNorm - center) * compression;
           }
+
+          energyNorm = Math.max(0, Math.min(1, energyNorm));
 
           const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           const pct = Math.round(rawPct * 100);
