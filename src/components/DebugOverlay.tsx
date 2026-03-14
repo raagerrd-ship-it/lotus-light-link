@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import type { BleReconnectStatus } from "@/lib/bledom";
 import { getBleWriteStats, getPipelineTimings, type BleWriteStats, type PipelineTimings } from "@/lib/bledom";
 
+// Injected by Vite define at build time
+declare const __BUILD_TIME__: string;
+
 interface DebugOverlayProps {
   smoothedRtt: number;
   autoDriftMs: number;
