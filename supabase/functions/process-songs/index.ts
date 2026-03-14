@@ -317,6 +317,53 @@ function analyzeBeatStrengths(curve: EnergySample[], beatGrid: BeatGrid): number
   return strengths.map(s => Math.round((s / maxStrength) * 100) / 100);
 }
 
+// ── Auto-calibration: EMA dynamics grid search ──
+
+function findOptimalDynamics(normalized: number[]): { attack: number; release: number; damping: number } {
+  let bestAttack = 0.3, bestRelease = 0.05, bestDamping = 1.0, bestMSE = Infinity;
+
+  // The "target" is the normalized curve itself — we find EMA params that best track it
+  const runEMA = (attack: number, release: number, damping: number): number => {
+    let smoothed = normalized[0] || 0;
+    let mse = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      const raw = normalized[i];
+      const alpha = raw > smoothed ? attack : release;
+      smoothed += (raw - smoothed) * alpha;
+      const dampedSmoothed = Math.pow(smoothed, 1 / damping);
+      const err = dampedSmoothed - normalized[i];
+      mse += err * err;
+    }
+    return mse / normalized.length;
+  };
+
+  // Coarse grid
+  for (let attack = 0.15; attack <= 0.85; attack += 0.1) {
+    for (let release = 0.03; release <= 0.18; release += 0.03) {
+      for (let damping = 1.0; damping <= 2.5; damping += 0.5) {
+        const mse = runEMA(attack, release, damping);
+        if (mse < bestMSE) { bestMSE = mse; bestAttack = attack; bestRelease = release; bestDamping = damping; }
+      }
+    }
+  }
+
+  // Fine grid around best
+  for (let attack = Math.max(0.1, bestAttack - 0.1); attack <= Math.min(0.9, bestAttack + 0.1); attack += 0.02) {
+    for (let release = Math.max(0.02, bestRelease - 0.03); release <= Math.min(0.2, bestRelease + 0.03); release += 0.005) {
+      for (let damping = Math.max(1.0, bestDamping - 0.5); damping <= Math.min(3.0, bestDamping + 0.5); damping += 0.1) {
+        const mse = runEMA(attack, release, damping);
+        if (mse < bestMSE) { bestMSE = mse; bestAttack = attack; bestRelease = release; bestDamping = damping; }
+      }
+    }
+  }
+
+  return {
+    attack: Math.round(bestAttack * 100) / 100,
+    release: Math.round(bestRelease * 1000) / 1000,
+    damping: Math.round(bestDamping * 10) / 10,
+  };
+}
+
 // ── Main handler ──
 
 serve(async (req) => {
