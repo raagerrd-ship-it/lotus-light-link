@@ -397,6 +397,43 @@ const Index = () => {
         </div>
       )}
 
+      {/* Chain latency slider — visible when curve mode is active */}
+      {showLatencySlider && hasCurve && connection && showOverlay && (
+        <div
+          className="absolute top-[calc(max(0.5rem,env(safe-area-inset-top))+2.5rem)] left-0 right-0 z-20 px-4 py-2 backdrop-blur-lg border-b border-white/5 animate-fade-in"
+          style={{ background: 'hsl(var(--background) / 0.5)' }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap w-16">
+              Fördröj {activeCalibration.chainLatencyMs}ms
+            </span>
+            <input
+              type="range"
+              min={-200}
+              max={800}
+              step={5}
+              value={activeCalibration.chainLatencyMs}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                const next = { ...activeCalibration, chainLatencyMs: val };
+                setActiveCalibration(next);
+                saveCalibration(next, undefined, { localOnly: true });
+              }}
+              onPointerUp={() => {
+                saveCalibration(activeCalibration);
+              }}
+              className="flex-1 h-1 accent-current"
+              style={{ accentColor: accent }}
+            />
+            <button
+              onClick={() => setShowLatencySlider(false)}
+              className="text-[10px] text-muted-foreground active:scale-90 transition-transform"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
       {/* Now playing */}
       {nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
         <div
