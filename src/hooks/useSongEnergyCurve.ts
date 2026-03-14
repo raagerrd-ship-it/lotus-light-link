@@ -289,6 +289,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
                   bpm: null, beat_grid: null, drops: null,
                   dynamic_range: null, transitions: null,
                   beat_strengths: null, sections: null,
+                  brightness_curve: null,
                 })
                 .eq("id", existing.id)
             ).then(() => {
