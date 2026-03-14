@@ -453,24 +453,29 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           // ── Frequency-based brightness ──
           // Blend bass (weight 0.7) and mid/hi (weight 0.3) for overall energy
           let energyNorm = bassNorm * 0.7 + midHiNorm * 0.3;
-          // Apply dynamic damping as power curve on energy BEFORE brightness mapping:
-          //   <0 = more contrast (exponent > 1 → quiet gets darker, loud stays loud)
-          //    0 = linear
-          //   >0 = smoother (exponent < 1 → quiet gets brighter)
-          const preEnergy = energyNorm;
+
+          // Adaptive center so dynamics still work even if laptop mic compression narrows range
+          const center = dynamicCenterRef.current + (energyNorm - dynamicCenterRef.current) * 0.03;
+          dynamicCenterRef.current = center;
+
+          // Dynamic control around adaptive center:
+          //   <0 = expand contrast (more punch)
+          //    0 = neutral
+          //   >0 = compress contrast (smoother)
           if (cal.dynamicDamping !== 0) {
-            const exponent = cal.dynamicDamping < 0
-              ? 1 + Math.abs(cal.dynamicDamping) * 2.5  // -2 → exp 6.0 (much steeper)
-              : 1 / (1 + cal.dynamicDamping * 1.5);      // +2 → exp 0.25
-            energyNorm = Math.pow(energyNorm, exponent);
+            const amount = Math.min(1, Math.abs(cal.dynamicDamping) / 3); // normalize -2..+3 to ~0..1
+            if (cal.dynamicDamping < 0) {
+              const contrast = 1 + amount * 2.5; // up to 3.5x around center
+              energyNorm = center + (energyNorm - center) * contrast;
+            } else {
+              const compression = 1 / (1 + amount * 2.5); // down to ~0.29x around center
+              energyNorm = center + (energyNorm - center) * compression;
+            }
+            energyNorm = Math.max(0, Math.min(1, energyNorm));
           }
+
           const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           const pct = Math.round(rawPct * 100);
-          
-          // Debug log every ~1s
-          if (Math.random() < 0.02) {
-            console.log(`[dyn] dmp=${cal.dynamicDamping.toFixed(1)} energy=${preEnergy.toFixed(3)}→${energyNorm.toFixed(3)} pct=${pct}% range=${cal.minBrightness}-${effectiveMax.toFixed(0)}`);
-          }
 
           // ── Drop detection (uses bassRms, not total RMS) ──
           const DROP_HISTORY_LEN = 120;  // ~2s of history
