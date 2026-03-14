@@ -77,12 +77,13 @@ export function getCalibration(): LightCalibration {
   }
 }
 
-/** Save to localStorage + upsert to cloud (fire-and-forget). */
-export function saveCalibration(cal: LightCalibration, deviceName?: string): void {
+/** Save to localStorage + update latest cloud row (fire-and-forget). 
+ *  Set createNewEntry=true for explicit calibration actions (BLE speed, latency tap). */
+export function saveCalibration(cal: LightCalibration, deviceName?: string, createNewEntry = false): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
   const name = deviceName ?? getActiveDeviceName();
   if (name) {
-    _upsertCloud(name, { calibration: cal });
+    _upsertCloud(name, { calibration: cal }, createNewEntry);
   }
 }
 
