@@ -156,7 +156,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
 
+  // Palette rotation + crossfade
+  const paletteRef = useRef(palette ?? []);
+  const paletteIndexRef = useRef(0);
+  const targetColorRef = useRef<[number, number, number]>(currentColor);
+  const blendedColorRef = useRef<[number, number, number]>(currentColor);
+  const onColorChangeRef = useRef(onColorChange);
+  const rotationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
+  useEffect(() => { onColorChangeRef.current = onColorChange; }, [onColorChange]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
   useEffect(() => { energyRef.current = energy; }, [energy]);
