@@ -422,5 +422,5 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     [track, triggerSectionAnalysis],
   );
 
-  return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, loading, saveCurve };
+  return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, processing, loading, saveCurve };
 }
