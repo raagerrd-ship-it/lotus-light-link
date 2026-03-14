@@ -26,11 +26,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    const url = `https://track-analysis.p.rapidapi.com/track/analysis?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(track)}`;
+    const url = `https://track-analysis.p.rapidapi.com/pktx/analysis?artist=${encodeURIComponent(artist)}&song=${encodeURIComponent(track)}`;
+    console.log('[track-analysis] Fetching:', url);
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
+        'Content-Type': 'application/json',
         'x-rapidapi-host': 'track-analysis.p.rapidapi.com',
         'x-rapidapi-key': apiKey,
       },
