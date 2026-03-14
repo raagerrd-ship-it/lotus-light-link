@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface EnergySample {
   t: number;
-  e: number;
+  e?: number;
   rawRms?: number;
   kick?: boolean;
   lo?: number;
