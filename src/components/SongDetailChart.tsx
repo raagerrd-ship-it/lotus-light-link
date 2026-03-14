@@ -29,6 +29,7 @@ interface BrightnessSample {
 
 interface SongDetailData {
   energy_curve: EnergySample[] | null;
+  brightness_curve: BrightnessSample[] | null;
   sections: SongSection[] | null;
   drops: Drop[] | null;
   bpm: number | null;
