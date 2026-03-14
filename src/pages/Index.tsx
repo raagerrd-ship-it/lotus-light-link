@@ -54,7 +54,8 @@ const Index = () => {
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
   const { update: updateLiveSession } = useLiveSessionWriter();
-  const { bpm } = useBpm(nowPlaying?.trackName ?? null, nowPlaying?.artistName ?? null);
+  const trackTraits = useBpm(nowPlaying?.trackName ?? null, nowPlaying?.artistName ?? null);
+  const bpm = trackTraits.bpm;
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
