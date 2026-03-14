@@ -579,11 +579,10 @@ export default function Calibrate() {
       </div>
 
       <div className="space-y-1">
-        {tab === 'ble' && <BleSpeedTab conn={conn} onSpeedSave={(bests) => {
+        {tab === 'ble' && <BleSpeedTab conn={conn} onSpeedSave={(bestMs) => {
           const deviceName = conn?.device?.name;
           if (deviceName) {
-            const worst = Math.max(...(Object.values(bests) as number[]));
-            saveBleSpeedToCloud(deviceName, worst, bests as Record<string, number>);
+            saveBleSpeedToCloud(deviceName, bestMs, { combined: bestMs });
           }
         }} />}
 
