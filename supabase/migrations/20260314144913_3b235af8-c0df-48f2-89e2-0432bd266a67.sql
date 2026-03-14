@@ -1,0 +1,1 @@
+UPDATE public.song_analysis SET brightness_curve = NULL;
