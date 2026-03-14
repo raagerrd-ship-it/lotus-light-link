@@ -27,6 +27,7 @@ interface DebugOverlayProps {
   energy?: number | null;
   danceability?: number | null;
   happiness?: number | null;
+  loudness?: string | null;
 }
 
 const phaseLabels: Record<string, string> = {
