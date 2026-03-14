@@ -60,6 +60,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   bleLatencyMs: 0,
   chainLatencyMs: 0,
+  dynamicDamping: 1.0,
 
   agcMin: 0,
   agcMax: 0.01,

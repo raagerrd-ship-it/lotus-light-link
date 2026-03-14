@@ -200,9 +200,10 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
       releaseAlpha: liveParams.releaseAlpha,
       minBrightness: liveParams.minBrightness,
       maxBrightness: liveParams.maxBrightness,
+      ...(calibResult?.dynamicDamping != null ? { dynamicDamping: calibResult.dynamicDamping } : {}),
     });
     setPreviewActive(false);
-  }, [liveParams, onSave]);
+  }, [liveParams, calibResult, onSave]);
 
   const handleReset = useCallback(() => {
     if (calibResult) {
