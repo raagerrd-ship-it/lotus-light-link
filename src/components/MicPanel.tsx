@@ -5,7 +5,8 @@ import { getCalibration, saveCalibration, applyColorCalibration, type LightCalib
 import { getActiveDeviceName } from "@/lib/lightCalibration";
 import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
-import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
+import { getSectionLighting, beatPulse, getCurrentBeatStrength, getTransitionParams, type SongSection } from "@/lib/sectionLighting";
+import type { DynamicRange, Transition } from "@/lib/songAnalysis";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
 import { beatGridPhase, type BeatGrid } from "@/lib/bpmEstimate";
 import { reportLiveOnset, tickAutoSync, getAutoSyncDriftMs, resetAutoSync } from "@/lib/autoSync";
