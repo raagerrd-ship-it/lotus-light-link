@@ -206,12 +206,17 @@ export default function MonitorView() {
 
   const handleDeleteSong = async (songId: string, name: string) => {
     if (!confirm(`Ta bort inspelningen "${name}"?\nDen spelas in igen nästa gång låten körs.`)) return;
+    const song = songs.find(s => s.id === songId);
     const { error } = await supabase.from("song_analysis").delete().eq("id", songId);
     if (error) {
       console.error("[Monitor] delete failed", error);
       return;
     }
     setSongs(prev => prev.filter(s => s.id !== songId));
+    // Clear in-memory curve cache so the hook re-fetches from DB
+    if (song) {
+      import("@/hooks/useSongEnergyCurve").then(m => m.clearCurveCache(song.track_name, song.artist_name));
+    }
   };
 
   if (!session) {
