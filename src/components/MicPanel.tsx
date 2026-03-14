@@ -435,17 +435,33 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           // Normalize each band 0-1
           const bassRange = Math.max(AGC_FLOOR, bassAgcMaxRef.current - bassAgcMinRef.current);
-          const bassNorm = Math.min(1, Math.max(0, (micBands.bassRms - bassAgcMinRef.current) / bassRange));
+          const rawBassNorm = Math.min(1, Math.max(0, (micBands.bassRms - bassAgcMinRef.current) / bassRange));
 
           const midHiRange = Math.max(AGC_FLOOR, midHiAgcMaxRef.current - midHiAgcMinRef.current);
-          const midHiNorm = Math.min(1, Math.max(0, (micBands.midHiRms - midHiAgcMinRef.current) / midHiRange));
+          const rawMidHiNorm = Math.min(1, Math.max(0, (micBands.midHiRms - midHiAgcMinRef.current) / midHiRange));
+
+          // Apply user's attack/release smoothing to band values
+          const prevBass = smoothedBassRef.current;
+          const bassAlpha = rawBassNorm > prevBass ? attackA : releaseA;
+          const bassNorm = prevBass + bassAlpha * (rawBassNorm - prevBass);
+          smoothedBassRef.current = bassNorm;
+
+          const prevMidHi = smoothedMidHiRef.current;
+          const midHiAlpha = rawMidHiNorm > prevMidHi ? attackA : releaseA;
+          const midHiNorm = prevMidHi + midHiAlpha * (rawMidHiNorm - prevMidHi);
+          smoothedMidHiRef.current = midHiNorm;
 
           // ── Frequency-based brightness ──
           // Mid/hi (150+ Hz) drives baseline brightness: minBright → 50%
           const MID_HI_CEILING = 50; // mid/hi can only push brightness to 50%
           const baseBright = cal.minBrightness + midHiNorm * (MID_HI_CEILING - cal.minBrightness);
           // Bass (<150 Hz) boosts above baseline up to effectiveMax
-          const pct = Math.round(baseBright + bassNorm * (effectiveMax - baseBright));
+          let rawPct = (baseBright + bassNorm * (effectiveMax - baseBright)) / 100;
+          // Apply dynamic damping to final brightness
+          if (cal.dynamicDamping !== 1.0) {
+            rawPct = Math.pow(rawPct, cal.dynamicDamping);
+          }
+          const pct = Math.round(rawPct * 100);
 
           // ── Drop detection (uses bassRms, not total RMS) ──
           const DROP_HISTORY_LEN = 120;  // ~2s of history
