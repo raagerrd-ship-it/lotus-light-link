@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import type { SonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { getCurrentSection, type SongSection } from "@/lib/sectionLighting";
+import { Loader2 } from "lucide-react";
 
 interface Props {
   nowPlaying: SonosNowPlaying;
@@ -8,6 +9,7 @@ interface Props {
   accentColor?: [number, number, number];
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   sections?: SongSection[] | null;
+  processing?: boolean;
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -26,7 +28,7 @@ function sectionTypeLabel(type: string): string {
   return SECTION_LABELS[type] ?? type;
 }
 
-export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition, sections }: Props) {
+export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPosition, sections, processing }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
   const barRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
@@ -97,6 +99,15 @@ export default function NowPlayingBar({ nowPlaying, bpm, accentColor, getPositio
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {processing && (
+            <span
+              className="flex items-center gap-1 text-[10px] font-medium tracking-wide bg-secondary/60 border px-2 py-0.5 rounded-full animate-pulse"
+              style={{ color: `rgb(${r},${g},${b})`, borderColor: `rgba(${r},${g},${b},0.3)` }}
+            >
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Analyserar
+            </span>
+          )}
           {sectionLabel && (
             <span
               className="text-[10px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-2 py-0.5 rounded-full uppercase"
