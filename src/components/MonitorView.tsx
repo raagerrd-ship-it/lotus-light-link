@@ -52,8 +52,26 @@ function DebugPanel({ d }: { d: MasterDebugState }) {
   );
 }
 
-function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: string, name: string) => void }) {
+function SongList({ songs, onDelete, onLoadMore, hasMore, loadingMore }: {
+  songs: SongRecord[];
+  onDelete: (id: string, name: string) => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  loadingMore: boolean;
+}) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) onLoadMore(); },
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore]);
 
   return (
     <div className="space-y-1">
@@ -93,6 +111,11 @@ function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: str
           )}
         </div>
       ))}
+      {hasMore && (
+        <div ref={sentinelRef} className="flex justify-center py-3">
+          {loadingMore && <span className="text-[10px] text-muted-foreground">Laddar…</span>}
+        </div>
+      )}
     </div>
   );
 }
