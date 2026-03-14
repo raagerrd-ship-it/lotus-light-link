@@ -383,31 +383,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             const micRms = Math.sqrt(sum / buf.length);
             const bands = computeBands(an, freqBuf);
 
-            // Auto-sync: report mic onset for beat correlation
+            // Auto-sync: report mic onset for beat correlation (mic's only role in curve mode)
             if (posSec != null) {
               reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
             }
             tickAutoSync();
-
-            if (posSec != null && micRms > 0.001) {
-              const now = performance.now();
-              if (now - lastRecordTimeRef.current >= CURVE_RECORD_INTERVAL_MS) {
-                lastRecordTimeRef.current = now;
-                const existingRms = interpolateEnergy(curve!, posSec);
-                // Blend raw RMS: 80% existing, 20% new mic reading
-                const peakRms = curvePeakRms(curve!);
-                const existingRawApprox = existingRms * peakRms;
-                const blendedRaw = existingRawApprox * 0.8 + micRms * 0.2;
-                touchRecordingContext();
-                recordedSamplesRef.current.push({
-                  t: posSec,
-                  rawRms: blendedRaw,
-                  lo: bands.lo,
-                  mid: bands.mid,
-                  hi: bands.hi,
-                });
-              }
-            }
+            // No curve blending — saved curve stays pristine
           } else {
             // ── Mic-driven mode ──
             an.getFloatTimeDomainData(buf);
