@@ -234,7 +234,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   // Flush recorded samples on track change
   useEffect(() => {
     flushRecordedSamples('track-change');
-  }, [trackName]);
+  }, [trackName, artistName]);
   useEffect(() => {
     colorRef.current = currentColor;
     lastBaseColorRef.current = currentColor;
