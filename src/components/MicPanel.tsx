@@ -396,7 +396,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
 
             pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
           } else {
-            // ── Mic mode: full AGC pipeline ──
+            // ── Mic mode: read mic + full AGC pipeline ──
+            an.getFloatTimeDomainData(buf);
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+            rms = Math.sqrt(sum / buf.length);
+            rmsEnd = performance.now();
+
             const prevAbsFactor = agcPeakMaxRef.current > 0
               ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current)
               : 1;
