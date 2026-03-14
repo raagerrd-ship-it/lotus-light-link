@@ -141,7 +141,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   // Check if a song still needs server-side processing
   const needsProcessing = useCallback((entry: CacheEntry): boolean => {
     if (!entry.curve) return false;
-    return !entry.bpm || !entry.beatGrid || !entry.sections || !entry.dynamicRange || !entry.drops;
+    return !entry.bpm || !entry.beatGrid || !entry.sections || !entry.dynamicRange || !entry.drops || !entry.brightnessCurve;
   }, []);
 
   // Poll for server-side analysis results
