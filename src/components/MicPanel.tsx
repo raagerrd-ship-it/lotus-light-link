@@ -487,16 +487,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const traitDance = (danceabilityRef.current ?? 50) / 100;
           const traitHappy = (happinessRef.current ?? 50) / 100;
 
-          const dropDurationMod = 1.0 + traitEnergy * 0.5;
-
-          // White = ONLY on drops
-          let isWhite = false;
-          if (isDrop) {
-            isWhite = true;
-            if (dropActiveUntilRef.current > 0) {
-              dropActiveUntilRef.current = lastDropTimeRef.current + DROP_DURATION_MS * dropDurationMod;
-            }
-          }
+          // White = ONLY on drops (duration already includes traitEnergy from detection above)
+          const isWhite = isDrop;
           const smoothEnd = performance.now();
 
           // BLE commands
