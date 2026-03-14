@@ -456,6 +456,14 @@ function computeBrightnessCurve(
 
     // ── Additive concert effects (lightweight modifiers) ──
 
+    // Kick boost: sharp brightness spike on kick-marked samples
+    // Mirrors the white-flash effect from MicPanel but as brightness boost
+    if (sample.kick) {
+      // Boost by 25% of remaining headroom for a punchy transient
+      const headroom = cal.maxBrightness - pct;
+      pct = Math.min(cal.maxBrightness, pct + headroom * 0.4);
+    }
+
     // Build-up: blackout near the end for dramatic contrast
     const buildUp = getBuildUp(t);
     if (buildUp > 0.9) {
