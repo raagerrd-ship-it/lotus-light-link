@@ -938,34 +938,55 @@ export default function Calibrate() {
     });
   }, [conn?.device?.name]);
 
+  // Step completion status
+  const bleCalibrated = cal.bleLatencyMs !== DEFAULT_CALIBRATION.bleLatencyMs || true; // BLE speed auto-saves
+  const chainCalibrated = cal.chainLatencyMs !== 0;
+  const songCalibrated = cal.attackAlpha !== DEFAULT_CALIBRATION.attackAlpha || cal.releaseAlpha !== DEFAULT_CALIBRATION.releaseAlpha;
+
+  const stepStatus = (tab: Tab): 'done' | 'current' | 'pending' => {
+    if (tab === 'ble') return 'done'; // always "done" if they've been here
+    if (tab === 'chain') return chainCalibrated ? 'done' : 'pending';
+    if (tab === 'song') return songCalibrated ? 'done' : 'pending';
+    return 'pending';
+  };
+
   return (
     <div className="min-h-[100dvh] bg-background text-foreground px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-3">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="rounded-full w-8 h-8">
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <h1 className="text-sm font-bold tracking-widest uppercase text-foreground/80">Bas-kalibrering</h1>
+        <div>
+          <h1 className="text-sm font-bold tracking-widest uppercase text-foreground/80">Kalibrering</h1>
+          <p className="text-[10px] text-muted-foreground">Gå igenom stegen i ordning för bästa resultat</p>
+        </div>
         <div className="flex-1" />
         {conn
           ? <span className="text-[10px] font-mono text-primary/70">{conn.device?.name || 'Ansluten'}</span>
-          : <span className="text-[10px] font-mono text-muted-foreground">Ej ansluten</span>
+          : <span className="text-[10px] font-mono text-destructive/70">Ej ansluten</span>
         }
       </div>
 
-      <div className="flex gap-1 mb-4">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-wide transition-colors ${
-              tab === t.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-accent'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Tab bar with step indicators */}
+      <div className="flex gap-1 mb-4 overflow-x-auto">
+        {TABS.map((t) => {
+          const status = t.step ? stepStatus(t.key) : undefined;
+          const isActive = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide transition-colors shrink-0 flex items-center gap-1 ${
+                isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-secondary-foreground hover:bg-accent'
+              }`}
+            >
+              {status === 'done' && !isActive && <span className="text-[9px]">✓</span>}
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="space-y-1">
@@ -976,8 +997,6 @@ export default function Calibrate() {
             saveBleSpeedToCloud(deviceName, worst, bests as Record<string, number>);
           }
         }} />}
-
-
 
         {tab === 'chain' && <ChainSyncTab
           currentChainLatencyMs={cal.chainLatencyMs}
