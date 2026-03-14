@@ -498,6 +498,38 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             }
             // Update bass ref for sun pulse
             bassRef.current = curveLo;
+
+            // ── Sync diag: run mic AGC in parallel to get comparable brightness ──
+            if (syncDiagRef.current) {
+              // Mic AGC pipeline (same as mic-mode but doesn't drive BLE)
+              const micPrev = smoothedRef.current;
+              const micAlpha = micRms > micPrev ? cal.attackAlpha : cal.releaseAlpha;
+              const micSmoothed = micPrev + micAlpha * (micRms - micPrev);
+              // Simple AGC normalization against running peak
+              if (micSmoothed > agcMaxRef.current * 0.5) {
+                // Use existing agc range for rough normalization
+                const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
+                const micNorm = Math.min(1, Math.max(0, (micSmoothed - agcMinRef.current) / range));
+                const micPct = Math.round(cal.minBrightness + micNorm * (cal.maxBrightness - cal.minBrightness));
+                micPctHistoryRef.current.push(micPct);
+              } else {
+                micPctHistoryRef.current.push(0);
+              }
+              curvePctHistoryRef.current.push(pct);
+              if (micPctHistoryRef.current.length > HISTORY_LEN) micPctHistoryRef.current.shift();
+              if (curvePctHistoryRef.current.length > HISTORY_LEN) curvePctHistoryRef.current.shift();
+
+              // Cross-correlate every ~1s (every 30 ticks at ~30fps)
+              syncCorrelationTimerRef.current++;
+              if (syncCorrelationTimerRef.current >= 30) {
+                syncCorrelationTimerRef.current = 0;
+                const shiftSamples = crossCorrelate(micPctHistoryRef.current, curvePctHistoryRef.current, 30);
+                // Convert samples to ms: each sample ≈ tick interval (~33ms at 30fps)
+                const tickIntervalMs = 33;
+                const offsetMs = shiftSamples * tickIntervalMs;
+                onSyncOffsetRef.current?.(offsetMs);
+              }
+            }
           } else {
             // ── Mic mode: read mic + full AGC pipeline ──
             an.getFloatTimeDomainData(buf);
