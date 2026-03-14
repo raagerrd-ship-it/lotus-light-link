@@ -26,11 +26,14 @@ export interface LightCalibration {
   whiteKickThreshold: number; // 80–100 (%)
   whiteKickMs: number;        // 50–300 (ms)
 
-  // BLE latency compensation (ms)
+  // BLE latency compensation (ms) — kept for legacy, not actively used
   bleLatencyMs: number;
 
   // Total chain latency: Sonos timestamp → light visible (ms)
   chainLatencyMs: number;
+
+  // Dynamic damping exponent (1.0 = linear, >1.0 = compress dynamics)
+  dynamicDamping: number;
 
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
@@ -57,6 +60,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   bleLatencyMs: 0,
   chainLatencyMs: 0,
+  dynamicDamping: 1.0,
 
   agcMin: 0,
   agcMax: 0.01,

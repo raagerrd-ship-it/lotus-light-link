@@ -17,11 +17,10 @@ import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 import ChainSyncTab from "@/components/ChainSyncTab";
 import SongCalibrationTab from "@/components/SongCalibrationTab";
 
-type Tab = 'ble' | 'latency' | 'chain' | 'song' | 'songs';
+type Tab = 'ble' | 'chain' | 'song' | 'songs';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ble', label: 'BLE' },
-  { key: 'latency', label: 'Latens' },
   { key: 'chain', label: 'Kedja' },
   { key: 'song', label: 'Låt' },
   { key: 'songs', label: 'Inspelningar' },
@@ -714,7 +713,7 @@ function CurrentCalibrationPanel({ cal }: { cal: LightCalibration }) {
           {row('Release α', 'releaseAlpha')}
           {row('Kick tröskel', 'whiteKickThreshold', '%')}
           {row('Kick tid', 'whiteKickMs', 'ms')}
-          {row('BLE latens', 'bleLatencyMs', 'ms')}
+          {row('Damping', 'dynamicDamping', '×')}
           {row('Kedjelatens', 'chainLatencyMs', 'ms')}
         </div>
       </div>
@@ -955,11 +954,7 @@ export default function Calibrate() {
           }
         }} />}
 
-        {tab === 'latency' && <LatencyTab conn={conn} onSave={(ms, latency) => {
-          update({ bleLatencyMs: ms });
-          const deviceName = conn?.device?.name;
-          if (deviceName) saveLatencyToCloud(deviceName, latency);
-        }} />}
+
 
         {tab === 'chain' && <ChainSyncTab
           currentChainLatencyMs={cal.chainLatencyMs}

@@ -3,8 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Play, Square, Check, RefreshCw } from "lucide-react";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { useSongEnergyCurve } from "@/hooks/useSongEnergyCurve";
-import { hasKickNear, interpolateEnergy } from "@/lib/energyInterpolate";
+import { interpolateSample, curvePeakRms } from "@/lib/energyInterpolate";
 import { nearestBeat } from "@/lib/bpmEstimate";
+import { getBleConnection } from "@/lib/bleStore";
+import { sendColorAndBrightness } from "@/lib/bledom";
+import { getCalibration, applyColorCalibration } from "@/lib/lightCalibration";
 
 interface ChainSyncTabProps {
   onSave: (chainLatencyMs: number) => void;
@@ -16,7 +19,7 @@ interface ChainSyncTabProps {
  *
  * Flow:
  * 1. Play a recorded song on Sonos (system detects it automatically)
- * 2. System drives lamp from saved energy curve (as usual)
+ * 2. System drives lamp from saved energy curve (WITHOUT chainLatencyMs compensation)
  * 3. User taps screen in sync with lamp flashes/beats
  * 4. System compares tap timestamps with curve beat positions
  * 5. Difference = total chain latency
@@ -32,11 +35,71 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
   const [taps, setTaps] = useState<number[]>([]);
   const [offsets, setOffsets] = useState<number[]>([]);
   const [result, setResult] = useState<number | null>(null);
-  const tapStartRef = useRef(0);
 
   const hasCurve = Array.isArray(curve) && curve.length > 10;
   const hasBeats = beatGrid && beatGrid.beats.length > 10;
   const isPlaying = nowPlaying?.playbackState?.includes('PLAYING');
+
+  // Refs for the lamp-driving rAF loop
+  const curveRef = useRef(curve);
+  const getPositionRef = useRef(getPosition);
+  const smoothedRef = useRef(0);
+  const rafRef = useRef(0);
+  const lampActiveRef = useRef(false);
+
+  useEffect(() => { curveRef.current = curve; }, [curve]);
+  useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
+
+  // --- Lamp-driving rAF loop ---
+  // Drives the BLE lamp from the energy curve WITHOUT chainLatencyMs compensation
+  // so the user can measure the actual delay by tapping.
+  useEffect(() => {
+    const shouldDrive = hasCurve && isPlaying && (phase === 'tapping' || phase === 'idle');
+    lampActiveRef.current = shouldDrive;
+    if (!shouldDrive) return;
+
+    const cal = getCalibration();
+
+    const loop = () => {
+      if (!lampActiveRef.current) return;
+
+      const conn = getBleConnection();
+      const c = conn?.characteristic;
+      const crv = curveRef.current;
+      const gp = getPositionRef.current;
+
+      if (c && crv && crv.length > 10 && gp) {
+        const pos = gp();
+        if (pos) {
+          const elapsed = performance.now() - pos.receivedAt;
+          // NO chainLatencyMs here — that's what we're measuring!
+          const posSec = (pos.positionMs + elapsed) / 1000;
+          const sample = interpolateSample(crv, posSec);
+
+          // Simple smoothing
+          const prev = smoothedRef.current;
+          const alpha = sample.e > prev ? cal.attackAlpha : cal.releaseAlpha;
+          const smoothed = prev + alpha * (sample.e - prev);
+          smoothedRef.current = smoothed;
+
+          const pct = Math.round(cal.minBrightness + smoothed * (cal.maxBrightness - cal.minBrightness));
+          const clampedPct = Math.max(0, Math.min(100, pct));
+
+          const baseColor: [number, number, number] = [255, 180, 100];
+          const calibrated = applyColorCalibration(...baseColor, cal);
+          sendColorAndBrightness(c, ...calibrated, clampedPct);
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(loop);
+    };
+
+    rafRef.current = requestAnimationFrame(loop);
+    return () => {
+      lampActiveRef.current = false;
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [hasCurve, isPlaying, phase]);
 
   const getSongPosSec = useCallback((): number | null => {
     const pos = getPosition();
@@ -50,7 +113,7 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
     setTaps([]);
     setOffsets([]);
     setResult(null);
-    tapStartRef.current = performance.now();
+    smoothedRef.current = 0;
   }, []);
 
   const handleTap = useCallback(() => {
@@ -59,16 +122,11 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
     if (posSec == null || !hasBeats) return;
 
     const tapTime = posSec;
-
-    // Find nearest beat in the beat grid
     const nearBeat = nearestBeat(beatGrid!.beats, tapTime);
     if (nearBeat == null) return;
 
-    // Offset = tap position - nearest beat position
-    // Positive means user tapped late (= light is late = need more look-ahead)
+    // Positive means user tapped late = light is late = need more look-ahead
     const offsetMs = (tapTime - nearBeat) * 1000;
-
-    // Only count taps within ±500ms of a beat
     if (Math.abs(offsetMs) > 500) return;
 
     const newTaps = [...taps, tapTime];
@@ -76,7 +134,6 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
     setTaps(newTaps);
     setOffsets(newOffsets);
 
-    // Auto-stop after 16 taps
     if (newTaps.length >= 16) {
       finishTapping(newOffsets);
     }
@@ -87,7 +144,6 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
       setPhase('idle');
       return;
     }
-    // Remove outliers (>2 std devs from mean)
     const mean = offs.reduce((a, b) => a + b, 0) / offs.length;
     const std = Math.sqrt(offs.reduce((a, b) => a + (b - mean) ** 2, 0) / offs.length);
     const filtered = std > 0 ? offs.filter(o => Math.abs(o - mean) <= 2 * std) : offs;
@@ -96,8 +152,6 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
       ? filtered.reduce((a, b) => a + b, 0) / filtered.length
       : mean;
 
-    // The chain latency = measured offset
-    // If user taps late relative to beats, the light is arriving late
     const chainMs = Math.round(finalMean);
     setResult(chainMs);
     setPhase('done');
@@ -142,12 +196,18 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
             {hasBeats ? `${beatGrid!.beats.length} beats (${bpm} BPM)` : 'Saknas'}
           </span>
         </div>
+        {hasCurve && isPlaying && (
+          <div className="flex items-center gap-2 text-[10px] font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            <span className="text-primary">Lampan drivs från kurvan (utan kompensation)</span>
+          </div>
+        )}
       </div>
 
       {!hasCurve && isPlaying && (
         <div className="bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
           <p className="text-[10px] text-destructive">
-            Den här låten har ingen inspelad energikurva. Spela en låt som redan spelats in (se "Inspelade låtar"-fliken).
+            Den här låten har ingen inspelad energikurva. Spela en låt som redan spelats in (se "Inspelningar"-fliken).
           </p>
         </div>
       )}
