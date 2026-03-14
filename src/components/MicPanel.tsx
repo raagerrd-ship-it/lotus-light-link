@@ -217,7 +217,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
         // Post-process: mark kicks using global peak (top 15% of peak rawRms)
         const globalPeak = prev.reduce((max, s) => Math.max(max, s.rawRms), 0);
         if (globalPeak > 0) {
-          const kickThreshold = globalPeak * 0.85;
+          const kickThreshold = globalPeak * 0.70;
           for (const s of prev) {
             if (s.rawRms > kickThreshold) {
               s.kick = true;

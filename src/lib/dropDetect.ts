@@ -128,14 +128,14 @@ export function getBuildUpIntensity(drops: Drop[], timeSec: number): number {
   return 0;
 }
 
-function smoothEnergy(curve: EnergySample[], window: number): number[] {
+function smoothEnergyNormalized(curve: EnergySample[], window: number, peak: number): number[] {
   const result = new Array(curve.length);
   const half = Math.floor(window / 2);
   for (let i = 0; i < curve.length; i++) {
     let sum = 0;
     let count = 0;
     for (let j = Math.max(0, i - half); j <= Math.min(curve.length - 1, i + half); j++) {
-      sum += curve[j].rawRms;
+      sum += curve[j].rawRms / peak;
       count++;
     }
     result[i] = sum / count;
