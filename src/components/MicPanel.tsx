@@ -15,6 +15,7 @@ interface MicPanelProps {
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number }) => void;
+  onColorChange?: (color: [number, number, number]) => void;
 }
 
 /** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
@@ -107,7 +108,10 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, onLiveStatus }: MicPanelProps) => {
+const ROTATION_INTERVAL_MS = 20_000; // rotate palette every 20s
+const CROSSFADE_ALPHA = 0.008;      // per-frame lerp → ~3-5s fade at 60fps
+
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, onLiveStatus, onColorChange }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -152,7 +156,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
 
+  // Palette rotation + crossfade
+  const paletteRef = useRef(palette ?? []);
+  const paletteIndexRef = useRef(0);
+  const targetColorRef = useRef<[number, number, number]>(currentColor);
+  const blendedColorRef = useRef<[number, number, number]>(currentColor);
+  const onColorChangeRef = useRef(onColorChange);
+  const rotationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
+  useEffect(() => { onColorChangeRef.current = onColorChange; }, [onColorChange]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
   useEffect(() => { energyRef.current = energy; }, [energy]);
@@ -160,14 +173,43 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => { happinessRef.current = happiness; }, [happiness]);
   useEffect(() => { loudnessDbRef.current = parseLoudnessDb(loudness); }, [loudness]);
 
+  // When currentColor changes externally, update colorRef but DON'T snap blended
+  // (blended is driven by crossfade; snapping happens only on palette change)
   useEffect(() => {
     colorRef.current = currentColor;
+  }, [currentColor]);
+
+  // Sync palette ref and snap rotation when palette changes (new album art)
+  useEffect(() => {
+    paletteRef.current = palette ?? [];
+    paletteIndexRef.current = 0;
+    if (palette && palette.length > 0) {
+      targetColorRef.current = palette[0];
+      blendedColorRef.current = palette[0];
+      colorRef.current = palette[0];
+    }
+    // Reset AGC on new palette
     lastColorStateRef.current = 'normal';
     agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
     agcMinRef.current = 0;
     samplesRef.current = [];
     resetChartScaler();
-  }, [currentColor]);
+  }, [palette]);
+
+  // Rotation timer: advance palette index every ROTATION_INTERVAL_MS
+  useEffect(() => {
+    if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
+    rotationTimerRef.current = setInterval(() => {
+      const p = paletteRef.current;
+      if (p.length <= 1) return;
+      const nextIdx = (paletteIndexRef.current + 1) % p.length;
+      paletteIndexRef.current = nextIdx;
+      targetColorRef.current = p[nextIdx];
+    }, ROTATION_INTERVAL_MS);
+    return () => {
+      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
 
@@ -200,11 +242,26 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
         }
       }
+      // Crossfade blendedColor toward targetColor
+      const [br, bg, bb] = blendedColorRef.current;
+      const [tr, tg, tb] = targetColorRef.current;
+      const a = CROSSFADE_ALPHA;
+      const nr = br + (tr - br) * a;
+      const ng = bg + (tg - bg) * a;
+      const nb = bb + (tb - bb) * a;
+      blendedColorRef.current = [nr, ng, nb];
+      colorRef.current = [Math.round(nr), Math.round(ng), Math.round(nb)];
+      // Notify parent of color change (throttled: only when integer values change)
+      const rounded: [number, number, number] = [Math.round(nr), Math.round(ng), Math.round(nb)];
+      if (rounded[0] !== Math.round(br) || rounded[1] !== Math.round(bg) || rounded[2] !== Math.round(bb)) {
+        onColorChangeRef.current?.(rounded);
+      }
+
       // Animate sun
       const sun = sunRef.current;
       if (sun) {
         const b = brightPctRef.current / 100;
-        const [cr, cg, cb] = colorRef.current;
+        const [cr, cg, cb] = rounded;
         const ringSpread = 4 + b * 80;
         const outerGlow = 50 + b * 700;
         const farGlow = 100 + b * 900;

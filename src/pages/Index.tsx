@@ -59,6 +59,10 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
+  const handleColorChange = useCallback((color: [number, number, number]) => {
+    setCurrentColor(color);
+  }, []);
+
   // Extract palette from album art when track changes
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
@@ -279,7 +283,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} bpm={bpm} energy={trackTraits.energy} danceability={trackTraits.danceability} happiness={trackTraits.happiness} loudness={trackTraits.loudness} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} bpm={bpm} energy={trackTraits.energy} danceability={trackTraits.danceability} happiness={trackTraits.happiness} loudness={trackTraits.loudness} onLiveStatus={handleLiveStatus} onColorChange={handleColorChange} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
