@@ -413,8 +413,8 @@ function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patc
           <input type="range" min={0} max={100} value={Math.round(Math.min(100, (1 - cal.releaseAlpha * 10) * 100))} onChange={e => onSave({ releaseAlpha: (1 - Number(e.target.value) / 100) / 10 })} className="w-full h-1 accent-primary" />
         </div>
         <div>
-          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Jämnhet: {Math.round(cal.dynamicDamping * 10)}%</span><span className="text-muted-foreground">← Kontrast → Jämn</span></div>
-          <input type="range" min={5} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Dynamik: {cal.dynamicDamping.toFixed(1)}x</span><span className="text-muted-foreground">← Boost (−) · + Jämn</span></div>
+          <input type="range" min={-20} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
         </div>
         <div>
           <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Kick tröskel: {cal.whiteKickThreshold}%</span><span className="text-muted-foreground">← Fler drops → Färre</span></div>
