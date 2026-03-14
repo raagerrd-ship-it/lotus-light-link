@@ -705,7 +705,7 @@ serve(async (req) => {
     // Bake for all songs that have analysis but missing brightness_curve (or were just processed)
     const { data: allForBake } = await supabase
       .from("song_analysis")
-      .select("id, track_name, energy_curve, sections, beat_grid, drops, transitions, beat_strengths, dynamic_range, brightness_curve, bpm, calibration_snapshot")
+      .select("id, track_name, energy_curve, sections, beat_grid, drops, transitions, beat_strengths, dynamic_range, brightness_curve, bpm, calibration_snapshot, agc_state")
       .not("energy_curve", "is", null);
 
     let baked = 0;
@@ -729,6 +729,9 @@ serve(async (req) => {
         maxBrightness: (snapshot.maxBrightness as number) ?? defaultCal.maxBrightness,
       } : defaultCal;
 
+      // Pass saved AGC state from recording session
+      const savedAgc = song.agc_state as AgcState | null;
+
       const bc = computeBrightnessCurve(
         curve,
         song.sections as unknown as SongSection[] | null,
@@ -738,6 +741,7 @@ serve(async (req) => {
         song.beat_strengths as unknown as number[] | null,
         song.dynamic_range as unknown as DynamicRange | null,
         songCal,
+        savedAgc,
       );
 
       await supabase.from("song_analysis").update({ brightness_curve: bc } as any).eq("id", song.id);
