@@ -53,21 +53,24 @@ const PEAK_MAX_DECAY = 0.9998;
 interface BandResult {
   lo: number; mid: number; hi: number;       // normalized 0-1 (relative)
   bassRms: number; midHiRms: number;          // raw RMS values for AGC
+  totalRms: number;                           // total RMS from freq domain
 }
 
 function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer>): BandResult {
   analyser.getFloatFrequencyData(freqData);
   const sampleRate = analyser.context.sampleRate;
   const binWidth = sampleRate / analyser.fftSize;
-  const loCut = Math.floor(150 / binWidth);   // 150 Hz — isolate sub-bass/kick
+  const loCut = Math.floor(150 / binWidth);
   const midCut = Math.floor(2000 / binWidth);
   const bins = freqData.length;
 
   let loSum = 0, midSum = 0, hiSum = 0;
   let loCount = 0, midCount = 0, hiCount = 0;
+  let totalSum = 0;
 
   for (let i = 0; i < bins; i++) {
     const power = Math.pow(10, freqData[i] / 10);
+    totalSum += power;
     if (i < loCut) { loSum += power; loCount++; }
     else if (i < midCut) { midSum += power; midCount++; }
     else { hiSum += power; hiCount++; }
@@ -76,8 +79,8 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   const loAvg = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
   const midAvg = midCount > 0 ? Math.sqrt(midSum / midCount) : 0;
   const hiAvg = hiCount > 0 ? Math.sqrt(hiSum / hiCount) : 0;
+  const totalRms = bins > 0 ? Math.sqrt(totalSum / bins) : 0;
 
-  // Raw RMS per band for brightness pipeline
   const bassRms = loAvg;
   const midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
 
@@ -88,6 +91,7 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
     hi: Math.min(1, hiAvg / maxBand),
     bassRms,
     midHiRms,
+    totalRms,
   };
 }
 
@@ -121,7 +125,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const workerRef = useRef<Worker | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
-  const whiteKickUntilRef = useRef(0);
+  // whiteKickUntilRef removed — drops handle white kicks now
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
@@ -149,8 +153,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const danceabilityRef = useRef(danceability);
   const happinessRef = useRef(happiness);
   const loudnessDbRef = useRef(parseLoudnessDb(loudness));
-  const beatPhaseRef = useRef(0);
-  const lastBeatTimeRef = useRef(0);
+  // beatPhaseRef and lastBeatTimeRef removed — unused dead code
   // Drop detection state — now tracks bassRms only
   const bassHistoryRef = useRef<number[]>([]);
   const dropActiveUntilRef = useRef(0);
@@ -314,7 +317,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
         const worker = new Worker("/tick-worker.js");
         workerRef.current = worker;
-        const buf = new Float32Array(analyser.fftSize);
         const freqBuf = new Float32Array(analyser.frequencyBinCount);
 
         worker.onmessage = () => {
@@ -326,11 +328,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const tickStart = performance.now();
           const cal = calRef.current;
 
-          // ── Live mic mode: read mic + full AGC pipeline ──
-          an.getFloatTimeDomainData(buf);
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-          const rms = Math.sqrt(sum / buf.length);
+          // ── Frequency bands (also computes RMS from freq domain) ──
+          const micBands = computeBands(an, freqBuf);
+          const rms = micBands.totalRms;
           const rmsEnd = performance.now();
 
           const prevAbsFactor = agcPeakMaxRef.current > 0
@@ -391,8 +391,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const absoluteFactor = Math.min(1, Math.max(0.08, (agcMaxRef.current * loudFactor) / agcPeakMaxRef.current));
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
 
-          // ── Frequency bands ──
-          const micBands = computeBands(an, freqBuf);
+          // micBands already computed above
           bassRef.current = micBands.lo;
           midHiRef.current = micBands.midHiRms;
 
@@ -447,14 +446,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           bassHist.push(micBands.bassRms); // bass RMS only!
           if (bassHist.length > DROP_HISTORY_LEN) bassHist.shift();
 
-          const now = performance.now();
+          const now = tickStart; // reuse cached timestamp
           let isDrop = now < dropActiveUntilRef.current;
 
-          if (bassHist.length >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
-            const recentWindow = bassHist.slice(-8);   // last ~130ms
-            const pastWindow = bassHist.slice(-60, -8); // ~130ms-1000ms ago
-            const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
-            const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
+          const len = bassHist.length;
+          if (len >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
+            // Index-based averaging — no slice allocations
+            let recentSum = 0;
+            for (let i = len - 8; i < len; i++) recentSum += bassHist[i];
+            const recentAvg = recentSum / 8;
+            let pastSum = 0;
+            const pastStart = len - 60;
+            const pastEnd = len - 8;
+            for (let i = pastStart; i < pastEnd; i++) pastSum += bassHist[i];
+            const pastAvg = pastSum / (pastEnd - pastStart);
 
             // Much stricter thresholds — drops should be rare and dramatic
             const traitEnergy = (energyRef.current ?? 50) / 100;
@@ -467,7 +472,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             if (pastAvg < quietThreshold && surgeRatio > surgeMin && recentAvg > absMin) {
               // Scale drop duration: massive surges (10x+) get full duration, weaker ones get half
               const surgeStrength = Math.min(1, (surgeRatio - surgeMin) / (surgeMin * 1.5));
-              const dropDur = DROP_DURATION_MS * (0.5 + surgeStrength * 0.5);
+              const dropDurationMod = 1.0 + traitEnergy * 0.5;
+              const dropDur = DROP_DURATION_MS * (0.5 + surgeStrength * 0.5) * dropDurationMod;
               dropActiveUntilRef.current = now + dropDur;
               lastDropTimeRef.current = now;
               isDrop = true;
@@ -486,16 +492,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const traitDance = (danceabilityRef.current ?? 50) / 100;
           const traitHappy = (happinessRef.current ?? 50) / 100;
 
-          const dropDurationMod = 1.0 + traitEnergy * 0.5;
-
-          // White = ONLY on drops
-          let isWhite = false;
-          if (isDrop) {
-            isWhite = true;
-            if (dropActiveUntilRef.current > 0) {
-              dropActiveUntilRef.current = lastDropTimeRef.current + DROP_DURATION_MS * dropDurationMod;
-            }
-          }
+          // White = ONLY on drops (duration already includes traitEnergy from detection above)
+          const isWhite = isDrop;
           const smoothEnd = performance.now();
 
           // BLE commands
@@ -523,15 +521,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bleCallMs: bleEnd - smoothEnd,
             totalTickMs: bleEnd - tickStart,
           });
-
-          // Save AGC state every 10 seconds
-          const nowMs = performance.now();
-          if (nowMs - agcSaveTimerRef.current > 10_000) {
-            agcSaveTimerRef.current = nowMs;
-            const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
-            calRef.current = updated;
-            saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
-          }
         };
 
         onBleWrite((bright, r, g, b) => {
@@ -551,12 +540,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           onLiveStatusRef.current?.({
             brightness: bright,
             color: [r, g, b],
-            isWhiteKick: performance.now() < whiteKickUntilRef.current,
+            isWhiteKick: false,
             isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
           });
         });
+
+        // AGC save on separate interval — out of hot tick path
+        agcSaveTimerRef.current = window.setInterval(() => {
+          if (stopped) return;
+          const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
+          calRef.current = updated;
+          saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
+        }, 10_000);
 
         worker.postMessage("start");
       } catch (e) {
@@ -569,6 +566,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     return () => {
       stopped = true;
       onBleWrite(null);
+      if (agcSaveTimerRef.current) clearInterval(agcSaveTimerRef.current);
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
       streamRef.current?.getTracks().forEach(t => t.stop());
