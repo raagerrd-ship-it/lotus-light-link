@@ -8,7 +8,8 @@ const corsHeaders = {
 
 interface EnergySample {
   t: number;
-  e: number;
+  e?: number;
+  rawRms?: number;
   kick?: boolean;
   lo?: number;
   mid?: number;
@@ -43,21 +44,35 @@ serve(async (req) => {
     const curve = song.energy_curve as EnergySample[];
     if (!Array.isArray(curve) || curve.length < 20) throw new Error("Insufficient energy data");
 
+    // Compute peak for normalization (rawRms-based)
+    const peakRms = Math.max(...curve.map(s => s.rawRms ?? s.e ?? 0), 0.001);
+
     // Downsample curve for AI prompt (max ~200 points)
     const step = Math.max(1, Math.floor(curve.length / 200));
     const sampled = curve.filter((_, i) => i % step === 0);
-    const csvLines = sampled.map(s =>
-      `${s.t.toFixed(1)},${s.e.toFixed(3)},${(s.lo ?? 0).toFixed(2)},${(s.mid ?? 0).toFixed(2)},${(s.hi ?? 0).toFixed(2)},${s.kick ? 1 : 0}`
-    );
+    const csvLines = sampled.map(s => {
+      const energy = (s.rawRms ?? s.e ?? 0) / peakRms;
+      return `${s.t.toFixed(1)},${energy.toFixed(3)},${(s.lo ?? 0).toFixed(2)},${(s.mid ?? 0).toFixed(2)},${(s.hi ?? 0).toFixed(2)},${s.kick ? 1 : 0}`;
+    });
 
-    const prompt = `Analyze this song's energy curve data and identify sections.
+    const prompt = `Analyze this song's energy curve and classify each time range into song sections.
 Song: "${song.track_name}" by ${song.artist_name}
 
-Data format: time(s),energy,low_freq,mid_freq,high_freq,kick
+Data format: time(s),energy(0-1 normalized),low_freq,mid_freq,high_freq,kick(0/1)
 ${csvLines.join("\n")}
 
-Classify each time range into one of: intro, verse, pre_chorus, chorus, bridge, drop, build_up, break, outro.
-Also estimate an intensity value (0.0-1.0) for each section.`;
+Rules for classification:
+- Use the FULL set of section types. Most pop/rock songs have: intro, verse, pre_chorus, chorus, bridge, outro. Many also have build_up, drop, or break.
+- A "bridge" typically appears once late in the song (often after second chorus) with distinctly different energy/frequency profile from verses and choruses.
+- "chorus" sections are HIGH energy, repeating with similar patterns. Don't label everything high-energy as chorus.
+- "pre_chorus" is a transitional buildup before the chorus — rising energy, often shorter.
+- "build_up" is a sustained energy ramp (common in EDM) leading to a "drop".
+- "break" is a sudden energy reduction mid-song.
+- Look at frequency balance changes: bridges often shift mid/hi balance vs verses.
+- Assign intensity 0.0-1.0 reflecting actual energy level of each section.
+
+Return sections covering the entire song duration with no gaps.`;
+
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
