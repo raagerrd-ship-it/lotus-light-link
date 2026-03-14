@@ -15,6 +15,7 @@ import { reportLiveOnset, tickAutoSync, getAutoSyncDriftMs, resetAutoSync } from
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
+  palette?: [number, number, number][];
   sonosVolume?: number;
   sonosRtt?: number;
   isPlaying?: boolean;
