@@ -10,6 +10,9 @@ interface MicPanelProps {
   sonosVolume?: number;
   isPlaying?: boolean;
   bpm?: number | null;
+  energy?: number | null;        // 0-100
+  danceability?: number | null;  // 0-100
+  happiness?: number | null;     // 0-100
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => void;
 }
 
