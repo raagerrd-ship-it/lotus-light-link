@@ -334,6 +334,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     ) => {
       const targetTrack = trackOverride ?? track;
       if (!targetTrack || samples.length < 10) return;
+      setProcessing(true);
 
       const key = cacheKey(targetTrack);
       const newBpm = estimateBpm(samples);
