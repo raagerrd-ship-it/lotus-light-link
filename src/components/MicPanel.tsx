@@ -241,11 +241,26 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
         }
       }
+      // Crossfade blendedColor toward targetColor
+      const [br, bg, bb] = blendedColorRef.current;
+      const [tr, tg, tb] = targetColorRef.current;
+      const a = CROSSFADE_ALPHA;
+      const nr = br + (tr - br) * a;
+      const ng = bg + (tg - bg) * a;
+      const nb = bb + (tb - bb) * a;
+      blendedColorRef.current = [nr, ng, nb];
+      colorRef.current = [Math.round(nr), Math.round(ng), Math.round(nb)];
+      // Notify parent of color change (throttled: only when integer values change)
+      const rounded: [number, number, number] = [Math.round(nr), Math.round(ng), Math.round(nb)];
+      if (rounded[0] !== Math.round(br) || rounded[1] !== Math.round(bg) || rounded[2] !== Math.round(bb)) {
+        onColorChangeRef.current?.(rounded);
+      }
+
       // Animate sun
       const sun = sunRef.current;
       if (sun) {
         const b = brightPctRef.current / 100;
-        const [cr, cg, cb] = colorRef.current;
+        const [cr, cg, cb] = rounded;
         const ringSpread = 4 + b * 80;
         const outerGlow = 50 + b * 700;
         const farGlow = 100 + b * 900;
