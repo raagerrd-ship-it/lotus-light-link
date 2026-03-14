@@ -326,39 +326,79 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             agcPeakMaxRef.current *= PEAK_MAX_DECAY;
           }
 
-          // absoluteFactor now accounts for loudness: loud masters get boosted expectation
           const absoluteFactor = Math.min(1, Math.max(0.08, (agcMaxRef.current * loudFactor) / agcPeakMaxRef.current));
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-          const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
 
-          // Frequency bands for color modulation
+          // ── Frequency bands ──
           const micBands = computeBands(an, freqBuf);
           bassRef.current = micBands.lo;
+          midHiRef.current = micBands.midHiRms;
 
-          // ── Drop detection (uses raw RMS, not AGC-normalized) ──
+          // ── Per-band AGC for frequency-based brightness ──
+          const BAND_AGC_ATTACK = 0.15;
+          const BAND_AGC_DECAY = 0.997;
+
+          // Bass AGC
+          if (micBands.bassRms > bassAgcMaxRef.current) {
+            bassAgcMaxRef.current += (micBands.bassRms - bassAgcMaxRef.current) * BAND_AGC_ATTACK;
+          } else {
+            bassAgcMaxRef.current *= BAND_AGC_DECAY;
+          }
+          if (micBands.bassRms < bassAgcMinRef.current || bassAgcMinRef.current === 0) {
+            bassAgcMinRef.current = micBands.bassRms;
+          } else {
+            bassAgcMinRef.current += (micBands.bassRms - bassAgcMinRef.current) * 0.001;
+          }
+
+          // MidHi AGC
+          if (micBands.midHiRms > midHiAgcMaxRef.current) {
+            midHiAgcMaxRef.current += (micBands.midHiRms - midHiAgcMaxRef.current) * BAND_AGC_ATTACK;
+          } else {
+            midHiAgcMaxRef.current *= BAND_AGC_DECAY;
+          }
+          if (micBands.midHiRms < midHiAgcMinRef.current || midHiAgcMinRef.current === 0) {
+            midHiAgcMinRef.current = micBands.midHiRms;
+          } else {
+            midHiAgcMinRef.current += (micBands.midHiRms - midHiAgcMinRef.current) * 0.001;
+          }
+
+          // Normalize each band 0-1
+          const bassRange = Math.max(AGC_FLOOR, bassAgcMaxRef.current - bassAgcMinRef.current);
+          const bassNorm = Math.min(1, Math.max(0, (micBands.bassRms - bassAgcMinRef.current) / bassRange));
+
+          const midHiRange = Math.max(AGC_FLOOR, midHiAgcMaxRef.current - midHiAgcMinRef.current);
+          const midHiNorm = Math.min(1, Math.max(0, (micBands.midHiRms - midHiAgcMinRef.current) / midHiRange));
+
+          // ── Frequency-based brightness ──
+          // Mid/hi (150+ Hz) drives baseline brightness: minBright → 50%
+          const MID_HI_CEILING = 50; // mid/hi can only push brightness to 50%
+          const baseBright = cal.minBrightness + midHiNorm * (MID_HI_CEILING - cal.minBrightness);
+          // Bass (<150 Hz) boosts above baseline up to effectiveMax
+          const pct = Math.round(baseBright + bassNorm * (effectiveMax - baseBright));
+
+          // ── Drop detection (uses bassRms, not total RMS) ──
           const DROP_HISTORY_LEN = 120;  // ~2s of history
           const DROP_COOLDOWN_MS = 4000;
           const DROP_DURATION_MS = 400;
 
-          const rmsHist = rmsHistoryRef.current;
-          rmsHist.push(rms); // raw RMS, not normalized!
-          if (rmsHist.length > DROP_HISTORY_LEN) rmsHist.shift();
+          const bassHist = bassHistoryRef.current;
+          bassHist.push(micBands.bassRms); // bass RMS only!
+          if (bassHist.length > DROP_HISTORY_LEN) bassHist.shift();
 
           const now = performance.now();
           let isDrop = now < dropActiveUntilRef.current;
 
-          if (rmsHist.length >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
-            const recentWindow = rmsHist.slice(-8);   // last ~130ms
-            const pastWindow = rmsHist.slice(-60, -8); // ~130ms-1000ms ago
+          if (bassHist.length >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
+            const recentWindow = bassHist.slice(-8);   // last ~130ms
+            const pastWindow = bassHist.slice(-60, -8); // ~130ms-1000ms ago
             const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
             const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
 
             // Energy modulates how easy it is to trigger a drop
-            // High energy (80+) → looser thresholds, low energy (20) → very strict
             const traitEnergy = (energyRef.current ?? 50) / 100;
-            const quietThreshold = agcMaxRef.current * (0.12 + traitEnergy * 0.18); // 12-30% of max
-            const surgeMin = 4.0 - traitEnergy * 2.0;  // ratio needed: 2.0 (high nrg) – 4.0 (low nrg)
-            const absMin = agcMaxRef.current * (0.6 - traitEnergy * 0.2); // 40-60% of max
+            const quietThreshold = bassAgcMaxRef.current * (0.12 + traitEnergy * 0.18);
+            const surgeMin = 4.0 - traitEnergy * 2.0;
+            const absMin = bassAgcMaxRef.current * (0.6 - traitEnergy * 0.2);
 
             const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
 
@@ -366,25 +406,24 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               dropActiveUntilRef.current = now + DROP_DURATION_MS;
               lastDropTimeRef.current = now;
               isDrop = true;
-              console.log('[Drop]', {
-                pastAvg: pastAvg.toFixed(5),
-                recentAvg: recentAvg.toFixed(5),
+              console.log('[Drop/bass]', {
+                bassPast: pastAvg.toFixed(5),
+                bassRecent: recentAvg.toFixed(5),
                 ratio: surgeRatio.toFixed(1),
-                agcMax: agcMaxRef.current.toFixed(5),
+                bassAgcMax: bassAgcMaxRef.current.toFixed(5),
                 energy: energyRef.current,
               });
             }
           }
 
           // ── Track trait modulation ──
-          const traitEnergy = (energyRef.current ?? 50) / 100;       // 0-1, default 0.5
+          const traitEnergy = (energyRef.current ?? 50) / 100;
           const traitDance = (danceabilityRef.current ?? 50) / 100;
           const traitHappy = (happinessRef.current ?? 50) / 100;
 
-          // Energy affects drop duration
           const dropDurationMod = 1.0 + traitEnergy * 0.5;
 
-          // White = ONLY on drops, nothing else
+          // White = ONLY on drops
           let isWhite = false;
           if (isDrop) {
             isWhite = true;
@@ -394,20 +433,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           }
           const smoothEnd = performance.now();
 
-          // BLE commands — happiness affects color warmth
+          // BLE commands
           const c = charRef.current;
           if (c) {
             if (isWhite) {
-              // High happiness → warm white, low → cool white
-              const warmR = Math.round(255);
-              const warmG = Math.round(240 + traitHappy * 15); // 240-255
-              const warmB = Math.round(200 + (1 - traitHappy) * 55); // cool=255, warm=200
+              const warmR = 255;
+              const warmG = Math.round(240 + traitHappy * 15);
+              const warmB = Math.round(200 + (1 - traitHappy) * 55);
               sendColorAndBrightness(c, warmR, Math.min(255, warmG), warmB, 100);
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              // Happiness increases color modulation strength
-              const modStrength = 0.2 + traitHappy * 0.25; // 0.2-0.45
+              const modStrength = 0.2 + traitHappy * 0.25;
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               sendColorAndBrightness(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
