@@ -100,6 +100,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bpmRef = useRef(bpm);
   const beatPhaseRef = useRef(0);
   const lastBeatTimeRef = useRef(0);
+  // Drop detection state
+  const rmsHistoryRef = useRef<number[]>([]);
+  const dropActiveUntilRef = useRef(0);
+  const lastDropTimeRef = useRef(0);
 
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
