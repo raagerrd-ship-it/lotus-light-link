@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import type { SonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { getCurrentSection, type SongSection } from "@/lib/sectionLighting";
+import { Loader2 } from "lucide-react";
 
 interface Props {
   nowPlaying: SonosNowPlaying;
@@ -8,6 +9,7 @@ interface Props {
   accentColor?: [number, number, number];
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   sections?: SongSection[] | null;
+  processing?: boolean;
 }
 
 const SECTION_LABELS: Record<string, string> = {
