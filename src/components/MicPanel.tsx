@@ -169,6 +169,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => { beatGridRef.current = beatGrid; }, [beatGrid]);
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { dropsRef.current = drops; }, [drops]);
+  useEffect(() => { dynamicRangeRef.current = dynamicRange; }, [dynamicRange]);
+  useEffect(() => { transitionsRef.current = transitions; }, [transitions]);
+  useEffect(() => { beatStrengthsRef.current = beatStrengths; }, [beatStrengths]);
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
