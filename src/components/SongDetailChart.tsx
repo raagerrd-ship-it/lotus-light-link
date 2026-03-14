@@ -248,6 +248,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
   }
 
   const curve = data.energy_curve as EnergySample[] | null;
+  const bcurve = data.brightness_curve as BrightnessSample[] | null;
   const sections = data.sections as SongSection[] | null;
   const drops = data.drops as Drop[] | null;
   const duration = curve && curve.length > 1 ? curve[curve.length - 1].t : 0;
