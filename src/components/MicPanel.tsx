@@ -561,33 +561,31 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             }
           }
 
-          // White kick logic
+          // White kick & strobe logic
           const now = performance.now();
           const inWhiteKick = now < whiteKickUntilRef.current;
+          const inStrobe = now < strobeUntilRef.current;
           const currentDrops = dropsRef.current;
           const inDropZone = currentDrops && posSec2 != null ? isInDrop(currentDrops, posSec2) : false;
           const buildUp = currentDrops && posSec2 != null ? getBuildUpIntensity(currentDrops, posSec2) : 0;
 
-          // During build-up: gradually increase brightness
-          if (buildUp > 0) {
+          // During build-up (before blackout zone): gradually increase brightness
+          if (buildUp > 0 && buildUp <= 0.9) {
             pct = Math.min(100, Math.round(pct + buildUp * 20));
           }
 
           if (hasCurve) {
-            // Curve mode: use saved kick timestamps, gated by section
-            // In drop zone: lower kick threshold for more frequent kicks
             const effectiveKickEnabled = inDropZone || sectionParams.kickEnabled;
             if (curveKick && !inWhiteKick && effectiveKickEnabled) {
               whiteKickUntilRef.current = now + (inDropZone ? cal.whiteKickMs * 0.7 : cal.whiteKickMs);
             }
           } else {
-            // Mic mode: use section-aware threshold
             const effectiveThreshold = inDropZone ? Math.min(sectionParams.kickThreshold, 88) : sectionParams.kickThreshold;
             if (pct > effectiveThreshold && !inWhiteKick && sectionParams.kickEnabled) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
           }
-          const isWhite = now < whiteKickUntilRef.current;
+          const isWhite = now < whiteKickUntilRef.current || inStrobe;
           const smoothEnd = performance.now();
 
           // BLE commands
@@ -598,7 +596,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              // Apply frequency-based color modulation with section-aware strength
               let finalColor: [number, number, number] = calibrated;
               const modStrength = inDropZone ? Math.min(0.6, sectionParams.colorModStrength + 0.2) : sectionParams.colorModStrength;
               if (hasCurve && (curveLo > 0 || curveHi > 0)) {
