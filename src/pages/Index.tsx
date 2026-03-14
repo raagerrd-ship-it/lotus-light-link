@@ -390,6 +390,11 @@ const Index = () => {
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
         tickToWriteMs={tickToWriteMs}
+        bleMinIntervalMs={getBleMinInterval()}
+        bleLatencyMs={activeCalibration.bleLatencyMs}
+        chainLatencyMs={activeCalibration.chainLatencyMs}
+        activeLookAheadMs={activeLookAheadMs}
+        syncMode={hasCurve ? 'curve' : 'mic'}
         curveStatus={
           curveLoading ? 'loading'
           : !nowPlaying?.trackName ? 'none'
