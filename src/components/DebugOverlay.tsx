@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import type { BleReconnectStatus } from "@/lib/bledom";
 import { getBleWriteStats, getPipelineTimings, type BleWriteStats, type PipelineTimings } from "@/lib/bledom";
 
+// Injected by Vite define at build time
+declare const __BUILD_TIME__: string;
+
 interface DebugOverlayProps {
   smoothedRtt: number;
   autoDriftMs: number;
@@ -120,6 +123,11 @@ export default function DebugOverlay({
       <div className="mt-0.5 border-t border-border/30 pt-0.5">
         <div>rms: <span className="text-foreground">{pipeline.rmsMs.toFixed(1)}ms</span> smooth: <span className="text-foreground">{pipeline.smoothMs.toFixed(1)}ms</span></div>
         <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
+      </div>
+
+      {/* Build info */}
+      <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
+        build: {(() => { try { const d = new Date(__BUILD_TIME__); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); } catch { return '?'; } })()}
       </div>
     </div>
   );
