@@ -14,7 +14,7 @@ interface MicPanelProps {
   danceability?: number | null;  // 0-100
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number }) => void;
 }
 
 /** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
