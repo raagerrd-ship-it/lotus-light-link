@@ -338,7 +338,13 @@ const Index = () => {
           <div className="flex items-center gap-2">
             {connection ? (
               <>
-                <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: isOn ? accent : "hsl(var(--muted-foreground))" }} />
+                <button
+                  onClick={() => handleConnect(true)}
+                  className="p-0.5 rounded-full active:scale-90 transition-transform"
+                  title="Byt enhet"
+                >
+                  <Bluetooth className="w-3.5 h-3.5" style={{ color: isOn ? accent : "hsl(var(--muted-foreground))" }} />
+                </button>
                 <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase">
                   {connection.device.name || "BLEDOM01"}
                 </span>
@@ -359,14 +365,13 @@ const Index = () => {
             </Button>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={() => handleConnect(!!connection)}
               disabled={busy}
-              className="rounded-full h-7 px-2.5 text-[10px] font-bold tracking-wide active:scale-90 transition-all duration-200"
+              className="rounded-full h-7 w-7 active:scale-90 transition-all duration-200"
               style={{ color: accent }}
             >
-              <Bluetooth className="w-3.5 h-3.5 mr-1" />
-              {connection ? 'Byt' : lastDevice ? lastDevice.name : 'Anslut'}
+              <Bluetooth className="w-3.5 h-3.5" />
             </Button>
             {connection && (
               <>
