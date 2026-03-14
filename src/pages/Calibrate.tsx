@@ -409,8 +409,8 @@ function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patc
           <input type="range" min={0} max={100} value={Math.round((1 - cal.attackAlpha) * 100)} onChange={e => onSave({ attackAlpha: 1 - Number(e.target.value) / 100 })} className="w-full h-1 accent-primary" />
         </div>
         <div>
-          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Fade-längd: {Math.round((1 - cal.releaseAlpha * 10) * 100)}%</span><span className="text-muted-foreground">← Kort → Lång</span></div>
-          <input type="range" min={0} max={100} value={Math.round(Math.min(100, (1 - cal.releaseAlpha * 10) * 100))} onChange={e => onSave({ releaseAlpha: (1 - Number(e.target.value) / 100) / 10 })} className="w-full h-1 accent-primary" />
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Fade-längd: {Math.round(cal.releaseAlpha * 1000)}‰</span><span className="text-muted-foreground">← Snabb → Lång</span></div>
+          <input type="range" min={5} max={300} value={Math.round(cal.releaseAlpha * 1000)} onChange={e => onSave({ releaseAlpha: Number(e.target.value) / 1000 })} className="w-full h-1 accent-primary" />
         </div>
         <div>
           <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Dynamik: {cal.dynamicDamping.toFixed(1)}x</span><span className="text-muted-foreground">← Boost (−) · + Jämn</span></div>
