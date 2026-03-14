@@ -450,11 +450,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           smoothedMidHiRef.current = midHiNorm;
 
           // ── Frequency-based brightness ──
-          // Mid/hi (150+ Hz) drives baseline brightness: minBright → 50%
-          const MID_HI_CEILING = 50; // mid/hi can only push brightness to 50%
-          const baseBright = cal.minBrightness + midHiNorm * (MID_HI_CEILING - cal.minBrightness);
-          // Bass (<150 Hz) boosts above baseline up to effectiveMax
-          let rawPct = (baseBright + bassNorm * (effectiveMax - baseBright)) / 100;
+          // Blend bass (weight 0.7) and mid/hi (weight 0.3) for overall energy
+          const energyNorm = bassNorm * 0.7 + midHiNorm * 0.3;
+          let rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           // Apply dynamic damping as signed control:
           // >0 = smoother/even, <0 = contrast boost
           if (cal.dynamicDamping > 0 && cal.dynamicDamping !== 1.0) {
