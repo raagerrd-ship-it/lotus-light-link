@@ -9,6 +9,7 @@ interface MicPanelProps {
   palette?: [number, number, number][];
   sonosVolume?: number;
   isPlaying?: boolean;
+  bpm?: number | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean }) => void;
 }
 
