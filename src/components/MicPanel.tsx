@@ -338,7 +338,12 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const reactivity = 1 + (1 - prevAbsFactor) * 2;
           const prev = smoothedRef.current;
           const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
-          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
+          // Scale release by BPM: slower songs (< 120 BPM) get a longer fade-back
+          const currentBpm = bpmRef.current;
+          const bpmReleaseFactor = currentBpm && currentBpm > 0
+            ? Math.max(0.3, Math.min(1.0, currentBpm / 120))
+            : 1.0;
+          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity * bpmReleaseFactor);
           const alpha = rms > prev ? attackA : releaseA;
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
