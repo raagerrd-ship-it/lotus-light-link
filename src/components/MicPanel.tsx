@@ -22,6 +22,7 @@ interface MicPanelProps {
   durationMs?: number | null;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
+  brightnessCurve?: { t: number; b: number }[] | null;
   onSaveEnergyCurve?: (
     samples: EnergySample[],
     volume: number | null,
