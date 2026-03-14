@@ -51,12 +51,15 @@ function cacheKey(t: TrackKey): string {
 
 /** Clear cache for a specific track (call after deleting a recording) */
 export function clearCurveCache(trackName: string, artistName: string) {
-  curveCache.delete(`${trackName}|${artistName}`);
+  const key = `${trackName}|${artistName}`;
+  curveCache.delete(key);
+  window.dispatchEvent(new CustomEvent('curve-cache-clear', { detail: key }));
 }
 
 /** Clear entire curve cache */
 export function clearAllCurveCache() {
   curveCache.clear();
+  window.dispatchEvent(new CustomEvent('curve-cache-clear', { detail: '*' }));
 }
 
 function estimateBpm(curve: EnergySample[]): number | null {
