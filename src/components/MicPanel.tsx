@@ -319,8 +319,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           bassRef.current = micBands.lo;
 
           // ── Drop detection (uses raw RMS, not AGC-normalized) ──
-          const DROP_HISTORY_LEN = 90;
-          const DROP_COOLDOWN_MS = 2500;
+          const DROP_HISTORY_LEN = 120;  // ~2s of history
+          const DROP_COOLDOWN_MS = 4000;
           const DROP_DURATION_MS = 400;
 
           const rmsHist = rmsHistoryRef.current;
@@ -330,19 +330,17 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const now = performance.now();
           let isDrop = now < dropActiveUntilRef.current;
 
-          if (rmsHist.length >= 30 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
-            const recentWindow = rmsHist.slice(-8);  // last ~130ms
-            const pastWindow = rmsHist.slice(-50, -8); // ~130ms-830ms ago
+          if (rmsHist.length >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
+            const recentWindow = rmsHist.slice(-8);   // last ~130ms
+            const pastWindow = rmsHist.slice(-60, -8); // ~130ms-1000ms ago
             const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
             const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
 
-            // Drop = quiet→loud transition in raw signal
-            // pastAvg must be significantly lower than current agcMax (relative quiet)
-            // recentAvg must jump significantly
-            const quietThreshold = agcMaxRef.current * 0.35; // quiet = below 35% of learned max
+            // Tight thresholds: quiet must be well below learned max, surge must be dramatic
+            const quietThreshold = agcMaxRef.current * 0.20; // quiet = below 20% of learned max
             const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
 
-            if (pastAvg < quietThreshold && surgeRatio > 2.0 && recentAvg > agcMaxRef.current * 0.4) {
+            if (pastAvg < quietThreshold && surgeRatio > 3.0 && recentAvg > agcMaxRef.current * 0.5) {
               dropActiveUntilRef.current = now + DROP_DURATION_MS;
               lastDropTimeRef.current = now;
               isDrop = true;
