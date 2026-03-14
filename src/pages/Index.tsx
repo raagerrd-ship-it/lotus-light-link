@@ -365,14 +365,13 @@ const Index = () => {
             </Button>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={() => handleConnect(!!connection)}
               disabled={busy}
-              className="rounded-full h-7 px-2.5 text-[10px] font-bold tracking-wide active:scale-90 transition-all duration-200"
+              className="rounded-full h-7 w-7 active:scale-90 transition-all duration-200"
               style={{ color: accent }}
             >
-              <Bluetooth className="w-3.5 h-3.5 mr-1" />
-              {connection ? 'Byt' : lastDevice ? lastDevice.name : 'Anslut'}
+              <Bluetooth className="w-3.5 h-3.5" />
             </Button>
             {connection && (
               <>
