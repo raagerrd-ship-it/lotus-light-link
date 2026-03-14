@@ -70,7 +70,7 @@ export function clearAllCurveCache() {
 }
 
 // DB columns to select
-const SELECT_COLS = "id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid, dynamic_range, transitions, beat_strengths";
+const SELECT_COLS = "id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid, dynamic_range, transitions, beat_strengths, brightness_curve";
 
 function parseRow(data: any): Omit<CacheEntry, 'songId'> & { songId: string | null } {
   const parsed = data?.energy_curve as unknown as EnergySample[] | null;
