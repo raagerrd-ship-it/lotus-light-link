@@ -417,7 +417,9 @@ function computeBrightnessCurve(
     const reactivity = 1 + (1 - prevAbsFactor) * 2;
     const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
     const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
-    const alpha = rms > smoothed ? attackA : releaseA;
+    // For kick samples, use a much faster attack so the transient passes through
+    const kickAttack = sample.kick && rms > smoothed ? 0.8 : 0;
+    const alpha = kickAttack > 0 ? kickAttack : (rms > smoothed ? attackA : releaseA);
     smoothed = smoothed + alpha * (rms - smoothed);
 
     // Step 2: Learned AGC — running max/min tracking (mirrors MicPanel lines 563-573)
