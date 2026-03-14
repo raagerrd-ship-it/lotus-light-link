@@ -1,13 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { AgcState, EnergySample } from "@/lib/energyInterpolate";
-import { curvePeakRms } from "@/lib/energyInterpolate";
-import { estimateBpmFromHistory, extractBeatGrid, type BeatGrid } from "@/lib/bpmEstimate";
+import type { BeatGrid } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
-import { detectDrops, type Drop } from "@/lib/dropDetect";
-import { analyzeDynamicRange, analyzeTransitions, analyzeBeatStrengths, type DynamicRange, type Transition } from "@/lib/songAnalysis";
-import { runMultiSongCalibration } from "@/lib/autoCalibrate";
-import { getCalibration, saveCalibration, getActiveDeviceName } from "@/lib/lightCalibration";
+import type { Drop } from "@/lib/dropDetect";
+import type { DynamicRange, Transition } from "@/lib/songAnalysis";
 
 export type { EnergySample };
 
