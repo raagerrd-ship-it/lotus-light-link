@@ -59,6 +59,10 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
+  const handleColorChange = useCallback((color: [number, number, number]) => {
+    setCurrentColor(color);
+  }, []);
+
   // Extract palette from album art when track changes
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
