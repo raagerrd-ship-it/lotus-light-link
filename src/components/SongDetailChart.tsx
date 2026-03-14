@@ -186,7 +186,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     for (const s of curve) {
       if (s.kick) {
         const x = tToX(s.t);
-        const y = chartBottom - s.e * chartH;
+        const y = eToY(s.e);
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
         ctx.arc(x, y, 1.5, 0, Math.PI * 2);
