@@ -304,7 +304,7 @@ const Index = () => {
       {(connection || !busy) && (
         <div
           className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] transition-opacity duration-500 backdrop-blur-lg border-b border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-          style={{ background: 'hsl(var(--background) / 0.5)' }}
+          style={{ background: 'hsl(var(--background) / 0.3)' }}
         >
           <div className="flex items-center gap-2">
             {connection ? (
@@ -374,7 +374,7 @@ const Index = () => {
       {nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
         <div
           className={`absolute bottom-0 left-0 right-0 z-20 pb-[env(safe-area-inset-bottom)] transition-opacity duration-500 backdrop-blur-lg border-t border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-          style={{ background: 'hsl(var(--background) / 0.5)' }}
+          style={{ background: 'hsl(var(--background) / 0.3)' }}
         >
           <NowPlayingBar nowPlaying={nowPlaying} bpm={bpm} accentColor={currentColor} getPosition={getPosition} sections={sections} />
         </div>
