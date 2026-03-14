@@ -140,6 +140,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const isPlayingRef = useRef(isPlaying);
   const durationMsRef = useRef(durationMs);
   const recordingStartPosRef = useRef<number | null>(null); // position when recording started
+  const recordingDurationMsRef = useRef<number | null>(null);
+  const recordingSaveFnRef = useRef<((samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void) | null>(null);
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
 
@@ -166,10 +168,21 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     }
   }, [savedAgcState]);
 
+  const touchRecordingContext = () => {
+    if (!recordingSaveFnRef.current && onSaveCurveRef.current) {
+      recordingSaveFnRef.current = onSaveCurveRef.current;
+    }
+    const dur = durationMsRef.current;
+    if (typeof dur === 'number' && dur > 0) {
+      recordingDurationMsRef.current = Math.max(recordingDurationMsRef.current ?? 0, dur);
+    }
+  };
+
   const flushRecordedSamples = (reason: 'track-change' | 'playback-stop' | 'unmount') => {
     const prev = recordedSamplesRef.current;
-    if (prev.length > 10 && onSaveCurveRef.current) {
-      const dur = durationMsRef.current;
+    const saveCurve = recordingSaveFnRef.current ?? onSaveCurveRef.current;
+    if (prev.length > 10 && saveCurve) {
+      const dur = recordingDurationMsRef.current ?? durationMsRef.current;
       const firstT = prev[0].t;
       const lastT = prev[prev.length - 1].t;
       const durationSec = dur ? dur / 1000 : 0;
@@ -186,13 +199,15 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
         };
         console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
-        onSaveCurveRef.current(prev, volumeRef.current ?? null, agc);
+        saveCurve(prev, volumeRef.current ?? null, agc);
       } else {
         console.log(`[MicPanel] ✗ discarding incomplete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
       }
     }
     recordedSamplesRef.current = [];
     recordingStartPosRef.current = null;
+    recordingDurationMsRef.current = null;
+    recordingSaveFnRef.current = null;
     lastRecordTimeRef.current = 0;
   };
 
@@ -209,12 +224,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => {
     flushRecordedSamples('track-change');
   }, [trackName]);
-
-  // Safety: flush any buffered recording when component unmounts
-  useEffect(() => {
-    return () => flushRecordedSamples('unmount');
-  }, []);
-
   useEffect(() => {
     colorRef.current = currentColor;
     lastBaseColorRef.current = currentColor;
