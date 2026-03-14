@@ -304,13 +304,24 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
       const sun = sunRef.current;
       if (sun) {
         const bass = bassRef.current;
-        const scale = 1 + bass * 0.6; // up to 1.6x at full bass
-        const glowSize = 60 + bass * 120; // 60-180px glow
-        const glowAlpha = 0.3 + bass * 0.5;
+        const scale = 1 + bass * 0.5;
         const [cr, cg, cb] = colorRef.current;
+        
+        // Smooth ring glow: layered box-shadows for a ring-like outer halo
+        const innerGlow = 40 + bass * 60;
+        const ringSpread = 8 + bass * 16;
+        const outerGlow = 80 + bass * 160;
+        const coreAlpha = 0.15 + bass * 0.25;
+        const ringAlpha = 0.4 + bass * 0.4;
+        const outerAlpha = 0.12 + bass * 0.2;
+        
         sun.style.transform = `scale(${scale})`;
-        sun.style.boxShadow = `0 0 ${glowSize}px rgba(${cr},${cg},${cb},${glowAlpha})`;
-        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.4 + bass * 0.4}) 0%, transparent 70%)`;
+        sun.style.boxShadow = [
+          `0 0 ${innerGlow}px rgba(${cr},${cg},${cb},${coreAlpha})`,
+          `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
+          `0 0 ${outerGlow}px rgba(${cr},${cg},${cb},${outerAlpha})`,
+        ].join(', ');
+        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.25 + bass * 0.35}) 0%, rgba(${cr},${cg},${cb},${0.08 + bass * 0.12}) 50%, transparent 72%)`;
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
