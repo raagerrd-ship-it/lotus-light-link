@@ -6,7 +6,7 @@ import { getCalibration, saveCalibration, applyColorCalibration, type LightCalib
 import { getActiveDeviceName } from "@/lib/lightCalibration";
 import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
-import { getSectionLighting, beatPulse, getCurrentBeatStrength, getTransitionParams, type SongSection } from "@/lib/sectionLighting";
+import { getSectionLighting, beatPulse, getCurrentBeatStrength, getTransitionParams, getCurrentSection, type SongSection } from "@/lib/sectionLighting";
 import type { DynamicRange, Transition } from "@/lib/songAnalysis";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
 import { beatGridPhase, type BeatGrid } from "@/lib/bpmEstimate";
@@ -15,6 +15,7 @@ import { reportLiveOnset, tickAutoSync, getAutoSyncDriftMs, resetAutoSync } from
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
+  palette?: [number, number, number][];
   sonosVolume?: number;
   sonosRtt?: number;
   isPlaying?: boolean;
@@ -111,7 +112,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -160,6 +161,10 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const recordingTrackRef = useRef<{ trackName: string; artistName: string } | null>(null);
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
+  const paletteRef = useRef(palette);
+  const paletteColorIndexRef = useRef(0);
+  const lastSectionTypeRef = useRef<string | null>(null);
+  const strobeUntilRef = useRef(0);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
@@ -176,6 +181,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
+  useEffect(() => { paletteRef.current = palette; }, [palette]);
   useEffect(() => {
     currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null;
   }, [trackName, artistName]);
@@ -474,6 +480,30 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0, dynamicRangeRef.current);
           pct = Math.round(pct * sectionParams.brightnessScale);
 
+          // ── Palette rotation on section changes ──
+          const currentSections = sectionsRef.current;
+          if (currentSections && posSec2 != null) {
+            const curSection = getCurrentSection(currentSections, posSec2);
+            const curType = curSection?.type ?? null;
+            if (curType && curType !== lastSectionTypeRef.current) {
+              lastSectionTypeRef.current = curType;
+              const pal = paletteRef.current;
+              if (pal && pal.length > 1) {
+                paletteColorIndexRef.current = (paletteColorIndexRef.current + 1) % pal.length;
+                colorRef.current = pal[paletteColorIndexRef.current];
+              }
+            }
+          }
+
+          // ── Blackout before drops: last 10% of build-up → dim to near-zero ──
+          const currentDrops2 = dropsRef.current;
+          const buildUp2 = currentDrops2 && posSec2 != null ? getBuildUpIntensity(currentDrops2, posSec2) : 0;
+          if (buildUp2 > 0.9) {
+            // Invert: instead of brightening, blackout for tension
+            const blackoutProgress = (buildUp2 - 0.9) / 0.1; // 0→1 over last 10%
+            pct = Math.round(pct * (1 - blackoutProgress * 0.85)); // dim to ~15%
+          }
+
           // Beat-synced pulse — use beat grid for precise phase if available
           const currentBpm = bpmRef.current;
           const grid = beatGridRef.current;
@@ -482,16 +512,23 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             // Get per-beat strength for downbeat differentiation
             const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
             const pulse = beatPulse(posSec2, currentBpm, bs);
-            const pulseBoost = pulse * sectionParams.beatPulseStrength * 15;
+            // Concert-level pulse: up to +30 in drops/chorus
+            const pulseBoost = pulse * sectionParams.beatPulseStrength * 30;
             pct = Math.min(100, Math.round(pct + pulseBoost));
+
+            // ── Strobe on beat in drops: 40ms white flash per beat ──
+            if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
+              strobeUntilRef.current = performance.now() + 40;
+            }
           }
 
-          // Transition-aware crossfade hint (logged for future color crossfade use)
+          // Transition-aware crossfade hint
           const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
           if (transParams.active && transParams.type === 'hard') {
-            // Hard transitions: brief brightness flash
-            if (transParams.progress < 0.3) {
-              pct = Math.min(100, pct + 10);
+            // Hard transitions: 80ms white flash + brightness burst
+            if (transParams.progress < 0.15) {
+              pct = Math.min(100, pct + 30);
+              strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
             }
           }
 
@@ -524,33 +561,31 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             }
           }
 
-          // White kick logic
+          // White kick & strobe logic
           const now = performance.now();
           const inWhiteKick = now < whiteKickUntilRef.current;
+          const inStrobe = now < strobeUntilRef.current;
           const currentDrops = dropsRef.current;
           const inDropZone = currentDrops && posSec2 != null ? isInDrop(currentDrops, posSec2) : false;
           const buildUp = currentDrops && posSec2 != null ? getBuildUpIntensity(currentDrops, posSec2) : 0;
 
-          // During build-up: gradually increase brightness
-          if (buildUp > 0) {
+          // During build-up (before blackout zone): gradually increase brightness
+          if (buildUp > 0 && buildUp <= 0.9) {
             pct = Math.min(100, Math.round(pct + buildUp * 20));
           }
 
           if (hasCurve) {
-            // Curve mode: use saved kick timestamps, gated by section
-            // In drop zone: lower kick threshold for more frequent kicks
             const effectiveKickEnabled = inDropZone || sectionParams.kickEnabled;
             if (curveKick && !inWhiteKick && effectiveKickEnabled) {
               whiteKickUntilRef.current = now + (inDropZone ? cal.whiteKickMs * 0.7 : cal.whiteKickMs);
             }
           } else {
-            // Mic mode: use section-aware threshold
             const effectiveThreshold = inDropZone ? Math.min(sectionParams.kickThreshold, 88) : sectionParams.kickThreshold;
             if (pct > effectiveThreshold && !inWhiteKick && sectionParams.kickEnabled) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
           }
-          const isWhite = now < whiteKickUntilRef.current;
+          const isWhite = now < whiteKickUntilRef.current || inStrobe;
           const smoothEnd = performance.now();
 
           // BLE commands
@@ -561,7 +596,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              // Apply frequency-based color modulation with section-aware strength
               let finalColor: [number, number, number] = calibrated;
               const modStrength = inDropZone ? Math.min(0.6, sectionParams.colorModStrength + 0.2) : sectionParams.colorModStrength;
               if (hasCurve && (curveLo > 0 || curveHi > 0)) {

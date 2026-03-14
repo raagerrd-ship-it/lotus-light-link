@@ -18,6 +18,7 @@ export interface SectionLightingParams {
   kickThreshold: number;      // override kick detection sensitivity
   colorModStrength: number;   // frequency-based color modulation strength
   beatPulseStrength: number;  // how much BPM pulsing affects brightness
+  strobeOnBeat: boolean;      // trigger strobe flashes on each beat (drops)
 }
 
 export interface TransitionParams {
@@ -28,15 +29,15 @@ export interface TransitionParams {
 }
 
 const SECTION_PARAMS: Record<SongSection['type'], SectionLightingParams> = {
-  intro:      { brightnessScale: 0.5,  kickEnabled: false, kickThreshold: 99, colorModStrength: 0.1, beatPulseStrength: 0.1 },
-  verse:      { brightnessScale: 0.7,  kickEnabled: true,  kickThreshold: 97, colorModStrength: 0.2, beatPulseStrength: 0.3 },
-  pre_chorus: { brightnessScale: 0.85, kickEnabled: true,  kickThreshold: 95, colorModStrength: 0.3, beatPulseStrength: 0.5 },
-  chorus:     { brightnessScale: 1.0,  kickEnabled: true,  kickThreshold: 90, colorModStrength: 0.4, beatPulseStrength: 0.6 },
-  bridge:     { brightnessScale: 0.6,  kickEnabled: false, kickThreshold: 99, colorModStrength: 0.3, beatPulseStrength: 0.2 },
-  drop:       { brightnessScale: 1.0,  kickEnabled: true,  kickThreshold: 85, colorModStrength: 0.5, beatPulseStrength: 0.8 },
-  build_up:   { brightnessScale: 0.8,  kickEnabled: true,  kickThreshold: 93, colorModStrength: 0.3, beatPulseStrength: 0.7 },
-  break:      { brightnessScale: 0.3,  kickEnabled: false, kickThreshold: 99, colorModStrength: 0.1, beatPulseStrength: 0.1 },
-  outro:      { brightnessScale: 0.4,  kickEnabled: false, kickThreshold: 99, colorModStrength: 0.1, beatPulseStrength: 0.1 },
+  intro:      { brightnessScale: 0.15, kickEnabled: false, kickThreshold: 99, colorModStrength: 0.1, beatPulseStrength: 0.1,  strobeOnBeat: false },
+  verse:      { brightnessScale: 0.50, kickEnabled: true,  kickThreshold: 97, colorModStrength: 0.2, beatPulseStrength: 0.3,  strobeOnBeat: false },
+  pre_chorus: { brightnessScale: 0.75, kickEnabled: true,  kickThreshold: 95, colorModStrength: 0.3, beatPulseStrength: 0.5,  strobeOnBeat: false },
+  chorus:     { brightnessScale: 1.0,  kickEnabled: true,  kickThreshold: 88, colorModStrength: 0.4, beatPulseStrength: 0.8,  strobeOnBeat: false },
+  bridge:     { brightnessScale: 0.4,  kickEnabled: false, kickThreshold: 99, colorModStrength: 0.3, beatPulseStrength: 0.2,  strobeOnBeat: false },
+  drop:       { brightnessScale: 1.0,  kickEnabled: true,  kickThreshold: 85, colorModStrength: 0.5, beatPulseStrength: 1.0,  strobeOnBeat: true  },
+  build_up:   { brightnessScale: 0.7,  kickEnabled: true,  kickThreshold: 93, colorModStrength: 0.3, beatPulseStrength: 0.7,  strobeOnBeat: false },
+  break:      { brightnessScale: 0.10, kickEnabled: false, kickThreshold: 99, colorModStrength: 0.1, beatPulseStrength: 0.05, strobeOnBeat: false },
+  outro:      { brightnessScale: 0.15, kickEnabled: false, kickThreshold: 99, colorModStrength: 0.1, beatPulseStrength: 0.1,  strobeOnBeat: false },
 };
 
 const DEFAULT_PARAMS: SectionLightingParams = {
@@ -45,6 +46,7 @@ const DEFAULT_PARAMS: SectionLightingParams = {
   kickThreshold: 95,
   colorModStrength: 0.3,
   beatPulseStrength: 0.0,
+  strobeOnBeat: false,
 };
 
 /**
