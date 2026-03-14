@@ -335,18 +335,19 @@ interface BrightnessSample {
 
 // Section mood: floor/ceiling define the brightness range,
 // beat = how much beats add, react = how much audio modulates within range
+// V2: wider ceilings, higher react — energy drives brightness, sections add character
 const SECTION_MOOD: Record<string, { floor: number; ceil: number; beat: number; react: number }> = {
-  intro:      { floor: 8,  ceil: 35,  beat: 0.10, react: 0.4 },
-  verse:      { floor: 20, ceil: 65,  beat: 0.3,  react: 0.6 },
-  pre_chorus: { floor: 30, ceil: 80,  beat: 0.5,  react: 0.7 },
-  chorus:     { floor: 40, ceil: 100, beat: 0.8,  react: 0.85 },
-  bridge:     { floor: 15, ceil: 50,  beat: 0.2,  react: 0.5 },
-  drop:       { floor: 50, ceil: 100, beat: 1.0,  react: 0.9 },
-  build_up:   { floor: 20, ceil: 75,  beat: 0.6,  react: 0.7 },
-  break:      { floor: 5,  ceil: 20,  beat: 0.05, react: 0.3 },
-  outro:      { floor: 8,  ceil: 30,  beat: 0.10, react: 0.4 },
+  intro:      { floor: 5,  ceil: 55,  beat: 0.15, react: 0.7 },
+  verse:      { floor: 15, ceil: 85,  beat: 0.35, react: 0.8 },
+  pre_chorus: { floor: 20, ceil: 95,  beat: 0.55, react: 0.85 },
+  chorus:     { floor: 25, ceil: 100, beat: 0.8,  react: 0.9 },
+  bridge:     { floor: 10, ceil: 70,  beat: 0.25, react: 0.7 },
+  drop:       { floor: 30, ceil: 100, beat: 1.0,  react: 0.95 },
+  build_up:   { floor: 15, ceil: 95,  beat: 0.6,  react: 0.85 },
+  break:      { floor: 3,  ceil: 25,  beat: 0.05, react: 0.4 },
+  outro:      { floor: 5,  ceil: 40,  beat: 0.10, react: 0.6 },
 };
-const DEFAULT_MOOD = { floor: 25, ceil: 85, beat: 0.4, react: 0.65 };
+const DEFAULT_MOOD = { floor: 15, ceil: 95, beat: 0.4, react: 0.8 };
 
 // ── CIE 1931 Perceptual Curve ──
 // Maps linear brightness (0-1) to perceptually uniform LED PWM value.
