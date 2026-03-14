@@ -65,15 +65,15 @@ export function analyzeTransitions(sections: SongSection[], curve: EnergySample[
     const delta = bEnergy - aEnergy;
     const absDelta = Math.abs(delta);
 
-    // Hard cut: >30% energy change, Fade: ≤30%
-    const isHard = absDelta > 0.3;
+    // Hard cut: >15% energy change, Fade: ≤15%
+    const isHard = absDelta > 0.15;
 
     transitions.push({
       time: transTime,
       fromType: a.type,
       toType: b.type,
       type: isHard ? 'hard' : 'fade',
-      crossfadeMs: isHard ? 50 : Math.round(200 + (1 - absDelta) * 800),
+      crossfadeMs: isHard ? 50 : Math.round(300 + (1 - absDelta / 0.15) * 700),
       energyDelta: Math.round(delta * 100) / 100,
     });
   }
