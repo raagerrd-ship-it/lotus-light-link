@@ -304,13 +304,24 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
       const sun = sunRef.current;
       if (sun) {
         const bass = bassRef.current;
-        const scale = 1 + bass * 0.6; // up to 1.6x at full bass
-        const glowSize = 60 + bass * 120; // 60-180px glow
-        const glowAlpha = 0.3 + bass * 0.5;
+        const scale = 1 + bass * 0.5;
         const [cr, cg, cb] = colorRef.current;
+        
+        // Smooth ring glow: layered box-shadows for a ring-like outer halo
+        const innerGlow = 40 + bass * 60;
+        const ringSpread = 8 + bass * 16;
+        const outerGlow = 80 + bass * 160;
+        const coreAlpha = 0.15 + bass * 0.25;
+        const ringAlpha = 0.4 + bass * 0.4;
+        const outerAlpha = 0.12 + bass * 0.2;
+        
         sun.style.transform = `scale(${scale})`;
-        sun.style.boxShadow = `0 0 ${glowSize}px rgba(${cr},${cg},${cb},${glowAlpha})`;
-        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.4 + bass * 0.4}) 0%, transparent 70%)`;
+        sun.style.boxShadow = [
+          `0 0 ${innerGlow}px rgba(${cr},${cg},${cb},${coreAlpha})`,
+          `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
+          `0 0 ${outerGlow}px rgba(${cr},${cg},${cb},${outerAlpha})`,
+        ].join(', ');
+        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.25 + bass * 0.35}) 0%, rgba(${cr},${cg},${cb},${0.08 + bass * 0.12}) 50%, transparent 72%)`;
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
@@ -723,9 +734,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
           maxWidth: '55vh',
           maxHeight: '55vh',
           transform: 'scale(1)',
+          transition: 'transform 80ms ease-out, box-shadow 120ms ease-out',
           willChange: 'transform, box-shadow, background',
-          background: `radial-gradient(circle, rgba(${r},${g},${b},0.4) 0%, transparent 70%)`,
-          boxShadow: `0 0 60px rgba(${r},${g},${b},0.3)`,
+          background: `radial-gradient(circle, rgba(${r},${g},${b},0.25) 0%, rgba(${r},${g},${b},0.08) 50%, transparent 72%)`,
+          boxShadow: `0 0 40px rgba(${r},${g},${b},0.15), 0 0 8px 8px rgba(${r},${g},${b},0.4), 0 0 80px rgba(${r},${g},${b},0.12)`,
         }}
       >
         <canvas
