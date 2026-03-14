@@ -291,10 +291,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     const elapsed = performance.now() - pos.receivedAt;
     const cal = calRef.current;
     const hasCurve = Array.isArray(energyCurveRef.current) && energyCurveRef.current.length > 10;
-    // In curve mode: add chainLatencyMs as look-ahead (compensates full Sonos→lamp chain)
+    // In curve mode: add chainLatencyMs as look-ahead + autoSync drift
     // In mic mode: add bleLatencyMs only (mic already hears the delayed audio)
     const lookAheadMs = hasCurve ? cal.chainLatencyMs : cal.bleLatencyMs;
-    return (pos.positionMs + elapsed + lookAheadMs) / 1000;
+    const driftMs = hasCurve ? getAutoSyncDriftMs() : 0;
+    return (pos.positionMs + elapsed + lookAheadMs + driftMs) / 1000;
   };
 
   useEffect(() => {
