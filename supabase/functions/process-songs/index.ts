@@ -868,7 +868,6 @@ serve(async (req) => {
       const curve = song.energy_curve as unknown as EnergySample[];
       if (!Array.isArray(curve) || curve.length < 50) continue;
 
-      // Skip if already baked and not just re-processed
       // Skip if already baked and not just re-processed (unless force rebake)
       if (song.brightness_curve && !results.includes(song.track_name) && !forceRebake) continue;
 
