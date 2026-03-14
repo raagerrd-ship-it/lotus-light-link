@@ -43,6 +43,7 @@ export default function DebugOverlay({
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
   deviceRole, bleMinIntervalMs, bleLatencyMs, dropActive,
+  energy, danceability, happiness,
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
