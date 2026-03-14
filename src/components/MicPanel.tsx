@@ -304,10 +304,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
       const sun = sunRef.current;
       if (sun) {
         const bass = bassRef.current;
-        const scale = 1 + bass * 0.35; // noticeable circle pulse
         const [cr, cg, cb] = colorRef.current;
         
-        // Glow reacts dramatically to bass
+        // No scale — circle stays fixed, only glow pulses
         const innerGlow = 20 + bass * 100;
         const ringSpread = 4 + bass * 28;
         const outerGlow = 40 + bass * 260;
@@ -315,7 +314,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         const ringAlpha = 0.15 + bass * 0.65;
         const outerAlpha = 0.05 + bass * 0.35;
         
-        sun.style.transform = `scale(${scale})`;
+        sun.style.transform = 'scale(1)';
         sun.style.boxShadow = [
           `0 0 ${innerGlow}px rgba(${cr},${cg},${cb},${coreAlpha})`,
           `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
