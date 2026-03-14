@@ -15,6 +15,7 @@ interface MicPanelProps {
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number }) => void;
+  onColorChange?: (color: [number, number, number]) => void;
 }
 
 /** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
