@@ -590,34 +590,28 @@ function computeBrightnessCurve(
 
     // ── Step 7: ADSR Beat pulse with anticipation dip ──
     if (mood.beat > 0 && beatGrid && beatGrid.bpm > 0) {
-      const beat = findNearestBeat(t);
-      const beatPeriodSec = 60 / beatGrid.bpm;
+      const bc = findBeatContext(t);
 
-      // Anticipation dip: 30ms before beat, reduce brightness by 20%
-      const dipWindowSec = 0.030;
-      // Find time to next beat
-      let timeToNextBeat = 999;
-      if (beat.index >= 0 && beat.index < beatGrid.beats.length) {
-        // Check current and next beat
-        for (let bi = Math.max(0, beat.index); bi <= Math.min(beatGrid.beats.length - 1, beat.index + 1); bi++) {
-          const diff = beatGrid.beats[bi] - t;
-          if (diff > 0 && diff < timeToNextBeat) timeToNextBeat = diff;
+      // Anticipation dip: 30ms before next beat, reduce brightness for contrast
+      if (bc.nextBeatIdx >= 0) {
+        const timeToNext = beatGrid.beats[bc.nextBeatIdx] - t;
+        if (timeToNext > 0 && timeToNext <= 0.030) {
+          const dipStrength = 0.20 * mood.beat;
+          pct = pct * (1 - dipStrength);
         }
       }
 
-      if (timeToNextBeat <= dipWindowSec && timeToNextBeat > 0) {
-        // Anticipation dip — pull brightness down for contrast
-        const dipStrength = 0.20 * mood.beat;
-        pct = pct * (1 - dipStrength);
-      }
-
-      // ADSR pulse (only near a beat)
-      if (beat.dist < 0.15) {
-        const pulse = adsrBeatPulse(beat.phase, beat.isDownbeat);
-        const beatBoost = pulse * mood.beat * 30;
-        // Downbeats get extra punch
-        const downbeatMultiplier = beat.isDownbeat ? 1.3 : 1.0;
-        pct = Math.min(100, pct + beatBoost * downbeatMultiplier);
+      // ADSR pulse based on phase since last beat
+      if (bc.lastBeatIdx >= 0 && bc.phase < 0.95) {
+        const pulse = adsrBeatPulse(bc.phase, bc.isDownbeat);
+        // Beat strength from analysis (if available)
+        let bsMul = 1.0;
+        if (beatStrengths && bc.lastBeatIdx < beatStrengths.length) {
+          bsMul = 0.4 + beatStrengths[bc.lastBeatIdx] * 0.6;
+        }
+        const beatBoost = pulse * mood.beat * 30 * bsMul;
+        const downbeatMul = bc.isDownbeat ? 1.3 : 1.0;
+        pct = Math.min(100, pct + beatBoost * downbeatMul);
       }
     }
 
