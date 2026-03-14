@@ -455,10 +455,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const baseBright = cal.minBrightness + midHiNorm * (MID_HI_CEILING - cal.minBrightness);
           // Bass (<150 Hz) boosts above baseline up to effectiveMax
           let rawPct = (baseBright + bassNorm * (effectiveMax - baseBright)) / 100;
-          // Apply dynamic damping: use 1/damping as exponent so that
-          // slider RIGHT (high damping value) = even (exp<1), LEFT (low) = contrast (exp>1)
-          if (cal.dynamicDamping !== 1.0) {
+          // Apply dynamic damping as signed control:
+          // >0 = smoother/even, <0 = contrast boost
+          if (cal.dynamicDamping > 0 && cal.dynamicDamping !== 1.0) {
             rawPct = Math.pow(rawPct, 1 / cal.dynamicDamping);
+          } else if (cal.dynamicDamping < 0) {
+            const contrast = 1 + Math.abs(cal.dynamicDamping);
+            rawPct = Math.max(0, Math.min(1, 0.5 + (rawPct - 0.5) * contrast));
           }
           const pct = Math.round(rawPct * 100);
 
