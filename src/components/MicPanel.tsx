@@ -566,7 +566,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             agcSaveTimerRef.current = nowMs;
             const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
             calRef.current = updated;
-            saveCalibration(updated, getActiveDeviceName() ?? undefined);
+            saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
           }
         };
 
