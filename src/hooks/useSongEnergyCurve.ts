@@ -5,6 +5,8 @@ import { curvePeakRms } from "@/lib/energyInterpolate";
 import { estimateBpmFromHistory, extractBeatGrid, type BeatGrid } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
 import { detectDrops, type Drop } from "@/lib/dropDetect";
+import { runMultiSongCalibration } from "@/lib/autoCalibrate";
+import { getCalibration, saveCalibration, getActiveDeviceName } from "@/lib/lightCalibration";
 
 export type { EnergySample };
 
