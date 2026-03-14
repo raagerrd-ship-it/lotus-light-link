@@ -88,7 +88,22 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   const [sections, setSections] = useState<SongSection[] | null>(null);
   const [drops, setDrops] = useState<Drop[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [cacheVersion, setCacheVersion] = useState(0);
   const trackRef = useRef<string | null>(null);
+
+  // Listen for cache invalidation events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const currentKey = track ? cacheKey(track) : null;
+      if (detail === '*' || detail === currentKey) {
+        trackRef.current = null; // force re-fetch
+        setCacheVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('curve-cache-clear', handler);
+    return () => window.removeEventListener('curve-cache-clear', handler);
+  }, [track?.trackName, track?.artistName]);
 
   useEffect(() => {
     if (!track) {
