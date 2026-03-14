@@ -316,7 +316,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} durationMs={nowPlaying?.durationMs} getPosition={getPosition} energyCurve={energyCurve} brightnessCurve={brightnessCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} dynamicRange={dynamicRange} transitions={transitions} beatStrengths={beatStrengths} trackName={nowPlaying?.trackName ?? null} artistName={nowPlaying?.artistName ?? null} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} durationMs={nowPlaying?.durationMs} getPosition={getPosition} energyCurve={energyCurve} brightnessCurve={brightnessCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} dynamicRange={dynamicRange} transitions={transitions} beatStrengths={beatStrengths} trackName={nowPlaying?.trackName ?? null} artistName={nowPlaying?.artistName ?? null} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} syncDiag={syncDiag} onSyncOffset={setSyncOffsetMs} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
