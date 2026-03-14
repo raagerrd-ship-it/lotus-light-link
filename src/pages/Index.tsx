@@ -238,6 +238,7 @@ const Index = () => {
       loadCalibrationFromCloud(deviceName).then((data) => {
         if (data) {
           saveCalibration(data.calibration, deviceName);
+          setActiveCalibration(data.calibration);
           if (data.bleMinIntervalMs != null) {
             setBleMinInterval(data.bleMinIntervalMs);
           }
