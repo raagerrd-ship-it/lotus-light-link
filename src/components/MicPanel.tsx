@@ -489,6 +489,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
             const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
             pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
+            // Update bass ref for sun pulse (compute bands from mic)
+            const micBands = computeBands(an, freqBuf);
+            bassRef.current = micBands.lo;
           }
 
           // Section-aware adjustments — concert effects only for analyzed songs
