@@ -1,0 +1,1 @@
+UPDATE public.song_analysis SET sections = NULL, brightness_curve = NULL WHERE sections IS NULL AND energy_curve IS NOT NULL
