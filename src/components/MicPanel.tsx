@@ -516,15 +516,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bleCallMs: bleEnd - smoothEnd,
             totalTickMs: bleEnd - tickStart,
           });
-
-          // Save AGC state every 10 seconds
-          const nowMs = performance.now();
-          if (nowMs - agcSaveTimerRef.current > 10_000) {
-            agcSaveTimerRef.current = nowMs;
-            const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
-            calRef.current = updated;
-            saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
-          }
         };
 
         onBleWrite((bright, r, g, b) => {
