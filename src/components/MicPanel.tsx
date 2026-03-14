@@ -572,12 +572,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
 
         onBleWrite((bright, r, g, b) => {
           if (stopped) return;
-          const scale = bright / 100;
+          // Use raw RGB for color (so the line matches the hue sent to the lamp)
+          // pct = brightness for Y-axis positioning
           samplesRef.current.push({
             pct: bright,
-            r: Math.round(r * scale),
-            g: Math.round(g * scale),
-            b: Math.round(b * scale),
+            r: Math.max(r, 20),
+            g: Math.max(g, 20),
+            b: Math.max(b, 20),
           });
           if (samplesRef.current.length > HISTORY_LEN) {
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
