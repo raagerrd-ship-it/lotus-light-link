@@ -4,6 +4,7 @@
 export interface EnergySample {
   t: number; // seconds (song position)
   e: number; // 0.0–1.0 normalized energy
+  rawRms?: number; // raw RMS value before AGC normalization
   kick?: boolean; // white kick triggered at this sample
   kickT?: number; // exact kick timestamp (seconds) with sub-sample precision
   lo?: number; // 0.0–1.0 low-band energy (<300 Hz)
