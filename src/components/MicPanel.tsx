@@ -279,21 +279,52 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const micBands = computeBands(an, freqBuf);
           bassRef.current = micBands.lo;
 
-          // White kick logic — beat-synced when BPM available
+          // ── Drop detection ──
+          // Track RMS history (last ~1.5s at ~60fps ≈ 90 samples)
+          const DROP_HISTORY_LEN = 90;
+          const DROP_COOLDOWN_MS = 3000;
+          const DROP_QUIET_THRESHOLD = 0.25; // normalized quiet zone
+          const DROP_SURGE_MULTIPLIER = 3.0; // how much louder than recent avg
+          const DROP_DURATION_MS = 400; // how long to hold the drop effect
+
+          const rmsHist = rmsHistoryRef.current;
+          rmsHist.push(normalized);
+          if (rmsHist.length > DROP_HISTORY_LEN) rmsHist.shift();
+
           const now = performance.now();
+          let isDrop = now < dropActiveUntilRef.current;
+
+          // Only check for drops if we have enough history and not in cooldown
+          if (rmsHist.length >= 30 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
+            // Look at the recent past: was it quiet?
+            const recentWindow = rmsHist.slice(-10); // last ~160ms
+            const pastWindow = rmsHist.slice(-40, -10); // ~160ms-660ms ago
+            const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
+            const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
+
+            // Drop = quiet period followed by sudden surge
+            if (pastAvg < DROP_QUIET_THRESHOLD && recentAvg > pastAvg * DROP_SURGE_MULTIPLIER && recentAvg > 0.5) {
+              dropActiveUntilRef.current = now + DROP_DURATION_MS;
+              lastDropTimeRef.current = now;
+              isDrop = true;
+              console.log('[Drop]', { pastAvg: pastAvg.toFixed(3), recentAvg: recentAvg.toFixed(3) });
+            }
+          }
+
+          // White kick logic — beat-synced when BPM available
           const currentBpm = bpmRef.current;
           let isWhite = false;
 
-          if (currentBpm && currentBpm > 0) {
+          // Drop overrides normal white kick — force white for longer
+          if (isDrop) {
+            isWhite = true;
+          } else if (currentBpm && currentBpm > 0) {
             // Beat-synced kicks: fire white kick when volume peak aligns with beat phase
             const beatIntervalMs = 60000 / currentBpm;
             const timeSinceLastBeat = now - lastBeatTimeRef.current;
 
-            // Advance beat phase
             if (timeSinceLastBeat >= beatIntervalMs * 0.9) {
-              // We're near or past the next beat — check if volume is high enough to trigger
               if (pct > cal.whiteKickThreshold * 0.7) {
-                // Snap to beat
                 lastBeatTimeRef.current = now;
                 whiteKickUntilRef.current = now + Math.min(cal.whiteKickMs, beatIntervalMs * 0.15);
               }
