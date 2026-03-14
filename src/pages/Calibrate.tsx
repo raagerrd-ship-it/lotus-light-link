@@ -14,11 +14,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'ble' | 'latency' | 'songs';
+import ChainSyncTab from "@/components/ChainSyncTab";
+
+type Tab = 'ble' | 'latency' | 'chain' | 'songs';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ble', label: 'BLE-hastighet' },
   { key: 'latency', label: 'Latens' },
+  { key: 'chain', label: 'Kedja' },
   { key: 'songs', label: 'Inspelade låtar' },
 ];
 
