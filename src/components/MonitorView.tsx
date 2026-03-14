@@ -134,7 +134,7 @@ export default function MonitorView() {
         .from("song_analysis")
         .select("id, track_name, artist_name, bpm, created_at, sections, drops")
         .order("created_at", { ascending: false })
-        .limit(50)
+        .limit(500)
         .then(({ data }) => {
           if (data) {
             setSongs(data.map((d: any) => ({
