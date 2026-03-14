@@ -105,7 +105,7 @@ const Index = () => {
       });
     }, 500);
     return () => clearInterval(id);
-  }, [isMaster, connection, nowPlaying?.trackName, energyCurve, curveLoading, smoothedRtt]);
+  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.playbackState, energyCurve, curveLoading, smoothedRtt]);
 
   // Push now-playing info to live session when master
   useEffect(() => {
