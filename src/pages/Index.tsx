@@ -159,8 +159,11 @@ const Index = () => {
   }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, nowPlaying?.durationMs, connection?.device?.name]);
 
   // Live status callback from MicPanel
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean }) => {
+  const [dropActive, setDropActive] = useState(false);
+
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => {
     if (!isMaster) return;
+    setDropActive(status.isDrop);
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
@@ -369,6 +372,10 @@ const Index = () => {
         palette={palette}
         paletteIndex={paletteIndexRef.current}
         sonosVolume={nowPlaying?.volume}
+        liveBpm={bpm}
+        maxBrightness={activeCalibration.maxBrightness}
+        dynamicDamping={activeCalibration.dynamicDamping}
+        gainMode={nowPlaying?.volume != null ? 'vol' : 'manual'}
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
@@ -376,6 +383,7 @@ const Index = () => {
         bleMinIntervalMs={getBleMinInterval()}
         bleLatencyMs={activeCalibration.bleLatencyMs}
         deviceRole="master"
+        dropActive={dropActive}
       />
     </div>
   );

@@ -23,6 +23,7 @@ interface DebugOverlayProps {
   deviceRole?: 'master' | 'monitor';
   bleMinIntervalMs?: number;
   bleLatencyMs?: number;
+  dropActive?: boolean;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -38,7 +39,7 @@ export default function DebugOverlay({
   smoothedRtt, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
-  deviceRole, bleMinIntervalMs, bleLatencyMs,
+  deviceRole, bleMinIntervalMs, bleLatencyMs, dropActive,
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
@@ -74,6 +75,7 @@ export default function DebugOverlay({
 
       {/* Audio */}
       <div>BPM: <span className="text-foreground">{liveBpm ? Math.round(liveBpm) : '—'}</span></div>
+      <div>drop: {dropActive ? <span className="text-red-400 font-bold animate-pulse">🔥 DROP</span> : <span className="text-foreground/50">—</span>}</div>
       <div>max ljus: <span className="text-foreground">{maxBrightness ?? 100}%</span></div>
       {dynamicDamping != null && dynamicDamping > 1 && <div>dämpa: <span className="text-foreground">{dynamicDamping.toFixed(1)}x</span></div>}
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>

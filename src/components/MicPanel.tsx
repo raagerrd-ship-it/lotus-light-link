@@ -10,7 +10,7 @@ interface MicPanelProps {
   sonosVolume?: number;
   isPlaying?: boolean;
   bpm?: number | null;
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean }) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => void;
 }
 
 const HISTORY_LEN = 120;
@@ -390,6 +390,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             brightness: bright,
             color: [r, g, b],
             isWhiteKick: performance.now() < whiteKickUntilRef.current,
+            isDrop: performance.now() < dropActiveUntilRef.current,
           });
         });
 
