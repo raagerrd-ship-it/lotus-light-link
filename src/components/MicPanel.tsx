@@ -372,6 +372,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
                 const normMic = Math.min(1, Math.max(0, (micRms - agcMinRef.current) / range));
                 const existingE = interpolateEnergy(curve!, posSec);
                 const blended = existingE * 0.8 + normMic * 0.2;
+                touchRecordingContext();
                 recordedSamplesRef.current.push({
                   t: posSec,
                   e: blended,
