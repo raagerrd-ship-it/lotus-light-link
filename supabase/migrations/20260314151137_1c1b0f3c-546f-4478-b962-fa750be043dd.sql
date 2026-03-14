@@ -1,0 +1,1 @@
+UPDATE public.song_analysis SET bpm = NULL, beat_grid = NULL, drops = NULL, dynamic_range = NULL, transitions = NULL, beat_strengths = NULL, sections = NULL, brightness_curve = NULL WHERE id = '95a65c84-3a28-4b81-9708-b65134e14a1d';
