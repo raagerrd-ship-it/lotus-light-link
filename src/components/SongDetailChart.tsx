@@ -111,16 +111,8 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     const recVol = data.recorded_volume;
     const volScale = (recVol && recVol > 0) ? (recVol / REFERENCE_VOL) : 1;
 
-    // Auto-peak normalization: find actual peak after volume scaling to use full chart height
-    let peakE = 0;
-    for (const s of curve) {
-      const scaled = s.e * volScale;
-      if (scaled > peakE) peakE = scaled;
-    }
-    if (peakE < 0.01) peakE = 1;
-
     const tToX = (t: number) => (t / maxT) * w;
-    const eToY = (e: number) => chartBottom - Math.min(1, (e * volScale) / peakE) * chartH;
+    const eToY = (e: number) => chartBottom - Math.min(1, e * volScale) * chartH;
 
     // Draw sections as colored bars
     if (sections && sections.length > 0) {
