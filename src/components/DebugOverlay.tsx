@@ -124,7 +124,7 @@ export default function DebugOverlay({
 
       {/* Build info */}
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
-        build: {(() => { try { const d = new Date(__BUILD_TIME__); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); } catch { return 'unknown'; } })()}
+        build: {(() => { try { const bt = (globalThis as Record<string, unknown>).__BUILD_TIME__ as string; const d = new Date(bt); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); } catch { return 'unknown'; } })()}
       </div>
     </div>
   );
