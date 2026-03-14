@@ -23,6 +23,7 @@ interface DebugOverlayProps {
   deviceRole?: 'master' | 'monitor';
   bleMinIntervalMs?: number;
   bleLatencyMs?: number;
+  dropActive?: boolean;
 }
 
 const phaseLabels: Record<string, string> = {
