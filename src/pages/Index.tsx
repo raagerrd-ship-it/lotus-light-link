@@ -413,7 +413,7 @@ const Index = () => {
         loudness={trackTraits.loudness}
         bassLevel={bandLevels.bass}
         midHiLevel={bandLevels.midHi}
-      />
+      />}
     </div>
   );
 };
