@@ -48,6 +48,24 @@ function DebugPanel({ d }: { d: MasterDebugState }) {
       </div>
       {d.curveTrackName && <div className="truncate text-foreground/50">{d.curveTrackName}</div>}
       <div>BLE w/s: <span className="text-foreground">{d.bleWritesPerSec ?? 0}</span> e2e: <span className="text-foreground">{Math.round(d.e2eMs ?? 0)}ms</span> tick: <span className="text-foreground">{(d.totalTickMs ?? 0).toFixed(1)}ms</span></div>
+
+      {/* Sync & delay */}
+      <div className="mt-1 pt-1 border-t border-border/30">
+        <div>auto-sync: <span className="text-foreground">{(d.autoDriftMs ?? 0) >= 0 ? '+' : ''}{Math.round(d.autoDriftMs ?? 0)}ms</span></div>
+        <div>look-ahead: <span className="text-foreground">{Math.round(d.activeLookAheadMs ?? 0)}ms</span> <span className="text-muted-foreground">({d.syncMode === 'curve' ? 'kurva' : 'mik'})</span></div>
+        {d.chainLatencyMs != null && <div>kedja: <span className="text-foreground">{Math.round(d.chainLatencyMs)}ms</span></div>}
+        {d.bleLatencyMs != null && <div>BLE latens: <span className="text-foreground">{Math.round(d.bleLatencyMs)}ms</span></div>}
+        {d.bleMinIntervalMs != null && <div>BLE intervall: <span className="text-foreground">{d.bleMinIntervalMs}ms</span></div>}
+      </div>
+
+      {/* Calibration */}
+      <div className="mt-1 pt-1 border-t border-border/30">
+        {d.maxBrightness != null && <div>max ljus: <span className="text-foreground">{d.maxBrightness}%</span></div>}
+        {d.dynamicDamping != null && d.dynamicDamping > 1 && <div>dämpa: <span className="text-foreground">{d.dynamicDamping.toFixed(1)}x</span></div>}
+        {d.attackAlpha != null && <div>attack: <span className="text-foreground">{d.attackAlpha.toFixed(3)}</span></div>}
+        {d.releaseAlpha != null && <div>release: <span className="text-foreground">{d.releaseAlpha.toFixed(3)}</span></div>}
+        {d.sonosVolume != null && <div>volym: <span className="text-foreground">{d.sonosVolume}%</span></div>}
+      </div>
     </div>
   );
 }
