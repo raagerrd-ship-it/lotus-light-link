@@ -965,6 +965,7 @@ export default function Calibrate() {
           currentChainLatencyMs={cal.chainLatencyMs}
           onSave={(ms) => update({ chainLatencyMs: ms })}
         />}
+        {tab === 'song' && <SongCalibrationTab cal={cal} onSave={(patch) => update(patch)} />}
 
         {tab === 'songs' && <RecordedSongsTab />}
       </div>

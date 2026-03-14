@@ -249,3 +249,92 @@ export function runAutoCalibration(
     correlation,
   };
 }
+
+// --- Multi-song calibration ---
+
+export interface PerSongResult {
+  trackName: string;
+  artistName: string;
+  attackAlpha: number;
+  releaseAlpha: number;
+  dynamicDamping: number;
+  correlation: number;
+}
+
+export interface MultiSongCalibrationResult {
+  attackAlpha: number;
+  releaseAlpha: number;
+  dynamicDamping: number;
+  perSong: PerSongResult[];
+}
+
+export interface SongInput {
+  trackName: string;
+  artistName: string;
+  energyCurve: { t: number; rawRms: number }[];
+}
+
+/**
+ * Run calibration across multiple songs, returning the median of each parameter.
+ * Converts rawRms curves to normalized energy (rawRms/peakRms) for the calibration engine.
+ */
+export function runMultiSongCalibration(songs: SongInput[]): MultiSongCalibrationResult {
+  const results: PerSongResult[] = [];
+
+  for (const song of songs) {
+    const curve = song.energyCurve;
+    if (!curve || curve.length < 50) continue;
+
+    // Find peak rawRms
+    let peak = 0;
+    for (const s of curve) { if (s.rawRms > peak) peak = s.rawRms; }
+    if (peak === 0) continue;
+
+    // Convert to normalized energy curve
+    const normalizedCurve: EnergySample[] = curve.map(s => ({
+      t: s.t,
+      e: s.rawRms / peak,
+    }));
+
+    // Use the same curve as both "reference" and "mic input"
+    // This finds optimal smoothing parameters for the curve's dynamics
+    const micSamples: MicSample[] = curve.map(s => ({
+      t: s.t,
+      rms: s.rawRms / peak,
+    }));
+
+    const result = runAutoCalibration(normalizedCurve, micSamples);
+
+    results.push({
+      trackName: song.trackName,
+      artistName: song.artistName,
+      attackAlpha: result.attackAlpha,
+      releaseAlpha: result.releaseAlpha,
+      dynamicDamping: result.dynamicDamping,
+      correlation: result.correlation,
+    });
+  }
+
+  if (results.length === 0) {
+    return {
+      attackAlpha: 0.3,
+      releaseAlpha: 0.05,
+      dynamicDamping: 1.0,
+      perSong: [],
+    };
+  }
+
+  // Take median of each parameter
+  const median = (arr: number[]) => {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  };
+
+  return {
+    attackAlpha: Math.round(median(results.map(r => r.attackAlpha)) * 100) / 100,
+    releaseAlpha: Math.round(median(results.map(r => r.releaseAlpha)) * 1000) / 1000,
+    dynamicDamping: Math.round(median(results.map(r => r.dynamicDamping)) * 10) / 10,
+    perSong: results,
+  };
+}
