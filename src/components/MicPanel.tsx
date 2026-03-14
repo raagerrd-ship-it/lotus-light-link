@@ -214,17 +214,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
       const isComplete = startedEarly && finishedLate;
 
       if (isComplete) {
-        // Post-process: mark kicks using global peak (top 15% of peak rawRms)
-        const globalPeak = prev.reduce((max, s) => Math.max(max, s.rawRms), 0);
-        if (globalPeak > 0) {
-          const kickThreshold = globalPeak * 0.70;
-          for (const s of prev) {
-            if (s.rawRms > kickThreshold) {
-              s.kick = true;
-              s.kickT = s.t;
-            }
-          }
-        }
+        // Post-process: refine kicks with contrast filtering, debouncing & beat-snap
+        refineKicks(prev, beatGridRef.current);
         const agc: AgcState = {
           agcMin: agcMinRef.current,
           agcMax: agcMaxRef.current,
