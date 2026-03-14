@@ -56,9 +56,10 @@ function estimateBpm(curve: EnergySample[]): number | null {
 }
 
 function buildBeatGrid(curve: EnergySample[], bpm: number): BeatGrid | null {
+  const peak = curvePeakRms(curve);
   return extractBeatGrid(
     curve.map(s => s.t),
-    curve.map(s => s.e),
+    curve.map(s => peak > 0 ? s.rawRms / peak : 0),
     bpm,
   );
 }

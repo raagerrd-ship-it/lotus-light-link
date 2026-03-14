@@ -112,7 +112,7 @@ function smoothEnergy(curve: EnergySample[], window: number): number[] {
     let sum = 0;
     let count = 0;
     for (let j = Math.max(0, i - half); j <= Math.min(curve.length - 1, i + half); j++) {
-      sum += curve[j].e;
+      sum += curve[j].rawRms;
       count++;
     }
     result[i] = sum / count;
