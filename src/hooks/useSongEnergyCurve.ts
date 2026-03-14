@@ -27,6 +27,7 @@ interface SongEnergyCurveResult {
   dynamicRange: DynamicRange | null;
   transitions: Transition[] | null;
   beatStrengths: number[] | null;
+  processing: boolean;
   loading: boolean;
   saveCurve: (
     samples: EnergySample[],
