@@ -150,7 +150,7 @@ const Index = () => {
       track_name: nowPlaying?.trackName ?? null,
       artist_name: nowPlaying?.artistName ?? null,
       album_art_url: nowPlaying?.albumArtUrl ?? null,
-      bpm: null,
+      bpm: bpm ?? null,
       is_playing: nowPlaying?.playbackState === "PLAYBACK_STATE_PLAYING",
       position_ms: pos?.positionMs ?? 0,
       duration_ms: nowPlaying?.durationMs ?? 0,
