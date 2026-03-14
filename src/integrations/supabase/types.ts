@@ -145,6 +145,7 @@ export type Database = {
           beat_strengths: Json | null
           bpm: number | null
           brightness_curve: Json | null
+          calibration_snapshot: Json | null
           created_at: string | null
           drops: Json | null
           dynamic_range: Json | null
@@ -163,6 +164,7 @@ export type Database = {
           beat_strengths?: Json | null
           bpm?: number | null
           brightness_curve?: Json | null
+          calibration_snapshot?: Json | null
           created_at?: string | null
           drops?: Json | null
           dynamic_range?: Json | null
@@ -181,6 +183,7 @@ export type Database = {
           beat_strengths?: Json | null
           bpm?: number | null
           brightness_curve?: Json | null
+          calibration_snapshot?: Json | null
           created_at?: string | null
           drops?: Json | null
           dynamic_range?: Json | null
