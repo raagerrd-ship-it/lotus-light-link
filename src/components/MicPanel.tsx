@@ -541,10 +541,60 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
           const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0, dynamicRangeRef.current);
 
           if (hasCurve) {
-            // ── Deep section dynamics (only with saved analysis) ──
-            pct = Math.round(pct * sectionParams.brightnessScale);
+            const hasBakedBrightness = Array.isArray(brightnessCurveRef.current) && brightnessCurveRef.current.length > 10;
 
-            // ── Palette rotation on section changes ──
+            if (!hasBakedBrightness) {
+              // ── Fallback: apply section dynamics manually (pre-bake not ready) ──
+              pct = Math.round(pct * sectionParams.brightnessScale);
+
+              // Blackout before drops
+              const currentDrops2 = dropsRef.current;
+              const buildUp2 = currentDrops2 && posSec2 != null ? getBuildUpIntensity(currentDrops2, posSec2) : 0;
+              if (buildUp2 > 0.9) {
+                const blackoutProgress = (buildUp2 - 0.9) / 0.1;
+                pct = Math.round(pct * (1 - blackoutProgress * 0.85));
+              }
+
+              // Beat-synced pulse
+              const currentBpm = bpmRef.current;
+              const grid = beatGridRef.current;
+              if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
+                const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
+                const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
+                const pulse = beatPulse(posSec2, currentBpm, bs);
+                const pulseBoost = pulse * sectionParams.beatPulseStrength * 30;
+                pct = Math.min(100, Math.round(pct + pulseBoost));
+
+                if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
+                  strobeUntilRef.current = performance.now() + 40;
+                }
+              }
+
+              // Hard transition flash
+              const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
+              if (transParams.active && transParams.type === 'hard') {
+                if (transParams.progress < 0.15) {
+                  pct = Math.min(100, pct + 30);
+                  strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
+                }
+              }
+            } else {
+              // ── Pre-baked: only strobe effects (brightness already includes everything) ──
+              const currentBpm = bpmRef.current;
+              const grid = beatGridRef.current;
+              if (currentBpm && currentBpm > 0 && posSec2 != null) {
+                const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
+                if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
+                  strobeUntilRef.current = performance.now() + 40;
+                }
+              }
+              const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
+              if (transParams.active && transParams.type === 'hard' && transParams.progress < 0.15) {
+                strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
+              }
+            }
+
+            // ── Palette rotation on section changes (always active) ──
             const currentSections = sectionsRef.current;
             if (currentSections && posSec2 != null) {
               const curSection = getCurrentSection(currentSections, posSec2);
@@ -556,39 +606,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
                   paletteColorIndexRef.current = (paletteColorIndexRef.current + 1) % pal.length;
                   colorRef.current = pal[paletteColorIndexRef.current];
                 }
-              }
-            }
-
-            // ── Blackout before drops: last 10% of build-up → dim to near-zero ──
-            const currentDrops2 = dropsRef.current;
-            const buildUp2 = currentDrops2 && posSec2 != null ? getBuildUpIntensity(currentDrops2, posSec2) : 0;
-            if (buildUp2 > 0.9) {
-              const blackoutProgress = (buildUp2 - 0.9) / 0.1;
-              pct = Math.round(pct * (1 - blackoutProgress * 0.85));
-            }
-
-            // ── Beat-synced pulse — concert-level (×30) with strobe ──
-            const currentBpm = bpmRef.current;
-            const grid = beatGridRef.current;
-            if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
-              const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
-              const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
-              const pulse = beatPulse(posSec2, currentBpm, bs);
-              const pulseBoost = pulse * sectionParams.beatPulseStrength * 30;
-              pct = Math.min(100, Math.round(pct + pulseBoost));
-
-              // Strobe on beat in drops: 40ms white flash per beat
-              if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
-                strobeUntilRef.current = performance.now() + 40;
-              }
-            }
-
-            // ── Hard transition flash: 80ms white burst ──
-            const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
-            if (transParams.active && transParams.type === 'hard') {
-              if (transParams.progress < 0.15) {
-                pct = Math.min(100, pct + 30);
-                strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
               }
             }
           } else {
