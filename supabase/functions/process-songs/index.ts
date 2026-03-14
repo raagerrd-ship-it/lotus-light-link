@@ -369,26 +369,22 @@ function cieLightness(linearVal: number): number {
 // Professional beat pulse shape: instant attack, fast decay, sustain plateau, smooth release
 function adsrBeatPulse(phase: number, isDownbeat: boolean): number {
   // phase: 0 = beat hit, 1 = next beat
-  // ADSR timing as fraction of beat period:
-  const attackEnd = 0.02;   // ~10ms at 120bpm (500ms period)
-  const decayEnd = 0.14;    // ~70ms decay
-  const sustainEnd = 0.35;  // sustain plateau
-  const sustainLevel = isDownbeat ? 0.55 : 0.40;
+  // V2: shorter sustain → snappier response, less perceived delay
+  const attackEnd = 0.02;   // ~10ms at 120bpm
+  const decayEnd = 0.10;    // ~50ms decay (was 70ms)
+  const sustainEnd = 0.18;  // shorter sustain (was 0.35)
+  const sustainLevel = isDownbeat ? 0.45 : 0.30; // lower sustain (was 0.55/0.40)
 
   if (phase < attackEnd) {
-    // Attack: instant ramp to 1.0
     return phase / attackEnd;
   } else if (phase < decayEnd) {
-    // Decay: drop from 1.0 to sustain level
     const decayProgress = (phase - attackEnd) / (decayEnd - attackEnd);
     return 1.0 - (1.0 - sustainLevel) * decayProgress;
   } else if (phase < sustainEnd) {
-    // Sustain: hold at sustain level
     return sustainLevel;
   } else {
-    // Release: smooth fade to 0
     const releaseProgress = (phase - sustainEnd) / (1.0 - sustainEnd);
-    return sustainLevel * Math.exp(-releaseProgress * 3.5);
+    return sustainLevel * Math.exp(-releaseProgress * 4.5); // faster release (was 3.5)
   }
 }
 
