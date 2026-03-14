@@ -1008,6 +1008,13 @@ export default function Calibrate() {
         {tab === 'songs' && <RecordedSongsTab />}
       </div>
 
+      {/* Calibration song tips — show on relevant tabs */}
+      {(tab === 'chain' || tab === 'song') && (
+        <div className="mt-4">
+          <CalibrationTips activeCategory={tab === 'chain' ? 'sync' : 'dynamics'} />
+        </div>
+      )}
+
       {/* Current calibration + history */}
       <div className="mt-6 space-y-3">
         <CurrentCalibrationPanel cal={cal} />
