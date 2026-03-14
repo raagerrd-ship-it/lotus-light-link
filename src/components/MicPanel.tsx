@@ -14,6 +14,7 @@ interface MicPanelProps {
   danceability?: number | null;  // 0-100
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
+  historyLen?: number;           // override chart history length (default 120)
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number }) => void;
   onColorChange?: (color: [number, number, number]) => void;
 }
@@ -115,7 +116,8 @@ function modulateColor(
 const ROTATION_INTERVAL_MS = 20_000; // rotate palette every 20s
 const CROSSFADE_ALPHA = 0.008;      // per-frame lerp → ~3-5s fade at 60fps
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, onLiveStatus, onColorChange }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, onLiveStatus, onColorChange }: MicPanelProps) => {
+  const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -245,7 +247,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
-          drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
+          drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
       // Crossfade blendedColor toward targetColor
@@ -534,8 +536,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             g: Math.max(g, 20),
             b: Math.max(b, 20),
           });
-          if (samplesRef.current.length > HISTORY_LEN) {
-            samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
+          if (samplesRef.current.length > effectiveHistoryLen) {
+            samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
           chartDirtyRef.current = true;
           brightPctRef.current = bright;
@@ -578,21 +580,35 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     };
   }, []);
 
+  const isCompact = historyLenProp != null; // calibration mode: fill parent
+
   useEffect(() => {
     const resize = () => {
       const canvas = canvasRef.current;
-      const sun = sunRef.current;
-      if (!canvas || !sun) return;
-      const size = sun.clientWidth;
-      canvas.width = size * devicePixelRatio;
-      canvas.height = size * devicePixelRatio;
+      const container = isCompact ? sunRef.current : sunRef.current;
+      if (!canvas || !container) return;
+      canvas.width = container.clientWidth * devicePixelRatio;
+      canvas.height = container.clientHeight * devicePixelRatio;
     };
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, []);
+  }, [isCompact]);
 
   const [r, g, b] = currentColor;
+
+  if (isCompact) {
+    // Calibration mode: rectangular chart, no sun glow
+    return (
+      <div className="absolute inset-0" ref={sunRef}>
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ opacity: 0.9 }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="absolute inset-0 flex items-center justify-center">
