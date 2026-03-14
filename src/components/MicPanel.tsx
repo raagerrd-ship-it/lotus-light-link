@@ -8,6 +8,7 @@ import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
 import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
 import { beatGridPhase, type BeatGrid } from "@/lib/bpmEstimate";
+import { reportLiveOnset, tickAutoSync, getAutoSyncDriftMs, resetAutoSync } from "@/lib/autoSync";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
