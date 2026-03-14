@@ -584,9 +584,10 @@ function computeBrightnessCurve(
       }
     }
 
-    // ── Step 6: Drop aftermath — force high intensity ──
+    // ── Step 6: Drop aftermath — boost but don't force if energy is low ──
     if (isInDropFn(t)) {
-      pct = Math.max(pct, moodCeil * 0.75);
+      // V2: boost by 20% instead of forcing to 75% floor — respects actual energy
+      pct = Math.min(100, pct * 1.2);
     }
 
     // ── Step 7: ADSR Beat pulse with anticipation dip ──
