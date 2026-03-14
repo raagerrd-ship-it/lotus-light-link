@@ -477,9 +477,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
           }
 
-          // Section-aware adjustments
+          // Section-aware adjustments with dynamic range normalization
           const posSec2 = getSongPositionSec();
-          const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0);
+          const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0, dynamicRangeRef.current);
           pct = Math.round(pct * sectionParams.brightnessScale);
 
           // Beat-synced pulse — use beat grid for precise phase if available
@@ -487,9 +487,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           const grid = beatGridRef.current;
           if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
             const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
-            const pulse = Math.exp(-phase * 4); // sharp attack, smooth decay
+            // Get per-beat strength for downbeat differentiation
+            const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
+            const pulse = beatPulse(posSec2, currentBpm, bs);
             const pulseBoost = pulse * sectionParams.beatPulseStrength * 15;
             pct = Math.min(100, Math.round(pct + pulseBoost));
+          }
+
+          // Transition-aware crossfade hint (logged for future color crossfade use)
+          const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
+          if (transParams.active && transParams.type === 'hard') {
+            // Hard transitions: brief brightness flash
+            if (transParams.progress < 0.3) {
+              pct = Math.min(100, pct + 10);
+            }
           }
 
           // Track pipeline latency
