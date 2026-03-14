@@ -304,7 +304,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
       const sun = sunRef.current;
       if (sun) {
         const bass = bassRef.current;
-        const scale = 1 + bass * 0.15; // subtle scale, glow does the heavy lifting
+        const scale = 1 + bass * 0.35; // noticeable circle pulse
         const [cr, cg, cb] = colorRef.current;
         
         // Glow reacts dramatically to bass
