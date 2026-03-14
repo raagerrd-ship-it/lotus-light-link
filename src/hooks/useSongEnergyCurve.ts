@@ -311,7 +311,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
           }
         });
     },
-    [track, triggerSectionAnalysis, triggerAutoCalibration],
+    [track, triggerSectionAnalysis],
   );
 
   return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading, saveCurve };
