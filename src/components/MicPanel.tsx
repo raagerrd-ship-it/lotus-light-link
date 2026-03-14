@@ -126,12 +126,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const initCal = calRef.current;
   const agcMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
   const agcMinRef = useRef(initCal.agcMin);
+  // Per-band AGC for frequency-based brightness
+  const bassAgcMaxRef = useRef(0.01);
+  const bassAgcMinRef = useRef(0);
+  const midHiAgcMaxRef = useRef(0.01);
+  const midHiAgcMinRef = useRef(0);
   const lastVolumeRef = useRef(sonosVolume);
   const agcSaveTimerRef = useRef(0);
   const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
   const bassRef = useRef(0);
+  const midHiRef = useRef(0);
   const brightPctRef = useRef(0);
   const sunRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
@@ -141,8 +147,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const loudnessDbRef = useRef(parseLoudnessDb(loudness));
   const beatPhaseRef = useRef(0);
   const lastBeatTimeRef = useRef(0);
-  // Drop detection state
-  const rmsHistoryRef = useRef<number[]>([]);
+  // Drop detection state — now tracks bassRms only
+  const bassHistoryRef = useRef<number[]>([]);
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
 
