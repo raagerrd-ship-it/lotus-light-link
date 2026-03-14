@@ -536,8 +536,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             g: Math.max(g, 20),
             b: Math.max(b, 20),
           });
-          if (samplesRef.current.length > HISTORY_LEN) {
-            samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
+          if (samplesRef.current.length > effectiveHistoryLen) {
+            samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
           chartDirtyRef.current = true;
           brightPctRef.current = bright;
