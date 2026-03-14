@@ -93,6 +93,7 @@ function parseRow(data: any): Omit<CacheEntry, 'songId'> & { songId: string | nu
 
 export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResult {
   const [curve, setCurve] = useState<EnergySample[] | null>(null);
+  const [brightnessCurve, setBrightnessCurve] = useState<{ t: number; b: number }[] | null>(null);
   const [recordedVolume, setRecordedVolume] = useState<number | null>(null);
   const [savedAgcState, setSavedAgcState] = useState<AgcState | null>(null);
   const [bpm, setBpm] = useState<number | null>(null);
