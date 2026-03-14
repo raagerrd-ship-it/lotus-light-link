@@ -317,16 +317,16 @@ function analyzeBeatStrengths(curve: EnergySample[], beatGrid: BeatGrid): number
   return strengths.map(s => Math.round((s / maxStrength) * 100) / 100);
 }
 
-// ── Pre-baked brightness curve (lighting-design philosophy) ──
+// ── Pre-baked brightness curve (professional lighting design) ──
 //
-// Key principles:
-// 1. Section type sets the MOOD — a base floor/ceiling for brightness
-// 2. Audio energy MODULATES within that range, not defines it
-// 3. Beats create sharp, snappy pulses (kick-drum envelope)
-// 4. Build-ups breathe with escalating intensity
-// 5. Drops explode — maximum contrast from blackout to full
-// 6. Bass (lo-band) drives brightness more than overall RMS
-// 7. A "lighting gamma" avoids linear mapping which looks flat on LEDs
+// Philosophy: We are designing LIGHTING, not visualizing audio.
+// Key principles from DMX/WLED/concert LD practice:
+// 1. CIE 1931 perceptual curve — human eye perceives brightness logarithmically
+// 2. Separate envelope followers per frequency band (bass/mid/hi)
+// 3. ADSR beat envelopes — not just exponential decay
+// 4. Anticipation dips — contrast boost before beats
+// 5. Noise gate / squelch — silence = dark, no nervous flicker
+// 6. Section mood — intentional floor/ceiling per song part
 
 interface BrightnessSample {
   t: number;
@@ -348,9 +348,47 @@ const SECTION_MOOD: Record<string, { floor: number; ceil: number; beat: number; 
 };
 const DEFAULT_MOOD = { floor: 15, ceil: 80, beat: 0.3, react: 0.6 };
 
-// Lighting gamma: S-curve for better LED perception (dim stays dim, bright pops)
-function lightingGamma(x: number): number {
-  return x * x * (3 - 2 * x); // smoothstep
+// ── CIE 1931 Perceptual Curve ──
+// Maps linear brightness (0-1) to perceptually uniform LED PWM value.
+// Low values spread out more, high values compress — matches human vision.
+function cieLightness(linearVal: number): number {
+  const v = Math.max(0, Math.min(1, linearVal));
+  // CIE L* to Y (inverse): convert linear energy to perceptual brightness
+  // Then we want the inverse: given a desired perceptual level, what PWM?
+  // For LED control: PWM = ((L*+16)/116)^3 when L*>=8, else L*/903.3
+  // We use L* = v * 100, then compute Y
+  const Lstar = v * 100;
+  if (Lstar <= 8) {
+    return Lstar / 903.3;
+  }
+  return Math.pow((Lstar + 16) / 116, 3);
+}
+
+// ── ADSR Beat Envelope ──
+// Professional beat pulse shape: instant attack, fast decay, sustain plateau, smooth release
+function adsrBeatPulse(phase: number, isDownbeat: boolean): number {
+  // phase: 0 = beat hit, 1 = next beat
+  // ADSR timing as fraction of beat period:
+  const attackEnd = 0.02;   // ~10ms at 120bpm (500ms period)
+  const decayEnd = 0.14;    // ~70ms decay
+  const sustainEnd = 0.35;  // sustain plateau
+  const sustainLevel = isDownbeat ? 0.55 : 0.40;
+
+  if (phase < attackEnd) {
+    // Attack: instant ramp to 1.0
+    return phase / attackEnd;
+  } else if (phase < decayEnd) {
+    // Decay: drop from 1.0 to sustain level
+    const decayProgress = (phase - attackEnd) / (decayEnd - attackEnd);
+    return 1.0 - (1.0 - sustainLevel) * decayProgress;
+  } else if (phase < sustainEnd) {
+    // Sustain: hold at sustain level
+    return sustainLevel;
+  } else {
+    // Release: smooth fade to 0
+    const releaseProgress = (phase - sustainEnd) / (1.0 - sustainEnd);
+    return sustainLevel * Math.exp(-releaseProgress * 3.5);
+  }
 }
 
 function computeBrightnessCurve(
@@ -368,16 +406,27 @@ function computeBrightnessCurve(
 
   const result: BrightnessSample[] = [];
 
-  // Percentiles for better normalization
-  const allRms = curve.map(s => s.rawRms / peak).sort((a, b) => a - b);
-  const p10 = allRms[Math.floor(allRms.length * 0.1)] ?? 0;
-  const p90 = allRms[Math.floor(allRms.length * 0.9)] ?? 1;
-  const dynamicSpread = Math.max(0.05, p90 - p10);
+  // ── Noise gate threshold (P10) ──
+  // Anything below P10 is treated as silence → fixed ambient floor, no reactivity
+  const allRms = curve.map(s => s.rawRms).sort((a, b) => a - b);
+  const p10raw = allRms[Math.floor(allRms.length * 0.1)] ?? 0;
+  const p90raw = allRms[Math.floor(allRms.length * 0.9)] ?? peak;
+  const noiseGateThreshold = p10raw / peak;
+  const dynamicSpread = Math.max(0.05, (p90raw - p10raw) / peak);
 
-  // EMA state
-  let smoothed = 0;
-  let smoothedBass = 0;
+  // ── Per-band envelope state ──
+  // Separate EMA followers with band-specific attack/release
+  let envBass = 0;  // drives 70% of brightness
+  let envMid = 0;   // drives 20% — color modulation + subtle brightness
+  let envHi = 0;    // drives 10% — sparkle/strobe accents
 
+  // Band-specific EMA coefficients (tuned for ~100ms sample interval)
+  // Converted from ms-based times: alpha ≈ 1 - exp(-interval/tau)
+  const BASS_ATTACK = 0.45;  const BASS_RELEASE = 0.12;   // 15ms attack, 80ms release
+  const MID_ATTACK = 0.55;   const MID_RELEASE = 0.18;    // 10ms attack, 50ms release
+  const HI_ATTACK = 0.70;    const HI_RELEASE = 0.28;     // 5ms attack, 30ms release
+
+  // ── Helpers ──
   const getSection = (t: number): SongSection | null => {
     if (!sections) return null;
     for (const s of sections) if (t >= s.start && t < s.end) return s;
@@ -406,24 +455,21 @@ function computeBrightnessCurve(
     return false;
   };
 
-  const getBeatStrength = (t: number): number | undefined => {
-    if (!beatStrengths || !beatGrid || beatGrid.beats.length === 0) return undefined;
+  // Find nearest beat index for anticipation dips and strength lookup
+  const findNearestBeat = (t: number): { dist: number; index: number; phase: number; isDownbeat: boolean } => {
+    if (!beatGrid || beatGrid.beats.length === 0) return { dist: 999, index: -1, phase: 0, isDownbeat: false };
     let closest = 0, minDist = Math.abs(beatGrid.beats[0] - t);
     for (let i = 1; i < beatGrid.beats.length; i++) {
       const dist = Math.abs(beatGrid.beats[i] - t);
       if (dist < minDist) { minDist = dist; closest = i; }
-      if (beatGrid.beats[i] > t + 0.1) break;
+      if (beatGrid.beats[i] > t + 0.2) break;
     }
-    return minDist < 0.15 ? beatStrengths[closest] : undefined;
-  };
-
-  const beatPulseVal = (t: number): number => {
-    if (!beatGrid || beatGrid.bpm <= 0) return 0;
-    const phase = ((t * beatGrid.bpm / 60) % 1);
-    const base = Math.exp(-phase * 6); // sharper attack than audio
-    const bs = getBeatStrength(t);
-    const strength = bs != null ? (0.3 + bs * 0.7) : 0.5;
-    return base * strength;
+    const beatPeriod = 60 / beatGrid.bpm;
+    const phase = ((t - beatGrid.offsetSec) / beatPeriod) % 1;
+    const normalizedPhase = phase < 0 ? phase + 1 : phase;
+    // Downbeat = every 4th beat (beat 1 of the bar)
+    const isDownbeat = closest % 4 === 0;
+    return { dist: minDist, index: closest, phase: normalizedPhase, isDownbeat };
   };
 
   const getTransition = (t: number): { active: boolean; type: string; progress: number } => {
@@ -440,71 +486,135 @@ function computeBrightnessCurve(
     return { active: false, type: 'fade', progress: 1 };
   };
 
+  // Ambient floor for noise-gated passages (2-3%)
+  const AMBIENT_FLOOR = 2;
+
   for (const sample of curve) {
     const t = sample.t;
     const rawNorm = sample.rawRms / peak;
 
-    // Percentile-based stretch: p10→0, p90→1
-    const stretchedEnergy = Math.min(1, Math.max(0, (rawNorm - p10) / dynamicSpread));
+    // ── Step 1: Noise Gate ──
+    // Below P10 threshold → fixed ambient, no reactive lighting
+    if (rawNorm < noiseGateThreshold * 1.1) {
+      // Check if we're in a break with breathing effect
+      const section = getSection(t);
+      const sectionType = section?.type ?? null;
+      if (sectionType === 'break') {
+        // Slow breathing: 0.5 Hz sine wave
+        const breath = Math.sin(t * 0.5 * Math.PI * 2) * 0.5 + 0.5;
+        const breathBrightness = AMBIENT_FLOOR + breath * 3; // 2-5%
+        result.push({ t, b: Math.round(breathBrightness) });
+      } else {
+        result.push({ t, b: AMBIENT_FLOOR });
+      }
+      // Reset envelopes gently to avoid pop when sound returns
+      envBass *= 0.95;
+      envMid *= 0.95;
+      envHi *= 0.95;
+      continue;
+    }
 
-    // Bass energy drives lighting feel more than overall RMS
+    // ── Step 2: Per-band envelope followers ──
+    // Percentile-stretch the overall signal
+    const stretchedEnergy = Math.min(1, Math.max(0, (rawNorm - noiseGateThreshold) / dynamicSpread));
+
     const bass = sample.lo ?? rawNorm;
-    const bassAlpha = bass > smoothedBass ? 0.4 : 0.08;
-    smoothedBass += (bass - smoothedBass) * bassAlpha;
+    const mid = sample.mid ?? rawNorm * 0.5;
+    const hi = sample.hi ?? rawNorm * 0.3;
 
-    // Blend: 60% bass, 40% overall
-    const blended = smoothedBass * 0.6 + stretchedEnergy * 0.4;
+    // Apply band-specific EMA
+    const bassAlpha = bass > envBass ? BASS_ATTACK : BASS_RELEASE;
+    envBass += (bass - envBass) * bassAlpha;
 
-    // EMA: slightly slower release for smoother lighting fades
-    const alpha = blended > smoothed ? cal.attackAlpha : cal.releaseAlpha * 0.7;
-    smoothed += (blended - smoothed) * alpha;
+    const midAlpha = mid > envMid ? MID_ATTACK : MID_RELEASE;
+    envMid += (mid - envMid) * midAlpha;
 
-    // S-curve for LED perception
-    let shaped = lightingGamma(smoothed);
+    const hiAlpha = hi > envHi ? HI_ATTACK : HI_RELEASE;
+    envHi += (hi - envHi) * hiAlpha;
 
-    // Section mood
+    // Blend bands: bass-heavy weighting (professional LDs always prioritize bass for brightness)
+    const blended = envBass * 0.70 + envMid * 0.20 + envHi * 0.10;
+
+    // ── Step 3: CIE 1931 perceptual curve ──
+    // Convert linear energy to perceptually uniform brightness
+    const perceptual = cieLightness(blended);
+
+    // ── Step 4: Section mood mapping ──
     const section = getSection(t);
     const sectionType = section?.type ?? null;
     const mood = sectionType ? (SECTION_MOOD[sectionType] ?? DEFAULT_MOOD) : DEFAULT_MOOD;
 
     // Scale floor/ceiling by calibration range
     const calRange = cal.maxBrightness - cal.minBrightness;
-    const floor = cal.minBrightness + (mood.floor / 100) * calRange;
-    const ceil = cal.minBrightness + (mood.ceil / 100) * calRange;
+    const moodFloor = cal.minBrightness + (mood.floor / 100) * calRange;
+    const moodCeil = cal.minBrightness + (mood.ceil / 100) * calRange;
 
-    // Map shaped energy to section's range with reactivity
-    const mid = (floor + ceil) / 2;
-    const halfRange = (ceil - floor) / 2;
-    let pct = mid + (shaped * 2 - 1) * halfRange * mood.react;
+    // Map perceptual energy into section's brightness range
+    const moodMid = (moodFloor + moodCeil) / 2;
+    const halfRange = (moodCeil - moodFloor) / 2;
+    let pct = moodMid + (perceptual * 2 - 1) * halfRange * mood.react;
 
-    // Build-up effects
+    // ── Step 5: Build-up effects ──
     const buildUp = getBuildUp(t);
     if (buildUp > 0) {
       if (buildUp > 0.9) {
-        // Blackout before drop
+        // Blackout before drop — dramatic contrast
         const blackoutProgress = (buildUp - 0.9) / 0.1;
-        pct = pct * (1 - blackoutProgress * 0.9);
-      } else if (buildUp > 0.5 && beatGrid && beatGrid.bpm > 0) {
-        // Breathing: pulsing that accelerates toward the drop
-        const breathFreq = 2 + buildUp * 6;
+        pct = pct * (1 - blackoutProgress * 0.92);
+      } else if (buildUp > 0.4 && beatGrid && beatGrid.bpm > 0) {
+        // 16th-note acceleration toward drop
+        const breathFreq = 2 + Math.pow(buildUp, 2) * 12; // exponential freq ramp
         const breath = Math.sin(t * breathFreq * Math.PI * 2) * 0.5 + 0.5;
-        const breathAmt = (buildUp - 0.5) * 2 * 0.3;
+        const breathAmt = Math.pow((buildUp - 0.4) / 0.6, 1.5) * 0.35;
         pct = pct * (1 - breathAmt + breathAmt * breath);
       }
     }
 
-    // Drop aftermath: force high intensity
+    // ── Step 6: Drop aftermath — force high intensity ──
     if (isInDropFn(t)) {
-      pct = Math.max(pct, ceil * 0.7);
+      pct = Math.max(pct, moodCeil * 0.75);
     }
 
-    // Beat-synced pulse
+    // ── Step 7: ADSR Beat pulse with anticipation dip ──
     if (mood.beat > 0 && beatGrid && beatGrid.bpm > 0) {
-      const pulse = beatPulseVal(t);
-      pct = Math.min(100, pct + pulse * mood.beat * 35);
+      const beat = findNearestBeat(t);
+      const beatPeriodSec = 60 / beatGrid.bpm;
+
+      // Anticipation dip: 30ms before beat, reduce brightness by 20%
+      const dipWindowSec = 0.030;
+      // Find time to next beat
+      let timeToNextBeat = 999;
+      if (beat.index >= 0 && beat.index < beatGrid.beats.length) {
+        // Check current and next beat
+        for (let bi = Math.max(0, beat.index); bi <= Math.min(beatGrid.beats.length - 1, beat.index + 1); bi++) {
+          const diff = beatGrid.beats[bi] - t;
+          if (diff > 0 && diff < timeToNextBeat) timeToNextBeat = diff;
+        }
+      }
+
+      if (timeToNextBeat <= dipWindowSec && timeToNextBeat > 0) {
+        // Anticipation dip — pull brightness down for contrast
+        const dipStrength = 0.20 * mood.beat;
+        pct = pct * (1 - dipStrength);
+      }
+
+      // ADSR pulse (only near a beat)
+      if (beat.dist < 0.15) {
+        const pulse = adsrBeatPulse(beat.phase, beat.isDownbeat);
+        const beatBoost = pulse * mood.beat * 30;
+        // Downbeats get extra punch
+        const downbeatMultiplier = beat.isDownbeat ? 1.3 : 1.0;
+        pct = Math.min(100, pct + beatBoost * downbeatMultiplier);
+      }
     }
 
-    // Hard transition flash
+    // ── Step 8: Break breathing (for sections with some audio above gate) ──
+    if (sectionType === 'break' && buildUp <= 0) {
+      const breath = Math.sin(t * 0.5 * Math.PI * 2) * 0.5 + 0.5;
+      pct = AMBIENT_FLOOR + breath * (moodCeil - AMBIENT_FLOOR);
+    }
+
+    // ── Step 9: Hard transition flash ──
     const trans = getTransition(t);
     if (trans.active && trans.type === 'hard' && trans.progress < 0.15) {
       pct = Math.min(100, pct + 35);

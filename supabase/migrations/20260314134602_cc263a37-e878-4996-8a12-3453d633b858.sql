@@ -1,0 +1,1 @@
+UPDATE song_analysis SET brightness_curve = NULL WHERE brightness_curve IS NOT NULL;
