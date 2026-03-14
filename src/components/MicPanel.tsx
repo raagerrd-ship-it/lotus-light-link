@@ -290,7 +290,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // Decoupled chart rendering via rAF
+  // Decoupled chart rendering + sun pulse via rAF
   useEffect(() => {
     const drawLoop = () => {
       if (chartDirtyRef.current) {
@@ -299,6 +299,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         if (canvas) {
           drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
         }
+      }
+      // Animate sun with bass energy
+      const sun = sunRef.current;
+      if (sun) {
+        const bass = bassRef.current;
+        const scale = 1 + bass * 0.6; // up to 1.6x at full bass
+        const glowSize = 60 + bass * 120; // 60-180px glow
+        const glowAlpha = 0.3 + bass * 0.5;
+        const [cr, cg, cb] = colorRef.current;
+        sun.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        sun.style.boxShadow = `0 0 ${glowSize}px rgba(${cr},${cg},${cb},${glowAlpha})`;
+        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.4 + bass * 0.4}) 0%, transparent 70%)`;
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
