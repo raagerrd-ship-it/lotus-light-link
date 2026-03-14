@@ -200,30 +200,41 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   }, []);
 
   const saveCurve = useCallback(
-    (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => {
-      if (!track || samples.length < 10) return;
-      const key = cacheKey(track);
+    (
+      samples: EnergySample[],
+      volume: number | null,
+      agcState?: AgcState | null,
+      trackOverride?: TrackKey | null,
+    ) => {
+      const targetTrack = trackOverride ?? track;
+      if (!targetTrack || samples.length < 10) return;
+
+      const key = cacheKey(targetTrack);
       const newBpm = estimateBpm(samples);
       const newDrops = detectDrops(samples);
       const newBeatGrid = newBpm ? buildBeatGrid(samples, newBpm) : null;
       const cached = curveCache.get(key);
+
       curveCache.set(key, {
         curve: samples, vol: volume, agc: agcState ?? null,
         bpm: newBpm, beatGrid: newBeatGrid, sections: cached?.sections ?? null,
         drops: newDrops.length > 0 ? newDrops : null, songId: cached?.songId ?? null,
       });
-      setCurve(samples);
-      setRecordedVolume(volume);
-      if (agcState) setSavedAgcState(agcState);
-      if (newBpm) setBpm(newBpm);
-      if (newBeatGrid) setBeatGrid(newBeatGrid);
-      if (newDrops.length > 0) setDrops(newDrops);
+
+      if (!trackOverride || key === cacheKey(trackOverride)) {
+        setCurve(samples);
+        setRecordedVolume(volume);
+        if (agcState) setSavedAgcState(agcState);
+        if (newBpm) setBpm(newBpm);
+        if (newBeatGrid) setBeatGrid(newBeatGrid);
+        if (newDrops.length > 0) setDrops(newDrops);
+      }
 
       supabase
         .from("song_analysis")
         .select("id")
-        .eq("track_name", track.trackName)
-        .eq("artist_name", track.artistName)
+        .eq("track_name", targetTrack.trackName)
+        .eq("artist_name", targetTrack.artistName)
         .maybeSingle()
         .then(({ data: existing }) => {
           const payload = {
@@ -234,38 +245,38 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
             ...(newDrops.length > 0 ? { drops: newDrops as any } : {}),
             ...(newBeatGrid ? { beat_grid: newBeatGrid as any } : {}),
           } as any;
+
           if (existing) {
             supabase
               .from("song_analysis")
               .update(payload)
               .eq("id", existing.id)
               .then(() => {
-                console.log("[EnergyCurve] updated", track.trackName);
+                console.log("[EnergyCurve] updated", targetTrack.trackName);
                 if (!cached?.sections) triggerSectionAnalysis(existing.id, key);
               });
           } else {
             supabase
               .from("song_analysis")
               .insert({
-                track_name: track.trackName,
-                artist_name: track.artistName,
+                track_name: targetTrack.trackName,
+                artist_name: targetTrack.artistName,
                 ...payload,
               })
               .select("id")
               .single()
               .then(({ data: inserted }) => {
-                console.log("[EnergyCurve] inserted", track.trackName);
+                console.log("[EnergyCurve] inserted", targetTrack.trackName);
                 if (inserted?.id) {
-                  const k = cacheKey(track);
-                  const c = curveCache.get(k);
-                  if (c) curveCache.set(k, { ...c, songId: inserted.id });
-                  triggerSectionAnalysis(inserted.id, k);
+                  const c = curveCache.get(key);
+                  if (c) curveCache.set(key, { ...c, songId: inserted.id });
+                  triggerSectionAnalysis(inserted.id, key);
                 }
               });
           }
         });
     },
-    [track?.trackName, track?.artistName, triggerSectionAnalysis],
+    [track, triggerSectionAnalysis],
   );
 
   return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading, saveCurve };

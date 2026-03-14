@@ -18,7 +18,12 @@ interface MicPanelProps {
   durationMs?: number | null;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
-  onSaveEnergyCurve?: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
+  onSaveEnergyCurve?: (
+    samples: EnergySample[],
+    volume: number | null,
+    agcState?: AgcState | null,
+    trackOverride?: { trackName: string; artistName: string } | null,
+  ) => void;
   recordedVolume?: number | null;
   savedAgcState?: AgcState | null;
   bpm?: number | null;
@@ -26,6 +31,7 @@ interface MicPanelProps {
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
   trackName?: string | null;
+  artistName?: string | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
 }
 
