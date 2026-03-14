@@ -422,30 +422,31 @@ function SliderTabWithLive({ conn, cal, onSave }: { conn: any; cal: LightCalibra
   return (
     <>
       {conn?.characteristic ? (
-        <div className="relative mx-auto mb-4">
-          <div className="flex items-center justify-center gap-4">
-            <div className="relative w-20 h-20">
-              <MicPanel
-                char={conn.characteristic}
-                currentColor={[255, 180, 80]}
-                isPlaying={true}
-                onLiveStatus={handleLiveStatus}
-              />
+        <div className="relative mb-4">
+          {/* Wide chart — full width, short height for seeing attack/release clearly */}
+          <div className="relative w-full h-24 rounded-lg overflow-hidden bg-secondary/20 border border-border/20">
+            <MicPanel
+              char={conn.characteristic}
+              currentColor={[255, 180, 80]}
+              isPlaying={true}
+              historyLen={60}
+              onLiveStatus={handleLiveStatus}
+            />
+          </div>
+          {/* Brightness + stats overlay */}
+          <div className="flex items-center justify-between mt-2 px-1">
+            <div className="flex gap-3 text-[9px] font-mono text-muted-foreground">
+              <span>bass: <span className="text-foreground">{bassLevel}%</span></span>
+              <span>atk: <span className="text-foreground">{cal.attackAlpha.toFixed(2)}</span></span>
+              <span>rel: <span className="text-foreground">{cal.releaseAlpha.toFixed(3)}</span></span>
+              <span>dmp: <span className="text-foreground">{cal.dynamicDamping.toFixed(1)}</span></span>
             </div>
-            <div className="text-center space-y-1">
-              <p className="text-3xl font-mono font-bold tabular-nums" style={{ color: `rgb(${liveColor[0]},${liveColor[1]},${liveColor[2]})` }}>
+            <div className="flex items-center gap-2">
+              {isDrop && <span className="text-[9px] font-bold text-primary animate-pulse">⚡ DROP</span>}
+              <p className="text-xl font-mono font-bold tabular-nums" style={{ color: `rgb(${liveColor[0]},${liveColor[1]},${liveColor[2]})` }}>
                 {brightness}%
               </p>
-              <p className="text-[9px] text-muted-foreground">Ljusstyrka</p>
-              {isDrop && <p className="text-[9px] font-bold text-primary animate-pulse">⚡ DROP</p>}
             </div>
-          </div>
-          {/* Live parameter readout */}
-          <div className="flex justify-center gap-3 mt-2 text-[9px] font-mono text-muted-foreground">
-            <span>bass: <span className="text-foreground">{bassLevel}%</span></span>
-            <span>atk: <span className="text-foreground">{cal.attackAlpha.toFixed(2)}</span></span>
-            <span>rel: <span className="text-foreground">{cal.releaseAlpha.toFixed(3)}</span></span>
-            <span>dmp: <span className="text-foreground">{cal.dynamicDamping.toFixed(1)}</span></span>
           </div>
         </div>
       ) : (
