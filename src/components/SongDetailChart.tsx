@@ -144,7 +144,8 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     // Draw drops as vertical lines
     if (drops && drops.length > 0) {
       for (const drop of drops) {
-        const x = tToX(drop.time);
+        const dropT = drop.t ?? drop.time ?? 0;
+        const x = tToX(dropT);
         ctx.strokeStyle = '#ef444480';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([3, 3]);
@@ -165,6 +166,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
           ctx.fill();
         }
       }
+    }
     }
 
     // Draw energy curve
