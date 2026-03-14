@@ -457,14 +457,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           //   <0 = more contrast (exponent > 1 → quiet gets darker, loud stays loud)
           //    0 = linear
           //   >0 = smoother (exponent < 1 → quiet gets brighter)
+          const preEnergy = energyNorm;
           if (cal.dynamicDamping !== 0) {
             const exponent = cal.dynamicDamping < 0
-              ? 1 + Math.abs(cal.dynamicDamping)  // -2 → exp 3.0
-              : 1 / (1 + cal.dynamicDamping);      // +2 → exp 0.33
+              ? 1 + Math.abs(cal.dynamicDamping) * 2.5  // -2 → exp 6.0 (much steeper)
+              : 1 / (1 + cal.dynamicDamping * 1.5);      // +2 → exp 0.25
             energyNorm = Math.pow(energyNorm, exponent);
           }
           const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           const pct = Math.round(rawPct * 100);
+          
+          // Debug log every ~1s
+          if (Math.random() < 0.02) {
+            console.log(`[dyn] dmp=${cal.dynamicDamping.toFixed(1)} energy=${preEnergy.toFixed(3)}→${energyNorm.toFixed(3)} pct=${pct}% range=${cal.minBrightness}-${effectiveMax.toFixed(0)}`);
+          }
 
           // ── Drop detection (uses bassRms, not total RMS) ──
           const DROP_HISTORY_LEN = 120;  // ~2s of history
