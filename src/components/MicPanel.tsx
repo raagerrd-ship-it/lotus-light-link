@@ -181,6 +181,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
+  useEffect(() => { paletteRef.current = palette; }, [palette]);
   useEffect(() => {
     currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null;
   }, [trackName, artistName]);
