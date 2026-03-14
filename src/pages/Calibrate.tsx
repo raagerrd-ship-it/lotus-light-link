@@ -19,11 +19,18 @@ import SongCalibrationTab from "@/components/SongCalibrationTab";
 
 type Tab = 'ble' | 'chain' | 'song' | 'songs';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'ble', label: 'BLE' },
-  { key: 'chain', label: 'Kedja' },
-  { key: 'song', label: 'Låt' },
-  { key: 'songs', label: 'Inspelningar' },
+interface TabInfo {
+  key: Tab;
+  label: string;
+  step?: number;
+  desc: string;
+}
+
+const TABS: TabInfo[] = [
+  { key: 'ble', label: '1. BLE', step: 1, desc: 'Testa lampans hastighet' },
+  { key: 'chain', label: '2. Synk', step: 2, desc: 'Mät fördröjning' },
+  { key: 'song', label: '3. Dynamik', step: 3, desc: 'Optimera ljusrespons' },
+  { key: 'songs', label: 'Inspelningar', desc: 'Hantera inspelade låtar' },
 ];
 
 // BLE Perceptual Speed Test buffers
