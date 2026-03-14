@@ -244,6 +244,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     agcMinRef.current = 0;
     samplesRef.current = [];
     resetChartScaler();
+    resetAutoSync();
   }, [currentColor]);
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
