@@ -21,6 +21,7 @@ import {
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
 import { useLiveSessionWriter, type MasterDebugState } from "@/hooks/useLiveSession";
+import { useBpm } from "@/hooks/useBpm";
 
 const Index = () => {
   const navigate = useNavigate();
