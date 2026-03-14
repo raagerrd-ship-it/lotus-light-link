@@ -70,6 +70,21 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
+  // Extract palette from album art when track changes
+  useEffect(() => {
+    const artUrl = nowPlaying?.albumArtUrl;
+    if (!artUrl || artUrl === lastArtUrlRef.current) return;
+    lastArtUrlRef.current = artUrl;
+
+    extractPalette(artUrl, 5).then((colors) => {
+      if (colors.length > 0) {
+        setCurrentColor(colors[0]);
+        setPalette(colors);
+        paletteIndexRef.current = 0;
+      }
+    });
+  }, [nowPlaying?.albumArtUrl]);
+
   // Auto-reconnect to last known BLE device on mount
   useEffect(() => {
     if (!isMaster) return;
