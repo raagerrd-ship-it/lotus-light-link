@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const url = `https://track-analysis.p.rapidapi.com/track/analysis?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(track)}`;
+    const url = `https://track-analysis.p.rapidapi.com/pktx/analysis?artist=${encodeURIComponent(artist)}&song=${encodeURIComponent(track)}`;
 
     const response = await fetch(url, {
       method: 'GET',
