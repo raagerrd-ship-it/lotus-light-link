@@ -14,7 +14,7 @@ interface DebugOverlayProps {
   volCalibrationVol?: number | null;
   liveBpm?: number | null;
   maxBrightness?: number;
-  tickToWriteMs?: number;
+  
   dynamicDamping?: number;
   bleConnected?: boolean;
   bleDeviceName?: string | null;
