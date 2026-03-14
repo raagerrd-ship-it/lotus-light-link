@@ -20,7 +20,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { songId } = await req.json();
+    const body = await req.json();
+    const songId = body.songId;
+    const force = body.force === true;
     if (!songId) throw new Error("Missing songId");
 
     const supabase = createClient(
@@ -35,7 +37,7 @@ serve(async (req) => {
       .single();
 
     if (fetchErr || !song) throw new Error("Song not found");
-    if (song.sections && (song.sections as any[]).length > 0) {
+    if (!force && song.sections && (song.sections as any[]).length > 0) {
       return new Response(JSON.stringify({ sections: song.sections, cached: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -55,20 +57,47 @@ serve(async (req) => {
       return `${s.t.toFixed(1)},${energy.toFixed(3)},${(s.lo ?? 0).toFixed(2)},${(s.mid ?? 0).toFixed(2)},${(s.hi ?? 0).toFixed(2)},${s.kick ? 1 : 0}`;
     });
 
+    // ── Compute kick density per 10-second window for the prompt ──
+    const songDuration = curve[curve.length - 1].t;
+    const windowSec = 10;
+    const kickDensityLines: string[] = [];
+    for (let wStart = 0; wStart < songDuration; wStart += windowSec) {
+      const wEnd = Math.min(wStart + windowSec, songDuration);
+      let kicks = 0, total = 0;
+      for (const s of curve) {
+        if (s.t >= wStart && s.t < wEnd) {
+          total++;
+          if (s.kick) kicks++;
+        }
+      }
+      const density = total > 0 ? (kicks / total).toFixed(3) : "0";
+      kickDensityLines.push(`${wStart.toFixed(0)}-${wEnd.toFixed(0)}s: ${kicks} kicks (density=${density})`);
+    }
+
     const prompt = `Analyze this song's energy curve and classify each time range into song sections.
 Song: "${song.track_name}" by ${song.artist_name}
 
 Data format: time(s),energy(0-1 normalized),low_freq,mid_freq,high_freq,kick(0/1)
 ${csvLines.join("\n")}
 
+Kick density per 10s window:
+${kickDensityLines.join("\n")}
+
 Rules for classification:
-- Use the FULL set of section types. Most pop/rock songs have: intro, verse, pre_chorus, chorus, bridge, outro. Many also have build_up, drop, or break.
-- A "bridge" typically appears once late in the song (often after second chorus) with distinctly different energy/frequency profile from verses and choruses.
-- "chorus" sections are HIGH energy, repeating with similar patterns. Don't label everything high-energy as chorus.
+- Use the FULL set of section types: intro, verse, pre_chorus, chorus, bridge, drop, build_up, break, outro.
+
+CRITICAL — "drop" vs "bridge" distinction:
+- A "drop" is a HIGH-ENERGY section with HIGH kick density that follows a "build_up" (rising energy ramp). Drops are the climax/peak moment — they have the HIGHEST energy and most kicks in the song. Common in EDM, dance, pop with electronic production.
+- A "bridge" is a CONTRASTING section (different melody/harmony) that typically appears ONCE late in the song. Bridges often have LOWER or DIFFERENT energy than choruses, and usually have FEWER kicks. A bridge does NOT follow a build_up.
+- If a section has high energy + high kick density + follows rising energy → it's a "drop", NOT a "bridge".
+- If a section has moderate/different energy + appears once late in song + no preceding build_up → it's a "bridge".
+
+Other rules:
+- "chorus" sections are HIGH energy, repeating with similar patterns.
 - "pre_chorus" is a transitional buildup before the chorus — rising energy, often shorter.
-- "build_up" is a sustained energy ramp (common in EDM) leading to a "drop".
+- "build_up" is a sustained energy ramp leading to a "drop".
 - "break" is a sudden energy reduction mid-song.
-- Look at frequency balance changes: bridges often shift mid/hi balance vs verses.
+- Look at frequency balance changes between sections.
 - Assign intensity 0.0-1.0 reflecting actual energy level of each section.
 
 Return sections covering the entire song duration with no gaps.`;
@@ -153,13 +182,13 @@ Return sections covering the entire song duration with no gaps.`;
     const parsed = JSON.parse(toolCall.function.arguments);
     const sections = parsed.sections;
 
-    // Save to DB
+    // Save to DB (also clear brightness_curve to force re-bake with new sections)
     await supabase
       .from("song_analysis")
-      .update({ sections: sections as any })
+      .update({ sections: sections as any, brightness_curve: null })
       .eq("id", songId);
 
-    console.log(`[analyze-sections] ${song.track_name}: ${sections.length} sections`);
+    console.log(`[analyze-sections] ${song.track_name}: ${sections.length} sections classified`);
 
     return new Response(JSON.stringify({ sections }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
