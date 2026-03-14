@@ -45,16 +45,6 @@ export default function DebugOverlay({
   deviceRole, bleMinIntervalMs, bleLatencyMs, dropActive,
   energy, danceability, happiness, loudness,
 }: DebugOverlayProps) {
-  const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
-  const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setBleStats(getBleWriteStats());
-      setPipeline(getPipelineTimings());
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
 
   return (
     <div className="fixed bottom-16 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
