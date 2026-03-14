@@ -317,22 +317,41 @@ function analyzeBeatStrengths(curve: EnergySample[], beatGrid: BeatGrid): number
   return strengths.map(s => Math.round((s / maxStrength) * 100) / 100);
 }
 
-// ── Pre-baked brightness curve ──
+// ── Pre-baked brightness curve (lighting-design philosophy) ──
+//
+// Key principles:
+// 1. Section type sets the MOOD — a base floor/ceiling for brightness
+// 2. Audio energy MODULATES within that range, not defines it
+// 3. Beats create sharp, snappy pulses (kick-drum envelope)
+// 4. Build-ups breathe with escalating intensity
+// 5. Drops explode — maximum contrast from blackout to full
+// 6. Bass (lo-band) drives brightness more than overall RMS
+// 7. A "lighting gamma" avoids linear mapping which looks flat on LEDs
 
 interface BrightnessSample {
   t: number;
   b: number; // 0-100 brightness %
 }
 
-const SECTION_BRIGHTNESS: Record<string, number> = {
-  intro: 0.15, verse: 0.50, pre_chorus: 0.75, chorus: 1.0,
-  bridge: 0.4, drop: 1.0, build_up: 0.7, break: 0.10, outro: 0.15,
+// Section mood: floor/ceiling define the brightness range,
+// beat = how much beats add, react = how much audio modulates within range
+const SECTION_MOOD: Record<string, { floor: number; ceil: number; beat: number; react: number }> = {
+  intro:      { floor: 3,  ceil: 20,  beat: 0.05, react: 0.3 },
+  verse:      { floor: 8,  ceil: 50,  beat: 0.2,  react: 0.5 },
+  pre_chorus: { floor: 15, ceil: 70,  beat: 0.4,  react: 0.6 },
+  chorus:     { floor: 25, ceil: 100, beat: 0.7,  react: 0.8 },
+  bridge:     { floor: 5,  ceil: 40,  beat: 0.15, react: 0.4 },
+  drop:       { floor: 40, ceil: 100, beat: 1.0,  react: 0.9 },
+  build_up:   { floor: 8,  ceil: 65,  beat: 0.5,  react: 0.6 },
+  break:      { floor: 2,  ceil: 12,  beat: 0.02, react: 0.2 },
+  outro:      { floor: 3,  ceil: 18,  beat: 0.05, react: 0.3 },
 };
-const SECTION_BEAT_PULSE: Record<string, number> = {
-  intro: 0.1, verse: 0.3, pre_chorus: 0.5, chorus: 0.8,
-  bridge: 0.2, drop: 1.0, build_up: 0.7, break: 0.05, outro: 0.1,
-};
-const SECTION_STROBE: Record<string, boolean> = { drop: true };
+const DEFAULT_MOOD = { floor: 15, ceil: 80, beat: 0.3, react: 0.6 };
+
+// Lighting gamma: S-curve for better LED perception (dim stays dim, bright pops)
+function lightingGamma(x: number): number {
+  return x * x * (3 - 2 * x); // smoothstep
+}
 
 function computeBrightnessCurve(
   curve: EnergySample[],
@@ -349,27 +368,22 @@ function computeBrightnessCurve(
 
   const result: BrightnessSample[] = [];
 
+  // Percentiles for better normalization
+  const allRms = curve.map(s => s.rawRms / peak).sort((a, b) => a - b);
+  const p10 = allRms[Math.floor(allRms.length * 0.1)] ?? 0;
+  const p90 = allRms[Math.floor(allRms.length * 0.9)] ?? 1;
+  const dynamicSpread = Math.max(0.05, p90 - p10);
+
   // EMA state
   let smoothed = 0;
-  // absoluteFactor state (rolling peak / all-time peak)
-  let rollingPeak = 0.01;
-  let allTimePeak = 0.01;
+  let smoothedBass = 0;
 
-  // Dynamic range compression adjustment
-  let drAdjustment = 1.0;
-  if (dynamicRange && dynamicRange.peak > 0 && dynamicRange.p90 > 0) {
-    const compressionRatio = dynamicRange.p90 / dynamicRange.peak;
-    drAdjustment = compressionRatio > 0.8 ? 1.0 - (compressionRatio - 0.8) * 0.5 : 1.0;
-  }
-
-  // Helper: find current section
   const getSection = (t: number): SongSection | null => {
     if (!sections) return null;
     for (const s of sections) if (t >= s.start && t < s.end) return s;
     return null;
   };
 
-  // Helper: get build-up intensity
   const getBuildUp = (t: number): number => {
     if (!drops) return 0;
     for (const drop of drops) {
@@ -386,7 +400,12 @@ function computeBrightnessCurve(
     return 0;
   };
 
-  // Helper: find nearest beat strength
+  const isInDropFn = (t: number): boolean => {
+    if (!drops) return false;
+    for (const d of drops) if (t >= d.t && t < d.t + 3) return true;
+    return false;
+  };
+
   const getBeatStrength = (t: number): number | undefined => {
     if (!beatStrengths || !beatGrid || beatGrid.beats.length === 0) return undefined;
     let closest = 0, minDist = Math.abs(beatGrid.beats[0] - t);
@@ -398,17 +417,15 @@ function computeBrightnessCurve(
     return minDist < 0.15 ? beatStrengths[closest] : undefined;
   };
 
-  // Helper: beat pulse
   const beatPulseVal = (t: number): number => {
     if (!beatGrid || beatGrid.bpm <= 0) return 0;
     const phase = ((t * beatGrid.bpm / 60) % 1);
-    const base = Math.exp(-phase * 4);
+    const base = Math.exp(-phase * 6); // sharper attack than audio
     const bs = getBeatStrength(t);
-    const strength = bs != null ? (0.5 + bs * 0.5) : 1;
+    const strength = bs != null ? (0.3 + bs * 0.7) : 0.5;
     return base * strength;
   };
 
-  // Helper: transition check
   const getTransition = (t: number): { active: boolean; type: string; progress: number } => {
     if (!transitions) return { active: false, type: 'fade', progress: 1 };
     for (const tr of transitions) {
@@ -425,64 +442,76 @@ function computeBrightnessCurve(
 
   for (const sample of curve) {
     const t = sample.t;
-    let normalized = sample.rawRms / peak;
+    const rawNorm = sample.rawRms / peak;
 
-    // EMA smoothing (same as mic mode)
-    const alpha = normalized > smoothed ? cal.attackAlpha : cal.releaseAlpha;
-    smoothed += (normalized - smoothed) * alpha;
-    normalized = smoothed;
+    // Percentile-based stretch: p10→0, p90→1
+    const stretchedEnergy = Math.min(1, Math.max(0, (rawNorm - p10) / dynamicSpread));
 
-    // Rolling peak / all-time peak for absoluteFactor
-    if (normalized > rollingPeak) {
-      rollingPeak = normalized;
-    } else {
-      rollingPeak *= 0.9995;
-    }
-    if (normalized > allTimePeak) {
-      allTimePeak = normalized;
-    } else {
-      allTimePeak *= 0.9999;
-    }
-    const absoluteFactor = allTimePeak > 0
-      ? Math.min(1, Math.max(0.15, rollingPeak / allTimePeak))
-      : 1;
+    // Bass energy drives lighting feel more than overall RMS
+    const bass = sample.lo ?? rawNorm;
+    const bassAlpha = bass > smoothedBass ? 0.4 : 0.08;
+    smoothedBass += (bass - smoothedBass) * bassAlpha;
 
-    // Dynamic damping
-    if (cal.dynamicDamping !== 1.0) {
-      normalized = Math.pow(normalized, cal.dynamicDamping);
-    }
+    // Blend: 60% bass, 40% overall
+    const blended = smoothedBass * 0.6 + stretchedEnergy * 0.4;
 
-    // Map to brightness with absoluteFactor
-    const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-    let pct = cal.minBrightness + normalized * (effectiveMax - cal.minBrightness);
+    // EMA: slightly slower release for smoother lighting fades
+    const alpha = blended > smoothed ? cal.attackAlpha : cal.releaseAlpha * 0.7;
+    smoothed += (blended - smoothed) * alpha;
 
-    // Section brightness scaling
+    // S-curve for LED perception
+    let shaped = lightingGamma(smoothed);
+
+    // Section mood
     const section = getSection(t);
-    const sectionType = section?.type ?? 'chorus';
-    const brightnessScale = (SECTION_BRIGHTNESS[sectionType] ?? 1.0) * drAdjustment;
-    pct *= brightnessScale;
+    const sectionType = section?.type ?? null;
+    const mood = sectionType ? (SECTION_MOOD[sectionType] ?? DEFAULT_MOOD) : DEFAULT_MOOD;
 
-    // Build-up blackout (last 10% → dim to near-zero)
+    // Scale floor/ceiling by calibration range
+    const calRange = cal.maxBrightness - cal.minBrightness;
+    const floor = cal.minBrightness + (mood.floor / 100) * calRange;
+    const ceil = cal.minBrightness + (mood.ceil / 100) * calRange;
+
+    // Map shaped energy to section's range with reactivity
+    const mid = (floor + ceil) / 2;
+    const halfRange = (ceil - floor) / 2;
+    let pct = mid + (shaped * 2 - 1) * halfRange * mood.react;
+
+    // Build-up effects
     const buildUp = getBuildUp(t);
-    if (buildUp > 0.9) {
-      const blackoutProgress = (buildUp - 0.9) / 0.1;
-      pct *= (1 - blackoutProgress * 0.85);
+    if (buildUp > 0) {
+      if (buildUp > 0.9) {
+        // Blackout before drop
+        const blackoutProgress = (buildUp - 0.9) / 0.1;
+        pct = pct * (1 - blackoutProgress * 0.9);
+      } else if (buildUp > 0.5 && beatGrid && beatGrid.bpm > 0) {
+        // Breathing: pulsing that accelerates toward the drop
+        const breathFreq = 2 + buildUp * 6;
+        const breath = Math.sin(t * breathFreq * Math.PI * 2) * 0.5 + 0.5;
+        const breathAmt = (buildUp - 0.5) * 2 * 0.3;
+        pct = pct * (1 - breathAmt + breathAmt * breath);
+      }
+    }
+
+    // Drop aftermath: force high intensity
+    if (isInDropFn(t)) {
+      pct = Math.max(pct, ceil * 0.7);
     }
 
     // Beat-synced pulse
-    const bps = SECTION_BEAT_PULSE[sectionType] ?? 0;
-    if (bps > 0 && beatGrid && beatGrid.bpm > 0) {
+    if (mood.beat > 0 && beatGrid && beatGrid.bpm > 0) {
       const pulse = beatPulseVal(t);
-      pct = Math.min(100, pct + pulse * bps * 30);
+      pct = Math.min(100, pct + pulse * mood.beat * 35);
     }
 
     // Hard transition flash
     const trans = getTransition(t);
     if (trans.active && trans.type === 'hard' && trans.progress < 0.15) {
-      pct = Math.min(100, pct + 30);
+      pct = Math.min(100, pct + 35);
     }
 
-    result.push({ t, b: Math.round(Math.max(0, Math.min(100, pct))) });
+    pct = Math.max(cal.minBrightness, Math.min(cal.maxBrightness, pct));
+    result.push({ t, b: Math.round(pct) });
   }
 
   return result;
