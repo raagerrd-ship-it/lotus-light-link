@@ -86,6 +86,10 @@ export default function DebugOverlay({
       {dynamicDamping != null && dynamicDamping > 1 && <div>dämpa: <span className="text-foreground">{dynamicDamping.toFixed(1)}x</span></div>}
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>
       <div>auto-sync: <span className="text-foreground">{autoDriftMs >= 0 ? "+" : ""}{Math.round(autoDriftMs)}ms</span></div>
+      {bleMinIntervalMs != null && <div>BLE intervall: <span className="text-foreground">{bleMinIntervalMs}ms</span></div>}
+      {bleLatencyMs != null && <div>BLE latens: <span className="text-foreground">{Math.round(bleLatencyMs)}ms</span></div>}
+      {chainLatencyMs != null && <div>kedja: <span className="text-foreground">{Math.round(chainLatencyMs)}ms</span></div>}
+      {activeLookAheadMs != null && <div>look-ahead: <span className="text-foreground">{Math.round(activeLookAheadMs)}ms</span> <span className="text-muted-foreground">({syncMode === 'curve' ? 'kurva' : 'mik'})</span></div>}
       {sonosVolume != null && <div>vol: <span className="text-foreground">{sonosVolume}%</span> <span className="text-muted-foreground">{gainMode}{gainMode === 'vol' && volCalibrationVol != null ? ` (ref ${volCalibrationVol}%)` : ''}</span></div>}
       {palette && palette.length > 0 && (
         <div className="flex items-center gap-1 mt-0.5">
