@@ -318,35 +318,40 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const micBands = computeBands(an, freqBuf);
           bassRef.current = micBands.lo;
 
-          // ── Drop detection ──
-          // Track RMS history (last ~1.5s at ~60fps ≈ 90 samples)
+          // ── Drop detection (uses raw RMS, not AGC-normalized) ──
           const DROP_HISTORY_LEN = 90;
-          const DROP_COOLDOWN_MS = 3000;
-          const DROP_QUIET_THRESHOLD = 0.25; // normalized quiet zone
-          const DROP_SURGE_MULTIPLIER = 3.0; // how much louder than recent avg
-          const DROP_DURATION_MS = 400; // how long to hold the drop effect
+          const DROP_COOLDOWN_MS = 2500;
+          const DROP_DURATION_MS = 400;
 
           const rmsHist = rmsHistoryRef.current;
-          rmsHist.push(normalized);
+          rmsHist.push(rms); // raw RMS, not normalized!
           if (rmsHist.length > DROP_HISTORY_LEN) rmsHist.shift();
 
           const now = performance.now();
           let isDrop = now < dropActiveUntilRef.current;
 
-          // Only check for drops if we have enough history and not in cooldown
           if (rmsHist.length >= 30 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
-            // Look at the recent past: was it quiet?
-            const recentWindow = rmsHist.slice(-10); // last ~160ms
-            const pastWindow = rmsHist.slice(-40, -10); // ~160ms-660ms ago
+            const recentWindow = rmsHist.slice(-8);  // last ~130ms
+            const pastWindow = rmsHist.slice(-50, -8); // ~130ms-830ms ago
             const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
             const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
 
-            // Drop = quiet period followed by sudden surge
-            if (pastAvg < DROP_QUIET_THRESHOLD && recentAvg > pastAvg * DROP_SURGE_MULTIPLIER && recentAvg > 0.5) {
+            // Drop = quiet→loud transition in raw signal
+            // pastAvg must be significantly lower than current agcMax (relative quiet)
+            // recentAvg must jump significantly
+            const quietThreshold = agcMaxRef.current * 0.35; // quiet = below 35% of learned max
+            const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
+
+            if (pastAvg < quietThreshold && surgeRatio > 2.0 && recentAvg > agcMaxRef.current * 0.4) {
               dropActiveUntilRef.current = now + DROP_DURATION_MS;
               lastDropTimeRef.current = now;
               isDrop = true;
-              console.log('[Drop]', { pastAvg: pastAvg.toFixed(3), recentAvg: recentAvg.toFixed(3) });
+              console.log('[Drop]', {
+                pastAvg: pastAvg.toFixed(5),
+                recentAvg: recentAvg.toFixed(5),
+                ratio: surgeRatio.toFixed(1),
+                agcMax: agcMaxRef.current.toFixed(5),
+              });
             }
           }
 
