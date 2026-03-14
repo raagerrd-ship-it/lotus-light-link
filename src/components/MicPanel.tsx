@@ -195,6 +195,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const micPctHistoryRef = useRef<number[]>([]);
   const curvePctHistoryRef = useRef<number[]>([]);
   const syncCorrelationTimerRef = useRef(0);
+  // Dedicated AGC state for sync diag mic pipeline (doesn't interfere with main AGC)
+  const syncAgcMaxRef = useRef(0.01);
+  const syncAgcMinRef = useRef(0);
+  const syncAgcPeakMaxRef = useRef(0.01);
+  const syncSmoothedRef = useRef(0);
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { brightnessCurveRef.current = brightnessCurve; }, [brightnessCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
