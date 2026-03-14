@@ -535,7 +535,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           onLiveStatusRef.current?.({
             brightness: bright,
             color: [r, g, b],
-            isWhiteKick: performance.now() < whiteKickUntilRef.current,
+            isWhiteKick: false,
             isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
