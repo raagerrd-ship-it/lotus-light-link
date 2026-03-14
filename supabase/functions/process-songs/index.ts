@@ -418,10 +418,10 @@ function computeBrightnessCurve(
   let envHi = 0;    // drives 10% — sparkle/strobe accents
 
   // Band-specific EMA coefficients (tuned for ~100ms sample interval)
-  // Converted from ms-based times: alpha ≈ 1 - exp(-interval/tau)
-  const BASS_ATTACK = 0.45;  const BASS_RELEASE = 0.12;   // 15ms attack, 80ms release
-  const MID_ATTACK = 0.55;   const MID_RELEASE = 0.18;    // 10ms attack, 50ms release
-  const HI_ATTACK = 0.70;    const HI_RELEASE = 0.28;     // 5ms attack, 30ms release
+  // V2: faster release for snappier transient response
+  const BASS_ATTACK = 0.50;  const BASS_RELEASE = 0.25;   // faster release (was 0.12)
+  const MID_ATTACK = 0.60;   const MID_RELEASE = 0.30;    // faster release (was 0.18)
+  const HI_ATTACK = 0.75;    const HI_RELEASE = 0.40;     // faster release (was 0.28)
 
   // ── Helpers ──
   const getSection = (t: number): SongSection | null => {
