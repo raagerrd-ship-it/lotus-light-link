@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { refineKicks } from "@/lib/kickRefine";
 import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
-import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
+import { drawIntensityChart, drawSyncChart, crossCorrelate, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 import { getActiveDeviceName } from "@/lib/lightCalibration";
 import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
