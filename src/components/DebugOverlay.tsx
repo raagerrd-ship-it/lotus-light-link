@@ -25,6 +25,11 @@ interface DebugOverlayProps {
   curveTrackName?: string | null;
   curveSamples?: number;
   deviceRole?: 'master' | 'monitor';
+  bleMinIntervalMs?: number;
+  bleLatencyMs?: number;
+  chainLatencyMs?: number;
+  activeLookAheadMs?: number;
+  syncMode?: 'curve' | 'mic';
 }
 
 const phaseLabels: Record<string, string> = {
