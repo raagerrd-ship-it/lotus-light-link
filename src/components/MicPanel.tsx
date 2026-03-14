@@ -121,7 +121,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const workerRef = useRef<Worker | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
-  const whiteKickUntilRef = useRef(0);
+  // whiteKickUntilRef removed — drops handle white kicks now
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
