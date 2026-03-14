@@ -179,18 +179,19 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   }, [savedAgcState]);
 
   const touchRecordingContext = () => {
-    if (!recordingSaveFnRef.current && onSaveCurveRef.current) {
-      recordingSaveFnRef.current = onSaveCurveRef.current;
-    }
     const dur = durationMsRef.current;
     if (typeof dur === 'number' && dur > 0) {
       recordingDurationMsRef.current = Math.max(recordingDurationMsRef.current ?? 0, dur);
+    }
+    if (!recordingTrackRef.current && currentTrackRef.current) {
+      recordingTrackRef.current = currentTrackRef.current;
     }
   };
 
   const flushRecordedSamples = (reason: 'track-change' | 'playback-stop' | 'unmount') => {
     const prev = recordedSamplesRef.current;
-    const saveCurve = recordingSaveFnRef.current ?? onSaveCurveRef.current;
+    const saveCurve = onSaveCurveRef.current;
+    const recordingTrack = recordingTrackRef.current;
     if (prev.length > 10 && saveCurve) {
       const dur = recordingDurationMsRef.current ?? durationMsRef.current;
       const firstT = prev[0].t;
@@ -209,7 +210,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
         };
         console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
-        saveCurve(prev, volumeRef.current ?? null, agc);
+        saveCurve(prev, volumeRef.current ?? null, agc, recordingTrack);
       } else {
         console.log(`[MicPanel] ✗ discarding incomplete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
       }
@@ -217,7 +218,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
     recordedSamplesRef.current = [];
     recordingStartPosRef.current = null;
     recordingDurationMsRef.current = null;
-    recordingSaveFnRef.current = null;
+    recordingTrackRef.current = null;
     lastRecordTimeRef.current = 0;
   };
 
