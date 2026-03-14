@@ -694,6 +694,7 @@ serve(async (req) => {
       const body = await req.json();
       if (body?.reprocess || body?.rebake) forceRebake = true;
     } catch { /* no body */ }
+    console.log(`[process-songs] forceRebake=${forceRebake}`);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
