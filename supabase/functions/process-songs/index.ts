@@ -549,20 +549,24 @@ function computeBrightnessCurve(
     // Convert linear energy to perceptually uniform brightness
     const perceptual = cieLightness(blended);
 
-    // ── Step 4: Section mood mapping ──
+    // ── Step 4: Energy-first brightness with section mood tint ──
+    // V2: raw energy drives 60%, section mood shapes 40% — high energy always = bright
     const section = getSection(t);
     const sectionType = section?.type ?? null;
     const mood = sectionType ? (SECTION_MOOD[sectionType] ?? DEFAULT_MOOD) : DEFAULT_MOOD;
 
-    // Scale floor/ceiling by calibration range
     const calRange = cal.maxBrightness - cal.minBrightness;
     const moodFloor = cal.minBrightness + (mood.floor / 100) * calRange;
     const moodCeil = cal.minBrightness + (mood.ceil / 100) * calRange;
 
-    // Map perceptual energy into section's brightness range
+    // Pure energy-driven brightness (full range)
+    const energyPct = cal.minBrightness + perceptual * calRange;
+    // Section-shaped brightness (mood range)
     const moodMid = (moodFloor + moodCeil) / 2;
     const halfRange = (moodCeil - moodFloor) / 2;
-    let pct = moodMid + (perceptual * 2 - 1) * halfRange * mood.react;
+    const sectionPct = moodMid + (perceptual * 2 - 1) * halfRange * mood.react;
+    // Blend: energy leads, section adds character
+    let pct = energyPct * 0.6 + sectionPct * 0.4;
 
     // ── Step 5: Build-up effects ──
     const buildUp = getBuildUp(t);
