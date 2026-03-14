@@ -320,6 +320,15 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             }
           }
 
+          // ── Track trait modulation ──
+          const traitEnergy = (energyRef.current ?? 50) / 100;       // 0-1, default 0.5
+          const traitDance = (danceabilityRef.current ?? 50) / 100;
+          const traitHappy = (happinessRef.current ?? 50) / 100;
+
+          // Energy affects: white kick threshold (lower = more kicks), drop duration
+          const kickThresholdMod = 1.0 - traitEnergy * 0.35;  // high energy → 35% lower threshold
+          const dropDurationMod = 1.0 + traitEnergy * 0.5;     // high energy → 50% longer drops
+
           // White kick logic — beat-synced when BPM available
           const currentBpm = bpmRef.current;
           let isWhite = false;
@@ -327,37 +336,51 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           // Drop overrides normal white kick — force white for longer
           if (isDrop) {
             isWhite = true;
+            // Extend drop based on energy
+            if (dropActiveUntilRef.current > 0) {
+              dropActiveUntilRef.current = lastDropTimeRef.current + DROP_DURATION_MS * dropDurationMod;
+            }
           } else if (currentBpm && currentBpm > 0) {
-            // Beat-synced kicks: fire white kick when volume peak aligns with beat phase
             const beatIntervalMs = 60000 / currentBpm;
             const timeSinceLastBeat = now - lastBeatTimeRef.current;
 
-            if (timeSinceLastBeat >= beatIntervalMs * 0.9) {
-              if (pct > cal.whiteKickThreshold * 0.7) {
+            // Danceability tightens beat window (more rhythmic = stricter sync)
+            const beatWindow = 0.9 - traitDance * 0.15; // 0.75-0.9
+
+            if (timeSinceLastBeat >= beatIntervalMs * beatWindow) {
+              if (pct > cal.whiteKickThreshold * kickThresholdMod) {
                 lastBeatTimeRef.current = now;
-                whiteKickUntilRef.current = now + Math.min(cal.whiteKickMs, beatIntervalMs * 0.15);
+                // Danceability → longer kick relative to beat (more groove)
+                const kickFraction = 0.12 + traitDance * 0.08; // 0.12-0.20
+                whiteKickUntilRef.current = now + Math.min(cal.whiteKickMs, beatIntervalMs * kickFraction);
               }
             }
             isWhite = now < whiteKickUntilRef.current;
           } else {
-            // Fallback: original volume-only white kick
+            // Fallback: volume-only white kick
             const inWhiteKick = now < whiteKickUntilRef.current;
-            if (pct > cal.whiteKickThreshold && !inWhiteKick) {
+            if (pct > cal.whiteKickThreshold * kickThresholdMod && !inWhiteKick) {
               whiteKickUntilRef.current = now + cal.whiteKickMs;
             }
             isWhite = now < whiteKickUntilRef.current;
           }
           const smoothEnd = performance.now();
 
-          // BLE commands
+          // BLE commands — happiness affects color warmth
           const c = charRef.current;
           if (c) {
             if (isWhite) {
-              sendColorAndBrightness(c, 255, 255, 255, 100);
+              // High happiness → warm white, low → cool white
+              const warmR = Math.round(255);
+              const warmG = Math.round(240 + traitHappy * 15); // 240-255
+              const warmB = Math.round(200 + (1 - traitHappy) * 55); // cool=255, warm=200
+              sendColorAndBrightness(c, warmR, Math.min(255, warmG), warmB, 100);
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, 0.3);
+              // Happiness increases color modulation strength
+              const modStrength = 0.2 + traitHappy * 0.25; // 0.2-0.45
+              const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               sendColorAndBrightness(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
             }
