@@ -168,7 +168,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     ctx.lineWidth = 1;
     for (let i = 0; i < curve.length; i++) {
       const x = tToX(curve[i].t);
-      const y = eToY(curve[i].e);
+      const y = valToY(values[i]);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
