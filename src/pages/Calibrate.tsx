@@ -5,7 +5,7 @@ import { ArrowLeft, Play, Square, Check, RefreshCw, Music, Trash2 } from "lucide
 import {
   getCalibration, saveCalibration,
   setActiveDeviceName, loadCalibrationFromCloud,
-  saveBleSpeedToCloud, saveLatencyToCloud,
+  saveBleSpeedToCloud,
   listCalibrationsFromCloud, deleteCalibrationFromCloud,
   DEFAULT_CALIBRATION,
   type LightCalibration, type LatencyResults,
