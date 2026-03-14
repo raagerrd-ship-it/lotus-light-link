@@ -141,6 +141,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => { energyRef.current = energy; }, [energy]);
   useEffect(() => { danceabilityRef.current = danceability; }, [danceability]);
   useEffect(() => { happinessRef.current = happiness; }, [happiness]);
+  useEffect(() => { loudnessDbRef.current = parseLoudnessDb(loudness); }, [loudness]);
 
   useEffect(() => {
     colorRef.current = currentColor;
