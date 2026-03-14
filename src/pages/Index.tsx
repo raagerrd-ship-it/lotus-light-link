@@ -66,6 +66,34 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
+  // Auto-reconnect to last known BLE device on mount
+  useEffect(() => {
+    if (!isMaster) return;
+    if (connection) return;
+    const last = getLastDevice();
+    if (!last) return;
+
+    const ac = new AbortController();
+    setBusy(true);
+    setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: last.name || undefined });
+
+    autoReconnect(ac.signal, (status) => {
+      setBleReconnectStatus(status);
+    }).then((conn) => {
+      if (conn) {
+        finishConnect(conn);
+      } else {
+        setBusy(false);
+        setBleReconnectStatus(null);
+      }
+    }).catch(() => {
+      setBusy(false);
+      setBleReconnectStatus(null);
+    });
+
+    return () => ac.abort();
+  }, [isMaster]);
+
   // Poll e2e latency metric
   useEffect(() => {
     if (!isMaster) return;
