@@ -30,7 +30,12 @@ interface SongEnergyCurveResult {
   sections: SongSection[] | null;
   drops: Drop[] | null;
   loading: boolean;
-  saveCurve: (samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void;
+  saveCurve: (
+    samples: EnergySample[],
+    volume: number | null,
+    agcState?: AgcState | null,
+    trackOverride?: TrackKey | null,
+  ) => void;
 }
 
 interface CacheEntry {
