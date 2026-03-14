@@ -192,7 +192,8 @@ export function saveLatencyToCloud(deviceName: string, latency: LatencyResults) 
   }, true);
 }
 
-/** Load calibration from cloud for a device. Returns null if not found. */
+/** Load calibration from cloud for a device. 
+ *  BLE interval is AVERAGED across all entries for this device. */
 export async function loadCalibrationFromCloud(deviceName: string): Promise<{
   calibration: LightCalibration;
   bleMinIntervalMs: number | null;
@@ -204,18 +205,28 @@ export async function loadCalibrationFromCloud(deviceName: string): Promise<{
       .from('device_calibration')
       .select('calibration, ble_min_interval_ms, ble_speed_results, latency_results')
       .eq('device_name', deviceName)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return null;
-    const cal = { ...DEFAULT_CALIBRATION, ...(data.calibration as object) };
+      .order('updated_at', { ascending: false });
+    if (error || !data || data.length === 0) return null;
+
+    // Use the most recent calibration & latency
+    const latest = data[0];
+    const cal = { ...DEFAULT_CALIBRATION, ...(latest.calibration as object) };
+
+    // Average BLE interval across all entries that have one
+    const bleIntervals = data
+      .map((d: any) => d.ble_min_interval_ms)
+      .filter((v: any): v is number => v != null && v > 0);
+    const avgBleInterval = bleIntervals.length > 0
+      ? Math.round(bleIntervals.reduce((a: number, b: number) => a + b, 0) / bleIntervals.length)
+      : latest.ble_min_interval_ms;
+
     // Cache locally
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
     return {
       calibration: cal as LightCalibration,
-      bleMinIntervalMs: data.ble_min_interval_ms,
-      bleSpeedResults: data.ble_speed_results as Record<string, number> | null,
-      latencyResults: data.latency_results as LatencyResults | null,
+      bleMinIntervalMs: avgBleInterval,
+      bleSpeedResults: latest.ble_speed_results as Record<string, number> | null,
+      latencyResults: latest.latency_results as LatencyResults | null,
     };
   } catch {
     return null;

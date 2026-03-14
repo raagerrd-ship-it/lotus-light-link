@@ -773,6 +773,14 @@ function CalibrationHistory({ deviceName }: { deviceName: string | null }) {
 
   if (!deviceName) return <p className="text-[10px] text-muted-foreground">Anslut BLE-lampa för att se historik.</p>;
 
+  // Compute average BLE interval
+  const bleIntervals = entries
+    .map(e => e.ble_min_interval_ms)
+    .filter((v: any): v is number => v != null && v > 0);
+  const avgBle = bleIntervals.length > 0
+    ? Math.round(bleIntervals.reduce((a, b) => a + b, 0) / bleIntervals.length)
+    : null;
+
   return (
     <div className="border border-border/30 rounded-md px-3 py-2">
       <div className="flex items-center justify-between mb-1">
@@ -781,6 +789,16 @@ function CalibrationHistory({ deviceName }: { deviceName: string | null }) {
           <RefreshCw className="w-3 h-3" />
         </button>
       </div>
+
+      {/* Averaged values summary */}
+      {avgBle != null && bleIntervals.length > 1 && (
+        <div className="bg-primary/10 border border-primary/20 rounded px-2 py-1.5 mb-2">
+          <p className="text-[10px] font-bold text-primary">Aktivt snitt ({bleIntervals.length} mätningar)</p>
+          <p className="text-[10px] font-mono text-foreground/80">BLE-intervall: <span className="font-bold text-primary">{avgBle}ms</span></p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Ta bort gamla poster för att ändra snittet.</p>
+        </div>
+      )}
+
       {loading && <p className="text-[10px] text-muted-foreground">Laddar…</p>}
       {!loading && entries.length === 0 && <p className="text-[10px] text-muted-foreground">Inga poster.</p>}
       {!loading && entries.length > 0 && (
