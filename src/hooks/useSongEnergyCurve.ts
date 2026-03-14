@@ -77,6 +77,7 @@ function parseRow(data: any): Omit<CacheEntry, 'songId'> & { songId: string | nu
   const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
   return {
     curve: valid,
+    brightnessCurve: (data?.brightness_curve as unknown as { t: number; b: number }[] | null) ?? null,
     vol: (data?.recorded_volume as number | null) ?? null,
     agc: (data?.agc_state as AgcState | null) ?? null,
     bpm: (data?.bpm as number | null) ?? null,
