@@ -388,8 +388,8 @@ function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patc
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Dynamic damping: {cal.dynamicDamping.toFixed(1)}×</label>
-          <input type="range" min={10} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Komprimerar dynamiken — 1.0 = linjärt. <span className="text-foreground/50">↑ Högre = jämnare ljus, ↓ Lägre = mer kontrast</span></p>
+          <input type="range" min={5} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Komprimerar dynamiken — 1.0 = linjärt, &lt;1 = mer kontrast, &gt;1 = jämnare. <span className="text-foreground/50">Dra vänster för dramatik, höger för jämnhet</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Kick tröskel: {cal.whiteKickThreshold}%</label>
