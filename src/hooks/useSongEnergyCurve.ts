@@ -15,6 +15,7 @@ interface TrackKey {
 
 interface SongEnergyCurveResult {
   curve: EnergySample[] | null;
+  brightnessCurve: { t: number; b: number }[] | null;
   recordedVolume: number | null;
   savedAgcState: AgcState | null;
   bpm: number | null;
