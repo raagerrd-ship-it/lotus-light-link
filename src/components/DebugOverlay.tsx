@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
 import type { BleReconnectStatus } from "@/lib/bledom";
-import { getBleWriteStats, getPipelineTimings, type BleWriteStats, type PipelineTimings } from "@/lib/bledom";
 
 // Injected by Vite define at build time
 declare const __BUILD_TIME__: string;
@@ -15,7 +13,7 @@ interface DebugOverlayProps {
   volCalibrationVol?: number | null;
   liveBpm?: number | null;
   maxBrightness?: number;
-  tickToWriteMs?: number;
+  
   dynamicDamping?: number;
   bleConnected?: boolean;
   bleDeviceName?: string | null;
@@ -42,20 +40,10 @@ const phaseLabels: Record<string, string> = {
 export default function DebugOverlay({
   smoothedRtt, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
-  bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
+  bleConnected, bleDeviceName, bleReconnectStatus,
   deviceRole, bleMinIntervalMs, bleLatencyMs, dropActive,
   energy, danceability, happiness, loudness,
 }: DebugOverlayProps) {
-  const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
-  const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setBleStats(getBleWriteStats());
-      setPipeline(getPipelineTimings());
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
 
   return (
     <div className="fixed bottom-16 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
@@ -135,19 +123,6 @@ export default function DebugOverlay({
         </div>
       )}
 
-      {/* BLE write stats */}
-      <div className="mt-0.5 border-t border-border/30 pt-0.5">
-        <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> skip: <span className="text-foreground">{bleStats.droppedPerSec}</span></div>
-        <div>write: <span className="text-foreground">{bleStats.lastWriteMs}ms</span> queue: <span className="text-foreground">{bleStats.queueAgeMs}ms</span></div>
-        {tickToWriteMs != null && <div>e2e: <span className="text-foreground">{Math.round(tickToWriteMs)}ms</span></div>}
-        {bleStats.errorCount > 0 && <div className="text-red-400">err: {bleStats.errorCount} — {bleStats.lastError}</div>}
-      </div>
-
-      {/* Pipeline step timings */}
-      <div className="mt-0.5 border-t border-border/30 pt-0.5">
-        <div>rms: <span className="text-foreground">{pipeline.rmsMs.toFixed(1)}ms</span> smooth: <span className="text-foreground">{pipeline.smoothMs.toFixed(1)}ms</span></div>
-        <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
-      </div>
 
       {/* Build info */}
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
