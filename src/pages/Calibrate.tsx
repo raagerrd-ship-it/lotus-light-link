@@ -375,7 +375,7 @@ function CurrentCalibrationPanel({ cal }: { cal: LightCalibration }) {
   const row = (label: string, key: keyof LightCalibration, unit = '') => (
     <div className={`flex justify-between text-[10px] font-mono ${changed(key) ? 'text-foreground' : 'text-muted-foreground'}`}>
       <span>{label}</span>
-      <span>{typeof cal[key] === 'number' ? (cal[key] as number).toFixed(key.startsWith('gamma') || key === 'saturationBoost' ? 2 : 0) : String(cal[key])}{unit}</span>
+      <span>{typeof cal[key] === 'number' ? (cal[key] as number).toFixed(key.startsWith('gamma') || key === 'saturationBoost' || key === 'attackAlpha' || key === 'releaseAlpha' || key === 'dynamicDamping' ? (key === 'releaseAlpha' ? 3 : 2) : 0) : String(cal[key])}{unit}</span>
     </div>
   );
 
