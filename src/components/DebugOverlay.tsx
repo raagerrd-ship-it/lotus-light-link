@@ -139,6 +139,28 @@ export default function DebugOverlay({
         <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
       </div>
 
+      {/* Sync diag */}
+      <div className="mt-0.5 border-t border-border/30 pt-0.5">
+        <button
+          onClick={onToggleSyncDiag}
+          className="pointer-events-auto text-[10px] px-1.5 py-0.5 rounded border"
+          style={{
+            borderColor: syncDiag ? '#f97316' : 'hsl(var(--border) / 0.4)',
+            color: syncDiag ? '#f97316' : 'hsl(var(--foreground) / 0.5)',
+            background: syncDiag ? 'rgba(249,115,22,0.1)' : 'transparent',
+          }}
+        >
+          Sync diag {syncDiag ? 'ON' : 'off'}
+        </button>
+        {syncDiag && syncOffsetMs != null && (
+          <div className="mt-0.5">
+            Δt: <span className={Math.abs(syncOffsetMs) > 500 ? 'text-red-400' : 'text-green-400'}>
+              {syncOffsetMs >= 0 ? '+' : ''}{Math.round(syncOffsetMs)}ms
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Build info */}
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
         build: {(() => { try { const d = new Date(__BUILD_TIME__); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); } catch { return '?'; } })()}
