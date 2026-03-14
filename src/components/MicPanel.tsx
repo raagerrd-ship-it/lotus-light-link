@@ -13,7 +13,30 @@ interface MicPanelProps {
   energy?: number | null;        // 0-100
   danceability?: number | null;  // 0-100
   happiness?: number | null;     // 0-100
+  loudness?: string | null;      // e.g. "-5 dB"
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => void;
+}
+
+/** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
+function parseLoudnessDb(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = s.match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+/**
+ * Convert loudness (LUFS/dB, typically -3 to -20) to an AGC scaling factor.
+ * Loud masters (-3 to -6 dB) → factor ~1.3-1.5 (expect higher RMS)
+ * Normal (-8 to -10 dB) → factor ~1.0
+ * Quiet (-14 to -20 dB) → factor ~0.5-0.7 (expect lower RMS)
+ */
+function loudnessToAgcFactor(db: number): number {
+  // Reference point: -9 dB is "normal" → factor 1.0
+  // Each dB above -9 adds ~6% to expected RMS
+  // Each dB below -9 reduces ~6%
+  const refDb = -9;
+  const diff = db - refDb; // positive = louder than ref
+  return Math.max(0.4, Math.min(2.0, 1.0 + diff * 0.06));
 }
 
 const HISTORY_LEN = 120;
@@ -73,7 +96,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -104,6 +127,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const energyRef = useRef(energy);
   const danceabilityRef = useRef(danceability);
   const happinessRef = useRef(happiness);
+  const loudnessDbRef = useRef(parseLoudnessDb(loudness));
   const beatPhaseRef = useRef(0);
   const lastBeatTimeRef = useRef(0);
   // Drop detection state
@@ -117,6 +141,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => { energyRef.current = energy; }, [energy]);
   useEffect(() => { danceabilityRef.current = danceability; }, [danceability]);
   useEffect(() => { happinessRef.current = happiness; }, [happiness]);
+  useEffect(() => { loudnessDbRef.current = parseLoudnessDb(loudness); }, [loudness]);
 
   useEffect(() => {
     colorRef.current = currentColor;
@@ -274,13 +299,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             normalized = Math.pow(normalized, cal.dynamicDamping);
           }
 
+          // Loudness-aware AGC: scale peakMax expectation based on master loudness
+          const loudDb = loudnessDbRef.current;
+          const loudFactor = loudDb != null ? loudnessToAgcFactor(loudDb) : 1.0;
+
           if (agcMaxRef.current > agcPeakMaxRef.current) {
             agcPeakMaxRef.current = agcMaxRef.current;
           } else {
             agcPeakMaxRef.current *= PEAK_MAX_DECAY;
           }
 
-          const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
+          // absoluteFactor now accounts for loudness: loud masters get boosted expectation
+          const absoluteFactor = Math.min(1, Math.max(0.08, (agcMaxRef.current * loudFactor) / agcPeakMaxRef.current));
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
           const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
 
