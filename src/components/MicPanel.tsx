@@ -32,6 +32,9 @@ interface MicPanelProps {
   beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
+  dynamicRange?: DynamicRange | null;
+  transitions?: Transition[] | null;
+  beatStrengths?: number[] | null;
   trackName?: string | null;
   artistName?: string | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
