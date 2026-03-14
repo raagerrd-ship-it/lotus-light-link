@@ -625,8 +625,11 @@ serve(async (req) => {
     const results: string[] = [];
 
     for (const song of (songs ?? [])) {
-      const curve = song.energy_curve as unknown as EnergySample[];
-      if (!Array.isArray(curve) || curve.length < 50) continue;
+      const rawCurve = song.energy_curve as unknown as EnergySample[];
+      if (!Array.isArray(rawCurve) || rawCurve.length < 50) continue;
+
+      // Sanitize: remove artifact spikes before any analysis
+      const curve = sanitizeCurve(rawCurve);
 
       const updates: Record<string, unknown> = {};
       let needsUpdate = false;
