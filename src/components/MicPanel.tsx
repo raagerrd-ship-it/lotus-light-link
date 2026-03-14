@@ -585,8 +585,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
 
     return () => {
       stopped = true;
-      // Don't save on unmount — only complete recordings are saved via the energyCurve effect
-      recordedSamplesRef.current = [];
+      flushRecordedSamples('unmount');
       onBleWrite(null);
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
