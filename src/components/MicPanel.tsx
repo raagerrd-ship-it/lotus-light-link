@@ -442,14 +442,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           bassHist.push(micBands.bassRms); // bass RMS only!
           if (bassHist.length > DROP_HISTORY_LEN) bassHist.shift();
 
-          const now = performance.now();
+          const now = tickStart; // reuse cached timestamp
           let isDrop = now < dropActiveUntilRef.current;
 
-          if (bassHist.length >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
-            const recentWindow = bassHist.slice(-8);   // last ~130ms
-            const pastWindow = bassHist.slice(-60, -8); // ~130ms-1000ms ago
-            const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
-            const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
+          const len = bassHist.length;
+          if (len >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
+            // Index-based averaging — no slice allocations
+            let recentSum = 0;
+            for (let i = len - 8; i < len; i++) recentSum += bassHist[i];
+            const recentAvg = recentSum / 8;
+            let pastSum = 0;
+            const pastStart = len - 60;
+            const pastEnd = len - 8;
+            for (let i = pastStart; i < pastEnd; i++) pastSum += bassHist[i];
+            const pastAvg = pastSum / (pastEnd - pastStart);
 
             // Much stricter thresholds — drops should be rare and dramatic
             const traitEnergy = (energyRef.current ?? 50) / 100;
