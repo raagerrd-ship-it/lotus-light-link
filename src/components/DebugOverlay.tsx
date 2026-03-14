@@ -74,11 +74,16 @@ export default function DebugOverlay({
       {(energy != null || danceability != null || happiness != null || loudness != null) && (
         <div className="mt-0.5 border-t border-border/30 pt-0.5">
           <div className="text-foreground/40 mb-0.5">traits →</div>
-          {energy != null && (
-            <div>nrg: <span className="text-foreground">{energy}</span>
-              <span className="text-foreground/40"> kick‑{Math.round((1.0 - (energy / 100) * 0.35) * 100)}% drop+{Math.round((energy / 100) * 50)}%</span>
-            </div>
-          )}
+          {energy != null && (() => {
+            const e = energy / 100;
+            const surgeNeed = (4.0 - e * 2.0).toFixed(1);
+            const quietPct = Math.round((0.12 + e * 0.18) * 100);
+            return (
+              <div>nrg: <span className="text-foreground">{energy}</span>
+                <span className="text-foreground/40"> quiet‑{quietPct}% surge‑{surgeNeed}×</span>
+              </div>
+            );
+          })()}
           {danceability != null && (
             <div>dnc: <span className="text-foreground">{danceability}</span>
               <span className="text-foreground/40"> sync‑{Math.round((0.9 - (danceability / 100) * 0.15) * 100)}% kick‑{Math.round((0.12 + (danceability / 100) * 0.08) * 100)}%</span>
