@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Play, Square, Check, RefreshCw } from "lucide-react";
+import { Play, Square, Check, RefreshCw, AlertTriangle } from "lucide-react";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { useSongEnergyCurve } from "@/hooks/useSongEnergyCurve";
-import { interpolateSample, curvePeakRms } from "@/lib/energyInterpolate";
+import { interpolateSample } from "@/lib/energyInterpolate";
 import { nearestBeat } from "@/lib/bpmEstimate";
 import { getBleConnection } from "@/lib/bleStore";
 import { sendColorAndBrightness } from "@/lib/bledom";
@@ -14,16 +14,6 @@ interface ChainSyncTabProps {
   currentChainLatencyMs: number;
 }
 
-/**
- * Chain Sync Calibration: measures total latency from Sonos timestamp → visible light.
- *
- * Flow:
- * 1. Play a recorded song on Sonos (system detects it automatically)
- * 2. System drives lamp from saved energy curve (WITHOUT chainLatencyMs compensation)
- * 3. User taps screen in sync with lamp flashes/beats
- * 4. System compares tap timestamps with curve beat positions
- * 5. Difference = total chain latency
- */
 export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyncTabProps) {
   const { nowPlaying, getPosition } = useSonosNowPlaying();
   const track = nowPlaying?.trackName && nowPlaying?.artistName
@@ -35,10 +25,12 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
   const [taps, setTaps] = useState<number[]>([]);
   const [offsets, setOffsets] = useState<number[]>([]);
   const [result, setResult] = useState<number | null>(null);
+  const [saved, setSaved] = useState(false);
 
   const hasCurve = Array.isArray(curve) && curve.length > 10;
   const hasBeats = beatGrid && beatGrid.beats.length > 10;
   const isPlaying = nowPlaying?.playbackState?.includes('PLAYING');
+  const bleConn = getBleConnection();
 
   // Refs for the lamp-driving rAF loop
   const curveRef = useRef(curve);
@@ -51,8 +43,6 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
 
   // --- Lamp-driving rAF loop ---
-  // Drives the BLE lamp from the energy curve WITHOUT chainLatencyMs compensation
-  // so the user can measure the actual delay by tapping.
   useEffect(() => {
     const shouldDrive = hasCurve && isPlaying && (phase === 'tapping' || phase === 'idle');
     lampActiveRef.current = shouldDrive;
@@ -62,7 +52,6 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
 
     const loop = () => {
       if (!lampActiveRef.current) return;
-
       const conn = getBleConnection();
       const c = conn?.characteristic;
       const crv = curveRef.current;
@@ -72,11 +61,9 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
         const pos = gp();
         if (pos) {
           const elapsed = performance.now() - pos.receivedAt;
-          // NO chainLatencyMs here — that's what we're measuring!
           const posSec = (pos.positionMs + elapsed) / 1000;
           const sample = interpolateSample(crv, posSec);
 
-          // Simple smoothing
           const prev = smoothedRef.current;
           const alpha = sample.e > prev ? cal.attackAlpha : cal.releaseAlpha;
           const smoothed = prev + alpha * (sample.e - prev);
@@ -90,7 +77,6 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
           sendColorAndBrightness(c, ...calibrated, clampedPct);
         }
       }
-
       rafRef.current = requestAnimationFrame(loop);
     };
 
@@ -113,6 +99,7 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
     setTaps([]);
     setOffsets([]);
     setResult(null);
+    setSaved(false);
     smoothedRef.current = 0;
   }, []);
 
@@ -125,7 +112,6 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
     const nearBeat = nearestBeat(beatGrid!.beats, tapTime);
     if (nearBeat == null) return;
 
-    // Positive means user tapped late = light is late = need more look-ahead
     const offsetMs = (tapTime - nearBeat) * 1000;
     if (Math.abs(offsetMs) > 500) return;
 
@@ -152,8 +138,7 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
       ? filtered.reduce((a, b) => a + b, 0) / filtered.length
       : mean;
 
-    const chainMs = Math.round(finalMean);
-    setResult(chainMs);
+    setResult(Math.round(finalMean));
     setPhase('done');
   }, []);
 
@@ -164,58 +149,65 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
   const handleSave = useCallback(() => {
     if (result != null) {
       onSave(result);
+      setSaved(true);
     }
   }, [result, onSave]);
 
+  // Determine readiness
+  const missingBle = !bleConn;
+  const missingSonos = !isPlaying;
+  const missingCurve = isPlaying && !hasCurve;
+  const missingBeats = hasCurve && !hasBeats;
+  const ready = !missingBle && !missingSonos && hasCurve && hasBeats;
+
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Mäter total fördröjning från Sonos-tidsstämpel till synligt ljus. Spela en <span className="font-semibold text-foreground">inspelad låt</span> på Sonos och tappa i takt med lampans beats.
-      </p>
-
-      {/* Status indicators */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
-          <span className="text-muted-foreground">Sonos:</span>
-          <span className={isPlaying ? 'text-foreground' : 'text-muted-foreground'}>
-            {nowPlaying?.trackName ? `${nowPlaying.trackName}` : 'Ingen låt'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className={`w-1.5 h-1.5 rounded-full ${hasCurve ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
-          <span className="text-muted-foreground">Kurva:</span>
-          <span className={hasCurve ? 'text-foreground' : 'text-muted-foreground'}>
-            {hasCurve ? `${curve!.length} samples` : 'Ej inspelad'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className={`w-1.5 h-1.5 rounded-full ${hasBeats ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
-          <span className="text-muted-foreground">Beat grid:</span>
-          <span className={hasBeats ? 'text-foreground' : 'text-muted-foreground'}>
-            {hasBeats ? `${beatGrid!.beats.length} beats (${bpm} BPM)` : 'Saknas'}
-          </span>
-        </div>
-        {hasCurve && isPlaying && (
-          <div className="flex items-center gap-2 text-[10px] font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-primary">Lampan drivs från kurvan (utan kompensation)</span>
-          </div>
-        )}
+      {/* What this step does */}
+      <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2.5">
+        <p className="text-xs text-foreground/90 leading-relaxed">
+          <span className="font-bold">Vad händer?</span> Lampan drivs av en inspelad låts energikurva. 
+          Du tappar på skärmen i takt med lampans pulser. Skillnaden mellan dina taps och låtens beats 
+          avslöjar hur mycket fördröjning det finns i hela kedjan (Sonos → BLE → lampa).
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-1.5">
+          Resultatet används som "look-ahead" — systemet skickar kommandon i förväg för att kompensera fördröjningen.
+        </p>
       </div>
 
-      {!hasCurve && isPlaying && (
-        <div className="bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
-          <p className="text-[10px] text-destructive">
-            Den här låten har ingen inspelad energikurva. Spela en låt som redan spelats in (se "Inspelningar"-fliken).
-          </p>
-        </div>
-      )}
+      {/* Prerequisite checklist */}
+      <div className="space-y-1.5">
+        <p className="text-[10px] font-bold text-foreground/70 uppercase tracking-wider">Förutsättningar</p>
 
-      {!hasBeats && hasCurve && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md px-3 py-2">
-          <p className="text-[10px] text-yellow-400">
-            Beat grid saknas för den här låten. Beats beräknas automatiskt — prova en annan inspelad låt.
+        <ChecklistItem
+          done={!missingBle}
+          label="BLE-lampa ansluten"
+          detail={missingBle ? "Gå tillbaka och anslut lampan via Bluetooth-knappen" : bleConn?.device?.name ?? "Ansluten"}
+        />
+        <ChecklistItem
+          done={!missingSonos}
+          label="Sonos spelar musik"
+          detail={missingSonos ? "Starta en låt på Sonos" : nowPlaying?.trackName ?? "Spelar"}
+        />
+        <ChecklistItem
+          done={hasCurve}
+          label="Inspelad energikurva finns"
+          detail={missingCurve ? "Den här låten har inte spelats in ännu. Byt till en inspelad låt." : hasCurve ? `${curve!.length} samples` : "Väntar på låt…"}
+          warning={missingCurve}
+        />
+        <ChecklistItem
+          done={hasBeats ?? false}
+          label="Beat grid beräknad"
+          detail={missingBeats ? "Beats saknas — prova en annan inspelad låt" : hasBeats ? `${beatGrid!.beats.length} beats (${bpm} BPM)` : "Väntar…"}
+          warning={missingBeats ?? false}
+        />
+      </div>
+
+      {/* Lamp status */}
+      {hasCurve && isPlaying && phase !== 'done' && (
+        <div className="bg-primary/10 border border-primary/20 rounded-lg px-3 py-2 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+          <p className="text-[10px] text-primary font-medium">
+            Lampan drivs nu av energikurvan — titta på lampan, den blinkar i takt med musiken!
           </p>
         </div>
       )}
@@ -225,10 +217,10 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
         <Button
           size="sm"
           onClick={startTapping}
-          disabled={!hasCurve || !hasBeats || !isPlaying}
-          className="gap-1.5 text-xs"
+          disabled={!ready}
+          className="gap-1.5 text-xs w-full"
         >
-          <Play className="w-3 h-3" /> Starta tapping
+          <Play className="w-3.5 h-3.5" /> Starta kalibrering — tappa i takt med lampan
         </Button>
       )}
 
@@ -236,34 +228,46 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
         <div className="space-y-3">
           <button
             onClick={handleTap}
-            className="w-full py-12 bg-primary/20 border-2 border-primary/40 rounded-xl text-center active:bg-primary/40 transition-colors touch-manipulation"
+            className="w-full py-14 bg-primary/20 border-2 border-primary/40 rounded-xl text-center active:bg-primary/40 active:scale-[0.98] transition-all touch-manipulation select-none"
           >
-            <p className="text-lg font-bold text-primary">TAP</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Tappa i takt med lampans beats
+            <p className="text-2xl font-black text-primary">TAP</p>
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+              Tryck varje gång lampan pulserar med ett beat
             </p>
-            <p className="text-[10px] font-mono text-foreground/50 mt-2">
-              {taps.length} taps {taps.length >= 4 ? '(min 4)' : `(behöver ${4 - taps.length} till)`}
+            <div className="mt-3 flex justify-center gap-1">
+              {Array.from({ length: Math.min(16, Math.max(4, taps.length + 1)) }).map((_, i) => (
+                <span
+                  key={i}
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    i < taps.length
+                      ? 'bg-primary'
+                      : i < 4
+                      ? 'bg-muted-foreground/30'
+                      : 'bg-muted-foreground/10'
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-[10px] font-mono text-foreground/40 mt-2">
+              {taps.length}/16 taps {taps.length < 4 ? `(minst ${4 - taps.length} till)` : '— tryck Stoppa när du är nöjd'}
             </p>
           </button>
 
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={stopTapping}
-              disabled={taps.length < 4}
-              className="gap-1 text-xs"
-            >
-              <Square className="w-3 h-3" /> Stoppa ({taps.length} taps)
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={stopTapping}
+            disabled={taps.length < 4}
+            className="gap-1 text-xs w-full"
+          >
+            <Square className="w-3 h-3" /> Stoppa och beräkna ({taps.length} taps)
+          </Button>
 
           {/* Live offset display */}
           {offsets.length > 0 && (
-            <div className="text-[10px] font-mono text-muted-foreground space-y-0.5">
-              {offsets.slice(-6).map((o, i) => (
-                <span key={i} className="mr-2">
+            <div className="text-[10px] font-mono text-muted-foreground flex flex-wrap gap-x-2">
+              {offsets.slice(-8).map((o, i) => (
+                <span key={i} className={Math.abs(o) > 300 ? 'text-yellow-400' : ''}>
                   {o > 0 ? '+' : ''}{o.toFixed(0)}ms
                 </span>
               ))}
@@ -274,34 +278,56 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
 
       {phase === 'done' && result != null && (
         <div className="space-y-3">
-          <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
-            <p className="text-xs font-bold text-primary">
-              Kedjelatens: <span className="font-mono">{result}ms</span>
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              Baserat på {offsets.length} taps. {result > 0 ? 'Lampan släpar — look-ahead appliceras.' : result < 0 ? 'Lampan är före — negativ kompensation.' : 'Perfekt synk!'}
-            </p>
-          </div>
+          {/* Saved confirmation */}
+          {saved && (
+            <div className="bg-primary/15 border border-primary/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-primary">Sparat!</p>
+                <p className="text-[10px] text-primary/70">Kedjelatens {result}ms sparad. Systemet kompenserar nu automatiskt.</p>
+              </div>
+            </div>
+          )}
 
-          {currentChainLatencyMs !== 0 && (
-            <p className="text-[10px] font-mono text-muted-foreground">
-              Nuvarande: {currentChainLatencyMs}ms → Nytt: {result}ms
-            </p>
+          {!saved && (
+            <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2.5">
+              <p className="text-xs font-bold text-foreground">
+                Uppmätt kedjelatens: <span className="font-mono text-primary">{result}ms</span>
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                Baserat på {offsets.length} taps.{' '}
+                {result > 0 ? 'Lampan släpar — systemet kommer skicka kommandon i förväg.' : 
+                 result < 0 ? 'Lampan är före — negativ kompensation appliceras.' : 
+                 'Perfekt synk!'}
+              </p>
+              {currentChainLatencyMs !== 0 && (
+                <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                  Tidigare värde: {currentChainLatencyMs}ms → Nytt: {result}ms
+                </p>
+              )}
+            </div>
           )}
 
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleSave} className="text-xs gap-1">
-              <Check className="w-3 h-3" /> Spara ({result}ms)
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setTaps([]); setOffsets([]); setResult(null); }} className="text-xs gap-1">
-              <RefreshCw className="w-3 h-3" /> Kör om
+            {!saved && (
+              <Button size="sm" onClick={handleSave} className="text-xs gap-1 flex-1">
+                <Check className="w-3.5 h-3.5" /> Spara {result}ms
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => { setPhase('idle'); setTaps([]); setOffsets([]); setResult(null); setSaved(false); }}
+              className="text-xs gap-1 flex-1"
+            >
+              <RefreshCw className="w-3 h-3" /> {saved ? 'Kalibrera om' : 'Kör om'}
             </Button>
           </div>
 
           {/* Raw data */}
           <details className="text-[10px]">
-            <summary className="text-muted-foreground cursor-pointer">Visa rådata</summary>
-            <div className="font-mono text-foreground/50 mt-1 space-y-0.5">
+            <summary className="text-muted-foreground cursor-pointer hover:text-foreground">Visa mätdata</summary>
+            <div className="font-mono text-foreground/50 mt-1 space-y-0.5 max-h-40 overflow-y-auto">
               {offsets.map((o, i) => (
                 <div key={i} className="flex justify-between">
                   <span>Tap {i + 1}</span>
@@ -313,14 +339,40 @@ export default function ChainSyncTab({ onSave, currentChainLatencyMs }: ChainSyn
         </div>
       )}
 
-      {/* Current value */}
+      {/* Current saved value */}
       {currentChainLatencyMs !== 0 && phase === 'idle' && (
-        <div className="border border-border/30 rounded-md px-3 py-2">
-          <p className="text-[10px] font-mono text-muted-foreground">
-            Sparad kedjelatens: <span className="text-foreground font-bold">{currentChainLatencyMs}ms</span>
-          </p>
+        <div className="bg-primary/5 border border-primary/15 rounded-lg px-3 py-2 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] text-muted-foreground">Sparad kedjelatens</p>
+            <p className="text-xs font-mono font-bold text-foreground">{currentChainLatencyMs}ms</p>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={startTapping}
+            disabled={!ready}
+            className="text-[10px] gap-1 h-7"
+          >
+            <RefreshCw className="w-3 h-3" /> Kalibrera om
+          </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ChecklistItem({ done, label, detail, warning = false }: { done: boolean; label: string; detail: string; warning?: boolean }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[8px] ${
+        done ? 'bg-primary/20 text-primary' : warning ? 'bg-yellow-500/20 text-yellow-400' : 'bg-muted-foreground/10 text-muted-foreground/40'
+      }`}>
+        {done ? '✓' : warning ? '!' : '○'}
+      </span>
+      <div className="min-w-0">
+        <p className={`text-[11px] font-medium ${done ? 'text-foreground' : 'text-muted-foreground'}`}>{label}</p>
+        <p className={`text-[10px] ${done ? 'text-muted-foreground' : warning ? 'text-yellow-400/80' : 'text-muted-foreground/60'}`}>{detail}</p>
+      </div>
     </div>
   );
 }
