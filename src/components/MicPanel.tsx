@@ -3,7 +3,7 @@ import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, 
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 import { getActiveDeviceName } from "@/lib/lightCalibration";
-import { interpolateEnergy, hasKickNear, interpolateSample, curvePeakRms } from "@/lib/energyInterpolate";
+import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
 import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
