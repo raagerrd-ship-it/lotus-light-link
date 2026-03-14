@@ -363,16 +363,6 @@ const Index = () => {
               <Monitor className="w-3.5 h-3.5 mr-1" />
               Monitor
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleConnect(!!connection)}
-              disabled={busy}
-              className="rounded-full h-7 w-7 active:scale-90 transition-all duration-200"
-              style={{ color: accent }}
-            >
-              <Bluetooth className="w-3.5 h-3.5" />
-            </Button>
             {connection && (
               <>
                 <Button
