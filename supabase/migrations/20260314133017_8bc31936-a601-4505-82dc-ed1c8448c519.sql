@@ -1,0 +1,1 @@
+ALTER TABLE public.song_analysis ADD COLUMN IF NOT EXISTS brightness_curve jsonb DEFAULT NULL;
