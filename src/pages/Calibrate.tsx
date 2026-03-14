@@ -16,6 +16,7 @@ import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
 import ChainSyncTab from "@/components/ChainSyncTab";
 import SongCalibrationTab from "@/components/SongCalibrationTab";
+import CalibrationTips from "@/components/CalibrationTips";
 
 type Tab = 'ble' | 'chain' | 'song' | 'songs';
 
