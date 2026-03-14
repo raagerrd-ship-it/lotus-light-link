@@ -393,11 +393,12 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
               .from("song_analysis")
               .update(payload)
               .eq("id", existing.id)
-              .then(() => {
+              .then(async () => {
                 console.log("[EnergyCurve] updated", targetTrack.trackName);
-                if (!cached?.sections) triggerSectionAnalysis(existing.id, key);
-                triggerAutoCalibration();
-              });
+                if (!cached?.sections) await triggerSectionAnalysis(existing.id, key);
+                await triggerAutoCalibration();
+                setProcessing(false);
+              }).catch(() => setProcessing(false));
           } else {
             supabase
               .from("song_analysis")
