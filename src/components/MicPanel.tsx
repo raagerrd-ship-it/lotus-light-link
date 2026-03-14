@@ -164,6 +164,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
+  useEffect(() => {
+    currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null;
+  }, [trackName, artistName]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
