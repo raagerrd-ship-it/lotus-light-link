@@ -24,6 +24,9 @@ interface DebugOverlayProps {
   bleMinIntervalMs?: number;
   bleLatencyMs?: number;
   dropActive?: boolean;
+  energy?: number | null;
+  danceability?: number | null;
+  happiness?: number | null;
 }
 
 const phaseLabels: Record<string, string> = {
