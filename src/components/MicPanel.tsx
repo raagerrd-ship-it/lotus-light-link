@@ -70,7 +70,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
