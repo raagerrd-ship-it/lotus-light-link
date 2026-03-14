@@ -226,13 +226,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   }, [char]);
 
   useEffect(() => {
+    const reload = () => { calRef.current = getCalibration(); };
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'light-calibration') {
-        calRef.current = getCalibration();
-      }
+      if (e.key === 'light-calibration') reload();
     };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener('calibration-changed', reload);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('calibration-changed', reload);
+    };
   }, []);
 
   // Decoupled chart rendering + sun pulse via rAF

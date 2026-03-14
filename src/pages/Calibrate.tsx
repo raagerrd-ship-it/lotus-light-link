@@ -479,19 +479,7 @@ export default function Calibrate() {
         }} />}
 
         {tab === 'sliders' && (
-          <>
-            {/* Live mic→light pipeline so user sees changes in real-time */}
-            {conn?.characteristic && (
-              <div className="relative w-24 h-24 mx-auto mb-4">
-                <MicPanel
-                  char={conn.characteristic}
-                  currentColor={[255, 180, 80]}
-                  isPlaying={true}
-                />
-              </div>
-            )}
-            <LightSlidersTab cal={cal} onSave={(patch) => update(patch)} />
-          </>
+          <SliderTabWithLive conn={conn} cal={cal} onSave={(patch) => update(patch)} />
         )}
       </div>
 
