@@ -7,7 +7,6 @@ declare const __BUILD_TIME__: string;
 
 interface DebugOverlayProps {
   smoothedRtt: number;
-  autoDriftMs: number;
   palette?: [number, number, number][];
   paletteIndex?: number;
   source?: 'local' | 'cloud';
@@ -21,18 +20,9 @@ interface DebugOverlayProps {
   bleConnected?: boolean;
   bleDeviceName?: string | null;
   bleReconnectStatus?: BleReconnectStatus | null;
-  curveStatus?: 'none' | 'recording' | 'saved' | 'loading';
-  curveTrackName?: string | null;
-  curveSamples?: number;
   deviceRole?: 'master' | 'monitor';
   bleMinIntervalMs?: number;
   bleLatencyMs?: number;
-  chainLatencyMs?: number;
-  activeLookAheadMs?: number;
-  syncMode?: 'curve' | 'mic';
-  syncDiag?: boolean;
-  onToggleSyncDiag?: () => void;
-  syncOffsetMs?: number | null;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -45,12 +35,10 @@ const phaseLabels: Record<string, string> = {
 };
 
 export default function DebugOverlay({
-  smoothedRtt, autoDriftMs, palette, paletteIndex = 0,
+  smoothedRtt, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
-  curveStatus, curveTrackName, curveSamples, deviceRole,
-  bleMinIntervalMs, bleLatencyMs, chainLatencyMs, activeLookAheadMs, syncMode,
-  syncDiag, onToggleSyncDiag, syncOffsetMs,
+  deviceRole, bleMinIntervalMs, bleLatencyMs,
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
@@ -89,11 +77,8 @@ export default function DebugOverlay({
       <div>max ljus: <span className="text-foreground">{maxBrightness ?? 100}%</span></div>
       {dynamicDamping != null && dynamicDamping > 1 && <div>dämpa: <span className="text-foreground">{dynamicDamping.toFixed(1)}x</span></div>}
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>
-      <div>auto-sync: <span className="text-foreground">{autoDriftMs >= 0 ? "+" : ""}{Math.round(autoDriftMs)}ms</span></div>
       {bleMinIntervalMs != null && <div>BLE intervall: <span className="text-foreground">{bleMinIntervalMs}ms</span></div>}
       {bleLatencyMs != null && <div>BLE latens: <span className="text-foreground">{Math.round(bleLatencyMs)}ms</span></div>}
-      {chainLatencyMs != null && <div>kedja: <span className="text-foreground">{Math.round(chainLatencyMs)}ms</span></div>}
-      {activeLookAheadMs != null && <div>look-ahead: <span className="text-foreground">{Math.round(activeLookAheadMs)}ms</span> <span className="text-muted-foreground">({syncMode === 'curve' ? 'kurva' : 'mik'})</span></div>}
       {sonosVolume != null && <div>vol: <span className="text-foreground">{sonosVolume}%</span> <span className="text-muted-foreground">{gainMode}{gainMode === 'vol' && volCalibrationVol != null ? ` (ref ${volCalibrationVol}%)` : ''}</span></div>}
       {palette && palette.length > 0 && (
         <div className="flex items-center gap-1 mt-0.5">
@@ -111,23 +96,9 @@ export default function DebugOverlay({
         </div>
       )}
 
-      {/* Curve / analysis status */}
-      {curveStatus && (
-        <div className="mt-0.5 border-t border-border/30 pt-0.5">
-          <div>
-            kurva:{' '}
-            {curveStatus === 'recording' && <span className="text-orange-400">⏺ spelar in{curveSamples ? ` (${curveSamples})` : ''}</span>}
-            {curveStatus === 'saved' && <span className="text-green-400">✓ sparad{curveSamples ? ` (${curveSamples} st)` : ''}</span>}
-            {curveStatus === 'loading' && <span className="text-yellow-400">↓ laddar…</span>}
-            {curveStatus === 'none' && <span className="text-muted-foreground">—</span>}
-          </div>
-          {curveTrackName && <div className="truncate text-foreground/50">{curveTrackName}</div>}
-        </div>
-      )}
-
       {/* BLE write stats */}
       <div className="mt-0.5 border-t border-border/30 pt-0.5">
-        <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> <span title="Avsiktliga skip — brightness ändrades ≤1%, ingen BLE-skrivning behövdes">skip: <span className="text-foreground">{bleStats.droppedPerSec}</span></span></div>
+        <div>BLE w/s: <span className="text-foreground">{bleStats.writesPerSec}</span> skip: <span className="text-foreground">{bleStats.droppedPerSec}</span></div>
         <div>write: <span className="text-foreground">{bleStats.lastWriteMs}ms</span> queue: <span className="text-foreground">{bleStats.queueAgeMs}ms</span></div>
         {tickToWriteMs != null && <div>e2e: <span className="text-foreground">{Math.round(tickToWriteMs)}ms</span></div>}
         {bleStats.errorCount > 0 && <div className="text-red-400">err: {bleStats.errorCount} — {bleStats.lastError}</div>}
@@ -137,28 +108,6 @@ export default function DebugOverlay({
       <div className="mt-0.5 border-t border-border/30 pt-0.5">
         <div>rms: <span className="text-foreground">{pipeline.rmsMs.toFixed(1)}ms</span> smooth: <span className="text-foreground">{pipeline.smoothMs.toFixed(1)}ms</span></div>
         <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
-      </div>
-
-      {/* Sync diag */}
-      <div className="mt-0.5 border-t border-border/30 pt-0.5">
-        <button
-          onClick={onToggleSyncDiag}
-          className="pointer-events-auto text-[10px] px-1.5 py-0.5 rounded border"
-          style={{
-            borderColor: syncDiag ? '#f97316' : 'hsl(var(--border) / 0.4)',
-            color: syncDiag ? '#f97316' : 'hsl(var(--foreground) / 0.5)',
-            background: syncDiag ? 'rgba(249,115,22,0.1)' : 'transparent',
-          }}
-        >
-          Sync diag {syncDiag ? 'ON' : 'off'}
-        </button>
-        {syncDiag && syncOffsetMs != null && (
-          <div className="mt-0.5">
-            Δt: <span className={Math.abs(syncOffsetMs) > 500 ? 'text-red-400' : 'text-green-400'}>
-              {syncOffsetMs >= 0 ? '+' : ''}{Math.round(syncOffsetMs)}ms
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Build info */}

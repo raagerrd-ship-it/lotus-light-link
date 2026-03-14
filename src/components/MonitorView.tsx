@@ -1,18 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState } from "react";
 import { useLiveSessionMonitor, type MasterDebugState } from "@/hooks/useLiveSession";
-import { supabase } from "@/integrations/supabase/client";
-import { Wifi, WifiOff, ChevronDown, ChevronUp, Music, Trash2 } from "lucide-react";
-import SongDetailChart from "@/components/SongDetailChart";
-
-interface SongRecord {
-  id: string;
-  track_name: string;
-  artist_name: string;
-  bpm: number | null;
-  created_at: string;
-  has_sections: boolean;
-  has_drops: boolean;
-}
+import { WifiOff, ChevronDown, ChevronUp } from "lucide-react";
 
 function timeSince(isoString?: string): string {
   if (!isoString) return "";
@@ -22,43 +10,16 @@ function timeSince(isoString?: string): string {
   return "offline";
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  const time = d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-  if (isToday) return `Idag ${time}`;
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return `Igår ${time}`;
-  return d.toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }) + ' ' + time;
-}
-
 function DebugPanel({ d }: { d: MasterDebugState }) {
   return (
     <div className="font-mono text-[10px] leading-tight text-foreground/70 space-y-0.5">
       <div>BLE: {d.bleConnected ? <span className="text-green-400">{d.bleDeviceName || 'ok'}</span> : <span className="text-red-400">ej ansluten</span>}</div>
       <div>sonos: {d.sonosConnected ? <span className="text-green-400">ok</span> : <span className="text-red-400">offline</span>} {d.sonosRtt != null && <span>RTT {Math.round(d.sonosRtt)}ms</span>}</div>
-      <div>
-        kurva:{' '}
-        {d.curveStatus === 'recording' && <span className="text-orange-400">⏺ spelar in{d.curveSamples ? ` (${d.curveSamples})` : ''}</span>}
-        {d.curveStatus === 'saved' && <span className="text-green-400">✓ sparad{d.curveSamples ? ` (${d.curveSamples} st)` : ''}</span>}
-        {d.curveStatus === 'loading' && <span className="text-yellow-400">↓ laddar…</span>}
-        {d.curveStatus === 'none' && <span className="text-muted-foreground">—</span>}
-      </div>
-      {d.curveTrackName && <div className="truncate text-foreground/50">{d.curveTrackName}</div>}
       <div>BLE w/s: <span className="text-foreground">{d.bleWritesPerSec ?? 0}</span> e2e: <span className="text-foreground">{Math.round(d.e2eMs ?? 0)}ms</span> tick: <span className="text-foreground">{(d.totalTickMs ?? 0).toFixed(1)}ms</span></div>
-
-      {/* Sync & delay */}
       <div className="mt-1 pt-1 border-t border-border/30">
-        <div>auto-sync: <span className="text-foreground">{(d.autoDriftMs ?? 0) >= 0 ? '+' : ''}{Math.round(d.autoDriftMs ?? 0)}ms</span></div>
-        <div>look-ahead: <span className="text-foreground">{Math.round(d.activeLookAheadMs ?? 0)}ms</span> <span className="text-muted-foreground">({d.syncMode === 'curve' ? 'kurva' : 'mik'})</span></div>
-        {d.chainLatencyMs != null && <div>kedja: <span className="text-foreground">{Math.round(d.chainLatencyMs)}ms</span></div>}
-        {d.bleLatencyMs != null && <div>BLE latens: <span className="text-foreground">{Math.round(d.bleLatencyMs)}ms</span></div>}
+        <div>BLE latens: <span className="text-foreground">{Math.round(d.bleLatencyMs ?? 0)}ms</span></div>
         {d.bleMinIntervalMs != null && <div>BLE intervall: <span className="text-foreground">{d.bleMinIntervalMs}ms</span></div>}
       </div>
-
-      {/* Calibration */}
       <div className="mt-1 pt-1 border-t border-border/30">
         {d.maxBrightness != null && <div>max ljus: <span className="text-foreground">{d.maxBrightness}%</span></div>}
         {d.dynamicDamping != null && d.dynamicDamping > 1 && <div>dämpa: <span className="text-foreground">{d.dynamicDamping.toFixed(1)}x</span></div>}
@@ -70,172 +31,25 @@ function DebugPanel({ d }: { d: MasterDebugState }) {
   );
 }
 
-function SongList({ songs, onDelete, onLoadMore, hasMore, loadingMore }: {
-  songs: SongRecord[];
-  onDelete: (id: string, name: string) => void;
-  onLoadMore: () => void;
-  hasMore: boolean;
-  loadingMore: boolean;
-}) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || !hasMore) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) onLoadMore(); },
-      { rootMargin: '200px' }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, onLoadMore]);
-
-  return (
-    <div className="space-y-1">
-      {songs.map((s) => (
-        <div key={s.id} className="rounded-md bg-secondary/30 overflow-hidden">
-          <div
-            className="flex items-center gap-2 py-1 px-1 cursor-pointer active:bg-secondary/50 transition-colors"
-            onClick={() => setExpandedId(prev => prev === s.id ? null : s.id)}
-          >
-            <Music className="w-3 h-3 shrink-0 text-muted-foreground/50" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-foreground truncate">{s.track_name}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{s.artist_name}</p>
-            </div>
-            <div className="shrink-0 flex items-center gap-1.5">
-              <div className="text-right">
-                <div className="flex items-center gap-1">
-                  {s.bpm && <span className="text-[9px] font-mono text-muted-foreground">{s.bpm}bpm</span>}
-                  {s.has_sections && <span className="text-[8px] text-green-400">§</span>}
-                  {s.has_drops && <span className="text-[8px] text-orange-400">⚡</span>}
-                </div>
-                <p className="text-[9px] text-muted-foreground/60">{formatDate(s.created_at)}</p>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(s.id, s.track_name); }}
-                className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 active:scale-90 transition-all"
-                title="Ta bort inspelning"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          {expandedId === s.id && (
-            <div className="px-1.5 pb-1.5">
-              <SongDetailChart songId={s.id} />
-            </div>
-          )}
-        </div>
-      ))}
-      {hasMore && (
-        <div ref={sentinelRef} className="flex justify-center py-3">
-          {loadingMore && <span className="text-[10px] text-muted-foreground">Laddar…</span>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Rewrite localhost art URLs to use monitor's own proxy or skip
 function rewriteArtUrl(url: string): string {
   try {
     const parsed = new URL(url);
     if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-      // Try to use monitor's own sonosLocalProxy setting
       const monitorProxy = localStorage.getItem('sonosLocalProxy');
       if (monitorProxy) {
         const proxyOrigin = new URL(monitorProxy).origin;
         return `${proxyOrigin}${parsed.pathname}${parsed.search}`;
       }
-      // Fallback: use current page origin (won't work but avoids broken img)
       return `${window.location.origin}${parsed.pathname}${parsed.search}`;
     }
   } catch { /* not a valid URL, return as-is */ }
   return url;
 }
 
-const SECTION_LABELS: Record<string, string> = {
-  intro: 'Intro', verse: 'Vers', pre_chorus: 'Pre-chorus',
-  chorus: 'Refräng', bridge: 'Bridge', drop: 'Drop',
-  build_up: 'Build-up', break: 'Break', outro: 'Outro',
-};
-
-const PAGE_SIZE = 30;
-
 export default function MonitorView() {
   const session = useLiveSessionMonitor();
-  const [songs, setSongs] = useState<SongRecord[]>([]);
-  const [showSongs, setShowSongs] = useState(true);
   const [showDebug, setShowDebug] = useState(true);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [totalCount, setTotalCount] = useState<number | null>(null);
-  const loadingRef = useRef(false);
-
-  const mapRows = (data: any[]): SongRecord[] =>
-    data.map((d: any) => ({
-      id: d.id,
-      track_name: d.track_name,
-      artist_name: d.artist_name,
-      bpm: d.bpm,
-      created_at: d.created_at,
-      has_sections: !!d.sections,
-      has_drops: !!d.drops,
-    }));
-
-  // Initial fetch + periodic refresh of first page
-  useEffect(() => {
-    const fetchFirst = async () => {
-      const { data, count } = await supabase
-        .from("song_analysis")
-        .select("id, track_name, artist_name, bpm, created_at, sections, drops", { count: 'exact' })
-        .order("created_at", { ascending: false })
-        .range(0, PAGE_SIZE - 1);
-      if (data) {
-        setSongs(mapRows(data));
-        setHasMore(data.length >= PAGE_SIZE);
-        if (count != null) setTotalCount(count);
-      }
-    };
-    fetchFirst();
-    const id = setInterval(fetchFirst, 15000);
-    return () => clearInterval(id);
-  }, []);
-
-  const loadMore = useCallback(async () => {
-    if (loadingRef.current || !hasMore) return;
-    loadingRef.current = true;
-    setLoadingMore(true);
-    const from = songs.length;
-    const { data } = await supabase
-      .from("song_analysis")
-      .select("id, track_name, artist_name, bpm, created_at, sections, drops")
-      .order("created_at", { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
-    if (data) {
-      setSongs(prev => [...prev, ...mapRows(data)]);
-      setHasMore(data.length >= PAGE_SIZE);
-    }
-    setLoadingMore(false);
-    loadingRef.current = false;
-  }, [songs.length, hasMore]);
-
-  const handleDeleteSong = async (songId: string, name: string) => {
-    if (!confirm(`Ta bort inspelningen "${name}"?\nDen spelas in igen nästa gång låten körs.`)) return;
-    const song = songs.find(s => s.id === songId);
-    const { error } = await supabase.from("song_analysis").delete().eq("id", songId);
-    if (error) {
-      console.error("[Monitor] delete failed", error);
-      return;
-    }
-    setSongs(prev => prev.filter(s => s.id !== songId));
-    // Clear in-memory curve cache so the hook re-fetches from DB
-    if (song) {
-      import("@/hooks/useSongEnergyCurve").then(m => m.clearCurveCache(song.track_name, song.artist_name));
-    }
-  };
 
   if (!session) {
     return (
@@ -248,7 +62,7 @@ export default function MonitorView() {
     );
   }
 
-  const { color_r: r, color_g: g, color_b: b, brightness, track_name, artist_name, album_art_url, section_type, bpm, is_playing, debug_state } = session;
+  const { color_r: r, color_g: g, color_b: b, brightness, track_name, artist_name, album_art_url, is_playing, debug_state } = session;
   const scaledR = Math.round(r * (brightness / 100));
   const scaledG = Math.round(g * (brightness / 100));
   const scaledB = Math.round(b * (brightness / 100));
@@ -280,27 +94,13 @@ export default function MonitorView() {
       {/* Now playing */}
       {track_name ? (
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
-      {album_art_url && (
+          {album_art_url && (
             <img src={rewriteArtUrl(album_art_url)} alt="Album art" className="w-14 h-14 rounded-xl"
               style={{ boxShadow: `0 0 20px rgba(${r},${g},${b},0.4)` }} />
           )}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground truncate">{track_name}</p>
             <p className="text-xs text-muted-foreground truncate">{artist_name}</p>
-            <div className="flex items-center gap-1.5 mt-1">
-              {section_type && (
-                <span className="text-[9px] font-medium tracking-wide text-muted-foreground bg-secondary/60 border px-1.5 py-0.5 rounded-full uppercase"
-                  style={{ borderColor: `rgba(${r},${g},${b},0.2)` }}>
-                  {SECTION_LABELS[section_type] ?? section_type}
-                </span>
-              )}
-              {bpm != null && (
-                <span className="text-[9px] font-mono font-bold text-muted-foreground bg-secondary border px-1.5 py-0.5 rounded-full"
-                  style={{ borderColor: `rgba(${r},${g},${b},0.3)` }}>
-                  {bpm} BPM
-                </span>
-              )}
-            </div>
           </div>
         </div>
       ) : (
@@ -323,23 +123,6 @@ export default function MonitorView() {
           )}
         </div>
       )}
-
-      {/* Song library */}
-      <div className="flex-1">
-        <button onClick={() => setShowSongs(p => !p)} className="w-full flex items-center justify-between px-4 py-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
-          <span>Inspelningar{totalCount != null ? ` (${totalCount})` : songs.length > 0 ? ` (${songs.length})` : ''}</span>
-          {showSongs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        </button>
-        {showSongs && (
-          <div className="px-3 pb-4">
-            {songs.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">Inga inspelningar ännu</p>
-            ) : (
-              <SongList songs={songs} onDelete={handleDeleteSong} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} />
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
