@@ -42,6 +42,7 @@ const Index = () => {
   const paletteIndexRef = useRef(0);
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
