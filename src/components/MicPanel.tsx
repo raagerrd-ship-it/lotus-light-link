@@ -247,7 +247,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
-          drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
+          drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
       // Crossfade blendedColor toward targetColor
