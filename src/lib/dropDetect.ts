@@ -5,11 +5,14 @@
  */
 
 import type { EnergySample } from "./energyInterpolate";
+import { computeRamp } from "./songAnalysis";
 
 export interface Drop {
   t: number;        // drop hit time (seconds)
   intensity: number; // 0-1 how strong the drop is
   buildStart: number; // when the build-up started
+  rampSlope?: number;  // energy increase per second during build-up
+  rampR2?: number;     // regression fit quality (0-1, >0.5 = clear ramp)
 }
 
 /**
