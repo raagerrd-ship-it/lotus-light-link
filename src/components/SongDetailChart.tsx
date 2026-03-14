@@ -224,7 +224,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
       <canvas
         ref={canvasRef}
         className="w-full rounded-md"
-        style={{ height: sections ? 120 : 90 }}
+        style={{ height: sections ? 160 : 120 }}
       />
 
       {/* Stats row */}
