@@ -105,9 +105,24 @@ export function getActiveDeviceName(): string | null {
 
 async function _upsertCloud(deviceName: string, patch: Record<string, unknown>) {
   try {
-    await (supabase as any).from('device_calibration').insert(
-      { device_name: deviceName, ...patch, updated_at: new Date().toISOString() },
-    );
+    // Find the most recent entry for this device and update it, or insert if none exists
+    const { data: existing } = await (supabase as any)
+      .from('device_calibration')
+      .select('id')
+      .eq('device_name', deviceName)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (existing?.id) {
+      await (supabase as any).from('device_calibration')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+    } else {
+      await (supabase as any).from('device_calibration').insert(
+        { device_name: deviceName, ...patch, updated_at: new Date().toISOString() },
+      );
+    }
   } catch (e) {
     console.warn('[calibration] cloud upsert failed', e);
   }
