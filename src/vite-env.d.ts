@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+declare const __BUILD_TIME__: string;
+
 // Web Bluetooth API type declarations
 declare global {
   interface BluetoothRemoteGATTCharacteristic {
