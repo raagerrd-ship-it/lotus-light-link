@@ -390,7 +390,7 @@ const Index = () => {
       )}
 
       {/* Debug overlay */}
-      <DebugOverlay
+      {showDebug && <DebugOverlay
         smoothedRtt={smoothedRtt}
         palette={palette}
         paletteIndex={paletteIndexRef.current}
