@@ -336,11 +336,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
             const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
 
-            // Tight thresholds: quiet must be well below learned max, surge must be dramatic
-            const quietThreshold = agcMaxRef.current * 0.20; // quiet = below 20% of learned max
+            // Energy modulates how easy it is to trigger a drop
+            // High energy (80+) → looser thresholds, low energy (20) → very strict
+            const traitEnergy = (energyRef.current ?? 50) / 100;
+            const quietThreshold = agcMaxRef.current * (0.12 + traitEnergy * 0.18); // 12-30% of max
+            const surgeMin = 4.0 - traitEnergy * 2.0;  // ratio needed: 2.0 (high nrg) – 4.0 (low nrg)
+            const absMin = agcMaxRef.current * (0.6 - traitEnergy * 0.2); // 40-60% of max
+
             const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
 
-            if (pastAvg < quietThreshold && surgeRatio > 3.0 && recentAvg > agcMaxRef.current * 0.5) {
+            if (pastAvg < quietThreshold && surgeRatio > surgeMin && recentAvg > absMin) {
               dropActiveUntilRef.current = now + DROP_DURATION_MS;
               lastDropTimeRef.current = now;
               isDrop = true;
@@ -349,6 +354,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
                 recentAvg: recentAvg.toFixed(5),
                 ratio: surgeRatio.toFixed(1),
                 agcMax: agcMaxRef.current.toFixed(5),
+                energy: energyRef.current,
               });
             }
           }
