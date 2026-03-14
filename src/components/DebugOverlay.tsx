@@ -50,6 +50,7 @@ export default function DebugOverlay({
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
   curveStatus, curveTrackName, curveSamples, deviceRole,
   bleMinIntervalMs, bleLatencyMs, chainLatencyMs, activeLookAheadMs, syncMode,
+  syncDiag, onToggleSyncDiag, syncOffsetMs,
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
