@@ -1,0 +1,1 @@
+UPDATE public.song_analysis SET sections = NULL, brightness_curve = NULL WHERE id = 'c0c7756c-ad84-4c63-b6ed-4b4264746fbb';
