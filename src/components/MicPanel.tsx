@@ -426,11 +426,23 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             // Keep smoothedRef updated for onset baseline
             smoothedRef.current = micRms;
 
-            // Brightness from saved curve — with EMA smoothing + absoluteFactor
-            let normalized = 0;
-            if (posSec != null) {
+            // Brightness from pre-baked curve or fallback to raw curve
+            const bc = brightnessCurveRef.current;
+            const hasBaked = Array.isArray(bc) && bc.length > 10;
+
+            if (hasBaked && posSec != null) {
+              // ── Pre-baked brightness: zero processing, just lookup ──
+              pct = interpolateBrightness(bc!, posSec);
+              // Still read frequency bands for color modulation
               const sample = interpolateSample(curve!, posSec);
-              normalized = sample.e;
+              curveKick = hasKickNear(curve!, posSec);
+              curveLo = sample.lo ?? 0;
+              curveMid = sample.mid ?? 0;
+              curveHi = sample.hi ?? 0;
+            } else if (posSec != null) {
+              // ── Fallback: raw curve with EMA smoothing (pre-bake not ready yet) ──
+              const sample = interpolateSample(curve!, posSec);
+              let normalized = sample.e;
               curveKick = hasKickNear(curve!, posSec);
               curveLo = sample.lo ?? 0;
               curveMid = sample.mid ?? 0;
@@ -443,37 +455,22 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
                 normalized *= (curVol / recVol);
                 normalized = Math.min(1, normalized);
               }
-            }
 
-            // EMA smoothing — same feel as mic mode
-            const prevSmooth = curveSmoothedRef.current;
-            const curveAlpha = normalized > prevSmooth ? cal.attackAlpha : cal.releaseAlpha;
-            const curveSmoothed = prevSmooth + curveAlpha * (normalized - prevSmooth);
-            curveSmoothedRef.current = curveSmoothed;
-            normalized = curveSmoothed;
+              // EMA smoothing
+              const prevSmooth = curveSmoothedRef.current;
+              const curveAlpha = normalized > prevSmooth ? cal.attackAlpha : cal.releaseAlpha;
+              curveSmoothedRef.current += curveAlpha * (normalized - prevSmooth);
+              normalized = curveSmoothedRef.current;
 
-            // Rolling peak for absoluteFactor — mirrors mic AGC's dynamic ceiling
-            if (normalized > curveRollingPeakRef.current) {
-              curveRollingPeakRef.current = normalized;
+              // Dynamic damping
+              if (cal.dynamicDamping !== 1.0) {
+                normalized = Math.pow(normalized, cal.dynamicDamping);
+              }
+
+              pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
             } else {
-              curveRollingPeakRef.current *= 0.9995; // slow decay ~3s
+              pct = 0;
             }
-            if (normalized > curveAllTimePeakRef.current) {
-              curveAllTimePeakRef.current = normalized;
-            } else {
-              curveAllTimePeakRef.current *= 0.9999; // very slow decay
-            }
-            const absoluteFactor = curveAllTimePeakRef.current > 0
-              ? Math.min(1, Math.max(0.15, curveRollingPeakRef.current / curveAllTimePeakRef.current))
-              : 1;
-
-            // Dynamic damping
-            if (cal.dynamicDamping !== 1.0) {
-              normalized = Math.pow(normalized, cal.dynamicDamping);
-            }
-
-            const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-            pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
             // Update bass ref for sun pulse
             bassRef.current = curveLo;
           } else {
