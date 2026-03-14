@@ -548,7 +548,7 @@ serve(async (req) => {
     // Find songs that have energy_curve but are missing analysis fields
     const { data: songs, error } = await supabase
       .from("song_analysis")
-      .select("id, track_name, artist_name, energy_curve, bpm, beat_grid, drops, dynamic_range, transitions, beat_strengths, sections")
+      .select("id, track_name, artist_name, energy_curve, bpm, beat_grid, drops, dynamic_range, transitions, beat_strengths, sections, brightness_curve")
       .not("energy_curve", "is", null);
 
     if (error) throw error;
