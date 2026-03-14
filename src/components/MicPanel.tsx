@@ -141,6 +141,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bassAgcMinRef = useRef(0);
   const midHiAgcMaxRef = useRef(0.01);
   const midHiAgcMinRef = useRef(0);
+  const smoothedBassRef = useRef(0);
+  const smoothedMidHiRef = useRef(0);
   const lastVolumeRef = useRef(sonosVolume);
   const agcSaveTimerRef = useRef(0);
   const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
