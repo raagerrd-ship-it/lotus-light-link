@@ -106,13 +106,8 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     const sectionBarH = 14;
     const sectionBarTop = chartBottom + 2;
 
-    // Volume normalization: scale all curves as if recorded at reference volume
-    const REFERENCE_VOL = 50;
-    const recVol = data.recorded_volume;
-    const volScale = (recVol && recVol > 0) ? (REFERENCE_VOL / recVol) : 1;
-
     const tToX = (t: number) => (t / maxT) * w;
-    const eToY = (e: number) => chartBottom - Math.min(1, e * volScale) * chartH;
+    const eToY = (e: number) => chartBottom - Math.min(1, e) * chartH;
 
     // Draw sections as colored bars
     if (sections && sections.length > 0) {
