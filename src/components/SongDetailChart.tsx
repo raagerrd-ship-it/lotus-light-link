@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface EnergySample {
   t: number;
   e: number;
+  rawRms?: number;
   kick?: boolean;
   lo?: number;
   mid?: number;
@@ -105,9 +106,13 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     const chartH = chartBottom - chartTop;
     const sectionBarH = 14;
     const sectionBarTop = chartBottom + 2;
+    // Use rawRms if available, fall back to e
+    const hasRaw = curve.some(s => s.rawRms != null && s.rawRms > 0);
+    const values = curve.map(s => hasRaw ? (s.rawRms ?? s.e) : s.e);
+    const peakVal = Math.max(...values, 0.001);
 
     const tToX = (t: number) => (t / maxT) * w;
-    const eToY = (e: number) => chartBottom - Math.min(1, e) * chartH;
+    const valToY = (v: number) => chartBottom - Math.min(1, v / peakVal) * chartH;
 
     // Draw sections as colored bars
     if (sections && sections.length > 0) {
@@ -163,7 +168,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     ctx.lineWidth = 1;
     for (let i = 0; i < curve.length; i++) {
       const x = tToX(curve[i].t);
-      const y = eToY(curve[i].e);
+      const y = valToY(values[i]);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -181,7 +186,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     for (const s of curve) {
       if (s.kick) {
         const x = tToX(s.t);
-        const y = eToY(s.e);
+        const y = valToY(hasRaw ? (s.rawRms ?? s.e) : s.e);
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
         ctx.arc(x, y, 1.5, 0, Math.PI * 2);
