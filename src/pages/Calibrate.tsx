@@ -173,8 +173,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
       if (testedValues.length > 0) {
         const worst = Math.max(...testedValues);
         setBleMinInterval(worst);
-        onSpeedSave?.(newBests);
-        setSaved(true);
+        // Don't auto-save to cloud — user will click explicit Save button
       }
 
       setPhase('done');
@@ -248,9 +247,14 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
 
       <p className="text-xs text-muted-foreground">{MODE_DESC[mode]}</p>
 
-      {phase === 'idle' && conn && (
+      {phase === 'idle' && conn && Object.keys(modeBests).length === 0 && (
         <Button size="sm" onClick={startTest} className="gap-1.5 text-xs w-full">
-          <Play className="w-3.5 h-3.5" /> Starta test — {MODE_LABELS[mode]}
+          <Play className="w-3.5 h-3.5" /> Skapa ny kalibrering — {MODE_LABELS[mode]}
+        </Button>
+      )}
+      {phase === 'idle' && conn && Object.keys(modeBests).length > 0 && (
+        <Button size="sm" onClick={startTest} className="gap-1.5 text-xs w-full" variant="secondary">
+          <Play className="w-3.5 h-3.5" /> Testa {MODE_LABELS[mode]}
         </Button>
       )}
 
@@ -292,8 +296,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
             <div className="bg-primary/15 border border-primary/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
               <Check className="w-4 h-4 text-primary shrink-0" />
               <div>
-                <p className="text-xs font-bold text-primary">Sparad automatiskt!</p>
-                <p className="text-[10px] text-primary/70">Resultatet sparas direkt — du behöver inte göra något extra.</p>
+                <p className="text-xs font-bold text-primary">Kalibrering sparad!</p>
               </div>
             </div>
           )}
@@ -335,7 +338,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
                 <span className="text-primary">{worstBest}ms</span>
               </div>
               {!allThreeTested && <p className="text-[10px] text-yellow-400 mt-1.5">💡 Testa alla tre för säkraste resultat</p>}
-              {allThreeTested && <p className="text-[10px] text-primary mt-1.5">✓ Alla lägen testade! Gå vidare till nästa steg.</p>}
+              {allThreeTested && !saved && <p className="text-[10px] text-primary mt-1.5">✓ Alla lägen testade! Tryck Spara nedan.</p>}
             </div>
           )}
 
@@ -344,9 +347,13 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
               <Button size="sm" onClick={() => { setMode(nextUntested); setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs gap-1 flex-1">
                 Testa {MODE_LABELS[nextUntested]} →
               </Button>
+            ) : !saved ? (
+              <Button size="sm" onClick={() => { onSpeedSave?.(modeBests); setSaved(true); }} className="text-xs gap-1 flex-1">
+                <Check className="w-3.5 h-3.5" /> Spara kalibrering
+              </Button>
             ) : (
-              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs flex-1">
-                <RefreshCw className="w-3 h-3 mr-1" /> Kör om
+              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); setModeBests({}); setSaved(false); }} className="text-xs flex-1">
+                <RefreshCw className="w-3 h-3 mr-1" /> Ny kalibrering
               </Button>
             )}
             {nextUntested && (
