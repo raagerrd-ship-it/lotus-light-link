@@ -187,7 +187,7 @@ export function saveLatencyToCloud(deviceName: string, latency: LatencyResults) 
   _upsertCloud(deviceName, {
     latency_results: latency,
     calibration: getCalibration(),
-  });
+  }, true);
 }
 
 /** Load calibration from cloud for a device. Returns null if not found. */
