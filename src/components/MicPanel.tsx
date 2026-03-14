@@ -173,14 +173,42 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => { happinessRef.current = happiness; }, [happiness]);
   useEffect(() => { loudnessDbRef.current = parseLoudnessDb(loudness); }, [loudness]);
 
+  // When currentColor changes externally (new album art), snap blended + target
   useEffect(() => {
     colorRef.current = currentColor;
+    targetColorRef.current = currentColor;
+    blendedColorRef.current = currentColor;
     lastColorStateRef.current = 'normal';
     agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
     agcMinRef.current = 0;
     samplesRef.current = [];
     resetChartScaler();
   }, [currentColor]);
+
+  // Sync palette ref and reset rotation when palette changes
+  useEffect(() => {
+    paletteRef.current = palette ?? [];
+    paletteIndexRef.current = 0;
+    if (palette && palette.length > 0) {
+      targetColorRef.current = palette[0];
+      blendedColorRef.current = palette[0];
+    }
+  }, [palette]);
+
+  // Rotation timer: advance palette index every ROTATION_INTERVAL_MS
+  useEffect(() => {
+    if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
+    rotationTimerRef.current = setInterval(() => {
+      const p = paletteRef.current;
+      if (p.length <= 1) return;
+      const nextIdx = (paletteIndexRef.current + 1) % p.length;
+      paletteIndexRef.current = nextIdx;
+      targetColorRef.current = p[nextIdx];
+    }, ROTATION_INTERVAL_MS);
+    return () => {
+      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
 
