@@ -178,7 +178,7 @@ const Index = () => {
       brightness: status.brightness,
       section_type: sectionType ?? null,
     });
-  }, [isMaster, updateLiveSession, getPosition, sections]);
+  }, [isMaster, updateLiveSession, getPosition, sections, activeLookAheadMs]);
 
   // Toggle role
   const toggleRole = useCallback(() => {
