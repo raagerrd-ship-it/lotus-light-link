@@ -61,14 +61,17 @@ export function drawIntensityChart(
   // Fill under line: gradient from line color at top → transparent at bottom
   if (points.length >= 2) {
     const lastSample = samples[len - 1];
-    const fillGrad = ctx.createLinearGradient(0, chartTop, 0, chartTop + chartHeight);
-    fillGrad.addColorStop(0, `rgba(${lastSample.r}, ${lastSample.g}, ${lastSample.b}, 0.35)`);
+    // Find the highest point (min y) to anchor gradient from data, not chart top
+    const minY = Math.min(...points.map(p => p.y));
+    const bottom = chartTop + chartHeight;
+    const fillGrad = ctx.createLinearGradient(0, minY, 0, bottom);
+    fillGrad.addColorStop(0, `rgba(${lastSample.r}, ${lastSample.g}, ${lastSample.b}, 0.45)`);
     fillGrad.addColorStop(1, `rgba(0, 0, 0, 0)`);
 
     ctx.beginPath();
-    ctx.moveTo(points[0].x, chartTop + chartHeight); // bottom-left
+    ctx.moveTo(points[0].x, bottom);
     for (const p of points) ctx.lineTo(p.x, p.y);
-    ctx.lineTo(points[points.length - 1].x, chartTop + chartHeight); // bottom-right
+    ctx.lineTo(points[points.length - 1].x, bottom);
     ctx.closePath();
     ctx.fillStyle = fillGrad;
     ctx.fill();
