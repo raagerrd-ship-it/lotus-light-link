@@ -64,6 +64,8 @@ const Index = () => {
     return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
   const { curve: energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading: curveLoading, saveCurve } = useSongEnergyCurve(trackKey);
+  const hasCurve = Array.isArray(energyCurve) && energyCurve.length > 10;
+  const activeLookAheadMs = hasCurve ? activeCalibration.chainLatencyMs : activeCalibration.bleLatencyMs;
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
