@@ -18,6 +18,7 @@ export interface SectionLightingParams {
   kickThreshold: number;      // override kick detection sensitivity
   colorModStrength: number;   // frequency-based color modulation strength
   beatPulseStrength: number;  // how much BPM pulsing affects brightness
+  strobeOnBeat: boolean;      // trigger strobe flashes on each beat (drops)
 }
 
 export interface TransitionParams {
