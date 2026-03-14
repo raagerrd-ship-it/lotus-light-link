@@ -384,10 +384,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
           let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
 
-          if (cal.dynamicDamping !== 1.0) {
-            normalized = Math.pow(normalized, cal.dynamicDamping);
-          }
-
+          // dynamicDamping now applied to final brightness below, not here
+          // normalized is used only for AGC tracking
           // Loudness-aware AGC: scale peakMax expectation based on master loudness
           const loudDb = loudnessDbRef.current;
           const loudFactor = loudDb != null ? loudnessToAgcFactor(loudDb) : 1.0;
