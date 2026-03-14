@@ -455,21 +455,34 @@ function computeBrightnessCurve(
     return false;
   };
 
-  // Find nearest beat index for anticipation dips and strength lookup
-  const findNearestBeat = (t: number): { dist: number; index: number; phase: number; isDownbeat: boolean } => {
-    if (!beatGrid || beatGrid.beats.length === 0) return { dist: 999, index: -1, phase: 0, isDownbeat: false };
-    let closest = 0, minDist = Math.abs(beatGrid.beats[0] - t);
-    for (let i = 1; i < beatGrid.beats.length; i++) {
-      const dist = Math.abs(beatGrid.beats[i] - t);
-      if (dist < minDist) { minDist = dist; closest = i; }
-      if (beatGrid.beats[i] > t + 0.2) break;
+  // Find the last beat before t and next beat after t for proper phase calculation
+  const findBeatContext = (t: number): { lastBeatIdx: number; nextBeatIdx: number; phase: number; isDownbeat: boolean } => {
+    if (!beatGrid || beatGrid.beats.length === 0) return { lastBeatIdx: -1, nextBeatIdx: -1, phase: 0, isDownbeat: false };
+    const beats = beatGrid.beats;
+
+    // Binary search for last beat <= t
+    let lo = 0, hi = beats.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (beats[mid] <= t) lo = mid; else hi = mid - 1;
     }
-    const beatPeriod = 60 / beatGrid.bpm;
-    const phase = ((t - beatGrid.offsetSec) / beatPeriod) % 1;
-    const normalizedPhase = phase < 0 ? phase + 1 : phase;
-    // Downbeat = every 4th beat (beat 1 of the bar)
-    const isDownbeat = closest % 4 === 0;
-    return { dist: minDist, index: closest, phase: normalizedPhase, isDownbeat };
+
+    const lastBeatIdx = beats[lo] <= t ? lo : -1;
+    const nextBeatIdx = lastBeatIdx + 1 < beats.length ? lastBeatIdx + 1 : -1;
+
+    // Phase: how far we are between lastBeat and nextBeat (0 = on beat, 1 = next beat)
+    let phase = 0;
+    if (lastBeatIdx >= 0 && nextBeatIdx >= 0) {
+      const beatLen = beats[nextBeatIdx] - beats[lastBeatIdx];
+      if (beatLen > 0) phase = (t - beats[lastBeatIdx]) / beatLen;
+    } else if (lastBeatIdx >= 0) {
+      // Past last beat, estimate using bpm
+      const beatPeriod = 60 / beatGrid.bpm;
+      phase = ((t - beats[lastBeatIdx]) / beatPeriod) % 1;
+    }
+
+    const isDownbeat = lastBeatIdx >= 0 && lastBeatIdx % 4 === 0;
+    return { lastBeatIdx, nextBeatIdx, phase: Math.max(0, Math.min(1, phase)), isDownbeat };
   };
 
   const getTransition = (t: number): { active: boolean; type: string; progress: number } => {
