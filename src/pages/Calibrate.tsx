@@ -173,8 +173,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
       if (testedValues.length > 0) {
         const worst = Math.max(...testedValues);
         setBleMinInterval(worst);
-        onSpeedSave?.(newBests);
-        setSaved(true);
+        // Don't auto-save to cloud — user will click explicit Save button
       }
 
       setPhase('done');
