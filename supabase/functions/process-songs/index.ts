@@ -463,7 +463,7 @@ function computeBrightnessCurve(
     if (sample.kick) {
       // Boost by 25% of remaining headroom for a punchy transient
       const headroom = cal.maxBrightness - pct;
-      pct = Math.min(cal.maxBrightness, pct + headroom * 0.4);
+      pct = Math.min(cal.maxBrightness, pct + headroom * 0.6);
     }
 
     // Build-up: blackout near the end for dramatic contrast
