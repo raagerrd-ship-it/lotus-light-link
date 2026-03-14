@@ -147,7 +147,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const durationMsRef = useRef(durationMs);
   const recordingStartPosRef = useRef<number | null>(null); // position when recording started
   const recordingDurationMsRef = useRef<number | null>(null);
-  const recordingSaveFnRef = useRef<((samples: EnergySample[], volume: number | null, agcState?: AgcState | null) => void) | null>(null);
+  const currentTrackRef = useRef<{ trackName: string; artistName: string } | null>(null);
+  const recordingTrackRef = useRef<{ trackName: string; artistName: string } | null>(null);
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
 
