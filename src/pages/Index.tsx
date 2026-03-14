@@ -326,6 +326,21 @@ const Index = () => {
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
+              size="icon"
+              onClick={() => {
+                setShowDebug(prev => {
+                  const next = !prev;
+                  localStorage.setItem("showDebug", String(next));
+                  return next;
+                });
+              }}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+              style={showDebug ? { color: accent } : undefined}
+            >
+              <Bug className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
               size="sm"
               onClick={toggleRole}
               className="rounded-full h-7 px-2.5 text-[10px] font-bold tracking-wide active:scale-90 transition-all duration-200 text-muted-foreground"
