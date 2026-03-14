@@ -335,18 +335,19 @@ interface BrightnessSample {
 
 // Section mood: floor/ceiling define the brightness range,
 // beat = how much beats add, react = how much audio modulates within range
+// V2: wider ceilings, higher react — energy drives brightness, sections add character
 const SECTION_MOOD: Record<string, { floor: number; ceil: number; beat: number; react: number }> = {
-  intro:      { floor: 8,  ceil: 35,  beat: 0.10, react: 0.4 },
-  verse:      { floor: 20, ceil: 65,  beat: 0.3,  react: 0.6 },
-  pre_chorus: { floor: 30, ceil: 80,  beat: 0.5,  react: 0.7 },
-  chorus:     { floor: 40, ceil: 100, beat: 0.8,  react: 0.85 },
-  bridge:     { floor: 15, ceil: 50,  beat: 0.2,  react: 0.5 },
-  drop:       { floor: 50, ceil: 100, beat: 1.0,  react: 0.9 },
-  build_up:   { floor: 20, ceil: 75,  beat: 0.6,  react: 0.7 },
-  break:      { floor: 5,  ceil: 20,  beat: 0.05, react: 0.3 },
-  outro:      { floor: 8,  ceil: 30,  beat: 0.10, react: 0.4 },
+  intro:      { floor: 5,  ceil: 55,  beat: 0.15, react: 0.7 },
+  verse:      { floor: 15, ceil: 85,  beat: 0.35, react: 0.8 },
+  pre_chorus: { floor: 20, ceil: 95,  beat: 0.55, react: 0.85 },
+  chorus:     { floor: 25, ceil: 100, beat: 0.8,  react: 0.9 },
+  bridge:     { floor: 10, ceil: 70,  beat: 0.25, react: 0.7 },
+  drop:       { floor: 30, ceil: 100, beat: 1.0,  react: 0.95 },
+  build_up:   { floor: 15, ceil: 95,  beat: 0.6,  react: 0.85 },
+  break:      { floor: 3,  ceil: 25,  beat: 0.05, react: 0.4 },
+  outro:      { floor: 5,  ceil: 40,  beat: 0.10, react: 0.6 },
 };
-const DEFAULT_MOOD = { floor: 25, ceil: 85, beat: 0.4, react: 0.65 };
+const DEFAULT_MOOD = { floor: 15, ceil: 95, beat: 0.4, react: 0.8 };
 
 // ── CIE 1931 Perceptual Curve ──
 // Maps linear brightness (0-1) to perceptually uniform LED PWM value.
@@ -368,26 +369,22 @@ function cieLightness(linearVal: number): number {
 // Professional beat pulse shape: instant attack, fast decay, sustain plateau, smooth release
 function adsrBeatPulse(phase: number, isDownbeat: boolean): number {
   // phase: 0 = beat hit, 1 = next beat
-  // ADSR timing as fraction of beat period:
-  const attackEnd = 0.02;   // ~10ms at 120bpm (500ms period)
-  const decayEnd = 0.14;    // ~70ms decay
-  const sustainEnd = 0.35;  // sustain plateau
-  const sustainLevel = isDownbeat ? 0.55 : 0.40;
+  // V2: shorter sustain → snappier response, less perceived delay
+  const attackEnd = 0.02;   // ~10ms at 120bpm
+  const decayEnd = 0.10;    // ~50ms decay (was 70ms)
+  const sustainEnd = 0.18;  // shorter sustain (was 0.35)
+  const sustainLevel = isDownbeat ? 0.45 : 0.30; // lower sustain (was 0.55/0.40)
 
   if (phase < attackEnd) {
-    // Attack: instant ramp to 1.0
     return phase / attackEnd;
   } else if (phase < decayEnd) {
-    // Decay: drop from 1.0 to sustain level
     const decayProgress = (phase - attackEnd) / (decayEnd - attackEnd);
     return 1.0 - (1.0 - sustainLevel) * decayProgress;
   } else if (phase < sustainEnd) {
-    // Sustain: hold at sustain level
     return sustainLevel;
   } else {
-    // Release: smooth fade to 0
     const releaseProgress = (phase - sustainEnd) / (1.0 - sustainEnd);
-    return sustainLevel * Math.exp(-releaseProgress * 3.5);
+    return sustainLevel * Math.exp(-releaseProgress * 4.5); // faster release (was 3.5)
   }
 }
 
@@ -421,10 +418,10 @@ function computeBrightnessCurve(
   let envHi = 0;    // drives 10% — sparkle/strobe accents
 
   // Band-specific EMA coefficients (tuned for ~100ms sample interval)
-  // Converted from ms-based times: alpha ≈ 1 - exp(-interval/tau)
-  const BASS_ATTACK = 0.45;  const BASS_RELEASE = 0.12;   // 15ms attack, 80ms release
-  const MID_ATTACK = 0.55;   const MID_RELEASE = 0.18;    // 10ms attack, 50ms release
-  const HI_ATTACK = 0.70;    const HI_RELEASE = 0.28;     // 5ms attack, 30ms release
+  // V2: faster release for snappier transient response
+  const BASS_ATTACK = 0.50;  const BASS_RELEASE = 0.25;   // faster release (was 0.12)
+  const MID_ATTACK = 0.60;   const MID_RELEASE = 0.30;    // faster release (was 0.18)
+  const HI_ATTACK = 0.75;    const HI_RELEASE = 0.40;     // faster release (was 0.28)
 
   // ── Helpers ──
   const getSection = (t: number): SongSection | null => {
@@ -552,20 +549,24 @@ function computeBrightnessCurve(
     // Convert linear energy to perceptually uniform brightness
     const perceptual = cieLightness(blended);
 
-    // ── Step 4: Section mood mapping ──
+    // ── Step 4: Energy-first brightness with section mood tint ──
+    // V2: raw energy drives 60%, section mood shapes 40% — high energy always = bright
     const section = getSection(t);
     const sectionType = section?.type ?? null;
     const mood = sectionType ? (SECTION_MOOD[sectionType] ?? DEFAULT_MOOD) : DEFAULT_MOOD;
 
-    // Scale floor/ceiling by calibration range
     const calRange = cal.maxBrightness - cal.minBrightness;
     const moodFloor = cal.minBrightness + (mood.floor / 100) * calRange;
     const moodCeil = cal.minBrightness + (mood.ceil / 100) * calRange;
 
-    // Map perceptual energy into section's brightness range
+    // Pure energy-driven brightness (full range)
+    const energyPct = cal.minBrightness + perceptual * calRange;
+    // Section-shaped brightness (mood range)
     const moodMid = (moodFloor + moodCeil) / 2;
     const halfRange = (moodCeil - moodFloor) / 2;
-    let pct = moodMid + (perceptual * 2 - 1) * halfRange * mood.react;
+    const sectionPct = moodMid + (perceptual * 2 - 1) * halfRange * mood.react;
+    // Blend: energy leads, section adds character
+    let pct = energyPct * 0.6 + sectionPct * 0.4;
 
     // ── Step 5: Build-up effects ──
     const buildUp = getBuildUp(t);
@@ -583,9 +584,10 @@ function computeBrightnessCurve(
       }
     }
 
-    // ── Step 6: Drop aftermath — force high intensity ──
+    // ── Step 6: Drop aftermath — boost but don't force if energy is low ──
     if (isInDropFn(t)) {
-      pct = Math.max(pct, moodCeil * 0.75);
+      // V2: boost by 20% instead of forcing to 75% floor — respects actual energy
+      pct = Math.min(100, pct * 1.2);
     }
 
     // ── Step 7: ADSR Beat pulse with anticipation dip ──
@@ -686,6 +688,14 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // Support force-rebake via body
+    let forceRebake = false;
+    try {
+      const body = await req.json();
+      if (body?.reprocess || body?.rebake) forceRebake = true;
+    } catch { /* no body */ }
+    console.log(`[process-songs] forceRebake=${forceRebake}`);
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -858,8 +868,8 @@ serve(async (req) => {
       const curve = song.energy_curve as unknown as EnergySample[];
       if (!Array.isArray(curve) || curve.length < 50) continue;
 
-      // Skip if already baked and not just re-processed
-      if (song.brightness_curve && !results.includes(song.track_name)) continue;
+      // Skip if already baked and not just re-processed (unless force rebake)
+      if (song.brightness_curve && !results.includes(song.track_name) && !forceRebake) continue;
 
       // Need at least BPM to bake a decent curve
       if (!song.bpm) continue;
@@ -891,7 +901,7 @@ serve(async (req) => {
 
     console.log(`[process-songs] processed ${processed} songs, baked ${baked} brightness curves:`, results);
 
-    return new Response(JSON.stringify({ processed, songs: results }), {
+    return new Response(JSON.stringify({ processed, baked, songs: results, forceRebake }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
