@@ -373,7 +373,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
 function CurrentCalibrationPanel({ cal }: { cal: LightCalibration }) {
   const changed = (key: keyof LightCalibration) => cal[key] !== DEFAULT_CALIBRATION[key];
   const row = (label: string, key: keyof LightCalibration, unit = '') => (
-    <div className={`flex justify-between text-[10px] font-mono ${changed(key) ? 'text-foreground' : 'text-muted-foreground'}`}>
+    <div className={`flex justify-between text-[10px] font-mono ${changed(key) ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
       <span>{label}</span>
       <span>{typeof cal[key] === 'number' ? (cal[key] as number).toFixed(key.startsWith('gamma') || key === 'saturationBoost' || key === 'attackAlpha' || key === 'releaseAlpha' || key === 'dynamicDamping' ? (key === 'releaseAlpha' ? 3 : 2) : 0) : String(cal[key])}{unit}</span>
     </div>
