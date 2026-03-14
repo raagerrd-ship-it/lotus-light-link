@@ -14,11 +14,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 
-type Tab = 'ble' | 'latency' | 'songs';
+import ChainSyncTab from "@/components/ChainSyncTab";
+
+type Tab = 'ble' | 'latency' | 'chain' | 'songs';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ble', label: 'BLE-hastighet' },
   { key: 'latency', label: 'Latens' },
+  { key: 'chain', label: 'Kedja' },
   { key: 'songs', label: 'Inspelade låtar' },
 ];
 
@@ -710,6 +713,7 @@ function CurrentCalibrationPanel({ cal }: { cal: LightCalibration }) {
           {row('Kick tröskel', 'whiteKickThreshold', '%')}
           {row('Kick tid', 'whiteKickMs', 'ms')}
           {row('BLE latens', 'bleLatencyMs', 'ms')}
+          {row('Kedjelatens', 'chainLatencyMs', 'ms')}
         </div>
       </div>
     </div>
@@ -954,6 +958,11 @@ export default function Calibrate() {
           const deviceName = conn?.device?.name;
           if (deviceName) saveLatencyToCloud(deviceName, latency);
         }} />}
+
+        {tab === 'chain' && <ChainSyncTab
+          currentChainLatencyMs={cal.chainLatencyMs}
+          onSave={(ms) => update({ chainLatencyMs: ms })}
+        />}
 
         {tab === 'songs' && <RecordedSongsTab />}
       </div>

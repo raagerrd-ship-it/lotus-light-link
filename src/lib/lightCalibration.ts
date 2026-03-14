@@ -29,6 +29,9 @@ export interface LightCalibration {
   // BLE latency compensation (ms)
   bleLatencyMs: number;
 
+  // Total chain latency: Sonos timestamp → light visible (ms)
+  chainLatencyMs: number;
+
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
   agcMax: number;
@@ -53,6 +56,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   whiteKickMs: 100,
 
   bleLatencyMs: 0,
+  chainLatencyMs: 0,
 
   agcMin: 0,
   agcMax: 0.01,
