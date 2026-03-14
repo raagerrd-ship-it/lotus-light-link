@@ -433,6 +433,7 @@ const Index = () => {
             </button>
           </div>
         </div>
+      )}
 
       {/* Now playing */}
       {nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
