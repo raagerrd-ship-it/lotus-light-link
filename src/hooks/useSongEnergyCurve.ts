@@ -389,36 +389,38 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
           } as any;
 
           if (existing) {
-            supabase
-              .from("song_analysis")
-              .update(payload)
-              .eq("id", existing.id)
-              .then(async () => {
-                console.log("[EnergyCurve] updated", targetTrack.trackName);
-                if (!cached?.sections) await triggerSectionAnalysis(existing.id, key);
-                await triggerAutoCalibration();
-                setProcessing(false);
-              }).catch(() => setProcessing(false));
+            Promise.resolve(
+              supabase
+                .from("song_analysis")
+                .update(payload)
+                .eq("id", existing.id)
+            ).then(async () => {
+              console.log("[EnergyCurve] updated", targetTrack.trackName);
+              if (!cached?.sections) await triggerSectionAnalysis(existing.id, key);
+              await triggerAutoCalibration();
+              setProcessing(false);
+            }).catch(() => setProcessing(false));
           } else {
-            supabase
-              .from("song_analysis")
-              .insert({
-                track_name: targetTrack.trackName,
-                artist_name: targetTrack.artistName,
-                ...payload,
-              })
-              .select("id")
-              .single()
-              .then(async ({ data: inserted }) => {
-                console.log("[EnergyCurve] inserted", targetTrack.trackName);
-                if (inserted?.id) {
-                  const c = curveCache.get(key);
-                  if (c) curveCache.set(key, { ...c, songId: inserted.id });
-                  await triggerSectionAnalysis(inserted.id, key);
-                }
-                await triggerAutoCalibration();
-                setProcessing(false);
-              }).catch(() => setProcessing(false));
+            Promise.resolve(
+              supabase
+                .from("song_analysis")
+                .insert({
+                  track_name: targetTrack.trackName,
+                  artist_name: targetTrack.artistName,
+                  ...payload,
+                })
+                .select("id")
+                .single()
+            ).then(async ({ data: inserted }) => {
+              console.log("[EnergyCurve] inserted", targetTrack.trackName);
+              if (inserted?.id) {
+                const c = curveCache.get(key);
+                if (c) curveCache.set(key, { ...c, songId: inserted.id });
+                await triggerSectionAnalysis(inserted.id, key);
+              }
+              await triggerAutoCalibration();
+              setProcessing(false);
+            }).catch(() => setProcessing(false));
           }
         });
     },
