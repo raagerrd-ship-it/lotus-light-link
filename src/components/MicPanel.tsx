@@ -45,6 +45,21 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
+/** Binary-search interpolation of pre-baked brightness curve */
+function interpolateBrightness(bc: { t: number; b: number }[], t: number): number {
+  if (bc.length === 0) return 0;
+  if (t <= bc[0].t) return bc[0].b;
+  if (t >= bc[bc.length - 1].t) return bc[bc.length - 1].b;
+  let lo = 0, hi = bc.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (bc[mid].t <= t) lo = mid; else hi = mid;
+  }
+  const prev = bc[lo], next = bc[hi];
+  const frac = (t - prev.t) / (next.t - prev.t);
+  return Math.round(prev.b + (next.b - prev.b) * frac);
+}
+
 // Learned AGC
 const AGC_MAX_DECAY = 0.995;
 const AGC_MIN_RISE = 0.9999;
