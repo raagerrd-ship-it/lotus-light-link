@@ -17,11 +17,10 @@ import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 import ChainSyncTab from "@/components/ChainSyncTab";
 import SongCalibrationTab from "@/components/SongCalibrationTab";
 
-type Tab = 'ble' | 'latency' | 'chain' | 'song' | 'songs';
+type Tab = 'ble' | 'chain' | 'song' | 'songs';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ble', label: 'BLE' },
-  { key: 'latency', label: 'Latens' },
   { key: 'chain', label: 'Kedja' },
   { key: 'song', label: 'Låt' },
   { key: 'songs', label: 'Inspelningar' },
