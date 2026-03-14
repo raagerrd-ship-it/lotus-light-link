@@ -41,8 +41,10 @@ export function estimateBpmFromHistory(
   if (bestCorr > 0.15) {
     let bpm = (60 * 60) / bestLag;
 
-    // BPM halving: if > 160, check if half-tempo lag has comparable correlation
-    if (bpm > 160) {
+    // BPM halving: if > 140, check if half-tempo lag has comparable correlation
+    // Most pop/rock/dance music sits 70-140 BPM; detected values above 140
+    // are almost always double-time artifacts from the autocorrelation
+    if (bpm > 140) {
       const halfLag = bestLag * 2;
       if (halfLag < len - 1) {
         let hCorr = 0, hN1 = 0, hN2 = 0;
@@ -57,8 +59,9 @@ export function estimateBpmFromHistory(
         const hDenom = Math.sqrt(hN1 * hN2);
         if (hDenom > 0) hCorr /= hDenom;
 
-        // Use half-tempo if correlation is at least 70% as good
-        if (hCorr > bestCorr * 0.7) {
+        // Use half-tempo if correlation is at least 50% as good
+        // (halved lag naturally has lower correlation due to longer distance)
+        if (hCorr > bestCorr * 0.5) {
           bpm = bpm / 2;
         }
       }
