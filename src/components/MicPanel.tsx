@@ -3,7 +3,7 @@ import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, 
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 import { getActiveDeviceName } from "@/lib/lightCalibration";
-import { interpolateEnergy, hasKickNear, interpolateSample, curvePeakRms } from "@/lib/energyInterpolate";
+import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
 import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
@@ -346,129 +346,114 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           const curve = energyCurveRef.current;
           const hasCurve = Array.isArray(curve) && curve.length > 10;
 
-          let rms: number;
+          let rms: number = 0;
           let rmsEnd: number;
           let curveKick = false;
           let curveLo = 0, curveMid = 0, curveHi = 0;
+          let pct: number;
 
           if (hasCurve) {
-            // ── Curve-driven mode ──
+            // ── Curve mode: deterministic brightness, mic only for sync ──
             const posSec = getSongPositionSec();
+            rmsEnd = performance.now();
+
+            // Read mic solely for auto-sync beat correlation
+            an.getFloatTimeDomainData(buf);
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+            const micRms = Math.sqrt(sum / buf.length);
+
+            if (posSec != null) {
+              reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
+            }
+            tickAutoSync();
+            // Keep smoothedRef updated for onset baseline
+            smoothedRef.current = micRms;
+
+            // Brightness from saved curve — no AGC
+            let normalized = 0;
             if (posSec != null) {
               const sample = interpolateSample(curve!, posSec);
-              let e = sample.e;
+              normalized = sample.e;
+              curveKick = hasKickNear(curve!, posSec);
+              curveLo = sample.lo ?? 0;
+              curveMid = sample.mid ?? 0;
+              curveHi = sample.hi ?? 0;
 
               // Volume compensation
               const recVol = recordedVolumeRef.current;
               const curVol = volumeRef.current;
               if (recVol != null && recVol > 0 && curVol != null && curVol > 0) {
-                e *= (curVol / recVol);
-                e = Math.min(1, e);
-              }
-
-              rms = e * Math.max(0.01, agcMaxRef.current);
-              curveKick = hasKickNear(curve!, posSec);
-              curveLo = sample.lo ?? 0;
-              curveMid = sample.mid ?? 0;
-              curveHi = sample.hi ?? 0;
-            } else {
-              rms = 0;
-            }
-            rmsEnd = performance.now();
-
-            // Also read mic for curve improvement + auto-sync
-            an.getFloatTimeDomainData(buf);
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-            const micRms = Math.sqrt(sum / buf.length);
-            const bands = computeBands(an, freqBuf);
-
-            // Auto-sync: report mic onset for beat correlation
-            if (posSec != null) {
-              reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
-            }
-            tickAutoSync();
-
-            if (posSec != null && micRms > 0.001) {
-              const now = performance.now();
-              if (now - lastRecordTimeRef.current >= CURVE_RECORD_INTERVAL_MS) {
-                lastRecordTimeRef.current = now;
-                const existingRms = interpolateEnergy(curve!, posSec);
-                // Blend raw RMS: 80% existing, 20% new mic reading
-                const peakRms = curvePeakRms(curve!);
-                const existingRawApprox = existingRms * peakRms;
-                const blendedRaw = existingRawApprox * 0.8 + micRms * 0.2;
-                touchRecordingContext();
-                recordedSamplesRef.current.push({
-                  t: posSec,
-                  rawRms: blendedRaw,
-                  lo: bands.lo,
-                  mid: bands.mid,
-                  hi: bands.hi,
-                });
+                normalized *= (curVol / recVol);
+                normalized = Math.min(1, normalized);
               }
             }
+
+            // Dynamic damping
+            if (cal.dynamicDamping !== 1.0) {
+              normalized = Math.pow(normalized, cal.dynamicDamping);
+            }
+
+            pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
           } else {
-            // ── Mic-driven mode ──
+            // ── Mic mode: read mic + full AGC pipeline ──
             an.getFloatTimeDomainData(buf);
             let sum = 0;
             for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
             rms = Math.sqrt(sum / buf.length);
             rmsEnd = performance.now();
+
+            const prevAbsFactor = agcPeakMaxRef.current > 0
+              ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current)
+              : 1;
+            const reactivity = 1 + (1 - prevAbsFactor) * 2;
+            const prev = smoothedRef.current;
+            const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
+            const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
+            const alpha = rms > prev ? attackA : releaseA;
+            const smoothed = prev + alpha * (rms - prev);
+            smoothedRef.current = smoothed;
+
+            // Learned AGC
+            const vol = volumeRef.current;
+            const prevVol = lastVolumeRef.current;
+            if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
+              agcMaxRef.current = smoothed + 0.01;
+              agcMinRef.current = smoothed;
+              lastVolumeRef.current = vol;
+            } else if (prevVol == null && vol != null) {
+              lastVolumeRef.current = vol;
+            }
+
+            if (smoothed > agcMaxRef.current) {
+              agcMaxRef.current += (smoothed - agcMaxRef.current) * AGC_ATTACK;
+            } else {
+              agcMaxRef.current *= AGC_MAX_DECAY;
+            }
+
+            if (smoothed < agcMinRef.current || agcMinRef.current === 0) {
+              agcMinRef.current = smoothed;
+            } else {
+              agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
+            }
+
+            const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
+            let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
+
+            if (cal.dynamicDamping !== 1.0) {
+              normalized = Math.pow(normalized, cal.dynamicDamping);
+            }
+
+            if (agcMaxRef.current > agcPeakMaxRef.current) {
+              agcPeakMaxRef.current = agcMaxRef.current;
+            } else {
+              agcPeakMaxRef.current *= PEAK_MAX_DECAY;
+            }
+
+            const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
+            const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+            pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
           }
-
-          // Smoothing + normalization
-          const prevAbsFactor = agcPeakMaxRef.current > 0
-            ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current)
-            : 1;
-          const reactivity = 1 + (1 - prevAbsFactor) * 2;
-          const prev = smoothedRef.current;
-          const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
-          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
-          const alpha = rms > prev ? attackA : releaseA;
-          const smoothed = prev + alpha * (rms - prev);
-          smoothedRef.current = smoothed;
-
-          // Learned AGC
-          const vol = volumeRef.current;
-          const prevVol = lastVolumeRef.current;
-          if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
-            agcMaxRef.current = smoothed + 0.01;
-            agcMinRef.current = smoothed;
-            lastVolumeRef.current = vol;
-          } else if (prevVol == null && vol != null) {
-            lastVolumeRef.current = vol;
-          }
-
-          if (smoothed > agcMaxRef.current) {
-            agcMaxRef.current += (smoothed - agcMaxRef.current) * AGC_ATTACK;
-          } else {
-            agcMaxRef.current *= AGC_MAX_DECAY;
-          }
-
-          if (smoothed < agcMinRef.current || agcMinRef.current === 0) {
-            agcMinRef.current = smoothed;
-          } else {
-            agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
-          }
-
-          const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
-          let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
-
-          // Apply dynamic damping (compress dynamics when > 1.0)
-          if (cal.dynamicDamping !== 1.0) {
-            normalized = Math.pow(normalized, cal.dynamicDamping);
-          }
-
-          if (agcMaxRef.current > agcPeakMaxRef.current) {
-            agcPeakMaxRef.current = agcMaxRef.current;
-          } else {
-            agcPeakMaxRef.current *= PEAK_MAX_DECAY;
-          }
-
-          const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
-          const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-          let pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
 
           // Section-aware adjustments
           const posSec2 = getSongPositionSec();
