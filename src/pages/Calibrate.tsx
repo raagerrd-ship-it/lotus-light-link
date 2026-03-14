@@ -365,34 +365,41 @@ function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patc
         </p>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Min ljusstyrka: {cal.minBrightness}%</label>
           <input type="range" min={0} max={50} value={cal.minBrightness} onChange={e => onSave({ minBrightness: Number(e.target.value) })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Lägsta nivå lampan aldrig går under. <span className="text-foreground/50">↑ Högre = ljusare vid tystnad</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Max ljusstyrka: {cal.maxBrightness}%</label>
           <input type="range" min={50} max={100} value={cal.maxBrightness} onChange={e => onSave({ maxBrightness: Number(e.target.value) })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Tak för hur starkt lampan lyser vid högt ljud. <span className="text-foreground/50">↓ Lägre = lugnare maxnivå</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Attack α: {cal.attackAlpha.toFixed(2)}</label>
           <input type="range" min={5} max={90} value={Math.round(cal.attackAlpha * 100)} onChange={e => onSave({ attackAlpha: Number(e.target.value) / 100 })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Hur snabbt lampan reagerar uppåt på en beat. <span className="text-foreground/50">↑ Högre = snappigare, ↓ Lägre = mjukare inledning</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Release α: {cal.releaseAlpha.toFixed(3)}</label>
           <input type="range" min={1} max={100} value={Math.round(cal.releaseAlpha * 1000)} onChange={e => onSave({ releaseAlpha: Number(e.target.value) / 1000 })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Hur snabbt lampan tonar ner efter en topp. <span className="text-foreground/50">↑ Högre = snabbare fade, ↓ Lägre = längre efterglöd</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Dynamic damping: {cal.dynamicDamping.toFixed(1)}×</label>
           <input type="range" min={10} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Komprimerar dynamiken — 1.0 = linjärt. <span className="text-foreground/50">↑ Högre = jämnare ljus, ↓ Lägre = mer kontrast</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Kick tröskel: {cal.whiteKickThreshold}%</label>
           <input type="range" min={50} max={100} value={cal.whiteKickThreshold} onChange={e => onSave({ whiteKickThreshold: Number(e.target.value) })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Hur stark en bass-surge måste vara för vit drop-blixt. <span className="text-foreground/50">↑ Högre = färre drops, ↓ Lägre = fler</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Kick tid: {cal.whiteKickMs}ms</label>
           <input type="range" min={20} max={200} step={5} value={cal.whiteKickMs} onChange={e => onSave({ whiteKickMs: Number(e.target.value) })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Hur länge den vita drop-blixten varar. <span className="text-foreground/50">↑ Längre = mer dramatisk, ↓ Kortare = subtilare</span></p>
         </div>
       </div>
     </div>
