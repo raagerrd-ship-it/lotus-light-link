@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Play, Square, Check, RefreshCw, Trash2 } from "lucide-react";
@@ -12,7 +12,7 @@ import {
 } from "@/lib/lightCalibration";
 import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
-
+import MicPanel from "@/components/MicPanel";
 import CalibrationTips from "@/components/CalibrationTips";
 
 type Tab = 'ble' | 'sliders';
@@ -471,7 +471,21 @@ export default function Calibrate() {
           }
         }} />}
 
-        {tab === 'sliders' && <LightSlidersTab cal={cal} onSave={(patch) => update(patch)} />}
+        {tab === 'sliders' && (
+          <>
+            {/* Live mic→light pipeline so user sees changes in real-time */}
+            {conn?.characteristic && (
+              <div className="relative w-24 h-24 mx-auto mb-4">
+                <MicPanel
+                  char={conn.characteristic}
+                  currentColor={[255, 180, 80]}
+                  isPlaying={true}
+                />
+              </div>
+            )}
+            <LightSlidersTab cal={cal} onSave={(patch) => update(patch)} />
+          </>
+        )}
       </div>
 
       {/* Current calibration + history */}
