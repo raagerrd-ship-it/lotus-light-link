@@ -465,7 +465,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
 
             if (pastAvg < quietThreshold && surgeRatio > surgeMin && recentAvg > absMin) {
-              dropActiveUntilRef.current = now + DROP_DURATION_MS;
+              // Scale drop duration: massive surges (10x+) get full duration, weaker ones get half
+              const surgeStrength = Math.min(1, (surgeRatio - surgeMin) / (surgeMin * 1.5));
+              const dropDur = DROP_DURATION_MS * (0.5 + surgeStrength * 0.5);
+              dropActiveUntilRef.current = now + dropDur;
               lastDropTimeRef.current = now;
               isDrop = true;
               console.log('[Drop/bass]', {
