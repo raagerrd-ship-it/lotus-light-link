@@ -116,6 +116,8 @@ const Index = () => {
         : energyCurve ? 'saved'
         : isPlaying ? 'recording'
         : 'none';
+      const autoSync = getAutoSyncState();
+      const cal = activeCalibration;
       updateLiveSession({
         debug_state: {
           bleConnected: !!connection,
@@ -133,6 +135,18 @@ const Index = () => {
           curveSamples: energyCurve?.length,
           sonosConnected: !!nowPlaying?.trackName,
           sonosRtt: smoothedRtt,
+          // Sync & calibration
+          autoDriftMs: autoSync.driftMs,
+          chainLatencyMs: cal.chainLatencyMs,
+          bleLatencyMs: cal.bleLatencyMs,
+          activeLookAheadMs,
+          syncMode: hasCurve ? 'curve' : 'mic',
+          bleMinIntervalMs: getBleMinInterval(),
+          maxBrightness: cal.maxBrightness,
+          dynamicDamping: cal.dynamicDamping,
+          attackAlpha: cal.attackAlpha,
+          releaseAlpha: cal.releaseAlpha,
+          sonosVolume: nowPlaying?.volume ?? null,
         },
       });
     }, 500);
