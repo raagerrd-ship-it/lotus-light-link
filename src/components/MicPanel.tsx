@@ -375,12 +375,18 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             }
             rmsEnd = performance.now();
 
-            // Also read mic for curve improvement
+            // Also read mic for curve improvement + auto-sync
             an.getFloatTimeDomainData(buf);
             let sum = 0;
             for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
             const micRms = Math.sqrt(sum / buf.length);
             const bands = computeBands(an, freqBuf);
+
+            // Auto-sync: report mic onset for beat correlation
+            if (posSec != null) {
+              reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
+            }
+            tickAutoSync();
 
             if (posSec != null && micRms > 0.001) {
               const now = performance.now();
