@@ -398,58 +398,85 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             rmsEnd = performance.now();
           }
 
-          // Smoothing + normalization
-          const prevAbsFactor = agcPeakMaxRef.current > 0
-            ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current)
-            : 1;
-          const reactivity = 1 + (1 - prevAbsFactor) * 2;
-          const prev = smoothedRef.current;
-          const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
-          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
-          const alpha = rms > prev ? attackA : releaseA;
-          const smoothed = prev + alpha * (rms - prev);
-          smoothedRef.current = smoothed;
+          let pct: number;
 
-          // Learned AGC
-          const vol = volumeRef.current;
-          const prevVol = lastVolumeRef.current;
-          if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
-            agcMaxRef.current = smoothed + 0.01;
-            agcMinRef.current = smoothed;
-            lastVolumeRef.current = vol;
-          } else if (prevVol == null && vol != null) {
-            lastVolumeRef.current = vol;
-          }
+          if (hasCurve) {
+            // ── Curve mode: deterministic brightness from saved curve ──
+            // The curve already provides normalized energy (0–1) — no AGC needed
+            const posSec = getSongPositionSec();
+            const sample = posSec != null ? interpolateSample(curve!, posSec) : null;
+            let normalized = sample?.e ?? 0;
 
-          if (smoothed > agcMaxRef.current) {
-            agcMaxRef.current += (smoothed - agcMaxRef.current) * AGC_ATTACK;
+            // Volume compensation
+            const recVol = recordedVolumeRef.current;
+            const curVol = volumeRef.current;
+            if (recVol != null && recVol > 0 && curVol != null && curVol > 0) {
+              normalized *= (curVol / recVol);
+              normalized = Math.min(1, normalized);
+            }
+
+            // Dynamic damping
+            if (cal.dynamicDamping !== 1.0) {
+              normalized = Math.pow(normalized, cal.dynamicDamping);
+            }
+
+            pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
+
+            // Keep smoothedRef updated for auto-sync onset baseline
+            smoothedRef.current = rms;
           } else {
-            agcMaxRef.current *= AGC_MAX_DECAY;
+            // ── Mic mode: full AGC pipeline ──
+            const prevAbsFactor = agcPeakMaxRef.current > 0
+              ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current)
+              : 1;
+            const reactivity = 1 + (1 - prevAbsFactor) * 2;
+            const prev = smoothedRef.current;
+            const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
+            const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
+            const alpha = rms > prev ? attackA : releaseA;
+            const smoothed = prev + alpha * (rms - prev);
+            smoothedRef.current = smoothed;
+
+            // Learned AGC
+            const vol = volumeRef.current;
+            const prevVol = lastVolumeRef.current;
+            if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
+              agcMaxRef.current = smoothed + 0.01;
+              agcMinRef.current = smoothed;
+              lastVolumeRef.current = vol;
+            } else if (prevVol == null && vol != null) {
+              lastVolumeRef.current = vol;
+            }
+
+            if (smoothed > agcMaxRef.current) {
+              agcMaxRef.current += (smoothed - agcMaxRef.current) * AGC_ATTACK;
+            } else {
+              agcMaxRef.current *= AGC_MAX_DECAY;
+            }
+
+            if (smoothed < agcMinRef.current || agcMinRef.current === 0) {
+              agcMinRef.current = smoothed;
+            } else {
+              agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
+            }
+
+            const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
+            let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
+
+            if (cal.dynamicDamping !== 1.0) {
+              normalized = Math.pow(normalized, cal.dynamicDamping);
+            }
+
+            if (agcMaxRef.current > agcPeakMaxRef.current) {
+              agcPeakMaxRef.current = agcMaxRef.current;
+            } else {
+              agcPeakMaxRef.current *= PEAK_MAX_DECAY;
+            }
+
+            const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
+            const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+            pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
           }
-
-          if (smoothed < agcMinRef.current || agcMinRef.current === 0) {
-            agcMinRef.current = smoothed;
-          } else {
-            agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
-          }
-
-          const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
-          let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
-
-          // Apply dynamic damping (compress dynamics when > 1.0)
-          if (cal.dynamicDamping !== 1.0) {
-            normalized = Math.pow(normalized, cal.dynamicDamping);
-          }
-
-          if (agcMaxRef.current > agcPeakMaxRef.current) {
-            agcPeakMaxRef.current = agcMaxRef.current;
-          } else {
-            agcPeakMaxRef.current *= PEAK_MAX_DECAY;
-          }
-
-          const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
-          const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-          let pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
 
           // Section-aware adjustments
           const posSec2 = getSongPositionSec();
