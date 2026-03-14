@@ -727,14 +727,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
     <div className="absolute inset-0 flex items-center justify-center">
       <div
         ref={sunRef}
-        className="rounded-full overflow-hidden relative"
+        className="rounded-full relative"
         style={{
           width: '55vw',
           height: '55vw',
           maxWidth: '55vh',
           maxHeight: '55vh',
           transform: 'scale(1)',
-          transition: 'transform 80ms ease-out, box-shadow 120ms ease-out',
           willChange: 'transform, box-shadow, background',
           background: `radial-gradient(circle, rgba(${r},${g},${b},0.25) 0%, rgba(${r},${g},${b},0.08) 50%, transparent 72%)`,
           boxShadow: `0 0 40px rgba(${r},${g},${b},0.15), 0 0 8px 8px rgba(${r},${g},${b},0.4), 0 0 80px rgba(${r},${g},${b},0.12)`,
@@ -742,8 +741,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
       >
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ opacity: 0.6 }}
+          className="absolute inset-0 w-full h-full rounded-full"
+          style={{ opacity: 0.6, clipPath: 'circle(50%)' }}
         />
       </div>
     </div>
