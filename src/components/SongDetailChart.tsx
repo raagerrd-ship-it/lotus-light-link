@@ -17,8 +17,14 @@ interface SongSection {
 }
 
 interface Drop {
-  time: number;
+  t?: number;
+  time?: number;
   buildStart?: number;
+}
+
+interface BrightnessSample {
+  t: number;
+  pct: number;
 }
 
 interface SongDetailData {
