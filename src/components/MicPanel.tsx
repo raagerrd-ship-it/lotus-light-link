@@ -14,6 +14,7 @@ interface MicPanelProps {
   danceability?: number | null;  // 0-100
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
+  historyLen?: number;           // override chart history length (default 120)
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number }) => void;
   onColorChange?: (color: [number, number, number]) => void;
 }
