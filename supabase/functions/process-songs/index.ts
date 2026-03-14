@@ -901,7 +901,7 @@ serve(async (req) => {
 
     console.log(`[process-songs] processed ${processed} songs, baked ${baked} brightness curves:`, results);
 
-    return new Response(JSON.stringify({ processed, songs: results }), {
+    return new Response(JSON.stringify({ processed, baked, songs: results, forceRebake }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
