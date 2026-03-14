@@ -245,6 +245,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       // Update cache immediately with raw data (no heavy analysis)
       const entry: CacheEntry = {
         curve: samples,
+        brightnessCurve: null, // will be computed server-side
         vol: volume,
         agc: agcState ?? null,
         bpm: cached?.bpm ?? null,
