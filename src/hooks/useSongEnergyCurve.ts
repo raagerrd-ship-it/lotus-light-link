@@ -275,42 +275,41 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         .maybeSingle()
         .then(({ data: existing }) => {
           if (existing) {
-            supabase
-              .from("song_analysis")
-              .update({
-                ...payload,
-                // Clear computed fields so server re-processes
-                bpm: null, beat_grid: null, drops: null,
-                dynamic_range: null, transitions: null,
-                beat_strengths: null, sections: null,
-              })
-              .eq("id", existing.id)
-              .then(() => {
-                console.log("[EnergyCurve] saved raw data for", targetTrack.trackName, "— server will process");
-                curveCache.set(key, { ...entry, songId: existing.id });
-                startPolling(key, existing.id);
-                setProcessing(false);
-              })
-              .catch(() => setProcessing(false));
+            Promise.resolve(
+              supabase
+                .from("song_analysis")
+                .update({
+                  ...payload,
+                  bpm: null, beat_grid: null, drops: null,
+                  dynamic_range: null, transitions: null,
+                  beat_strengths: null, sections: null,
+                })
+                .eq("id", existing.id)
+            ).then(() => {
+              console.log("[EnergyCurve] saved raw data for", targetTrack.trackName, "— server will process");
+              curveCache.set(key, { ...entry, songId: existing.id });
+              startPolling(key, existing.id);
+              setProcessing(false);
+            }).catch(() => setProcessing(false));
           } else {
-            supabase
-              .from("song_analysis")
-              .insert({
-                track_name: targetTrack.trackName,
-                artist_name: targetTrack.artistName,
-                ...payload,
-              })
-              .select("id")
-              .single()
-              .then(({ data: inserted }) => {
-                console.log("[EnergyCurve] inserted raw data for", targetTrack.trackName, "— server will process");
-                if (inserted?.id) {
-                  curveCache.set(key, { ...entry, songId: inserted.id });
-                  startPolling(key, inserted.id);
-                }
-                setProcessing(false);
-              })
-              .catch(() => setProcessing(false));
+            Promise.resolve(
+              supabase
+                .from("song_analysis")
+                .insert({
+                  track_name: targetTrack.trackName,
+                  artist_name: targetTrack.artistName,
+                  ...payload,
+                })
+                .select("id")
+                .single()
+            ).then(({ data: inserted }) => {
+              console.log("[EnergyCurve] inserted raw data for", targetTrack.trackName, "— server will process");
+              if (inserted?.id) {
+                curveCache.set(key, { ...entry, songId: inserted.id });
+                startPolling(key, inserted.id);
+              }
+              setProcessing(false);
+            }).catch(() => setProcessing(false));
           }
         });
     },
