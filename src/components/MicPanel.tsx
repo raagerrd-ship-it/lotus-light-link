@@ -580,21 +580,35 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     };
   }, []);
 
+  const isCompact = historyLenProp != null; // calibration mode: fill parent
+
   useEffect(() => {
     const resize = () => {
       const canvas = canvasRef.current;
-      const sun = sunRef.current;
-      if (!canvas || !sun) return;
-      const size = sun.clientWidth;
-      canvas.width = size * devicePixelRatio;
-      canvas.height = size * devicePixelRatio;
+      const container = isCompact ? sunRef.current : sunRef.current;
+      if (!canvas || !container) return;
+      canvas.width = container.clientWidth * devicePixelRatio;
+      canvas.height = container.clientHeight * devicePixelRatio;
     };
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, []);
+  }, [isCompact]);
 
   const [r, g, b] = currentColor;
+
+  if (isCompact) {
+    // Calibration mode: rectangular chart, no sun glow
+    return (
+      <div className="absolute inset-0" ref={sunRef}>
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ opacity: 0.9 }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="absolute inset-0 flex items-center justify-center">
