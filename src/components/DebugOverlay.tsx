@@ -75,6 +75,7 @@ export default function DebugOverlay({
 
       {/* Audio */}
       <div>BPM: <span className="text-foreground">{liveBpm ? Math.round(liveBpm) : '—'}</span></div>
+      <div>drop: {dropActive ? <span className="text-red-400 font-bold animate-pulse">🔥 DROP</span> : <span className="text-foreground/50">—</span>}</div>
       <div>max ljus: <span className="text-foreground">{maxBrightness ?? 100}%</span></div>
       {dynamicDamping != null && dynamicDamping > 1 && <div>dämpa: <span className="text-foreground">{dynamicDamping.toFixed(1)}x</span></div>}
       <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span>{source && <span className={source === 'local' ? ' text-green-400' : ' text-yellow-400'}> {source}</span>}</div>

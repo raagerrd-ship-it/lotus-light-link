@@ -372,6 +372,10 @@ const Index = () => {
         palette={palette}
         paletteIndex={paletteIndexRef.current}
         sonosVolume={nowPlaying?.volume}
+        liveBpm={bpm}
+        maxBrightness={activeCalibration.maxBrightness}
+        dynamicDamping={activeCalibration.dynamicDamping}
+        gainMode={nowPlaying?.volume != null ? 'vol' : 'manual'}
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
@@ -379,6 +383,7 @@ const Index = () => {
         bleMinIntervalMs={getBleMinInterval()}
         bleLatencyMs={activeCalibration.bleLatencyMs}
         deviceRole="master"
+        dropActive={dropActive}
       />
     </div>
   );
