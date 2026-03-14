@@ -63,7 +63,18 @@ export function useSonosNowPlaying() {
 
     // Build art URL from Cast Away payloads (supports multiple field/key variants)
     const resolveAlbumArtUri = (s: any): string | null => {
-      return s?.albumArtUri ?? s?.albumArtURI ?? s?.albumArtUrl ?? s?.album_art_uri ?? null;
+      const nested = s?.currentTrack ?? s?.track ?? s?.mediaInfo ?? s?.metadata ?? null;
+      return (
+        s?.albumArtUri ??
+        s?.albumArtURI ??
+        s?.albumArtUrl ??
+        s?.album_art_uri ??
+        nested?.albumArtUri ??
+        nested?.albumArtURI ??
+        nested?.albumArtUrl ??
+        nested?.album_art_uri ??
+        null
+      );
     };
 
     const buildArtUrl = (uriRaw: string | null | undefined): string | null => {
@@ -74,17 +85,14 @@ export function useSonosNowPlaying() {
       if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
 
       const proxyOrigin = new URL(proxyUrl).origin;
-      // Replace localhost/127.0.0.1 with the actual LAN hostname so other devices can reach it
-      const lanOrigin = (proxyOrigin.includes('localhost') || proxyOrigin.includes('127.0.0.1'))
-        ? proxyOrigin.replace(/localhost|127\.0\.0\.1/, location.hostname)
-        : proxyOrigin;
-      const lanProxy = proxyUrl.replace(proxyOrigin, lanOrigin);
 
-      if (uri.startsWith('/api/sonos/')) return `${lanOrigin}${uri}`;
-      if (uri.startsWith('/getaa')) return `${lanProxy}${uri}`;
-      if (uri.startsWith('getaa')) return `${lanProxy}/${uri}`;
-      if (uri.startsWith('/')) return `${lanOrigin}${uri}`;
-      return `${lanProxy}/${uri}`;
+      // Keep proxy host intact (especially localhost), otherwise album art can break
+      // and palette extraction fails due inaccessible/tainted URLs.
+      if (uri.startsWith('/api/sonos/')) return `${proxyOrigin}${uri}`;
+      if (uri.startsWith('/getaa')) return `${proxyUrl}${uri}`;
+      if (uri.startsWith('getaa')) return `${proxyUrl}/${uri}`;
+      if (uri.startsWith('/')) return `${proxyOrigin}${uri}`;
+      return `${proxyUrl}/${uri}`;
     };
 
     const applyStatus = (s: any, rtt: number) => {
