@@ -435,7 +435,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           // ── Drop detection (uses bassRms, not total RMS) ──
           const DROP_HISTORY_LEN = 120;  // ~2s of history
-          const DROP_COOLDOWN_MS = 4000;
+          const DROP_COOLDOWN_MS = 6000;
           const DROP_DURATION_MS = 400;
 
           const bassHist = bassHistoryRef.current;
@@ -451,11 +451,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
             const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
 
-            // Energy modulates how easy it is to trigger a drop
+            // Much stricter thresholds — drops should be rare and dramatic
             const traitEnergy = (energyRef.current ?? 50) / 100;
-            const quietThreshold = bassAgcMaxRef.current * (0.12 + traitEnergy * 0.18);
-            const surgeMin = 4.0 - traitEnergy * 2.0;
-            const absMin = bassAgcMaxRef.current * (0.6 - traitEnergy * 0.2);
+            const quietThreshold = bassAgcMaxRef.current * (0.08 + traitEnergy * 0.10);
+            const surgeMin = 6.0 - traitEnergy * 2.0;  // need 4-6x surge
+            const absMin = bassAgcMaxRef.current * (0.75 - traitEnergy * 0.15);
 
             const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
 
