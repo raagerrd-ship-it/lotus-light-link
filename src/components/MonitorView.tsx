@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLiveSessionMonitor, type MasterDebugState } from "@/hooks/useLiveSession";
 import { supabase } from "@/integrations/supabase/client";
 import { Wifi, WifiOff, ChevronDown, ChevronUp, Music, Trash2 } from "lucide-react";
