@@ -49,6 +49,19 @@ function cacheKey(t: TrackKey): string {
   return `${t.trackName}|${t.artistName}`;
 }
 
+/** Clear cache for a specific track (call after deleting a recording) */
+export function clearCurveCache(trackName: string, artistName: string) {
+  const key = `${trackName}|${artistName}`;
+  curveCache.delete(key);
+  window.dispatchEvent(new CustomEvent('curve-cache-clear', { detail: key }));
+}
+
+/** Clear entire curve cache */
+export function clearAllCurveCache() {
+  curveCache.clear();
+  window.dispatchEvent(new CustomEvent('curve-cache-clear', { detail: '*' }));
+}
+
 function estimateBpm(curve: EnergySample[]): number | null {
   if (curve.length < 120) return null;
   const peak = curvePeakRms(curve);
@@ -75,7 +88,22 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   const [sections, setSections] = useState<SongSection[] | null>(null);
   const [drops, setDrops] = useState<Drop[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [cacheVersion, setCacheVersion] = useState(0);
   const trackRef = useRef<string | null>(null);
+
+  // Listen for cache invalidation events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const currentKey = track ? cacheKey(track) : null;
+      if (detail === '*' || detail === currentKey) {
+        trackRef.current = null; // force re-fetch
+        setCacheVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('curve-cache-clear', handler);
+    return () => window.removeEventListener('curve-cache-clear', handler);
+  }, [track?.trackName, track?.artistName]);
 
   useEffect(() => {
     if (!track) {
@@ -172,7 +200,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
           triggerSectionAnalysis(songId, key);
         }
       });
-  }, [track?.trackName, track?.artistName]);
+  }, [track?.trackName, track?.artistName, cacheVersion]);
 
   const triggerSectionAnalysis = useCallback(async (songId: string, key: string) => {
     try {
