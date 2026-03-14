@@ -48,25 +48,45 @@ export function drawIntensityChart(
   const clampPct = (p: number) => Math.max(0, Math.min(100, p));
   const yForPct = (p: number) => chartTop + chartHeight - (clampPct(p) / 100) * chartHeight;
 
+  // Build path for fill + line
+  const points: { x: number; y: number; color: string }[] = [];
   for (let i = 0; i < len; i++) {
-    const x = offsetX + i * step;
-    const s = samples[i];
-    const y = yForPct(s.pct);
-    const color = `rgb(${s.r}, ${s.g}, ${s.b})`;
+    points.push({
+      x: offsetX + i * step,
+      y: yForPct(samples[i].pct),
+      color: `rgb(${samples[i].r}, ${samples[i].g}, ${samples[i].b})`,
+    });
+  }
 
-    // Line to previous
+  // Fill under line: gradient from line color at top → transparent at bottom
+  if (points.length >= 2) {
+    const lastSample = samples[len - 1];
+    const fillGrad = ctx.createLinearGradient(0, chartTop, 0, chartTop + chartHeight);
+    fillGrad.addColorStop(0, `rgba(${lastSample.r}, ${lastSample.g}, ${lastSample.b}, 0.35)`);
+    fillGrad.addColorStop(1, `rgba(0, 0, 0, 0)`);
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, chartTop + chartHeight); // bottom-left
+    for (const p of points) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(points[points.length - 1].x, chartTop + chartHeight); // bottom-right
+    ctx.closePath();
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+  }
+
+  // Line + dots
+  for (let i = 0; i < points.length; i++) {
+    const { x, y, color } = points[i];
+
     if (i > 0) {
-      const prevX = offsetX + (i - 1) * step;
-      const prevY = yForPct(samples[i - 1].pct);
       ctx.beginPath();
-      ctx.moveTo(prevX, prevY);
+      ctx.moveTo(points[i - 1].x, points[i - 1].y);
       ctx.lineTo(x, y);
       ctx.strokeStyle = color;
       ctx.lineWidth = lineWidth;
       ctx.stroke();
     }
 
-    // Dot
     ctx.beginPath();
     ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
     ctx.fillStyle = color;
