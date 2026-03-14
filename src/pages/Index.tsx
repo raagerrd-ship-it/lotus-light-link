@@ -23,6 +23,7 @@ import {
 } from "@/lib/lightCalibration";
 import { useLiveSessionWriter, type MasterDebugState } from "@/hooks/useLiveSession";
 import { getCurrentSection } from "@/lib/sectionLighting";
+import { getAutoSyncState } from "@/lib/autoSync";
 
 const Index = () => {
   const navigate = useNavigate();
