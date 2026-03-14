@@ -204,13 +204,25 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
       const isComplete = startedEarly && finishedLate;
 
       if (isComplete) {
+        // Post-process: mark kicks using global peak (top 15% of peak rawRms)
+        const globalPeak = prev.reduce((max, s) => Math.max(max, s.rawRms), 0);
+        if (globalPeak > 0) {
+          const kickThreshold = globalPeak * 0.85;
+          for (const s of prev) {
+            if (s.rawRms > kickThreshold) {
+              s.kick = true;
+              s.kickT = s.t;
+            }
+          }
+        }
         const agc: AgcState = {
           agcMin: agcMinRef.current,
           agcMax: agcMaxRef.current,
           agcPeakMax: agcPeakMaxRef.current,
           avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
         };
-        console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+        console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's',
+          'kicks:', prev.filter(s => s.kick).length, '/', prev.length);
         saveCurve(prev, volumeRef.current ?? null, agc, recordingTrack);
       } else {
         console.log(`[MicPanel] ✗ discarding incomplete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
