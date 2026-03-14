@@ -173,16 +173,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => { happinessRef.current = happiness; }, [happiness]);
   useEffect(() => { loudnessDbRef.current = parseLoudnessDb(loudness); }, [loudness]);
 
-  // When currentColor changes externally (new album art), snap blended + target
+  // When currentColor changes externally, update colorRef but DON'T snap blended
+  // (blended is driven by crossfade; snapping happens only on palette change)
   useEffect(() => {
     colorRef.current = currentColor;
-    targetColorRef.current = currentColor;
-    blendedColorRef.current = currentColor;
-    lastColorStateRef.current = 'normal';
-    agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
-    agcMinRef.current = 0;
-    samplesRef.current = [];
-    resetChartScaler();
   }, [currentColor]);
 
   // Sync palette ref and reset rotation when palette changes
