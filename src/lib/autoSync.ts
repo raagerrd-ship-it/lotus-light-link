@@ -155,6 +155,7 @@ export function reportLiveOnset(
   currentPosSec: number,
   curve: EnergySample[],
 ) {
+  if (_paused) return;
   const now = performance.now();
   if (now - _lastOnsetTime < MIN_ONSET_INTERVAL_MS) return;
 
