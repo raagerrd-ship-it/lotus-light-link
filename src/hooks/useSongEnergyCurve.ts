@@ -195,6 +195,42 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     }
   }, []);
 
+  const triggerAutoCalibration = useCallback(async () => {
+    try {
+      const { data: allSongs } = await supabase
+        .from("song_analysis")
+        .select("track_name, artist_name, energy_curve")
+        .not("energy_curve", "is", null);
+
+      const valid = (allSongs ?? []).filter(
+        (s: any) => Array.isArray(s.energy_curve) && s.energy_curve.length > 50,
+      );
+      if (valid.length === 0) return;
+
+      const inputs = valid.map((s: any) => ({
+        trackName: s.track_name,
+        artistName: s.artist_name,
+        energyCurve: s.energy_curve,
+      }));
+
+      const result = runMultiSongCalibration(inputs);
+      if (result.perSong.length === 0) return;
+
+      const cal = getCalibration();
+      const updated = {
+        ...cal,
+        attackAlpha: result.attackAlpha,
+        releaseAlpha: result.releaseAlpha,
+        dynamicDamping: result.dynamicDamping,
+      };
+      saveCalibration(updated, getActiveDeviceName() ?? undefined);
+      console.log('[AutoCalibrate] ✓ dynamics updated from', result.perSong.length, 'songs →',
+        'attack:', result.attackAlpha, 'release:', result.releaseAlpha, 'damping:', result.dynamicDamping);
+    } catch (e) {
+      console.error('[AutoCalibrate] error', e);
+    }
+  }, []);
+
   const saveCurve = useCallback(
     (
       samples: EnergySample[],
@@ -251,6 +287,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
               .then(() => {
                 console.log("[EnergyCurve] updated", targetTrack.trackName);
                 if (!cached?.sections) triggerSectionAnalysis(existing.id, key);
+                triggerAutoCalibration();
               });
           } else {
             supabase
@@ -269,11 +306,12 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
                   if (c) curveCache.set(key, { ...c, songId: inserted.id });
                   triggerSectionAnalysis(inserted.id, key);
                 }
+                triggerAutoCalibration();
               });
           }
         });
     },
-    [track, triggerSectionAnalysis],
+    [track, triggerSectionAnalysis, triggerAutoCalibration],
   );
 
   return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading, saveCurve };
