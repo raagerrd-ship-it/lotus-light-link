@@ -431,6 +431,9 @@ const Index = () => {
         curveTrackName={nowPlaying?.trackName ?? null}
         curveSamples={energyCurve?.length}
         deviceRole="master"
+        syncDiag={syncDiag}
+        onToggleSyncDiag={() => setSyncDiag(prev => !prev)}
+        syncOffsetMs={syncOffsetMs}
       />
     </div>
   );
