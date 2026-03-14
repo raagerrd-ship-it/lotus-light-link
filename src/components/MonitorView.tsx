@@ -304,7 +304,7 @@ export default function MonitorView() {
       {/* Song library */}
       <div className="flex-1">
         <button onClick={() => setShowSongs(p => !p)} className="w-full flex items-center justify-between px-4 py-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
-          <span>Inspelningar ({songs.length})</span>
+          <span>Inspelningar{totalCount != null ? ` (${totalCount})` : songs.length > 0 ? ` (${songs.length})` : ''}</span>
           {showSongs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         </button>
         {showSongs && (
@@ -312,7 +312,7 @@ export default function MonitorView() {
             {songs.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">Inga inspelningar ännu</p>
             ) : (
-              <SongList songs={songs} onDelete={handleDeleteSong} />
+              <SongList songs={songs} onDelete={handleDeleteSong} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} />
             )}
           </div>
         )}
