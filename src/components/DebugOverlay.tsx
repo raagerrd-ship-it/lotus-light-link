@@ -30,6 +30,9 @@ interface DebugOverlayProps {
   chainLatencyMs?: number;
   activeLookAheadMs?: number;
   syncMode?: 'curve' | 'mic';
+  syncDiag?: boolean;
+  onToggleSyncDiag?: () => void;
+  syncOffsetMs?: number | null;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -47,6 +50,7 @@ export default function DebugOverlay({
   bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
   curveStatus, curveTrackName, curveSamples, deviceRole,
   bleMinIntervalMs, bleLatencyMs, chainLatencyMs, activeLookAheadMs, syncMode,
+  syncDiag, onToggleSyncDiag, syncOffsetMs,
 }: DebugOverlayProps) {
   const [bleStats, setBleStats] = useState<BleWriteStats>({ writesPerSec: 0, droppedPerSec: 0, lastWriteMs: 0, queueAgeMs: 0, errorCount: 0, lastError: '' });
   const [pipeline, setPipeline] = useState<PipelineTimings>({ rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 });
@@ -133,6 +137,28 @@ export default function DebugOverlay({
       <div className="mt-0.5 border-t border-border/30 pt-0.5">
         <div>rms: <span className="text-foreground">{pipeline.rmsMs.toFixed(1)}ms</span> smooth: <span className="text-foreground">{pipeline.smoothMs.toFixed(1)}ms</span></div>
         <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
+      </div>
+
+      {/* Sync diag */}
+      <div className="mt-0.5 border-t border-border/30 pt-0.5">
+        <button
+          onClick={onToggleSyncDiag}
+          className="pointer-events-auto text-[10px] px-1.5 py-0.5 rounded border"
+          style={{
+            borderColor: syncDiag ? '#f97316' : 'hsl(var(--border) / 0.4)',
+            color: syncDiag ? '#f97316' : 'hsl(var(--foreground) / 0.5)',
+            background: syncDiag ? 'rgba(249,115,22,0.1)' : 'transparent',
+          }}
+        >
+          Sync diag {syncDiag ? 'ON' : 'off'}
+        </button>
+        {syncDiag && syncOffsetMs != null && (
+          <div className="mt-0.5">
+            Δt: <span className={Math.abs(syncOffsetMs) > 500 ? 'text-red-400' : 'text-green-400'}>
+              {syncOffsetMs >= 0 ? '+' : ''}{Math.round(syncOffsetMs)}ms
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Build info */}

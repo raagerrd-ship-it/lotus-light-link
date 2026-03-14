@@ -50,6 +50,8 @@ const Index = () => {
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
+  const [syncDiag, setSyncDiag] = useState(false);
+  const [syncOffsetMs, setSyncOffsetMs] = useState<number | null>(null);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -314,7 +316,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} durationMs={nowPlaying?.durationMs} getPosition={getPosition} energyCurve={energyCurve} brightnessCurve={brightnessCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} dynamicRange={dynamicRange} transitions={transitions} beatStrengths={beatStrengths} trackName={nowPlaying?.trackName ?? null} artistName={nowPlaying?.artistName ?? null} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} durationMs={nowPlaying?.durationMs} getPosition={getPosition} energyCurve={energyCurve} brightnessCurve={brightnessCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} dynamicRange={dynamicRange} transitions={transitions} beatStrengths={beatStrengths} trackName={nowPlaying?.trackName ?? null} artistName={nowPlaying?.artistName ?? null} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} syncDiag={syncDiag} onSyncOffset={setSyncOffsetMs} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
@@ -429,6 +431,9 @@ const Index = () => {
         curveTrackName={nowPlaying?.trackName ?? null}
         curveSamples={energyCurve?.length}
         deviceRole="master"
+        syncDiag={syncDiag}
+        onToggleSyncDiag={() => setSyncDiag(prev => !prev)}
+        syncOffsetMs={syncOffsetMs}
       />
     </div>
   );

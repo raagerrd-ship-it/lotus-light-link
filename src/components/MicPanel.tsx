@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { refineKicks } from "@/lib/kickRefine";
 import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
-import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
+import { drawIntensityChart, drawSyncChart, crossCorrelate, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
 import { getActiveDeviceName } from "@/lib/lightCalibration";
 import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
@@ -41,6 +41,8 @@ interface MicPanelProps {
   trackName?: string | null;
   artistName?: string | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
+  syncDiag?: boolean;
+  onSyncOffset?: (offsetMs: number) => void;
 }
 
 const HISTORY_LEN = 120;
@@ -128,7 +130,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, brightnessCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, brightnessCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus, syncDiag, onSyncOffset }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -188,7 +190,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const curveRollingPeakRef = useRef(0.01);
   const curveAllTimePeakRef = useRef(0.01);
   const sunRef = useRef<HTMLDivElement>(null);
-
+  const syncDiagRef = useRef(syncDiag ?? false);
+  const onSyncOffsetRef = useRef(onSyncOffset);
+  const micPctHistoryRef = useRef<number[]>([]);
+  const curvePctHistoryRef = useRef<number[]>([]);
+  const syncCorrelationTimerRef = useRef(0);
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { brightnessCurveRef.current = brightnessCurve; }, [brightnessCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
@@ -206,9 +212,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
   useEffect(() => { paletteRef.current = palette; }, [palette]);
-  useEffect(() => {
-    currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null;
-  }, [trackName, artistName]);
+  useEffect(() => { currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null; }, [trackName, artistName]);
+  useEffect(() => { syncDiagRef.current = syncDiag ?? false; }, [syncDiag]);
+  useEffect(() => { onSyncOffsetRef.current = onSyncOffset; }, [onSyncOffset]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
@@ -322,7 +328,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
-          drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
+          if (syncDiagRef.current && micPctHistoryRef.current.length > 1) {
+            drawSyncChart(canvas, micPctHistoryRef.current, curvePctHistoryRef.current, HISTORY_LEN);
+          } else {
+            drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
+          }
         }
       }
       // Animate sun — glow intensity + size driven by brightness pct
@@ -488,6 +498,38 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             }
             // Update bass ref for sun pulse
             bassRef.current = curveLo;
+
+            // ── Sync diag: run mic AGC in parallel to get comparable brightness ──
+            if (syncDiagRef.current) {
+              // Mic AGC pipeline (same as mic-mode but doesn't drive BLE)
+              const micPrev = smoothedRef.current;
+              const micAlpha = micRms > micPrev ? cal.attackAlpha : cal.releaseAlpha;
+              const micSmoothed = micPrev + micAlpha * (micRms - micPrev);
+              // Simple AGC normalization against running peak
+              if (micSmoothed > agcMaxRef.current * 0.5) {
+                // Use existing agc range for rough normalization
+                const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
+                const micNorm = Math.min(1, Math.max(0, (micSmoothed - agcMinRef.current) / range));
+                const micPct = Math.round(cal.minBrightness + micNorm * (cal.maxBrightness - cal.minBrightness));
+                micPctHistoryRef.current.push(micPct);
+              } else {
+                micPctHistoryRef.current.push(0);
+              }
+              curvePctHistoryRef.current.push(pct);
+              if (micPctHistoryRef.current.length > HISTORY_LEN) micPctHistoryRef.current.shift();
+              if (curvePctHistoryRef.current.length > HISTORY_LEN) curvePctHistoryRef.current.shift();
+
+              // Cross-correlate every ~1s (every 30 ticks at ~30fps)
+              syncCorrelationTimerRef.current++;
+              if (syncCorrelationTimerRef.current >= 30) {
+                syncCorrelationTimerRef.current = 0;
+                const shiftSamples = crossCorrelate(micPctHistoryRef.current, curvePctHistoryRef.current, 30);
+                // Convert samples to ms: each sample ≈ tick interval (~33ms at 30fps)
+                const tickIntervalMs = 33;
+                const offsetMs = shiftSamples * tickIntervalMs;
+                onSyncOffsetRef.current?.(offsetMs);
+              }
+            }
           } else {
             // ── Mic mode: read mic + full AGC pipeline ──
             an.getFloatTimeDomainData(buf);
