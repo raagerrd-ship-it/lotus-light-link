@@ -139,7 +139,7 @@ export function saveBleSpeedToCloud(deviceName: string, bleMinIntervalMs: number
     ble_min_interval_ms: bleMinIntervalMs,
     ble_speed_results: speedResults,
     calibration: getCalibration(),
-  });
+  }, true);
 }
 
 /** List all calibration entries for a device, newest first. */
