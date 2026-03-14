@@ -168,7 +168,7 @@ const Index = () => {
     let sectionType: string | undefined;
     if (sections && pos) {
       const elapsed = performance.now() - pos.receivedAt;
-      const sec = getCurrentSection(sections, (pos.positionMs + elapsed) / 1000);
+      const sec = getCurrentSection(sections, (pos.positionMs + elapsed + activeLookAheadMs) / 1000);
       sectionType = sec?.type;
     }
     updateLiveSession({
