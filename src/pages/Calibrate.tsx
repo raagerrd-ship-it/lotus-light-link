@@ -958,6 +958,11 @@ export default function Calibrate() {
           if (deviceName) saveLatencyToCloud(deviceName, latency);
         }} />}
 
+        {tab === 'chain' && <ChainSyncTab
+          currentChainLatencyMs={cal.chainLatencyMs}
+          onSave={(ms) => update({ chainLatencyMs: ms })}
+        />}
+
         {tab === 'songs' && <RecordedSongsTab />}
       </div>
 
