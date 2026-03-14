@@ -83,6 +83,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     if (!canvas || !data) return;
 
     const curve = data.energy_curve as EnergySample[] | null;
+    const bcurve = data.brightness_curve as BrightnessSample[] | null;
     const sections = data.sections as SongSection[] | null;
     const drops = data.drops as Drop[] | null;
 
