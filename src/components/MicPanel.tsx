@@ -161,6 +161,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const recordingTrackRef = useRef<{ trackName: string; artistName: string } | null>(null);
   const pipelineSumRef = useRef(0);
   const pipelineCountRef = useRef(0);
+  const paletteRef = useRef(palette);
+  const paletteColorIndexRef = useRef(0);
+  const lastSectionTypeRef = useRef<string | null>(null);
+  const strobeUntilRef = useRef(0);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
