@@ -698,7 +698,61 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[process-songs] processed ${processed} songs:`, results);
+    // ── Bake brightness curves ──
+    // Get calibration params (from latest device_calibration or defaults)
+    let bakeCal = { attackAlpha: 0.3, releaseAlpha: 0.05, dynamicDamping: 1.0, minBrightness: 3, maxBrightness: 100 };
+    try {
+      const { data: latestDevice } = await supabase
+        .from("device_calibration")
+        .select("calibration")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (latestDevice?.calibration) {
+        const dc = latestDevice.calibration as Record<string, unknown>;
+        bakeCal = {
+          attackAlpha: (dc.attackAlpha as number) ?? bakeCal.attackAlpha,
+          releaseAlpha: (dc.releaseAlpha as number) ?? bakeCal.releaseAlpha,
+          dynamicDamping: (dc.dynamicDamping as number) ?? bakeCal.dynamicDamping,
+          minBrightness: (dc.minBrightness as number) ?? bakeCal.minBrightness,
+          maxBrightness: (dc.maxBrightness as number) ?? bakeCal.maxBrightness,
+        };
+      }
+    } catch (_) { /* use defaults */ }
+
+    // Bake for all songs that have analysis but missing brightness_curve (or were just processed)
+    const { data: allForBake } = await supabase
+      .from("song_analysis")
+      .select("id, track_name, energy_curve, sections, beat_grid, drops, transitions, beat_strengths, dynamic_range, brightness_curve, bpm")
+      .not("energy_curve", "is", null);
+
+    let baked = 0;
+    for (const song of (allForBake ?? [])) {
+      const curve = song.energy_curve as unknown as EnergySample[];
+      if (!Array.isArray(curve) || curve.length < 50) continue;
+
+      // Skip if already baked and not just re-processed
+      if (song.brightness_curve && !results.includes(song.track_name)) continue;
+
+      // Need at least BPM to bake a decent curve
+      if (!song.bpm) continue;
+
+      const bc = computeBrightnessCurve(
+        curve,
+        song.sections as unknown as SongSection[] | null,
+        song.beat_grid as unknown as BeatGrid | null,
+        song.drops as unknown as Drop[] | null,
+        song.transitions as unknown as { time: number; type: string; crossfadeMs: number }[] | null,
+        song.beat_strengths as unknown as number[] | null,
+        song.dynamic_range as unknown as DynamicRange | null,
+        bakeCal,
+      );
+
+      await supabase.from("song_analysis").update({ brightness_curve: bc } as any).eq("id", song.id);
+      baked++;
+    }
+
+    console.log(`[process-songs] processed ${processed} songs, baked ${baked} brightness curves:`, results);
 
     return new Response(JSON.stringify({ processed, songs: results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
