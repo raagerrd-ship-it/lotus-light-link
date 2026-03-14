@@ -343,7 +343,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const bpmReleaseFactor = currentBpm && currentBpm > 0
             ? Math.max(0.3, Math.min(1.0, currentBpm / 160))
             : 0.7;
-          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity * bpmReleaseFactor);
+          const releaseA = Math.min(0.3, cal.releaseAlpha * reactivity * bpmReleaseFactor);
           const alpha = rms > prev ? attackA : releaseA;
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
