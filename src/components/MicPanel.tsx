@@ -718,10 +718,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         style={{ opacity: 0.6 }}
       />
       <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none transition-all duration-100"
+        ref={sunRef}
+        className="absolute left-1/2 top-1/2 rounded-full pointer-events-none"
         style={{
           width: 120,
           height: 120,
+          transform: 'translate(-50%, -50%) scale(1)',
+          willChange: 'transform, box-shadow, background',
           background: `radial-gradient(circle, rgba(${r},${g},${b},0.4) 0%, transparent 70%)`,
           boxShadow: `0 0 60px rgba(${r},${g},${b},0.3)`,
         }}
