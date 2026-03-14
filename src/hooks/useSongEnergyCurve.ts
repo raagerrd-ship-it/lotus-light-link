@@ -200,7 +200,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
           triggerSectionAnalysis(songId, key);
         }
       });
-  }, [track?.trackName, track?.artistName]);
+  }, [track?.trackName, track?.artistName, cacheVersion]);
 
   const triggerSectionAnalysis = useCallback(async (songId: string, key: string) => {
     try {
