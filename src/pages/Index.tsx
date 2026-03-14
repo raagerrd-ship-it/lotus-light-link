@@ -383,7 +383,7 @@ const Index = () => {
       {/* Debug overlay */}
       <DebugOverlay
         smoothedRtt={smoothedRtt}
-        autoDriftMs={0}
+        autoDriftMs={getAutoSyncState().driftMs}
         palette={palette}
         paletteIndex={paletteIndexRef.current}
         sonosVolume={nowPlaying?.volume}
