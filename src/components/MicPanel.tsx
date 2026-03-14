@@ -301,27 +301,29 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
           drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
         }
       }
-      // Animate sun with bass energy — glow is the main beat-reactive element
+      // Animate sun — glow intensity + size driven by brightness pct
       const sun = sunRef.current;
       if (sun) {
-        const bass = bassRef.current;
+        const b = brightPctRef.current / 100; // 0–1 normalized brightness
         const [cr, cg, cb] = colorRef.current;
         
-        // No scale — circle stays fixed, only glow pulses
-        const innerGlow = 20 + bass * 100;
-        const ringSpread = 4 + bass * 28;
-        const outerGlow = 40 + bass * 260;
-        const coreAlpha = 0.08 + bass * 0.35;
-        const ringAlpha = 0.15 + bass * 0.65;
-        const outerAlpha = 0.05 + bass * 0.35;
+        // Glow size and brightness scale with overall light output
+        const ringSpread = 2 + b * 40;
+        const outerGlow = 30 + b * 300;
+        const farGlow = 60 + b * 400;
+        const ringAlpha = 0.05 + b * 0.7;
+        const outerAlpha = 0.03 + b * 0.4;
+        const farAlpha = 0.01 + b * 0.2;
+        const bgCore = 0.08 + b * 0.35;
+        const bgMid = 0.02 + b * 0.15;
         
         sun.style.transform = 'scale(1)';
         sun.style.boxShadow = [
-          `0 0 ${innerGlow}px rgba(${cr},${cg},${cb},${coreAlpha})`,
           `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
           `0 0 ${outerGlow}px rgba(${cr},${cg},${cb},${outerAlpha})`,
+          `0 0 ${farGlow}px rgba(${cr},${cg},${cb},${farAlpha})`,
         ].join(', ');
-        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.18 + bass * 0.25}) 0%, rgba(${cr},${cg},${cb},${0.05 + bass * 0.1}) 55%, transparent 75%)`;
+        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${bgCore}) 0%, rgba(${cr},${cg},${cb},${bgMid}) 55%, transparent 78%)`;
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
