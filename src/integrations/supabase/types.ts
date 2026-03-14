@@ -147,11 +147,15 @@ export type Database = {
           brightness_curve: Json | null
           calibration_snapshot: Json | null
           created_at: string | null
+          danceability: number | null
           drops: Json | null
           dynamic_range: Json | null
+          energy: number | null
           energy_curve: Json | null
+          happiness: number | null
           id: string
           key: string | null
+          loudness: string | null
           recorded_volume: number | null
           sections: Json | null
           track_name: string
@@ -166,11 +170,15 @@ export type Database = {
           brightness_curve?: Json | null
           calibration_snapshot?: Json | null
           created_at?: string | null
+          danceability?: number | null
           drops?: Json | null
           dynamic_range?: Json | null
+          energy?: number | null
           energy_curve?: Json | null
+          happiness?: number | null
           id?: string
           key?: string | null
+          loudness?: string | null
           recorded_volume?: number | null
           sections?: Json | null
           track_name: string
@@ -185,11 +193,15 @@ export type Database = {
           brightness_curve?: Json | null
           calibration_snapshot?: Json | null
           created_at?: string | null
+          danceability?: number | null
           drops?: Json | null
           dynamic_range?: Json | null
+          energy?: number | null
           energy_curve?: Json | null
+          happiness?: number | null
           id?: string
           key?: string | null
+          loudness?: string | null
           recorded_volume?: number | null
           sections?: Json | null
           track_name?: string

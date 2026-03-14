@@ -54,7 +54,8 @@ const Index = () => {
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
   const { update: updateLiveSession } = useLiveSessionWriter();
-  const { bpm } = useBpm(nowPlaying?.trackName ?? null, nowPlaying?.artistName ?? null);
+  const trackTraits = useBpm(nowPlaying?.trackName ?? null, nowPlaying?.artistName ?? null);
+  const bpm = trackTraits.bpm;
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
@@ -276,7 +277,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} bpm={bpm} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} bpm={bpm} energy={trackTraits.energy} danceability={trackTraits.danceability} happiness={trackTraits.happiness} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
