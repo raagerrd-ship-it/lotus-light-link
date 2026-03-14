@@ -13,7 +13,30 @@ interface MicPanelProps {
   energy?: number | null;        // 0-100
   danceability?: number | null;  // 0-100
   happiness?: number | null;     // 0-100
+  loudness?: string | null;      // e.g. "-5 dB"
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => void;
+}
+
+/** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
+function parseLoudnessDb(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = s.match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+/**
+ * Convert loudness (LUFS/dB, typically -3 to -20) to an AGC scaling factor.
+ * Loud masters (-3 to -6 dB) → factor ~1.3-1.5 (expect higher RMS)
+ * Normal (-8 to -10 dB) → factor ~1.0
+ * Quiet (-14 to -20 dB) → factor ~0.5-0.7 (expect lower RMS)
+ */
+function loudnessToAgcFactor(db: number): number {
+  // Reference point: -9 dB is "normal" → factor 1.0
+  // Each dB above -9 adds ~6% to expected RMS
+  // Each dB below -9 reduces ~6%
+  const refDb = -9;
+  const diff = db - refDb; // positive = louder than ref
+  return Math.max(0.4, Math.min(2.0, 1.0 + diff * 0.06));
 }
 
 const HISTORY_LEN = 120;
