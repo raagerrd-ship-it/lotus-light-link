@@ -385,6 +385,9 @@ const Index = () => {
         bleLatencyMs={activeCalibration.bleLatencyMs}
         deviceRole="master"
         dropActive={dropActive}
+        energy={trackTraits.energy}
+        danceability={trackTraits.danceability}
+        happiness={trackTraits.happiness}
       />
     </div>
   );
