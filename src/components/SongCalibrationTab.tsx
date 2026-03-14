@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { runMultiSongCalibration, type SongInput, type MultiSongCalibrationResult } from "@/lib/autoCalibrate";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { useSongEnergyCurve } from "@/hooks/useSongEnergyCurve";
-import { interpolateSample, curvePeakRms } from "@/lib/energyInterpolate";
+import { interpolateSample } from "@/lib/energyInterpolate";
 import { getBleConnection } from "@/lib/bleStore";
 import { sendColorAndBrightness } from "@/lib/bledom";
 import { getCalibration, type LightCalibration } from "@/lib/lightCalibration";
@@ -27,11 +27,11 @@ interface RecordedSong {
 type FeedbackKey = 'slow' | 'flicker' | 'dark' | 'bright' | 'aggressive';
 
 const FEEDBACK_BUTTONS: { key: FeedbackKey; label: string; desc: string }[] = [
-  { key: 'slow', label: '⏳ För långsamt', desc: 'Ökar attack' },
-  { key: 'flicker', label: '⚡ Flimrar', desc: 'Sänker attack, höjer release' },
-  { key: 'dark', label: '🌑 Tysta delar för mörka', desc: 'Höjer minBrightness' },
-  { key: 'bright', label: '☀️ Tysta delar för ljusa', desc: 'Sänker minBrightness' },
-  { key: 'aggressive', label: '💥 För aggressivt', desc: 'Sänker attack + höjer release' },
+  { key: 'slow', label: '⏳ För långsamt', desc: 'Lampan reagerar för långsamt på beats' },
+  { key: 'flicker', label: '⚡ Flimrar', desc: 'Lampan flimrar/blinkar ojämnt' },
+  { key: 'dark', label: '🌑 Tysta delar för mörka', desc: 'Lampan är för mörk under lugna delar' },
+  { key: 'bright', label: '☀️ Tysta delar för ljusa', desc: 'Lampan är för ljus under lugna delar' },
+  { key: 'aggressive', label: '💥 För aggressivt', desc: 'Ljuset hoppar för mycket' },
 ];
 
 function applyFeedback(
@@ -67,6 +67,7 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
   const [calibResult, setCalibResult] = useState<MultiSongCalibrationResult | null>(null);
   const [running, setRunning] = useState(false);
   const [showPerSong, setShowPerSong] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   // Live params (adjusted by feedback)
   const [liveParams, setLiveParams] = useState({
@@ -96,6 +97,7 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
 
   const isPlaying = nowPlaying?.playbackState?.includes('PLAYING');
   const hasCurve = Array.isArray(curve) && curve.length > 10;
+  const chainMissing = cal.chainLatencyMs === 0;
 
   // Fetch recorded songs
   useEffect(() => {
@@ -114,8 +116,8 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
   const runCalibration = useCallback(() => {
     if (songs.length === 0) return;
     setRunning(true);
+    setSaved(false);
 
-    // Use requestIdleCallback to avoid blocking UI
     const run = () => {
       const inputs: SongInput[] = songs
         .filter(s => Array.isArray(s.energy_curve) && s.energy_curve.length > 50)
@@ -152,7 +154,6 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
 
     const loop = () => {
       if (!previewActiveRef.current) return;
-
       const conn = getBleConnection();
       const c = conn?.characteristic;
       const crv = curveRef.current;
@@ -166,23 +167,19 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
           const posSec = (pos.positionMs + elapsed + (calBase.chainLatencyMs || 0)) / 1000;
           const sample = interpolateSample(crv, posSec);
 
-          // Apply smoothing with live params
           const prev = smoothedRef.current;
           const alpha = sample.e > prev ? params.attackAlpha : params.releaseAlpha;
           const smoothed = prev + alpha * (sample.e - prev);
           smoothedRef.current = smoothed;
 
-          // Map to brightness
           const pct = Math.round(params.minBrightness + smoothed * (params.maxBrightness - params.minBrightness));
           const clampedPct = Math.max(0, Math.min(100, pct));
 
-          // Use current color with calibration
           const baseColor = [calBase.gammaR !== 1 ? 200 : 255, 150, 80] as [number, number, number];
           const calibrated = applyColorCalibration(...baseColor, calBase);
           sendColorAndBrightness(c, ...calibrated, clampedPct);
         }
       }
-
       rafRef.current = requestAnimationFrame(loop);
     };
 
@@ -192,6 +189,7 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
 
   const handleFeedback = useCallback((key: FeedbackKey) => {
     setLiveParams(prev => applyFeedback(prev, key));
+    setSaved(false);
   }, []);
 
   const handleSave = useCallback(() => {
@@ -202,6 +200,7 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
       maxBrightness: liveParams.maxBrightness,
       ...(calibResult?.dynamicDamping != null ? { dynamicDamping: calibResult.dynamicDamping } : {}),
     });
+    setSaved(true);
     setPreviewActive(false);
   }, [liveParams, calibResult, onSave]);
 
@@ -213,67 +212,87 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
         minBrightness: cal.minBrightness,
         maxBrightness: cal.maxBrightness,
       });
+      setSaved(false);
     }
   }, [calibResult, cal.minBrightness, cal.maxBrightness]);
 
   const validSongs = songs.filter(s => Array.isArray(s.energy_curve) && s.energy_curve.length > 50);
-
-  const chainMissing = cal.chainLatencyMs === 0;
+  const hasChanges = liveParams.attackAlpha !== cal.attackAlpha || liveParams.releaseAlpha !== cal.releaseAlpha ||
+    liveParams.minBrightness !== cal.minBrightness || liveParams.maxBrightness !== cal.maxBrightness;
 
   return (
     <div className="space-y-4">
+      {/* What this step does */}
+      <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2.5">
+        <p className="text-xs text-foreground/90 leading-relaxed">
+          <span className="font-bold">Vad händer?</span> Systemet analyserar alla inspelade låtars energikurvor 
+          och beräknar optimala parametrar för hur snabbt lampan ska reagera. Sedan kan du finjustera med 
+          live-preview och feedback.
+        </p>
+      </div>
+
+      {/* Chain latency warning */}
       {chainMissing && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md px-3 py-2">
-          <p className="text-[10px] text-yellow-400 font-bold">⚠ Kedjelatens ej kalibrerad</p>
-          <p className="text-[10px] text-yellow-400/80 mt-0.5">
-            Gå till <span className="font-bold">Kedja</span>-fliken och kalibrera kedjelatens först — annars blir live-preview ur synk med lampan.
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2.5">
+          <p className="text-xs text-yellow-400 font-bold">⚠ Kedjelatens ej kalibrerad</p>
+          <p className="text-[10px] text-yellow-400/80 mt-0.5 leading-relaxed">
+            Gå till <span className="font-bold">Steg 2 (Synk)</span> och kalibrera kedjelatens först — 
+            annars kommer live-preview inte vara i takt med lampan.
           </p>
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        Analyserar inspelade låtar och optimerar dynamikparametrar (attack, release, ljusstyrka). Spela en låt på Sonos för live-preview medan du justerar.
-      </p>
-
       {/* Step 1: Offline calibration */}
       <div className="space-y-2">
         <p className="text-[10px] font-bold text-foreground/70 uppercase tracking-wider">
-          Steg 1 — Analysera inspelade låtar
+          Steg A — Analysera inspelade låtar
         </p>
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          Beräknar bästa attack/release-parametrar baserat på alla låtars dynamik. Ju fler låtar, desto bättre.
+        </p>
+
         {loading ? (
-          <p className="text-xs text-muted-foreground">Laddar…</p>
+          <p className="text-xs text-muted-foreground">Laddar inspelade låtar…</p>
         ) : validSongs.length === 0 ? (
-          <p className="text-xs text-destructive">Inga inspelade låtar med energikurvor. Spela musik med mic aktiv först.</p>
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+            <p className="text-xs text-destructive font-medium">Inga inspelade låtar</p>
+            <p className="text-[10px] text-destructive/70 mt-0.5">
+              Gå tillbaka till huvudvyn och spela musik med mikrofonen aktiv. Energikurvan sparas automatiskt 
+              när hela låten har spelats.
+            </p>
+          </div>
         ) : (
           <div className="space-y-2">
             <p className="text-[10px] text-muted-foreground">
-              {validSongs.length} låt{validSongs.length !== 1 ? 'ar' : ''} med energikurvor
+              {validSongs.length} låt{validSongs.length !== 1 ? 'ar' : ''} redo att analyseras
             </p>
             <Button
               size="sm"
               onClick={runCalibration}
               disabled={running}
-              className="gap-1.5 text-xs"
+              className="gap-1.5 text-xs w-full"
             >
               {running ? (
-                <><RefreshCw className="w-3 h-3 animate-spin" /> Analyserar…</>
+                <><RefreshCw className="w-3 h-3 animate-spin" /> Analyserar {validSongs.length} låtar…</>
               ) : (
-                <><Play className="w-3 h-3" /> {calibResult ? 'Kör om' : 'Kör kalibrering'}</>
+                <><Play className="w-3.5 h-3.5" /> {calibResult ? 'Kör om analys' : 'Analysera alla låtar'}</>
               )}
             </Button>
           </div>
         )}
 
         {calibResult && (
-          <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2 space-y-1">
-            <p className="text-[10px] font-bold text-primary">Beräknade parametrar (median av {calibResult.perSong.length} låtar)</p>
+          <div className="bg-primary/10 border border-primary/20 rounded-lg px-3 py-2.5 space-y-1.5">
+            <p className="text-[10px] font-bold text-primary">
+              ✓ Beräknade parametrar (median av {calibResult.perSong.length} låtar)
+            </p>
             <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
               <div>
-                <span className="text-muted-foreground">Attack α</span>
+                <span className="text-muted-foreground">Attack</span>
                 <p className="text-foreground font-bold">{calibResult.attackAlpha}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Release α</span>
+                <span className="text-muted-foreground">Release</span>
                 <p className="text-foreground font-bold">{calibResult.releaseAlpha}</p>
               </div>
               <div>
@@ -287,7 +306,7 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
               className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 mt-1"
             >
               {showPerSong ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              Per-låt-resultat
+              Visa per-låt-resultat
             </button>
             {showPerSong && (
               <div className="space-y-0.5 mt-1">
@@ -295,7 +314,7 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
                   <div key={i} className="flex justify-between text-[10px] font-mono">
                     <span className="text-foreground/70 truncate flex-1 mr-2">{r.trackName}</span>
                     <span className="text-muted-foreground shrink-0">
-                      a:{r.attackAlpha} r:{r.releaseAlpha} corr:{r.correlation.toFixed(2)}
+                      a:{r.attackAlpha} r:{r.releaseAlpha}
                     </span>
                   </div>
                 ))}
@@ -309,7 +328,11 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
       {calibResult && (
         <div className="space-y-3 border-t border-border/20 pt-3">
           <p className="text-[10px] font-bold text-foreground/70 uppercase tracking-wider">
-            Steg 2 — Live-preview & feedback
+            Steg B — Live-preview & finjustering
+          </p>
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Spela en inspelad låt på Sonos och starta preview. Lampan drivs med de nya parametrarna. 
+            Tryck på feedback-knapparna för att finjustera tills du är nöjd.
           </p>
 
           {/* Current playing status */}
@@ -317,34 +340,32 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
             <span className={`w-1.5 h-1.5 rounded-full ${isPlaying && hasCurve ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
             <span className="text-muted-foreground">Sonos:</span>
             <span className={isPlaying ? 'text-foreground' : 'text-muted-foreground'}>
-              {nowPlaying?.trackName ?? 'Ingen låt'}
-              {isPlaying && !hasCurve && ' (ej inspelad)'}
+              {nowPlaying?.trackName ?? 'Ingen låt spelar'}
+              {isPlaying && !hasCurve && ' (ej inspelad — byt låt)'}
             </span>
           </div>
 
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={previewActive ? 'secondary' : 'default'}
-              onClick={() => {
-                setPreviewActive(!previewActive);
-                smoothedRef.current = 0;
-              }}
-              disabled={!isPlaying || !hasCurve}
-              className="gap-1.5 text-xs"
-            >
-              {previewActive ? '⏸ Stoppa preview' : '▶ Starta preview'}
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant={previewActive ? 'secondary' : 'default'}
+            onClick={() => {
+              setPreviewActive(!previewActive);
+              smoothedRef.current = 0;
+            }}
+            disabled={!isPlaying || !hasCurve || chainMissing}
+            className="gap-1.5 text-xs w-full"
+          >
+            {previewActive ? '⏸ Stoppa preview' : '▶ Starta live-preview'}
+          </Button>
 
           {!isPlaying && (
             <p className="text-[10px] text-muted-foreground">
-              Spela en inspelad låt på Sonos för att se effekten live.
+              Starta en inspelad låt på Sonos för att aktivera live-preview.
             </p>
           )}
 
           {/* Live params display */}
-          <div className="bg-secondary/50 border border-border/30 rounded-md px-3 py-2">
+          <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2">
             <p className="text-[10px] font-bold text-foreground/70 mb-1">Aktiva parametrar</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] font-mono">
               <div className="flex justify-between">
@@ -375,8 +396,8 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
           </div>
 
           {/* Feedback buttons */}
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-foreground/70">Vad ser du?</p>
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-foreground/70">Ser det inte bra ut? Tryck på det som stämmer:</p>
             <div className="flex flex-wrap gap-1.5">
               {FEEDBACK_BUTTONS.map(fb => (
                 <button
@@ -389,34 +410,59 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
                 </button>
               ))}
             </div>
+            <p className="text-[9px] text-muted-foreground/60">
+              Varje tryck justerar parametrarna direkt — du ser effekten live om preview är igång.
+            </p>
           </div>
 
           {/* Actions */}
           <div className="flex gap-2 pt-1">
-            <Button size="sm" onClick={handleSave} className="gap-1 text-xs">
-              <Check className="w-3 h-3" /> Spara
-            </Button>
-            <Button size="sm" variant="secondary" onClick={handleReset} className="gap-1 text-xs">
+            {saved ? (
+              <div className="bg-primary/15 border border-primary/30 rounded-lg px-3 py-2.5 flex items-center gap-2 flex-1">
+                <Check className="w-4 h-4 text-primary shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-primary">Sparat!</p>
+                  <p className="text-[10px] text-primary/70">Dynamikparametrarna är uppdaterade.</p>
+                </div>
+              </div>
+            ) : (
+              <Button size="sm" onClick={handleSave} className="gap-1 text-xs flex-1" disabled={!hasChanges && !calibResult}>
+                <Check className="w-3.5 h-3.5" /> Spara parametrar
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" onClick={handleReset} className="gap-1 text-xs" disabled={!calibResult}>
               <RefreshCw className="w-3 h-3" /> Återställ
             </Button>
           </div>
 
+          {saved && hasChanges && (
+            <Button size="sm" onClick={handleSave} className="gap-1 text-xs w-full">
+              <Check className="w-3.5 h-3.5" /> Spara nya ändringar
+            </Button>
+          )}
+
           {/* Comparison */}
-          {(liveParams.attackAlpha !== cal.attackAlpha || liveParams.releaseAlpha !== cal.releaseAlpha) && (
+          {hasChanges && !saved && (
             <div className="text-[10px] font-mono text-muted-foreground border-t border-border/20 pt-2 space-y-0.5">
-              <p className="font-bold text-foreground/70">Jämförelse</p>
-              <div className="flex justify-between">
-                <span>Attack α</span>
-                <span>{cal.attackAlpha.toFixed(2)} → <span className="text-primary">{liveParams.attackAlpha.toFixed(2)}</span></span>
-              </div>
-              <div className="flex justify-between">
-                <span>Release α</span>
-                <span>{cal.releaseAlpha.toFixed(3)} → <span className="text-primary">{liveParams.releaseAlpha.toFixed(3)}</span></span>
-              </div>
-              <div className="flex justify-between">
-                <span>Min ljus</span>
-                <span>{cal.minBrightness}% → <span className="text-primary">{liveParams.minBrightness}%</span></span>
-              </div>
+              <p className="font-bold text-foreground/70">Ändringar jämfört med sparade värden</p>
+              {liveParams.attackAlpha !== cal.attackAlpha && (
+                <div className="flex justify-between">
+                  <span>Attack α</span>
+                  <span>{cal.attackAlpha.toFixed(2)} → <span className="text-primary">{liveParams.attackAlpha.toFixed(2)}</span></span>
+                </div>
+              )}
+              {liveParams.releaseAlpha !== cal.releaseAlpha && (
+                <div className="flex justify-between">
+                  <span>Release α</span>
+                  <span>{cal.releaseAlpha.toFixed(3)} → <span className="text-primary">{liveParams.releaseAlpha.toFixed(3)}</span></span>
+                </div>
+              )}
+              {liveParams.minBrightness !== cal.minBrightness && (
+                <div className="flex justify-between">
+                  <span>Min ljus</span>
+                  <span>{cal.minBrightness}% → <span className="text-primary">{liveParams.minBrightness}%</span></span>
+                </div>
+              )}
             </div>
           )}
         </div>
