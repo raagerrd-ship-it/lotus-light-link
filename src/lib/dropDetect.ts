@@ -110,6 +110,14 @@ export function getBuildUpIntensity(drops: Drop[], timeSec: number): number {
       const total = drop.t - drop.buildStart;
       if (total <= 0) continue;
       const progress = (timeSec - drop.buildStart) / total;
+
+      // Use ramp regression for smoother exponential build if available
+      if (drop.rampR2 != null && drop.rampR2 > 0.4 && drop.rampSlope != null && drop.rampSlope > 0) {
+        // Exponential ramp: slow start, accelerating toward drop
+        const expProgress = Math.pow(progress, 1.5 + drop.rampR2);
+        return Math.min(1, expProgress * drop.intensity);
+      }
+
       return Math.min(1, progress * drop.intensity);
     }
   }
