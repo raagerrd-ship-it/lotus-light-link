@@ -52,6 +52,7 @@ const Index = () => {
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
   const [syncDiag, setSyncDiag] = useState(false);
   const [syncOffsetMs, setSyncOffsetMs] = useState<number | null>(null);
+  const [showLatencySlider, setShowLatencySlider] = useState(false);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
