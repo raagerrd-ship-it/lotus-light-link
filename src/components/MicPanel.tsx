@@ -444,7 +444,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           }
 
           const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
-          const normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
+          let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
+
+          // Apply dynamic damping (compress dynamics when > 1.0)
+          if (cal.dynamicDamping !== 1.0) {
+            normalized = Math.pow(normalized, cal.dynamicDamping);
+          }
 
           if (agcMaxRef.current > agcPeakMaxRef.current) {
             agcPeakMaxRef.current = agcMaxRef.current;
