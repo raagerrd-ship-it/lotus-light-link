@@ -324,11 +324,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const tickStart = performance.now();
           const cal = calRef.current;
 
-          // ── Live mic mode: read mic + full AGC pipeline ──
-          an.getFloatTimeDomainData(buf);
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-          const rms = Math.sqrt(sum / buf.length);
+          // ── Frequency bands (also computes RMS from freq domain) ──
+          const micBands = computeBands(an, freqBuf);
+          const rms = micBands.totalRms;
           const rmsEnd = performance.now();
 
           const prevAbsFactor = agcPeakMaxRef.current > 0
