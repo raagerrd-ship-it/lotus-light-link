@@ -400,17 +400,78 @@ function DualRangeSlider({ min, max, valueLow, valueHigh, onChangeLow, onChangeH
   );
 }
 
+function FadeDualSlider({ attackAlpha, releaseAlpha, onChangeAttack, onChangeRelease }: {
+  attackAlpha: number; releaseAlpha: number;
+  onChangeAttack: (v: number) => void; onChangeRelease: (v: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  // Both mapped to 0-100 where 0 = instant, 100 = slow
+  // attack: alpha 1.0 = instant (0), alpha 0.05 = slow (100)
+  // release: alpha 0.3 = instant (0), alpha 0.005 = slow (100)
+  const attackPct = Math.round(Math.max(0, Math.min(100, (1 - attackAlpha) / 0.95 * 100)));
+  const releasePct = Math.round(Math.max(0, Math.min(100, (releaseAlpha - 0.005) / 0.295 * 100)));
+
+  const handlePointer = useCallback((e: React.PointerEvent, which: 'attack' | 'release') => {
+    const track = trackRef.current;
+    if (!track) return;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+
+    const move = (ev: PointerEvent) => {
+      const rect = track.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(100, Math.round(((ev.clientX - rect.left) / rect.width) * 100)));
+      if (which === 'attack') {
+        onChangeAttack(1 - (pct / 100) * 0.95); // 0→1.0, 100→0.05
+      } else {
+        onChangeRelease(0.005 + (pct / 100) * 0.295); // 0→0.005, 100→0.3
+      }
+    };
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+  }, [onChangeAttack, onChangeRelease]);
+
+  return (
+    <div ref={trackRef} className="relative h-6 flex items-center select-none touch-none">
+      <div className="absolute inset-x-0 h-1 bg-secondary rounded-full" />
+      {/* Center tick = instant */}
+      <div className="absolute left-0 w-px h-3 bg-muted-foreground/40" style={{ left: '0%' }} />
+      {/* Attack thumb (▲) */}
+      <div
+        className="absolute w-4 h-4 rounded-full bg-green-500 border-2 border-background shadow-md cursor-grab -translate-x-1/2 z-10"
+        style={{ left: `${attackPct}%` }}
+        onPointerDown={e => handlePointer(e, 'attack')}
+        title="Fade upp"
+      />
+      {/* Release thumb (▼) */}
+      <div
+        className="absolute w-4 h-4 rounded-full bg-orange-500 border-2 border-background shadow-md cursor-grab -translate-x-1/2 z-10"
+        style={{ left: `${releasePct}%` }}
+        onPointerDown={e => handlePointer(e, 'release')}
+        title="Fade ner"
+      />
+    </div>
+  );
+}
+
 function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patch: Partial<LightCalibration>) => void }) {
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <div>
-          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Mjukhet uppåt: {Math.round((1 - cal.attackAlpha) * 100)}%</span><span className="text-muted-foreground">← Snabb → Mjuk</span></div>
-          <input type="range" min={0} max={100} value={Math.round((1 - cal.attackAlpha) * 100)} onChange={e => onSave({ attackAlpha: 1 - Number(e.target.value) / 100 })} className="w-full h-1 accent-primary" />
+          <div className="flex justify-between text-[10px]">
+            <span className="font-bold text-foreground/70">
+              Fade: <span className="text-green-400">↑{Math.round(cal.attackAlpha * 100)}%</span> · <span className="text-orange-400">↓{Math.round(cal.releaseAlpha * 1000)}‰</span>
+            </span>
+            <span className="text-muted-foreground">← Snabb → Lång</span>
+          </div>
+          <FadeDualSlider
+            attackAlpha={cal.attackAlpha}
+            releaseAlpha={cal.releaseAlpha}
+            onChangeAttack={v => onSave({ attackAlpha: v })}
+            onChangeRelease={v => onSave({ releaseAlpha: v })}
+          />
         </div>
-        <div>
-          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Fade-längd: {Math.round(cal.releaseAlpha * 1000)}‰</span><span className="text-muted-foreground">← Snabb → Lång</span></div>
-          <input type="range" min={5} max={300} value={Math.round(cal.releaseAlpha * 1000)} onChange={e => onSave({ releaseAlpha: Number(e.target.value) / 1000 })} className="w-full h-1 accent-primary" />
         </div>
         <div>
           <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Dynamik: {cal.dynamicDamping.toFixed(1)}x</span><span className="text-muted-foreground">← Boost (−) · + Jämn</span></div>
