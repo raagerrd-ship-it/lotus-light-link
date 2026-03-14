@@ -1,20 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { AgcState } from "@/lib/energyInterpolate";
+import type { AgcState, EnergySample } from "@/lib/energyInterpolate";
+import { curvePeakRms } from "@/lib/energyInterpolate";
 import { estimateBpmFromHistory, extractBeatGrid, type BeatGrid } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
 import { detectDrops, type Drop } from "@/lib/dropDetect";
 
-export interface EnergySample {
-  t: number;
-  e: number;
-  kick?: boolean;
-  kickT?: number;
-  lo?: number;
-  mid?: number;
-  hi?: number;
-  rtt?: number;
-}
+export type { EnergySample };
 
 interface TrackKey {
   trackName: string;
@@ -57,15 +49,17 @@ function cacheKey(t: TrackKey): string {
 
 function estimateBpm(curve: EnergySample[]): number | null {
   if (curve.length < 120) return null;
-  const history = curve.map(s => s.e);
+  const peak = curvePeakRms(curve);
+  const history = curve.map(s => peak > 0 ? s.rawRms / peak : 0);
   const result = estimateBpmFromHistory(history);
   return result ? Math.round(result.bpm) : null;
 }
 
 function buildBeatGrid(curve: EnergySample[], bpm: number): BeatGrid | null {
+  const peak = curvePeakRms(curve);
   return extractBeatGrid(
     curve.map(s => s.t),
-    curve.map(s => s.e),
+    curve.map(s => peak > 0 ? s.rawRms / peak : 0),
     bpm,
   );
 }

@@ -3,8 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface EnergySample {
   t: number;
-  e?: number;
-  rawRms?: number;
+  rawRms: number;
   kick?: boolean;
   lo?: number;
   mid?: number;
@@ -106,9 +105,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     const chartH = chartBottom - chartTop;
     const sectionBarH = 14;
     const sectionBarTop = chartBottom + 2;
-    // Use rawRms if available, fall back to e
-    const hasRaw = curve.some(s => s.rawRms != null && s.rawRms > 0);
-    const values = curve.map(s => hasRaw ? (s.rawRms ?? s.e) : s.e);
+    const values = curve.map(s => s.rawRms);
     const peakVal = Math.max(...values, 0.001);
 
     const tToX = (t: number) => (t / maxT) * w;
@@ -186,7 +183,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     for (const s of curve) {
       if (s.kick) {
         const x = tToX(s.t);
-        const y = valToY(hasRaw ? (s.rawRms ?? s.e) : s.e);
+        const y = valToY(s.rawRms);
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
         ctx.arc(x, y, 1.5, 0, Math.PI * 2);
