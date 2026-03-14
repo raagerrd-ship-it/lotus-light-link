@@ -34,186 +34,138 @@ const TABS: TabInfo[] = [
   { key: 'songs', label: 'Inspelningar', desc: 'Hantera inspelade låtar' },
 ];
 
-// BLE Perceptual Speed Test buffers
+// BLE Throughput Test — measures actual GATT write times at decreasing intervals
 
 const COLOR_BUF = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const BRIGHT_BUF = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
-
-const PULSE_DURATIONS = [30, 25, 20, 18, 15, 12, 10, 8, 6, 5, 4, 3, 2, 1];
-const PULSES_PER_STEP = 3;
-const PULSE_GAP_MS = 800;
-
-const BLE_CMD_GAP = 1; // ms between color and brightness commands
-async function bleWrite(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array) {
-  await char.writeValueWithoutResponse(buf as any);
-}
-async function bleColorThenBright(char: BluetoothRemoteGATTCharacteristic, brightness: number) {
-  await bleWrite(char, COLOR_BUF);
-  await new Promise(r => setTimeout(r, BLE_CMD_GAP));
-  BRIGHT_BUF[3] = brightness;
-  await bleWrite(char, BRIGHT_BUF);
-}
-
-// Color cycle: R → G → B
 const CYCLE_COLORS: [number, number, number][] = [[255, 0, 0], [0, 255, 0], [0, 0, 255]];
 
-type TestMode = 'brightness' | 'color' | 'combined';
+const TEST_INTERVALS = [100, 80, 60, 50, 40, 35, 30, 25, 20];
+const WRITES_PER_STEP = 10;
+const WARMUP_WRITES = 2; // ignore first N writes per step
 
-const MODE_LABELS: Record<TestMode, string> = {
-  brightness: 'Brightness 0↔100%',
-  color: 'Färgbyte R→G→B',
-  combined: 'Färg + Brightness',
-};
-
-const MODE_DESC: Record<TestMode, string> = {
-  brightness: 'Testar hur snabbt lampan kan växla brightness 0%↔100%. Lampan hålls på vit färg.',
-  color: 'Testar hur snabbt lampan kan byta färg (R→G→B) vid 100% brightness.',
-  combined: 'Testar färgbyte + brightness-växling samtidigt (R→G→B, 0%↔100%).',
-};
-
-async function sendPulseForMode(
-  char: BluetoothRemoteGATTCharacteristic,
-  mode: TestMode,
-  pulseIndex: number,
-  durationMs: number,
-) {
-  if (mode === 'brightness') {
-    COLOR_BUF[4] = 255; COLOR_BUF[5] = 255; COLOR_BUF[6] = 255;
-    await bleColorThenBright(char, 100);
-    await new Promise(r => setTimeout(r, durationMs));
-    await bleColorThenBright(char, 0);
-  } else if (mode === 'color') {
-    // Dark first, set color, then raise brightness
-    COLOR_BUF[4] = 0; COLOR_BUF[5] = 0; COLOR_BUF[6] = 0;
-    await bleColorThenBright(char, 0);
-    await new Promise(r => setTimeout(r, BLE_CMD_GAP));
-    const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
-    COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
-    await bleColorThenBright(char, 100);
-    await new Promise(r => setTimeout(r, durationMs));
-    await bleColorThenBright(char, 0);
-  } else {
-    // Combined: color + brightness
-    const [cr, cg, cb] = CYCLE_COLORS[pulseIndex % 3];
-    COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
-    await bleColorThenBright(char, 100);
-    await new Promise(r => setTimeout(r, durationMs));
-    await bleColorThenBright(char, 0);
-  }
+interface StepResult {
+  intervalMs: number;
+  meanMs: number;
+  maxMs: number;
+  stable: boolean;
+  writeTimes: number[];
 }
 
-interface PulseResult {
-  durationMs: number;
-  answer: 'all' | 'partial' | 'none';
-  mode: TestMode;
+async function bleWriteTimed(char: BluetoothRemoteGATTCharacteristic, buf: Uint8Array): Promise<number> {
+  const t0 = performance.now();
+  await char.writeValueWithoutResponse(buf as any);
+  return performance.now() - t0;
 }
 
-// Per-mode best result: the shortest duration where all 3 pulses were seen
-type ModeBests = Partial<Record<TestMode, number>>;
-
-function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: ModeBests) => void }) {
-  const [mode, setMode] = useState<TestMode>('brightness');
-  const [phase, setPhase] = useState<'idle' | 'waiting' | 'asking' | 'done'>('idle');
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [results, setResults] = useState<PulseResult[]>([]);
-  const [countdown, setCountdown] = useState(0);
-  const [modeBests, setModeBests] = useState<ModeBests>({});
+function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bestMs: number) => void }) {
+  const [phase, setPhase] = useState<'idle' | 'running' | 'done'>('idle');
+  const [stepResults, setStepResults] = useState<StepResult[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [optimalMs, setOptimalMs] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const abortRef = { current: false };
 
-  const currentDuration = PULSE_DURATIONS[currentIdx] ?? 0;
-  const testedModes = Object.keys(modeBests) as TestMode[];
-  const allThreeTested = testedModes.length === 3;
-  const worstBest = testedModes.length > 0 ? Math.max(...testedModes.map(m => modeBests[m]!)) : null;
-
-  const sendPulses = useCallback(async (durationMs: number, testMode: TestMode) => {
+  const runTest = useCallback(async () => {
     if (!conn?.characteristic) return;
     const char = conn.characteristic as BluetoothRemoteGATTCharacteristic;
-
-    BRIGHT_BUF[3] = 0;
-    await bleWrite(char, BRIGHT_BUF);
-    await new Promise(r => setTimeout(r, 600));
-
-    const delay = 1000 + Math.random() * 1000;
-    const steps = Math.ceil(delay / 1000);
-    for (let i = steps; i > 0; i--) {
-      setCountdown(i);
-      await new Promise(r => setTimeout(r, Math.min(1000, delay / steps)));
-    }
-    setCountdown(0);
-
-    for (let p = 0; p < PULSES_PER_STEP; p++) {
-      await sendPulseForMode(char, testMode, p, durationMs);
-      if (p < PULSES_PER_STEP - 1) {
-        await new Promise(r => setTimeout(r, PULSE_GAP_MS));
-      }
-    }
-  }, [conn]);
-
-  const startTest = useCallback(async () => {
-    setPhase('waiting');
-    setCurrentIdx(0);
-    setResults([]);
+    
+    setPhase('running');
+    setStepResults([]);
+    setOptimalMs(null);
     setSaved(false);
-    await sendPulses(PULSE_DURATIONS[0], mode);
-    setPhase('asking');
-  }, [sendPulses, mode]);
+    abortRef.current = false;
 
-  const answer = useCallback(async (ans: 'all' | 'partial' | 'none') => {
-    const duration = PULSE_DURATIONS[currentIdx];
-    const newResults = [...results, { durationMs: duration, answer: ans, mode }];
-    setResults(newResults);
+    // Start with lamp off
+    BRIGHT_BUF[3] = 0;
+    await char.writeValueWithoutResponse(BRIGHT_BUF as any);
+    await new Promise(r => setTimeout(r, 300));
 
-    if (ans !== 'all' || currentIdx >= PULSE_DURATIONS.length - 1) {
-      const lastAllForMode = [...newResults].reverse().find(r => r.answer === 'all' && r.mode === mode);
-      const bestMs = lastAllForMode?.durationMs ?? PULSE_DURATIONS[0];
-      const newBests = { ...modeBests, [mode]: bestMs };
-      setModeBests(newBests);
+    const results: StepResult[] = [];
+    let lastStableInterval = TEST_INTERVALS[0];
 
-      const testedValues = Object.values(newBests) as number[];
-      if (testedValues.length > 0) {
-        const worst = Math.max(...testedValues);
-        setBleMinInterval(worst);
-        // Don't auto-save to cloud — user will click explicit Save button
+    for (let si = 0; si < TEST_INTERVALS.length; si++) {
+      if (abortRef.current) break;
+      const interval = TEST_INTERVALS[si];
+      setCurrentStep(si);
+
+      const writeTimes: number[] = [];
+
+      for (let w = 0; w < WRITES_PER_STEP; w++) {
+        if (abortRef.current) break;
+
+        // Cycle colors for visual feedback
+        const [cr, cg, cb] = CYCLE_COLORS[w % 3];
+        COLOR_BUF[4] = cr; COLOR_BUF[5] = cg; COLOR_BUF[6] = cb;
+        BRIGHT_BUF[3] = 100;
+
+        // Write color + brightness, measure total time
+        const t0 = performance.now();
+        await char.writeValueWithoutResponse(COLOR_BUF as any);
+        await new Promise(r => setTimeout(r, 1));
+        await char.writeValueWithoutResponse(BRIGHT_BUF as any);
+        const elapsed = performance.now() - t0;
+
+        writeTimes.push(elapsed);
+
+        // Wait remainder of interval
+        const remaining = interval - elapsed;
+        if (remaining > 0) {
+          await new Promise(r => setTimeout(r, remaining));
+        }
       }
 
-      setPhase('done');
-      if (conn?.characteristic) {
-        BRIGHT_BUF[3] = 50;
-        try { await bleWrite(conn.characteristic, BRIGHT_BUF); } catch {}
+      // Analyze: skip warmup writes
+      const measured = writeTimes.slice(WARMUP_WRITES);
+      const mean = measured.reduce((a, b) => a + b, 0) / measured.length;
+      const max = Math.max(...measured);
+
+      // Stable if mean < 50% of interval AND max < 80% of interval
+      const stable = mean < interval * 0.5 && max < interval * 0.8;
+
+      const result: StepResult = {
+        intervalMs: interval,
+        meanMs: Math.round(mean * 10) / 10,
+        maxMs: Math.round(max * 10) / 10,
+        stable,
+        writeTimes: measured.map(t => Math.round(t * 10) / 10),
+      };
+
+      results.push(result);
+      setStepResults([...results]);
+
+      if (stable) {
+        lastStableInterval = interval;
+      } else {
+        // Found the limit — stop testing
+        break;
       }
-      return;
     }
 
-    const nextIdx = currentIdx + 1;
-    setCurrentIdx(nextIdx);
-    setPhase('waiting');
-    await sendPulses(PULSE_DURATIONS[nextIdx], mode);
-    setPhase('asking');
-  }, [currentIdx, results, sendPulses, conn, mode, modeBests]);
+    // Turn lamp to neutral after test
+    COLOR_BUF[4] = 255; COLOR_BUF[5] = 200; COLOR_BUF[6] = 100;
+    BRIGHT_BUF[3] = 50;
+    try {
+      await char.writeValueWithoutResponse(COLOR_BUF as any);
+      await new Promise(r => setTimeout(r, 2));
+      await char.writeValueWithoutResponse(BRIGHT_BUF as any);
+    } catch {}
 
-  const lastAll = [...results].reverse().find(r => r.answer === 'all');
-  const firstFail = results.find(r => r.answer !== 'all');
-  const firstFailType = firstFail?.answer;
-
-  const questionText = mode === 'color'
-    ? `Såg du ${PULSES_PER_STEP} tydliga färgbyten (R→G→B)?`
-    : mode === 'combined'
-    ? `Såg du ${PULSES_PER_STEP} tydliga färg+blinkar?`
-    : `Såg du ${PULSES_PER_STEP} tydliga blinkar?`;
-
-  const allModes: TestMode[] = ['brightness', 'color', 'combined'];
-  const nextUntested = allModes.find(m => !(m in modeBests));
+    setOptimalMs(lastStableInterval);
+    setBleMinInterval(lastStableInterval);
+    setPhase('done');
+  }, [conn]);
 
   return (
     <div className="space-y-4">
-      {/* What this step does */}
+      {/* Description */}
       <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2.5">
         <p className="text-xs text-foreground/90 leading-relaxed">
-          <span className="font-bold">Vad händer?</span> Lampan blinkar i allt snabbare takt. Du svarar om du ser blinkarna tydligt.
-          Resultatet avgör hur snabbt systemet kan skicka kommandon till lampan.
+          <span className="font-bold">Vad händer?</span> Systemet skickar färg + brightness-kommandon i allt snabbare takt och mäter
+          hur lång tid varje BLE-skrivning tar. När skrivtiderna börjar öka har lampans buffert nått sin gräns.
         </p>
         <p className="text-[10px] text-muted-foreground mt-1">
-          💡 Testa gärna alla tre lägen — det sämsta resultatet används som gräns.
+          💡 Lampan blinkar R→G→B under testet — du ser visuellt att den reagerar.
         </p>
       </div>
 
@@ -224,140 +176,94 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
         </div>
       )}
 
-      {/* Mode selector */}
-      <div>
-        <p className="text-[10px] font-bold text-foreground/70 mb-1.5">Välj testläge:</p>
-        <div className="flex gap-1 flex-wrap">
-          {allModes.map((m) => (
-            <button
-              key={m}
-              onClick={() => { if (phase === 'idle' || phase === 'done') setMode(m); }}
-              className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-colors ${
-                mode === m
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-secondary-foreground hover:bg-accent'
-              } ${phase !== 'idle' && phase !== 'done' ? 'opacity-50' : ''}`}
-            >
-              {MODE_LABELS[m]}
-              {m in modeBests && <span className="ml-1 opacity-70">✓ {modeBests[m]}ms</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <p className="text-xs text-muted-foreground">{MODE_DESC[mode]}</p>
-
-      {phase === 'idle' && conn && Object.keys(modeBests).length === 0 && (
-        <Button size="sm" onClick={startTest} className="gap-1.5 text-xs w-full">
-          <Play className="w-3.5 h-3.5" /> Skapa ny kalibrering — {MODE_LABELS[mode]}
-        </Button>
-      )}
-      {phase === 'idle' && conn && Object.keys(modeBests).length > 0 && (
-        <Button size="sm" onClick={startTest} className="gap-1.5 text-xs w-full" variant="secondary">
-          <Play className="w-3.5 h-3.5" /> Testa {MODE_LABELS[mode]}
+      {/* Start button */}
+      {phase === 'idle' && conn && (
+        <Button size="sm" onClick={runTest} className="gap-1.5 text-xs w-full">
+          <Play className="w-3.5 h-3.5" /> Starta genomströmningstest
         </Button>
       )}
 
-      {phase === 'waiting' && (
-        <div className="text-center py-8 bg-secondary/30 rounded-xl border border-border/20">
-          <p className="text-lg font-bold text-foreground/60 mb-1">
-            {countdown > 0 ? `${countdown}…` : '👀'}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {countdown > 0 ? 'Gör dig redo — titta på lampan!' : 'Titta på lampan nu!'}
-          </p>
-          <p className="text-[10px] text-muted-foreground/60 mt-2 font-mono">
-            {MODE_LABELS[mode]} — {PULSE_DURATIONS[currentIdx]}ms
-          </p>
-        </div>
-      )}
-
-      {phase === 'asking' && (
-        <div className="text-center py-5 space-y-3 bg-secondary/30 rounded-xl border border-border/20">
-          <p className="text-sm font-bold text-foreground">{questionText}</p>
-          <p className="text-[10px] text-muted-foreground">Pulslängd: {currentDuration}ms</p>
-          <div className="flex gap-2 justify-center flex-wrap px-4">
-            <Button size="sm" onClick={() => answer('all')} className="px-5 text-xs flex-1 max-w-[140px]">
-              ✓ Alla {PULSES_PER_STEP}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => answer('partial')} className="px-4 text-xs flex-1 max-w-[140px]">
-              ◐ Bara 1–2
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => answer('none')} className="px-4 text-xs flex-1 max-w-[140px]">
-              ✗ Ingen
-            </Button>
+      {/* Running — live progress */}
+      {phase === 'running' && (
+        <div className="space-y-3">
+          <div className="text-center py-4 bg-secondary/30 rounded-xl border border-border/20">
+            <p className="text-sm font-bold text-foreground/80">Testar…</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Intervall: <span className="font-mono font-bold text-primary">{TEST_INTERVALS[currentStep]}ms</span>
+              <span className="text-foreground/40 ml-2">({currentStep + 1}/{TEST_INTERVALS.length})</span>
+            </p>
+            {/* Progress bar */}
+            <div className="mx-auto mt-3 w-3/4 h-1.5 bg-secondary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all duration-300"
+                style={{ width: `${((currentStep + 1) / TEST_INTERVALS.length) * 100}%` }}
+              />
+            </div>
           </div>
         </div>
       )}
 
-      {phase === 'done' && (
+      {/* Live results table (during running + done) */}
+      {stepResults.length > 0 && (
+        <div className="border border-border/30 rounded-lg overflow-hidden">
+          <table className="w-full text-[10px] font-mono">
+            <thead>
+              <tr className="bg-secondary/50 text-foreground/70">
+                <th className="text-left px-2 py-1.5 font-bold">Intervall</th>
+                <th className="text-right px-2 py-1.5 font-bold">Medel</th>
+                <th className="text-right px-2 py-1.5 font-bold">Max</th>
+                <th className="text-center px-2 py-1.5 font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stepResults.map((r, i) => (
+                <tr key={i} className={`border-t border-border/10 ${r.stable ? '' : 'bg-destructive/5'}`}>
+                  <td className="px-2 py-1 text-foreground/80">{r.intervalMs}ms</td>
+                  <td className="px-2 py-1 text-right text-foreground/80">{r.meanMs}ms</td>
+                  <td className="px-2 py-1 text-right text-foreground/80">{r.maxMs}ms</td>
+                  <td className="px-2 py-1 text-center">
+                    {r.stable
+                      ? <span className="text-primary">✓</span>
+                      : <span className="text-destructive">✗</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Done — results */}
+      {phase === 'done' && optimalMs != null && (
         <div className="space-y-3">
           {saved && (
             <div className="bg-primary/15 border border-primary/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
               <Check className="w-4 h-4 text-primary shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-primary">Kalibrering sparad!</p>
-              </div>
+              <p className="text-xs font-bold text-primary">Kalibrering sparad!</p>
             </div>
           )}
 
-          <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2">
-            <p className="text-xs font-bold text-foreground">Resultat — {MODE_LABELS[mode]}</p>
-            {lastAll && firstFail ? (
-              <p className="text-xs text-foreground/80 mt-1">
-                Snabbaste synligt: <span className="font-mono font-bold text-primary">{lastAll.durationMs}ms</span>
-                <br />
-                <span className="text-muted-foreground">Missade vid {firstFail.durationMs}ms</span>
-                {firstFailType === 'partial' && <span className="text-yellow-400"> — lampan hänger kvar</span>}
-                {firstFailType === 'none' && <span className="text-destructive"> — ingen blink syntes</span>}
-              </p>
-            ) : lastAll ? (
-              <p className="text-xs text-foreground/80 mt-1">
-                Alla syntes! Minsta: <span className="font-mono font-bold text-primary">{lastAll.durationMs}ms</span>
-              </p>
-            ) : (
-              <p className="text-xs text-foreground/80 mt-1">Inga pulser syntes.</p>
-            )}
+          <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2.5">
+            <p className="text-xs font-bold text-foreground">Resultat</p>
+            <p className="text-sm text-foreground mt-1">
+              Optimalt intervall: <span className="font-mono font-bold text-primary">{optimalMs}ms</span>
+              <span className="text-muted-foreground ml-2 text-xs">({Math.round(1000 / optimalMs)} cmd/s)</span>
+            </p>
           </div>
 
-          {testedModes.length > 0 && (
-            <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2">
-              <p className="text-[10px] font-bold text-foreground/70 mb-1">Sammanfattning</p>
-              {allModes.map(m => (
-                <div key={m} className="text-[10px] font-mono flex justify-between py-0.5">
-                  <span className={m in modeBests ? 'text-foreground/80' : 'text-muted-foreground/50'}>
-                    {m in modeBests ? '✓' : '○'} {MODE_LABELS[m]}
-                  </span>
-                  <span className={m in modeBests ? 'text-foreground font-bold' : 'text-muted-foreground/50'}>
-                    {m in modeBests ? `${modeBests[m]}ms` : 'Ej testad'}
-                  </span>
-                </div>
-              ))}
-              <div className="border-t border-border/20 mt-1.5 pt-1.5 flex justify-between text-[10px] font-mono font-bold">
-                <span>Systemets gräns</span>
-                <span className="text-primary">{worstBest}ms</span>
-              </div>
-              {!allThreeTested && <p className="text-[10px] text-yellow-400 mt-1.5">💡 Testa alla tre för säkraste resultat</p>}
-              {allThreeTested && !saved && <p className="text-[10px] text-primary mt-1.5">✓ Alla lägen testade! Tryck Spara nedan.</p>}
-            </div>
-          )}
-
           <div className="flex gap-2">
-            {nextUntested ? (
-              <Button size="sm" onClick={() => { setMode(nextUntested); setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs gap-1 flex-1">
-                Testa {MODE_LABELS[nextUntested]} →
-              </Button>
-            ) : !saved ? (
-              <Button size="sm" onClick={() => { onSpeedSave?.(modeBests); setSaved(true); }} className="text-xs gap-1 flex-1">
+            {!saved ? (
+              <Button size="sm" onClick={() => { onSpeedSave?.(optimalMs); setSaved(true); }} className="text-xs gap-1 flex-1">
                 <Check className="w-3.5 h-3.5" /> Spara kalibrering
               </Button>
             ) : (
-              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); setModeBests({}); setSaved(false); }} className="text-xs flex-1">
+              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setStepResults([]); setOptimalMs(null); setSaved(false); }} className="text-xs flex-1">
                 <RefreshCw className="w-3 h-3 mr-1" /> Ny kalibrering
               </Button>
             )}
-            {nextUntested && (
-              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs">
+            {!saved && (
+              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setStepResults([]); }} className="text-xs">
                 Kör om
               </Button>
             )}
@@ -673,11 +579,10 @@ export default function Calibrate() {
       </div>
 
       <div className="space-y-1">
-        {tab === 'ble' && <BleSpeedTab conn={conn} onSpeedSave={(bests) => {
+        {tab === 'ble' && <BleSpeedTab conn={conn} onSpeedSave={(bestMs) => {
           const deviceName = conn?.device?.name;
           if (deviceName) {
-            const worst = Math.max(...(Object.values(bests) as number[]));
-            saveBleSpeedToCloud(deviceName, worst, bests as Record<string, number>);
+            saveBleSpeedToCloud(deviceName, bestMs, { combined: bestMs });
           }
         }} />}
 
