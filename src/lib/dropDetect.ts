@@ -61,10 +61,14 @@ export function detectDrops(curve: EnergySample[]): Drop[] {
       if (lastDrop && (t - lastDrop.t) < minDropGap) {
         // Keep the stronger one
         if (riseRatio > lastDrop.intensity * riseFactor) {
+          const bsT = curve[Math.max(0, i - windowCount)].t;
+          const ramp = computeRamp(curve, bsT, t);
           drops[drops.length - 1] = {
             t,
             intensity: Math.min(1, (riseRatio - riseFactor) / riseFactor),
-            buildStart: curve[Math.max(0, i - windowCount)].t,
+            buildStart: bsT,
+            rampSlope: ramp.slope,
+            rampR2: ramp.r2,
           };
         }
         continue;
