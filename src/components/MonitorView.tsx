@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLiveSessionMonitor, type MasterDebugState } from "@/hooks/useLiveSession";
 import { supabase } from "@/integrations/supabase/client";
 import { Wifi, WifiOff, ChevronDown, ChevronUp, Music, Trash2 } from "lucide-react";
@@ -52,8 +52,26 @@ function DebugPanel({ d }: { d: MasterDebugState }) {
   );
 }
 
-function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: string, name: string) => void }) {
+function SongList({ songs, onDelete, onLoadMore, hasMore, loadingMore }: {
+  songs: SongRecord[];
+  onDelete: (id: string, name: string) => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  loadingMore: boolean;
+}) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) onLoadMore(); },
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore]);
 
   return (
     <div className="space-y-1">
@@ -93,6 +111,11 @@ function SongList({ songs, onDelete }: { songs: SongRecord[]; onDelete: (id: str
           )}
         </div>
       ))}
+      {hasMore && (
+        <div ref={sentinelRef} className="flex justify-center py-3">
+          {loadingMore && <span className="text-[10px] text-muted-foreground">Laddar…</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -121,38 +144,65 @@ const SECTION_LABELS: Record<string, string> = {
   build_up: 'Build-up', break: 'Break', outro: 'Outro',
 };
 
+const PAGE_SIZE = 30;
+
 export default function MonitorView() {
   const session = useLiveSessionMonitor();
   const [songs, setSongs] = useState<SongRecord[]>([]);
   const [showSongs, setShowSongs] = useState(true);
   const [showDebug, setShowDebug] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const loadingRef = useRef(false);
 
-  // Fetch song list
+  const mapRows = (data: any[]): SongRecord[] =>
+    data.map((d: any) => ({
+      id: d.id,
+      track_name: d.track_name,
+      artist_name: d.artist_name,
+      bpm: d.bpm,
+      created_at: d.created_at,
+      has_sections: !!d.sections,
+      has_drops: !!d.drops,
+    }));
+
+  // Initial fetch + periodic refresh of first page
   useEffect(() => {
-    const fetchSongs = () => {
-      supabase
+    const fetchFirst = async () => {
+      const { data, count } = await supabase
         .from("song_analysis")
-        .select("id, track_name, artist_name, bpm, created_at, sections, drops")
+        .select("id, track_name, artist_name, bpm, created_at, sections, drops", { count: 'exact' })
         .order("created_at", { ascending: false })
-        .limit(500)
-        .then(({ data }) => {
-          if (data) {
-            setSongs(data.map((d: any) => ({
-              id: d.id,
-              track_name: d.track_name,
-              artist_name: d.artist_name,
-              bpm: d.bpm,
-              created_at: d.created_at,
-              has_sections: !!d.sections,
-              has_drops: !!d.drops,
-            })));
-          }
-        });
+        .range(0, PAGE_SIZE - 1);
+      if (data) {
+        setSongs(mapRows(data));
+        setHasMore(data.length >= PAGE_SIZE);
+        if (count != null) setTotalCount(count);
+      }
     };
-    fetchSongs();
-    const id = setInterval(fetchSongs, 10000); // refresh every 10s
+    fetchFirst();
+    const id = setInterval(fetchFirst, 15000);
     return () => clearInterval(id);
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingRef.current || !hasMore) return;
+    loadingRef.current = true;
+    setLoadingMore(true);
+    const from = songs.length;
+    const { data } = await supabase
+      .from("song_analysis")
+      .select("id, track_name, artist_name, bpm, created_at, sections, drops")
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (data) {
+      setSongs(prev => [...prev, ...mapRows(data)]);
+      setHasMore(data.length >= PAGE_SIZE);
+    }
+    setLoadingMore(false);
+    loadingRef.current = false;
+  }, [songs.length, hasMore]);
 
   const handleDeleteSong = async (songId: string, name: string) => {
     if (!confirm(`Ta bort inspelningen "${name}"?\nDen spelas in igen nästa gång låten körs.`)) return;
@@ -254,7 +304,7 @@ export default function MonitorView() {
       {/* Song library */}
       <div className="flex-1">
         <button onClick={() => setShowSongs(p => !p)} className="w-full flex items-center justify-between px-4 py-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
-          <span>Inspelningar ({songs.length})</span>
+          <span>Inspelningar{totalCount != null ? ` (${totalCount})` : songs.length > 0 ? ` (${songs.length})` : ''}</span>
           {showSongs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         </button>
         {showSongs && (
@@ -262,7 +312,7 @@ export default function MonitorView() {
             {songs.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">Inga inspelningar ännu</p>
             ) : (
-              <SongList songs={songs} onDelete={handleDeleteSong} />
+              <SongList songs={songs} onDelete={handleDeleteSong} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} />
             )}
           </div>
         )}
