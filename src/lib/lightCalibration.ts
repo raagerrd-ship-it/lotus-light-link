@@ -77,10 +77,12 @@ export function getCalibration(): LightCalibration {
   }
 }
 
-/** Save to localStorage + update latest cloud row (fire-and-forget). 
- *  Set createNewEntry=true for explicit calibration actions (BLE speed, latency tap). */
-export function saveCalibration(cal: LightCalibration, deviceName?: string, createNewEntry = false): void {
+/** Save to localStorage + optionally to cloud.
+ *  localOnly=true skips cloud (used for frequent AGC saves).
+ *  createNewEntry=true creates a new cloud row (explicit calibration actions). */
+export function saveCalibration(cal: LightCalibration, deviceName?: string, { localOnly = false, createNewEntry = false } = {}): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
+  if (localOnly) return;
   const name = deviceName ?? getActiveDeviceName();
   if (name) {
     _upsertCloud(name, { calibration: cal }, createNewEntry);
