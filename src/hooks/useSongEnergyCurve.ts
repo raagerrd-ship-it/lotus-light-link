@@ -195,7 +195,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     }
   }, []);
 
-  const triggerAutoCalibration = useCallback(async () => {
+  const triggerAutoCalibration = async () => {
     try {
       const { data: allSongs } = await supabase
         .from("song_analysis")
@@ -229,7 +229,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     } catch (e) {
       console.error('[AutoCalibrate] error', e);
     }
-  }, []);
+  };
 
   const saveCurve = useCallback(
     (
