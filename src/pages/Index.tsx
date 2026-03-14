@@ -10,7 +10,7 @@ import {
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
-import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor } from "lucide-react";
+import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor, Timer } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import MonitorView from "@/components/MonitorView";
 import DebugOverlay from "@/components/DebugOverlay";
@@ -52,6 +52,7 @@ const Index = () => {
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
   const [syncDiag, setSyncDiag] = useState(false);
   const [syncOffsetMs, setSyncOffsetMs] = useState<number | null>(null);
+  const [showLatencySlider, setShowLatencySlider] = useState(false);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -384,6 +385,11 @@ const Index = () => {
                 >
                   {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </Button>
+                {hasCurve && (
+                  <Button variant="ghost" size="icon" onClick={() => setShowLatencySlider(p => !p)} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={showLatencySlider ? { color: accent } : undefined}>
+                    <Timer className="w-3.5 h-3.5" />
+                  </Button>
+                )}
                 <Button variant="ghost" size="icon" onClick={() => navigate('/calibrate')} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
                   <Settings className="w-3.5 h-3.5" />
                 </Button>
@@ -392,6 +398,44 @@ const Index = () => {
                 </Button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Chain latency slider — visible when curve mode is active */}
+      {showLatencySlider && hasCurve && connection && showOverlay && (
+        <div
+          className="absolute top-[calc(max(0.5rem,env(safe-area-inset-top))+2.5rem)] left-0 right-0 z-20 px-4 py-2 backdrop-blur-lg border-b border-white/5 animate-fade-in"
+          style={{ background: 'hsl(var(--background) / 0.5)' }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap w-16">
+              Fördröj {activeCalibration.chainLatencyMs}ms
+            </span>
+            <input
+              type="range"
+              min={-200}
+              max={800}
+              step={5}
+              value={activeCalibration.chainLatencyMs}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                const next = { ...activeCalibration, chainLatencyMs: val };
+                setActiveCalibration(next);
+                saveCalibration(next, undefined, { localOnly: true });
+              }}
+              onPointerUp={() => {
+                saveCalibration(activeCalibration);
+              }}
+              className="flex-1 h-1 accent-current"
+              style={{ accentColor: accent }}
+            />
+            <button
+              onClick={() => setShowLatencySlider(false)}
+              className="text-[10px] text-muted-foreground active:scale-90 transition-transform"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}
