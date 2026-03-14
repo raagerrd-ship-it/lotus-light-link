@@ -39,7 +39,32 @@ export function estimateBpmFromHistory(
   }
 
   if (bestCorr > 0.15) {
-    return { bpm: (60 * 60) / bestLag, confidence: bestCorr };
+    let bpm = (60 * 60) / bestLag;
+
+    // BPM halving: if > 160, check if half-tempo lag has comparable correlation
+    if (bpm > 160) {
+      const halfLag = bestLag * 2;
+      if (halfLag < len - 1) {
+        let hCorr = 0, hN1 = 0, hN2 = 0;
+        const hn = len - halfLag;
+        for (let i = 0; i < hn; i++) {
+          const a = history[i] - mean;
+          const b = history[i + halfLag] - mean;
+          hCorr += a * b;
+          hN1 += a * a;
+          hN2 += b * b;
+        }
+        const hDenom = Math.sqrt(hN1 * hN2);
+        if (hDenom > 0) hCorr /= hDenom;
+
+        // Use half-tempo if correlation is at least 70% as good
+        if (hCorr > bestCorr * 0.7) {
+          bpm = bpm / 2;
+        }
+      }
+    }
+
+    return { bpm, confidence: bestCorr };
   }
   return null;
 }
