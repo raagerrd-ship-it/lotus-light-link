@@ -1,66 +1,18 @@
 import { useEffect, useRef } from "react";
-import { refineKicks } from "@/lib/kickRefine";
 import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
-import { drawIntensityChart, drawSyncChart, crossCorrelate, type ChartSample, resetChartScaler } from "@/lib/drawChart";
-import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
-import { getActiveDeviceName } from "@/lib/lightCalibration";
-import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
-import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
-import { getSectionLighting, beatPulse, getCurrentBeatStrength, getTransitionParams, getCurrentSection, type SongSection } from "@/lib/sectionLighting";
-import type { DynamicRange, Transition } from "@/lib/songAnalysis";
-import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
-import { beatGridPhase, type BeatGrid } from "@/lib/bpmEstimate";
-import { reportLiveOnset, tickAutoSync, getAutoSyncDriftMs, resetAutoSync } from "@/lib/autoSync";
+import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
+import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
   palette?: [number, number, number][];
   sonosVolume?: number;
-  sonosRtt?: number;
   isPlaying?: boolean;
-  durationMs?: number | null;
-  getPosition?: () => { positionMs: number; receivedAt: number } | null;
-  energyCurve?: EnergySample[] | null;
-  brightnessCurve?: { t: number; b: number }[] | null;
-  onSaveEnergyCurve?: (
-    samples: EnergySample[],
-    volume: number | null,
-    agcState?: AgcState | null,
-    trackOverride?: { trackName: string; artistName: string } | null,
-  ) => void;
-  recordedVolume?: number | null;
-  savedAgcState?: AgcState | null;
-  bpm?: number | null;
-  beatGrid?: BeatGrid | null;
-  sections?: SongSection[] | null;
-  drops?: Drop[] | null;
-  dynamicRange?: DynamicRange | null;
-  transitions?: Transition[] | null;
-  beatStrengths?: number[] | null;
-  trackName?: string | null;
-  artistName?: string | null;
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
-  syncDiag?: boolean;
-  onSyncOffset?: (offsetMs: number) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean }) => void;
 }
 
 const HISTORY_LEN = 120;
-
-/** Binary-search interpolation of pre-baked brightness curve */
-function interpolateBrightness(bc: { t: number; b: number }[], t: number): number {
-  if (bc.length === 0) return 0;
-  if (t <= bc[0].t) return bc[0].b;
-  if (t >= bc[bc.length - 1].t) return bc[bc.length - 1].b;
-  let lo = 0, hi = bc.length - 1;
-  while (lo < hi - 1) {
-    const mid = (lo + hi) >> 1;
-    if (bc[mid].t <= t) lo = mid; else hi = mid;
-  }
-  const prev = bc[lo], next = bc[hi];
-  const frac = (t - prev.t) / (next.t - prev.t);
-  return Math.round(prev.b + (next.b - prev.b) * frac);
-}
 
 // Learned AGC
 const AGC_MAX_DECAY = 0.995;
@@ -69,11 +21,7 @@ const AGC_ATTACK = 0.1;
 const AGC_FLOOR = 0.002;
 const PEAK_MAX_DECAY = 0.9998;
 
-const CURVE_RECORD_INTERVAL_MS = 100;
-
-// FFT band boundaries (bin indices for 512-point FFT at 48kHz)
-// Each bin = sampleRate / fftSize ≈ 93.75 Hz
-// Low: 0-300 Hz → bins 0-3, Mid: 300-2000 Hz → bins 3-21, Hi: 2000+ Hz → bins 21+
+// FFT band boundaries
 function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer>): { lo: number; mid: number; hi: number } {
   analyser.getFloatFrequencyData(freqData);
   const sampleRate = analyser.context.sampleRate;
@@ -86,7 +34,6 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   let loCount = 0, midCount = 0, hiCount = 0;
 
   for (let i = 0; i < bins; i++) {
-    // Convert from dB to linear power
     const power = Math.pow(10, freqData[i] / 10);
     if (i < loCut) { loSum += power; loCount++; }
     else if (i < midCut) { midSum += power; midCount++; }
@@ -97,7 +44,6 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   const midAvg = midCount > 0 ? Math.sqrt(midSum / midCount) : 0;
   const hiAvg = hiCount > 0 ? Math.sqrt(hiSum / hiCount) : 0;
 
-  // Normalize: scale so max across bands ≈ 1
   const maxBand = Math.max(loAvg, midAvg, hiAvg, 0.0001);
   return {
     lo: Math.min(1, loAvg / maxBand),
@@ -106,23 +52,16 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   };
 }
 
-/**
- * Modulate color based on frequency bands.
- * High lo → warmer (shift toward red/orange)
- * High hi → cooler/whiter (shift toward white)
- */
 function modulateColor(
   baseR: number, baseG: number, baseB: number,
-  lo: number, mid: number, hi: number,
+  lo: number, _mid: number, hi: number,
   strength: number = 0.3
 ): [number, number, number] {
-  // hi-band: blend toward white
   const whiteBlend = hi * strength * 0.5;
   let r = baseR + (255 - baseR) * whiteBlend;
   let g = baseG + (255 - baseG) * whiteBlend;
   let b = baseB + (255 - baseB) * whiteBlend;
 
-  // lo-band: warm shift (boost red, reduce blue)
   const warmBlend = lo * strength * 0.4;
   r = Math.min(255, r + (255 - r) * warmBlend);
   b = Math.max(0, b - b * warmBlend * 0.5);
@@ -130,7 +69,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, brightnessCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus, syncDiag, onSyncOffset }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -144,7 +83,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
-  const lastBaseColorRef = useRef<[number, number, number]>(currentColor);
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
   const initCal = calRef.current;
@@ -153,156 +91,22 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const lastVolumeRef = useRef(sonosVolume);
   const agcSaveTimerRef = useRef(0);
   const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
-
-  // Energy curve refs
-  const energyCurveRef = useRef(energyCurve);
-  const brightnessCurveRef = useRef(brightnessCurve);
-  const getPositionRef = useRef(getPosition);
-  const recordedSamplesRef = useRef<EnergySample[]>([]);
-  const lastRecordTimeRef = useRef(0);
-  const onSaveCurveRef = useRef(onSaveEnergyCurve);
-  const recordedVolumeRef = useRef(recordedVolume);
-  const savedAgcStateRef = useRef(savedAgcState);
-  const bpmRef = useRef(bpm);
-  const beatGridRef = useRef(beatGrid);
-  const sectionsRef = useRef(sections);
-  const dropsRef = useRef(drops);
-  const dynamicRangeRef = useRef(dynamicRange);
-  const transitionsRef = useRef(transitions);
-  const beatStrengthsRef = useRef(beatStrengths);
-  const sonosRttRef = useRef(sonosRtt);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
-  const durationMsRef = useRef(durationMs);
-  const recordingStartPosRef = useRef<number | null>(null); // position when recording started
-  const recordingDurationMsRef = useRef<number | null>(null);
-  const currentTrackRef = useRef<{ trackName: string; artistName: string } | null>(null);
-  const recordingTrackRef = useRef<{ trackName: string; artistName: string } | null>(null);
-  const pipelineSumRef = useRef(0);
-  const pipelineCountRef = useRef(0);
-  const paletteRef = useRef(palette);
-  const paletteColorIndexRef = useRef(0);
-  const lastSectionTypeRef = useRef<string | null>(null);
-  const strobeUntilRef = useRef(0);
   const bassRef = useRef(0);
   const brightPctRef = useRef(0);
-  const curveSmoothedRef = useRef(0);
-  const curveRollingPeakRef = useRef(0.01);
-  const curveAllTimePeakRef = useRef(0.01);
   const sunRef = useRef<HTMLDivElement>(null);
-  const syncDiagRef = useRef(syncDiag ?? false);
-  const onSyncOffsetRef = useRef(onSyncOffset);
-  const micPctHistoryRef = useRef<number[]>([]);
-  const curvePctHistoryRef = useRef<number[]>([]);
-  const syncCorrelationTimerRef = useRef(0);
-  // Dedicated AGC state for sync diag mic pipeline (doesn't interfere with main AGC)
-  const syncAgcMaxRef = useRef(0.01);
-  const syncAgcMinRef = useRef(0);
-  const syncAgcPeakMaxRef = useRef(0.01);
-  const syncSmoothedRef = useRef(0);
-  useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
-  useEffect(() => { brightnessCurveRef.current = brightnessCurve; }, [brightnessCurve]);
-  useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
-  useEffect(() => { onSaveCurveRef.current = onSaveEnergyCurve; }, [onSaveEnergyCurve]);
-  useEffect(() => { recordedVolumeRef.current = recordedVolume; }, [recordedVolume]);
-  useEffect(() => { savedAgcStateRef.current = savedAgcState; }, [savedAgcState]);
-  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
-  useEffect(() => { beatGridRef.current = beatGrid; }, [beatGrid]);
-  useEffect(() => { sectionsRef.current = sections; }, [sections]);
-  useEffect(() => { dropsRef.current = drops; }, [drops]);
-  useEffect(() => { dynamicRangeRef.current = dynamicRange; }, [dynamicRange]);
-  useEffect(() => { transitionsRef.current = transitions; }, [transitions]);
-  useEffect(() => { beatStrengthsRef.current = beatStrengths; }, [beatStrengths]);
-  useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
+
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
-  useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
-  useEffect(() => { paletteRef.current = palette; }, [palette]);
-  useEffect(() => { currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null; }, [trackName, artistName]);
-  useEffect(() => { syncDiagRef.current = syncDiag ?? false; }, [syncDiag]);
-  useEffect(() => { onSyncOffsetRef.current = onSyncOffset; }, [onSyncOffset]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  // Restore AGC from saved state when curve loads
-  useEffect(() => {
-    if (savedAgcState) {
-      agcMaxRef.current = savedAgcState.agcMax;
-      agcMinRef.current = savedAgcState.agcMin;
-      agcPeakMaxRef.current = savedAgcState.agcPeakMax;
-      console.log('[MicPanel] restored AGC from saved state', savedAgcState);
-    }
-  }, [savedAgcState]);
-
-  const touchRecordingContext = () => {
-    const dur = durationMsRef.current;
-    if (typeof dur === 'number' && dur > 0) {
-      recordingDurationMsRef.current = Math.max(recordingDurationMsRef.current ?? 0, dur);
-    }
-    if (!recordingTrackRef.current && currentTrackRef.current) {
-      recordingTrackRef.current = currentTrackRef.current;
-    }
-  };
-
-  const flushRecordedSamples = (reason: 'track-change' | 'playback-stop' | 'unmount') => {
-    const prev = recordedSamplesRef.current;
-    const saveCurve = onSaveCurveRef.current;
-    const recordingTrack = recordingTrackRef.current;
-    if (prev.length > 10 && saveCurve) {
-      const dur = recordingDurationMsRef.current ?? durationMsRef.current;
-      const firstT = prev[0].t;
-      const lastT = prev[prev.length - 1].t;
-      const durationSec = dur ? dur / 1000 : 0;
-      // Complete = started within first 15s AND reached last 15s of song
-      const startedEarly = firstT < 15;
-      const finishedLate = durationSec > 0 && lastT > (durationSec - 15);
-      const isComplete = startedEarly && finishedLate;
-
-      if (isComplete) {
-        // Post-process: refine kicks with contrast filtering, debouncing & beat-snap
-        refineKicks(prev, beatGridRef.current);
-        const agc: AgcState = {
-          agcMin: agcMinRef.current,
-          agcMax: agcMaxRef.current,
-          agcPeakMax: agcPeakMaxRef.current,
-          avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
-        };
-        console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's',
-          'kicks:', prev.filter(s => s.kick).length, '/', prev.length);
-        saveCurve(prev, volumeRef.current ?? null, agc, recordingTrack);
-      } else {
-        console.log(`[MicPanel] ✗ discarding incomplete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
-      }
-    }
-    recordedSamplesRef.current = [];
-    recordingStartPosRef.current = null;
-    recordingDurationMsRef.current = null;
-    recordingTrackRef.current = null;
-    lastRecordTimeRef.current = 0;
-  };
-
-  // Flush on playback stop (not just on track-name changes)
-  useEffect(() => {
-    const wasPlaying = isPlayingRef.current;
-    isPlayingRef.current = isPlaying;
-    if (wasPlaying && !isPlaying) {
-      flushRecordedSamples('playback-stop');
-    }
-  }, [isPlaying]);
-
-  // Flush recorded samples on track change
-  useEffect(() => {
-    flushRecordedSamples('track-change');
-  }, [trackName, artistName]);
   useEffect(() => {
     colorRef.current = currentColor;
-    lastBaseColorRef.current = currentColor;
     lastColorStateRef.current = 'normal';
     agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
     agcMinRef.current = 0;
     samplesRef.current = [];
-    curveSmoothedRef.current = 0;
-    curveRollingPeakRef.current = 0.01;
-    curveAllTimePeakRef.current = 0.01;
     resetChartScaler();
-    resetAutoSync();
   }, [currentColor]);
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
@@ -333,20 +137,14 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
-          if (syncDiagRef.current && micPctHistoryRef.current.length > 1) {
-            drawSyncChart(canvas, micPctHistoryRef.current, curvePctHistoryRef.current, HISTORY_LEN);
-          } else {
-            drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
-          }
+          drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
         }
       }
-      // Animate sun — glow intensity + size driven by brightness pct
+      // Animate sun
       const sun = sunRef.current;
       if (sun) {
-        const b = brightPctRef.current / 100; // 0–1 normalized brightness
+        const b = brightPctRef.current / 100;
         const [cr, cg, cb] = colorRef.current;
-        
-        // Glow size and brightness scale with overall light output
         const ringSpread = 4 + b * 80;
         const outerGlow = 50 + b * 700;
         const farGlow = 100 + b * 900;
@@ -355,7 +153,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         const farAlpha = 0.02 + b * 0.3;
         const bgCore = 0.08 + b * 0.35;
         const bgMid = 0.02 + b * 0.15;
-        
+
         sun.style.transform = 'scale(1)';
         sun.style.boxShadow = [
           `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
@@ -370,32 +168,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
     return () => cancelAnimationFrame(rafIdRef.current);
   }, []);
 
-  const getSongPositionSec = (): number | null => {
-    const gp = getPositionRef.current;
-    if (!gp) return null;
-    const pos = gp();
-    if (!pos) return null;
-    const elapsed = performance.now() - pos.receivedAt;
-    const cal = calRef.current;
-    const hasCurve = Array.isArray(energyCurveRef.current) && energyCurveRef.current.length > 10;
-    // In curve mode: add chainLatencyMs as look-ahead + autoSync drift
-    // In mic mode: add bleLatencyMs only (mic already hears the delayed audio)
-    const lookAheadMs = hasCurve ? cal.chainLatencyMs : cal.bleLatencyMs;
-    const driftMs = hasCurve ? getAutoSyncDriftMs() : 0;
-    return (pos.positionMs + elapsed + lookAheadMs + driftMs) / 1000;
-  };
-
   useEffect(() => {
     let stopped = false;
 
     const init = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          }
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
         });
         if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
@@ -423,341 +202,81 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
 
         worker.onmessage = () => {
           if (stopped) return;
-          if (!isPlayingRef.current) return; // Don't process when paused
+          if (!isPlayingRef.current) return;
           const an = analyserRef.current;
           if (!an) return;
 
           const tickStart = performance.now();
           const cal = calRef.current;
-          const curve = energyCurveRef.current;
-          const hasCurve = Array.isArray(curve) && curve.length > 10;
 
-          let rms: number = 0;
-          let rmsEnd: number;
-          let curveKick = false;
-          let curveLo = 0, curveMid = 0, curveHi = 0;
-          let pct: number;
+          // ── Live mic mode: read mic + full AGC pipeline ──
+          an.getFloatTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+          const rms = Math.sqrt(sum / buf.length);
+          const rmsEnd = performance.now();
 
-          if (hasCurve) {
-            // ── Curve mode: deterministic brightness, mic only for sync ──
-            const posSec = getSongPositionSec();
-            rmsEnd = performance.now();
+          const prevAbsFactor = agcPeakMaxRef.current > 0
+            ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current) : 1;
+          const reactivity = 1 + (1 - prevAbsFactor) * 2;
+          const prev = smoothedRef.current;
+          const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
+          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
+          const alpha = rms > prev ? attackA : releaseA;
+          const smoothed = prev + alpha * (rms - prev);
+          smoothedRef.current = smoothed;
 
-            // Read mic solely for auto-sync beat correlation
-            an.getFloatTimeDomainData(buf);
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-            const micRms = Math.sqrt(sum / buf.length);
+          // Learned AGC
+          const vol = volumeRef.current;
+          const prevVol = lastVolumeRef.current;
+          if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
+            agcMaxRef.current = smoothed + 0.01;
+            agcMinRef.current = smoothed;
+            lastVolumeRef.current = vol;
+          } else if (prevVol == null && vol != null) {
+            lastVolumeRef.current = vol;
+          }
 
-            if (posSec != null) {
-              reportLiveOnset(micRms, smoothedRef.current, posSec, curve!);
-            }
-            tickAutoSync();
-            // Keep smoothedRef updated for onset baseline
-            smoothedRef.current = micRms;
-
-            // Brightness from pre-baked curve or fallback to raw curve
-            const bc = brightnessCurveRef.current;
-            const hasBaked = Array.isArray(bc) && bc.length > 10;
-
-            if (hasBaked && posSec != null) {
-              // ── Pre-baked brightness: zero processing, just lookup ──
-              pct = interpolateBrightness(bc!, posSec);
-              // Still read frequency bands for color modulation
-              const sample = interpolateSample(curve!, posSec);
-              curveKick = hasKickNear(curve!, posSec);
-              curveLo = sample.lo ?? 0;
-              curveMid = sample.mid ?? 0;
-              curveHi = sample.hi ?? 0;
-            } else if (posSec != null) {
-              // ── Fallback: raw curve with EMA smoothing (pre-bake not ready yet) ──
-              const sample = interpolateSample(curve!, posSec);
-              let normalized = sample.e;
-              curveKick = hasKickNear(curve!, posSec);
-              curveLo = sample.lo ?? 0;
-              curveMid = sample.mid ?? 0;
-              curveHi = sample.hi ?? 0;
-
-              // Volume compensation
-              const recVol = recordedVolumeRef.current;
-              const curVol = volumeRef.current;
-              if (recVol != null && recVol > 0 && curVol != null && curVol > 0) {
-                normalized *= (curVol / recVol);
-                normalized = Math.min(1, normalized);
-              }
-
-              // EMA smoothing
-              const prevSmooth = curveSmoothedRef.current;
-              const curveAlpha = normalized > prevSmooth ? cal.attackAlpha : cal.releaseAlpha;
-              curveSmoothedRef.current += curveAlpha * (normalized - prevSmooth);
-              normalized = curveSmoothedRef.current;
-
-              // Dynamic damping
-              if (cal.dynamicDamping !== 1.0) {
-                normalized = Math.pow(normalized, cal.dynamicDamping);
-              }
-
-              pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
-            } else {
-              pct = 0;
-            }
-            // Update bass ref for sun pulse
-            bassRef.current = curveLo;
-
-            // ── Sync diag: run FULL mic AGC in parallel to get comparable brightness ──
-            if (syncDiagRef.current) {
-              // Full AGC pipeline — identical to mic-mode (lines 534-590)
-              const sPrev = syncSmoothedRef.current;
-              const sPrevAbsFactor = syncAgcPeakMaxRef.current > 0
-                ? Math.min(1, syncAgcMaxRef.current / syncAgcPeakMaxRef.current) : 1;
-              const sReactivity = 1 + (1 - sPrevAbsFactor) * 2;
-              const sAttackA = Math.min(0.9, cal.attackAlpha * sReactivity);
-              const sReleaseA = Math.min(0.5, cal.releaseAlpha * sReactivity);
-              const sAlpha = micRms > sPrev ? sAttackA : sReleaseA;
-              const sSmoothed = sPrev + sAlpha * (micRms - sPrev);
-              syncSmoothedRef.current = sSmoothed;
-
-              // Learned AGC tracking
-              if (sSmoothed > syncAgcMaxRef.current) {
-                syncAgcMaxRef.current += (sSmoothed - syncAgcMaxRef.current) * AGC_ATTACK;
-              } else {
-                syncAgcMaxRef.current *= AGC_MAX_DECAY;
-              }
-              if (sSmoothed < syncAgcMinRef.current || syncAgcMinRef.current === 0) {
-                syncAgcMinRef.current = sSmoothed;
-              } else {
-                syncAgcMinRef.current += (sSmoothed - syncAgcMinRef.current) * (1 - AGC_MIN_RISE);
-              }
-
-              const sRange = Math.max(AGC_FLOOR, syncAgcMaxRef.current - syncAgcMinRef.current);
-              let sNorm = Math.min(1, Math.max(0, (sSmoothed - syncAgcMinRef.current) / sRange));
-              if (cal.dynamicDamping !== 1.0) sNorm = Math.pow(sNorm, cal.dynamicDamping);
-
-              if (syncAgcMaxRef.current > syncAgcPeakMaxRef.current) {
-                syncAgcPeakMaxRef.current = syncAgcMaxRef.current;
-              } else {
-                syncAgcPeakMaxRef.current *= PEAK_MAX_DECAY;
-              }
-
-              const sAbsFactor = Math.min(1, Math.max(0.08, syncAgcMaxRef.current / syncAgcPeakMaxRef.current));
-              const sEffMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * sAbsFactor;
-              const micPct = Math.round(cal.minBrightness + sNorm * (sEffMax - cal.minBrightness));
-
-              micPctHistoryRef.current.push(micPct);
-              curvePctHistoryRef.current.push(pct);
-              if (micPctHistoryRef.current.length > HISTORY_LEN) micPctHistoryRef.current.shift();
-              if (curvePctHistoryRef.current.length > HISTORY_LEN) curvePctHistoryRef.current.shift();
-
-              // Cross-correlate every ~1s
-              syncCorrelationTimerRef.current++;
-              if (syncCorrelationTimerRef.current >= 30) {
-                syncCorrelationTimerRef.current = 0;
-                const shiftSamples = crossCorrelate(micPctHistoryRef.current, curvePctHistoryRef.current, 30);
-                const tickIntervalMs = 33;
-                const offsetMs = shiftSamples * tickIntervalMs;
-                onSyncOffsetRef.current?.(offsetMs);
-              }
-            }
+          if (smoothed > agcMaxRef.current) {
+            agcMaxRef.current += (smoothed - agcMaxRef.current) * AGC_ATTACK;
           } else {
-            // ── Mic mode: read mic + full AGC pipeline ──
-            an.getFloatTimeDomainData(buf);
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-            rms = Math.sqrt(sum / buf.length);
-            rmsEnd = performance.now();
-
-            const prevAbsFactor = agcPeakMaxRef.current > 0
-              ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current)
-              : 1;
-            const reactivity = 1 + (1 - prevAbsFactor) * 2;
-            const prev = smoothedRef.current;
-            const attackA = Math.min(0.9, cal.attackAlpha * reactivity);
-            const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
-            const alpha = rms > prev ? attackA : releaseA;
-            const smoothed = prev + alpha * (rms - prev);
-            smoothedRef.current = smoothed;
-
-            // Learned AGC
-            const vol = volumeRef.current;
-            const prevVol = lastVolumeRef.current;
-            if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
-              agcMaxRef.current = smoothed + 0.01;
-              agcMinRef.current = smoothed;
-              lastVolumeRef.current = vol;
-            } else if (prevVol == null && vol != null) {
-              lastVolumeRef.current = vol;
-            }
-
-            if (smoothed > agcMaxRef.current) {
-              agcMaxRef.current += (smoothed - agcMaxRef.current) * AGC_ATTACK;
-            } else {
-              agcMaxRef.current *= AGC_MAX_DECAY;
-            }
-
-            if (smoothed < agcMinRef.current || agcMinRef.current === 0) {
-              agcMinRef.current = smoothed;
-            } else {
-              agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
-            }
-
-            const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
-            let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
-
-            if (cal.dynamicDamping !== 1.0) {
-              normalized = Math.pow(normalized, cal.dynamicDamping);
-            }
-
-            if (agcMaxRef.current > agcPeakMaxRef.current) {
-              agcPeakMaxRef.current = agcMaxRef.current;
-            } else {
-              agcPeakMaxRef.current *= PEAK_MAX_DECAY;
-            }
-
-            const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
-            const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-            pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
-            // Update bass ref for sun pulse (compute bands from mic)
-            const micBands = computeBands(an, freqBuf);
-            bassRef.current = micBands.lo;
+            agcMaxRef.current *= AGC_MAX_DECAY;
           }
 
-          // Section-aware adjustments — concert effects only for analyzed songs
-          const posSec2 = getSongPositionSec();
-          const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0, dynamicRangeRef.current);
-
-          if (hasCurve) {
-            const hasBakedBrightness = Array.isArray(brightnessCurveRef.current) && brightnessCurveRef.current.length > 10;
-
-            if (!hasBakedBrightness) {
-              // ── Fallback: apply section dynamics manually (pre-bake not ready) ──
-              pct = Math.round(pct * sectionParams.brightnessScale);
-
-              // Blackout before drops
-              const currentDrops2 = dropsRef.current;
-              const buildUp2 = currentDrops2 && posSec2 != null ? getBuildUpIntensity(currentDrops2, posSec2) : 0;
-              if (buildUp2 > 0.9) {
-                const blackoutProgress = (buildUp2 - 0.9) / 0.1;
-                pct = Math.round(pct * (1 - blackoutProgress * 0.85));
-              }
-
-              // Beat-synced pulse
-              const currentBpm = bpmRef.current;
-              const grid = beatGridRef.current;
-              if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
-                const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
-                const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
-                const pulse = beatPulse(posSec2, currentBpm, bs);
-                const pulseBoost = pulse * sectionParams.beatPulseStrength * 30;
-                pct = Math.min(100, Math.round(pct + pulseBoost));
-
-                if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
-                  strobeUntilRef.current = performance.now() + 40;
-                }
-              }
-
-              // Hard transition flash
-              const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
-              if (transParams.active && transParams.type === 'hard') {
-                if (transParams.progress < 0.15) {
-                  pct = Math.min(100, pct + 30);
-                  strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
-                }
-              }
-            } else {
-              // ── Pre-baked: only strobe effects (brightness already includes everything) ──
-              const currentBpm = bpmRef.current;
-              const grid = beatGridRef.current;
-              if (currentBpm && currentBpm > 0 && posSec2 != null) {
-                const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
-                if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
-                  strobeUntilRef.current = performance.now() + 40;
-                }
-              }
-              const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
-              if (transParams.active && transParams.type === 'hard' && transParams.progress < 0.15) {
-                strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
-              }
-            }
-
-            // ── Palette rotation on section changes (always active) ──
-            const currentSections = sectionsRef.current;
-            if (currentSections && posSec2 != null) {
-              const curSection = getCurrentSection(currentSections, posSec2);
-              const curType = curSection?.type ?? null;
-              if (curType && curType !== lastSectionTypeRef.current) {
-                lastSectionTypeRef.current = curType;
-                const pal = paletteRef.current;
-                if (pal && pal.length > 1) {
-                  paletteColorIndexRef.current = (paletteColorIndexRef.current + 1) % pal.length;
-                  colorRef.current = pal[paletteColorIndexRef.current];
-                }
-              }
-            }
+          if (smoothed < agcMinRef.current || agcMinRef.current === 0) {
+            agcMinRef.current = smoothed;
           } else {
-            // ── Mic-mode: subtle beat pulse only (×15) ──
-            const currentBpm = bpmRef.current;
-            const grid = beatGridRef.current;
-            if (currentBpm && currentBpm > 0 && posSec2 != null) {
-              const pulse = beatPulse(posSec2, currentBpm);
-              const pulseBoost = pulse * 15;
-              pct = Math.min(100, Math.round(pct + pulseBoost));
-            }
+            agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
           }
 
-          // Track pipeline latency
-          const tickTotal = performance.now() - tickStart;
-          pipelineSumRef.current += tickTotal;
-          pipelineCountRef.current++;
+          const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
+          let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
 
-          // Record energy sample for first-listen curve
-          if (!hasCurve) {
-            const posSec = getSongPositionSec();
-            if (posSec != null) {
-              const now = performance.now();
-              const lastRec = recordedSamplesRef.current;
-              const lastT = lastRec.length > 0 ? lastRec[lastRec.length - 1].t : -1;
-              if (posSec - lastT >= CURVE_RECORD_INTERVAL_MS / 1000) {
-                lastRecordTimeRef.current = now;
-                // Compute frequency bands
-                const bands = computeBands(an, freqBuf);
-                // Don't mark kicks during recording — they'll be computed post-recording with global peak
-                touchRecordingContext();
-                recordedSamplesRef.current.push({
-                  t: posSec,
-                  rawRms: rms,
-                  lo: bands.lo,
-                  mid: bands.mid,
-                  hi: bands.hi,
-                });
-              }
-            }
+          if (cal.dynamicDamping !== 1.0) {
+            normalized = Math.pow(normalized, cal.dynamicDamping);
           }
 
-          // White kick & strobe logic
+          if (agcMaxRef.current > agcPeakMaxRef.current) {
+            agcPeakMaxRef.current = agcMaxRef.current;
+          } else {
+            agcPeakMaxRef.current *= PEAK_MAX_DECAY;
+          }
+
+          const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
+          const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+          const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
+
+          // Frequency bands for color modulation
+          const micBands = computeBands(an, freqBuf);
+          bassRef.current = micBands.lo;
+
+          // White kick logic
           const now = performance.now();
           const inWhiteKick = now < whiteKickUntilRef.current;
-          const inStrobe = now < strobeUntilRef.current;
-          const currentDrops = dropsRef.current;
-          const inDropZone = currentDrops && posSec2 != null ? isInDrop(currentDrops, posSec2) : false;
-          const buildUp = currentDrops && posSec2 != null ? getBuildUpIntensity(currentDrops, posSec2) : 0;
-
-          // During build-up (before blackout zone): gradually increase brightness
-          if (buildUp > 0 && buildUp <= 0.9) {
-            pct = Math.min(100, Math.round(pct + buildUp * 20));
+          if (pct > cal.whiteKickThreshold && !inWhiteKick) {
+            whiteKickUntilRef.current = now + cal.whiteKickMs;
           }
-
-          if (hasCurve) {
-            const effectiveKickEnabled = inDropZone || sectionParams.kickEnabled;
-            if (curveKick && !inWhiteKick && effectiveKickEnabled) {
-              whiteKickUntilRef.current = now + (inDropZone ? cal.whiteKickMs * 0.7 : cal.whiteKickMs);
-            }
-          } else {
-            const effectiveThreshold = inDropZone ? Math.min(sectionParams.kickThreshold, 88) : sectionParams.kickThreshold;
-            if (pct > effectiveThreshold && !inWhiteKick && sectionParams.kickEnabled) {
-              whiteKickUntilRef.current = now + cal.whiteKickMs;
-            }
-          }
-          const isWhite = now < whiteKickUntilRef.current || inStrobe;
+          const isWhite = now < whiteKickUntilRef.current;
           const smoothEnd = performance.now();
 
           // BLE commands
@@ -768,11 +287,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              let finalColor: [number, number, number] = calibrated;
-              const modStrength = inDropZone ? Math.min(0.6, sectionParams.colorModStrength + 0.2) : sectionParams.colorModStrength;
-              if (hasCurve && (curveLo > 0 || curveHi > 0)) {
-                finalColor = modulateColor(...calibrated, curveLo, curveMid, curveHi, modStrength);
-              }
+              const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, 0.3);
               sendColorAndBrightness(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
             }
@@ -798,8 +313,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
 
         onBleWrite((bright, r, g, b) => {
           if (stopped) return;
-          // Use raw RGB for color (so the line matches the hue sent to the lamp)
-          // pct = brightness for Y-axis positioning
           samplesRef.current.push({
             pct: bright,
             r: Math.max(r, 20),
@@ -812,11 +325,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
           chartDirtyRef.current = true;
           brightPctRef.current = bright;
 
-          // Notify live session
           onLiveStatusRef.current?.({
             brightness: bright,
             color: [r, g, b],
-            sectionType: undefined,
             isWhiteKick: performance.now() < whiteKickUntilRef.current,
           });
         });
@@ -831,7 +342,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
 
     return () => {
       stopped = true;
-      flushRecordedSamples('unmount');
       onBleWrite(null);
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();

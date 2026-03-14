@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { getBleWriteStats, getPipelineTimings, getBleMinInterval } from "@/lib/bledom";
@@ -10,20 +10,17 @@ import {
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
-import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor, Timer } from "lucide-react";
+import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import MonitorView from "@/components/MonitorView";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
-import { useSongEnergyCurve } from "@/hooks/useSongEnergyCurve";
 import { extractPalette } from "@/lib/colorExtract";
 import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
 import { useLiveSessionWriter, type MasterDebugState } from "@/hooks/useLiveSession";
-import { getCurrentSection } from "@/lib/sectionLighting";
-import { getAutoSyncState, setAutoSyncPaused } from "@/lib/autoSync";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -31,8 +28,6 @@ const Index = () => {
     const forcedRole = new URLSearchParams(window.location.search).get("role");
     if (forcedRole === "master") return true;
     if (forcedRole === "monitor") return false;
-
-    // Safer default: monitor unless explicitly set to master on this device.
     const storedRole = localStorage.getItem("deviceRole");
     if (storedRole === "master") return true;
     if (storedRole === "monitor") return false;
@@ -50,9 +45,6 @@ const Index = () => {
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
-  const [syncDiag, setSyncDiag] = useState(false);
-  const [syncOffsetMs, setSyncOffsetMs] = useState<number | null>(null);
-  const [showLatencySlider, setShowLatencySlider] = useState(false);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -62,29 +54,13 @@ const Index = () => {
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
   const { update: updateLiveSession } = useLiveSessionWriter();
 
-  // Energy curve: lookup saved curve for current track
-  const trackKey = useMemo(() => {
-    if (!nowPlaying?.trackName || !nowPlaying?.artistName) return null;
-    return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
-  }, [nowPlaying?.trackName, nowPlaying?.artistName]);
-  const { curve: energyCurve, brightnessCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, processing, loading: curveLoading, saveCurve } = useSongEnergyCurve(trackKey);
-  const hasCurve = Array.isArray(energyCurve) && energyCurve.length > 10;
-  const activeLookAheadMs = hasCurve ? activeCalibration.chainLatencyMs : activeCalibration.bleLatencyMs;
-
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
-
-  // Pause auto-sync while latency slider is open
-  useEffect(() => {
-    setAutoSyncPaused(showLatencySlider);
-    return () => setAutoSyncPaused(false);
-  }, [showLatencySlider]);
 
   // Extract palette from album art when track changes
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-
     extractPalette(artUrl, 5).then((colors) => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
@@ -125,22 +101,12 @@ const Index = () => {
   // Poll e2e latency metric
   useEffect(() => {
     if (!isMaster) return;
-    // Prevent idle/stale master tabs from overwriting active session state.
     if (!connection && !nowPlaying?.trackName) return;
 
     const id = setInterval(() => {
       setTickToWriteMs(getLastTickToWriteMs());
-      // Push debug state to live session
       const bleStats = getBleWriteStats();
       const pipeline = getPipelineTimings();
-      const isPlaying = nowPlaying?.playbackState === "PLAYBACK_STATE_PLAYING";
-      const curveStatus: MasterDebugState['curveStatus'] =
-        curveLoading ? 'loading'
-        : !nowPlaying?.trackName ? 'none'
-        : energyCurve ? 'saved'
-        : isPlaying ? 'recording'
-        : 'none';
-      const autoSync = getAutoSyncState();
       const cal = activeCalibration;
       updateLiveSession({
         debug_state: {
@@ -154,17 +120,11 @@ const Index = () => {
           smoothMs: pipeline.smoothMs,
           bleCallMs: pipeline.bleCallMs,
           totalTickMs: pipeline.totalTickMs,
-          curveStatus,
-          curveTrackName: nowPlaying?.trackName ?? null,
-          curveSamples: energyCurve?.length,
           sonosConnected: !!nowPlaying?.trackName,
           sonosRtt: smoothedRtt,
-          // Sync & calibration
-          autoDriftMs: autoSync.driftMs,
-          chainLatencyMs: cal.chainLatencyMs,
           bleLatencyMs: cal.bleLatencyMs,
-          activeLookAheadMs,
-          syncMode: hasCurve ? 'curve' : 'mic',
+          activeLookAheadMs: cal.bleLatencyMs,
+          syncMode: 'mic',
           bleMinIntervalMs: getBleMinInterval(),
           maxBrightness: cal.maxBrightness,
           dynamicDamping: cal.dynamicDamping,
@@ -175,12 +135,11 @@ const Index = () => {
       });
     }, 500);
     return () => clearInterval(id);
-  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.playbackState, nowPlaying?.volume, energyCurve, curveLoading, smoothedRtt, activeCalibration, activeLookAheadMs, hasCurve]);
+  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.playbackState, nowPlaying?.volume, smoothedRtt, activeCalibration]);
 
   // Push now-playing info to live session when master
   useEffect(() => {
     if (!isMaster) return;
-    // Prevent idle/stale master tabs from overwriting active session state.
     if (!connection && !nowPlaying?.trackName) return;
 
     const posFn = getPosition;
@@ -189,35 +148,26 @@ const Index = () => {
       track_name: nowPlaying?.trackName ?? null,
       artist_name: nowPlaying?.artistName ?? null,
       album_art_url: nowPlaying?.albumArtUrl ?? null,
-      bpm: bpm ?? null,
+      bpm: null,
       is_playing: nowPlaying?.playbackState === "PLAYBACK_STATE_PLAYING",
       position_ms: pos?.positionMs ?? 0,
       duration_ms: nowPlaying?.durationMs ?? 0,
       device_name: connection?.device?.name ?? null,
     });
-  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, nowPlaying?.durationMs, bpm, connection?.device?.name]);
+  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, nowPlaying?.durationMs, connection?.device?.name]);
 
   // Live status callback from MicPanel
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean }) => {
     if (!isMaster) return;
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
-    // Get current section
-    const posFn = getPosition;
-    const pos = posFn?.();
-    let sectionType: string | undefined;
-    if (sections && pos) {
-      const elapsed = performance.now() - pos.receivedAt;
-      const sec = getCurrentSection(sections, (pos.positionMs + elapsed + activeLookAheadMs) / 1000);
-      sectionType = sec?.type;
-    }
     updateLiveSession({
       color_r: r,
       color_g: g,
       color_b: b,
       brightness: status.brightness,
-      section_type: sectionType ?? null,
+      section_type: null,
     });
-  }, [isMaster, updateLiveSession, getPosition, sections, activeLookAheadMs]);
+  }, [isMaster, updateLiveSession]);
 
   // Toggle role
   const toggleRole = useCallback(() => {
@@ -258,8 +208,6 @@ const Index = () => {
     overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
   };
 
-  // ── Master mode (existing UI) ──
-
   const finishConnect = async (conn: BLEConnection) => {
     setConnection(conn);
     setBleConnection(conn);
@@ -286,7 +234,7 @@ const Index = () => {
     }
 
     conn.device.addEventListener("gattserverdisconnected", () => {
-      clearActiveChar(); // Stop all pending BLE writes immediately
+      clearActiveChar();
       setConnection(null);
       setBleConnection(null);
       setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || undefined });
@@ -323,7 +271,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} durationMs={nowPlaying?.durationMs} getPosition={getPosition} energyCurve={energyCurve} brightnessCurve={brightnessCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} dynamicRange={dynamicRange} transitions={transitions} beatStrengths={beatStrengths} trackName={nowPlaying?.trackName ?? null} artistName={nowPlaying?.artistName ?? null} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} syncDiag={syncDiag} onSyncOffset={setSyncOffsetMs} />
+        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
@@ -391,11 +339,6 @@ const Index = () => {
                 >
                   {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </Button>
-                {hasCurve && (
-                  <Button variant="ghost" size="icon" onClick={() => setShowLatencySlider(p => !p)} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={showLatencySlider ? { color: accent } : undefined}>
-                    <Timer className="w-3.5 h-3.5" />
-                  </Button>
-                )}
                 <Button variant="ghost" size="icon" onClick={() => navigate('/calibrate')} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
                   <Settings className="w-3.5 h-3.5" />
                 </Button>
@@ -408,58 +351,19 @@ const Index = () => {
         </div>
       )}
 
-      {/* Chain latency slider — visible when curve mode is active */}
-      {showLatencySlider && hasCurve && connection && showOverlay && (
-        <div
-          className="absolute top-[calc(max(0.5rem,env(safe-area-inset-top))+2.5rem)] left-0 right-0 z-20 px-4 py-2 backdrop-blur-lg border-b border-white/5 animate-fade-in"
-          style={{ background: 'hsl(var(--background) / 0.5)' }}
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap w-16">
-              Fördröj {activeCalibration.chainLatencyMs}ms
-            </span>
-            <input
-              type="range"
-              min={-200}
-              max={800}
-              step={5}
-              value={activeCalibration.chainLatencyMs}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                const next = { ...activeCalibration, chainLatencyMs: val };
-                setActiveCalibration(next);
-                saveCalibration(next, undefined, { localOnly: true });
-              }}
-              onPointerUp={() => {
-                saveCalibration(activeCalibration);
-              }}
-              className="flex-1 h-1 accent-current"
-              style={{ accentColor: accent }}
-            />
-            <button
-              onClick={() => setShowLatencySlider(false)}
-              className="text-[10px] text-muted-foreground active:scale-90 transition-transform"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Now playing */}
       {nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" && (
         <div
           className={`absolute bottom-0 left-0 right-0 z-20 pb-[env(safe-area-inset-bottom)] transition-opacity duration-500 backdrop-blur-lg border-t border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.3)' }}
         >
-          <NowPlayingBar nowPlaying={nowPlaying} bpm={bpm} accentColor={currentColor} getPosition={getPosition} sections={sections} processing={processing} />
+          <NowPlayingBar nowPlaying={nowPlaying} accentColor={currentColor} getPosition={getPosition} />
         </div>
       )}
 
       {/* Debug overlay */}
       <DebugOverlay
         smoothedRtt={smoothedRtt}
-        autoDriftMs={getAutoSyncState().driftMs}
         palette={palette}
         paletteIndex={paletteIndexRef.current}
         sonosVolume={nowPlaying?.volume}
@@ -469,21 +373,7 @@ const Index = () => {
         tickToWriteMs={tickToWriteMs}
         bleMinIntervalMs={getBleMinInterval()}
         bleLatencyMs={activeCalibration.bleLatencyMs}
-        chainLatencyMs={activeCalibration.chainLatencyMs}
-        activeLookAheadMs={activeLookAheadMs}
-        syncMode={hasCurve ? 'curve' : 'mic'}
-        curveStatus={
-          curveLoading ? 'loading'
-          : !nowPlaying?.trackName ? 'none'
-          : energyCurve ? 'saved'
-          : 'recording'
-        }
-        curveTrackName={nowPlaying?.trackName ?? null}
-        curveSamples={energyCurve?.length}
         deviceRole="master"
-        syncDiag={syncDiag}
-        onToggleSyncDiag={() => setSyncDiag(prev => !prev)}
-        syncOffsetMs={syncOffsetMs}
       />
     </div>
   );
