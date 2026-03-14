@@ -554,6 +554,46 @@ function findOptimalDynamics(normalized: number[]): { attack: number; release: n
   };
 }
 
+// ── Outlier spike removal ──
+// Removes artifact spikes (mic clicks, pops) that exceed 3× the local median.
+// Uses a sliding window median to detect and clamp outliers.
+
+function sanitizeCurve(curve: EnergySample[]): EnergySample[] {
+  if (curve.length < 20) return curve;
+
+  const WINDOW = 11; // odd number for median window
+  const HALF = Math.floor(WINDOW / 2);
+  const THRESHOLD = 3.0; // spike must be 3× local median
+
+  // First pass: compute local medians
+  const medians = new Array(curve.length);
+  const buf: number[] = [];
+  for (let i = 0; i < curve.length; i++) {
+    buf.length = 0;
+    for (let j = Math.max(0, i - HALF); j <= Math.min(curve.length - 1, i + HALF); j++) {
+      buf.push(curve[j].rawRms);
+    }
+    buf.sort((a, b) => a - b);
+    medians[i] = buf[Math.floor(buf.length / 2)];
+  }
+
+  // Second pass: clamp spikes
+  let clamped = 0;
+  const result = curve.map((s, i) => {
+    const localMedian = Math.max(medians[i], 0.001);
+    if (s.rawRms > localMedian * THRESHOLD && s.rawRms > medians[i] * 2) {
+      clamped++;
+      return { ...s, rawRms: localMedian };
+    }
+    return s;
+  });
+
+  if (clamped > 0) {
+    console.log(`[sanitize] clamped ${clamped} outlier spikes`);
+  }
+  return result;
+}
+
 // ── Main handler ──
 
 serve(async (req) => {
