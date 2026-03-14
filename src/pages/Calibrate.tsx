@@ -713,6 +713,7 @@ function CurrentCalibrationPanel({ cal }: { cal: LightCalibration }) {
           {row('Kick tröskel', 'whiteKickThreshold', '%')}
           {row('Kick tid', 'whiteKickMs', 'ms')}
           {row('BLE latens', 'bleLatencyMs', 'ms')}
+          {row('Kedjelatens', 'chainLatencyMs', 'ms')}
         </div>
       </div>
     </div>

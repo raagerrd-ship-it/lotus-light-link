@@ -56,6 +56,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   whiteKickMs: 100,
 
   bleLatencyMs: 0,
+  chainLatencyMs: 0,
 
   agcMin: 0,
   agcMax: 0.01,
