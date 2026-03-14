@@ -624,7 +624,7 @@ export default function Calibrate() {
   // Step completion status
   const bleCalibrated = cal.bleLatencyMs !== DEFAULT_CALIBRATION.bleLatencyMs || true; // BLE speed auto-saves
   const chainCalibrated = cal.chainLatencyMs !== 0;
-  const songCalibrated = cal.attackAlpha !== DEFAULT_CALIBRATION.attackAlpha || cal.releaseAlpha !== DEFAULT_CALIBRATION.releaseAlpha;
+  const songCalibrated = cal.attackAlpha !== DEFAULT_CALIBRATION.attackAlpha || cal.releaseAlpha !== DEFAULT_CALIBRATION.releaseAlpha || cal.minBrightness !== DEFAULT_CALIBRATION.minBrightness || cal.maxBrightness !== DEFAULT_CALIBRATION.maxBrightness;
 
   const stepStatus = (tab: Tab): 'done' | 'current' | 'pending' => {
     if (tab === 'ble') return 'done'; // always "done" if they've been here
