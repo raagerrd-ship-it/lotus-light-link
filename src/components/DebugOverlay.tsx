@@ -85,9 +85,7 @@ export default function DebugOverlay({
             );
           })()}
           {danceability != null && (
-            <div>dnc: <span className="text-foreground">{danceability}</span>
-              <span className="text-foreground/40"> sync‑{Math.round((0.9 - (danceability / 100) * 0.15) * 100)}% kick‑{Math.round((0.12 + (danceability / 100) * 0.08) * 100)}%</span>
-            </div>
+            <div>dnc: <span className="text-foreground">{danceability}</span></div>
           )}
           {happiness != null && (
             <div>hpy: <span className="text-foreground">{happiness}</span>
