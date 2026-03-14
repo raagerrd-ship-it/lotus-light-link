@@ -296,8 +296,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
             <div className="bg-primary/15 border border-primary/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
               <Check className="w-4 h-4 text-primary shrink-0" />
               <div>
-                <p className="text-xs font-bold text-primary">Sparad automatiskt!</p>
-                <p className="text-[10px] text-primary/70">Resultatet sparas direkt — du behöver inte göra något extra.</p>
+                <p className="text-xs font-bold text-primary">Kalibrering sparad!</p>
               </div>
             </div>
           )}
