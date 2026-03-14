@@ -179,14 +179,21 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     colorRef.current = currentColor;
   }, [currentColor]);
 
-  // Sync palette ref and reset rotation when palette changes
+  // Sync palette ref and snap rotation when palette changes (new album art)
   useEffect(() => {
     paletteRef.current = palette ?? [];
     paletteIndexRef.current = 0;
     if (palette && palette.length > 0) {
       targetColorRef.current = palette[0];
       blendedColorRef.current = palette[0];
+      colorRef.current = palette[0];
     }
+    // Reset AGC on new palette
+    lastColorStateRef.current = 'normal';
+    agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
+    agcMinRef.current = 0;
+    samplesRef.current = [];
+    resetChartScaler();
   }, [palette]);
 
   // Rotation timer: advance palette index every ROTATION_INTERVAL_MS
