@@ -448,7 +448,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           // ── Drop detection (uses bassRms, not total RMS) ──
           const DROP_HISTORY_LEN = 120;  // ~2s of history
           const DROP_COOLDOWN_MS = 6000;
-          const DROP_DURATION_MS = 400;
+          const DROP_DURATION_MS = cal.whiteKickMs; // from calibration slider
 
           const bassHist = bassHistoryRef.current;
           bassHist.push(micBands.bassRms); // bass RMS only!
