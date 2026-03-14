@@ -30,6 +30,9 @@ interface DebugOverlayProps {
   chainLatencyMs?: number;
   activeLookAheadMs?: number;
   syncMode?: 'curve' | 'mic';
+  syncDiag?: boolean;
+  onToggleSyncDiag?: () => void;
+  syncOffsetMs?: number | null;
 }
 
 const phaseLabels: Record<string, string> = {
