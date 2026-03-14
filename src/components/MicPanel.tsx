@@ -379,15 +379,15 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
               const now = performance.now();
               if (now - lastRecordTimeRef.current >= CURVE_RECORD_INTERVAL_MS) {
                 lastRecordTimeRef.current = now;
-                const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
-                const normMic = Math.min(1, Math.max(0, (micRms - agcMinRef.current) / range));
-                const existingE = interpolateEnergy(curve!, posSec);
-                const blended = existingE * 0.8 + normMic * 0.2;
+                const existingRms = interpolateEnergy(curve!, posSec);
+                // Blend raw RMS: 80% existing, 20% new mic reading
+                const peakRms = curvePeakRms(curve!);
+                const existingRawApprox = existingRms * peakRms;
+                const blendedRaw = existingRawApprox * 0.8 + micRms * 0.2;
                 touchRecordingContext();
                 recordedSamplesRef.current.push({
                   t: posSec,
-                  e: blended,
-                  rawRms: micRms,
+                  rawRms: blendedRaw,
                   lo: bands.lo,
                   mid: bands.mid,
                   hi: bands.hi,
