@@ -451,16 +451,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           // ── Frequency-based brightness ──
           // Blend bass (weight 0.7) and mid/hi (weight 0.3) for overall energy
-          const energyNorm = bassNorm * 0.7 + midHiNorm * 0.3;
-          let rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
-          // Apply dynamic damping as signed control:
-          // >0 = smoother/even, <0 = contrast boost
-          if (cal.dynamicDamping > 0 && cal.dynamicDamping !== 1.0) {
-            rawPct = Math.pow(rawPct, 1 / cal.dynamicDamping);
-          } else if (cal.dynamicDamping < 0) {
-            const contrast = 1 + Math.abs(cal.dynamicDamping);
-            rawPct = Math.max(0, Math.min(1, 0.5 + (rawPct - 0.5) * contrast));
+          let energyNorm = bassNorm * 0.7 + midHiNorm * 0.3;
+          // Apply dynamic damping as power curve on energy BEFORE brightness mapping:
+          //   <0 = more contrast (exponent > 1 → quiet gets darker, loud stays loud)
+          //    0 = linear
+          //   >0 = smoother (exponent < 1 → quiet gets brighter)
+          if (cal.dynamicDamping !== 0) {
+            const exponent = cal.dynamicDamping < 0
+              ? 1 + Math.abs(cal.dynamicDamping)  // -2 → exp 3.0
+              : 1 / (1 + cal.dynamicDamping);      // +2 → exp 0.33
+            energyNorm = Math.pow(energyNorm, exponent);
           }
+          const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           const pct = Math.round(rawPct * 100);
 
           // ── Drop detection (uses bassRms, not total RMS) ──
