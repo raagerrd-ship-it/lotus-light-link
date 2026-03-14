@@ -391,6 +391,8 @@ const Index = () => {
         danceability={trackTraits.danceability}
         happiness={trackTraits.happiness}
         loudness={trackTraits.loudness}
+        bassLevel={bandLevels.bass}
+        midHiLevel={bandLevels.midHi}
       />
     </div>
   );
