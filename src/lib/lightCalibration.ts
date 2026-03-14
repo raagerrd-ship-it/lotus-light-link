@@ -77,12 +77,13 @@ export function getCalibration(): LightCalibration {
   }
 }
 
-/** Save to localStorage + upsert to cloud (fire-and-forget). */
-export function saveCalibration(cal: LightCalibration, deviceName?: string): void {
+/** Save to localStorage + update latest cloud row (fire-and-forget). 
+ *  Set createNewEntry=true for explicit calibration actions (BLE speed, latency tap). */
+export function saveCalibration(cal: LightCalibration, deviceName?: string, createNewEntry = false): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
   const name = deviceName ?? getActiveDeviceName();
   if (name) {
-    _upsertCloud(name, { calibration: cal });
+    _upsertCloud(name, { calibration: cal }, createNewEntry);
   }
 }
 
@@ -103,26 +104,30 @@ export function getActiveDeviceName(): string | null {
 
 // --- Cloud persistence ---
 
-async function _upsertCloud(deviceName: string, patch: Record<string, unknown>) {
+async function _upsertCloud(deviceName: string, patch: Record<string, unknown>, createNewEntry = false) {
   try {
-    // Find the most recent entry for this device and update it, or insert if none exists
-    const { data: existing } = await (supabase as any)
-      .from('device_calibration')
-      .select('id')
-      .eq('device_name', deviceName)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .single();
+    if (!createNewEntry) {
+      // Update the most recent entry for this device
+      const { data: existing } = await (supabase as any)
+        .from('device_calibration')
+        .select('id')
+        .eq('device_name', deviceName)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
 
-    if (existing?.id) {
-      await (supabase as any).from('device_calibration')
-        .update({ ...patch, updated_at: new Date().toISOString() })
-        .eq('id', existing.id);
-    } else {
-      await (supabase as any).from('device_calibration').insert(
-        { device_name: deviceName, ...patch, updated_at: new Date().toISOString() },
-      );
+      if (existing?.id) {
+        await (supabase as any).from('device_calibration')
+          .update({ ...patch, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+        return;
+      }
     }
+
+    // Create new row (explicit calibration or first-ever entry)
+    await (supabase as any).from('device_calibration').insert(
+      { device_name: deviceName, ...patch, updated_at: new Date().toISOString() },
+    );
   } catch (e) {
     console.warn('[calibration] cloud upsert failed', e);
   }
@@ -134,7 +139,7 @@ export function saveBleSpeedToCloud(deviceName: string, bleMinIntervalMs: number
     ble_min_interval_ms: bleMinIntervalMs,
     ble_speed_results: speedResults,
     calibration: getCalibration(),
-  });
+  }, true);
 }
 
 /** List all calibration entries for a device, newest first. */
@@ -182,7 +187,7 @@ export function saveLatencyToCloud(deviceName: string, latency: LatencyResults) 
   _upsertCloud(deviceName, {
     latency_results: latency,
     calibration: getCalibration(),
-  });
+  }, true);
 }
 
 /** Load calibration from cloud for a device. Returns null if not found. */
