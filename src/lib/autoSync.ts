@@ -111,6 +111,12 @@ let _correlations = 0;
 let _confidence = 0;
 let _lastOnsetTime = 0;
 let _recentDrifts: number[] = [];
+let _paused = false;
+
+/** Pause/resume auto-sync (e.g. while manual latency slider is open) */
+export function setAutoSyncPaused(paused: boolean) {
+  _paused = paused;
+}
 
 /** Reset auto-sync state (call on track change) */
 export function resetAutoSync() {
