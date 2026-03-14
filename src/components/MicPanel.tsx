@@ -190,7 +190,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const curveRollingPeakRef = useRef(0.01);
   const curveAllTimePeakRef = useRef(0.01);
   const sunRef = useRef<HTMLDivElement>(null);
-
+  const syncDiagRef = useRef(syncDiag ?? false);
+  const onSyncOffsetRef = useRef(onSyncOffset);
+  const micPctHistoryRef = useRef<number[]>([]);
+  const curvePctHistoryRef = useRef<number[]>([]);
+  const syncCorrelationTimerRef = useRef(0);
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { brightnessCurveRef.current = brightnessCurve; }, [brightnessCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
