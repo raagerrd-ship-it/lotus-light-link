@@ -53,21 +53,24 @@ const PEAK_MAX_DECAY = 0.9998;
 interface BandResult {
   lo: number; mid: number; hi: number;       // normalized 0-1 (relative)
   bassRms: number; midHiRms: number;          // raw RMS values for AGC
+  totalRms: number;                           // total RMS from freq domain
 }
 
 function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer>): BandResult {
   analyser.getFloatFrequencyData(freqData);
   const sampleRate = analyser.context.sampleRate;
   const binWidth = sampleRate / analyser.fftSize;
-  const loCut = Math.floor(150 / binWidth);   // 150 Hz — isolate sub-bass/kick
+  const loCut = Math.floor(150 / binWidth);
   const midCut = Math.floor(2000 / binWidth);
   const bins = freqData.length;
 
   let loSum = 0, midSum = 0, hiSum = 0;
   let loCount = 0, midCount = 0, hiCount = 0;
+  let totalSum = 0;
 
   for (let i = 0; i < bins; i++) {
     const power = Math.pow(10, freqData[i] / 10);
+    totalSum += power;
     if (i < loCut) { loSum += power; loCount++; }
     else if (i < midCut) { midSum += power; midCount++; }
     else { hiSum += power; hiCount++; }
@@ -76,8 +79,8 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   const loAvg = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
   const midAvg = midCount > 0 ? Math.sqrt(midSum / midCount) : 0;
   const hiAvg = hiCount > 0 ? Math.sqrt(hiSum / hiCount) : 0;
+  const totalRms = bins > 0 ? Math.sqrt(totalSum / bins) : 0;
 
-  // Raw RMS per band for brightness pipeline
   const bassRms = loAvg;
   const midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
 
@@ -88,6 +91,7 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
     hi: Math.min(1, hiAvg / maxBand),
     bassRms,
     midHiRms,
+    totalRms,
   };
 }
 
