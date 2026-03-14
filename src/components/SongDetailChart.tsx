@@ -17,12 +17,19 @@ interface SongSection {
 }
 
 interface Drop {
-  time: number;
+  t?: number;
+  time?: number;
   buildStart?: number;
+}
+
+interface BrightnessSample {
+  t: number;
+  pct: number;
 }
 
 interface SongDetailData {
   energy_curve: EnergySample[] | null;
+  brightness_curve: BrightnessSample[] | null;
   sections: SongSection[] | null;
   drops: Drop[] | null;
   bpm: number | null;
@@ -62,7 +69,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("energy_curve, sections, drops, bpm, recorded_volume")
+      .select("energy_curve, brightness_curve, sections, drops, bpm, recorded_volume")
       .eq("id", songId)
       .single()
       .then(({ data: d }) => {
@@ -76,6 +83,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     if (!canvas || !data) return;
 
     const curve = data.energy_curve as EnergySample[] | null;
+    const bcurve = data.brightness_curve as BrightnessSample[] | null;
     const sections = data.sections as SongSection[] | null;
     const drops = data.drops as Drop[] | null;
 
@@ -136,7 +144,8 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     // Draw drops as vertical lines
     if (drops && drops.length > 0) {
       for (const drop of drops) {
-        const x = tToX(drop.time);
+        const dropT = drop.t ?? drop.time ?? 0;
+        const x = tToX(dropT);
         ctx.strokeStyle = '#ef444480';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([3, 3]);
@@ -159,7 +168,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
       }
     }
 
-    // Draw energy curve
+    // Draw energy curve (cyan, raw)
     ctx.beginPath();
     ctx.strokeStyle = '#22d3ee';
     ctx.lineWidth = 1;
@@ -178,6 +187,22 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     ctx.closePath();
     ctx.fillStyle = '#22d3ee12';
     ctx.fill();
+
+    // Draw brightness_curve overlay (orange) — the baked/enhanced version
+    if (bcurve && bcurve.length > 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.8;
+      for (let i = 0; i < bcurve.length; i++) {
+        const x = tToX(bcurve[i].t);
+        const y = chartBottom - (Math.min(100, bcurve[i].pct) / 100) * chartH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
 
     // Draw kick markers
     for (const s of curve) {
@@ -200,6 +225,18 @@ export default function SongDetailChart({ songId }: { songId: string }) {
       const x = tToX(t);
       ctx.fillText(formatDuration(t), x, chartBottom - 2);
     }
+
+    // Legend if brightness_curve exists
+    if (bcurve && bcurve.length > 1) {
+      ctx.globalAlpha = 0.7;
+      ctx.font = `9px system-ui`;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillText('rå', 4, chartTop + 12);
+      ctx.fillStyle = '#f97316';
+      ctx.fillText('bakad', 4, chartTop + 22);
+      ctx.globalAlpha = 1;
+    }
   }, [data]);
 
   if (loading) {
@@ -211,6 +248,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
   }
 
   const curve = data.energy_curve as EnergySample[] | null;
+  const bcurve = data.brightness_curve as BrightnessSample[] | null;
   const sections = data.sections as SongSection[] | null;
   const drops = data.drops as Drop[] | null;
   const duration = curve && curve.length > 1 ? curve[curve.length - 1].t : 0;
