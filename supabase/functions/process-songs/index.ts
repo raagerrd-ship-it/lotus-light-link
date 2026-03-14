@@ -699,31 +699,12 @@ serve(async (req) => {
     }
 
     // ── Bake brightness curves ──
-    // Get calibration params (from latest device_calibration or defaults)
-    let bakeCal = { attackAlpha: 0.3, releaseAlpha: 0.05, dynamicDamping: 1.0, minBrightness: 3, maxBrightness: 100 };
-    try {
-      const { data: latestDevice } = await supabase
-        .from("device_calibration")
-        .select("calibration")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .single();
-      if (latestDevice?.calibration) {
-        const dc = latestDevice.calibration as Record<string, unknown>;
-        bakeCal = {
-          attackAlpha: (dc.attackAlpha as number) ?? bakeCal.attackAlpha,
-          releaseAlpha: (dc.releaseAlpha as number) ?? bakeCal.releaseAlpha,
-          dynamicDamping: (dc.dynamicDamping as number) ?? bakeCal.dynamicDamping,
-          minBrightness: (dc.minBrightness as number) ?? bakeCal.minBrightness,
-          maxBrightness: (dc.maxBrightness as number) ?? bakeCal.maxBrightness,
-        };
-      }
-    } catch (_) { /* use defaults */ }
+    const defaultCal = { attackAlpha: 0.3, releaseAlpha: 0.05, dynamicDamping: 1.0, minBrightness: 3, maxBrightness: 100 };
 
     // Bake for all songs that have analysis but missing brightness_curve (or were just processed)
     const { data: allForBake } = await supabase
       .from("song_analysis")
-      .select("id, track_name, energy_curve, sections, beat_grid, drops, transitions, beat_strengths, dynamic_range, brightness_curve, bpm")
+      .select("id, track_name, energy_curve, sections, beat_grid, drops, transitions, beat_strengths, dynamic_range, brightness_curve, bpm, calibration_snapshot")
       .not("energy_curve", "is", null);
 
     let baked = 0;
@@ -737,6 +718,16 @@ serve(async (req) => {
       // Need at least BPM to bake a decent curve
       if (!song.bpm) continue;
 
+      // Use the calibration snapshot saved at recording time (per-song), fallback to defaults
+      const snapshot = song.calibration_snapshot as Record<string, unknown> | null;
+      const songCal = snapshot ? {
+        attackAlpha: (snapshot.attackAlpha as number) ?? defaultCal.attackAlpha,
+        releaseAlpha: (snapshot.releaseAlpha as number) ?? defaultCal.releaseAlpha,
+        dynamicDamping: (snapshot.dynamicDamping as number) ?? defaultCal.dynamicDamping,
+        minBrightness: (snapshot.minBrightness as number) ?? defaultCal.minBrightness,
+        maxBrightness: (snapshot.maxBrightness as number) ?? defaultCal.maxBrightness,
+      } : defaultCal;
+
       const bc = computeBrightnessCurve(
         curve,
         song.sections as unknown as SongSection[] | null,
@@ -745,7 +736,7 @@ serve(async (req) => {
         song.transitions as unknown as { time: number; type: string; crossfadeMs: number }[] | null,
         song.beat_strengths as unknown as number[] | null,
         song.dynamic_range as unknown as DynamicRange | null,
-        bakeCal,
+        songCal,
       );
 
       await supabase.from("song_analysis").update({ brightness_curve: bc } as any).eq("id", song.id);
