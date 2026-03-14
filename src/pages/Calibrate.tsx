@@ -403,44 +403,30 @@ function DualRangeSlider({ min, max, valueLow, valueHigh, onChangeLow, onChangeH
 function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patch: Partial<LightCalibration>) => void }) {
   return (
     <div className="space-y-4">
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div>
-          <label className="text-[10px] font-bold text-foreground/70">Mjukhet uppåt: {Math.round((1 - cal.attackAlpha) * 100)}%</label>
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Mjukhet uppåt: {Math.round((1 - cal.attackAlpha) * 100)}%</span><span className="text-muted-foreground">← Snabb → Mjuk</span></div>
           <input type="range" min={0} max={100} value={Math.round((1 - cal.attackAlpha) * 100)} onChange={e => onSave({ attackAlpha: 1 - Number(e.target.value) / 100 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Hur mjukt lampan reagerar uppåt. <span className="text-foreground/50">← Snabb → Mjuk</span></p>
         </div>
         <div>
-          <label className="text-[10px] font-bold text-foreground/70">Fade-längd: {Math.round((1 - cal.releaseAlpha * 10) * 100)}%</label>
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Fade-längd: {Math.round((1 - cal.releaseAlpha * 10) * 100)}%</span><span className="text-muted-foreground">← Kort → Lång</span></div>
           <input type="range" min={0} max={100} value={Math.round(Math.min(100, (1 - cal.releaseAlpha * 10) * 100))} onChange={e => onSave({ releaseAlpha: (1 - Number(e.target.value) / 100) / 10 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Hur länge ljuset håller kvar efter en topp. <span className="text-foreground/50">← Kort → Lång</span></p>
         </div>
         <div>
-          <label className="text-[10px] font-bold text-foreground/70">Jämnhet: {Math.round(cal.dynamicDamping * 10)}%</label>
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Jämnhet: {Math.round(cal.dynamicDamping * 10)}%</span><span className="text-muted-foreground">← Kontrast → Jämn</span></div>
           <input type="range" min={5} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Dynamisk range. <span className="text-foreground/50">← Kontrast → Jämn</span></p>
         </div>
         <div>
-          <label className="text-[10px] font-bold text-foreground/70">Kick tröskel: {cal.whiteKickThreshold}%</label>
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Kick tröskel: {cal.whiteKickThreshold}%</span><span className="text-muted-foreground">← Fler drops → Färre</span></div>
           <input type="range" min={50} max={100} value={cal.whiteKickThreshold} onChange={e => onSave({ whiteKickThreshold: Number(e.target.value) })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Bass-surge för vit drop-blixt. <span className="text-foreground/50">← Fler drops → Färre</span></p>
         </div>
         <div>
-          <label className="text-[10px] font-bold text-foreground/70">Kick tid: {cal.whiteKickMs}ms</label>
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Kick tid: {cal.whiteKickMs}ms</span><span className="text-muted-foreground">← Kort → Lång</span></div>
           <input type="range" min={20} max={200} step={5} value={cal.whiteKickMs} onChange={e => onSave({ whiteKickMs: Number(e.target.value) })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Varaktighet för drop-blixt. <span className="text-foreground/50">← Kort → Lång</span></p>
         </div>
-
-        {/* Brightness range — dual slider at the bottom */}
         <div className="pt-2 border-t border-border/20">
-          <label className="text-[10px] font-bold text-foreground/70">Ljusstyrka: {cal.minBrightness}% – {cal.maxBrightness}%</label>
-          <DualRangeSlider
-            min={0} max={100}
-            valueLow={cal.minBrightness}
-            valueHigh={cal.maxBrightness}
-            onChangeLow={v => onSave({ minBrightness: v })}
-            onChangeHigh={v => onSave({ maxBrightness: v })}
-          />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Ljusintervall — vänster knapp = min vid tystnad, höger = max vid topp</p>
+          <div className="flex justify-between text-[10px]"><span className="font-bold text-foreground/70">Ljusstyrka: {cal.minBrightness}% – {cal.maxBrightness}%</span><span className="text-muted-foreground">Min ← → Max</span></div>
+          <DualRangeSlider min={0} max={100} valueLow={cal.minBrightness} valueHigh={cal.maxBrightness} onChangeLow={v => onSave({ minBrightness: v })} onChangeHigh={v => onSave({ maxBrightness: v })} />
         </div>
       </div>
     </div>
