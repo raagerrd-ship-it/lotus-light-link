@@ -37,6 +37,7 @@ interface SongEnergyCurveResult {
 
 interface CacheEntry {
   curve: EnergySample[] | null;
+  brightnessCurve: { t: number; b: number }[] | null;
   vol: number | null;
   agc: AgcState | null;
   bpm: number | null;
