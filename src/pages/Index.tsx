@@ -10,7 +10,7 @@ import {
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
-import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor } from "lucide-react";
+import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor, Timer } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import MonitorView from "@/components/MonitorView";
 import DebugOverlay from "@/components/DebugOverlay";
