@@ -144,38 +144,65 @@ const SECTION_LABELS: Record<string, string> = {
   build_up: 'Build-up', break: 'Break', outro: 'Outro',
 };
 
+const PAGE_SIZE = 30;
+
 export default function MonitorView() {
   const session = useLiveSessionMonitor();
   const [songs, setSongs] = useState<SongRecord[]>([]);
   const [showSongs, setShowSongs] = useState(true);
   const [showDebug, setShowDebug] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const loadingRef = useRef(false);
 
-  // Fetch song list
+  const mapRows = (data: any[]): SongRecord[] =>
+    data.map((d: any) => ({
+      id: d.id,
+      track_name: d.track_name,
+      artist_name: d.artist_name,
+      bpm: d.bpm,
+      created_at: d.created_at,
+      has_sections: !!d.sections,
+      has_drops: !!d.drops,
+    }));
+
+  // Initial fetch + periodic refresh of first page
   useEffect(() => {
-    const fetchSongs = () => {
-      supabase
+    const fetchFirst = async () => {
+      const { data, count } = await supabase
         .from("song_analysis")
-        .select("id, track_name, artist_name, bpm, created_at, sections, drops")
+        .select("id, track_name, artist_name, bpm, created_at, sections, drops", { count: 'exact' })
         .order("created_at", { ascending: false })
-        .limit(500)
-        .then(({ data }) => {
-          if (data) {
-            setSongs(data.map((d: any) => ({
-              id: d.id,
-              track_name: d.track_name,
-              artist_name: d.artist_name,
-              bpm: d.bpm,
-              created_at: d.created_at,
-              has_sections: !!d.sections,
-              has_drops: !!d.drops,
-            })));
-          }
-        });
+        .range(0, PAGE_SIZE - 1);
+      if (data) {
+        setSongs(mapRows(data));
+        setHasMore(data.length >= PAGE_SIZE);
+        if (count != null) setTotalCount(count);
+      }
     };
-    fetchSongs();
-    const id = setInterval(fetchSongs, 10000); // refresh every 10s
+    fetchFirst();
+    const id = setInterval(fetchFirst, 15000);
     return () => clearInterval(id);
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingRef.current || !hasMore) return;
+    loadingRef.current = true;
+    setLoadingMore(true);
+    const from = songs.length;
+    const { data } = await supabase
+      .from("song_analysis")
+      .select("id, track_name, artist_name, bpm, created_at, sections, drops")
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (data) {
+      setSongs(prev => [...prev, ...mapRows(data)]);
+      setHasMore(data.length >= PAGE_SIZE);
+    }
+    setLoadingMore(false);
+    loadingRef.current = false;
+  }, [songs.length, hasMore]);
 
   const handleDeleteSong = async (songId: string, name: string) => {
     if (!confirm(`Ta bort inspelningen "${name}"?\nDen spelas in igen nästa gång låten körs.`)) return;
