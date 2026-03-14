@@ -299,13 +299,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             normalized = Math.pow(normalized, cal.dynamicDamping);
           }
 
+          // Loudness-aware AGC: scale peakMax expectation based on master loudness
+          const loudDb = loudnessDbRef.current;
+          const loudFactor = loudDb != null ? loudnessToAgcFactor(loudDb) : 1.0;
+
           if (agcMaxRef.current > agcPeakMaxRef.current) {
             agcPeakMaxRef.current = agcMaxRef.current;
           } else {
             agcPeakMaxRef.current *= PEAK_MAX_DECAY;
           }
 
-          const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
+          // absoluteFactor now accounts for loudness: loud masters get boosted expectation
+          const absoluteFactor = Math.min(1, Math.max(0.08, (agcMaxRef.current * loudFactor) / agcPeakMaxRef.current));
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
           const pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
 
