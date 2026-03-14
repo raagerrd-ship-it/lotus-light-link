@@ -313,7 +313,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
         const worker = new Worker("/tick-worker.js");
         workerRef.current = worker;
-        const buf = new Float32Array(analyser.fftSize);
         const freqBuf = new Float32Array(analyser.frequencyBinCount);
 
         worker.onmessage = () => {
