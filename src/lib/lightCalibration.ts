@@ -53,7 +53,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   minBrightness: 3,
   maxBrightness: 100,
   attackAlpha: 0.3,
-  releaseAlpha: 0.05,
+  releaseAlpha: 0.025,
 
   whiteKickThreshold: 95,
   whiteKickMs: 100,
