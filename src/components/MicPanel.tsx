@@ -300,20 +300,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
           drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
         }
       }
-      // Animate sun with bass energy
+      // Animate sun with bass energy — glow is the main beat-reactive element
       const sun = sunRef.current;
       if (sun) {
         const bass = bassRef.current;
-        const scale = 1 + bass * 0.5;
+        const scale = 1 + bass * 0.15; // subtle scale, glow does the heavy lifting
         const [cr, cg, cb] = colorRef.current;
         
-        // Smooth ring glow: layered box-shadows for a ring-like outer halo
-        const innerGlow = 40 + bass * 60;
-        const ringSpread = 8 + bass * 16;
-        const outerGlow = 80 + bass * 160;
-        const coreAlpha = 0.15 + bass * 0.25;
-        const ringAlpha = 0.4 + bass * 0.4;
-        const outerAlpha = 0.12 + bass * 0.2;
+        // Glow reacts dramatically to bass
+        const innerGlow = 20 + bass * 100;
+        const ringSpread = 4 + bass * 28;
+        const outerGlow = 40 + bass * 260;
+        const coreAlpha = 0.08 + bass * 0.35;
+        const ringAlpha = 0.15 + bass * 0.65;
+        const outerAlpha = 0.05 + bass * 0.35;
         
         sun.style.transform = `scale(${scale})`;
         sun.style.boxShadow = [
@@ -321,7 +321,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
           `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
           `0 0 ${outerGlow}px rgba(${cr},${cg},${cb},${outerAlpha})`,
         ].join(', ');
-        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.25 + bass * 0.35}) 0%, rgba(${cr},${cg},${cb},${0.08 + bass * 0.12}) 50%, transparent 72%)`;
+        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.18 + bass * 0.25}) 0%, rgba(${cr},${cg},${cb},${0.05 + bass * 0.1}) 55%, transparent 75%)`;
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
