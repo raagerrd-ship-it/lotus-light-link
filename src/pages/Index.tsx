@@ -388,6 +388,7 @@ const Index = () => {
         energy={trackTraits.energy}
         danceability={trackTraits.danceability}
         happiness={trackTraits.happiness}
+        loudness={trackTraits.loudness}
       />
     </div>
   );
