@@ -319,8 +319,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           bassRef.current = micBands.lo;
 
           // ── Drop detection (uses raw RMS, not AGC-normalized) ──
-          const DROP_HISTORY_LEN = 90;
-          const DROP_COOLDOWN_MS = 2500;
+          const DROP_HISTORY_LEN = 120;  // ~2s of history
+          const DROP_COOLDOWN_MS = 4000;
           const DROP_DURATION_MS = 400;
 
           const rmsHist = rmsHistoryRef.current;
@@ -330,19 +330,17 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const now = performance.now();
           let isDrop = now < dropActiveUntilRef.current;
 
-          if (rmsHist.length >= 30 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
-            const recentWindow = rmsHist.slice(-8);  // last ~130ms
-            const pastWindow = rmsHist.slice(-50, -8); // ~130ms-830ms ago
+          if (rmsHist.length >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
+            const recentWindow = rmsHist.slice(-8);   // last ~130ms
+            const pastWindow = rmsHist.slice(-60, -8); // ~130ms-1000ms ago
             const recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
             const pastAvg = pastWindow.reduce((a, b) => a + b, 0) / pastWindow.length;
 
-            // Drop = quiet→loud transition in raw signal
-            // pastAvg must be significantly lower than current agcMax (relative quiet)
-            // recentAvg must jump significantly
-            const quietThreshold = agcMaxRef.current * 0.35; // quiet = below 35% of learned max
+            // Tight thresholds: quiet must be well below learned max, surge must be dramatic
+            const quietThreshold = agcMaxRef.current * 0.20; // quiet = below 20% of learned max
             const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
 
-            if (pastAvg < quietThreshold && surgeRatio > 2.0 && recentAvg > agcMaxRef.current * 0.4) {
+            if (pastAvg < quietThreshold && surgeRatio > 3.0 && recentAvg > agcMaxRef.current * 0.5) {
               dropActiveUntilRef.current = now + DROP_DURATION_MS;
               lastDropTimeRef.current = now;
               isDrop = true;
@@ -360,44 +358,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const traitDance = (danceabilityRef.current ?? 50) / 100;
           const traitHappy = (happinessRef.current ?? 50) / 100;
 
-          // Energy affects: white kick threshold (lower = more kicks), drop duration
-          const kickThresholdMod = 1.0 - traitEnergy * 0.35;  // high energy → 35% lower threshold
-          const dropDurationMod = 1.0 + traitEnergy * 0.5;     // high energy → 50% longer drops
+          // Energy affects drop duration
+          const dropDurationMod = 1.0 + traitEnergy * 0.5;
 
-          // White kick logic — beat-synced when BPM available
-          const currentBpm = bpmRef.current;
+          // White = ONLY on drops, nothing else
           let isWhite = false;
-
-          // Drop overrides normal white kick — force white for longer
           if (isDrop) {
             isWhite = true;
-            // Extend drop based on energy
             if (dropActiveUntilRef.current > 0) {
               dropActiveUntilRef.current = lastDropTimeRef.current + DROP_DURATION_MS * dropDurationMod;
             }
-          } else if (currentBpm && currentBpm > 0) {
-            const beatIntervalMs = 60000 / currentBpm;
-            const timeSinceLastBeat = now - lastBeatTimeRef.current;
-
-            // Danceability tightens beat window (more rhythmic = stricter sync)
-            const beatWindow = 0.9 - traitDance * 0.15; // 0.75-0.9
-
-            if (timeSinceLastBeat >= beatIntervalMs * beatWindow) {
-              if (pct > cal.whiteKickThreshold * kickThresholdMod) {
-                lastBeatTimeRef.current = now;
-                // Danceability → longer kick relative to beat (more groove)
-                const kickFraction = 0.12 + traitDance * 0.08; // 0.12-0.20
-                whiteKickUntilRef.current = now + Math.min(cal.whiteKickMs, beatIntervalMs * kickFraction);
-              }
-            }
-            isWhite = now < whiteKickUntilRef.current;
-          } else {
-            // Fallback: volume-only white kick
-            const inWhiteKick = now < whiteKickUntilRef.current;
-            if (pct > cal.whiteKickThreshold * kickThresholdMod && !inWhiteKick) {
-              whiteKickUntilRef.current = now + cal.whiteKickMs;
-            }
-            isWhite = now < whiteKickUntilRef.current;
           }
           const smoothEnd = performance.now();
 
