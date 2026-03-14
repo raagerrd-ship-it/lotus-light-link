@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { refineKicks } from "@/lib/kickRefine";
 import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { getCalibration, saveCalibration, applyColorCalibration, type LightCalibration } from "@/lib/lightCalibration";
