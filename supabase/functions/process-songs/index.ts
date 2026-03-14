@@ -488,6 +488,23 @@ function computeBrightnessCurve(
     result.push({ t, b: Math.round(pct) });
   }
 
+  // ── P95 amplitude normalization pass ──
+  // Ensures baked curve amplitude matches live mic output range
+  if (result.length > 10) {
+    const sorted = result.map(s => s.b).sort((a, b) => a - b);
+    const p95 = sorted[Math.floor(sorted.length * 0.95)];
+    const target = cal.maxBrightness * 0.87; // match typical mic p95
+    if (p95 > 0 && p95 < target * 0.8) {
+      // Scale all values proportionally, keeping minBrightness as floor
+      const scale = target / p95;
+      for (const s of result) {
+        s.b = Math.min(cal.maxBrightness, Math.max(cal.minBrightness,
+          cal.minBrightness + (s.b - cal.minBrightness) * scale));
+        s.b = Math.round(s.b);
+      }
+    }
+  }
+
   return result;
 }
 
