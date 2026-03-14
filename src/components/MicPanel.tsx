@@ -547,6 +547,14 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           });
         });
 
+        // AGC save on separate interval — out of hot tick path
+        const agcSaveInterval = setInterval(() => {
+          if (stopped) return;
+          const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
+          calRef.current = updated;
+          saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
+        }, 10_000);
+
         worker.postMessage("start");
       } catch (e) {
         console.error("[MicPanel] mic init failed", e);
