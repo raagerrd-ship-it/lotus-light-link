@@ -269,6 +269,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
     agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
     agcMinRef.current = 0;
     samplesRef.current = [];
+    curveSmoothedRef.current = 0;
+    curveRollingPeakRef.current = 0.01;
+    curveAllTimePeakRef.current = 0.01;
     resetChartScaler();
     resetAutoSync();
   }, [currentColor]);
