@@ -487,6 +487,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
                 recordedSamplesRef.current.push({
                   t: posSec,
                   e: normalized,
+                  rawRms: rms,
                   kick: isKick || undefined,
                   kickT: isKick ? posSec : undefined,
                   lo: bands.lo,
