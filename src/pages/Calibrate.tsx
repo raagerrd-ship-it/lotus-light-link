@@ -12,7 +12,7 @@ import {
 } from "@/lib/lightCalibration";
 import { setBleMinInterval } from "@/lib/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
-
+import MicPanel from "@/components/MicPanel";
 import CalibrationTips from "@/components/CalibrationTips";
 
 type Tab = 'ble' | 'sliders';
