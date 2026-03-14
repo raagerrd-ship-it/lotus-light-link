@@ -82,6 +82,8 @@ export function getCalibration(): LightCalibration {
  *  createNewEntry=true creates a new cloud row (explicit calibration actions). */
 export function saveCalibration(cal: LightCalibration, deviceName?: string, { localOnly = false, createNewEntry = false } = {}): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
+  // Notify same-tab listeners (StorageEvent only fires cross-tab)
+  window.dispatchEvent(new CustomEvent('calibration-changed'));
   if (localOnly) return;
   const name = deviceName ?? getActiveDeviceName();
   if (name) {
