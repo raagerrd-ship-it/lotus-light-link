@@ -415,6 +415,72 @@ serve(async (req) => {
       }
     }
 
+    // ── Multi-song auto-calibration ──
+    // Recompute global dynamics params if any songs were processed
+    if (processed > 0) {
+      try {
+        const { data: allSongs } = await supabase
+          .from("song_analysis")
+          .select("track_name, artist_name, energy_curve")
+          .not("energy_curve", "is", null);
+
+        const validSongs = (allSongs ?? []).filter(
+          (s: any) => Array.isArray(s.energy_curve) && s.energy_curve.length > 50,
+        );
+
+        if (validSongs.length > 0) {
+          const perSongResults: { attack: number; release: number; damping: number }[] = [];
+
+          for (const s of validSongs) {
+            const curve = s.energy_curve as EnergySample[];
+            let peak = 0;
+            for (const sample of curve) if (sample.rawRms > peak) peak = sample.rawRms;
+            if (peak === 0) continue;
+
+            // Normalize curve and run EMA grid search
+            const normalized = curve.map(sample => sample.rawRms / peak);
+            const best = findOptimalDynamics(normalized);
+            perSongResults.push(best);
+          }
+
+          if (perSongResults.length > 0) {
+            const median = (arr: number[]) => {
+              const sorted = [...arr].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+            };
+
+            const globalAttack = Math.round(median(perSongResults.map(r => r.attack)) * 100) / 100;
+            const globalRelease = Math.round(median(perSongResults.map(r => r.release)) * 1000) / 1000;
+            const globalDamping = Math.round(median(perSongResults.map(r => r.damping)) * 10) / 10;
+
+            // Update all device_calibration rows with new dynamics
+            const { data: devices } = await supabase
+              .from("device_calibration")
+              .select("id, calibration");
+
+            for (const device of (devices ?? [])) {
+              const cal = (device.calibration as Record<string, unknown>) ?? {};
+              const updated = {
+                ...cal,
+                attackAlpha: globalAttack,
+                releaseAlpha: globalRelease,
+                dynamicDamping: globalDamping,
+              };
+              await supabase
+                .from("device_calibration")
+                .update({ calibration: updated })
+                .eq("id", device.id);
+            }
+
+            console.log(`[process-songs] auto-calibration: attack=${globalAttack} release=${globalRelease} damping=${globalDamping} from ${perSongResults.length} songs`);
+          }
+        }
+      } catch (e) {
+        console.error("[process-songs] auto-calibration error:", e);
+      }
+    }
+
     console.log(`[process-songs] processed ${processed} songs:`, results);
 
     return new Response(JSON.stringify({ processed, songs: results }), {
