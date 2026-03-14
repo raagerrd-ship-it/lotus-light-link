@@ -17,6 +17,19 @@ export interface MasterDebugState {
   curveSamples?: number;
   sonosConnected?: boolean;
   sonosRtt?: number;
+  // Calibration & sync fields
+  autoDriftMs?: number;
+  chainLatencyMs?: number;
+  bleLatencyMs?: number;
+  activeLookAheadMs?: number;
+  syncMode?: 'curve' | 'mic';
+  bleMinIntervalMs?: number;
+  maxBrightness?: number;
+  dynamicDamping?: number;
+  attackAlpha?: number;
+  releaseAlpha?: number;
+  gainMode?: string;
+  sonosVolume?: number | null;
 }
 
 export interface LiveSessionState {
