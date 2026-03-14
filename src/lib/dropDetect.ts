@@ -23,14 +23,17 @@ export interface Drop {
 export function detectDrops(curve: EnergySample[]): Drop[] {
   if (curve.length < 50) return [];
 
+  // Normalize energy to 0-1 range for threshold-independent detection
+  const peak = Math.max(...curve.map(s => s.rawRms), 0.001);
+
   const drops: Drop[] = [];
   const windowSec = 2.0;    // look-back window for build-up detection
-  const riseFactor = 2.5;   // energy must rise by this factor
+  const riseFactor = 1.8;   // energy must rise by this factor (lowered for laptop mic)
   const minDropGap = 8.0;   // minimum seconds between drops
   const smoothWindow = 5;   // samples to smooth over
 
-  // Smooth energy to reduce noise
-  const smoothed = smoothEnergy(curve, smoothWindow);
+  // Smooth normalized energy to reduce noise
+  const smoothed = smoothEnergyNormalized(curve, smoothWindow, peak);
 
   // Compute rolling stats
   for (let i = 20; i < smoothed.length - 5; i++) {
@@ -52,10 +55,11 @@ export function detectDrops(curve: EnergySample[]): Drop[] {
     const windowAvg = windowSum / windowCount;
 
     // Check for rapid rise: current energy vs recent average
-    if (windowAvg < 0.01) continue; // avoid division by near-zero
+    if (windowAvg < 0.02) continue; // avoid division by near-zero
     const riseRatio = e / windowAvg;
 
-    if (riseRatio >= riseFactor && e > 0.4) {
+    // Normalized threshold: energy must be above 30% of peak (was 0.4 absolute)
+    if (riseRatio >= riseFactor && e > 0.3) {
       // Check minimum gap from last drop
       const lastDrop = drops[drops.length - 1];
       if (lastDrop && (t - lastDrop.t) < minDropGap) {
