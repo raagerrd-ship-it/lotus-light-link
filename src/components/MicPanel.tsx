@@ -212,9 +212,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
   useEffect(() => { paletteRef.current = palette; }, [palette]);
-  useEffect(() => {
-    currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null;
-  }, [trackName, artistName]);
+  useEffect(() => { currentTrackRef.current = trackName && artistName ? { trackName, artistName } : null; }, [trackName, artistName]);
+  useEffect(() => { syncDiagRef.current = syncDiag ?? false; }, [syncDiag]);
+  useEffect(() => { onSyncOffsetRef.current = onSyncOffset; }, [onSyncOffset]);
 
   // Restore AGC from saved state when curve loads
   useEffect(() => {
