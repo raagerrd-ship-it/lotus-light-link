@@ -45,6 +45,7 @@ export default function DebugOverlay({
   bleConnected, bleDeviceName, bleReconnectStatus,
   deviceRole, bleMinIntervalMs, bleLatencyMs, dropActive,
   energy, danceability, happiness, loudness,
+  bassLevel, midHiLevel,
 }: DebugOverlayProps) {
 
   return (
