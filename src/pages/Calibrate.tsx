@@ -247,9 +247,14 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
 
       <p className="text-xs text-muted-foreground">{MODE_DESC[mode]}</p>
 
-      {phase === 'idle' && conn && (
+      {phase === 'idle' && conn && Object.keys(modeBests).length === 0 && (
         <Button size="sm" onClick={startTest} className="gap-1.5 text-xs w-full">
-          <Play className="w-3.5 h-3.5" /> Starta test — {MODE_LABELS[mode]}
+          <Play className="w-3.5 h-3.5" /> Skapa ny kalibrering — {MODE_LABELS[mode]}
+        </Button>
+      )}
+      {phase === 'idle' && conn && Object.keys(modeBests).length > 0 && (
+        <Button size="sm" onClick={startTest} className="gap-1.5 text-xs w-full" variant="secondary">
+          <Play className="w-3.5 h-3.5" /> Testa {MODE_LABELS[mode]}
         </Button>
       )}
 
