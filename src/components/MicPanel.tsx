@@ -308,9 +308,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         const [cr, cg, cb] = colorRef.current;
         
         // Glow size and brightness scale with overall light output
-        const ringSpread = 2 + b * 40;
-        const outerGlow = 30 + b * 300;
-        const farGlow = 60 + b * 400;
+        const ringSpread = 2 + b * 50;
+        const outerGlow = 30 + b * 470;
+        const farGlow = 60 + b * 500;
         const ringAlpha = 0.05 + b * 0.7;
         const outerAlpha = 0.03 + b * 0.4;
         const farAlpha = 0.01 + b * 0.2;
