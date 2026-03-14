@@ -471,6 +471,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
                 // Compute frequency bands
                 const bands = computeBands(an, freqBuf);
                 const isKick = pct > sectionParams.kickThreshold;
+                touchRecordingContext();
                 recordedSamplesRef.current.push({
                   t: posSec,
                   e: normalized,
