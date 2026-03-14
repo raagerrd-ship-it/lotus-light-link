@@ -221,7 +221,8 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         drops: newDrops.length > 0 ? newDrops : null, songId: cached?.songId ?? null,
       });
 
-      if (!trackOverride || key === cacheKey(trackOverride)) {
+      const currentKey = track ? cacheKey(track) : null;
+      if (!currentKey || currentKey === key) {
         setCurve(samples);
         setRecordedVolume(volume);
         if (agcState) setSavedAgcState(agcState);
