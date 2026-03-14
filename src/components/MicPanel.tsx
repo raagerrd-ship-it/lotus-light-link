@@ -679,7 +679,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             samplesRef.current = samplesRef.current.slice(-HISTORY_LEN);
           }
           chartDirtyRef.current = true;
-          brightPctRef.current = pct;
+          brightPctRef.current = bright;
 
           // Notify live session
           onLiveStatusRef.current?.({
