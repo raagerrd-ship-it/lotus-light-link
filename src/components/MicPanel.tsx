@@ -146,6 +146,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const beatGridRef = useRef(beatGrid);
   const sectionsRef = useRef(sections);
   const dropsRef = useRef(drops);
+  const dynamicRangeRef = useRef(dynamicRange);
+  const transitionsRef = useRef(transitions);
+  const beatStrengthsRef = useRef(beatStrengths);
   const sonosRttRef = useRef(sonosRtt);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
