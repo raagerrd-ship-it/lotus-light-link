@@ -409,15 +409,16 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
               })
               .select("id")
               .single()
-              .then(({ data: inserted }) => {
+              .then(async ({ data: inserted }) => {
                 console.log("[EnergyCurve] inserted", targetTrack.trackName);
                 if (inserted?.id) {
                   const c = curveCache.get(key);
                   if (c) curveCache.set(key, { ...c, songId: inserted.id });
-                  triggerSectionAnalysis(inserted.id, key);
+                  await triggerSectionAnalysis(inserted.id, key);
                 }
-                triggerAutoCalibration();
-              });
+                await triggerAutoCalibration();
+                setProcessing(false);
+              }).catch(() => setProcessing(false));
           }
         });
     },
