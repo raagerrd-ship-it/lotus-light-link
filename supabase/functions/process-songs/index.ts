@@ -317,6 +317,53 @@ function analyzeBeatStrengths(curve: EnergySample[], beatGrid: BeatGrid): number
   return strengths.map(s => Math.round((s / maxStrength) * 100) / 100);
 }
 
+// ── Auto-calibration: EMA dynamics grid search ──
+
+function findOptimalDynamics(normalized: number[]): { attack: number; release: number; damping: number } {
+  let bestAttack = 0.3, bestRelease = 0.05, bestDamping = 1.0, bestMSE = Infinity;
+
+  // The "target" is the normalized curve itself — we find EMA params that best track it
+  const runEMA = (attack: number, release: number, damping: number): number => {
+    let smoothed = normalized[0] || 0;
+    let mse = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      const raw = normalized[i];
+      const alpha = raw > smoothed ? attack : release;
+      smoothed += (raw - smoothed) * alpha;
+      const dampedSmoothed = Math.pow(smoothed, 1 / damping);
+      const err = dampedSmoothed - normalized[i];
+      mse += err * err;
+    }
+    return mse / normalized.length;
+  };
+
+  // Coarse grid
+  for (let attack = 0.15; attack <= 0.85; attack += 0.1) {
+    for (let release = 0.03; release <= 0.18; release += 0.03) {
+      for (let damping = 1.0; damping <= 2.5; damping += 0.5) {
+        const mse = runEMA(attack, release, damping);
+        if (mse < bestMSE) { bestMSE = mse; bestAttack = attack; bestRelease = release; bestDamping = damping; }
+      }
+    }
+  }
+
+  // Fine grid around best
+  for (let attack = Math.max(0.1, bestAttack - 0.1); attack <= Math.min(0.9, bestAttack + 0.1); attack += 0.02) {
+    for (let release = Math.max(0.02, bestRelease - 0.03); release <= Math.min(0.2, bestRelease + 0.03); release += 0.005) {
+      for (let damping = Math.max(1.0, bestDamping - 0.5); damping <= Math.min(3.0, bestDamping + 0.5); damping += 0.1) {
+        const mse = runEMA(attack, release, damping);
+        if (mse < bestMSE) { bestMSE = mse; bestAttack = attack; bestRelease = release; bestDamping = damping; }
+      }
+    }
+  }
+
+  return {
+    attack: Math.round(bestAttack * 100) / 100,
+    release: Math.round(bestRelease * 1000) / 1000,
+    damping: Math.round(bestDamping * 10) / 10,
+  };
+}
+
 // ── Main handler ──
 
 serve(async (req) => {
@@ -412,6 +459,72 @@ serve(async (req) => {
         await supabase.from("song_analysis").update(updates as any).eq("id", song.id);
         processed++;
         results.push(song.track_name);
+      }
+    }
+
+    // ── Multi-song auto-calibration ──
+    // Recompute global dynamics params if any songs were processed
+    if (processed > 0) {
+      try {
+        const { data: allSongs } = await supabase
+          .from("song_analysis")
+          .select("track_name, artist_name, energy_curve")
+          .not("energy_curve", "is", null);
+
+        const validSongs = (allSongs ?? []).filter(
+          (s: any) => Array.isArray(s.energy_curve) && s.energy_curve.length > 50,
+        );
+
+        if (validSongs.length > 0) {
+          const perSongResults: { attack: number; release: number; damping: number }[] = [];
+
+          for (const s of validSongs) {
+            const curve = s.energy_curve as EnergySample[];
+            let peak = 0;
+            for (const sample of curve) if (sample.rawRms > peak) peak = sample.rawRms;
+            if (peak === 0) continue;
+
+            // Normalize curve and run EMA grid search
+            const normalized = curve.map(sample => sample.rawRms / peak);
+            const best = findOptimalDynamics(normalized);
+            perSongResults.push(best);
+          }
+
+          if (perSongResults.length > 0) {
+            const median = (arr: number[]) => {
+              const sorted = [...arr].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+            };
+
+            const globalAttack = Math.round(median(perSongResults.map(r => r.attack)) * 100) / 100;
+            const globalRelease = Math.round(median(perSongResults.map(r => r.release)) * 1000) / 1000;
+            const globalDamping = Math.round(median(perSongResults.map(r => r.damping)) * 10) / 10;
+
+            // Update all device_calibration rows with new dynamics
+            const { data: devices } = await supabase
+              .from("device_calibration")
+              .select("id, calibration");
+
+            for (const device of (devices ?? [])) {
+              const cal = (device.calibration as Record<string, unknown>) ?? {};
+              const updated = {
+                ...cal,
+                attackAlpha: globalAttack,
+                releaseAlpha: globalRelease,
+                dynamicDamping: globalDamping,
+              };
+              await supabase
+                .from("device_calibration")
+                .update({ calibration: updated })
+                .eq("id", device.id);
+            }
+
+            console.log(`[process-songs] auto-calibration: attack=${globalAttack} release=${globalRelease} damping=${globalDamping} from ${perSongResults.length} songs`);
+          }
+        }
+      } catch (e) {
+        console.error("[process-songs] auto-calibration error:", e);
       }
     }
 
