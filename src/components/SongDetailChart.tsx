@@ -167,9 +167,8 @@ export default function SongDetailChart({ songId }: { songId: string }) {
         }
       }
     }
-    }
 
-    // Draw energy curve
+    // Draw energy curve (cyan, raw)
     ctx.beginPath();
     ctx.strokeStyle = '#22d3ee';
     ctx.lineWidth = 1;
@@ -188,6 +187,22 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     ctx.closePath();
     ctx.fillStyle = '#22d3ee12';
     ctx.fill();
+
+    // Draw brightness_curve overlay (orange) — the baked/enhanced version
+    if (bcurve && bcurve.length > 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.8;
+      for (let i = 0; i < bcurve.length; i++) {
+        const x = tToX(bcurve[i].t);
+        const y = chartBottom - (Math.min(100, bcurve[i].pct) / 100) * chartH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
 
     // Draw kick markers
     for (const s of curve) {
@@ -209,6 +224,18 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     for (let t = 0; t <= maxT; t += step) {
       const x = tToX(t);
       ctx.fillText(formatDuration(t), x, chartBottom - 2);
+    }
+
+    // Legend if brightness_curve exists
+    if (bcurve && bcurve.length > 1) {
+      ctx.globalAlpha = 0.7;
+      ctx.font = `9px system-ui`;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillText('rå', 4, chartTop + 12);
+      ctx.fillStyle = '#f97316';
+      ctx.fillText('bakad', 4, chartTop + 22);
+      ctx.globalAlpha = 1;
     }
   }, [data]);
 
