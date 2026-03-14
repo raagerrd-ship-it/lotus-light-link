@@ -165,6 +165,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const paletteColorIndexRef = useRef(0);
   const lastSectionTypeRef = useRef<string | null>(null);
   const strobeUntilRef = useRef(0);
+  const bassRef = useRef(0);
+  const sunRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
