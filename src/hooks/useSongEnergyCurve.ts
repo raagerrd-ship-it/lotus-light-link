@@ -99,6 +99,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   const [transitions, setTransitions] = useState<Transition[] | null>(null);
   const [beatStrengths, setBeatStrengths] = useState<number[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [cacheVersion, setCacheVersion] = useState(0);
   const trackRef = useRef<string | null>(null);
 
