@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getCalibration } from "@/lib/lightCalibration";
 import type { AgcState, EnergySample } from "@/lib/energyInterpolate";
 import type { BeatGrid } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
@@ -267,9 +268,19 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       }
 
       // Save to DB — server cron will handle all analysis
+      // Include current calibration so brightness_curve is baked with these params
+      const cal = getCalibration();
+      const calSnapshot = {
+        attackAlpha: cal.attackAlpha,
+        releaseAlpha: cal.releaseAlpha,
+        dynamicDamping: cal.dynamicDamping,
+        minBrightness: cal.minBrightness,
+        maxBrightness: cal.maxBrightness,
+      };
       const payload = {
         energy_curve: samples as any,
         recorded_volume: volume,
+        calibration_snapshot: calSnapshot as any,
         ...(agcState ? { agc_state: agcState as any } : {}),
       } as any;
 
