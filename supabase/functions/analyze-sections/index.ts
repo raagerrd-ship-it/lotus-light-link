@@ -44,12 +44,16 @@ serve(async (req) => {
     const curve = song.energy_curve as EnergySample[];
     if (!Array.isArray(curve) || curve.length < 20) throw new Error("Insufficient energy data");
 
+    // Compute peak for normalization (rawRms-based)
+    const peakRms = Math.max(...curve.map(s => s.rawRms ?? s.e ?? 0), 0.001);
+
     // Downsample curve for AI prompt (max ~200 points)
     const step = Math.max(1, Math.floor(curve.length / 200));
     const sampled = curve.filter((_, i) => i % step === 0);
-    const csvLines = sampled.map(s =>
-      `${s.t.toFixed(1)},${s.e.toFixed(3)},${(s.lo ?? 0).toFixed(2)},${(s.mid ?? 0).toFixed(2)},${(s.hi ?? 0).toFixed(2)},${s.kick ? 1 : 0}`
-    );
+    const csvLines = sampled.map(s => {
+      const energy = (s.rawRms ?? s.e ?? 0) / peakRms;
+      return `${s.t.toFixed(1)},${energy.toFixed(3)},${(s.lo ?? 0).toFixed(2)},${(s.mid ?? 0).toFixed(2)},${(s.hi ?? 0).toFixed(2)},${s.kick ? 1 : 0}`;
+    });
 
     const prompt = `Analyze this song's energy curve data and identify sections.
 Song: "${song.track_name}" by ${song.artist_name}
