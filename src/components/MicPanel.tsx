@@ -486,14 +486,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
                 touchRecordingContext();
                 recordedSamplesRef.current.push({
                   t: posSec,
-                  e: normalized,
                   rawRms: rms,
                   kick: isKick || undefined,
                   kickT: isKick ? posSec : undefined,
                   lo: bands.lo,
                   mid: bands.mid,
                   hi: bands.hi,
-                  rtt: sonosRttRef.current ?? undefined,
                 });
               }
             }
