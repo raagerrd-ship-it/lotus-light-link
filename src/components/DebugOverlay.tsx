@@ -41,7 +41,7 @@ const phaseLabels: Record<string, string> = {
 export default function DebugOverlay({
   smoothedRtt, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
-  bleConnected, bleDeviceName, bleReconnectStatus, tickToWriteMs,
+  bleConnected, bleDeviceName, bleReconnectStatus,
   deviceRole, bleMinIntervalMs, bleLatencyMs, dropActive,
   energy, danceability, happiness, loudness,
 }: DebugOverlayProps) {
