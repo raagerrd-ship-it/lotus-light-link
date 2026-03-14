@@ -696,6 +696,8 @@ serve(async (req) => {
           if (resp.ok) {
             const data = await resp.json();
             if (data.sections && data.sections.length > 0) {
+              // Preserve sections in our updates so we don't overwrite them with null
+              updates.sections = data.sections;
               // Sections already saved by analyze-sections, compute transitions
               const newTransitions = analyzeTransitions(data.sections, curve);
               if (newTransitions.length > 0) { updates.transitions = newTransitions; needsUpdate = true; }
