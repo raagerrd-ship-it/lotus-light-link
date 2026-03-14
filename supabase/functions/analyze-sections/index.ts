@@ -8,7 +8,8 @@ const corsHeaders = {
 
 interface EnergySample {
   t: number;
-  e: number;
+  e?: number;
+  rawRms?: number;
   kick?: boolean;
   lo?: number;
   mid?: number;
