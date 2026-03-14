@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
+import { getBleWriteStats, getPipelineTimings, getBleMinInterval } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -48,6 +48,7 @@ const Index = () => {
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
+  const [activeCalibration, setActiveCalibration] = useState(getCalibration);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -63,6 +64,8 @@ const Index = () => {
     return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
   const { curve: energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading: curveLoading, saveCurve } = useSongEnergyCurve(trackKey);
+  const hasCurve = Array.isArray(energyCurve) && energyCurve.length > 10;
+  const activeLookAheadMs = hasCurve ? activeCalibration.chainLatencyMs : activeCalibration.bleLatencyMs;
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
@@ -165,7 +168,7 @@ const Index = () => {
     let sectionType: string | undefined;
     if (sections && pos) {
       const elapsed = performance.now() - pos.receivedAt;
-      const sec = getCurrentSection(sections, (pos.positionMs + elapsed) / 1000);
+      const sec = getCurrentSection(sections, (pos.positionMs + elapsed + activeLookAheadMs) / 1000);
       sectionType = sec?.type;
     }
     updateLiveSession({
@@ -175,7 +178,7 @@ const Index = () => {
       brightness: status.brightness,
       section_type: sectionType ?? null,
     });
-  }, [isMaster, updateLiveSession, getPosition, sections]);
+  }, [isMaster, updateLiveSession, getPosition, sections, activeLookAheadMs]);
 
   // Toggle role
   const toggleRole = useCallback(() => {
@@ -235,6 +238,7 @@ const Index = () => {
       loadCalibrationFromCloud(deviceName).then((data) => {
         if (data) {
           saveCalibration(data.calibration, deviceName);
+          setActiveCalibration(data.calibration);
           if (data.bleMinIntervalMs != null) {
             setBleMinInterval(data.bleMinIntervalMs);
           }
@@ -386,6 +390,11 @@ const Index = () => {
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
         tickToWriteMs={tickToWriteMs}
+        bleMinIntervalMs={getBleMinInterval()}
+        bleLatencyMs={activeCalibration.bleLatencyMs}
+        chainLatencyMs={activeCalibration.chainLatencyMs}
+        activeLookAheadMs={activeLookAheadMs}
+        syncMode={hasCurve ? 'curve' : 'mic'}
         curveStatus={
           curveLoading ? 'loading'
           : !nowPlaying?.trackName ? 'none'
