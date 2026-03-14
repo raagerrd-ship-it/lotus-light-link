@@ -21,6 +21,7 @@ import {
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
 import { useLiveSessionWriter, type MasterDebugState } from "@/hooks/useLiveSession";
+import { useBpm } from "@/hooks/useBpm";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ const Index = () => {
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
   const { update: updateLiveSession } = useLiveSessionWriter();
+  const { bpm } = useBpm(nowPlaying?.trackName ?? null, nowPlaying?.artistName ?? null);
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
@@ -148,7 +150,7 @@ const Index = () => {
       track_name: nowPlaying?.trackName ?? null,
       artist_name: nowPlaying?.artistName ?? null,
       album_art_url: nowPlaying?.albumArtUrl ?? null,
-      bpm: null,
+      bpm: bpm ?? null,
       is_playing: nowPlaying?.playbackState === "PLAYBACK_STATE_PLAYING",
       position_ms: pos?.positionMs ?? 0,
       duration_ms: nowPlaying?.durationMs ?? 0,
@@ -271,7 +273,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} bpm={bpm} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}

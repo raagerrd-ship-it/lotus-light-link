@@ -9,6 +9,7 @@ interface MicPanelProps {
   palette?: [number, number, number][];
   sonosVolume?: number;
   isPlaying?: boolean;
+  bpm?: number | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean }) => void;
 }
 
@@ -69,7 +70,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -96,9 +97,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bassRef = useRef(0);
   const brightPctRef = useRef(0);
   const sunRef = useRef<HTMLDivElement>(null);
+  const bpmRef = useRef(bpm);
+  const beatPhaseRef = useRef(0);
+  const lastBeatTimeRef = useRef(0);
 
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
   useEffect(() => {
     colorRef.current = currentColor;
@@ -270,13 +275,34 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const micBands = computeBands(an, freqBuf);
           bassRef.current = micBands.lo;
 
-          // White kick logic
+          // White kick logic — beat-synced when BPM available
           const now = performance.now();
-          const inWhiteKick = now < whiteKickUntilRef.current;
-          if (pct > cal.whiteKickThreshold && !inWhiteKick) {
-            whiteKickUntilRef.current = now + cal.whiteKickMs;
+          const currentBpm = bpmRef.current;
+          let isWhite = false;
+
+          if (currentBpm && currentBpm > 0) {
+            // Beat-synced kicks: fire white kick when volume peak aligns with beat phase
+            const beatIntervalMs = 60000 / currentBpm;
+            const timeSinceLastBeat = now - lastBeatTimeRef.current;
+
+            // Advance beat phase
+            if (timeSinceLastBeat >= beatIntervalMs * 0.9) {
+              // We're near or past the next beat — check if volume is high enough to trigger
+              if (pct > cal.whiteKickThreshold * 0.7) {
+                // Snap to beat
+                lastBeatTimeRef.current = now;
+                whiteKickUntilRef.current = now + Math.min(cal.whiteKickMs, beatIntervalMs * 0.15);
+              }
+            }
+            isWhite = now < whiteKickUntilRef.current;
+          } else {
+            // Fallback: original volume-only white kick
+            const inWhiteKick = now < whiteKickUntilRef.current;
+            if (pct > cal.whiteKickThreshold && !inWhiteKick) {
+              whiteKickUntilRef.current = now + cal.whiteKickMs;
+            }
+            isWhite = now < whiteKickUntilRef.current;
           }
-          const isWhite = now < whiteKickUntilRef.current;
           const smoothEnd = performance.now();
 
           // BLE commands
