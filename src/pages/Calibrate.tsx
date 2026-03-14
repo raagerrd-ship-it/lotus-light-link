@@ -356,50 +356,91 @@ function CalibrationHistory({ deviceName }: { deviceName: string | null }) {
   );
 }
 
+function DualRangeSlider({ min, max, valueLow, valueHigh, onChangeLow, onChangeHigh }: {
+  min: number; max: number; valueLow: number; valueHigh: number;
+  onChangeLow: (v: number) => void; onChangeHigh: (v: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const pctLow = ((valueLow - min) / (max - min)) * 100;
+  const pctHigh = ((valueHigh - min) / (max - min)) * 100;
+
+  const handlePointer = useCallback((e: React.PointerEvent, which: 'low' | 'high') => {
+    const track = trackRef.current;
+    if (!track) return;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+
+    const move = (ev: PointerEvent) => {
+      const rect = track.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      const val = Math.round(min + pct * (max - min));
+      if (which === 'low') onChangeLow(Math.min(val, valueHigh - 1));
+      else onChangeHigh(Math.max(val, valueLow + 1));
+    };
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+  }, [min, max, valueLow, valueHigh, onChangeLow, onChangeHigh]);
+
+  return (
+    <div ref={trackRef} className="relative h-5 flex items-center select-none touch-none">
+      <div className="absolute inset-x-0 h-1 bg-secondary rounded-full" />
+      <div className="absolute h-1 bg-primary/60 rounded-full" style={{ left: `${pctLow}%`, right: `${100 - pctHigh}%` }} />
+      <div
+        className="absolute w-4 h-4 rounded-full bg-primary border-2 border-background shadow-md cursor-grab -translate-x-1/2"
+        style={{ left: `${pctLow}%` }}
+        onPointerDown={e => handlePointer(e, 'low')}
+      />
+      <div
+        className="absolute w-4 h-4 rounded-full bg-primary border-2 border-background shadow-md cursor-grab -translate-x-1/2"
+        style={{ left: `${pctHigh}%` }}
+        onPointerDown={e => handlePointer(e, 'high')}
+      />
+    </div>
+  );
+}
+
 function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patch: Partial<LightCalibration>) => void }) {
   return (
     <div className="space-y-4">
-      <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2.5">
-        <p className="text-xs text-foreground/90 leading-relaxed">
-          Justera hur lampan reagerar på mikrofonens signal. Ändringarna sparas direkt.
-        </p>
-      </div>
-
       <div className="space-y-4">
-        <div>
-          <label className="text-[10px] font-bold text-foreground/70">Min ljusstyrka: {cal.minBrightness}%</label>
-          <input type="range" min={0} max={50} value={cal.minBrightness} onChange={e => onSave({ minBrightness: Number(e.target.value) })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Lägsta nivå lampan aldrig går under. <span className="text-foreground/50">↑ Högre = ljusare vid tystnad</span></p>
-        </div>
-        <div>
-          <label className="text-[10px] font-bold text-foreground/70">Max ljusstyrka: {cal.maxBrightness}%</label>
-          <input type="range" min={50} max={100} value={cal.maxBrightness} onChange={e => onSave({ maxBrightness: Number(e.target.value) })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Tak för hur starkt lampan lyser vid högt ljud. <span className="text-foreground/50">↓ Lägre = lugnare maxnivå</span></p>
-        </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Mjukhet uppåt: {Math.round((1 - cal.attackAlpha) * 100)}%</label>
           <input type="range" min={0} max={100} value={Math.round((1 - cal.attackAlpha) * 100)} onChange={e => onSave({ attackAlpha: 1 - Number(e.target.value) / 100 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Hur mjukt lampan reagerar uppåt på en beat. <span className="text-foreground/50">← Snabb/snappy → Långsam/mjuk</span></p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Hur mjukt lampan reagerar uppåt. <span className="text-foreground/50">← Snabb → Mjuk</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Fade-längd: {Math.round((1 - cal.releaseAlpha * 10) * 100)}%</label>
           <input type="range" min={0} max={100} value={Math.round(Math.min(100, (1 - cal.releaseAlpha * 10) * 100))} onChange={e => onSave({ releaseAlpha: (1 - Number(e.target.value) / 100) / 10 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Hur länge ljuset håller kvar efter en topp. <span className="text-foreground/50">← Kort fade → Lång efterglöd</span></p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Hur länge ljuset håller kvar efter en topp. <span className="text-foreground/50">← Kort → Lång</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Jämnhet: {Math.round(cal.dynamicDamping * 10)}%</label>
           <input type="range" min={5} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Hur jämn ljusnivån ska vara. <span className="text-foreground/50">← Mer kontrast → Jämnare ljus</span></p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Dynamisk range. <span className="text-foreground/50">← Kontrast → Jämn</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Kick tröskel: {cal.whiteKickThreshold}%</label>
           <input type="range" min={50} max={100} value={cal.whiteKickThreshold} onChange={e => onSave({ whiteKickThreshold: Number(e.target.value) })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Hur stark en bass-surge måste vara för vit drop-blixt. <span className="text-foreground/50">↑ Högre = färre drops, ↓ Lägre = fler</span></p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Bass-surge för vit drop-blixt. <span className="text-foreground/50">← Fler drops → Färre</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Kick tid: {cal.whiteKickMs}ms</label>
           <input type="range" min={20} max={200} step={5} value={cal.whiteKickMs} onChange={e => onSave({ whiteKickMs: Number(e.target.value) })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Hur länge den vita drop-blixten varar. <span className="text-foreground/50">↑ Längre = mer dramatisk, ↓ Kortare = subtilare</span></p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Varaktighet för drop-blixt. <span className="text-foreground/50">← Kort → Lång</span></p>
+        </div>
+
+        {/* Brightness range — dual slider at the bottom */}
+        <div className="pt-2 border-t border-border/20">
+          <label className="text-[10px] font-bold text-foreground/70">Ljusstyrka: {cal.minBrightness}% – {cal.maxBrightness}%</label>
+          <DualRangeSlider
+            min={0} max={100}
+            valueLow={cal.minBrightness}
+            valueHigh={cal.maxBrightness}
+            onChangeLow={v => onSave({ minBrightness: v })}
+            onChangeHigh={v => onSave({ maxBrightness: v })}
+          />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Ljusintervall — vänster knapp = min vid tystnad, höger = max vid topp</p>
         </div>
       </div>
     </div>
