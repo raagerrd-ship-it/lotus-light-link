@@ -15,6 +15,7 @@ interface TrackKey {
 
 interface SongEnergyCurveResult {
   curve: EnergySample[] | null;
+  brightnessCurve: { t: number; b: number }[] | null;
   recordedVolume: number | null;
   savedAgcState: AgcState | null;
   bpm: number | null;
@@ -36,6 +37,7 @@ interface SongEnergyCurveResult {
 
 interface CacheEntry {
   curve: EnergySample[] | null;
+  brightnessCurve: { t: number; b: number }[] | null;
   vol: number | null;
   agc: AgcState | null;
   bpm: number | null;
@@ -68,13 +70,14 @@ export function clearAllCurveCache() {
 }
 
 // DB columns to select
-const SELECT_COLS = "id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid, dynamic_range, transitions, beat_strengths";
+const SELECT_COLS = "id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid, dynamic_range, transitions, beat_strengths, brightness_curve";
 
 function parseRow(data: any): Omit<CacheEntry, 'songId'> & { songId: string | null } {
   const parsed = data?.energy_curve as unknown as EnergySample[] | null;
   const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
   return {
     curve: valid,
+    brightnessCurve: (data?.brightness_curve as unknown as { t: number; b: number }[] | null) ?? null,
     vol: (data?.recorded_volume as number | null) ?? null,
     agc: (data?.agc_state as AgcState | null) ?? null,
     bpm: (data?.bpm as number | null) ?? null,
@@ -90,6 +93,7 @@ function parseRow(data: any): Omit<CacheEntry, 'songId'> & { songId: string | nu
 
 export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResult {
   const [curve, setCurve] = useState<EnergySample[] | null>(null);
+  const [brightnessCurve, setBrightnessCurve] = useState<{ t: number; b: number }[] | null>(null);
   const [recordedVolume, setRecordedVolume] = useState<number | null>(null);
   const [savedAgcState, setSavedAgcState] = useState<AgcState | null>(null);
   const [bpm, setBpm] = useState<number | null>(null);
@@ -122,6 +126,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   // Apply a cache entry to state
   const applyEntry = useCallback((entry: CacheEntry) => {
     setCurve(entry.curve);
+    setBrightnessCurve(entry.brightnessCurve);
     setRecordedVolume(entry.vol);
     setSavedAgcState(entry.agc);
     setBpm(entry.bpm);
@@ -136,7 +141,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   // Check if a song still needs server-side processing
   const needsProcessing = useCallback((entry: CacheEntry): boolean => {
     if (!entry.curve) return false;
-    return !entry.bpm || !entry.beatGrid || !entry.sections || !entry.dynamicRange || !entry.drops;
+    return !entry.bpm || !entry.beatGrid || !entry.sections || !entry.dynamicRange || !entry.drops || !entry.brightnessCurve;
   }, []);
 
   // Poll for server-side analysis results
@@ -240,6 +245,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       // Update cache immediately with raw data (no heavy analysis)
       const entry: CacheEntry = {
         curve: samples,
+        brightnessCurve: null, // will be computed server-side
         vol: volume,
         agc: agcState ?? null,
         bpm: cached?.bpm ?? null,
@@ -283,6 +289,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
                   bpm: null, beat_grid: null, drops: null,
                   dynamic_range: null, transitions: null,
                   beat_strengths: null, sections: null,
+                  brightness_curve: null,
                 })
                 .eq("id", existing.id)
             ).then(() => {
@@ -316,5 +323,5 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     [track, startPolling],
   );
 
-  return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, processing, loading, saveCurve };
+  return { curve, brightnessCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, processing, loading, saveCurve };
 }

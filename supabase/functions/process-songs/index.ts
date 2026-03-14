@@ -317,12 +317,182 @@ function analyzeBeatStrengths(curve: EnergySample[], beatGrid: BeatGrid): number
   return strengths.map(s => Math.round((s / maxStrength) * 100) / 100);
 }
 
+// ── Pre-baked brightness curve ──
+
+interface BrightnessSample {
+  t: number;
+  b: number; // 0-100 brightness %
+}
+
+const SECTION_BRIGHTNESS: Record<string, number> = {
+  intro: 0.15, verse: 0.50, pre_chorus: 0.75, chorus: 1.0,
+  bridge: 0.4, drop: 1.0, build_up: 0.7, break: 0.10, outro: 0.15,
+};
+const SECTION_BEAT_PULSE: Record<string, number> = {
+  intro: 0.1, verse: 0.3, pre_chorus: 0.5, chorus: 0.8,
+  bridge: 0.2, drop: 1.0, build_up: 0.7, break: 0.05, outro: 0.1,
+};
+const SECTION_STROBE: Record<string, boolean> = { drop: true };
+
+function computeBrightnessCurve(
+  curve: EnergySample[],
+  sections: SongSection[] | null,
+  beatGrid: BeatGrid | null,
+  drops: Drop[] | null,
+  transitions: { time: number; type: string; crossfadeMs: number }[] | null,
+  beatStrengths: number[] | null,
+  dynamicRange: DynamicRange | null,
+  cal: { attackAlpha: number; releaseAlpha: number; dynamicDamping: number; minBrightness: number; maxBrightness: number },
+): BrightnessSample[] {
+  const peak = curvePeakRms(curve);
+  if (peak === 0) return curve.map(s => ({ t: s.t, b: 0 }));
+
+  const result: BrightnessSample[] = [];
+
+  // EMA state
+  let smoothed = 0;
+  // absoluteFactor state (rolling peak / all-time peak)
+  let rollingPeak = 0.01;
+  let allTimePeak = 0.01;
+
+  // Dynamic range compression adjustment
+  let drAdjustment = 1.0;
+  if (dynamicRange && dynamicRange.peak > 0 && dynamicRange.p90 > 0) {
+    const compressionRatio = dynamicRange.p90 / dynamicRange.peak;
+    drAdjustment = compressionRatio > 0.8 ? 1.0 - (compressionRatio - 0.8) * 0.5 : 1.0;
+  }
+
+  // Helper: find current section
+  const getSection = (t: number): SongSection | null => {
+    if (!sections) return null;
+    for (const s of sections) if (t >= s.start && t < s.end) return s;
+    return null;
+  };
+
+  // Helper: get build-up intensity
+  const getBuildUp = (t: number): number => {
+    if (!drops) return 0;
+    for (const drop of drops) {
+      if (t >= drop.buildStart && t < drop.t) {
+        const total = drop.t - drop.buildStart;
+        if (total <= 0) continue;
+        const progress = (t - drop.buildStart) / total;
+        if (drop.rampR2 != null && drop.rampR2 > 0.4 && drop.rampSlope != null && drop.rampSlope > 0) {
+          return Math.min(1, Math.pow(progress, 1.5 + drop.rampR2) * drop.intensity);
+        }
+        return Math.min(1, progress * drop.intensity);
+      }
+    }
+    return 0;
+  };
+
+  // Helper: find nearest beat strength
+  const getBeatStrength = (t: number): number | undefined => {
+    if (!beatStrengths || !beatGrid || beatGrid.beats.length === 0) return undefined;
+    let closest = 0, minDist = Math.abs(beatGrid.beats[0] - t);
+    for (let i = 1; i < beatGrid.beats.length; i++) {
+      const dist = Math.abs(beatGrid.beats[i] - t);
+      if (dist < minDist) { minDist = dist; closest = i; }
+      if (beatGrid.beats[i] > t + 0.1) break;
+    }
+    return minDist < 0.15 ? beatStrengths[closest] : undefined;
+  };
+
+  // Helper: beat pulse
+  const beatPulseVal = (t: number): number => {
+    if (!beatGrid || beatGrid.bpm <= 0) return 0;
+    const phase = ((t * beatGrid.bpm / 60) % 1);
+    const base = Math.exp(-phase * 4);
+    const bs = getBeatStrength(t);
+    const strength = bs != null ? (0.5 + bs * 0.5) : 1;
+    return base * strength;
+  };
+
+  // Helper: transition check
+  const getTransition = (t: number): { active: boolean; type: string; progress: number } => {
+    if (!transitions) return { active: false, type: 'fade', progress: 1 };
+    for (const tr of transitions) {
+      const durSec = tr.crossfadeMs / 1000;
+      const halfBefore = durSec * 0.3;
+      const halfAfter = durSec * 0.7;
+      if (t >= tr.time - halfBefore && t < tr.time + halfAfter) {
+        const elapsed = t - (tr.time - halfBefore);
+        return { active: true, type: tr.type, progress: Math.min(1, elapsed / durSec) };
+      }
+    }
+    return { active: false, type: 'fade', progress: 1 };
+  };
+
+  for (const sample of curve) {
+    const t = sample.t;
+    let normalized = sample.rawRms / peak;
+
+    // EMA smoothing (same as mic mode)
+    const alpha = normalized > smoothed ? cal.attackAlpha : cal.releaseAlpha;
+    smoothed += (normalized - smoothed) * alpha;
+    normalized = smoothed;
+
+    // Rolling peak / all-time peak for absoluteFactor
+    if (normalized > rollingPeak) {
+      rollingPeak = normalized;
+    } else {
+      rollingPeak *= 0.9995;
+    }
+    if (normalized > allTimePeak) {
+      allTimePeak = normalized;
+    } else {
+      allTimePeak *= 0.9999;
+    }
+    const absoluteFactor = allTimePeak > 0
+      ? Math.min(1, Math.max(0.15, rollingPeak / allTimePeak))
+      : 1;
+
+    // Dynamic damping
+    if (cal.dynamicDamping !== 1.0) {
+      normalized = Math.pow(normalized, cal.dynamicDamping);
+    }
+
+    // Map to brightness with absoluteFactor
+    const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+    let pct = cal.minBrightness + normalized * (effectiveMax - cal.minBrightness);
+
+    // Section brightness scaling
+    const section = getSection(t);
+    const sectionType = section?.type ?? 'chorus';
+    const brightnessScale = (SECTION_BRIGHTNESS[sectionType] ?? 1.0) * drAdjustment;
+    pct *= brightnessScale;
+
+    // Build-up blackout (last 10% → dim to near-zero)
+    const buildUp = getBuildUp(t);
+    if (buildUp > 0.9) {
+      const blackoutProgress = (buildUp - 0.9) / 0.1;
+      pct *= (1 - blackoutProgress * 0.85);
+    }
+
+    // Beat-synced pulse
+    const bps = SECTION_BEAT_PULSE[sectionType] ?? 0;
+    if (bps > 0 && beatGrid && beatGrid.bpm > 0) {
+      const pulse = beatPulseVal(t);
+      pct = Math.min(100, pct + pulse * bps * 30);
+    }
+
+    // Hard transition flash
+    const trans = getTransition(t);
+    if (trans.active && trans.type === 'hard' && trans.progress < 0.15) {
+      pct = Math.min(100, pct + 30);
+    }
+
+    result.push({ t, b: Math.round(Math.max(0, Math.min(100, pct))) });
+  }
+
+  return result;
+}
+
 // ── Auto-calibration: EMA dynamics grid search ──
 
 function findOptimalDynamics(normalized: number[]): { attack: number; release: number; damping: number } {
   let bestAttack = 0.3, bestRelease = 0.05, bestDamping = 1.0, bestMSE = Infinity;
 
-  // The "target" is the normalized curve itself — we find EMA params that best track it
   const runEMA = (attack: number, release: number, damping: number): number => {
     let smoothed = normalized[0] || 0;
     let mse = 0;
@@ -378,7 +548,7 @@ serve(async (req) => {
     // Find songs that have energy_curve but are missing analysis fields
     const { data: songs, error } = await supabase
       .from("song_analysis")
-      .select("id, track_name, artist_name, energy_curve, bpm, beat_grid, drops, dynamic_range, transitions, beat_strengths, sections")
+      .select("id, track_name, artist_name, energy_curve, bpm, beat_grid, drops, dynamic_range, transitions, beat_strengths, sections, brightness_curve")
       .not("energy_curve", "is", null);
 
     if (error) throw error;
@@ -528,7 +698,61 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[process-songs] processed ${processed} songs:`, results);
+    // ── Bake brightness curves ──
+    // Get calibration params (from latest device_calibration or defaults)
+    let bakeCal = { attackAlpha: 0.3, releaseAlpha: 0.05, dynamicDamping: 1.0, minBrightness: 3, maxBrightness: 100 };
+    try {
+      const { data: latestDevice } = await supabase
+        .from("device_calibration")
+        .select("calibration")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (latestDevice?.calibration) {
+        const dc = latestDevice.calibration as Record<string, unknown>;
+        bakeCal = {
+          attackAlpha: (dc.attackAlpha as number) ?? bakeCal.attackAlpha,
+          releaseAlpha: (dc.releaseAlpha as number) ?? bakeCal.releaseAlpha,
+          dynamicDamping: (dc.dynamicDamping as number) ?? bakeCal.dynamicDamping,
+          minBrightness: (dc.minBrightness as number) ?? bakeCal.minBrightness,
+          maxBrightness: (dc.maxBrightness as number) ?? bakeCal.maxBrightness,
+        };
+      }
+    } catch (_) { /* use defaults */ }
+
+    // Bake for all songs that have analysis but missing brightness_curve (or were just processed)
+    const { data: allForBake } = await supabase
+      .from("song_analysis")
+      .select("id, track_name, energy_curve, sections, beat_grid, drops, transitions, beat_strengths, dynamic_range, brightness_curve, bpm")
+      .not("energy_curve", "is", null);
+
+    let baked = 0;
+    for (const song of (allForBake ?? [])) {
+      const curve = song.energy_curve as unknown as EnergySample[];
+      if (!Array.isArray(curve) || curve.length < 50) continue;
+
+      // Skip if already baked and not just re-processed
+      if (song.brightness_curve && !results.includes(song.track_name)) continue;
+
+      // Need at least BPM to bake a decent curve
+      if (!song.bpm) continue;
+
+      const bc = computeBrightnessCurve(
+        curve,
+        song.sections as unknown as SongSection[] | null,
+        song.beat_grid as unknown as BeatGrid | null,
+        song.drops as unknown as Drop[] | null,
+        song.transitions as unknown as { time: number; type: string; crossfadeMs: number }[] | null,
+        song.beat_strengths as unknown as number[] | null,
+        song.dynamic_range as unknown as DynamicRange | null,
+        bakeCal,
+      );
+
+      await supabase.from("song_analysis").update({ brightness_curve: bc } as any).eq("id", song.id);
+      baked++;
+    }
+
+    console.log(`[process-songs] processed ${processed} songs, baked ${baked} brightness curves:`, results);
 
     return new Response(JSON.stringify({ processed, songs: results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

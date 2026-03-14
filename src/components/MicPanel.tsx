@@ -22,6 +22,7 @@ interface MicPanelProps {
   durationMs?: number | null;
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
   energyCurve?: EnergySample[] | null;
+  brightnessCurve?: { t: number; b: number }[] | null;
   onSaveEnergyCurve?: (
     samples: EnergySample[],
     volume: number | null,
@@ -43,6 +44,21 @@ interface MicPanelProps {
 }
 
 const HISTORY_LEN = 120;
+
+/** Binary-search interpolation of pre-baked brightness curve */
+function interpolateBrightness(bc: { t: number; b: number }[], t: number): number {
+  if (bc.length === 0) return 0;
+  if (t <= bc[0].t) return bc[0].b;
+  if (t >= bc[bc.length - 1].t) return bc[bc.length - 1].b;
+  let lo = 0, hi = bc.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (bc[mid].t <= t) lo = mid; else hi = mid;
+  }
+  const prev = bc[lo], next = bc[hi];
+  const frac = (t - prev.t) / (next.t - prev.t);
+  return Math.round(prev.b + (next.b - prev.b) * frac);
+}
 
 // Learned AGC
 const AGC_MAX_DECAY = 0.995;
@@ -112,7 +128,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, brightnessCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -138,6 +154,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
 
   // Energy curve refs
   const energyCurveRef = useRef(energyCurve);
+  const brightnessCurveRef = useRef(brightnessCurve);
   const getPositionRef = useRef(getPosition);
   const recordedSamplesRef = useRef<EnergySample[]>([]);
   const lastRecordTimeRef = useRef(0);
@@ -173,6 +190,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const sunRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
+  useEffect(() => { brightnessCurveRef.current = brightnessCurve; }, [brightnessCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
   useEffect(() => { onSaveCurveRef.current = onSaveEnergyCurve; }, [onSaveEnergyCurve]);
   useEffect(() => { recordedVolumeRef.current = recordedVolume; }, [recordedVolume]);
@@ -423,11 +441,23 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             // Keep smoothedRef updated for onset baseline
             smoothedRef.current = micRms;
 
-            // Brightness from saved curve — with EMA smoothing + absoluteFactor
-            let normalized = 0;
-            if (posSec != null) {
+            // Brightness from pre-baked curve or fallback to raw curve
+            const bc = brightnessCurveRef.current;
+            const hasBaked = Array.isArray(bc) && bc.length > 10;
+
+            if (hasBaked && posSec != null) {
+              // ── Pre-baked brightness: zero processing, just lookup ──
+              pct = interpolateBrightness(bc!, posSec);
+              // Still read frequency bands for color modulation
               const sample = interpolateSample(curve!, posSec);
-              normalized = sample.e;
+              curveKick = hasKickNear(curve!, posSec);
+              curveLo = sample.lo ?? 0;
+              curveMid = sample.mid ?? 0;
+              curveHi = sample.hi ?? 0;
+            } else if (posSec != null) {
+              // ── Fallback: raw curve with EMA smoothing (pre-bake not ready yet) ──
+              const sample = interpolateSample(curve!, posSec);
+              let normalized = sample.e;
               curveKick = hasKickNear(curve!, posSec);
               curveLo = sample.lo ?? 0;
               curveMid = sample.mid ?? 0;
@@ -440,37 +470,22 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
                 normalized *= (curVol / recVol);
                 normalized = Math.min(1, normalized);
               }
-            }
 
-            // EMA smoothing — same feel as mic mode
-            const prevSmooth = curveSmoothedRef.current;
-            const curveAlpha = normalized > prevSmooth ? cal.attackAlpha : cal.releaseAlpha;
-            const curveSmoothed = prevSmooth + curveAlpha * (normalized - prevSmooth);
-            curveSmoothedRef.current = curveSmoothed;
-            normalized = curveSmoothed;
+              // EMA smoothing
+              const prevSmooth = curveSmoothedRef.current;
+              const curveAlpha = normalized > prevSmooth ? cal.attackAlpha : cal.releaseAlpha;
+              curveSmoothedRef.current += curveAlpha * (normalized - prevSmooth);
+              normalized = curveSmoothedRef.current;
 
-            // Rolling peak for absoluteFactor — mirrors mic AGC's dynamic ceiling
-            if (normalized > curveRollingPeakRef.current) {
-              curveRollingPeakRef.current = normalized;
+              // Dynamic damping
+              if (cal.dynamicDamping !== 1.0) {
+                normalized = Math.pow(normalized, cal.dynamicDamping);
+              }
+
+              pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
             } else {
-              curveRollingPeakRef.current *= 0.9995; // slow decay ~3s
+              pct = 0;
             }
-            if (normalized > curveAllTimePeakRef.current) {
-              curveAllTimePeakRef.current = normalized;
-            } else {
-              curveAllTimePeakRef.current *= 0.9999; // very slow decay
-            }
-            const absoluteFactor = curveAllTimePeakRef.current > 0
-              ? Math.min(1, Math.max(0.15, curveRollingPeakRef.current / curveAllTimePeakRef.current))
-              : 1;
-
-            // Dynamic damping
-            if (cal.dynamicDamping !== 1.0) {
-              normalized = Math.pow(normalized, cal.dynamicDamping);
-            }
-
-            const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
-            pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
             // Update bass ref for sun pulse
             bassRef.current = curveLo;
           } else {
@@ -541,10 +556,60 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
           const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0, dynamicRangeRef.current);
 
           if (hasCurve) {
-            // ── Deep section dynamics (only with saved analysis) ──
-            pct = Math.round(pct * sectionParams.brightnessScale);
+            const hasBakedBrightness = Array.isArray(brightnessCurveRef.current) && brightnessCurveRef.current.length > 10;
 
-            // ── Palette rotation on section changes ──
+            if (!hasBakedBrightness) {
+              // ── Fallback: apply section dynamics manually (pre-bake not ready) ──
+              pct = Math.round(pct * sectionParams.brightnessScale);
+
+              // Blackout before drops
+              const currentDrops2 = dropsRef.current;
+              const buildUp2 = currentDrops2 && posSec2 != null ? getBuildUpIntensity(currentDrops2, posSec2) : 0;
+              if (buildUp2 > 0.9) {
+                const blackoutProgress = (buildUp2 - 0.9) / 0.1;
+                pct = Math.round(pct * (1 - blackoutProgress * 0.85));
+              }
+
+              // Beat-synced pulse
+              const currentBpm = bpmRef.current;
+              const grid = beatGridRef.current;
+              if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
+                const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
+                const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
+                const pulse = beatPulse(posSec2, currentBpm, bs);
+                const pulseBoost = pulse * sectionParams.beatPulseStrength * 30;
+                pct = Math.min(100, Math.round(pct + pulseBoost));
+
+                if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
+                  strobeUntilRef.current = performance.now() + 40;
+                }
+              }
+
+              // Hard transition flash
+              const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
+              if (transParams.active && transParams.type === 'hard') {
+                if (transParams.progress < 0.15) {
+                  pct = Math.min(100, pct + 30);
+                  strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
+                }
+              }
+            } else {
+              // ── Pre-baked: only strobe effects (brightness already includes everything) ──
+              const currentBpm = bpmRef.current;
+              const grid = beatGridRef.current;
+              if (currentBpm && currentBpm > 0 && posSec2 != null) {
+                const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
+                if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
+                  strobeUntilRef.current = performance.now() + 40;
+                }
+              }
+              const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
+              if (transParams.active && transParams.type === 'hard' && transParams.progress < 0.15) {
+                strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
+              }
+            }
+
+            // ── Palette rotation on section changes (always active) ──
             const currentSections = sectionsRef.current;
             if (currentSections && posSec2 != null) {
               const curSection = getCurrentSection(currentSections, posSec2);
@@ -556,39 +621,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
                   paletteColorIndexRef.current = (paletteColorIndexRef.current + 1) % pal.length;
                   colorRef.current = pal[paletteColorIndexRef.current];
                 }
-              }
-            }
-
-            // ── Blackout before drops: last 10% of build-up → dim to near-zero ──
-            const currentDrops2 = dropsRef.current;
-            const buildUp2 = currentDrops2 && posSec2 != null ? getBuildUpIntensity(currentDrops2, posSec2) : 0;
-            if (buildUp2 > 0.9) {
-              const blackoutProgress = (buildUp2 - 0.9) / 0.1;
-              pct = Math.round(pct * (1 - blackoutProgress * 0.85));
-            }
-
-            // ── Beat-synced pulse — concert-level (×30) with strobe ──
-            const currentBpm = bpmRef.current;
-            const grid = beatGridRef.current;
-            if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
-              const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
-              const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
-              const pulse = beatPulse(posSec2, currentBpm, bs);
-              const pulseBoost = pulse * sectionParams.beatPulseStrength * 30;
-              pct = Math.min(100, Math.round(pct + pulseBoost));
-
-              // Strobe on beat in drops: 40ms white flash per beat
-              if (sectionParams.strobeOnBeat && phase < 0.08 && performance.now() > strobeUntilRef.current + 60) {
-                strobeUntilRef.current = performance.now() + 40;
-              }
-            }
-
-            // ── Hard transition flash: 80ms white burst ──
-            const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
-            if (transParams.active && transParams.type === 'hard') {
-              if (transParams.progress < 0.15) {
-                pct = Math.min(100, pct + 30);
-                strobeUntilRef.current = Math.max(strobeUntilRef.current, performance.now() + 80);
               }
             }
           } else {
