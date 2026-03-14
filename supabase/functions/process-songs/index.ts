@@ -868,7 +868,8 @@ serve(async (req) => {
       if (!Array.isArray(curve) || curve.length < 50) continue;
 
       // Skip if already baked and not just re-processed
-      if (song.brightness_curve && !results.includes(song.track_name)) continue;
+      // Skip if already baked and not just re-processed (unless force rebake)
+      if (song.brightness_curve && !results.includes(song.track_name) && !forceRebake) continue;
 
       // Need at least BPM to bake a decent curve
       if (!song.bpm) continue;
