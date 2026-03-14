@@ -482,7 +482,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
                 lastRecordTimeRef.current = now;
                 // Compute frequency bands
                 const bands = computeBands(an, freqBuf);
-                const isKick = pct > sectionParams.kickThreshold;
+                // Kick based on rawRms: mark if this sample is in the top 5% of peak rawRms seen so far
+                const peakRmsSoFar = lastRec.reduce((max, s) => Math.max(max, s.rawRms), rms);
+                const isKick = rms > peakRmsSoFar * 0.85;
                 touchRecordingContext();
                 recordedSamplesRef.current.push({
                   t: posSec,
