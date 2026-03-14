@@ -70,10 +70,14 @@ export function detectDrops(curve: EnergySample[]): Drop[] {
         continue;
       }
 
+      const buildStartT = curve[Math.max(0, i - windowCount)].t;
+      const ramp = computeRamp(curve, buildStartT, t);
       drops.push({
         t,
         intensity: Math.min(1, (riseRatio - riseFactor) / riseFactor),
-        buildStart: curve[Math.max(0, i - windowCount)].t,
+        buildStart: buildStartT,
+        rampSlope: ramp.slope,
+        rampR2: ramp.r2,
       });
     }
   }
