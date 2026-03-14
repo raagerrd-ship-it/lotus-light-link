@@ -548,7 +548,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         });
 
         // AGC save on separate interval — out of hot tick path
-        const agcSaveInterval = setInterval(() => {
+        agcSaveTimerRef.current = window.setInterval(() => {
           if (stopped) return;
           const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
           calRef.current = updated;
@@ -566,6 +566,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     return () => {
       stopped = true;
       onBleWrite(null);
+      if (agcSaveTimerRef.current) clearInterval(agcSaveTimerRef.current);
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
       streamRef.current?.getTracks().forEach(t => t.stop());
