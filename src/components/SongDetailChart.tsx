@@ -69,7 +69,7 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("energy_curve, sections, drops, bpm, recorded_volume")
+      .select("energy_curve, brightness_curve, sections, drops, bpm, recorded_volume")
       .eq("id", songId)
       .single()
       .then(({ data: d }) => {
