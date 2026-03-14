@@ -167,6 +167,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const strobeUntilRef = useRef(0);
   const bassRef = useRef(0);
   const brightPctRef = useRef(0);
+  const curveSmoothedRef = useRef(0);
+  const curveRollingPeakRef = useRef(0.01);
+  const curveAllTimePeakRef = useRef(0.01);
   const sunRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
@@ -266,6 +269,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
     agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
     agcMinRef.current = 0;
     samplesRef.current = [];
+    curveSmoothedRef.current = 0;
+    curveRollingPeakRef.current = 0.01;
+    curveAllTimePeakRef.current = 0.01;
     resetChartScaler();
     resetAutoSync();
   }, [currentColor]);
@@ -417,7 +423,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             // Keep smoothedRef updated for onset baseline
             smoothedRef.current = micRms;
 
-            // Brightness from saved curve — no AGC
+            // Brightness from saved curve — with EMA smoothing + absoluteFactor
             let normalized = 0;
             if (posSec != null) {
               const sample = interpolateSample(curve!, posSec);
@@ -436,12 +442,35 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
               }
             }
 
+            // EMA smoothing — same feel as mic mode
+            const prevSmooth = curveSmoothedRef.current;
+            const curveAlpha = normalized > prevSmooth ? cal.attackAlpha : cal.releaseAlpha;
+            const curveSmoothed = prevSmooth + curveAlpha * (normalized - prevSmooth);
+            curveSmoothedRef.current = curveSmoothed;
+            normalized = curveSmoothed;
+
+            // Rolling peak for absoluteFactor — mirrors mic AGC's dynamic ceiling
+            if (normalized > curveRollingPeakRef.current) {
+              curveRollingPeakRef.current = normalized;
+            } else {
+              curveRollingPeakRef.current *= 0.9995; // slow decay ~3s
+            }
+            if (normalized > curveAllTimePeakRef.current) {
+              curveAllTimePeakRef.current = normalized;
+            } else {
+              curveAllTimePeakRef.current *= 0.9999; // very slow decay
+            }
+            const absoluteFactor = curveAllTimePeakRef.current > 0
+              ? Math.min(1, Math.max(0.15, curveRollingPeakRef.current / curveAllTimePeakRef.current))
+              : 1;
+
             // Dynamic damping
             if (cal.dynamicDamping !== 1.0) {
               normalized = Math.pow(normalized, cal.dynamicDamping);
             }
 
-            pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
+            const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+            pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
             // Update bass ref for sun pulse
             bassRef.current = curveLo;
           } else {
