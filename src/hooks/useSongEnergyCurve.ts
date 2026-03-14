@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getCalibration } from "@/lib/lightCalibration";
 import type { AgcState, EnergySample } from "@/lib/energyInterpolate";
 import type { BeatGrid } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
