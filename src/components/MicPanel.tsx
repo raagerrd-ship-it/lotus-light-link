@@ -127,6 +127,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const energyRef = useRef(energy);
   const danceabilityRef = useRef(danceability);
   const happinessRef = useRef(happiness);
+  const loudnessDbRef = useRef(parseLoudnessDb(loudness));
   const beatPhaseRef = useRef(0);
   const lastBeatTimeRef = useRef(0);
   // Drop detection state
