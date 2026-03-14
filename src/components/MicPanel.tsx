@@ -429,6 +429,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             }
 
             pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
+            // Update bass ref for sun pulse
+            bassRef.current = curveLo;
           } else {
             // ── Mic mode: read mic + full AGC pipeline ──
             an.getFloatTimeDomainData(buf);
