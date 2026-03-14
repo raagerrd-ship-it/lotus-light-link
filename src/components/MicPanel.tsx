@@ -139,6 +139,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
 
   // Energy curve refs
   const energyCurveRef = useRef(energyCurve);
+  const brightnessCurveRef = useRef(brightnessCurve);
   const getPositionRef = useRef(getPosition);
   const recordedSamplesRef = useRef<EnergySample[]>([]);
   const lastRecordTimeRef = useRef(0);
