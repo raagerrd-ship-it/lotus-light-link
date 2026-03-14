@@ -159,8 +159,11 @@ const Index = () => {
   }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, nowPlaying?.durationMs, connection?.device?.name]);
 
   // Live status callback from MicPanel
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean }) => {
+  const [dropActive, setDropActive] = useState(false);
+
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => {
     if (!isMaster) return;
+    setDropActive(status.isDrop);
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
