@@ -1,20 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { AgcState } from "@/lib/energyInterpolate";
+import type { AgcState, EnergySample } from "@/lib/energyInterpolate";
+import { curvePeakRms } from "@/lib/energyInterpolate";
 import { estimateBpmFromHistory, extractBeatGrid, type BeatGrid } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
 import { detectDrops, type Drop } from "@/lib/dropDetect";
 
-export interface EnergySample {
-  t: number;
-  e: number;
-  kick?: boolean;
-  kickT?: number;
-  lo?: number;
-  mid?: number;
-  hi?: number;
-  rtt?: number;
-}
+export type { EnergySample };
 
 interface TrackKey {
   trackName: string;
