@@ -49,6 +49,16 @@ function cacheKey(t: TrackKey): string {
   return `${t.trackName}|${t.artistName}`;
 }
 
+/** Clear cache for a specific track (call after deleting a recording) */
+export function clearCurveCache(trackName: string, artistName: string) {
+  curveCache.delete(`${trackName}|${artistName}`);
+}
+
+/** Clear entire curve cache */
+export function clearAllCurveCache() {
+  curveCache.clear();
+}
+
 function estimateBpm(curve: EnergySample[]): number | null {
   if (curve.length < 120) return null;
   const peak = curvePeakRms(curve);
