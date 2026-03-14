@@ -165,6 +165,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const paletteColorIndexRef = useRef(0);
   const lastSectionTypeRef = useRef<string | null>(null);
   const strobeUntilRef = useRef(0);
+  const bassRef = useRef(0);
+  const sunRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { energyCurveRef.current = energyCurve; }, [energyCurve]);
   useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
@@ -288,7 +290,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // Decoupled chart rendering via rAF
+  // Decoupled chart rendering + sun pulse via rAF
   useEffect(() => {
     const drawLoop = () => {
       if (chartDirtyRef.current) {
@@ -297,6 +299,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         if (canvas) {
           drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
         }
+      }
+      // Animate sun with bass energy
+      const sun = sunRef.current;
+      if (sun) {
+        const bass = bassRef.current;
+        const scale = 1 + bass * 0.6; // up to 1.6x at full bass
+        const glowSize = 60 + bass * 120; // 60-180px glow
+        const glowAlpha = 0.3 + bass * 0.5;
+        const [cr, cg, cb] = colorRef.current;
+        sun.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        sun.style.boxShadow = `0 0 ${glowSize}px rgba(${cr},${cg},${cb},${glowAlpha})`;
+        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.4 + bass * 0.4}) 0%, transparent 70%)`;
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
@@ -415,6 +429,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             }
 
             pct = Math.round(cal.minBrightness + normalized * (cal.maxBrightness - cal.minBrightness));
+            // Update bass ref for sun pulse
+            bassRef.current = curveLo;
           } else {
             // ── Mic mode: read mic + full AGC pipeline ──
             an.getFloatTimeDomainData(buf);
@@ -473,6 +489,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
             const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
             const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
             pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
+            // Update bass ref for sun pulse (compute bands from mic)
+            const micBands = computeBands(an, freqBuf);
+            bassRef.current = micBands.lo;
           }
 
           // Section-aware adjustments — concert effects only for analyzed songs
@@ -699,10 +718,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         style={{ opacity: 0.6 }}
       />
       <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none transition-all duration-100"
+        ref={sunRef}
+        className="absolute left-1/2 top-1/2 rounded-full pointer-events-none"
         style={{
           width: 120,
           height: 120,
+          transform: 'translate(-50%, -50%) scale(1)',
+          willChange: 'transform, box-shadow, background',
           background: `radial-gradient(circle, rgba(${r},${g},${b},0.4) 0%, transparent 70%)`,
           boxShadow: `0 0 60px rgba(${r},${g},${b},0.3)`,
         }}
