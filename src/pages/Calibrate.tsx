@@ -117,6 +117,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
   const [results, setResults] = useState<PulseResult[]>([]);
   const [countdown, setCountdown] = useState(0);
   const [modeBests, setModeBests] = useState<ModeBests>({});
+  const [saved, setSaved] = useState(false);
 
   const currentDuration = PULSE_DURATIONS[currentIdx] ?? 0;
   const testedModes = Object.keys(modeBests) as TestMode[];
@@ -151,6 +152,7 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
     setPhase('waiting');
     setCurrentIdx(0);
     setResults([]);
+    setSaved(false);
     await sendPulses(PULSE_DURATIONS[0], mode);
     setPhase('asking');
   }, [sendPulses, mode]);
@@ -161,18 +163,17 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
     setResults(newResults);
 
     if (ans !== 'all' || currentIdx >= PULSE_DURATIONS.length - 1) {
-      // Record this mode's best result
       const lastAllForMode = [...newResults].reverse().find(r => r.answer === 'all' && r.mode === mode);
-      const bestMs = lastAllForMode?.durationMs ?? PULSE_DURATIONS[0]; // fallback to slowest
+      const bestMs = lastAllForMode?.durationMs ?? PULSE_DURATIONS[0];
       const newBests = { ...modeBests, [mode]: bestMs };
       setModeBests(newBests);
 
-      // Auto-save worst (highest) of all tested modes
       const testedValues = Object.values(newBests) as number[];
       if (testedValues.length > 0) {
         const worst = Math.max(...testedValues);
         setBleMinInterval(worst);
         onSpeedSave?.(newBests);
+        setSaved(true);
       }
 
       setPhase('done');
@@ -200,63 +201,84 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
     ? `Såg du ${PULSES_PER_STEP} tydliga färg+blinkar?`
     : `Såg du ${PULSES_PER_STEP} tydliga blinkar?`;
 
-  // Suggest next untested mode
   const allModes: TestMode[] = ['brightness', 'color', 'combined'];
   const nextUntested = allModes.find(m => !(m in modeBests));
 
   return (
     <div className="space-y-4">
+      {/* What this step does */}
+      <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2.5">
+        <p className="text-xs text-foreground/90 leading-relaxed">
+          <span className="font-bold">Vad händer?</span> Lampan blinkar i allt snabbare takt. Du svarar om du ser blinkarna tydligt.
+          Resultatet avgör hur snabbt systemet kan skicka kommandon till lampan.
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          💡 Testa gärna alla tre lägen — det sämsta resultatet används som gräns.
+        </p>
+      </div>
+
+      {!conn && (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+          <p className="text-xs text-destructive font-medium">⚠ Anslut BLE-lampan först</p>
+          <p className="text-[10px] text-destructive/70 mt-0.5">Gå tillbaka till huvudvyn och tryck på Bluetooth-knappen i headern.</p>
+        </div>
+      )}
+
       {/* Mode selector */}
-      <div className="flex gap-1 flex-wrap">
-        {allModes.map((m) => (
-          <button
-            key={m}
-            onClick={() => { if (phase === 'idle' || phase === 'done') setMode(m); }}
-            className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide transition-colors ${
-              mode === m
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-accent'
-            } ${phase !== 'idle' && phase !== 'done' ? 'opacity-50' : ''}`}
-          >
-            {MODE_LABELS[m]}
-            {m in modeBests && <span className="ml-1 opacity-70">({modeBests[m]}ms)</span>}
-          </button>
-        ))}
+      <div>
+        <p className="text-[10px] font-bold text-foreground/70 mb-1.5">Välj testläge:</p>
+        <div className="flex gap-1 flex-wrap">
+          {allModes.map((m) => (
+            <button
+              key={m}
+              onClick={() => { if (phase === 'idle' || phase === 'done') setMode(m); }}
+              className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-colors ${
+                mode === m
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-secondary-foreground hover:bg-accent'
+              } ${phase !== 'idle' && phase !== 'done' ? 'opacity-50' : ''}`}
+            >
+              {MODE_LABELS[m]}
+              {m in modeBests && <span className="ml-1 opacity-70">✓ {modeBests[m]}ms</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">{MODE_DESC[mode]}</p>
 
-      {!conn && <p className="text-xs text-destructive">Anslut BLE-lampan först.</p>}
-
-      {phase === 'idle' && (
-        <Button size="sm" onClick={startTest} disabled={!conn} className="gap-1.5 text-xs">
-          <Play className="w-3 h-3" /> Starta test
+      {phase === 'idle' && conn && (
+        <Button size="sm" onClick={startTest} className="gap-1.5 text-xs w-full">
+          <Play className="w-3.5 h-3.5" /> Starta test — {MODE_LABELS[mode]}
         </Button>
       )}
 
       {phase === 'waiting' && (
-        <div className="text-center py-6">
-          <p className="text-sm text-muted-foreground mb-2">
-            {countdown > 0 ? `Gör dig redo… ${countdown}` : 'Titta på lampan!'}
+        <div className="text-center py-8 bg-secondary/30 rounded-xl border border-border/20">
+          <p className="text-lg font-bold text-foreground/60 mb-1">
+            {countdown > 0 ? `${countdown}…` : '👀'}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {MODE_LABELS[mode]} — {PULSE_DURATIONS[currentIdx]}ms × {PULSES_PER_STEP}
+          <p className="text-sm text-muted-foreground">
+            {countdown > 0 ? 'Gör dig redo — titta på lampan!' : 'Titta på lampan nu!'}
+          </p>
+          <p className="text-[10px] text-muted-foreground/60 mt-2 font-mono">
+            {MODE_LABELS[mode]} — {PULSE_DURATIONS[currentIdx]}ms
           </p>
         </div>
       )}
 
       {phase === 'asking' && (
-        <div className="text-center py-4 space-y-3">
-          <p className="text-sm font-medium text-foreground">{questionText}</p>
-          <p className="text-xs text-muted-foreground">{MODE_LABELS[mode]} — {currentDuration}ms × {PULSES_PER_STEP}</p>
-          <div className="flex gap-2 justify-center flex-wrap">
-            <Button size="sm" onClick={() => answer('all')} className="px-4 text-xs">
-              ✓ Alla 3
+        <div className="text-center py-5 space-y-3 bg-secondary/30 rounded-xl border border-border/20">
+          <p className="text-sm font-bold text-foreground">{questionText}</p>
+          <p className="text-[10px] text-muted-foreground">Pulslängd: {currentDuration}ms</p>
+          <div className="flex gap-2 justify-center flex-wrap px-4">
+            <Button size="sm" onClick={() => answer('all')} className="px-5 text-xs flex-1 max-w-[140px]">
+              ✓ Alla {PULSES_PER_STEP}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => answer('partial')} className="px-4 text-xs">
+            <Button size="sm" variant="outline" onClick={() => answer('partial')} className="px-4 text-xs flex-1 max-w-[140px]">
               ◐ Bara 1–2
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => answer('none')} className="px-4 text-xs">
+            <Button size="sm" variant="secondary" onClick={() => answer('none')} className="px-4 text-xs flex-1 max-w-[140px]">
               ✗ Ingen
             </Button>
           </div>
@@ -265,79 +287,73 @@ function BleSpeedTab({ conn, onSpeedSave }: { conn: any; onSpeedSave?: (bests: M
 
       {phase === 'done' && (
         <div className="space-y-3">
-          <div className="bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
-            <p className="text-xs font-bold text-primary">Resultat — {MODE_LABELS[mode]}</p>
+          {saved && (
+            <div className="bg-primary/15 border border-primary/30 rounded-lg px-3 py-2.5 flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-primary">Sparad automatiskt!</p>
+                <p className="text-[10px] text-primary/70">Resultatet sparas direkt — du behöver inte göra något extra.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2">
+            <p className="text-xs font-bold text-foreground">Resultat — {MODE_LABELS[mode]}</p>
             {lastAll && firstFail ? (
               <p className="text-xs text-foreground/80 mt-1">
-                Kortaste med alla 3: <span className="font-mono font-bold">{lastAll.durationMs}ms</span>
+                Snabbaste synligt: <span className="font-mono font-bold text-primary">{lastAll.durationMs}ms</span>
                 <br />
-                Missade vid: <span className="font-mono font-bold">{firstFail.durationMs}ms</span>
-                {firstFailType === 'partial' && <span className="text-yellow-400"> (lampan hänger kvar)</span>}
-                {firstFailType === 'none' && <span className="text-red-400"> (ingen syntes)</span>}
+                <span className="text-muted-foreground">Missade vid {firstFail.durationMs}ms</span>
+                {firstFailType === 'partial' && <span className="text-yellow-400"> — lampan hänger kvar</span>}
+                {firstFailType === 'none' && <span className="text-destructive"> — ingen blink syntes</span>}
               </p>
             ) : lastAll ? (
               <p className="text-xs text-foreground/80 mt-1">
-                Alla syntes! Minsta: <span className="font-mono font-bold">{lastAll.durationMs}ms</span>
+                Alla syntes! Minsta: <span className="font-mono font-bold text-primary">{lastAll.durationMs}ms</span>
               </p>
             ) : (
-              <p className="text-xs text-foreground/80 mt-1">Ingen puls syntes.</p>
+              <p className="text-xs text-foreground/80 mt-1">Inga pulser syntes.</p>
             )}
           </div>
 
-          {/* Cross-mode summary */}
           {testedModes.length > 0 && (
-            <div className="bg-secondary/50 border border-border/30 rounded-md px-3 py-2">
-              <p className="text-[10px] font-bold text-foreground/70 mb-1">Testade lägen</p>
+            <div className="bg-secondary/50 border border-border/30 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-bold text-foreground/70 mb-1">Sammanfattning</p>
               {allModes.map(m => (
-                <div key={m} className="text-[10px] font-mono flex justify-between">
-                  <span className={m in modeBests ? 'text-foreground/80' : 'text-muted-foreground'}>{MODE_LABELS[m]}</span>
-                  <span>{m in modeBests ? `${modeBests[m]}ms` : '—'}</span>
+                <div key={m} className="text-[10px] font-mono flex justify-between py-0.5">
+                  <span className={m in modeBests ? 'text-foreground/80' : 'text-muted-foreground/50'}>
+                    {m in modeBests ? '✓' : '○'} {MODE_LABELS[m]}
+                  </span>
+                  <span className={m in modeBests ? 'text-foreground font-bold' : 'text-muted-foreground/50'}>
+                    {m in modeBests ? `${modeBests[m]}ms` : 'Ej testad'}
+                  </span>
                 </div>
               ))}
-              <div className="border-t border-border/20 mt-1 pt-1 flex justify-between text-[10px] font-mono font-bold">
-                <span>Scheduler-intervall (sämsta)</span>
+              <div className="border-t border-border/20 mt-1.5 pt-1.5 flex justify-between text-[10px] font-mono font-bold">
+                <span>Systemets gräns</span>
                 <span className="text-primary">{worstBest}ms</span>
               </div>
-              {!allThreeTested && <p className="text-[10px] text-yellow-400 mt-1">⚠ Testa alla 3 lägen för bästa resultat</p>}
-              {allThreeTested && <p className="text-[10px] text-primary mt-1">✓ Alla lägen testade — {worstBest}ms sparad</p>}
+              {!allThreeTested && <p className="text-[10px] text-yellow-400 mt-1.5">💡 Testa alla tre för säkraste resultat</p>}
+              {allThreeTested && <p className="text-[10px] text-primary mt-1.5">✓ Alla lägen testade! Gå vidare till nästa steg.</p>}
             </div>
           )}
 
           <div className="flex gap-2">
             {nextUntested ? (
-              <Button size="sm" onClick={() => { setMode(nextUntested); setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs gap-1">
-                Testa {MODE_LABELS[nextUntested]}
+              <Button size="sm" onClick={() => { setMode(nextUntested); setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs gap-1 flex-1">
+                Testa {MODE_LABELS[nextUntested]} →
               </Button>
             ) : (
-              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs">
-                Kör igen
+              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs flex-1">
+                <RefreshCw className="w-3 h-3 mr-1" /> Kör om
               </Button>
             )}
-            <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs">
-              Kör om
-            </Button>
+            {nextUntested && (
+              <Button size="sm" variant="secondary" onClick={() => { setPhase('idle'); setResults([]); setCurrentIdx(0); }} className="text-xs">
+                Kör om
+              </Button>
+            )}
           </div>
-        </div>
-      )}
-
-      {results.length > 0 && (
-        <div className="border border-border/30 rounded-md overflow-hidden">
-          <table className="w-full text-[10px] font-mono">
-            <thead>
-              <tr className="text-muted-foreground border-b border-border/20">
-                <th className="px-2 py-1 text-left">Puls</th>
-                <th className="px-2 py-1 text-right">Svar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r, i) => (
-                <tr key={i} className={`border-b border-border/10 ${r.answer === 'all' ? '' : r.answer === 'partial' ? 'text-yellow-400' : 'text-red-400'}`}>
-                  <td className="px-2 py-0.5">{r.durationMs}ms</td>
-                  <td className="px-2 py-0.5 text-right">{r.answer === 'all' ? '✓ 3/3' : r.answer === 'partial' ? '◐ 1–2' : '✗ 0'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
     </div>
