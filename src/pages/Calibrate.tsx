@@ -388,8 +388,8 @@ function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patc
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Dynamic damping: {cal.dynamicDamping.toFixed(1)}×</label>
-          <input type="range" min={10} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
-          <p className="text-[9px] text-muted-foreground mt-0.5">Komprimerar dynamiken — 1.0 = linjärt. <span className="text-foreground/50">↑ Högre = jämnare ljus, ↓ Lägre = mer kontrast</span></p>
+          <input type="range" min={5} max={30} value={Math.round(cal.dynamicDamping * 10)} onChange={e => onSave({ dynamicDamping: Number(e.target.value) / 10 })} className="w-full h-1 accent-primary" />
+          <p className="text-[9px] text-muted-foreground mt-0.5">Komprimerar dynamiken — 1.0 = linjärt, &lt;1 = mer kontrast, &gt;1 = jämnare. <span className="text-foreground/50">Dra vänster för dramatik, höger för jämnhet</span></p>
         </div>
         <div>
           <label className="text-[10px] font-bold text-foreground/70">Kick tröskel: {cal.whiteKickThreshold}%</label>
@@ -409,29 +409,43 @@ function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patc
 function SliderTabWithLive({ conn, cal, onSave }: { conn: any; cal: LightCalibration; onSave: (patch: Partial<LightCalibration>) => void }) {
   const [brightness, setBrightness] = useState(0);
   const [liveColor, setLiveColor] = useState<[number, number, number]>([255, 180, 80]);
+  const [isDrop, setIsDrop] = useState(false);
+  const [bassLevel, setBassLevel] = useState(0);
 
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number] }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number }) => {
     setBrightness(status.brightness);
     setLiveColor(status.color);
+    setIsDrop(status.isDrop);
+    setBassLevel(Math.round(status.bassLevel * 100));
   }, []);
 
   return (
     <>
       {conn?.characteristic ? (
-        <div className="relative mx-auto mb-4 flex items-center justify-center gap-3">
-          <div className="relative w-20 h-20">
-            <MicPanel
-              char={conn.characteristic}
-              currentColor={[255, 180, 80]}
-              isPlaying={true}
-              onLiveStatus={handleLiveStatus}
-            />
+        <div className="relative mx-auto mb-4">
+          <div className="flex items-center justify-center gap-4">
+            <div className="relative w-20 h-20">
+              <MicPanel
+                char={conn.characteristic}
+                currentColor={[255, 180, 80]}
+                isPlaying={true}
+                onLiveStatus={handleLiveStatus}
+              />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-3xl font-mono font-bold tabular-nums" style={{ color: `rgb(${liveColor[0]},${liveColor[1]},${liveColor[2]})` }}>
+                {brightness}%
+              </p>
+              <p className="text-[9px] text-muted-foreground">Ljusstyrka</p>
+              {isDrop && <p className="text-[9px] font-bold text-primary animate-pulse">⚡ DROP</p>}
+            </div>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-mono font-bold" style={{ color: `rgb(${liveColor[0]},${liveColor[1]},${liveColor[2]})` }}>
-              {brightness}%
-            </p>
-            <p className="text-[9px] text-muted-foreground">Ljusstyrka</p>
+          {/* Live parameter readout */}
+          <div className="flex justify-center gap-3 mt-2 text-[9px] font-mono text-muted-foreground">
+            <span>bass: <span className="text-foreground">{bassLevel}%</span></span>
+            <span>atk: <span className="text-foreground">{cal.attackAlpha.toFixed(2)}</span></span>
+            <span>rel: <span className="text-foreground">{cal.releaseAlpha.toFixed(3)}</span></span>
+            <span>dmp: <span className="text-foreground">{cal.dynamicDamping.toFixed(1)}</span></span>
           </div>
         </div>
       ) : (
