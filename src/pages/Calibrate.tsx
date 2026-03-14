@@ -406,7 +406,44 @@ function LightSlidersTab({ cal, onSave }: { cal: LightCalibration; onSave: (patc
   );
 }
 
-export default function Calibrate() {
+function SliderTabWithLive({ conn, cal, onSave }: { conn: any; cal: LightCalibration; onSave: (patch: Partial<LightCalibration>) => void }) {
+  const [brightness, setBrightness] = useState(0);
+  const [liveColor, setLiveColor] = useState<[number, number, number]>([255, 180, 80]);
+
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number] }) => {
+    setBrightness(status.brightness);
+    setLiveColor(status.color);
+  }, []);
+
+  return (
+    <>
+      {conn?.characteristic ? (
+        <div className="relative mx-auto mb-4 flex items-center justify-center gap-3">
+          <div className="relative w-20 h-20">
+            <MicPanel
+              char={conn.characteristic}
+              currentColor={[255, 180, 80]}
+              isPlaying={true}
+              onLiveStatus={handleLiveStatus}
+            />
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-mono font-bold" style={{ color: `rgb(${liveColor[0]},${liveColor[1]},${liveColor[2]})` }}>
+              {brightness}%
+            </p>
+            <p className="text-[9px] text-muted-foreground">Ljusstyrka</p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 mb-4">
+          <p className="text-[10px] text-destructive">⚠ Anslut BLE-lampan för att se live-förhandsgranskning</p>
+        </div>
+      )}
+      <LightSlidersTab cal={cal} onSave={onSave} />
+    </>
+  );
+}
+
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('ble');
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
