@@ -106,9 +106,13 @@ export default function SongDetailChart({ songId }: { songId: string }) {
     const chartH = chartBottom - chartTop;
     const sectionBarH = 14;
     const sectionBarTop = chartBottom + 2;
+    // Use rawRms if available, fall back to e
+    const hasRaw = curve.some(s => s.rawRms != null && s.rawRms > 0);
+    const values = curve.map(s => hasRaw ? (s.rawRms ?? s.e) : s.e);
+    const peakVal = Math.max(...values, 0.001);
 
     const tToX = (t: number) => (t / maxT) * w;
-    const eToY = (e: number) => chartBottom - Math.min(1, e) * chartH;
+    const valToY = (v: number) => chartBottom - Math.min(1, v / peakVal) * chartH;
 
     // Draw sections as colored bars
     if (sections && sections.length > 0) {
