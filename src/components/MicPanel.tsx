@@ -308,7 +308,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         const glowSize = 60 + bass * 120; // 60-180px glow
         const glowAlpha = 0.3 + bass * 0.5;
         const [cr, cg, cb] = colorRef.current;
-        sun.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        sun.style.transform = `scale(${scale})`;
         sun.style.boxShadow = `0 0 ${glowSize}px rgba(${cr},${cg},${cb},${glowAlpha})`;
         sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${0.4 + bass * 0.4}) 0%, transparent 70%)`;
       }
