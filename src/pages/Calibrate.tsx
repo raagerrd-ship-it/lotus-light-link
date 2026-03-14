@@ -444,6 +444,7 @@ function SliderTabWithLive({ conn, cal, onSave }: { conn: any; cal: LightCalibra
   );
 }
 
+export default function Calibrate() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('ble');
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
