@@ -41,6 +41,8 @@ interface MicPanelProps {
   trackName?: string | null;
   artistName?: string | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
+  syncDiag?: boolean;
+  onSyncOffset?: (offsetMs: number) => void;
 }
 
 const HISTORY_LEN = 120;
