@@ -49,7 +49,8 @@ function cacheKey(t: TrackKey): string {
 
 function estimateBpm(curve: EnergySample[]): number | null {
   if (curve.length < 120) return null;
-  const history = curve.map(s => s.e);
+  const peak = curvePeakRms(curve);
+  const history = curve.map(s => peak > 0 ? s.rawRms / peak : 0);
   const result = estimateBpmFromHistory(history);
   return result ? Math.round(result.bpm) : null;
 }
