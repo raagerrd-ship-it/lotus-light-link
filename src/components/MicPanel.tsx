@@ -699,9 +699,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   useEffect(() => {
     const resize = () => {
       const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = window.innerWidth * devicePixelRatio;
-      canvas.height = window.innerHeight * devicePixelRatio;
+      const sun = sunRef.current;
+      if (!canvas || !sun) return;
+      const size = sun.clientWidth;
+      canvas.width = size * devicePixelRatio;
+      canvas.height = size * devicePixelRatio;
     };
     resize();
     window.addEventListener("resize", resize);
@@ -711,24 +713,27 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
   const [r, g, b] = currentColor;
 
   return (
-    <div className="absolute inset-0">
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 w-full h-full"
-        style={{ opacity: 0.6 }}
-      />
+    <div className="absolute inset-0 flex items-center justify-center">
       <div
         ref={sunRef}
-        className="absolute left-1/2 top-1/2 rounded-full pointer-events-none"
+        className="rounded-full overflow-hidden relative"
         style={{
-          width: 120,
-          height: 120,
-          transform: 'translate(-50%, -50%) scale(1)',
+          width: '55vw',
+          height: '55vw',
+          maxWidth: '55vh',
+          maxHeight: '55vh',
+          transform: 'scale(1)',
           willChange: 'transform, box-shadow, background',
           background: `radial-gradient(circle, rgba(${r},${g},${b},0.4) 0%, transparent 70%)`,
           boxShadow: `0 0 60px rgba(${r},${g},${b},0.3)`,
         }}
-      />
+      >
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ opacity: 0.6 }}
+        />
+      </div>
     </div>
   );
 };
