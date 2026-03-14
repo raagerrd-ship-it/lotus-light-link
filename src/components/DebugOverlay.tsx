@@ -26,6 +26,8 @@ interface DebugOverlayProps {
   danceability?: number | null;
   happiness?: number | null;
   loudness?: string | null;
+  bassLevel?: number;
+  midHiLevel?: number;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -43,6 +45,7 @@ export default function DebugOverlay({
   bleConnected, bleDeviceName, bleReconnectStatus,
   deviceRole, bleMinIntervalMs, bleLatencyMs, dropActive,
   energy, danceability, happiness, loudness,
+  bassLevel, midHiLevel,
 }: DebugOverlayProps) {
 
   return (
@@ -69,6 +72,7 @@ export default function DebugOverlay({
       {/* Audio */}
       <div>BPM: <span className="text-foreground">{liveBpm ? Math.round(liveBpm) : '—'}</span></div>
       <div>drop: {dropActive ? <span className="text-red-400 font-bold animate-pulse">🔥 DROP</span> : <span className="text-foreground/50">—</span>}</div>
+      <div>lo Hz: <span className="text-foreground">{bassLevel != null ? bassLevel.toFixed(3) : '—'}</span> | mid+hi: <span className="text-foreground">{midHiLevel != null ? midHiLevel.toFixed(3) : '—'}</span></div>
 
       {/* Track traits & effects */}
       {(energy != null || danceability != null || happiness != null || loudness != null) && (

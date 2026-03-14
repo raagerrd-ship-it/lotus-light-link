@@ -161,10 +161,12 @@ const Index = () => {
 
   // Live status callback from MicPanel
   const [dropActive, setDropActive] = useState(false);
+  const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
 
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number }) => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
+    setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
@@ -389,6 +391,8 @@ const Index = () => {
         danceability={trackTraits.danceability}
         happiness={trackTraits.happiness}
         loudness={trackTraits.loudness}
+        bassLevel={bandLevels.bass}
+        midHiLevel={bandLevels.midHi}
       />
     </div>
   );
