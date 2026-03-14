@@ -217,8 +217,19 @@ export default function SongCalibrationTab({ cal, onSave }: SongCalibrationTabPr
 
   const validSongs = songs.filter(s => Array.isArray(s.energy_curve) && s.energy_curve.length > 50);
 
+  const chainMissing = cal.chainLatencyMs === 0;
+
   return (
     <div className="space-y-4">
+      {chainMissing && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md px-3 py-2">
+          <p className="text-[10px] text-yellow-400 font-bold">⚠ Kedjelatens ej kalibrerad</p>
+          <p className="text-[10px] text-yellow-400/80 mt-0.5">
+            Gå till <span className="font-bold">Kedja</span>-fliken och kalibrera kedjelatens först — annars blir live-preview ur synk med lampan.
+          </p>
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground">
         Analyserar inspelade låtar och optimerar dynamikparametrar (attack, release, ljusstyrka). Spela en låt på Sonos för live-preview medan du justerar.
       </p>
