@@ -5,7 +5,8 @@ import { getCalibration, saveCalibration, applyColorCalibration, type LightCalib
 import { getActiveDeviceName } from "@/lib/lightCalibration";
 import { hasKickNear, interpolateSample } from "@/lib/energyInterpolate";
 import type { EnergySample, AgcState } from "@/lib/energyInterpolate";
-import { getSectionLighting, beatPulse, type SongSection } from "@/lib/sectionLighting";
+import { getSectionLighting, beatPulse, getCurrentBeatStrength, getTransitionParams, type SongSection } from "@/lib/sectionLighting";
+import type { DynamicRange, Transition } from "@/lib/songAnalysis";
 import { isInDrop, getBuildUpIntensity, type Drop } from "@/lib/dropDetect";
 import { beatGridPhase, type BeatGrid } from "@/lib/bpmEstimate";
 import { reportLiveOnset, tickAutoSync, getAutoSyncDriftMs, resetAutoSync } from "@/lib/autoSync";
@@ -31,6 +32,9 @@ interface MicPanelProps {
   beatGrid?: BeatGrid | null;
   sections?: SongSection[] | null;
   drops?: Drop[] | null;
+  dynamicRange?: DynamicRange | null;
+  transitions?: Transition[] | null;
+  beatStrengths?: number[] | null;
   trackName?: string | null;
   artistName?: string | null;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; sectionType?: string; isWhiteKick: boolean }) => void;
@@ -106,7 +110,7 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, trackName, artistName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true, durationMs, getPosition, energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, trackName, artistName, onSaveEnergyCurve, onLiveStatus }: MicPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
@@ -142,6 +146,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   const beatGridRef = useRef(beatGrid);
   const sectionsRef = useRef(sections);
   const dropsRef = useRef(drops);
+  const dynamicRangeRef = useRef(dynamicRange);
+  const transitionsRef = useRef(transitions);
+  const beatStrengthsRef = useRef(beatStrengths);
   const sonosRttRef = useRef(sonosRtt);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
@@ -162,6 +169,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
   useEffect(() => { beatGridRef.current = beatGrid; }, [beatGrid]);
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   useEffect(() => { dropsRef.current = drops; }, [drops]);
+  useEffect(() => { dynamicRangeRef.current = dynamicRange; }, [dynamicRange]);
+  useEffect(() => { transitionsRef.current = transitions; }, [transitions]);
+  useEffect(() => { beatStrengthsRef.current = beatStrengths; }, [beatStrengths]);
   useEffect(() => { sonosRttRef.current = sonosRtt; }, [sonosRtt]);
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { durationMsRef.current = durationMs; }, [durationMs]);
@@ -467,9 +477,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
             pct = Math.round(cal.minBrightness + normalized * (effectiveMax - cal.minBrightness));
           }
 
-          // Section-aware adjustments
+          // Section-aware adjustments with dynamic range normalization
           const posSec2 = getSongPositionSec();
-          const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0);
+          const sectionParams = getSectionLighting(sectionsRef.current, posSec2 ?? 0, dynamicRangeRef.current);
           pct = Math.round(pct * sectionParams.brightnessScale);
 
           // Beat-synced pulse — use beat grid for precise phase if available
@@ -477,9 +487,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
           const grid = beatGridRef.current;
           if (currentBpm && currentBpm > 0 && posSec2 != null && sectionParams.beatPulseStrength > 0) {
             const phase = grid ? beatGridPhase(grid, posSec2) : ((posSec2 * currentBpm / 60) % 1);
-            const pulse = Math.exp(-phase * 4); // sharp attack, smooth decay
+            // Get per-beat strength for downbeat differentiation
+            const bs = getCurrentBeatStrength(beatStrengthsRef.current, grid?.beats ?? null, posSec2);
+            const pulse = beatPulse(posSec2, currentBpm, bs);
             const pulseBoost = pulse * sectionParams.beatPulseStrength * 15;
             pct = Math.min(100, Math.round(pct + pulseBoost));
+          }
+
+          // Transition-aware crossfade hint (logged for future color crossfade use)
+          const transParams = getTransitionParams(transitionsRef.current, posSec2 ?? 0);
+          if (transParams.active && transParams.type === 'hard') {
+            // Hard transitions: brief brightness flash
+            if (transParams.progress < 0.3) {
+              pct = Math.min(100, pct + 10);
+            }
           }
 
           // Track pipeline latency

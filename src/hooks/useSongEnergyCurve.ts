@@ -5,6 +5,7 @@ import { curvePeakRms } from "@/lib/energyInterpolate";
 import { estimateBpmFromHistory, extractBeatGrid, type BeatGrid } from "@/lib/bpmEstimate";
 import type { SongSection } from "@/lib/sectionLighting";
 import { detectDrops, type Drop } from "@/lib/dropDetect";
+import { analyzeDynamicRange, analyzeTransitions, analyzeBeatStrengths, type DynamicRange, type Transition } from "@/lib/songAnalysis";
 import { runMultiSongCalibration } from "@/lib/autoCalibrate";
 import { getCalibration, saveCalibration, getActiveDeviceName } from "@/lib/lightCalibration";
 
@@ -23,6 +24,9 @@ interface SongEnergyCurveResult {
   beatGrid: BeatGrid | null;
   sections: SongSection[] | null;
   drops: Drop[] | null;
+  dynamicRange: DynamicRange | null;
+  transitions: Transition[] | null;
+  beatStrengths: number[] | null;
   loading: boolean;
   saveCurve: (
     samples: EnergySample[],
@@ -40,6 +44,9 @@ interface CacheEntry {
   beatGrid: BeatGrid | null;
   sections: SongSection[] | null;
   drops: Drop[] | null;
+  dynamicRange: DynamicRange | null;
+  transitions: Transition[] | null;
+  beatStrengths: number[] | null;
   songId: string | null;
 }
 
@@ -87,6 +94,9 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   const [beatGrid, setBeatGrid] = useState<BeatGrid | null>(null);
   const [sections, setSections] = useState<SongSection[] | null>(null);
   const [drops, setDrops] = useState<Drop[] | null>(null);
+  const [dynamicRange, setDynamicRange] = useState<DynamicRange | null>(null);
+  const [transitions, setTransitions] = useState<Transition[] | null>(null);
+  const [beatStrengths, setBeatStrengths] = useState<number[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [cacheVersion, setCacheVersion] = useState(0);
   const trackRef = useRef<string | null>(null);
@@ -114,6 +124,9 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       setBeatGrid(null);
       setSections(null);
       setDrops(null);
+      setDynamicRange(null);
+      setTransitions(null);
+      setBeatStrengths(null);
       trackRef.current = null;
       return;
     }
@@ -131,13 +144,16 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       setBeatGrid(cached.beatGrid);
       setSections(cached.sections);
       setDrops(cached.drops);
+      setDynamicRange(cached.dynamicRange);
+      setTransitions(cached.transitions);
+      setBeatStrengths(cached.beatStrengths);
       return;
     }
 
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid")
+      .select("id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid, dynamic_range, transitions, beat_strengths")
       .eq("track_name", track.trackName)
       .eq("artist_name", track.artistName)
       .maybeSingle()
@@ -152,6 +168,9 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         const savedSections = (data?.sections as unknown as SongSection[] | null) ?? null;
         let savedDrops = (data?.drops as unknown as Drop[] | null) ?? null;
         let savedBeatGrid = (data as any)?.beat_grid as BeatGrid | null;
+        let savedDynamicRange = (data as any)?.dynamic_range as DynamicRange | null;
+        let savedTransitions = (data as any)?.transitions as Transition[] | null;
+        let savedBeatStrengths = (data as any)?.beat_strengths as number[] | null;
 
         // Estimate BPM if not saved yet
         if (!savedBpm && valid) {
@@ -180,10 +199,39 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
           }
         }
 
+        // Compute dynamic range if not saved yet
+        if (!savedDynamicRange && valid) {
+          savedDynamicRange = analyzeDynamicRange(valid);
+          if (songId) {
+            supabase.from("song_analysis").update({ dynamic_range: savedDynamicRange as any } as any).eq("id", songId)
+              .then(() => console.log("[EnergyCurve] saved dynamic range", savedDynamicRange));
+          }
+        }
+
+        // Compute transitions if not saved yet
+        if (!savedTransitions && valid && savedSections && savedSections.length > 1) {
+          savedTransitions = analyzeTransitions(savedSections, valid);
+          if (savedTransitions.length > 0 && songId) {
+            supabase.from("song_analysis").update({ transitions: savedTransitions as any } as any).eq("id", songId)
+              .then(() => console.log("[EnergyCurve] saved transitions", savedTransitions!.length));
+          }
+        }
+
+        // Compute beat strengths if not saved yet
+        if (!savedBeatStrengths && valid && savedBeatGrid) {
+          savedBeatStrengths = analyzeBeatStrengths(valid, savedBeatGrid);
+          if (savedBeatStrengths.length > 0 && songId) {
+            supabase.from("song_analysis").update({ beat_strengths: savedBeatStrengths as any } as any).eq("id", songId)
+              .then(() => console.log("[EnergyCurve] saved beat strengths", savedBeatStrengths!.length, "beats"));
+          }
+        }
+
         const entry: CacheEntry = {
           curve: valid, vol: vol ?? null, agc: agc ?? null,
           bpm: savedBpm, beatGrid: savedBeatGrid, sections: savedSections,
-          drops: savedDrops, songId,
+          drops: savedDrops, dynamicRange: savedDynamicRange,
+          transitions: savedTransitions, beatStrengths: savedBeatStrengths,
+          songId,
         };
         curveCache.set(key, entry);
         setCurve(valid);
@@ -193,6 +241,9 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         setBeatGrid(savedBeatGrid);
         setSections(savedSections);
         setDrops(savedDrops);
+        setDynamicRange(savedDynamicRange);
+        setTransitions(savedTransitions);
+        setBeatStrengths(savedBeatStrengths);
         setLoading(false);
 
         // Trigger section analysis if we have curve but no sections
@@ -216,7 +267,20 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         console.log('[sections] got', newSections.length, 'sections');
         setSections(newSections);
         const cached = curveCache.get(key);
-        if (cached) curveCache.set(key, { ...cached, sections: newSections });
+        if (cached) {
+          // Also compute transitions now that we have sections
+          const curveData = cached.curve;
+          let newTransitions: Transition[] | null = null;
+          if (curveData && newSections.length > 1) {
+            newTransitions = analyzeTransitions(newSections, curveData);
+            if (newTransitions.length > 0 && cached.songId) {
+              supabase.from("song_analysis").update({ transitions: newTransitions as any } as any).eq("id", cached.songId)
+                .then(() => console.log("[EnergyCurve] saved transitions after section analysis"));
+            }
+          }
+          setTransitions(newTransitions);
+          curveCache.set(key, { ...cached, sections: newSections, transitions: newTransitions });
+        }
       }
     } catch (e) {
       console.error('[sections] error', e);
@@ -273,12 +337,20 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       const newBpm = estimateBpm(samples);
       const newDrops = detectDrops(samples);
       const newBeatGrid = newBpm ? buildBeatGrid(samples, newBpm) : null;
+      const newDynamicRange = analyzeDynamicRange(samples);
+      const newBeatStrengths = newBeatGrid ? analyzeBeatStrengths(samples, newBeatGrid) : null;
       const cached = curveCache.get(key);
+      // Transitions need sections — compute if available
+      const cachedSections = cached?.sections ?? null;
+      const newTransitions = cachedSections && cachedSections.length > 1 ? analyzeTransitions(cachedSections, samples) : null;
 
       curveCache.set(key, {
         curve: samples, vol: volume, agc: agcState ?? null,
         bpm: newBpm, beatGrid: newBeatGrid, sections: cached?.sections ?? null,
         drops: newDrops.length > 0 ? newDrops : null, songId: cached?.songId ?? null,
+        dynamicRange: newDynamicRange,
+        transitions: newTransitions,
+        beatStrengths: newBeatStrengths,
       });
 
       const currentKey = track ? cacheKey(track) : null;
@@ -289,6 +361,9 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         if (newBpm) setBpm(newBpm);
         if (newBeatGrid) setBeatGrid(newBeatGrid);
         if (newDrops.length > 0) setDrops(newDrops);
+        setDynamicRange(newDynamicRange);
+        if (newTransitions) setTransitions(newTransitions);
+        if (newBeatStrengths) setBeatStrengths(newBeatStrengths);
       }
 
       supabase
@@ -305,6 +380,9 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
             ...(newBpm ? { bpm: newBpm } : {}),
             ...(newDrops.length > 0 ? { drops: newDrops as any } : {}),
             ...(newBeatGrid ? { beat_grid: newBeatGrid as any } : {}),
+            dynamic_range: newDynamicRange as any,
+            ...(newTransitions && newTransitions.length > 0 ? { transitions: newTransitions as any } : {}),
+            ...(newBeatStrengths && newBeatStrengths.length > 0 ? { beat_strengths: newBeatStrengths as any } : {}),
           } as any;
 
           if (existing) {
@@ -342,5 +420,5 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     [track, triggerSectionAnalysis],
   );
 
-  return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading, saveCurve };
+  return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, loading, saveCurve };
 }

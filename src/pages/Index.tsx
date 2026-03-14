@@ -64,7 +64,7 @@ const Index = () => {
     if (!nowPlaying?.trackName || !nowPlaying?.artistName) return null;
     return { trackName: nowPlaying.trackName, artistName: nowPlaying.artistName };
   }, [nowPlaying?.trackName, nowPlaying?.artistName]);
-  const { curve: energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, loading: curveLoading, saveCurve } = useSongEnergyCurve(trackKey);
+  const { curve: energyCurve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, loading: curveLoading, saveCurve } = useSongEnergyCurve(trackKey);
   const hasCurve = Array.isArray(energyCurve) && energyCurve.length > 10;
   const activeLookAheadMs = hasCurve ? activeCalibration.chainLatencyMs : activeCalibration.bleLatencyMs;
 
@@ -299,7 +299,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} durationMs={nowPlaying?.durationMs} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} trackName={nowPlaying?.trackName ?? null} artistName={nowPlaying?.artistName ?? null} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} sonosRtt={nowPlaying?.smoothedRtt} isPlaying={!nowPlaying || nowPlaying.playbackState !== "PLAYBACK_STATE_PAUSED"} durationMs={nowPlaying?.durationMs} getPosition={getPosition} energyCurve={energyCurve} recordedVolume={recordedVolume} savedAgcState={savedAgcState} bpm={bpm} beatGrid={beatGrid} sections={sections} drops={drops} dynamicRange={dynamicRange} transitions={transitions} beatStrengths={beatStrengths} trackName={nowPlaying?.trackName ?? null} artistName={nowPlaying?.artistName ?? null} onSaveEnergyCurve={saveCurve} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}

@@ -142,43 +142,52 @@ export type Database = {
           agc_state: Json | null
           artist_name: string
           beat_grid: Json | null
+          beat_strengths: Json | null
           bpm: number | null
           created_at: string | null
           drops: Json | null
+          dynamic_range: Json | null
           energy_curve: Json | null
           id: string
           key: string | null
           recorded_volume: number | null
           sections: Json | null
           track_name: string
+          transitions: Json | null
         }
         Insert: {
           agc_state?: Json | null
           artist_name: string
           beat_grid?: Json | null
+          beat_strengths?: Json | null
           bpm?: number | null
           created_at?: string | null
           drops?: Json | null
+          dynamic_range?: Json | null
           energy_curve?: Json | null
           id?: string
           key?: string | null
           recorded_volume?: number | null
           sections?: Json | null
           track_name: string
+          transitions?: Json | null
         }
         Update: {
           agc_state?: Json | null
           artist_name?: string
           beat_grid?: Json | null
+          beat_strengths?: Json | null
           bpm?: number | null
           created_at?: string | null
           drops?: Json | null
+          dynamic_range?: Json | null
           energy_curve?: Json | null
           id?: string
           key?: string | null
           recorded_volume?: number | null
           sections?: Json | null
           track_name?: string
+          transitions?: Json | null
         }
         Relationships: []
       }

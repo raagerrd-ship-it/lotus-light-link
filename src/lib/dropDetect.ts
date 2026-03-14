@@ -5,11 +5,14 @@
  */
 
 import type { EnergySample } from "./energyInterpolate";
+import { computeRamp } from "./songAnalysis";
 
 export interface Drop {
   t: number;        // drop hit time (seconds)
   intensity: number; // 0-1 how strong the drop is
   buildStart: number; // when the build-up started
+  rampSlope?: number;  // energy increase per second during build-up
+  rampR2?: number;     // regression fit quality (0-1, >0.5 = clear ramp)
 }
 
 /**
@@ -58,19 +61,27 @@ export function detectDrops(curve: EnergySample[]): Drop[] {
       if (lastDrop && (t - lastDrop.t) < minDropGap) {
         // Keep the stronger one
         if (riseRatio > lastDrop.intensity * riseFactor) {
+          const bsT = curve[Math.max(0, i - windowCount)].t;
+          const ramp = computeRamp(curve, bsT, t);
           drops[drops.length - 1] = {
             t,
             intensity: Math.min(1, (riseRatio - riseFactor) / riseFactor),
-            buildStart: curve[Math.max(0, i - windowCount)].t,
+            buildStart: bsT,
+            rampSlope: ramp.slope,
+            rampR2: ramp.r2,
           };
         }
         continue;
       }
 
+      const buildStartT = curve[Math.max(0, i - windowCount)].t;
+      const ramp = computeRamp(curve, buildStartT, t);
       drops.push({
         t,
         intensity: Math.min(1, (riseRatio - riseFactor) / riseFactor),
-        buildStart: curve[Math.max(0, i - windowCount)].t,
+        buildStart: buildStartT,
+        rampSlope: ramp.slope,
+        rampR2: ramp.r2,
       });
     }
   }
@@ -99,6 +110,14 @@ export function getBuildUpIntensity(drops: Drop[], timeSec: number): number {
       const total = drop.t - drop.buildStart;
       if (total <= 0) continue;
       const progress = (timeSec - drop.buildStart) / total;
+
+      // Use ramp regression for smoother exponential build if available
+      if (drop.rampR2 != null && drop.rampR2 > 0.4 && drop.rampSlope != null && drop.rampSlope > 0) {
+        // Exponential ramp: slow start, accelerating toward drop
+        const expProgress = Math.pow(progress, 1.5 + drop.rampR2);
+        return Math.min(1, expProgress * drop.intensity);
+      }
+
       return Math.min(1, progress * drop.intensity);
     }
   }
