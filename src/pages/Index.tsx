@@ -10,7 +10,7 @@ import {
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
-import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor } from "lucide-react";
+import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Monitor, Bug } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import MonitorView from "@/components/MonitorView";
 import DebugOverlay from "@/components/DebugOverlay";
@@ -42,6 +42,7 @@ const Index = () => {
   const paletteIndexRef = useRef(0);
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
@@ -325,6 +326,21 @@ const Index = () => {
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
+              size="icon"
+              onClick={() => {
+                setShowDebug(prev => {
+                  const next = !prev;
+                  localStorage.setItem("showDebug", String(next));
+                  return next;
+                });
+              }}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+              style={showDebug ? { color: accent } : undefined}
+            >
+              <Bug className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
               size="sm"
               onClick={toggleRole}
               className="rounded-full h-7 px-2.5 text-[10px] font-bold tracking-wide active:scale-90 transition-all duration-200 text-muted-foreground"
@@ -374,7 +390,7 @@ const Index = () => {
       )}
 
       {/* Debug overlay */}
-      <DebugOverlay
+      {showDebug && <DebugOverlay
         smoothedRtt={smoothedRtt}
         palette={palette}
         paletteIndex={paletteIndexRef.current}
@@ -397,7 +413,7 @@ const Index = () => {
         loudness={trackTraits.loudness}
         bassLevel={bandLevels.bass}
         midHiLevel={bandLevels.midHi}
-      />
+      />}
     </div>
   );
 };
