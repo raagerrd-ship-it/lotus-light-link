@@ -126,6 +126,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   // Apply a cache entry to state
   const applyEntry = useCallback((entry: CacheEntry) => {
     setCurve(entry.curve);
+    setBrightnessCurve(entry.brightnessCurve);
     setRecordedVolume(entry.vol);
     setSavedAgcState(entry.agc);
     setBpm(entry.bpm);
