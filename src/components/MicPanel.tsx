@@ -204,13 +204,25 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
       const isComplete = startedEarly && finishedLate;
 
       if (isComplete) {
+        // Post-process: mark kicks using global peak (top 15% of peak rawRms)
+        const globalPeak = prev.reduce((max, s) => Math.max(max, s.rawRms), 0);
+        if (globalPeak > 0) {
+          const kickThreshold = globalPeak * 0.85;
+          for (const s of prev) {
+            if (s.rawRms > kickThreshold) {
+              s.kick = true;
+              s.kickT = s.t;
+            }
+          }
+        }
         const agc: AgcState = {
           agcMin: agcMinRef.current,
           agcMax: agcMaxRef.current,
           agcPeakMax: agcPeakMaxRef.current,
           avgPipelineMs: pipelineCountRef.current > 0 ? pipelineSumRef.current / pipelineCountRef.current : undefined,
         };
-        console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
+        console.log(`[MicPanel] ✓ complete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's',
+          'kicks:', prev.filter(s => s.kick).length, '/', prev.length);
         saveCurve(prev, volumeRef.current ?? null, agc, recordingTrack);
       } else {
         console.log(`[MicPanel] ✗ discarding incomplete recording (${reason})`, prev.length, 'samples,', firstT.toFixed(1), '-', lastT.toFixed(1), 's of', durationSec.toFixed(0), 's');
@@ -486,15 +498,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, sonosRtt, isPlaying = true,
                 lastRecordTimeRef.current = now;
                 // Compute frequency bands
                 const bands = computeBands(an, freqBuf);
-                // Kick based on rawRms: mark if this sample is in the top 5% of peak rawRms seen so far
-                const peakRmsSoFar = lastRec.reduce((max, s) => Math.max(max, s.rawRms), rms);
-                const isKick = rms > peakRmsSoFar * 0.85;
+                // Don't mark kicks during recording — they'll be computed post-recording with global peak
                 touchRecordingContext();
                 recordedSamplesRef.current.push({
                   t: posSec,
                   rawRms: rms,
-                  kick: isKick || undefined,
-                  kickT: isKick ? posSec : undefined,
                   lo: bands.lo,
                   mid: bands.mid,
                   hi: bands.hi,
