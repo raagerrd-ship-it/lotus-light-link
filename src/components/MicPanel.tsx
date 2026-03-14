@@ -328,7 +328,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, sonosRtt, isPlayin
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
-          drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
+          if (syncDiagRef.current && micPctHistoryRef.current.length > 1) {
+            drawSyncChart(canvas, micPctHistoryRef.current, curvePctHistoryRef.current, HISTORY_LEN);
+          } else {
+            drawIntensityChart(canvas, samplesRef.current, HISTORY_LEN, 0, 0, false, 1);
+          }
         }
       }
       // Animate sun — glow intensity + size driven by brightness pct
