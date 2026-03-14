@@ -121,6 +121,11 @@ export default function DebugOverlay({
         <div>rms: <span className="text-foreground">{pipeline.rmsMs.toFixed(1)}ms</span> smooth: <span className="text-foreground">{pipeline.smoothMs.toFixed(1)}ms</span></div>
         <div>ble call: <span className="text-foreground">{pipeline.bleCallMs.toFixed(1)}ms</span> tick: <span className="text-foreground">{pipeline.totalTickMs.toFixed(1)}ms</span></div>
       </div>
+
+      {/* Build info */}
+      <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
+        build: {(() => { try { const d = new Date((globalThis as any).__BUILD_TIME__ || ''); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); } catch { return 'unknown'; } })()}
+      </div>
     </div>
   );
 }
