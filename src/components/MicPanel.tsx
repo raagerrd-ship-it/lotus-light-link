@@ -116,7 +116,8 @@ function modulateColor(
 const ROTATION_INTERVAL_MS = 20_000; // rotate palette every 20s
 const CROSSFADE_ALPHA = 0.008;      // per-frame lerp → ~3-5s fade at 60fps
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, onLiveStatus, onColorChange }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, onLiveStatus, onColorChange }: MicPanelProps) => {
+  const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const smoothedRef = useRef(0);
