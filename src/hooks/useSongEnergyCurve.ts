@@ -67,21 +67,25 @@ export function clearAllCurveCache() {
   window.dispatchEvent(new CustomEvent('curve-cache-clear', { detail: '*' }));
 }
 
-function estimateBpm(curve: EnergySample[]): number | null {
-  if (curve.length < 120) return null;
-  const peak = curvePeakRms(curve);
-  const history = curve.map(s => peak > 0 ? s.rawRms / peak : 0);
-  const result = estimateBpmFromHistory(history);
-  return result ? Math.round(result.bpm) : null;
-}
+// DB columns to select
+const SELECT_COLS = "id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid, dynamic_range, transitions, beat_strengths";
 
-function buildBeatGrid(curve: EnergySample[], bpm: number): BeatGrid | null {
-  const peak = curvePeakRms(curve);
-  return extractBeatGrid(
-    curve.map(s => s.t),
-    curve.map(s => peak > 0 ? s.rawRms / peak : 0),
-    bpm,
-  );
+function parseRow(data: any): Omit<CacheEntry, 'songId'> & { songId: string | null } {
+  const parsed = data?.energy_curve as unknown as EnergySample[] | null;
+  const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
+  return {
+    curve: valid,
+    vol: (data?.recorded_volume as number | null) ?? null,
+    agc: (data?.agc_state as AgcState | null) ?? null,
+    bpm: (data?.bpm as number | null) ?? null,
+    beatGrid: (data?.beat_grid as BeatGrid | null) ?? null,
+    sections: (data?.sections as unknown as SongSection[] | null) ?? null,
+    drops: (data?.drops as unknown as Drop[] | null) ?? null,
+    dynamicRange: (data?.dynamic_range as DynamicRange | null) ?? null,
+    transitions: (data?.transitions as Transition[] | null) ?? null,
+    beatStrengths: (data?.beat_strengths as number[] | null) ?? null,
+    songId: data?.id ?? null,
+  };
 }
 
 export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResult {
@@ -99,6 +103,7 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
   const [processing, setProcessing] = useState(false);
   const [cacheVersion, setCacheVersion] = useState(0);
   const trackRef = useRef<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Listen for cache invalidation events
   useEffect(() => {
@@ -114,213 +119,109 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
     return () => window.removeEventListener('curve-cache-clear', handler);
   }, [track?.trackName, track?.artistName]);
 
+  // Apply a cache entry to state
+  const applyEntry = useCallback((entry: CacheEntry) => {
+    setCurve(entry.curve);
+    setRecordedVolume(entry.vol);
+    setSavedAgcState(entry.agc);
+    setBpm(entry.bpm);
+    setBeatGrid(entry.beatGrid);
+    setSections(entry.sections);
+    setDrops(entry.drops);
+    setDynamicRange(entry.dynamicRange);
+    setTransitions(entry.transitions);
+    setBeatStrengths(entry.beatStrengths);
+  }, []);
+
+  // Check if a song still needs server-side processing
+  const needsProcessing = useCallback((entry: CacheEntry): boolean => {
+    if (!entry.curve) return false;
+    return !entry.bpm || !entry.beatGrid || !entry.sections || !entry.dynamicRange || !entry.drops;
+  }, []);
+
+  // Poll for server-side analysis results
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const startPolling = useCallback((key: string, songId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      if (attempts > 36) { // 3 minutes max
+        if (pollRef.current) clearInterval(pollRef.current);
+        return;
+      }
+      try {
+        const { data } = await supabase
+          .from("song_analysis")
+          .select(SELECT_COLS)
+          .eq("id", songId)
+          .maybeSingle();
+        if (!data) return;
+        const parsed = parseRow(data);
+        const entry: CacheEntry = { ...parsed };
+        curveCache.set(key, entry);
+        // Update state if still on same track
+        if (trackRef.current === key) applyEntry(entry);
+        // Stop polling if fully processed
+        if (!needsProcessing(entry)) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          console.log("[EnergyCurve] server analysis complete for", key);
+        }
+      } catch (_) { /* ignore */ }
+    }, 5000); // poll every 5s
+  }, [applyEntry, needsProcessing]);
+
   useEffect(() => {
     if (!track) {
-      setCurve(null);
-      setRecordedVolume(null);
-      setSavedAgcState(null);
-      setBpm(null);
-      setBeatGrid(null);
-      setSections(null);
-      setDrops(null);
-      setDynamicRange(null);
-      setTransitions(null);
-      setBeatStrengths(null);
+      setCurve(null); setRecordedVolume(null); setSavedAgcState(null);
+      setBpm(null); setBeatGrid(null); setSections(null);
+      setDrops(null); setDynamicRange(null); setTransitions(null); setBeatStrengths(null);
       trackRef.current = null;
+      if (pollRef.current) clearInterval(pollRef.current);
       return;
     }
 
     const key = cacheKey(track);
     if (key === trackRef.current) return;
     trackRef.current = key;
+    if (pollRef.current) clearInterval(pollRef.current);
 
     if (curveCache.has(key)) {
       const cached = curveCache.get(key)!;
-      setCurve(cached.curve);
-      setRecordedVolume(cached.vol);
-      setSavedAgcState(cached.agc);
-      setBpm(cached.bpm);
-      setBeatGrid(cached.beatGrid);
-      setSections(cached.sections);
-      setDrops(cached.drops);
-      setDynamicRange(cached.dynamicRange);
-      setTransitions(cached.transitions);
-      setBeatStrengths(cached.beatStrengths);
+      applyEntry(cached);
+      // If still incomplete, start polling
+      if (needsProcessing(cached) && cached.songId) {
+        startPolling(key, cached.songId);
+      }
       return;
     }
 
     setLoading(true);
     supabase
       .from("song_analysis")
-      .select("id, energy_curve, recorded_volume, agc_state, bpm, sections, drops, beat_grid, dynamic_range, transitions, beat_strengths")
+      .select(SELECT_COLS)
       .eq("track_name", track.trackName)
       .eq("artist_name", track.artistName)
       .maybeSingle()
       .then(({ data }) => {
         if (trackRef.current !== key) return;
-        const parsed = data?.energy_curve as unknown as EnergySample[] | null;
-        const valid = Array.isArray(parsed) && parsed.length > 10 ? parsed : null;
-        const vol = (data as any)?.recorded_volume as number | null;
-        const agc = (data as any)?.agc_state as AgcState | null;
-        const songId = data?.id ?? null;
-        let savedBpm = data?.bpm as number | null;
-        const savedSections = (data?.sections as unknown as SongSection[] | null) ?? null;
-        let savedDrops = (data?.drops as unknown as Drop[] | null) ?? null;
-        let savedBeatGrid = (data as any)?.beat_grid as BeatGrid | null;
-        let savedDynamicRange = (data as any)?.dynamic_range as DynamicRange | null;
-        let savedTransitions = (data as any)?.transitions as Transition[] | null;
-        let savedBeatStrengths = (data as any)?.beat_strengths as number[] | null;
-
-        // Estimate BPM if not saved yet
-        if (!savedBpm && valid) {
-          savedBpm = estimateBpm(valid);
-          if (savedBpm && songId) {
-            supabase.from("song_analysis").update({ bpm: savedBpm } as any).eq("id", songId)
-              .then(() => console.log("[EnergyCurve] saved BPM", savedBpm));
-          }
-        }
-
-        // Extract beat grid if not saved yet
-        if (!savedBeatGrid && valid && savedBpm) {
-          savedBeatGrid = buildBeatGrid(valid, savedBpm);
-          if (savedBeatGrid && songId) {
-            supabase.from("song_analysis").update({ beat_grid: savedBeatGrid as any } as any).eq("id", songId)
-              .then(() => console.log("[EnergyCurve] saved beat grid", savedBeatGrid!.beats.length, "beats"));
-          }
-        }
-
-        // Detect drops if not saved yet
-        if (!savedDrops && valid) {
-          savedDrops = detectDrops(valid);
-          if (savedDrops.length > 0 && songId) {
-            supabase.from("song_analysis").update({ drops: savedDrops as any } as any).eq("id", songId)
-              .then(() => console.log("[EnergyCurve] saved drops", savedDrops!.length));
-          }
-        }
-
-        // Compute dynamic range if not saved yet
-        if (!savedDynamicRange && valid) {
-          savedDynamicRange = analyzeDynamicRange(valid);
-          if (songId) {
-            supabase.from("song_analysis").update({ dynamic_range: savedDynamicRange as any } as any).eq("id", songId)
-              .then(() => console.log("[EnergyCurve] saved dynamic range", savedDynamicRange));
-          }
-        }
-
-        // Compute transitions if not saved yet
-        if (!savedTransitions && valid && savedSections && savedSections.length > 1) {
-          savedTransitions = analyzeTransitions(savedSections, valid);
-          if (savedTransitions.length > 0 && songId) {
-            supabase.from("song_analysis").update({ transitions: savedTransitions as any } as any).eq("id", songId)
-              .then(() => console.log("[EnergyCurve] saved transitions", savedTransitions!.length));
-          }
-        }
-
-        // Compute beat strengths if not saved yet
-        if (!savedBeatStrengths && valid && savedBeatGrid) {
-          savedBeatStrengths = analyzeBeatStrengths(valid, savedBeatGrid);
-          if (savedBeatStrengths.length > 0 && songId) {
-            supabase.from("song_analysis").update({ beat_strengths: savedBeatStrengths as any } as any).eq("id", songId)
-              .then(() => console.log("[EnergyCurve] saved beat strengths", savedBeatStrengths!.length, "beats"));
-          }
-        }
-
-        const entry: CacheEntry = {
-          curve: valid, vol: vol ?? null, agc: agc ?? null,
-          bpm: savedBpm, beatGrid: savedBeatGrid, sections: savedSections,
-          drops: savedDrops, dynamicRange: savedDynamicRange,
-          transitions: savedTransitions, beatStrengths: savedBeatStrengths,
-          songId,
-        };
+        const parsed = parseRow(data);
+        const entry: CacheEntry = { ...parsed };
         curveCache.set(key, entry);
-        setCurve(valid);
-        setRecordedVolume(vol ?? null);
-        setSavedAgcState(agc ?? null);
-        setBpm(savedBpm);
-        setBeatGrid(savedBeatGrid);
-        setSections(savedSections);
-        setDrops(savedDrops);
-        setDynamicRange(savedDynamicRange);
-        setTransitions(savedTransitions);
-        setBeatStrengths(savedBeatStrengths);
+        applyEntry(entry);
         setLoading(false);
 
-        // Trigger section analysis if we have curve but no sections
-        if (valid && !savedSections && songId) {
-          triggerSectionAnalysis(songId, key);
+        // If analysis is incomplete, start polling for server results
+        if (needsProcessing(entry) && entry.songId) {
+          startPolling(key, entry.songId);
         }
       });
-  }, [track?.trackName, track?.artistName, cacheVersion]);
-
-  const triggerSectionAnalysis = useCallback(async (songId: string, key: string) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('analyze-sections', {
-        body: { songId },
-      });
-      if (error) {
-        console.error('[sections] analysis failed', error);
-        return;
-      }
-      const newSections = data?.sections as SongSection[] | null;
-      if (newSections && newSections.length > 0) {
-        console.log('[sections] got', newSections.length, 'sections');
-        setSections(newSections);
-        const cached = curveCache.get(key);
-        if (cached) {
-          // Also compute transitions now that we have sections
-          const curveData = cached.curve;
-          let newTransitions: Transition[] | null = null;
-          if (curveData && newSections.length > 1) {
-            newTransitions = analyzeTransitions(newSections, curveData);
-            if (newTransitions.length > 0 && cached.songId) {
-              supabase.from("song_analysis").update({ transitions: newTransitions as any } as any).eq("id", cached.songId)
-                .then(() => console.log("[EnergyCurve] saved transitions after section analysis"));
-            }
-          }
-          setTransitions(newTransitions);
-          curveCache.set(key, { ...cached, sections: newSections, transitions: newTransitions });
-        }
-      }
-    } catch (e) {
-      console.error('[sections] error', e);
-    }
-  }, []);
-
-  const triggerAutoCalibration = async () => {
-    try {
-      const { data: allSongs } = await supabase
-        .from("song_analysis")
-        .select("track_name, artist_name, energy_curve")
-        .not("energy_curve", "is", null);
-
-      const valid = (allSongs ?? []).filter(
-        (s: any) => Array.isArray(s.energy_curve) && s.energy_curve.length > 50,
-      );
-      if (valid.length === 0) return;
-
-      const inputs = valid.map((s: any) => ({
-        trackName: s.track_name,
-        artistName: s.artist_name,
-        energyCurve: s.energy_curve,
-      }));
-
-      const result = runMultiSongCalibration(inputs);
-      if (result.perSong.length === 0) return;
-
-      const cal = getCalibration();
-      const updated = {
-        ...cal,
-        attackAlpha: result.attackAlpha,
-        releaseAlpha: result.releaseAlpha,
-        dynamicDamping: result.dynamicDamping,
-      };
-      saveCalibration(updated, getActiveDeviceName() ?? undefined);
-      console.log('[AutoCalibrate] ✓ dynamics updated from', result.perSong.length, 'songs →',
-        'attack:', result.attackAlpha, 'release:', result.releaseAlpha, 'damping:', result.dynamicDamping);
-    } catch (e) {
-      console.error('[AutoCalibrate] error', e);
-    }
-  };
+  }, [track?.trackName, track?.artistName, cacheVersion, applyEntry, needsProcessing, startPolling]);
 
   const saveCurve = useCallback(
     (
@@ -334,37 +235,37 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
       setProcessing(true);
 
       const key = cacheKey(targetTrack);
-      const newBpm = estimateBpm(samples);
-      const newDrops = detectDrops(samples);
-      const newBeatGrid = newBpm ? buildBeatGrid(samples, newBpm) : null;
-      const newDynamicRange = analyzeDynamicRange(samples);
-      const newBeatStrengths = newBeatGrid ? analyzeBeatStrengths(samples, newBeatGrid) : null;
       const cached = curveCache.get(key);
-      // Transitions need sections — compute if available
-      const cachedSections = cached?.sections ?? null;
-      const newTransitions = cachedSections && cachedSections.length > 1 ? analyzeTransitions(cachedSections, samples) : null;
 
-      curveCache.set(key, {
-        curve: samples, vol: volume, agc: agcState ?? null,
-        bpm: newBpm, beatGrid: newBeatGrid, sections: cached?.sections ?? null,
-        drops: newDrops.length > 0 ? newDrops : null, songId: cached?.songId ?? null,
-        dynamicRange: newDynamicRange,
-        transitions: newTransitions,
-        beatStrengths: newBeatStrengths,
-      });
+      // Update cache immediately with raw data (no heavy analysis)
+      const entry: CacheEntry = {
+        curve: samples,
+        vol: volume,
+        agc: agcState ?? null,
+        bpm: cached?.bpm ?? null,
+        beatGrid: cached?.beatGrid ?? null,
+        sections: cached?.sections ?? null,
+        drops: cached?.drops ?? null,
+        dynamicRange: cached?.dynamicRange ?? null,
+        transitions: cached?.transitions ?? null,
+        beatStrengths: cached?.beatStrengths ?? null,
+        songId: cached?.songId ?? null,
+      };
+      curveCache.set(key, entry);
 
       const currentKey = track ? cacheKey(track) : null;
       if (!currentKey || currentKey === key) {
         setCurve(samples);
         setRecordedVolume(volume);
         if (agcState) setSavedAgcState(agcState);
-        if (newBpm) setBpm(newBpm);
-        if (newBeatGrid) setBeatGrid(newBeatGrid);
-        if (newDrops.length > 0) setDrops(newDrops);
-        setDynamicRange(newDynamicRange);
-        if (newTransitions) setTransitions(newTransitions);
-        if (newBeatStrengths) setBeatStrengths(newBeatStrengths);
       }
+
+      // Save to DB — server cron will handle all analysis
+      const payload = {
+        energy_curve: samples as any,
+        recorded_volume: volume,
+        ...(agcState ? { agc_state: agcState as any } : {}),
+      } as any;
 
       supabase
         .from("song_analysis")
@@ -373,55 +274,47 @@ export function useSongEnergyCurve(track: TrackKey | null): SongEnergyCurveResul
         .eq("artist_name", targetTrack.artistName)
         .maybeSingle()
         .then(({ data: existing }) => {
-          const payload = {
-            energy_curve: samples as any,
-            recorded_volume: volume,
-            ...(agcState ? { agc_state: agcState as any } : {}),
-            ...(newBpm ? { bpm: newBpm } : {}),
-            ...(newDrops.length > 0 ? { drops: newDrops as any } : {}),
-            ...(newBeatGrid ? { beat_grid: newBeatGrid as any } : {}),
-            dynamic_range: newDynamicRange as any,
-            ...(newTransitions && newTransitions.length > 0 ? { transitions: newTransitions as any } : {}),
-            ...(newBeatStrengths && newBeatStrengths.length > 0 ? { beat_strengths: newBeatStrengths as any } : {}),
-          } as any;
-
           if (existing) {
-            Promise.resolve(
-              supabase
-                .from("song_analysis")
-                .update(payload)
-                .eq("id", existing.id)
-            ).then(async () => {
-              console.log("[EnergyCurve] updated", targetTrack.trackName);
-              if (!cached?.sections) await triggerSectionAnalysis(existing.id, key);
-              await triggerAutoCalibration();
-              setProcessing(false);
-            }).catch(() => setProcessing(false));
+            supabase
+              .from("song_analysis")
+              .update({
+                ...payload,
+                // Clear computed fields so server re-processes
+                bpm: null, beat_grid: null, drops: null,
+                dynamic_range: null, transitions: null,
+                beat_strengths: null, sections: null,
+              })
+              .eq("id", existing.id)
+              .then(() => {
+                console.log("[EnergyCurve] saved raw data for", targetTrack.trackName, "— server will process");
+                curveCache.set(key, { ...entry, songId: existing.id });
+                startPolling(key, existing.id);
+                setProcessing(false);
+              })
+              .catch(() => setProcessing(false));
           } else {
-            Promise.resolve(
-              supabase
-                .from("song_analysis")
-                .insert({
-                  track_name: targetTrack.trackName,
-                  artist_name: targetTrack.artistName,
-                  ...payload,
-                })
-                .select("id")
-                .single()
-            ).then(async ({ data: inserted }) => {
-              console.log("[EnergyCurve] inserted", targetTrack.trackName);
-              if (inserted?.id) {
-                const c = curveCache.get(key);
-                if (c) curveCache.set(key, { ...c, songId: inserted.id });
-                await triggerSectionAnalysis(inserted.id, key);
-              }
-              await triggerAutoCalibration();
-              setProcessing(false);
-            }).catch(() => setProcessing(false));
+            supabase
+              .from("song_analysis")
+              .insert({
+                track_name: targetTrack.trackName,
+                artist_name: targetTrack.artistName,
+                ...payload,
+              })
+              .select("id")
+              .single()
+              .then(({ data: inserted }) => {
+                console.log("[EnergyCurve] inserted raw data for", targetTrack.trackName, "— server will process");
+                if (inserted?.id) {
+                  curveCache.set(key, { ...entry, songId: inserted.id });
+                  startPolling(key, inserted.id);
+                }
+                setProcessing(false);
+              })
+              .catch(() => setProcessing(false));
           }
         });
     },
-    [track, triggerSectionAnalysis],
+    [track, startPolling],
   );
 
   return { curve, recordedVolume, savedAgcState, bpm, beatGrid, sections, drops, dynamicRange, transitions, beatStrengths, processing, loading, saveCurve };
