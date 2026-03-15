@@ -232,50 +232,28 @@ export function getBleWriteStats(): BleWriteStats {
 }
 
 async function _flush() {
-  if (_writing || !_char) return;
-
-  const writeColor = !!_pendingColor;
-  const writeBright = _pendingBright != null;
-
-  if (!writeColor && !writeBright) return;
+  if (_writing || !_char || !_pendingColor) return;
 
   _writing = true;
   const writeStart = performance.now();
   _lastWriteTime = writeStart;
 
   try {
-    let sentR = _lastSentColor[0], sentG = _lastSentColor[1], sentB = _lastSentColor[2];
-    let sentBright = _lastSentBright;
+    const r = _pendingColor[0] & 0xff;
+    const g = _pendingColor[1] & 0xff;
+    const b = _pendingColor[2] & 0xff;
+    _colorBuf[4] = r;
+    _colorBuf[5] = g;
+    _colorBuf[6] = b;
+    _pendingColor = null;
 
-    if (writeColor && _pendingColor) {
-      sentR = _pendingColor[0] & 0xff;
-      sentG = _pendingColor[1] & 0xff;
-      sentB = _pendingColor[2] & 0xff;
-      // BLEDOM ELK protocol: byte order is R, G, B
-      _colorBuf[4] = sentR;
-      _colorBuf[5] = sentG;
-      _colorBuf[6] = sentB;
-      await _char.writeValueWithoutResponse(_colorBuf);
-      _lastSentColor = [sentR, sentG, sentB];
-      _pendingColor = null;
-      // 1ms delay between color and brightness — BLEDOM needs this to parse correctly
-      if (writeBright && _pendingBright != null) {
-        await new Promise(r => setTimeout(r, 1));
-      }
-    }
-    if (writeBright && _pendingBright != null) {
-      sentBright = Math.max(0, Math.min(100, Math.round(_pendingBright)));
-      _brightBuf[3] = sentBright;
-      await _char.writeValueWithoutResponse(_brightBuf);
-      _lastSentBright = sentBright;
-      _pendingBright = null;
-    }
-
+    await _char.writeValueWithoutResponse(_colorBuf);
+    _lastSentColor = [r, g, b];
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
 
     if (_onWriteCallback) {
-      _onWriteCallback(sentBright, sentR, sentG, sentB);
+      _onWriteCallback(_lastBright, r, g, b);
     }
   } catch (e: any) {
     _errorCount++;
