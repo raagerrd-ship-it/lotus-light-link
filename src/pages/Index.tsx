@@ -121,7 +121,7 @@ const Index = () => {
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
 
     const el = punchFlashRef.current;
-    if (el) el.style.opacity = status.isPunch ? '0.6' : '0';
+    if (el) el.style.opacity = status.isPunch ? '1' : '0';
   }, []);
 
   // Auto-hide overlay after 3s
