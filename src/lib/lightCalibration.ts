@@ -83,10 +83,6 @@ export function saveCalibration(cal: LightCalibration, deviceName?: string, { lo
   }
 }
 
-export function resetCalibration(): LightCalibration {
-  localStorage.removeItem(STORAGE_KEY);
-  return { ...DEFAULT_CALIBRATION };
-}
 
 // --- Device name tracking ---
 
