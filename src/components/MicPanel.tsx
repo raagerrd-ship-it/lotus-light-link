@@ -80,19 +80,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
     };
   }, []);
 
-  // ── Chart rendering via rAF ──
+  // ── Chart rendering via rAF — smooth scrolling between ticks ──
   useEffect(() => {
-    const drawLoop = () => {
-      if (chartDirtyRef.current) {
-        chartDirtyRef.current = false;
-        const canvas = canvasRef.current;
-        if (canvas) drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen);
+    const drawLoop = (now: number) => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const elapsed = now - lastSampleTimeRef.current;
+        const scrollFraction = Math.min(1, elapsed / tickMs);
+        drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, scrollFraction);
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
     rafIdRef.current = requestAnimationFrame(drawLoop);
     return () => cancelAnimationFrame(rafIdRef.current);
-  }, []);
+  }, [tickMs]);
 
   // ── Main audio pipeline ──
   useEffect(() => {
