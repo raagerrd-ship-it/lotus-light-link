@@ -219,7 +219,6 @@ export function setActiveChar(char: any) {
 /** Clear active char on disconnect to prevent stale GATT writes */
 export function clearActiveChar() {
   _char = null;
-  _pendingColor = null;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
