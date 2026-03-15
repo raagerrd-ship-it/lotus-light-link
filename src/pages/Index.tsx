@@ -436,6 +436,7 @@ const Index = () => {
         bleColorSource={bleColorSource}
         bleBaseColor={bleBaseColor}
         bleWriteStats={bleWriteStats}
+        pipelinePeakMs={pipelinePeakMs}
       />}
     </div>
   );
