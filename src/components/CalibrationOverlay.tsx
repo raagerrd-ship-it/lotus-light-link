@@ -171,6 +171,37 @@ function MixerFader({
   );
 }
 
+/* ── Pipeline stats (header) ── */
+
+function PipelineStats() {
+  const [stats, setStats] = useState({ tickMs: 0, bleMs: 0, wps: 0, drops: 0, queue: false });
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const ble = getBleWriteStats();
+      const pipe = getPipelineTimings();
+      setStats({
+        tickMs: Math.round(pipe.totalTickMs),
+        bleMs: ble.lastWriteMs,
+        wps: ble.writesPerSec,
+        drops: ble.droppedPerSec,
+        queue: ble.queueAgeMs > 80,
+      });
+    }, 300);
+    return () => clearInterval(id);
+  }, []);
+
+  const warn = stats.tickMs > 20 || stats.queue;
+
+  return (
+    <span className={`text-[8px] font-mono leading-none ${warn ? 'text-red-400' : 'text-muted-foreground/60'}`}>
+      {stats.tickMs}ms · BLE {stats.bleMs}ms · {stats.wps}w/s
+      {stats.drops > 0 && <span className="text-red-400"> ⚠{stats.drops}d/s</span>}
+      {stats.queue && <span className="text-red-400"> Q!</span>}
+    </span>
+  );
+}
+
 /* ── Mini live chart (last ~3s) ── */
 
 function MiniChart() {
