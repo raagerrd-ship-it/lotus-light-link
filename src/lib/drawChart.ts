@@ -11,7 +11,6 @@ export interface ChartSample {
   r: number;
   g: number;
   b: number;
-  beat?: boolean;
   rawPct?: number; // raw energy before brightness mapping (0-100)
   baseR?: number;  // base color before brightness pre-multiplication
   baseG?: number;
@@ -26,9 +25,6 @@ export function drawIntensityChart(
   canvas: HTMLCanvasElement,
   samples: ChartSample[],
   historyLen: number,
-  _framesPerBeat: number,
-  _bpm: number,
-  _punchWhite: boolean,
   globalBrightness: number = 1,
 ) {
   const ctx = canvas.getContext("2d");

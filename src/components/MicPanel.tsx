@@ -175,7 +175,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
-          drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
+          drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen);
         }
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);

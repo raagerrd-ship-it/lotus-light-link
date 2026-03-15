@@ -238,7 +238,7 @@ function MiniChart() {
       if (canvas) {
         const all = getChartSamples();
         const recent = all.slice(-CHART_LEN);
-        drawIntensityChart(canvas, recent, CHART_LEN, 0, 0, false, 1);
+        drawIntensityChart(canvas, recent, CHART_LEN);
       }
       raf = requestAnimationFrame(draw);
     };
