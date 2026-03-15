@@ -162,17 +162,15 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   return connectToDevice(device);
 }
 
-// Pre-allocated buffers to avoid GC in hot loops
+// Pre-allocated buffer to avoid GC in hot loops
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
-const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
 // --- BLE write state (tick-worker drives timing at 25ms/40fps) ---
 
 let _char: any = null;
-let _pendingBright: number | null = null;
 let _pendingColor: [number, number, number] | null = null;
-let _lastSentBright = -1;
 let _lastSentColor: [number, number, number] = [-1, -1, -1];
+let _lastBright = 0; // For callback/debug only — not sent as separate packet
 let _writing = false;
 let _lastWriteTime = 0;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
