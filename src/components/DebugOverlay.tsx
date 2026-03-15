@@ -73,7 +73,7 @@ export default function DebugOverlay({
           ? <span className="text-green-400">{bleDeviceName || 'ansluten'}</span>
           : <span className="text-red-400">ej ansluten</span>
         }
-        <span className="text-foreground/40"> · {deviceRole ?? '?'}</span>
+        
       </div>
       {!bleConnected && bleReconnectStatus && (
         <div className="text-yellow-400">
