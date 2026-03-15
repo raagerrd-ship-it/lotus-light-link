@@ -49,6 +49,9 @@ export interface LightCalibration {
   // Volume compensation
   volCompensation: number;   // 0–100 (%)
 
+  // Punch white: brightness above this % → send white
+  punchWhiteThreshold: number; // 0 = off, 50–100 typical
+
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
   agcMax: number;
@@ -74,6 +77,8 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   bandAgcDecay: 0.997,
 
   volCompensation: 80,
+
+  punchWhiteThreshold: 0,
 
   agcMin: 0,
   agcMax: 0.01,
