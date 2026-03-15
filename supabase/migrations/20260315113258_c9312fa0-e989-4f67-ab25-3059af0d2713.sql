@@ -1,0 +1,1 @@
+ALTER TABLE public.live_session REPLICA IDENTITY FULL;
