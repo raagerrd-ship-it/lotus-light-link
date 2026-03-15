@@ -16,7 +16,7 @@ interface MicPanelProps {
   trackName?: string | null;
   historyLen?: number;
   tickMs?: number;
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => void;
 }
 
 const HISTORY_LEN = 120;
@@ -301,6 +301,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
             bleColorSource: 'normal',
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
+            isPunch,
           });
 
           setPipelineTimings({
