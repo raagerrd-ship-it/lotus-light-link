@@ -123,7 +123,6 @@ async function _upsertCloud(deviceName: string, patch: Record<string, unknown>, 
   }
 }
 
-
 /** Load calibration from cloud for a device. */
 export async function loadCalibrationFromCloud(deviceName: string): Promise<{
   calibration: LightCalibration;
