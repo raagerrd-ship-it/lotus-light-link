@@ -38,6 +38,7 @@ const SLIDERS: SliderDef[] = [
   { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 0.9, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. Lågt = mjukare fade in, högt = omedelbar respons.' },
   { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 0.3, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. Lågt = lång svans, högt = snabb dip.', format: v => v.toFixed(3) },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -2.0, max: 3.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Negativt = förstärkt kontrast (punch). Positivt = utjämnad dynamik. 0 = neutral.' },
+  { key: 'bpmReleaseScale', label: 'BPM-release', shortLabel: 'BPM', min: 0, max: 100, step: 5, unit: '%', group: 'Dynamik', description: 'Hur mycket BPM modifierar release-hastigheten. 0% = BPM påverkar inte release. 80% = standard (lägre BPM ger långsammare release).' },
   // Palette
   { key: 'crossfadeSpeed', label: 'Färgövergång', shortLabel: 'Fade', min: 0.002, max: 0.03, step: 0.001, unit: '', group: 'Palett', description: 'Hastigheten på övergången mellan palettfärger. Lågt = mjuk lång fade, högt = snabb skarp övergång.', format: v => v.toFixed(3) },
   { key: 'saturationBoost', label: 'Färgmättnad', shortLabel: 'Sat', min: 0.5, max: 2.0, step: 0.05, unit: '×', group: 'Palett', description: 'Justerar färgmättnaden. 1.0 = neutral, <1 = urtvättad, >1 = intensivare färger.' },
