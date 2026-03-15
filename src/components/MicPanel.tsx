@@ -146,10 +146,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   const containerRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
   const energyRef = useRef(energy);
-  const danceabilityRef = useRef(danceability);
-  const happinessRef = useRef(happiness);
   const loudnessDbRef = useRef(parseLoudnessDb(loudness));
-  // beatPhaseRef and lastBeatTimeRef removed — unused dead code
   // Drop detection state — now tracks bassRms only
   const bassHistoryRef = useRef<number[]>([]);
   const dropActiveUntilRef = useRef(0);
