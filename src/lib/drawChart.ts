@@ -65,28 +65,30 @@ export function drawIntensityChart(
   if (len <= 1) return;
   const step = w / (historyLen - 1);
   const offsetX = (historyLen - len) * step;
-  const dotRadius = Math.max(1, Math.min(step * 0.35, 4));
-  const lineWidth = Math.max(1, Math.min(dotRadius * 1.5, 3));
+  const lineWidth = Math.max(1.5, Math.min(step * 0.6, 3));
 
-  // Build path for fill + line
-  const points: { x: number; y: number; color: string }[] = [];
+  // Resolve base color for line (un-brightness-compensated)
+  const lastSample = samples[len - 1];
+  const baseR = lastSample.baseR ?? lastSample.r;
+  const baseG = lastSample.baseG ?? lastSample.g;
+  const baseB = lastSample.baseB ?? lastSample.b;
+  const lineColor = `rgb(${baseR}, ${baseG}, ${baseB})`;
+
+  // Build path points
+  const points: { x: number; y: number }[] = [];
   for (let i = 0; i < len; i++) {
     points.push({
       x: offsetX + i * step,
       y: yForPct(samples[i].pct),
-      color: `rgb(${samples[i].r}, ${samples[i].g}, ${samples[i].b})`,
     });
   }
 
-  // Fill under line: gradient from line color at top → transparent at bottom
+  // Fill under line: gradient with base color, 100% at top → 0% at bottom
   if (points.length >= 2) {
-    const lastSample = samples[len - 1];
-    // Find the highest point (min y) to anchor gradient from data, not chart top
-    const minY = Math.min(...points.map(p => p.y));
     const bottom = chartTop + chartHeight;
-    const fillGrad = ctx.createLinearGradient(0, minY, 0, bottom);
-    fillGrad.addColorStop(0, `rgba(${lastSample.r}, ${lastSample.g}, ${lastSample.b}, 0.45)`);
-    fillGrad.addColorStop(1, `rgba(0, 0, 0, 0)`);
+    const fillGrad = ctx.createLinearGradient(0, chartTop, 0, bottom);
+    fillGrad.addColorStop(0, `rgba(${baseR}, ${baseG}, ${baseB}, 0.5)`);
+    fillGrad.addColorStop(1, `rgba(${baseR}, ${baseG}, ${baseB}, 0)`);
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, bottom);
@@ -119,24 +121,17 @@ export function drawIntensityChart(
     ctx.restore();
   }
 
-  // Line + dots (output brightness)
-  for (let i = 0; i < points.length; i++) {
-    const { x, y, color } = points[i];
-
-    if (i > 0) {
-      ctx.beginPath();
-      ctx.moveTo(points[i - 1].x, points[i - 1].y);
-      ctx.lineTo(x, y);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = lineWidth;
-      ctx.stroke();
-    }
-
-    ctx.beginPath();
-    ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
+  // Main line (base color, no dots)
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
   }
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
 
   ctx.globalAlpha = 1;
 }
