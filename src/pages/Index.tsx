@@ -167,10 +167,12 @@ const Index = () => {
   const [dropActive, setDropActive] = useState(false);
   const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
 
-  // BLE write tracking for debug overlay (ref + interval to avoid 20fps state churn)
+  // BLE write tracking for debug overlay (ref + interval to avoid 40fps state churn)
   const [bleSentColor, setBleSentColor] = useState<[number, number, number] | null>(null);
   const [bleSentBright, setBleSentBright] = useState<number | null>(null);
   const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
+  const [bleBaseColor, setBleBaseColor] = useState<[number, number, number] | null>(null);
+  const [bleWriteStats, setBleWriteStats] = useState<ReturnType<typeof getBleWriteStats> | null>(null);
   const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
 
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
