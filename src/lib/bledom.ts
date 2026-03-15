@@ -266,7 +266,6 @@ async function _flush() {
 
 export function setActiveChar(char: any) {
   _char = char;
-  _lastSentBright = -1;
   _lastSentColor = [-1, -1, -1];
 }
 
