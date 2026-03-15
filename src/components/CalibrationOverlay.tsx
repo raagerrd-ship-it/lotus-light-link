@@ -318,38 +318,43 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         </div>
       </div>
 
-      {/* Scrollable fader strip */}
-      <div
-        ref={scrollRef}
-        className="overflow-x-auto overflow-y-hidden px-2"
-        style={{ WebkitOverflowScrolling: 'touch' }}
-      >
-        <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '9rem' }}>
-          {SLIDERS.map((def, i) => {
-            const prevGroup = i > 0 ? SLIDERS[i - 1].group : null;
-            const showSep = prevGroup && prevGroup !== def.group;
-            return (
-              <div key={def.key} className="flex items-center">
-                {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
-                <MixerFader
-                  def={def}
-                  value={cal[def.key] as number}
-                  onChange={(v) => update(def.key, v)}
-                  isActive={activeSlider === i}
-                  onFocus={() => setActiveSlider(i)}
-                />
-              </div>
-            );
-          })}
+      {/* Fader strip + description side by side */}
+      <div className="flex">
+        {/* Active slider description — left column */}
+        <div className="flex items-center px-3 py-1.5 border-r border-border/20 min-w-[5.5rem] max-w-[6.5rem]">
+          <p className="text-[9px] text-muted-foreground leading-tight">
+            <span className="font-bold text-foreground/80 block">{activeDef?.label}</span>
+            <span className="font-mono text-foreground/70">{activeDef ? formatValue(activeDef, cal[activeDef.key] as number) : ''}{activeDef?.unit}</span>
+            <br />
+            {activeDef?.description}
+          </p>
         </div>
-      </div>
 
-      {/* Active slider description */}
-      <div className="px-3 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] border-t border-border/20">
-        <p className="text-[9px] text-muted-foreground leading-tight">
-          <span className="font-bold text-foreground/80">{activeDef?.label}</span>{' '}
-          {activeDef?.description}
-        </p>
+        {/* Scrollable fader strip */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-x-auto overflow-y-hidden px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '9rem' }}>
+            {SLIDERS.map((def, i) => {
+              const prevGroup = i > 0 ? SLIDERS[i - 1].group : null;
+              const showSep = prevGroup && prevGroup !== def.group;
+              return (
+                <div key={def.key} className="flex items-center">
+                  {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
+                  <MixerFader
+                    def={def}
+                    value={cal[def.key] as number}
+                    onChange={(v) => update(def.key, v)}
+                    isActive={activeSlider === i}
+                    onFocus={() => setActiveSlider(i)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
