@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { X, RotateCcw } from "lucide-react";
+import { X, RotateCcw, Save, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
