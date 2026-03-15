@@ -135,7 +135,7 @@ function MixerFader({
       <div
         ref={trackRef}
         className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
-        style={{ height: '6rem', background: 'hsl(var(--secondary))' }}
+        style={{ height: '4.5rem', background: 'hsl(var(--secondary))' }}
         onPointerDown={handlePointer}
       >
         {(() => {
@@ -324,7 +324,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         className="overflow-x-auto overflow-y-hidden px-2"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '11rem' }}>
+        <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '9rem' }}>
           {SLIDERS.map((def, i) => {
             const prevGroup = i > 0 ? SLIDERS[i - 1].group : null;
             const showSep = prevGroup && prevGroup !== def.group;
