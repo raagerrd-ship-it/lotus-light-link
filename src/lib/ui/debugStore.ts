@@ -1,7 +1,7 @@
 // Debug data store — plain JS object, mutated directly, no React
 // DebugOverlay polls this at 5Hz via setInterval + direct DOM updates
 
-import type { BleReconnectStatus } from "@/lib/bledom";
+import type { BleReconnectStatus } from "@/lib/engine/bledom";
 
 export interface DebugData {
   // Device

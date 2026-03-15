@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { debugData } from "@/lib/debugStore";
+import { debugData } from "@/lib/ui/debugStore";
 
 declare const __BUILD_TIME__: string;
 

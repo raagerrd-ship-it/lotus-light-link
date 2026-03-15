@@ -1,5 +1,5 @@
 // Global BLE connection store — shared across pages
-import { type BLEConnection } from "@/lib/bledom";
+import { type BLEConnection } from "./bledom";
 
 type Listener = () => void;
 
