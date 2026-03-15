@@ -626,7 +626,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               sendToBLE(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
+              // Debug: log color pipeline every ~2s
+              if (Math.random() < 0.025) {
+                console.log('[Color] base:', baseColor, '→ cal:', calibrated, '→ final:', finalColor, 'bright:', pct);
+              }
             }
+          } else if (Math.random() < 0.01) {
+            console.log('[Color] charRef is NULL — no BLE write');
           }
           const bleEnd = performance.now();
 
