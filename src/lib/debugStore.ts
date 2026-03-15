@@ -20,7 +20,7 @@ export interface DebugData {
   // Process
   energy: number | null;
   loudness: string | null;
-  maxBrightness: number;
+  
   dynamicDamping: number;
   dropActive: boolean;
   // BLE Output
