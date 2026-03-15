@@ -629,7 +629,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
-              sendToBLE(c, ...finalColor, pct);
+              sendToBLE(...finalColor, pct);
               lastColorStateRef.current = 'normal';
             }
           }
