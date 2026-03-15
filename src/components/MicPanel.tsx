@@ -119,7 +119,7 @@ function getRotationInterval(dance: number | null): number {
   const d = (dance ?? 50) / 100; // 0-1
   return Math.round(30_000 - d * 20_000); // 30s → 10s
 }
-const CROSSFADE_ALPHA = 0.008;      // per-frame lerp → ~3-5s fade at 60fps
+// Crossfade alpha now comes from cal.crossfadeSpeed
 
 const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, onLiveStatus, onColorChange }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
