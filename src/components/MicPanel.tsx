@@ -173,8 +173,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   }, [isPlaying]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
   useEffect(() => { energyRef.current = energy; }, [energy]);
-  useEffect(() => { danceabilityRef.current = danceability; }, [danceability]);
-  useEffect(() => { happinessRef.current = happiness; }, [happiness]);
   useEffect(() => {
     const prevDb = loudnessDbRef.current;
     const newDb = parseLoudnessDb(loudness);
