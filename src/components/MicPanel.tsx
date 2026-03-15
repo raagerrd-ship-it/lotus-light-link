@@ -314,9 +314,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           nextRotationAtRef.current = now + interval;
           console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'next in', interval, 'ms');
         }
-      } else if (!isActive) {
-        // Reset rotation timer so it starts fresh when music resumes
-        nextRotationAtRef.current = 0;
       }
 
       // Crossfade blendedColor toward targetColor
