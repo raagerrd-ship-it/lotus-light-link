@@ -340,9 +340,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         workerRef.current = worker;
         const freqBuf = new Float32Array(analyser.frequencyBinCount);
 
-        // Idle color when nothing is playing: warm orange-red at full brightness
-        const IDLE_COLOR: [number, number, number] = [255, 60, 0];
+        // Idle color when nothing is playing — user-configurable
+        let idleColor = getIdleColor();
         let idleSent = false;
+
+        // Listen for idle color changes from settings
+        const onIdleColorChange = () => { idleColor = getIdleColor(); idleSent = false; }; 
+        window.addEventListener('idle-color-changed', onIdleColorChange);
 
         worker.onmessage = () => {
           if (stopped) return;
