@@ -21,15 +21,17 @@ export function applyDynamics(
 ): number {
   let result = energyNorm;
 
-  if (dynamicDamping < 0) {
-    const amount = Math.min(1, Math.abs(dynamicDamping) / 2);
+  if (dynamicDamping > 0) {
+    // Positive = expand dynamics (more contrast)
+    const amount = Math.min(1, dynamicDamping / 2);
     const gain = 1 + amount * 10;
     const centered = result - center;
     const denom = Math.tanh(0.5 * gain) || 1;
     const expanded = center + 0.5 * (Math.tanh(centered * gain) / denom);
     result = result * (1 - amount) + expanded * amount;
-  } else if (dynamicDamping > 0) {
-    const amount = Math.min(1, dynamicDamping / 3);
+  } else if (dynamicDamping < 0) {
+    // Negative = compress dynamics (less contrast)
+    const amount = Math.min(1, Math.abs(dynamicDamping) / 3);
     const compression = 1 / (1 + amount * 4);
     result = center + (result - center) * compression;
   }
