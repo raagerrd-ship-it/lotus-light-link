@@ -164,11 +164,13 @@ export function useSonosNowPlaying() {
     // --- SSE connection (primary) ---
     let es: EventSource | null = null;
     let sseAlive = false;
+    let lastSseMessage = Date.now();
 
     const connectSSE = () => {
       es = new EventSource(`${proxyUrl}/events`);
       es.onmessage = (e) => {
         sseAlive = true;
+        lastSseMessage = Date.now();
         try {
           const s = JSON.parse(e.data);
           // SSE has ~0 RTT since it's push-based
@@ -183,8 +185,30 @@ export function useSonosNowPlaying() {
 
     connectSSE();
 
+    // --- Fallback poll every 5s to catch missed state changes (pause/stop) ---
+    const pollStatus = async () => {
+      try {
+        const t0 = performance.now();
+        const res = await fetch(`${proxyUrl}/status`, { signal: AbortSignal.timeout(4000) });
+        const rtt = performance.now() - t0;
+        smoothedRtt = smoothedRtt * 0.7 + rtt * 0.3;
+        if (res.ok) {
+          const s = await res.json();
+          applyStatus(s, smoothedRtt);
+        }
+      } catch { /* ignore poll errors */ }
+    };
+
+    const pollId = setInterval(() => {
+      // Only poll if SSE hasn't delivered anything in 3s
+      if (Date.now() - lastSseMessage > 3000) {
+        pollStatus();
+      }
+    }, 5000);
+
     return () => {
       if (es) { es.close(); es = null; }
+      clearInterval(pollId);
     };
   }, []);
 
