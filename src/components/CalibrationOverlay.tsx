@@ -194,11 +194,11 @@ function PipelineStats() {
   const warn = stats.tickMs > 20 || stats.queue;
 
   return (
-    <span className={`text-[8px] font-mono leading-none ${warn ? 'text-red-400' : 'text-muted-foreground/60'}`}>
-      {stats.tickMs}ms · BLE {stats.bleMs}ms · {stats.wps}w/s
-      {stats.drops > 0 && <span className="text-red-400"> ⚠{stats.drops}d/s</span>}
-      {stats.queue && <span className="text-red-400"> Q!</span>}
-    </span>
+    <div className={`text-[10px] font-mono leading-tight ${warn ? 'text-red-400' : 'text-muted-foreground/70'}`}>
+      Pipeline {stats.tickMs}ms · BLE Write {stats.bleMs}ms · {stats.wps} writes/s
+      {stats.drops > 0 && <span className="text-red-400"> · ⚠ {stats.drops} drops/s</span>}
+      {stats.queue && <span className="text-red-400"> · Queue backlog!</span>}
+    </div>
   );
 }
 
