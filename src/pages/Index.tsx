@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
-  sendToBLE, sendPower, setActiveChar, clearActiveChar,
+  sendPower, setActiveChar, clearActiveChar,
   sendHardwareBrightness,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
@@ -160,8 +160,6 @@ const Index = () => {
     setActiveChar(conn.characteristic);
     await sendPower(conn.characteristic, true);
     await sendHardwareBrightness(conn.characteristic);
-    const calibrated = applyColorCalibration(...currentColorRef.current);
-    await sendToBLE(...calibrated, 100);
 
     const deviceName = conn.device?.name;
     if (deviceName) {
