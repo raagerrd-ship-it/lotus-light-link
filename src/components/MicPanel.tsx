@@ -13,6 +13,7 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   sonosVolume?: number;
   isPlaying?: boolean;
+  trackName?: string | null;
   historyLen?: number;
   tickMs?: number;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
