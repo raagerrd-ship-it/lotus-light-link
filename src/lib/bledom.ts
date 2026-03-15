@@ -9,7 +9,6 @@ type LastDevice = { id: string; name: string };
 export interface BLEConnection {
   device: any;
   characteristic: any;
-  charProperties?: { write: boolean; writeWithoutResponse: boolean; read: boolean; notify: boolean };
 }
 
 export function saveLastDevice(device: any) {
@@ -40,16 +39,8 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
     : await device.gatt.connect();
   const service = await server.getPrimaryService(SERVICE_UUID);
   const characteristic = await service.getCharacteristic(CHAR_UUID);
-  const props = characteristic.properties;
-  const charProperties = {
-    write: !!props?.write,
-    writeWithoutResponse: !!props?.writeWithoutResponse,
-    read: !!props?.read,
-    notify: !!props?.notify,
-  };
-  console.log('[BLE] characteristic properties:', charProperties);
   saveLastDevice(device);
-  return { device, characteristic, charProperties };
+  return { device, characteristic };
 }
 
 async function connectAfterAdvertisement(device: any, timeoutMs = 20000): Promise<BLEConnection | null> {
@@ -189,7 +180,6 @@ export function onBleWrite(cb: ((bright: number, r: number, g: number, b: number
 
 export interface BleWriteStats {
   writesPerSec: number;
-  droppedPerSec: number;
   lastWriteMs: number;
 }
 
@@ -205,29 +195,23 @@ export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
 export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
 
 let _writeCount = 0;
-let _dropCount = 0;
 let _statsStart = performance.now();
 let _lastWriteMs = 0;
 let _lastBright = 0;
 
-// Error tracking
-let _errorCount = 0;
 let _backoffUntil = 0;
 
 export function getBleWriteStats(): BleWriteStats {
   const now = performance.now();
   const elapsed = (now - _statsStart) / 1000;
   const wps = elapsed > 0 ? _writeCount / elapsed : 0;
-  const dps = elapsed > 0 ? _dropCount / elapsed : 0;
 
   if (elapsed > 2) {
     _writeCount = 0;
-    _dropCount = 0;
     _statsStart = now;
   }
   return {
     writesPerSec: Math.round(wps),
-    droppedPerSec: Math.round(dps),
     lastWriteMs: Math.round(_lastWriteMs),
   };
 }
@@ -253,7 +237,6 @@ async function _flush() {
 
     _onWriteCallback?.(_lastBright, r, g, b);
   } catch (e: any) {
-    _errorCount++;
     _backoffUntil = performance.now() + 100;
     console.warn('[BLE] write error (backoff 100ms):', e?.message);
   }
@@ -263,7 +246,6 @@ async function _flush() {
 
 export function setActiveChar(char: any) {
   _char = char;
-  _errorCount = 0;
   _backoffUntil = 0;
 }
 
