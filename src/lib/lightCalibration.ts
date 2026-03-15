@@ -181,3 +181,68 @@ export function applyColorCalibration(
     apply(b, c.gammaB, c.offsetB),
   ];
 }
+
+/* ── Presets ── */
+
+export const PRESET_NAMES = ['Lugn', 'Normal', 'Party', 'Custom'] as const;
+export type PresetName = typeof PRESET_NAMES[number];
+
+const BUILT_IN_PRESETS: Record<PresetName, Partial<LightCalibration>> = {
+  Lugn: {
+    attackAlpha: 0.08,
+    releaseAlpha: 0.01,
+    dynamicDamping: 1.5,
+    bassWeight: 0.5,
+    punchWhiteThreshold: 0,
+  },
+  Normal: {},
+  Party: {
+    attackAlpha: 0.6,
+    releaseAlpha: 0.08,
+    dynamicDamping: -2.0,
+    bassWeight: 0.85,
+    punchWhiteThreshold: 85,
+  },
+  Custom: {},
+};
+
+function _defaultPresets(): Record<PresetName, LightCalibration> {
+  const out = {} as Record<PresetName, LightCalibration>;
+  for (const name of PRESET_NAMES) {
+    out[name] = { ...DEFAULT_CALIBRATION, ...BUILT_IN_PRESETS[name] };
+  }
+  return out;
+}
+
+export function getPresets(): Record<PresetName, LightCalibration> {
+  try {
+    const stored = localStorage.getItem(PRESETS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      const defaults = _defaultPresets();
+      for (const name of PRESET_NAMES) {
+        if (parsed[name]) defaults[name] = { ...DEFAULT_CALIBRATION, ...parsed[name] };
+      }
+      return defaults;
+    }
+  } catch {}
+  return _defaultPresets();
+}
+
+export function savePresetCalibration(name: PresetName, cal: LightCalibration): void {
+  const presets = getPresets();
+  presets[name] = cal;
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+export function getActivePreset(): PresetName | null {
+  return (localStorage.getItem(ACTIVE_PRESET_KEY) as PresetName) || null;
+}
+
+export function setActivePreset(name: PresetName | null): void {
+  if (name) {
+    localStorage.setItem(ACTIVE_PRESET_KEY, name);
+  } else {
+    localStorage.removeItem(ACTIVE_PRESET_KEY);
+  }
+}

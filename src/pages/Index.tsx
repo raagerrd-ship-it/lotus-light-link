@@ -17,7 +17,8 @@ import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
 import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
-  getCalibration
+  getCalibration, getPresets, getActivePreset, setActivePreset,
+  savePresetCalibration, PRESET_NAMES, type PresetName,
 } from "@/lib/lightCalibration";
 import { debugData } from "@/lib/debugStore";
 
