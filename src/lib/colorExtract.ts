@@ -9,6 +9,49 @@ function colorDistance(a: RGB, b: RGB): number {
   return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
 }
 
+/** Boost saturation for vivid LED-friendly colors.
+ *  Converts to HSL, boosts S by up to 2x, clamps L to 50-80% for bright pastels. */
+function boostSaturation(r: number, g: number, b: number): RGB {
+  // RGB → HSL
+  const rn = r / 255, gn = g / 255, bn = b / 255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  const delta = max - min;
+  let h = 0;
+  const l = (max + min) / 2;
+
+  if (delta > 0) {
+    if (max === rn) h = ((gn - bn) / delta + 6) % 6;
+    else if (max === gn) h = (bn - rn) / delta + 2;
+    else h = (rn - gn) / delta + 4;
+    h *= 60;
+  }
+
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+
+  // Boost: push saturation toward 1.0, clamp lightness to bright pastel range
+  const boostedS = Math.min(1, s * 2.0);
+  const boostedL = Math.max(0.45, Math.min(0.65, l));
+
+  // HSL → RGB
+  const c = (1 - Math.abs(2 * boostedL - 1)) * boostedS;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = boostedL - c / 2;
+
+  let r1 = 0, g1 = 0, b1 = 0;
+  if (h < 60) { r1 = c; g1 = x; }
+  else if (h < 120) { r1 = x; g1 = c; }
+  else if (h < 180) { g1 = c; b1 = x; }
+  else if (h < 240) { g1 = x; b1 = c; }
+  else if (h < 300) { r1 = x; b1 = c; }
+  else { r1 = c; b1 = x; }
+
+  return [
+    Math.round((r1 + m) * 255),
+    Math.round((g1 + m) * 255),
+    Math.round((b1 + m) * 255),
+  ];
+}
+
 function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
   try {
     const size = 64;
@@ -49,7 +92,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
 
     if (buckets.size === 0) return [];
 
-    // Score by pixel count — no saturation filtering, keep natural/pastel tones
+    // Score by pixel count, filter low-chroma, boost saturation for LED use
     const scored: { color: RGB; score: number }[] = [];
     for (const bucket of buckets.values()) {
       const avgR = Math.round(bucket.r / bucket.count);
@@ -61,7 +104,9 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       const min = Math.min(avgR, avgG, avgB);
       if (max - min < 15) continue;
 
-      scored.push({ color: [avgR, avgG, avgB], score: bucket.count });
+      // Boost saturation for vivid LED colors
+      const boosted = boostSaturation(avgR, avgG, avgB);
+      scored.push({ color: boosted, score: bucket.count });
     }
     scored.sort((a, b) => b.score - a.score);
 
