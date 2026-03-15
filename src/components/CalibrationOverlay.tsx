@@ -262,6 +262,11 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         </div>
       </div>
 
+      {/* Mini live chart */}
+      <div className="px-3 pt-2">
+        <MiniChart />
+      </div>
+
       {/* Mixer faders — horizontal scroll */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Group labels */}
