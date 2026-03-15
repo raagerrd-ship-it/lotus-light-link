@@ -92,10 +92,9 @@ export class LightEngine {
     if (char) setActiveChar(char);
   }
 
-  setTrackName(name: string | null) {
-    if (!name || name === this.lastTrackName) return;
-    this.lastTrackName = name;
-
+  /** Reset AGC — call on track change or other events that invalidate learned levels.
+   *  Scales saved AGC baseline by current/saved volume ratio. */
+  resetAgc(): void {
     const cal = this.cal;
     const currentVol = this.volume;
     const savedVol = cal.agcVolume;
@@ -117,7 +116,7 @@ export class LightEngine {
     this.agcLocked = false;
     this.trackStartTime = performance.now();
     this.lastVolume = currentVol;
-    console.log('[AGC] Track change → vol-scaled start (max=', startMax.toFixed(5), 'vol=', currentVol, '):', name);
+    console.log('[AGC] Reset → vol-scaled start (max=', startMax.toFixed(5), 'vol=', currentVol, ')');
   }
 
   /** Initialize mic, audio pipeline, and start the tick loop */
