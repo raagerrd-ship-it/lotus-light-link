@@ -121,7 +121,26 @@ function getRotationInterval(dance: number | null): number {
   const d = (dance ?? 50) / 100; // 0-1
   return Math.round(30_000 - d * 20_000); // 30s → 10s
 }
-// Crossfade alpha now comes from cal.crossfadeSpeed
+/** Update a single band's AGC max/min refs */
+function updateBandAgc(
+  value: number,
+  maxRef: React.MutableRefObject<number>,
+  minRef: React.MutableRefObject<number>,
+  attack: number,
+  decay: number
+) {
+  if (value > maxRef.current) {
+    maxRef.current += (value - maxRef.current) * attack;
+  } else {
+    maxRef.current *= decay;
+  }
+  if (value < minRef.current || minRef.current === 0) {
+    minRef.current = value;
+  } else {
+    minRef.current += (value - minRef.current) * 0.001;
+  }
+}
+
 
 const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus, onColorChange }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
