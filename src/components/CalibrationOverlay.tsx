@@ -202,7 +202,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const activeDef = SLIDERS[activeSlider];
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'hsl(var(--background) / 0.92)', backdropFilter: 'blur(20px)' }}>
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.92)', backdropFilter: 'blur(20px)' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] border-b border-border/20">
         <div className="flex items-center gap-2">
