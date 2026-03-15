@@ -48,8 +48,6 @@ const SLIDERS: SliderDef[] = [
 ];
 
 const BYPASS_VALUES: Record<string, number> = {
-  minBrightness: 0,
-  maxBrightness: 100,
   bassWeight: 0.5,
   hiShelfGainDb: 0,
   attackAlpha: 1.0,
