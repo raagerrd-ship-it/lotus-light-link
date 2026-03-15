@@ -298,7 +298,6 @@ export function clearActiveChar() {
   _char = null;
   _pendingBright = null;
   _pendingColor = null;
-  if (_timer) { clearTimeout(_timer); _timer = null; }
 }
 
 /** Single unified BLE command — always sets color + brightness atomically */
