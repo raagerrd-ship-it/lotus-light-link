@@ -164,7 +164,7 @@ export async function autoReconnect(signal?: AbortSignal, onStatus?: (s: BleReco
   return null;
 }
 
-export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
+export async function connectBLEDOM(): Promise<BLEConnection> {
   const nav = navigator as any;
 
   const options: any = { acceptAllDevices: true, optionalServices: [SERVICE_UUID] };
