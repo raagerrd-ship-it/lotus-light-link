@@ -39,7 +39,7 @@ const Index = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
   const [palette, setPalette] = useState<[number, number, number][]>([]);
-  const paletteIndexRef = useRef(0);
+  const [livePaletteIndex, setLivePaletteIndex] = useState(0);
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
@@ -74,7 +74,7 @@ const Index = () => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
         setPalette(colors);
-        paletteIndexRef.current = 0;
+        setLivePaletteIndex(0);
       }
     });
   }, [nowPlaying?.albumArtUrl]);
@@ -167,10 +167,11 @@ const Index = () => {
   const [dropActive, setDropActive] = useState(false);
   const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
 
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number }) => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
+    setLivePaletteIndex(status.paletteIndex);
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
@@ -395,7 +396,7 @@ const Index = () => {
       {showDebug && <DebugOverlay
         smoothedRtt={smoothedRtt}
         palette={palette}
-        paletteIndex={paletteIndexRef.current}
+        paletteIndex={livePaletteIndex}
         sonosVolume={nowPlaying?.volume}
         liveBpm={bpm}
         maxBrightness={activeCalibration.maxBrightness}
