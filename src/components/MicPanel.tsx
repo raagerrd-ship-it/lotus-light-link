@@ -21,7 +21,9 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
-const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
+const AGC_LEARN_DURATION_MS = 20_000;
+
+const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -51,6 +53,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // AGC learn-then-lock state
+  const agcLockedRef = useRef(false);
+  const trackStartTimeRef = useRef(0);
+  const lastTrackNameRef = useRef<string | null>(null);
 
   // ── Prop sync effects ──
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
