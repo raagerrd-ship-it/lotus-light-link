@@ -51,8 +51,20 @@ const Index = () => {
 
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
+  const { user, loading: authLoading, signIn, signOut } = useAuth();
 
   const connected = connections.length > 0;
+
+  // Sync cloud user id
+  useEffect(() => {
+    setCloudUserId(user?.id ?? null);
+    if (user?.id) {
+      loadSettingsFromCloud().then(() => {
+        setActiveCalibration(getCalibration());
+        setActivePresetState(getActivePreset());
+      });
+    }
+  }, [user?.id]);
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
