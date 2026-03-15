@@ -73,18 +73,34 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
     if (char) setActiveChar(char);
   }, [char]);
 
-  // ── Track change → reset AGC and start learning window ──
+  // ── Track change → reset AGC scaled to current volume, then learn 20s ──
   useEffect(() => {
     if (!trackName || trackName === lastTrackNameRef.current) return;
     lastTrackNameRef.current = trackName;
-    // Reset AGC to fresh defaults so the new track starts clean
-    agcRef.current = createAgcState(0.01, 0);
+
+    const cal = calRef.current;
+    const currentVol = volumeRef.current;
+    const savedVol = cal.agcVolume;
+    const savedMax = cal.agcMax > 0 ? cal.agcMax : 0.01;
+    const savedMin = cal.agcMin;
+
+    // Scale saved AGC baseline by volume ratio so we start proportionally
+    let startMax = savedMax;
+    let startMin = savedMin;
+    if (currentVol != null && currentVol > 0 && savedVol != null && savedVol > 0) {
+      const ratio = currentVol / savedVol;
+      startMax = Math.max(0.01, savedMax * ratio);
+      startMin = Math.max(0, savedMin * ratio);
+    }
+
+    agcRef.current = createAgcState(startMax, startMin);
     smoothedBassRef.current = 0;
     smoothedMidHiRef.current = 0;
     dynamicCenterRef.current = 0.5;
     agcLockedRef.current = false;
     trackStartTimeRef.current = performance.now();
-    console.log('[AGC] Track change → learning for 20s:', trackName);
+    lastVolumeRef.current = currentVol;
+    console.log('[AGC] Track change → vol-scaled start (max=', startMax.toFixed(5), 'vol=', currentVol, '):', trackName);
   }, [trackName]);
 
   // ── Calibration reload ──
