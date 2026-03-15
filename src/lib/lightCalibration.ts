@@ -60,6 +60,10 @@ export interface LightCalibration {
   bandAgcAttack: number;     // 0.02–0.5, per-band AGC attack speed
   bandAgcDecay: number;      // 0.990–0.999, per-band AGC decay speed
 
+  // Volume/loudness compensation
+  volCompensation: number;   // 0–100 (%), how much volume changes instantly rescale AGC
+  loudCompensation: number;  // 0–100 (%), how much loudness changes instantly rescale AGC
+
   // Trait influence (individual)
   energyInfluence: number;       // 0–100
   danceabilityInfluence: number; // 0–100
