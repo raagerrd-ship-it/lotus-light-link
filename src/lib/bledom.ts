@@ -269,6 +269,7 @@ export function getBleWriteStats(): BleWriteStats {
 
 async function _flush() {
   if (_writing || !_char || !_pendingColor) return;
+  if (performance.now() < _backoffUntil) return;
 
   _writing = true;
   const writeStart = performance.now();
