@@ -120,8 +120,6 @@ const Index = () => {
     if (status.micRms != null) debugData.micRms = status.micRms;
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
 
-    const el = punchFlashRef.current;
-    if (el) el.style.opacity = status.isPunch ? '1' : '0';
   }, []);
 
   // Auto-hide overlay after 3s
