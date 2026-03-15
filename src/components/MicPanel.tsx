@@ -201,10 +201,18 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
             lastVolumeRef.current = vol;
           }
 
-          // ── Global + per-band AGC ──
-          updateGlobalAgc(agc, smoothedRef.current);
-          updateBandAgc(bands.bassRms, agc, 'bass', cal.bandAgcAttack, cal.bandAgcDecay);
-          updateBandAgc(bands.midHiRms, agc, 'midHi', cal.bandAgcAttack, cal.bandAgcDecay);
+          // ── Check if learning window has elapsed → lock AGC ──
+          if (!agcLockedRef.current && trackStartTimeRef.current > 0 && (performance.now() - trackStartTimeRef.current) > AGC_LEARN_DURATION_MS) {
+            agcLockedRef.current = true;
+            console.log('[AGC] Locked after 20s learning. max=', agc.max.toFixed(5), 'bassMax=', agc.bassMax.toFixed(5));
+          }
+
+          // ── Global + per-band AGC (skip if locked) ──
+          if (!agcLockedRef.current) {
+            updateGlobalAgc(agc, smoothedRef.current);
+            updateBandAgc(bands.bassRms, agc, 'bass', cal.bandAgcAttack, cal.bandAgcDecay);
+            updateBandAgc(bands.midHiRms, agc, 'midHi', cal.bandAgcAttack, cal.bandAgcDecay);
+          }
 
           const rawBassNorm = normalizeBand(bands.bassRms, agc, 'bass');
           const rawMidHiNorm = normalizeBand(bands.midHiRms, agc, 'midHi');
