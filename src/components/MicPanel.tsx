@@ -294,7 +294,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       }
       // Palette rotation (time-driven, inside rAF — paused during idle/silence)
       const now = performance.now();
-      const isActive = isPlayingRef.current && quietFramesRef.current < SILENCE_FRAMES;
+      const isActive = isPlayingRef.current;
       const p = paletteRef.current;
       if (p.length > 1 && isActive) {
         if (nextRotationAtRef.current === 0) {
@@ -425,20 +425,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const rms = micBands.totalRms;
           const rmsEnd = performance.now();
 
-          // ── Silence detection: auto-idle if mic is silent for N frames ──
-          if (rms < SILENCE_THRESHOLD) {
-            quietFramesRef.current++;
-          } else {
-            quietFramesRef.current = 0;
-          }
-          if (quietFramesRef.current >= SILENCE_FRAMES && charRef.current) {
-            // Mic has been silent long enough — force idle (resend each tick for reliability)
-            const calibrated = applyColorCalibration(...idleColor);
-            sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
-            idleSent = true;
-            onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: rms, isPlayingState: true, quietFrames: quietFramesRef.current });
-            return;
-          }
 
           const prevAbsFactor = agcPeakMaxRef.current > 0
             ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current) : 1;
