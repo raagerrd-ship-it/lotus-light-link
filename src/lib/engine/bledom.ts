@@ -212,16 +212,16 @@ export function updateCharMode(char: any, mode: DeviceMode) {
 
 /** Clear all active chars (e.g. full reset) */
 export function clearActiveChar() {
-  _chars.clear();
+  _charModes.clear();
 }
 
 /** Clear all active chars */
 export function clearAllChars() {
-  _chars.clear();
+  _charModes.clear();
 }
 
 export function getActiveCharCount(): number {
-  return _chars.size;
+  return _charModes.size;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
