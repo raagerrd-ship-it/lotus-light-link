@@ -48,6 +48,7 @@ const Index = () => {
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
+  const [showCalibration, setShowCalibration] = useState(false);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
