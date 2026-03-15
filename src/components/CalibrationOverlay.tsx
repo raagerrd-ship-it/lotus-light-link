@@ -293,6 +293,31 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
     onCalibrationChange?.(fresh);
   }, [conn?.device?.name, onCalibrationChange]);
 
+  const bypassAll = useCallback(() => {
+    const neutral: LightCalibration = {
+      ...DEFAULT_CALIBRATION,
+      minBrightness: 0,
+      maxBrightness: 100,
+      bassWeight: 0.5,
+      colorModStrength: 0,
+      hiShelfGainDb: 0,
+      attackAlpha: 0.9,
+      releaseAlpha: 0.3,
+      dynamicDamping: 0,
+      bpmReleaseScale: 0,
+      saturationBoost: 1.0,
+      energyInfluence: 0,
+      danceabilityInfluence: 0,
+      happinessInfluence: 0,
+      whiteKickThreshold: 100,
+      bandAgcAttack: 0.1,
+      bandAgcDecay: 0.995,
+    };
+    setCal(neutral);
+    saveCalibration(neutral, conn?.device?.name);
+    onCalibrationChange?.(neutral);
+  }, [conn?.device?.name, onCalibrationChange]);
+
   const activeDef = SLIDERS[activeSlider];
 
   return (
@@ -337,7 +362,10 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
               </div>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-7 h-7" title="Återställ allt">
+          <Button variant="ghost" size="sm" onClick={bypassAll} className="rounded-full h-7 px-2 text-[9px] font-bold tracking-wide uppercase" title="Nollställ – ingen påverkan">
+            Bypass
+          </Button>
+          <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-7 h-7" title="Återställ standard">
             <RotateCcw className="w-3.5 h-3.5" />
           </Button>
           <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full w-7 h-7">
