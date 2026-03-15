@@ -35,7 +35,6 @@ export class LightEngine {
   private color: [number, number, number] = [255, 80, 0];
   private volume: number | undefined;
   private playing = true;
-  private trackName: string | null = null;
   private char: BluetoothRemoteGATTCharacteristic | null = null;
   private tickMs = 125;
 
