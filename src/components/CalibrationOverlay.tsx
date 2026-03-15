@@ -45,8 +45,7 @@ const BYPASS_VALUES: Record<string, number> = {
   attackAlpha: 1.0,
   releaseAlpha: 1.0,
   dynamicDamping: 0,
-  bandAgcAttack: 0.1,
-  bandAgcDecay: 0.995,
+  volCompensation: 80,
   volCompensation: 80,
   punchWhiteThreshold: 0,
 };
