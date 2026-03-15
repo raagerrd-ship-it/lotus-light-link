@@ -5,7 +5,7 @@
  * to use in any project.
  */
 
-import { sendToBLE, addActiveChar, removeActiveChar } from "./bledom";
+import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
 import { createAgcState, rescaleAgc, updateGlobalAgc, updateBandPeaks, getEffectiveMax, normalizeBand, type AgcState } from "./agc";
@@ -91,9 +91,9 @@ export class LightEngine {
     if (char) this.addChar(char);
   }
 
-  addChar(char: BluetoothRemoteGATTCharacteristic) {
+  addChar(char: BluetoothRemoteGATTCharacteristic, mode: DeviceMode = 'rgb') {
     this.chars.add(char);
-    addActiveChar(char);
+    addActiveChar(char, mode);
   }
 
   removeChar(char: BluetoothRemoteGATTCharacteristic) {

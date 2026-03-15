@@ -6,11 +6,11 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendPower, addActiveChar, removeActiveChar, clearActiveChar,
-  sendHardwareBrightness,
-  type BLEConnection, type BleReconnectStatus
+  sendHardwareBrightness, updateCharMode, setDeviceMode, getSavedDeviceMode,
+  type BLEConnection, type BleReconnectStatus, type DeviceMode
 } from "@/lib/engine/bledom";
 import { addBleConnection, removeBleConnection } from "@/lib/engine/bleStore";
-import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus } from "lucide-react";
+import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
@@ -136,15 +136,24 @@ const Index = () => {
     overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
   };
 
+  const handleToggleDeviceMode = (conn: BLEConnection) => {
+    const newMode: DeviceMode = conn.mode === 'rgb' ? 'brightness' : 'rgb';
+    setDeviceMode(conn.device?.id, newMode);
+    updateCharMode(conn.characteristic, newMode);
+    conn.mode = newMode;
+    setConnections(prev => prev.map(c =>
+      c.device?.id === conn.device?.id ? { ...c, mode: newMode } : c
+    ));
+  };
+
   const finishConnect = async (conn: BLEConnection) => {
     setConnections(prev => {
-      // Avoid duplicates
       if (prev.some(c => c.device?.id === conn.device?.id)) return prev;
       return [...prev, conn];
     });
     addBleConnection(conn);
     setBusy(false);
-    addActiveChar(conn.characteristic);
+    addActiveChar(conn.characteristic, conn.mode);
     await sendPower(conn.characteristic, true);
     await sendHardwareBrightness(conn.characteristic);
 
@@ -262,6 +271,20 @@ const Index = () => {
                     : `${connections.length} enheter`
                   }
                 </span>
+                {/* Per-device mode toggles */}
+                {connections.map((c, i) => (
+                  <button
+                    key={c.device?.id || i}
+                    onClick={() => handleToggleDeviceMode(c)}
+                    className="p-0.5 rounded-full active:scale-90 transition-transform"
+                    title={`${c.device?.name || `Enhet ${i+1}`}: ${c.mode === 'rgb' ? 'RGB' : 'Brightness'} — tryck för att byta`}
+                  >
+                    {c.mode === 'rgb'
+                      ? <Palette className="w-3 h-3 text-foreground/60" />
+                      : <Sun className="w-3 h-3 text-foreground/60" />
+                    }
+                  </button>
+                ))}
                 {/* Add device button */}
                 <button
                   onClick={handleAddDevice}

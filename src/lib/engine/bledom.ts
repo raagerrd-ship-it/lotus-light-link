@@ -6,9 +6,34 @@ const STORAGE_KEY = 'bledom-last-device';
 
 type LastDevice = { id: string; name: string };
 
+export type DeviceMode = 'rgb' | 'brightness';
+
 export interface BLEConnection {
   device: any;
   characteristic: any;
+  mode: DeviceMode;
+}
+
+const DEVICE_MODE_KEY = 'bledom-device-modes';
+
+function loadDeviceModes(): Record<string, DeviceMode> {
+  try {
+    return JSON.parse(localStorage.getItem(DEVICE_MODE_KEY) || '{}');
+  } catch { return {}; }
+}
+
+function saveDeviceMode(deviceId: string, mode: DeviceMode) {
+  const modes = loadDeviceModes();
+  modes[deviceId] = mode;
+  localStorage.setItem(DEVICE_MODE_KEY, JSON.stringify(modes));
+}
+
+export function getSavedDeviceMode(deviceId: string): DeviceMode {
+  return loadDeviceModes()[deviceId] || 'rgb';
+}
+
+export function setDeviceMode(deviceId: string, mode: DeviceMode) {
+  saveDeviceMode(deviceId, mode);
 }
 
 export function saveLastDevice(device: any) {
@@ -40,7 +65,7 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
   const service = await server.getPrimaryService(SERVICE_UUID);
   const characteristic = await service.getCharacteristic(CHAR_UUID);
   saveLastDevice(device);
-  return { device, characteristic };
+  return { device, characteristic, mode: getSavedDeviceMode(device?.id) };
 }
 
 async function connectAfterAdvertisement(device: any, timeoutMs = 20000): Promise<BLEConnection | null> {
@@ -166,49 +191,58 @@ const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 
 
 // --- BLE write state (tick-worker drives timing) ---
 
-const _chars = new Set<any>();
+const _charModes = new Map<any, DeviceMode>();
 
 /** @deprecated Use addActiveChar/removeActiveChar instead */
-export function setActiveChar(char: any) {
-  _chars.add(char);
+export function setActiveChar(char: any, mode: DeviceMode = 'rgb') {
+  _charModes.set(char, mode);
 }
 
-export function addActiveChar(char: any) {
-  _chars.add(char);
+export function addActiveChar(char: any, mode: DeviceMode = 'rgb') {
+  _charModes.set(char, mode);
 }
 
 export function removeActiveChar(char: any) {
-  _chars.delete(char);
+  _charModes.delete(char);
+}
+
+export function updateCharMode(char: any, mode: DeviceMode) {
+  if (_charModes.has(char)) _charModes.set(char, mode);
 }
 
 /** Clear all active chars (e.g. full reset) */
 export function clearActiveChar() {
-  _chars.clear();
+  _charModes.clear();
 }
 
 /** Clear all active chars */
 export function clearAllChars() {
-  _chars.clear();
+  _charModes.clear();
 }
 
 export function getActiveCharCount(): number {
-  return _chars.size;
+  return _charModes.size;
 }
 
+// Brightness-only buffer: white light at variable brightness
+const _brightOnlyBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xef]);
+
 /** Single unified BLE command — pre-multiplies RGB by brightness.
- *  Sends one 9-byte color packet to ALL connected devices. Hardware brightness is locked to 100%. */
+ *  Sends packets to ALL connected devices. RGB devices get color, brightness-only get dimming. */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
-  if (_chars.size === 0) return;
+  if (_charModes.size === 0) return;
   const scale = Math.max(0, Math.min(100, brightness)) / 100;
   _colorBuf[4] = Math.round(r * scale);
   _colorBuf[5] = Math.round(g * scale);
   _colorBuf[6] = Math.round(b * scale);
+  _brightOnlyBuf[3] = Math.round(scale * 0xff);
 
-  const writes = Array.from(_chars).map(char =>
-    char.writeValueWithoutResponse(_colorBuf).catch((e: any) => {
+  const writes = Array.from(_charModes.entries()).map(([char, mode]) => {
+    const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
+    return char.writeValueWithoutResponse(buf).catch((e: any) => {
       console.warn('[BLE] write error:', e?.message);
-    })
-  );
+    });
+  });
   await Promise.allSettled(writes);
 }
 
