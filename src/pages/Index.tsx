@@ -93,8 +93,9 @@ const Index = () => {
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
   }, [activeCalibration]);
 
-  // Extract dominant color from album art when track changes
+  // Extract dominant color from album art when track changes (proxy mode only)
   useEffect(() => {
+    if (colorSource !== 'proxy') return;
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
@@ -103,7 +104,14 @@ const Index = () => {
         setCurrentColor(colors[0]);
       }
     });
-  }, [nowPlaying?.albumArtUrl]);
+  }, [nowPlaying?.albumArtUrl, colorSource]);
+
+  // Apply manual color when in manual mode
+  useEffect(() => {
+    if (colorSource === 'manual') {
+      setCurrentColor(manualColor);
+    }
+  }, [colorSource, manualColor]);
 
   // Auto-reconnect to last known BLE device on mount
   useEffect(() => {
