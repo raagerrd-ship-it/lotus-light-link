@@ -75,6 +75,8 @@ const BYPASS_VALUES: Record<string, number> = {
   whiteKickMs: DEFAULT_CALIBRATION.whiteKickMs,
   bandAgcAttack: 0.1,
   bandAgcDecay: 0.995,
+  volCompensation: 80,
+  loudCompensation: 80,
 };
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
