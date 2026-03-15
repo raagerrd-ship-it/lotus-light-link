@@ -96,3 +96,5 @@ export function drawIntensityChart(
     ctx.fill();
   }
 
+  ctx.globalAlpha = 1;
+}
