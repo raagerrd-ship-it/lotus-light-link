@@ -153,6 +153,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const agcSaveTimerRef = useRef(0);
   const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
   const idleCleanupRef = useRef<(() => void) | null>(null);
+  const hiShelfRef = useRef<BiquadFilterNode | null>(null);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
   const bassRef = useRef(0);
