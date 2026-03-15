@@ -180,7 +180,16 @@ const Index = () => {
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     setLivePaletteIndex(status.paletteIndex);
-    if (status.bleSentColor) setBleSentColor(status.bleSentColor);
+    if (status.bleSentColor) {
+      setBleBaseColor(status.bleSentColor);
+      // Compute pre-multiplied color (what actually goes to hardware)
+      const s = Math.max(0, Math.min(100, status.bleSentBright ?? 100)) / 100;
+      setBleSentColor([
+        Math.round(status.bleSentColor[0] * s),
+        Math.round(status.bleSentColor[1] * s),
+        Math.round(status.bleSentColor[2] * s),
+      ]);
+    }
     if (status.bleSentBright != null) setBleSentBright(status.bleSentBright);
     setBleColorSource(status.bleColorSource ?? (status.isDrop ? 'white' : 'normal'));
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
