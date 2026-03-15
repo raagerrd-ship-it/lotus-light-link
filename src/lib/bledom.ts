@@ -246,7 +246,6 @@ async function _flush() {
 
 export function setActiveChar(char: any) {
   _char = char;
-  _errorCount = 0;
   _backoffUntil = 0;
 }
 
