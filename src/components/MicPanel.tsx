@@ -483,8 +483,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const midHiRange = Math.max(AGC_FLOOR, midHiAgcMaxRef.current - midHiAgcMinRef.current);
           const rawMidHiNorm = Math.min(1, Math.max(0, (micBands.midHiRms - midHiAgcMinRef.current) / midHiRange));
 
-          // Raw input: total AGC-normalized RMS — before ANY slider processing
-          rawEnergyPctRef.current = Math.round(normalized * 100);
+          // Raw = per-band AGC output, equal weight, no smoothing/damping/brightness
+          const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
+          rawEnergyPctRef.current = Math.round(rawEnergy * 100);
 
           // Apply user's attack/release smoothing to band values
           const prevBass = smoothedBassRef.current;
