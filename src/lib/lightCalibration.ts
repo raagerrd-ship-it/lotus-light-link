@@ -86,7 +86,9 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   colorModStrength: 0.35,
   crossfadeSpeed: 0.008,
 
-  traitInfluence: 100,
+  energyInfluence: 100,
+  danceabilityInfluence: 100,
+  happinessInfluence: 100,
 
   agcMin: 0,
   agcMax: 0.01,
