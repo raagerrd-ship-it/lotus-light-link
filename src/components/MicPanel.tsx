@@ -526,7 +526,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
           chartDirtyRef.current = true;
-          brightPctRef.current = bleSentBr;
+          
 
           onLiveStatusRef.current?.({
             brightness: bleSentBr,
