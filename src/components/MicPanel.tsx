@@ -8,7 +8,6 @@ import { getCalibration, saveCalibration, applyColorCalibration, getActiveDevice
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
-  palette?: [number, number, number][];
   sonosVolume?: number;
   isPlaying?: boolean;
   bpm?: number | null;
@@ -18,8 +17,7 @@ interface MicPanelProps {
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
   tickMs?: number;               // tick interval for worker (default 125ms = 8fps)
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
-  onColorChange?: (color: [number, number, number]) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
 }
 
 /** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
