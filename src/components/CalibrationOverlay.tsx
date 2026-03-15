@@ -3,6 +3,7 @@ import { X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
+  getIdleColor, saveIdleColor,
   type LightCalibration,
 } from "@/lib/lightCalibration";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
