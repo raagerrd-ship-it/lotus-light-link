@@ -211,47 +211,7 @@ function PipelineStats() {
   );
 }
 
-/* ── Mini live chart ── */
-
-function MiniChart() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const resize = () => {
-      const canvas = canvasRef.current;
-      const container = containerRef.current;
-      if (!canvas || !container) return;
-      canvas.width = container.clientWidth * devicePixelRatio;
-      canvas.height = container.clientHeight * devicePixelRatio;
-    };
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
-
-  useEffect(() => {
-    const CHART_LEN = 90;
-    let raf: number;
-    const draw = () => {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const all = getChartSamples();
-        const recent = all.slice(-CHART_LEN);
-        drawIntensityChart(canvas, recent, CHART_LEN);
-      }
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  return (
-    <div ref={containerRef} className="w-full h-full">
-      <canvas ref={canvasRef} className="w-full h-full" style={{ opacity: 0.9 }} />
-    </div>
-  );
-}
+/* ── Mini chart removed — we reuse the main MicPanel chart behind this overlay ── */
 
 interface CalibrationOverlayProps {
   onClose: () => void;
