@@ -7,7 +7,6 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendColor, sendBrightness, sendPower, setActiveChar, clearActiveChar, getLastTickToWriteMs,
-  setBleMinInterval,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
@@ -241,9 +240,6 @@ const Index = () => {
         if (data) {
           saveCalibration(data.calibration, deviceName);
           setActiveCalibration(data.calibration);
-          if (data.bleMinIntervalMs != null) {
-            setBleMinInterval(data.bleMinIntervalMs);
-          }
         }
       }).catch(() => {});
     }
