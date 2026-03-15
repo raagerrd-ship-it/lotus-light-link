@@ -179,6 +179,7 @@ export default function DebugOverlay({
               ? <span className="text-red-400 animate-pulse">err:{bleWriteStats.errorsPerSec}/s</span>
               : <span className="text-green-400">0 err</span>
             }
+            {bleWriteStats.errorCount > 0 && <span className="text-foreground/40"> Σ{bleWriteStats.errorCount}</span>}
             {bleWriteStats.errorsPerSec > 0 && bleWriteStats.lastError && (
               <div className="text-red-300 truncate max-w-[200px]">{bleWriteStats.lastError}</div>
             )}
