@@ -136,6 +136,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
+  const lastBaseColorRef = useRef<[number, number, number]>([0, 0, 0]);
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
   const initCal = calRef.current;
@@ -621,6 +622,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const warmB = Math.round(200 + (1 - traitHappy) * 55);
               bleSentR = warmR; bleSentG = Math.min(255, warmG); bleSentB = warmB; bleSentBr = 100;
               bleSrc = 'white';
+              lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
               sendToBLE(bleSentR, bleSentG, bleSentB, 100);
               lastColorStateRef.current = 'white';
             } else {
@@ -629,6 +631,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
+              lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
               sendToBLE(...finalColor, pct);
               lastColorStateRef.current = 'normal';
             }
@@ -668,7 +671,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
             paletteIndex: paletteIndexRef.current,
-            bleSentColor: [r, g, b] as [number, number, number],
+            bleSentColor: lastBaseColorRef.current,
             bleSentBright: bright,
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
           });
