@@ -78,20 +78,14 @@ const Index = () => {
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
   }, [activeCalibration]);
 
-  useEffect(() => {
-    debugData.palette = palette;
-  }, [palette]);
-
-  // Extract palette from album art when track changes
+  // Extract dominant color from album art when track changes
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-    extractPalette(artUrl, 5).then((colors) => {
+    extractPalette(artUrl, 1).then((colors) => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
-        setPalette(colors);
-        setLivePaletteIndex(0);
       }
     });
   }, [nowPlaying?.albumArtUrl]);
