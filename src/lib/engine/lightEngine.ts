@@ -86,9 +86,23 @@ export class LightEngine {
     if (playing && this.worker) this.worker.postMessage('start');
   }
 
+  /** @deprecated Use addChar/removeChar for multi-device */
   setChar(char: BluetoothRemoteGATTCharacteristic | null) {
-    this.char = char;
-    if (char) setActiveChar(char);
+    if (char) this.addChar(char);
+  }
+
+  addChar(char: BluetoothRemoteGATTCharacteristic) {
+    this.chars.add(char);
+    addActiveChar(char);
+  }
+
+  removeChar(char: BluetoothRemoteGATTCharacteristic) {
+    this.chars.delete(char);
+    removeActiveChar(char);
+  }
+
+  hasChars(): boolean {
+    return this.chars.size > 0;
   }
 
   /** Reset AGC — call on track change or other events that invalidate learned levels.
