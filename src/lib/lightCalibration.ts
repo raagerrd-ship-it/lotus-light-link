@@ -47,6 +47,11 @@ export interface LightCalibration {
   // Dynamic damping (1.0 = linear, >1.0 = compress dynamics)
   dynamicDamping: number;
 
+  // Frequency blend
+  bassWeight: number;        // 0–1, how much bass affects brightness
+  colorModStrength: number;  // 0–1, how much frequency modulates color
+  crossfadeSpeed: number;    // 0.002–0.03, palette transition speed per frame
+
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
   agcMax: number;
@@ -71,6 +76,10 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   whiteKickMs: 100,
 
   dynamicDamping: 1.0,
+
+  bassWeight: 0.7,
+  colorModStrength: 0.35,
+  crossfadeSpeed: 0.008,
 
   agcMin: 0,
   agcMax: 0.01,

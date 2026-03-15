@@ -64,14 +64,10 @@ export function drawIntensityChart(
   ctx.restore();
 
   if (len <= 1) return;
-  const chartTop = (h - chartHeight) / 2;
   const step = w / (historyLen - 1);
   const offsetX = (historyLen - len) * step;
   const dotRadius = Math.max(1, Math.min(step * 0.35, 4));
   const lineWidth = Math.max(1, Math.min(dotRadius * 1.5, 3));
-
-  const clampPct = (p: number) => Math.max(0, Math.min(100, p));
-  const yForPct = (p: number) => chartTop + chartHeight - (clampPct(p) / 100) * chartHeight;
 
   // Build path for fill + line
   const points: { x: number; y: number; color: string }[] = [];
