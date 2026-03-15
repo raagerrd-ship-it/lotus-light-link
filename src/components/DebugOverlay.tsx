@@ -29,8 +29,6 @@ export default function DebugOverlay() {
   const rmsRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef<HTMLDivElement>(null);
   const nrgRef = useRef<HTMLDivElement>(null);
-  const dncRef = useRef<HTMLDivElement>(null);
-  const hpyRef = useRef<HTMLDivElement>(null);
   const loudRef = useRef<HTMLDivElement>(null);
   const ljusRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -107,23 +105,6 @@ export default function DebugOverlay() {
           nrgRef.current.style.display = '';
         } else {
           nrgRef.current.style.display = 'none';
-        }
-      }
-      if (dncRef.current) {
-        if (d.danceability != null) {
-          dncRef.current.innerHTML = `dnc <span class="text-foreground">${d.danceability}</span>`;
-          dncRef.current.style.display = '';
-        } else {
-          dncRef.current.style.display = 'none';
-        }
-      }
-      if (hpyRef.current) {
-        if (d.happiness != null) {
-          const mod = (0.2 + (d.happiness / 100) * 0.25).toFixed(2);
-          hpyRef.current.innerHTML = `hpy <span class="text-foreground">${d.happiness}</span> <span class="text-foreground/40">mod${mod}</span>`;
-          hpyRef.current.style.display = '';
-        } else {
-          hpyRef.current.style.display = 'none';
         }
       }
       if (loudRef.current) {
@@ -207,8 +188,6 @@ export default function DebugOverlay() {
       <div className="border-t border-border/30 pt-0.5 mt-0.5">
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">process</div>
         <div ref={nrgRef} style={{ display: 'none' }} />
-        <div ref={dncRef} style={{ display: 'none' }} />
-        <div ref={hpyRef} style={{ display: 'none' }} />
         <div ref={loudRef} style={{ display: 'none' }} />
         <div ref={ljusRef} />
         <div ref={dropRef} />

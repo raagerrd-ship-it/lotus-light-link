@@ -19,8 +19,6 @@ export interface DebugData {
   isPlayingState: boolean;
   // Process
   energy: number | null;
-  danceability: number | null;
-  happiness: number | null;
   loudness: string | null;
   maxBrightness: number;
   dynamicDamping: number;
@@ -45,8 +43,6 @@ export const debugData: DebugData = {
   midHiLevel: 0,
   isPlayingState: true,
   energy: null,
-  danceability: null,
-  happiness: null,
   loudness: null,
   maxBrightness: 100,
   dynamicDamping: 0,

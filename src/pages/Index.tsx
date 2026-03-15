@@ -68,10 +68,8 @@ const Index = () => {
 
   useEffect(() => {
     debugData.energy = trackTraits.energy ?? null;
-    debugData.danceability = trackTraits.danceability ?? null;
-    debugData.happiness = trackTraits.happiness ?? null;
     debugData.loudness = trackTraits.loudness ?? null;
-  }, [trackTraits.energy, trackTraits.danceability, trackTraits.happiness, trackTraits.loudness]);
+  }, [trackTraits.energy, trackTraits.loudness]);
 
   useEffect(() => {
     debugData.maxBrightness = activeCalibration.maxBrightness;

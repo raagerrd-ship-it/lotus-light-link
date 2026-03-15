@@ -32,7 +32,6 @@ export interface LightCalibration {
   offsetR: number;
   offsetG: number;
   offsetB: number;
-  saturationBoost: number;
 
   // Brightness & dynamics
   minBrightness: number;   // 0–30 (%)
@@ -49,8 +48,6 @@ export interface LightCalibration {
 
   // Frequency blend
   bassWeight: number;        // 0–1, how much bass affects brightness
-  colorModStrength: number;  // 0–1, how much frequency modulates color
-  
   hiShelfGainDb: number;     // 0–12, hi-shelf filter gain for mic compensation
 
   // BPM-release scaling
@@ -66,8 +63,6 @@ export interface LightCalibration {
 
   // Trait influence (individual)
   energyInfluence: number;       // 0–100
-  danceabilityInfluence: number; // 0–100
-  happinessInfluence: number;    // 0–100
 
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
@@ -82,7 +77,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   offsetR: 0,
   offsetG: 0,
   offsetB: 0,
-  saturationBoost: 1.0,
 
   minBrightness: 3,
   maxBrightness: 100,
@@ -95,7 +89,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   dynamicDamping: 1.0,
 
   bassWeight: 0.7,
-  colorModStrength: 0.35,
   
   hiShelfGainDb: 6,
 
@@ -108,8 +101,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   loudCompensation: 80,
 
   energyInfluence: 100,
-  danceabilityInfluence: 100,
-  happinessInfluence: 100,
 
   agcMin: 0,
   agcMax: 0.01,
@@ -214,14 +205,6 @@ export function applyColorCalibration(
 ): [number, number, number] {
   const c = cal ?? getCalibration();
 
-  let rr = r, gg = g, bb = b;
-  if (c.saturationBoost !== 1.0) {
-    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    rr = gray + (r - gray) * c.saturationBoost;
-    gg = gray + (g - gray) * c.saturationBoost;
-    bb = gray + (b - gray) * c.saturationBoost;
-  }
-
   const apply = (val: number, gamma: number, offset: number) => {
     const normalized = Math.max(0, Math.min(1, val / 255));
     const corrected = Math.pow(normalized, gamma) * 255 + offset;
@@ -229,8 +212,8 @@ export function applyColorCalibration(
   };
 
   return [
-    apply(rr, c.gammaR, c.offsetR),
-    apply(gg, c.gammaG, c.offsetG),
-    apply(bb, c.gammaB, c.offsetB),
+    apply(r, c.gammaR, c.offsetR),
+    apply(g, c.gammaG, c.offsetG),
+    apply(b, c.gammaB, c.offsetB),
   ];
 }

@@ -97,22 +97,6 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   };
 }
 
-function modulateColor(
-  baseR: number, baseG: number, baseB: number,
-  lo: number, _mid: number, hi: number,
-  strength: number = 0.3
-): [number, number, number] {
-  const whiteBlend = hi * strength * 0.5;
-  let r = baseR + (255 - baseR) * whiteBlend;
-  let g = baseG + (255 - baseG) * whiteBlend;
-  let b = baseB + (255 - baseB) * whiteBlend;
-
-  const warmBlend = lo * strength * 0.4;
-  r = Math.min(255, r + (255 - r) * warmBlend);
-  b = Math.max(0, b - b * warmBlend * 0.5);
-
-  return [Math.round(r), Math.round(g), Math.round(b)];
-}
 
 /** Update a single band's AGC max/min refs */
 function updateBandAgc(
@@ -534,8 +518,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
 
           // ── Track trait modulation (individual influence sliders) ──
           const traitEnergy = 0.5 + ((energyRef.current ?? 50) / 100 - 0.5) * (cal.energyInfluence / 100);
-          const traitDance = 0.5 + ((danceabilityRef.current ?? 50) / 100 - 0.5) * (cal.danceabilityInfluence / 100);
-          const traitHappy = 0.5 + ((happinessRef.current ?? 50) / 100 - 0.5) * (cal.happinessInfluence / 100);
+          
 
           // White = ONLY on drops (duration already includes traitEnergy from detection above)
           const isWhite = isDrop;
@@ -548,18 +531,16 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           if (c) {
             if (isWhite) {
               const warmR = 255;
-              const warmG = Math.round(240 + traitHappy * 15);
-              const warmB = Math.round(200 + (1 - traitHappy) * 55);
-              bleSentR = warmR; bleSentG = Math.min(255, warmG); bleSentB = warmB; bleSentBr = 100;
+              const warmG = 250;
+              const warmB = 220;
+              bleSentR = warmR; bleSentG = warmG; bleSentB = warmB; bleSentBr = 100;
               bleSrc = 'white';
               lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
               sendToBLE(bleSentR, bleSentG, bleSentB, 100);
               lastColorStateRef.current = 'white';
             } else {
               const baseColor = colorRef.current;
-              const calibrated = applyColorCalibration(...baseColor, cal);
-              const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
-              const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
+              const finalColor = applyColorCalibration(...baseColor, cal);
               bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
               lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
               sendToBLE(...finalColor, pct);
