@@ -204,14 +204,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     if (prevDb != null && newDb != null && prevDb !== newDb) {
       const strength = calRef.current.loudCompensation / 100;
       const rawRatio = loudnessToAgcFactor(newDb) / loudnessToAgcFactor(prevDb);
-      const ratio = 1 + (rawRatio - 1) * strength; // blend toward 1.0 when strength < 100%
-      agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
-      agcMinRef.current *= ratio;
-      agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
-      bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
-      bassAgcMinRef.current *= ratio;
-      midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
-      midHiAgcMinRef.current *= ratio;
+      const ratio = 1 + (rawRatio - 1) * strength;
+      rescaleAllAgc(ratio);
       console.log('[AGC] loudness comp', prevDb, '→', newDb, 'ratio:', ratio.toFixed(2), 'strength:', strength);
     }
   }, [loudness]);
