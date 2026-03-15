@@ -39,6 +39,13 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
     : await device.gatt.connect();
   const service = await server.getPrimaryService(SERVICE_UUID);
   const characteristic = await service.getCharacteristic(CHAR_UUID);
+  const props = characteristic.properties;
+  console.log('[BLE] characteristic properties:', {
+    write: props?.write,
+    writeWithoutResponse: props?.writeWithoutResponse,
+    read: props?.read,
+    notify: props?.notify,
+  });
   saveLastDevice(device);
   return { device, characteristic };
 }
