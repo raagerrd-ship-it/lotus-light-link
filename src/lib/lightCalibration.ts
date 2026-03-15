@@ -5,6 +5,24 @@ import { supabase } from "@/integrations/supabase/client";
 
 const STORAGE_KEY = 'light-calibration';
 const DEVICE_STORAGE_KEY = 'light-calibration-device';
+const IDLE_COLOR_KEY = 'idle-color';
+
+const DEFAULT_IDLE_COLOR: [number, number, number] = [255, 60, 0];
+
+export function getIdleColor(): [number, number, number] {
+  try {
+    const stored = localStorage.getItem(IDLE_COLOR_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length === 3) return parsed as [number, number, number];
+    }
+  } catch {}
+  return [...DEFAULT_IDLE_COLOR];
+}
+
+export function saveIdleColor(color: [number, number, number]): void {
+  localStorage.setItem(IDLE_COLOR_KEY, JSON.stringify(color));
+}
 
 export interface LightCalibration {
   // Color correction (defaults are neutral — not exposed in UI but used by applyColorCalibration)

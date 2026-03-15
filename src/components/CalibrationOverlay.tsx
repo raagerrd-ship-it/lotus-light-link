@@ -3,6 +3,7 @@ import { X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
+  getIdleColor, saveIdleColor,
   type LightCalibration,
 } from "@/lib/lightCalibration";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
@@ -33,6 +34,16 @@ const SLIDERS: SliderDef[] = [
   // Kick
   { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
   { key: 'whiteKickMs', label: 'Kick tid', shortLabel: 'Tid', min: 20, max: 200, step: 5, unit: 'ms', group: 'Kick', description: 'Hur länge den vita blixten varar vid en drop.' },
+];
+
+const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
+  { color: [255, 60, 0], label: 'Orange' },
+  { color: [255, 0, 0], label: 'Röd' },
+  { color: [255, 140, 0], label: 'Amber' },
+  { color: [255, 200, 50], label: 'Varm vit' },
+  { color: [0, 80, 255], label: 'Blå' },
+  { color: [180, 0, 255], label: 'Lila' },
+  { color: [0, 255, 80], label: 'Grön' },
 ];
 
 function formatValue(def: SliderDef, val: number): string {
@@ -159,6 +170,7 @@ interface CalibrationOverlayProps {
 }
 
 export default function CalibrationOverlay({ onClose, onCalibrationChange }: CalibrationOverlayProps) {
+  const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [activeSlider, setActiveSlider] = useState<number>(0);
   const [conn, setConn] = useState(getBleConnection);
@@ -241,6 +253,30 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
               );
             })}
           </div>
+        </div>
+
+        {/* Idle color picker */}
+        <div className="px-3 py-2 border-t border-border/20 flex items-center gap-3">
+          <span className="text-[10px] font-bold text-foreground/80 whitespace-nowrap">Viloläge</span>
+          <div className="flex gap-1.5">
+            {IDLE_PRESETS.map(({ color, label }) => {
+              const isActive = idleColor[0] === color[0] && idleColor[1] === color[1] && idleColor[2] === color[2];
+              return (
+                <button
+                  key={label}
+                  title={label}
+                  onClick={() => {
+                    setIdleColorState(color);
+                    saveIdleColor(color);
+                    window.dispatchEvent(new CustomEvent('idle-color-changed'));
+                  }}
+                  className={`w-7 h-7 rounded-full border-2 transition-transform active:scale-90 ${isActive ? 'scale-110 border-foreground' : 'border-transparent'}`}
+                  style={{ background: `rgb(${color[0]},${color[1]},${color[2]})` }}
+                />
+              );
+            })}
+          </div>
+          <span className="text-[9px] text-muted-foreground ml-auto">Färg vid paus</span>
         </div>
 
         {/* Description box */}

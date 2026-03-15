@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
-import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, type LightCalibration } from "@/lib/lightCalibration";
+import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
@@ -151,6 +151,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const lastVolumeRef = useRef(sonosVolume);
   const agcSaveTimerRef = useRef(0);
   const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
+  const idleCleanupRef = useRef<(() => void) | null>(null);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
   const bassRef = useRef(0);
@@ -340,9 +341,14 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         workerRef.current = worker;
         const freqBuf = new Float32Array(analyser.frequencyBinCount);
 
-        // Idle color when nothing is playing: warm orange-red at full brightness
-        const IDLE_COLOR: [number, number, number] = [255, 60, 0];
+        // Idle color when nothing is playing — user-configurable
+        let idleColor = getIdleColor();
         let idleSent = false;
+
+        // Listen for idle color changes from settings
+        const onIdleColorChanged = () => { idleColor = getIdleColor(); idleSent = false; }; 
+        window.addEventListener('idle-color-changed', onIdleColorChanged);
+        idleCleanupRef.current = () => window.removeEventListener('idle-color-changed', onIdleColorChanged);
 
         worker.onmessage = () => {
           if (stopped) return;
@@ -351,10 +357,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             // Send idle color once, then skip processing
             if (!idleSent && charRef.current) {
               const cal = calRef.current;
-              const calibrated = applyColorCalibration(...IDLE_COLOR);
+              const calibrated = applyColorCalibration(...idleColor);
               sendColorAndBrightness(charRef.current, calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
               idleSent = true;
-              onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: IDLE_COLOR, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0 });
+              onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0 });
             }
             return;
           }
@@ -636,6 +642,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     return () => {
       stopped = true;
       onBleWrite(null);
+      idleCleanupRef.current?.();
       if (agcSaveTimerRef.current) clearInterval(agcSaveTimerRef.current);
       workerRef.current?.postMessage("stop");
       workerRef.current?.terminate();
