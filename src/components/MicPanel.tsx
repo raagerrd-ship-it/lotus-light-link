@@ -619,12 +619,12 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     };
   }, []);
 
-  const isCompact = historyLenProp != null; // calibration mode: fill parent
+  const isCompact = historyLenProp != null;
 
   useEffect(() => {
     const resize = () => {
       const canvas = canvasRef.current;
-      const container = isCompact ? sunRef.current : sunRef.current;
+      const container = sunRef.current;
       if (!canvas || !container) return;
       canvas.width = container.clientWidth * devicePixelRatio;
       canvas.height = container.clientHeight * devicePixelRatio;
