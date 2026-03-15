@@ -193,7 +193,7 @@ function PipelineStats() {
       const ble = getBleWriteStats();
       const pipe = getPipelineTimings();
       setStats({
-        tickMs: Math.round(pipe.totalTickMs),
+        tickMs: pipe.totalTickMs,
         bleMs: ble.lastWriteMs,
         wps: ble.writesPerSec,
         drops: ble.droppedPerSec,
@@ -207,7 +207,7 @@ function PipelineStats() {
 
   return (
     <div className={`text-[10px] font-mono leading-tight ${warn ? 'text-red-400' : 'text-muted-foreground/70'}`}>
-      Pipeline {stats.tickMs}ms · BLE Write {stats.bleMs}ms · {stats.wps} writes/s
+      Pipeline {stats.tickMs.toFixed(1)}ms · BLE Write {stats.bleMs}ms · {stats.wps} writes/s
       {stats.drops > 0 && <span className="text-red-400"> · ⚠ {stats.drops} drops/s</span>}
       {stats.queue && <span className="text-red-400"> · Queue backlog!</span>}
     </div>
