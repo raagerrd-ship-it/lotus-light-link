@@ -304,7 +304,7 @@ export function clearActiveChar() {
 export function sendToBLE(_char_unused: any, r: number, g: number, b: number, brightness: number) {
   _pendingColor = [r, g, b];
   _pendingBright = brightness;
-  if (_writing) { _dirtyWhileWriting = true; } else { _flush(); }
+  if (!_writing) { _flush(); }
   _lastTickToWriteMs = 0;
   return Promise.resolve();
 }
