@@ -382,7 +382,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           <span style={{ color: 'hsl(48, 90%, 60%)' }}>LJUS</span>
           <span style={{ color: 'hsl(142, 70%, 50%)' }}>DYNAMIK</span>
           <span style={{ color: 'hsl(0, 80%, 60%)' }}>KICK</span>
-          <span style={{ color: 'hsl(270, 70%, 65%)' }}>FÄRG</span>
+          
         </div>
 
         {/* Scrollable fader strip */}
