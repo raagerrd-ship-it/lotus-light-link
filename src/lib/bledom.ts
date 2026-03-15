@@ -205,16 +205,13 @@ export function getBleWriteStats(): BleWriteStats {
   const now = performance.now();
   const elapsed = (now - _statsStart) / 1000;
   const wps = elapsed > 0 ? _writeCount / elapsed : 0;
-  const dps = elapsed > 0 ? _dropCount / elapsed : 0;
 
   if (elapsed > 2) {
     _writeCount = 0;
-    _dropCount = 0;
     _statsStart = now;
   }
   return {
     writesPerSec: Math.round(wps),
-    droppedPerSec: Math.round(dps),
     lastWriteMs: Math.round(_lastWriteMs),
   };
 }
