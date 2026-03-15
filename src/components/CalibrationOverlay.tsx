@@ -37,13 +37,6 @@ const SLIDERS: SliderDef[] = [
   { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
   { key: 'whiteKickMs', label: 'Kick tid', shortLabel: 'Tid', min: 20, max: 200, step: 5, unit: 'ms', group: 'Kick', description: 'Hur länge den vita blixten varar vid en drop.' },
   // Color
-  { key: 'gammaR', label: 'Gamma Röd', shortLabel: 'γR', min: 0.5, max: 2.5, step: 0.05, unit: '', group: 'Färg', description: 'Gammakorrektion för röd kanal. >1 = mörkare röda, <1 = ljusare röda.' },
-  { key: 'gammaG', label: 'Gamma Grön', shortLabel: 'γG', min: 0.5, max: 2.5, step: 0.05, unit: '', group: 'Färg', description: 'Gammakorrektion för grön kanal.' },
-  { key: 'gammaB', label: 'Gamma Blå', shortLabel: 'γB', min: 0.5, max: 2.5, step: 0.05, unit: '', group: 'Färg', description: 'Gammakorrektion för blå kanal.' },
-  { key: 'offsetR', label: 'Offset Röd', shortLabel: '+R', min: -30, max: 30, step: 1, unit: '', group: 'Färg', description: 'Adderar/subtraherar fast värde till röd. Använd för att korrigera vitbalans.' },
-  { key: 'offsetG', label: 'Offset Grön', shortLabel: '+G', min: -30, max: 30, step: 1, unit: '', group: 'Färg', description: 'Adderar/subtraherar fast värde till grön.' },
-  { key: 'offsetB', label: 'Offset Blå', shortLabel: '+B', min: -30, max: 30, step: 1, unit: '', group: 'Färg', description: 'Adderar/subtraherar fast värde till blå.' },
-  { key: 'saturationBoost', label: 'Mättnad', shortLabel: 'Sat', min: 0.5, max: 2.0, step: 0.05, unit: '×', group: 'Färg', description: 'Förstärker eller dämpar färgmättnaden. >1 = mer färg, <1 = blekare.' },
 ];
 
 function formatValue(def: SliderDef, val: number): string {
@@ -389,7 +382,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           <span style={{ color: 'hsl(48, 90%, 60%)' }}>LJUS</span>
           <span style={{ color: 'hsl(142, 70%, 50%)' }}>DYNAMIK</span>
           <span style={{ color: 'hsl(0, 80%, 60%)' }}>KICK</span>
-          <span style={{ color: 'hsl(270, 70%, 65%)' }}>FÄRG</span>
+          
         </div>
 
         {/* Scrollable fader strip */}
