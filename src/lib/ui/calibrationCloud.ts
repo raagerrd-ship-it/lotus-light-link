@@ -83,6 +83,8 @@ export async function saveSettingsToCloud(): Promise<void> {
       device_modes: _getAllDeviceModes(),
       idle_color: getIdleColor(),
       active_preset: getActivePreset(),
+      color_source: localStorage.getItem('colorSource') || 'proxy',
+      manual_color: JSON.parse(localStorage.getItem('manualColor') || '[255,80,0]'),
       updated_at: new Date().toISOString(),
     };
 
