@@ -141,7 +141,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   const isPlayingRef = useRef(isPlaying);
   const bassRef = useRef(0);
   const midHiRef = useRef(0);
-  const brightPctRef = useRef(0);
+  
   const rawEnergyPctRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
