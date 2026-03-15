@@ -286,39 +286,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
-      // Palette rotation (time-driven, inside rAF)
-      const now = performance.now();
-      const p = paletteRef.current;
-      if (p.length > 1) {
-        if (nextRotationAtRef.current === 0) {
-          nextRotationAtRef.current = now + getRotationInterval(danceabilityRef.current);
-        }
-        if (now >= nextRotationAtRef.current) {
-          const nextIdx = (paletteIndexRef.current + 1) % p.length;
-          paletteIndexRef.current = nextIdx;
-          targetColorRef.current = p[nextIdx];
-          const interval = getRotationInterval(danceabilityRef.current);
-          nextRotationAtRef.current = now + interval;
-          console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'next in', interval, 'ms');
-        }
-      }
-
-      // Crossfade blendedColor toward targetColor
-      const [br, bg, bb] = blendedColorRef.current;
-      const [tr, tg, tb] = targetColorRef.current;
-      const a = calRef.current.crossfadeSpeed;
-      const nr = br + (tr - br) * a;
-      const ng = bg + (tg - bg) * a;
-      const nb = bb + (tb - bb) * a;
-      blendedColorRef.current = [nr, ng, nb];
-      colorRef.current = [Math.round(nr), Math.round(ng), Math.round(nb)];
-      // Notify parent of color change (throttled: only when integer values change)
-      const rounded: [number, number, number] = [Math.round(nr), Math.round(ng), Math.round(nb)];
-      if (rounded[0] !== Math.round(br) || rounded[1] !== Math.round(bg) || rounded[2] !== Math.round(bb)) {
-        onColorChangeRef.current?.(rounded);
-      }
-
-      // No sun animation — chart only
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
     rafIdRef.current = requestAnimationFrame(drawLoop);
