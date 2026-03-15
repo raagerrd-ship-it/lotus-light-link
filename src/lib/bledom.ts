@@ -9,6 +9,7 @@ type LastDevice = { id: string; name: string };
 export interface BLEConnection {
   device: any;
   characteristic: any;
+  charProperties?: { write: boolean; writeWithoutResponse: boolean; read: boolean; notify: boolean };
 }
 
 export function saveLastDevice(device: any) {
@@ -40,14 +41,15 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
   const service = await server.getPrimaryService(SERVICE_UUID);
   const characteristic = await service.getCharacteristic(CHAR_UUID);
   const props = characteristic.properties;
-  console.log('[BLE] characteristic properties:', {
-    write: props?.write,
-    writeWithoutResponse: props?.writeWithoutResponse,
-    read: props?.read,
-    notify: props?.notify,
-  });
+  const charProperties = {
+    write: !!props?.write,
+    writeWithoutResponse: !!props?.writeWithoutResponse,
+    read: !!props?.read,
+    notify: !!props?.notify,
+  };
+  console.log('[BLE] characteristic properties:', charProperties);
   saveLastDevice(device);
-  return { device, characteristic };
+  return { device, characteristic, charProperties };
 }
 
 async function connectAfterAdvertisement(device: any, timeoutMs = 20000): Promise<BLEConnection | null> {

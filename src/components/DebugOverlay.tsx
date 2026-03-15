@@ -35,6 +35,7 @@ interface DebugOverlayProps {
   micRms?: number;
   isPlayingState?: boolean;
   quietFrames?: number;
+  bleCharProps?: { write: boolean; writeWithoutResponse: boolean; read: boolean; notify: boolean } | null;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -63,7 +64,7 @@ export default function DebugOverlay({
   energy, danceability, happiness, loudness,
   bassLevel, midHiLevel,
   bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats, pipelinePeakMs,
-  micRms, isPlayingState, quietFrames,
+  micRms, isPlayingState, quietFrames, bleCharProps,
 }: DebugOverlayProps) {
 
   return (
@@ -193,6 +194,14 @@ export default function DebugOverlay({
             {bleWriteStats.errorsPerSec > 0 && bleWriteStats.lastError && (
               <div className="text-red-300 truncate max-w-[200px]">{bleWriteStats.lastError}</div>
             )}
+          </div>
+        )}
+        {bleCharProps && (
+          <div>
+            props: {bleCharProps.write ? <span className="text-green-400">W</span> : <span className="text-red-400">w</span>}
+            {' '}{bleCharProps.writeWithoutResponse ? <span className="text-green-400">WnR</span> : <span className="text-red-400">wnr</span>}
+            {' '}{bleCharProps.read ? <span className="text-foreground/40">R</span> : null}
+            {' '}{bleCharProps.notify ? <span className="text-foreground/40">N</span> : null}
           </div>
         )}
       </Section>
