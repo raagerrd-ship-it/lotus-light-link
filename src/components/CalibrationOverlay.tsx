@@ -260,6 +260,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         <div className="flex items-center gap-2">
           <h2 className="text-xs font-bold tracking-widest uppercase text-foreground/80">Mixer</h2>
           {conn && <span className="text-[9px] font-mono text-primary/60">{conn.device?.name}</span>}
+          <PipelineStats />
         </div>
         <div className="flex items-center gap-1.5">
           {/* Idle color dropdown */}
