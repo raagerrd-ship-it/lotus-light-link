@@ -229,30 +229,10 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
     workerRef.current?.postMessage(tickMs);
   }, [tickMs]);
 
-  // When currentColor changes externally, update colorRef but DON'T snap blended
-  // (blended is driven by crossfade; snapping happens only on palette change)
+  // When currentColor changes externally (new track), update colorRef
   useEffect(() => {
     colorRef.current = currentColor;
   }, [currentColor]);
-
-  // Sync palette ref and snap rotation when palette changes (new album art)
-  useEffect(() => {
-    paletteRef.current = palette ?? [];
-    paletteIndexRef.current = 0;
-    if (palette && palette.length > 0) {
-      targetColorRef.current = palette[0];
-      blendedColorRef.current = palette[0];
-      colorRef.current = palette[0];
-    }
-    // Reset rotation timer so first advance uses fresh interval
-    nextRotationAtRef.current = 0;
-    // Reset AGC on new palette
-    lastColorStateRef.current = 'normal';
-    agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
-    agcMinRef.current = 0;
-    samplesRef.current = [];
-    resetChartScaler();
-  }, [palette]);
 
   // Palette rotation is now driven inside the rAF loop (no separate timer)
 
