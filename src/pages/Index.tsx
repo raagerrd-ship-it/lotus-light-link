@@ -231,9 +231,25 @@ const Index = () => {
                 >
                   <Bluetooth className="w-3.5 h-3.5" style={{ color: isOn ? accent : "hsl(var(--muted-foreground))" }} />
                 </button>
-                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase">
+                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase truncate max-w-[4rem]">
                   {connection.device.name || "BLEDOM01"}
                 </span>
+                <div className="flex items-center gap-0.5 ml-1">
+                  {PRESET_NAMES.map(name => (
+                    <button
+                      key={name}
+                      onClick={() => handlePresetSwitch(name)}
+                      className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all active:scale-90 ${
+                        activePreset === name
+                          ? 'text-background'
+                          : 'text-foreground/50 hover:text-foreground/80'
+                      }`}
+                      style={activePreset === name ? { background: accent } : undefined}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
               </>
             ) : (
               <span className="text-xs text-muted-foreground">Ej ansluten</span>
