@@ -7,14 +7,14 @@ const STORAGE_KEY = 'light-calibration';
 const DEVICE_STORAGE_KEY = 'light-calibration-device';
 
 export interface LightCalibration {
-  // Color correction
-  gammaR: number;      // 0.5–2.5
+  // Color correction (defaults are neutral — not exposed in UI but used by applyColorCalibration)
+  gammaR: number;
   gammaG: number;
   gammaB: number;
-  offsetR: number;     // -30 to +30
+  offsetR: number;
   offsetG: number;
   offsetB: number;
-  saturationBoost: number; // 0.5–2.0
+  saturationBoost: number;
 
   // Brightness & dynamics
   minBrightness: number;   // 0–30 (%)
@@ -26,19 +26,13 @@ export interface LightCalibration {
   whiteKickThreshold: number; // 80–100 (%)
   whiteKickMs: number;        // 50–300 (ms)
 
-  // BLE latency compensation (ms) — kept for legacy, not actively used
-  bleLatencyMs: number;
-
-  // Total chain latency: Sonos timestamp → light visible (ms)
-  chainLatencyMs: number;
-
-  // Dynamic damping exponent (1.0 = linear, >1.0 = compress dynamics)
+  // Dynamic damping (1.0 = linear, >1.0 = compress dynamics)
   dynamicDamping: number;
 
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
   agcMax: number;
-  agcVolume: number | null; // Sonos volume when AGC was learned
+  agcVolume: number | null;
 }
 
 export const DEFAULT_CALIBRATION: LightCalibration = {
@@ -58,8 +52,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   whiteKickThreshold: 95,
   whiteKickMs: 100,
 
-  bleLatencyMs: 0,
-  chainLatencyMs: 0,
   dynamicDamping: 1.0,
 
   agcMin: 0,
@@ -89,12 +81,6 @@ export function saveCalibration(cal: LightCalibration, deviceName?: string, { lo
   if (name) {
     _upsertCloud(name, { calibration: cal }, createNewEntry);
   }
-}
-
-export function resetCalibration(): LightCalibration {
-  localStorage.removeItem(STORAGE_KEY);
-  return { ...DEFAULT_CALIBRATION };
-}
 
 // --- Device name tracking ---
 
@@ -136,7 +122,6 @@ async function _upsertCloud(deviceName: string, patch: Record<string, unknown>, 
     console.warn('[calibration] cloud upsert failed', e);
   }
 }
-
 
 /** Load calibration from cloud for a device. */
 export async function loadCalibrationFromCloud(deviceName: string): Promise<{
