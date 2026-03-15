@@ -34,7 +34,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastBaseColorRef = useRef<[number, number, number]>([0, 0, 0]);
-  const chartDirtyRef = useRef(false);
+  
   const rafIdRef = useRef(0);
   const lastSampleTimeRef = useRef(0);
 
