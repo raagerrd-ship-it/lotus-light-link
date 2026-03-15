@@ -225,6 +225,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const [activeSlider, setActiveSlider] = useState<number>(0);
   const [conn, setConn] = useState(getBleConnection);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showIdleMenu, setShowIdleMenu] = useState(false);
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
