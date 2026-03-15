@@ -167,8 +167,6 @@ const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 
 // --- BLE write state (tick-worker drives timing) ---
 
 let _char: any = null;
-let _pendingColor: [number, number, number] | null = null;
-let _writing = false;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
 
 /** Register callback invoked after each actual BLE write with the sent values */
