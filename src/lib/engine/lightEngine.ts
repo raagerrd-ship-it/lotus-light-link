@@ -228,7 +228,7 @@ export class LightEngine {
     this.color = [255, 80, 0];
     this.volume = undefined;
     this.playing = true;
-    this.char = null;
+    this.chars.clear();
     this.smoothed = 0;
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
