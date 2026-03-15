@@ -152,20 +152,7 @@ export default function DebugOverlay() {
           : 'drop: <span class="text-foreground/50">—</span>';
       }
 
-      // 4. FÄRGVAL
-      if (paletteRef.current) {
-        const p = d.palette;
-        if (p.length > 0) {
-          paletteRef.current.innerHTML = p.map((c, i) =>
-            `<div class="w-2.5 h-2.5 rounded-sm" style="background:rgb(${c[0]},${c[1]},${c[2]});${i === d.paletteIndex ? 'outline:1.5px solid white' : ''}"></div>`
-          ).join('');
-          paletteRef.current.style.display = '';
-        } else {
-          paletteRef.current.style.display = 'none';
-        }
-      }
-
-      // 5. BLE OUTPUT
+      // 4. BLE OUTPUT
       const sc = d.bleSentColor;
       if (sc) {
         if (bleOutContainerRef.current) bleOutContainerRef.current.style.display = '';

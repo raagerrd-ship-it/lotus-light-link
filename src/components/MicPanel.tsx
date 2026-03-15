@@ -596,7 +596,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
             isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
-            paletteIndex: paletteIndexRef.current,
             bleSentColor: lastBaseColorRef.current,
             bleSentBright: bleSentBr,
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,

@@ -51,8 +51,6 @@ export const debugData: DebugData = {
   maxBrightness: 100,
   dynamicDamping: 0,
   dropActive: false,
-  palette: [],
-  paletteIndex: 0,
   bleSentColor: null,
   bleSentBright: null,
   bleColorSource: null,

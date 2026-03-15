@@ -96,7 +96,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   bassWeight: 0.7,
   colorModStrength: 0.35,
-  crossfadeSpeed: 0.008,
+  
   hiShelfGainDb: 6,
 
   bpmReleaseScale: 80,
