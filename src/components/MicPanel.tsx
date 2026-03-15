@@ -581,7 +581,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const warmR = 255;
               const warmG = Math.round(240 + traitHappy * 15);
               const warmB = Math.round(200 + (1 - traitHappy) * 55);
-              sendColorAndBrightness(c, warmR, Math.min(255, warmG), warmB, 100);
+              sendToBLE(c, warmR, Math.min(255, warmG), warmB, 100);
               lastColorStateRef.current = 'white';
             } else {
               const baseColor = colorRef.current;
