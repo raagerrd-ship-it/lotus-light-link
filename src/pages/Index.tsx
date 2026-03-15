@@ -178,8 +178,11 @@ const Index = () => {
   const [bleWriteStats, setBleWriteStats] = useState<ReturnType<typeof getBleWriteStats> | null>(null);
   const [pipelinePeakMs, setPipelinePeakMs] = useState(0);
   const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
+  const [micRms, setMicRms] = useState(0);
+  const [isPlayingState, setIsPlayingState] = useState(true);
+  const [quietFrames, setQuietFrames] = useState(0);
 
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean; quietFrames?: number }) => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
@@ -190,6 +193,9 @@ const Index = () => {
     }
     if (status.bleSentBright != null) setBleSentBright(status.bleSentBright);
     setBleColorSource(status.bleColorSource ?? (status.isDrop ? 'white' : 'normal'));
+    if (status.micRms != null) setMicRms(status.micRms);
+    if (status.isPlayingState != null) setIsPlayingState(status.isPlayingState);
+    if (status.quietFrames != null) setQuietFrames(status.quietFrames);
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
@@ -453,6 +459,9 @@ const Index = () => {
         bleBaseColor={bleBaseColor}
         bleWriteStats={bleWriteStats}
         pipelinePeakMs={pipelinePeakMs}
+        micRms={micRms}
+        isPlayingState={isPlayingState}
+        quietFrames={quietFrames}
       />}
     </div>
   );

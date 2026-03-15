@@ -32,6 +32,9 @@ interface DebugOverlayProps {
   bleBaseColor?: [number, number, number] | null;
   bleWriteStats?: BleWriteStats | null;
   pipelinePeakMs?: number | null;
+  micRms?: number;
+  isPlayingState?: boolean;
+  quietFrames?: number;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -60,6 +63,7 @@ export default function DebugOverlay({
   energy, danceability, happiness, loudness,
   bassLevel, midHiLevel,
   bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats, pipelinePeakMs,
+  micRms, isPlayingState, quietFrames,
 }: DebugOverlayProps) {
 
   return (
@@ -93,6 +97,12 @@ export default function DebugOverlay({
         </div>
         <div>RTT: <span className="text-foreground">{Math.round(smoothedRtt)}ms</span></div>
         <div>mic: <span className="text-foreground">lo {bassLevel != null ? bassLevel.toFixed(3) : '—'}</span> <span className="text-foreground/40">|</span> <span className="text-foreground">hi {midHiLevel != null ? midHiLevel.toFixed(3) : '—'}</span></div>
+        <div>
+          rms: <span className="text-foreground">{micRms != null ? micRms.toFixed(5) : '—'}</span>
+          <span className="text-foreground/40"> │ </span>
+          play: <span className={isPlayingState ? 'text-green-400' : 'text-yellow-400'}>{isPlayingState ? '▶' : '⏸'}</span>
+          {(quietFrames ?? 0) > 0 && <span className="text-yellow-400"> q{quietFrames}</span>}
+        </div>
         {liveBpm ? <div>BPM: <span className="text-foreground">{Math.round(liveBpm)}</span></div> : null}
       </Section>
 

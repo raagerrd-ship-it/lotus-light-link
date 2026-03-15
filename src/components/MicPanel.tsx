@@ -17,7 +17,7 @@ interface MicPanelProps {
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
   tickMs?: number;               // dynamic tick interval for worker (default 25)
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean; quietFrames?: number }) => void;
   onColorChange?: (color: [number, number, number]) => void;
 }
 
@@ -173,6 +173,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bassHistoryRef = useRef<number[]>([]);
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
+  const quietFramesRef = useRef(0);
+  const SILENCE_THRESHOLD = 0.001; // RMS below this = silence
+  const SILENCE_FRAMES = 40; // ~1s at 25ms ticks → auto-idle
 
   // Palette rotation + crossfade
   const paletteRef = useRef(palette ?? []);
@@ -389,12 +392,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           if (!isPlayingRef.current) {
             // Send idle color once, then skip processing
+            quietFramesRef.current = 0; // reset when explicitly paused
             if (!idleSent && charRef.current) {
               const cal = calRef.current;
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
               idleSent = true;
-              onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current });
+              onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false, quietFrames: 0 });
             }
             return;
           }
@@ -409,6 +413,23 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const micBands = computeBands(an, freqBuf);
           const rms = micBands.totalRms;
           const rmsEnd = performance.now();
+
+          // ── Silence detection: auto-idle if mic is silent for N frames ──
+          if (rms < SILENCE_THRESHOLD) {
+            quietFramesRef.current++;
+          } else {
+            quietFramesRef.current = 0;
+          }
+          if (quietFramesRef.current >= SILENCE_FRAMES && charRef.current) {
+            // Mic has been silent long enough — force idle
+            if (!idleSent) {
+              const calibrated = applyColorCalibration(...idleColor);
+              sendToBLE(calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
+              idleSent = true;
+            }
+            onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: rms, isPlayingState: true, quietFrames: quietFramesRef.current });
+            return;
+          }
 
           const prevAbsFactor = agcPeakMaxRef.current > 0
             ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current) : 1;
@@ -684,6 +705,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bleSentColor: lastBaseColorRef.current,
             bleSentBright: bright,
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
+            micRms: smoothedRef.current,
+            isPlayingState: isPlayingRef.current,
+            quietFrames: quietFramesRef.current,
           });
         });
 
