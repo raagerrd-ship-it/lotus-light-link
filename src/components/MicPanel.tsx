@@ -331,28 +331,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         onColorChangeRef.current?.(rounded);
       }
 
-      // Animate sun
-      const sun = sunRef.current;
-      if (sun) {
-        const b = brightPctRef.current / 100;
-        const [cr, cg, cb] = rounded;
-        const ringSpread = 4 + b * 80;
-        const outerGlow = 50 + b * 700;
-        const farGlow = 100 + b * 900;
-        const ringAlpha = 0.08 + b * 0.8;
-        const outerAlpha = 0.05 + b * 0.55;
-        const farAlpha = 0.02 + b * 0.3;
-        const bgCore = 0.08 + b * 0.35;
-        const bgMid = 0.02 + b * 0.15;
-
-        sun.style.transform = 'scale(1)';
-        sun.style.boxShadow = [
-          `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
-          `0 0 ${outerGlow}px rgba(${cr},${cg},${cb},${outerAlpha})`,
-          `0 0 ${farGlow}px rgba(${cr},${cg},${cb},${farAlpha})`,
-        ].join(', ');
-        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${bgCore}) 0%, rgba(${cr},${cg},${cb},${bgMid}) 55%, transparent 78%)`;
-      }
+      // No sun animation — chart only
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
     rafIdRef.current = requestAnimationFrame(drawLoop);
@@ -769,27 +748,12 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   }
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div
-        ref={sunRef}
-        className="rounded-full relative"
-        style={{
-          width: '55vw',
-          height: '55vw',
-          maxWidth: '55vh',
-          maxHeight: '55vh',
-          transform: 'scale(1)',
-          willChange: 'transform, box-shadow, background',
-          background: 'transparent',
-          boxShadow: 'none',
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full rounded-full"
-          style={{ opacity: 0.6, clipPath: 'circle(50%)' }}
-        />
-      </div>
+    <div className="absolute inset-0" ref={sunRef}>
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ opacity: 0.9 }}
+      />
     </div>
   );
 };
