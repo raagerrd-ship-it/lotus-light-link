@@ -382,7 +382,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
               idleSent = true;
-              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false, quietFrames: 0 });
+              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false });
             }
             // Stop worker — will be restarted when isPlaying becomes true
             worker.postMessage('stop');
