@@ -30,14 +30,11 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       const a = imageData[i + 3];
       if (a < 128) continue;
 
+      // Skip near-black and near-white
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (lum < 40 || lum > 220) continue;
+      if (lum < 20 || lum > 240) continue;
 
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      const sat = max > 0 ? (max - min) / max : 0;
-      if (sat < 0.35) continue;
-
+      // Quantize to 4-bit per channel buckets
       const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
       const existing = buckets.get(key);
       if (existing) {
@@ -52,38 +49,28 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
 
     if (buckets.size === 0) return [];
 
+    // Score by pixel count — no saturation filtering, keep natural/pastel tones
     const scored: { color: RGB; score: number }[] = [];
     for (const bucket of buckets.values()) {
-      const avgR = bucket.r / bucket.count;
-      const avgG = bucket.g / bucket.count;
-      const avgB = bucket.b / bucket.count;
+      const avgR = Math.round(bucket.r / bucket.count);
+      const avgG = Math.round(bucket.g / bucket.count);
+      const avgB = Math.round(bucket.b / bucket.count);
+
+      // Skip pure grays (very low chroma)
       const max = Math.max(avgR, avgG, avgB);
       const min = Math.min(avgR, avgG, avgB);
-      const sat = max > 0 ? (max - min) / max : 0;
-      const lum = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+      if (max - min < 15) continue;
 
-      if (sat < 0.4 && lum > 60 && lum < 160) continue;
-
-      const score = bucket.count * (sat ** 2) * 4;
-      scored.push({ color: [Math.round(avgR), Math.round(avgG), Math.round(avgB)], score });
+      scored.push({ color: [avgR, avgG, avgB], score: bucket.count });
     }
     scored.sort((a, b) => b.score - a.score);
 
-    const MIN_DIST = 60;
+    const MIN_DIST = 40;
     const palette: RGB[] = [];
     for (const { color } of scored) {
       if (palette.length >= count) break;
       if (palette.every(existing => colorDistance(existing, color) > MIN_DIST)) {
-        const [cr, cg, cb] = color;
-        const maxC = Math.max(cr, cg, cb);
-        const minC = Math.min(cr, cg, cb);
-        const mid = (cr + cg + cb) / 3;
-        const boostFactor = maxC - minC < maxC * 0.6 ? 2.5 : 1.5;
-        palette.push([
-          Math.round(Math.min(255, Math.max(0, mid + (cr - mid) * boostFactor))),
-          Math.round(Math.min(255, Math.max(0, mid + (cg - mid) * boostFactor))),
-          Math.round(Math.min(255, Math.max(0, mid + (cb - mid) * boostFactor))),
-        ]);
+        palette.push(color);
       }
     }
 

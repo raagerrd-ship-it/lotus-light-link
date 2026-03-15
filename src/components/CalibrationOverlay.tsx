@@ -139,7 +139,7 @@ function MixerFader({
     'Ljus': 'hsl(48, 90%, 60%)',
     'Frekvens': 'hsl(200, 80%, 55%)',
     'Dynamik': 'hsl(142, 70%, 50%)',
-    'Färg': 'hsl(280, 70%, 60%)',
+    
     'Traits': 'hsl(35, 90%, 55%)',
     'Kick': 'hsl(0, 80%, 60%)',
     'AGC': 'hsl(170, 60%, 50%)',

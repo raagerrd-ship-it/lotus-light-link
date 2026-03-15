@@ -215,8 +215,8 @@ export function applyColorCalibration(
   };
 
   return [
-    apply(rr, c.gammaR, c.offsetR),
-    apply(gg, c.gammaG, c.offsetG),
-    apply(bb, c.gammaB, c.offsetB),
+    apply(r, c.gammaR, c.offsetR),
+    apply(g, c.gammaG, c.offsetG),
+    apply(b, c.gammaB, c.offsetB),
   ];
 }
