@@ -294,7 +294,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       }
       // Palette rotation (time-driven, inside rAF — paused during idle/silence)
       const now = performance.now();
-      const isActive = isPlayingRef.current && quietFramesRef.current < SILENCE_FRAMES;
+      const isActive = isPlayingRef.current;
       const p = paletteRef.current;
       if (p.length > 1 && isActive) {
         if (nextRotationAtRef.current === 0) {
