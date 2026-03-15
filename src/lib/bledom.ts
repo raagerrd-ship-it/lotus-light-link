@@ -9,7 +9,6 @@ type LastDevice = { id: string; name: string };
 export interface BLEConnection {
   device: any;
   characteristic: any;
-  charProperties?: { write: boolean; writeWithoutResponse: boolean; read: boolean; notify: boolean };
 }
 
 export function saveLastDevice(device: any) {
