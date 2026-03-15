@@ -253,6 +253,7 @@ async function _flush() {
       sentR = _pendingColor[0] & 0xff;
       sentG = _pendingColor[1] & 0xff;
       sentB = _pendingColor[2] & 0xff;
+      // BLEDOM ELK protocol: byte order is R, G, B
       _colorBuf[4] = sentR;
       _colorBuf[5] = sentG;
       _colorBuf[6] = sentB;
