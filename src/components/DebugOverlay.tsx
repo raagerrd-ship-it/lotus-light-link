@@ -34,7 +34,7 @@ export default function DebugOverlay() {
   const loudRef = useRef<HTMLDivElement>(null);
   const ljusRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
-  const paletteRef = useRef<HTMLDivElement>(null);
+  
   const bleOutSwatchRef = useRef<HTMLDivElement>(null);
   const bleOutBarRef = useRef<HTMLDivElement>(null);
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
