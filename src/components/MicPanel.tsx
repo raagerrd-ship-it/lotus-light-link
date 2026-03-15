@@ -487,7 +487,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           // BLE commands
           const c = charRef.current;
           let bleSentR = 0, bleSentG = 0, bleSentB = 0, bleSentBr = pct;
-          let bleSrc: 'normal' | 'white' = 'normal';
           if (c) {
             if (isWhite) {
               const warmR = 255;
