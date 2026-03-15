@@ -188,8 +188,6 @@ export default function DebugOverlay() {
       <div className="border-t border-border/30 pt-0.5 mt-0.5">
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">process</div>
         <div ref={nrgRef} style={{ display: 'none' }} />
-        <div ref={dncRef} style={{ display: 'none' }} />
-        <div ref={hpyRef} style={{ display: 'none' }} />
         <div ref={loudRef} style={{ display: 'none' }} />
         <div ref={ljusRef} />
         <div ref={dropRef} />
