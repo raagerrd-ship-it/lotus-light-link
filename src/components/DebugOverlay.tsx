@@ -72,7 +72,17 @@ export default function DebugOverlay({
         </div>
       )}
 
-      {/* Audio */}
+      {/* BLE sent color */}
+      {bleSentColor && (
+        <div className="flex items-center gap-1">
+          <span>→BLE:</span>
+          <div className="w-3 h-3 rounded-sm border border-border/40" style={{ backgroundColor: `rgb(${bleSentColor[0]},${bleSentColor[1]},${bleSentColor[2]})` }} />
+          <span className="text-foreground">{bleSentColor[0]},{bleSentColor[1]},{bleSentColor[2]}</span>
+          <span className="text-foreground/50">@{bleSentBright ?? '?'}%</span>
+          <span className={bleColorSource === 'idle' ? 'text-yellow-400' : bleColorSource === 'white' ? 'text-foreground' : 'text-green-400'}>{bleColorSource}</span>
+        </div>
+      )}
+
       <div>BPM: <span className="text-foreground">{liveBpm ? Math.round(liveBpm) : '—'}</span></div>
       <div>drop: {dropActive ? <span className="text-red-400 font-bold animate-pulse">🔥 DROP</span> : <span className="text-foreground/50">—</span>}</div>
       <div>lo Hz: <span className="text-foreground">{bassLevel != null ? bassLevel.toFixed(3) : '—'}</span> | mid+hi: <span className="text-foreground">{midHiLevel != null ? midHiLevel.toFixed(3) : '—'}</span></div>
