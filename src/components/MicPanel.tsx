@@ -158,6 +158,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bassRef = useRef(0);
   const midHiRef = useRef(0);
   const brightPctRef = useRef(0);
+  const rawEnergyPctRef = useRef(0);
   const sunRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
   const energyRef = useRef(energy);
@@ -510,6 +511,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           }
 
           energyNorm = Math.max(0, Math.min(1, energyNorm));
+          rawEnergyPctRef.current = Math.round(energyNorm * 100);
 
           const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           const pct = Math.round(rawPct * 100);
@@ -607,6 +609,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             r: Math.max(r, 20),
             g: Math.max(g, 20),
             b: Math.max(b, 20),
+            rawPct: rawEnergyPctRef.current,
           };
           samplesRef.current.push(sample);
           pushChartSample(sample);
