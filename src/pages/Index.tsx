@@ -74,7 +74,7 @@ const Index = () => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
         setPalette(colors);
-        paletteIndexRef.current = 0;
+        setLivePaletteIndex(0);
       }
     });
   }, [nowPlaying?.albumArtUrl]);
