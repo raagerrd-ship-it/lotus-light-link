@@ -9,6 +9,7 @@ import {
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 import { getChartSamples } from "@/lib/chartStore";
 import { drawIntensityChart } from "@/lib/drawChart";
+import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
 
 /* ── Slider definitions ── */
 
