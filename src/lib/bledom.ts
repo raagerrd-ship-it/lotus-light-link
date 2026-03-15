@@ -307,6 +307,11 @@ async function _flush() {
 export function setActiveChar(char: any) {
   _char = char;
   _lastSentColor = [-1, -1, -1];
+  _errorCount = 0;
+  _errorCountWindow = 0;
+  _errorWindowStart = performance.now();
+  _lastError = '';
+  _backoffUntil = 0;
 }
 
 /** Clear active char on disconnect to prevent stale GATT writes */
