@@ -405,7 +405,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           if (!isPlayingRef.current) {
             // Paused: send idle color once, then stop the worker to prevent further ticks
-            quietFramesRef.current = 0;
+            // idle — worker will be stopped below
             if (!idleSent && charRef.current) {
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
