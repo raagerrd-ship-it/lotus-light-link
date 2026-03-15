@@ -210,9 +210,11 @@ function PipelineStats() {
 interface CalibrationOverlayProps {
   onClose: () => void;
   onCalibrationChange?: (cal: LightCalibration) => void;
+  activePreset?: PresetName | null;
+  onPresetSave?: (name: PresetName, cal: LightCalibration) => void;
 }
 
-export default function CalibrationOverlay({ onClose, onCalibrationChange }: CalibrationOverlayProps) {
+export default function CalibrationOverlay({ onClose, onCalibrationChange, activePreset, onPresetSave }: CalibrationOverlayProps) {
   const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [savedCal, setSavedCal] = useState<LightCalibration>(getCalibration);
