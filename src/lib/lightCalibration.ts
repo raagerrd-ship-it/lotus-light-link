@@ -208,14 +208,6 @@ export function applyColorCalibration(
 ): [number, number, number] {
   const c = cal ?? getCalibration();
 
-  let rr = r, gg = g, bb = b;
-  if (c.saturationBoost !== 1.0) {
-    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    rr = gray + (r - gray) * c.saturationBoost;
-    gg = gray + (g - gray) * c.saturationBoost;
-    bb = gray + (b - gray) * c.saturationBoost;
-  }
-
   const apply = (val: number, gamma: number, offset: number) => {
     const normalized = Math.max(0, Math.min(1, val / 255));
     const corrected = Math.pow(normalized, gamma) * 255 + offset;
