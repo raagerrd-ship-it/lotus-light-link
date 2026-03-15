@@ -199,7 +199,7 @@ function MiniChart() {
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full" style={{ height: '5rem' }}>
+    <div ref={containerRef} className="w-full h-[clamp(4rem,15vh,10rem)]">
       <canvas ref={canvasRef} className="w-full h-full" style={{ opacity: 0.9 }} />
     </div>
   );
