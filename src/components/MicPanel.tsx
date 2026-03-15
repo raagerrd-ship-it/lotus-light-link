@@ -331,7 +331,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         const hiShelf = audioCtx.createBiquadFilter();
         hiShelf.type = 'highshelf';
         hiShelf.frequency.value = 2000;
-        hiShelf.gain.value = 6;
+        hiShelf.gain.value = calRef.current.hiShelfGainDb;
 
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512;
