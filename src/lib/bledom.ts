@@ -199,8 +199,6 @@ let _statsStart = performance.now();
 let _lastWriteMs = 0;
 let _lastBright = 0;
 
-// Error tracking
-let _errorCount = 0;
 let _backoffUntil = 0;
 
 export function getBleWriteStats(): BleWriteStats {
