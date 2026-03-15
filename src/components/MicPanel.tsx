@@ -49,11 +49,9 @@ const AGC_ATTACK = 0.1;
 const AGC_FLOOR = 0.002;
 const PEAK_MAX_DECAY = 0.9998;
 
-// FFT band boundaries — returns both normalized (for color) and raw RMS (for brightness/drop)
 interface BandResult {
-  lo: number; mid: number; hi: number;       // normalized 0-1 (relative)
-  bassRms: number; midHiRms: number;          // raw RMS values for AGC
-  totalRms: number;                           // total RMS from freq domain
+  bassRms: number; midHiRms: number;
+  totalRms: number;
 }
 
 function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer>): BandResult {
@@ -76,23 +74,11 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
     else { hiSum += power; hiCount++; }
   }
 
-  const loAvg = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
-  const midAvg = midCount > 0 ? Math.sqrt(midSum / midCount) : 0;
-  const hiAvg = hiCount > 0 ? Math.sqrt(hiSum / hiCount) : 0;
+  const bassRms = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
+  const midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
   const totalRms = bins > 0 ? Math.sqrt(totalSum / bins) : 0;
 
-  const bassRms = loAvg;
-  const midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
-
-  const maxBand = Math.max(loAvg, midAvg, hiAvg, 0.0001);
-  return {
-    lo: Math.min(1, loAvg / maxBand),
-    mid: Math.min(1, midAvg / maxBand),
-    hi: Math.min(1, hiAvg / maxBand),
-    bassRms,
-    midHiRms,
-    totalRms,
-  };
+  return { bassRms, midHiRms, totalRms };
 }
 
 
