@@ -17,7 +17,7 @@ interface DebugOverlayProps {
   bleConnected?: boolean;
   bleDeviceName?: string | null;
   bleReconnectStatus?: BleReconnectStatus | null;
-  deviceRole?: 'master' | 'monitor';
+  
   dropActive?: boolean;
   energy?: number | null;
   danceability?: number | null;
@@ -56,7 +56,7 @@ export default function DebugOverlay({
   smoothedRtt, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus,
-  deviceRole, dropActive,
+  dropActive,
   energy, danceability, happiness, loudness,
   bassLevel, midHiLevel,
   bleSentColor, bleSentBright, bleColorSource, bleBaseColor,
@@ -73,7 +73,7 @@ export default function DebugOverlay({
           ? <span className="text-green-400">{bleDeviceName || 'ansluten'}</span>
           : <span className="text-red-400">ej ansluten</span>
         }
-        <span className="text-foreground/40"> · {deviceRole ?? '?'}</span>
+        
       </div>
       {!bleConnected && bleReconnectStatus && (
         <div className="text-yellow-400">
