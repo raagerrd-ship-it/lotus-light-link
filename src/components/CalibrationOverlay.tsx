@@ -344,11 +344,16 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const update = useCallback((key: keyof LightCalibration, value: number) => {
     setCal(prev => {
       const next = { ...prev, [key]: value };
-      saveCalibration(next, conn?.device?.name);
+      saveCalibration(next, conn?.device?.name, { localOnly: true });
       onCalibrationChange?.(next);
       return next;
     });
   }, [conn?.device?.name, onCalibrationChange]);
+
+  const handleClose = useCallback(() => {
+    saveCalibration(cal, conn?.device?.name);
+    onClose();
+  }, [cal, conn?.device?.name, onClose]);
 
   const resetAll = useCallback(() => {
     const fresh = { ...DEFAULT_CALIBRATION };
