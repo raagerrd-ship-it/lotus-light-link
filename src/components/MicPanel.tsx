@@ -208,16 +208,22 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     resetChartScaler();
   }, [palette]);
 
-  // Rotation timer: advance palette index every ROTATION_INTERVAL_MS
+  // Rotation timer: advance palette index, interval driven by danceability
   useEffect(() => {
-    if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
-    rotationTimerRef.current = setInterval(() => {
-      const p = paletteRef.current;
-      if (p.length <= 1) return;
-      const nextIdx = (paletteIndexRef.current + 1) % p.length;
-      paletteIndexRef.current = nextIdx;
-      targetColorRef.current = p[nextIdx];
-    }, ROTATION_INTERVAL_MS);
+    const startTimer = () => {
+      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
+      const interval = getRotationInterval(danceabilityRef.current);
+      rotationTimerRef.current = setInterval(() => {
+        const p = paletteRef.current;
+        if (p.length <= 1) return;
+        const nextIdx = (paletteIndexRef.current + 1) % p.length;
+        paletteIndexRef.current = nextIdx;
+        targetColorRef.current = p[nextIdx];
+        // Restart with current danceability (may have changed)
+        startTimer();
+      }, interval);
+    };
+    startTimer();
     return () => {
       if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
     };
