@@ -317,6 +317,8 @@ const Index = () => {
         <CalibrationOverlay
           onClose={() => setShowCalibration(false)}
           onCalibrationChange={(cal) => setActiveCalibration(cal)}
+          activePreset={activePreset}
+          onPresetSave={handlePresetSave}
         />
       )}
 
