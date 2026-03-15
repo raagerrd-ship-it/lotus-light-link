@@ -426,13 +426,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             const strength = cal.volCompensation / 100;
             const rawRatio = prevVol > 0 ? (vol / prevVol) : 1;
             const ratio = 1 + (rawRatio - 1) * strength;
-            agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
-            agcMinRef.current = Math.max(0, agcMinRef.current * ratio);
-            agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
-            bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
-            bassAgcMinRef.current = Math.max(0, bassAgcMinRef.current * ratio);
-            midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
-            midHiAgcMinRef.current = Math.max(0, midHiAgcMinRef.current * ratio);
+            rescaleAllAgc(ratio);
             lastVolumeRef.current = vol;
           } else if (prevVol == null && vol != null) {
             lastVolumeRef.current = vol;
