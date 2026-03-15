@@ -16,7 +16,7 @@ interface MicPanelProps {
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number }) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => void;
   onColorChange?: (color: [number, number, number]) => void;
 }
 
