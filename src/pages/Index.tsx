@@ -121,7 +121,7 @@ const Index = () => {
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
 
     const el = punchFlashRef.current;
-    if (el) el.style.opacity = status.isPunch ? '0.6' : '0';
+    if (el) el.style.opacity = status.isPunch ? '1' : '0';
   }, []);
 
   // Auto-hide overlay after 3s
@@ -207,7 +207,7 @@ const Index = () => {
         <div
           ref={punchFlashRef}
           className="absolute inset-0 pointer-events-none transition-opacity"
-          style={{ opacity: 0, background: 'radial-gradient(ellipse at 50% 50%, hsl(var(--foreground) / 0.6) 0%, transparent 70%)', transitionDuration: '80ms' }}
+          style={{ opacity: 0, background: 'radial-gradient(ellipse at 50% 50%, hsl(var(--foreground)) 0%, hsl(var(--foreground) / 0.4) 40%, transparent 75%)', transitionDuration: '80ms' }}
         />
         <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
