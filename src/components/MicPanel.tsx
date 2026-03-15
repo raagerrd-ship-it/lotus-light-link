@@ -538,10 +538,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             for (let i = pastStart; i < pastEnd; i++) pastSum += bassHist[i];
             const pastAvg = pastSum / (pastEnd - pastStart);
 
-            // Much stricter thresholds — drops should be rare and dramatic
-            const traitEnergy = (energyRef.current ?? 50) / 100;
+            const dropInf = cal.traitInfluence / 100;
+            const traitEnergy = 0.5 + ((energyRef.current ?? 50) / 100 - 0.5) * dropInf;
             const quietThreshold = bassAgcMaxRef.current * (0.08 + traitEnergy * 0.10);
-            const surgeMin = 6.0 - traitEnergy * 2.0;  // need 4-6x surge
+            const surgeMin = 6.0 - traitEnergy * 2.0;
             const absMin = bassAgcMaxRef.current * (0.75 - traitEnergy * 0.15);
 
             const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
