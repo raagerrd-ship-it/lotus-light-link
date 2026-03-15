@@ -6,9 +6,34 @@ const STORAGE_KEY = 'bledom-last-device';
 
 type LastDevice = { id: string; name: string };
 
+export type DeviceMode = 'rgb' | 'brightness';
+
 export interface BLEConnection {
   device: any;
   characteristic: any;
+  mode: DeviceMode;
+}
+
+const DEVICE_MODE_KEY = 'bledom-device-modes';
+
+function loadDeviceModes(): Record<string, DeviceMode> {
+  try {
+    return JSON.parse(localStorage.getItem(DEVICE_MODE_KEY) || '{}');
+  } catch { return {}; }
+}
+
+function saveDeviceMode(deviceId: string, mode: DeviceMode) {
+  const modes = loadDeviceModes();
+  modes[deviceId] = mode;
+  localStorage.setItem(DEVICE_MODE_KEY, JSON.stringify(modes));
+}
+
+export function getSavedDeviceMode(deviceId: string): DeviceMode {
+  return loadDeviceModes()[deviceId] || 'rgb';
+}
+
+export function setDeviceMode(deviceId: string, mode: DeviceMode) {
+  saveDeviceMode(deviceId, mode);
 }
 
 export function saveLastDevice(device: any) {
