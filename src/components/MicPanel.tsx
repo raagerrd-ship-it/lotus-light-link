@@ -34,8 +34,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastBaseColorRef = useRef<[number, number, number]>([0, 0, 0]);
-  const chartDirtyRef = useRef(false);
+  
   const rafIdRef = useRef(0);
+  const lastSampleTimeRef = useRef(0);
 
   const initCal = calRef.current;
   const agcRef = useRef<AgcState>(createAgcState(initCal.agcMax, initCal.agcMin));
@@ -79,19 +80,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
     };
   }, []);
 
-  // ── Chart rendering via rAF ──
+  // ── Chart rendering via rAF — smooth scrolling between ticks ──
   useEffect(() => {
-    const drawLoop = () => {
-      if (chartDirtyRef.current) {
-        chartDirtyRef.current = false;
-        const canvas = canvasRef.current;
-        if (canvas) drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen);
+    const drawLoop = (now: number) => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const elapsed = now - lastSampleTimeRef.current;
+        const scrollFraction = Math.min(1, elapsed / tickMs);
+        drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, scrollFraction);
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
     rafIdRef.current = requestAnimationFrame(drawLoop);
     return () => cancelAnimationFrame(rafIdRef.current);
-  }, []);
+  }, [tickMs]);
 
   // ── Main audio pipeline ──
   useEffect(() => {
@@ -229,11 +231,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
             baseR: base[0], baseG: base[1], baseB: base[2],
           };
           samplesRef.current.push(sample);
+          lastSampleTimeRef.current = performance.now();
           pushChartSample(sample);
           if (samplesRef.current.length > effectiveHistoryLen) {
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
-          chartDirtyRef.current = true;
+          
 
           // ── Status callback ──
           onLiveStatusRef.current?.({
