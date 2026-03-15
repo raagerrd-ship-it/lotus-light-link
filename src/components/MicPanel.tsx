@@ -278,7 +278,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   // Decoupled chart rendering + sun pulse via rAF
   useEffect(() => {
     const drawLoop = () => {
-      if (chartDirtyRef.current) {
+      // Only redraw chart when new data has been pushed (not during idle/pause)
+      if (chartDirtyRef.current && isPlayingRef.current) {
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
