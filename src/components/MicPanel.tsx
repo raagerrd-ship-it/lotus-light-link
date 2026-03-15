@@ -425,8 +425,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           const rawMidHiNorm = Math.min(1, Math.max(0, (micBands.midHiRms - midHiAgcMinRef.current) / midHiRange));
 
           // Raw = per-band AGC output, equal weight, with volume compensation but no smoothing/damping
-          const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
-          const rawMapped = (cal.minBrightness + rawEnergy * (effectiveMax - cal.minBrightness)) / 100;
+          const rawMapped = (rawEnergy * effectiveMax) / 100;
           rawEnergyPctRef.current = Math.round(rawMapped * 100);
 
           // Apply user's attack/release smoothing to band values
