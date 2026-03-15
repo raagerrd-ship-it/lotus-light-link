@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { sendToBLE, setActiveChar, setPipelineTimings, onBleWrite } from "@/lib/bledom";
+import { sendToBLE, setActiveChar, setPipelineTimings, onBleWrite, sendBaseColor } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { pushChartSample } from "@/lib/chartStore";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
@@ -251,7 +251,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     if (char) {
       setActiveChar(char);
       const [r, g, b] = colorRef.current;
-      sendToBLE(r, g, b, 100);
+      sendBaseColor(char, r, g, b).then(() => sendToBLE(r, g, b, 100));
     }
   }, [char]);
 
