@@ -115,6 +115,7 @@ const Index = () => {
     const id = setInterval(() => {
       setTickToWriteMs(getLastTickToWriteMs());
       const bleStats = getBleWriteStats();
+      setBleWriteStats(bleStats);
       const pipeline = getPipelineTimings();
       const cal = activeCalibration;
       updateLiveSession({
@@ -167,10 +168,12 @@ const Index = () => {
   const [dropActive, setDropActive] = useState(false);
   const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
 
-  // BLE write tracking for debug overlay (ref + interval to avoid 20fps state churn)
+  // BLE write tracking for debug overlay (ref + interval to avoid 40fps state churn)
   const [bleSentColor, setBleSentColor] = useState<[number, number, number] | null>(null);
   const [bleSentBright, setBleSentBright] = useState<number | null>(null);
   const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
+  const [bleBaseColor, setBleBaseColor] = useState<[number, number, number] | null>(null);
+  const [bleWriteStats, setBleWriteStats] = useState<ReturnType<typeof getBleWriteStats> | null>(null);
   const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
 
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
@@ -178,7 +181,16 @@ const Index = () => {
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     setLivePaletteIndex(status.paletteIndex);
-    if (status.bleSentColor) setBleSentColor(status.bleSentColor);
+    if (status.bleSentColor) {
+      setBleBaseColor(status.bleSentColor);
+      // Compute pre-multiplied color (what actually goes to hardware)
+      const s = Math.max(0, Math.min(100, status.bleSentBright ?? 100)) / 100;
+      setBleSentColor([
+        Math.round(status.bleSentColor[0] * s),
+        Math.round(status.bleSentColor[1] * s),
+        Math.round(status.bleSentColor[2] * s),
+      ]);
+    }
     if (status.bleSentBright != null) setBleSentBright(status.bleSentBright);
     setBleColorSource(status.bleColorSource ?? (status.isDrop ? 'white' : 'normal'));
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
@@ -414,7 +426,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        bleMinIntervalMs={50}
+        bleMinIntervalMs={25}
         deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}
@@ -426,6 +438,8 @@ const Index = () => {
         bleSentColor={bleSentColor}
         bleSentBright={bleSentBright}
         bleColorSource={bleColorSource}
+        bleBaseColor={bleBaseColor}
+        bleWriteStats={bleWriteStats}
       />}
     </div>
   );

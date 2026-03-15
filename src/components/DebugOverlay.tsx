@@ -1,5 +1,4 @@
-import type { BleReconnectStatus } from "@/lib/bledom";
-
+import type { BleReconnectStatus, BleWriteStats } from "@/lib/bledom";
 // Injected by Vite define at build time
 declare const __BUILD_TIME__: string;
 
@@ -30,6 +29,8 @@ interface DebugOverlayProps {
   bleSentColor?: [number, number, number] | null;
   bleSentBright?: number | null;
   bleColorSource?: 'idle' | 'normal' | 'white' | null;
+  bleBaseColor?: [number, number, number] | null;
+  bleWriteStats?: BleWriteStats | null;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -57,7 +58,7 @@ export default function DebugOverlay({
   deviceRole, bleMinIntervalMs, dropActive,
   energy, danceability, happiness, loudness,
   bassLevel, midHiLevel,
-  bleSentColor, bleSentBright, bleColorSource,
+  bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats,
 }: DebugOverlayProps) {
 
   return (
@@ -144,15 +145,27 @@ export default function DebugOverlay({
       <Section label="ble output">
         {bleSentColor ? (
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm border border-border/40" style={{ backgroundColor: `rgb(${bleSentColor[0]},${bleSentColor[1]},${bleSentColor[2]})` }} />
+            {/* Base color dot */}
+            <div className="w-3 h-3 rounded-sm border border-border/40" style={{ backgroundColor: bleBaseColor ? `rgb(${bleBaseColor[0]},${bleBaseColor[1]},${bleBaseColor[2]})` : `rgb(${bleSentColor[0]},${bleSentColor[1]},${bleSentColor[2]})` }} />
+            {/* Brightness bar */}
+            <div className="w-1 h-3 rounded-sm bg-foreground/20 overflow-hidden flex flex-col-reverse">
+              <div className="w-full rounded-sm bg-foreground/80" style={{ height: `${bleSentBright ?? 0}%` }} />
+            </div>
             <span className="text-foreground">{bleSentColor[0]},{bleSentColor[1]},{bleSentColor[2]}</span>
             <span className="text-foreground/50">@{bleSentBright ?? '?'}%</span>
-            <span className={bleColorSource === 'idle' ? 'text-yellow-400' : bleColorSource === 'white' ? 'text-foreground' : 'text-green-400'}>{bleColorSource}</span>
+            {bleColorSource && bleColorSource !== 'normal' && (
+              <span className={bleColorSource === 'idle' ? 'text-yellow-400' : 'text-foreground'}>{bleColorSource}</span>
+            )}
           </div>
         ) : (
           <div className="text-foreground/50">väntar…</div>
         )}
         {bleMinIntervalMs != null && <div>intervall: <span className="text-foreground">{bleMinIntervalMs}ms</span></div>}
+        {bleWriteStats && (
+          <div>queue: <span className="text-foreground">{bleWriteStats.writesPerSec}w/s</span> <span className="text-foreground/50">{bleWriteStats.droppedPerSec}d/s</span> <span className="text-foreground">{bleWriteStats.lastWriteMs}ms</span>
+            {bleWriteStats.errorCount > 0 && <span className="text-red-400"> err:{bleWriteStats.errorCount}</span>}
+          </div>
+        )}
       </Section>
 
       {/* Build info */}
