@@ -188,6 +188,7 @@ export interface BleWriteStats {
   peakWriteMs: number;
   queueAgeMs: number;
   errorCount: number;
+  errorsPerSec: number;
   lastError: string;
 }
 
@@ -221,7 +222,10 @@ let _lastActualWriteMs = 0;
 let _lastTickToWriteMs = 0;
 
 let _errorCount = 0;
+let _errorCountWindow = 0;
+let _errorWindowStart = performance.now();
 let _lastError = '';
+let _backoffUntil = 0;
 
 // Peak tracking (rolling 5s window)
 let _peakWriteMs = 0;
@@ -230,15 +234,23 @@ let _peakWriteResetTime = performance.now();
 export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
 export function getBleWriteStats(): BleWriteStats {
-  const elapsed = (performance.now() - _statsStart) / 1000;
+  const now = performance.now();
+  const elapsed = (now - _statsStart) / 1000;
   const wps = elapsed > 0 ? _writeCount / elapsed : 0;
   const dps = elapsed > 0 ? _dropCount / elapsed : 0;
+
+  const errElapsed = (now - _errorWindowStart) / 1000;
+  const eps = errElapsed > 0 ? _errorCountWindow / errElapsed : 0;
+
   if (elapsed > 2) {
     _writeCount = 0;
     _dropCount = 0;
-    _statsStart = performance.now();
+    _statsStart = now;
   }
-  const now = performance.now();
+  if (errElapsed > 2) {
+    _errorCountWindow = 0;
+    _errorWindowStart = now;
+  }
   if (now - _peakWriteResetTime > 5000) {
     _peakWriteMs = 0;
     _peakWriteResetTime = now;
@@ -250,12 +262,14 @@ export function getBleWriteStats(): BleWriteStats {
     peakWriteMs: Math.round(_peakWriteMs),
     queueAgeMs: Math.round(_lastTickToWriteMs),
     errorCount: _errorCount,
+    errorsPerSec: Math.round(eps),
     lastError: _lastError,
   };
 }
 
 async function _flush() {
   if (_writing || !_char || !_pendingColor) return;
+  if (performance.now() < _backoffUntil) return;
 
   _writing = true;
   const writeStart = performance.now();
@@ -281,8 +295,10 @@ async function _flush() {
     }
   } catch (e: any) {
     _errorCount++;
+    _errorCountWindow++;
     _lastError = e?.message || 'GATT write failed';
-    console.warn('[BLE] write error:', _lastError);
+    _backoffUntil = performance.now() + 100;
+    console.warn('[BLE] write error (backoff 100ms):', _lastError);
   }
 
   _writing = false;
@@ -291,6 +307,11 @@ async function _flush() {
 export function setActiveChar(char: any) {
   _char = char;
   _lastSentColor = [-1, -1, -1];
+  _errorCount = 0;
+  _errorCountWindow = 0;
+  _errorWindowStart = performance.now();
+  _lastError = '';
+  _backoffUntil = 0;
 }
 
 /** Clear active char on disconnect to prevent stale GATT writes */
