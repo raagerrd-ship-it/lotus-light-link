@@ -182,7 +182,7 @@ const Index = () => {
       onPointerMove={connection ? resetOverlayTimer : undefined}
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
-      <div className="absolute inset-0" style={{ bottom: nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0 }}>
+      <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '14.5rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
         <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
