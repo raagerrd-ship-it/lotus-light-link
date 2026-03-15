@@ -210,6 +210,10 @@ let _lastTickToWriteMs = 0;
 let _errorCount = 0;
 let _lastError = '';
 
+// Peak tracking (rolling 5s window)
+let _peakWriteMs = 0;
+let _peakWriteResetTime = performance.now();
+
 export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
 export function getBleWriteStats(): BleWriteStats {
