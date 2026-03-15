@@ -276,12 +276,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
 
       {/* Mixer faders — horizontal scroll */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Group labels */}
-        <div className="px-3 pt-2 pb-1 flex gap-3 text-[9px] font-bold text-muted-foreground tracking-wide">
-          <span style={{ color: 'hsl(48, 90%, 60%)' }}>LJUS</span>
-          <span style={{ color: 'hsl(142, 70%, 50%)' }}>DYNAMIK</span>
-          <span style={{ color: 'hsl(0, 80%, 60%)' }}>KICK</span>
-        </div>
 
         {/* Scrollable fader strip */}
         <div
