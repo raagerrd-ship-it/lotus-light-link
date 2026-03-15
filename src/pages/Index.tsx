@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CalibrationOverlay from "@/components/CalibrationOverlay";
 import { Button } from "@/components/ui/button";
-import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
+import { getBleWriteStats, getPipelineTimings, onBleWrite } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -167,11 +167,26 @@ const Index = () => {
   const [dropActive, setDropActive] = useState(false);
   const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
 
+  // BLE write tracking for debug overlay
+  const [bleSentColor, setBleSentColor] = useState<[number, number, number] | null>(null);
+  const [bleSentBright, setBleSentBright] = useState<number | null>(null);
+  const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
+
+  useEffect(() => {
+    if (!isMaster) return;
+    onBleWrite((bright, r, g, b) => {
+      setBleSentColor([r, g, b]);
+      setBleSentBright(bright);
+    });
+    return () => { onBleWrite(null); };
+  }, [isMaster]);
+
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number }) => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     setLivePaletteIndex(status.paletteIndex);
+    setBleColorSource(status.isWhiteKick ? 'white' : status.isDrop ? 'white' : 'normal');
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
@@ -414,6 +429,9 @@ const Index = () => {
         loudness={trackTraits.loudness}
         bassLevel={bandLevels.bass}
         midHiLevel={bandLevels.midHi}
+        bleSentColor={bleSentColor}
+        bleSentBright={bleSentBright}
+        bleColorSource={bleColorSource}
       />}
     </div>
   );

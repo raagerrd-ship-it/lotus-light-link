@@ -385,7 +385,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             if (!idleSent && charRef.current) {
               const cal = calRef.current;
               const calibrated = applyColorCalibration(...idleColor);
-              console.log('[Idle] sending idle color:', idleColor, '→ cal:', calibrated, 'bright:', cal.maxBrightness);
               sendToBLE(charRef.current, calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
               idleSent = true;
               onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current });
@@ -627,13 +626,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               sendToBLE(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
-              // Debug: log color pipeline every ~2s
-              if (Math.random() < 0.025) {
-                console.log('[Color] base:', baseColor, '→ cal:', calibrated, '→ final:', finalColor, 'bright:', pct);
-              }
             }
-          } else if (Math.random() < 0.01) {
-            console.log('[Color] charRef is NULL — no BLE write');
           }
           const bleEnd = performance.now();
 
