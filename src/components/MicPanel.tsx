@@ -272,8 +272,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
 
       // Skip ALL work when paused — no crossfade, no sun updates, no chart
       if (!isActive) {
-        // Reset rotation timer so it starts fresh when music resumes
-        nextRotationAtRef.current = 0;
         rafIdRef.current = requestAnimationFrame(drawLoop);
         return;
       }
