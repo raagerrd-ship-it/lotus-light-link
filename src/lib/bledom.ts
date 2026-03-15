@@ -162,18 +162,22 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   return connectToDevice(device);
 }
 
-// Pre-allocated buffer to avoid GC in hot loops
+// Pre-allocated buffers
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
+const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x00, 0x00, 0x00, 0x00, 0xef]);
 
 // --- BLE write state (tick-worker drives timing at 25ms/40fps) ---
 
 let _char: any = null;
-let _pendingColor: [number, number, number] | null = null;
-let _lastSentColor: [number, number, number] = [-1, -1, -1];
-let _lastBright = 0; // For callback/debug only — not sent as separate packet
+let _pendingBrightness: number | null = null;
+let _lastSentBrightness = -1;
+let _lastBright = 0;
 let _writing = false;
 let _lastWriteTime = 0;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
+
+// Track last RGB for callback reporting
+let _lastRgb: [number, number, number] = [0, 0, 0];
 
 /** Register callback invoked after each actual BLE write with the sent values */
 export function onBleWrite(cb: ((bright: number, r: number, g: number, b: number) => void) | null) {
@@ -268,7 +272,7 @@ export function getBleWriteStats(): BleWriteStats {
 }
 
 async function _flush() {
-  if (_writing || !_char || !_pendingColor) return;
+  if (_writing || !_char || _pendingBrightness == null) return;
   if (performance.now() < _backoffUntil) return;
 
   _writing = true;
@@ -276,27 +280,23 @@ async function _flush() {
   _lastWriteTime = writeStart;
 
   try {
-    const r = _pendingColor[0] & 0xff;
-    const g = _pendingColor[1] & 0xff;
-    const b = _pendingColor[2] & 0xff;
-    _colorBuf[4] = r;
-    _colorBuf[5] = g;
-    _colorBuf[6] = b;
-    _pendingColor = null;
+    const bri = Math.max(0, Math.min(100, Math.round(_pendingBrightness)));
+    _pendingBrightness = null;
 
-    // writeValue (WITH response) for backpressure — prevents OS buffer buildup
-    await _char.writeValue(_colorBuf);
-    _lastSentColor = [r, g, b];
+    _brightBuf[3] = bri;
+
+    await _char.writeValue(_brightBuf);
+    _lastSentBrightness = bri;
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
     if (_lastActualWriteMs > _peakWriteMs) _peakWriteMs = _lastActualWriteMs;
 
     if (_onWriteCallback) {
-      _onWriteCallback(_lastBright, r, g, b);
+      _onWriteCallback(bri, _lastRgb[0], _lastRgb[1], _lastRgb[2]);
     }
 
-    // If new color arrived while writing, flush again
-    if (_pendingColor) {
+    // If new value arrived while writing, flush again
+    if (_pendingBrightness != null) {
       _writing = false;
       _flush();
       return;
@@ -314,7 +314,7 @@ async function _flush() {
 
 export function setActiveChar(char: any) {
   _char = char;
-  _lastSentColor = [-1, -1, -1];
+  _lastSentBrightness = -1;
   _errorCount = 0;
   _errorCountWindow = 0;
   _errorWindowStart = performance.now();
@@ -325,19 +325,25 @@ export function setActiveChar(char: any) {
 /** Clear active char on disconnect to prevent stale GATT writes */
 export function clearActiveChar() {
   _char = null;
-  _pendingColor = null;
+  _pendingBrightness = null;
 }
 
-/** Single unified BLE command — always sets color + brightness atomically.
- *  Pre-multiplies RGB by brightness to avoid BLEDOM's poor color rendering
- *  at low hardware brightness levels. Sends brightness=100% to BLEDOM. */
+/** Send a one-time RGB color to set the base hue on the strip */
+export async function sendBaseColor(char: any, r: number, g: number, b: number) {
+  _colorBuf[4] = r & 0xff;
+  _colorBuf[5] = g & 0xff;
+  _colorBuf[6] = b & 0xff;
+  await char.writeValue(_colorBuf);
+  _lastRgb = [r, g, b];
+  console.log(`[BLE] base color set: rgb(${r},${g},${b})`);
+}
+
+/** Single unified BLE command — brightness-only mode for throughput testing.
+ *  Ignores RGB; sends only brightness packet each tick.
+ *  Call sendBaseColor() once at connect to set the strip's hue. */
 export function sendToBLE(r: number, g: number, b: number, brightness: number) {
-  const scale = Math.max(0, Math.min(100, brightness)) / 100;
-  _pendingColor = [
-    Math.round(r * scale),
-    Math.round(g * scale),
-    Math.round(b * scale),
-  ];
+  _lastRgb = [r, g, b];
+  _pendingBrightness = Math.max(0, Math.min(100, brightness));
   _lastBright = brightness;
   if (!_writing) { _flush(); }
   _lastTickToWriteMs = 0;
