@@ -479,9 +479,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
             }
           }
 
-          // ── Track trait modulation (individual influence sliders) ──
-          const traitEnergy = 0.5 + ((energyRef.current ?? 50) / 100 - 0.5) * (cal.energyInfluence / 100);
-          
 
           // White = ONLY on drops (duration already includes traitEnergy from detection above)
           const isWhite = isDrop;
