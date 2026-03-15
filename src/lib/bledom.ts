@@ -185,6 +185,7 @@ export interface BleWriteStats {
   writesPerSec: number;
   droppedPerSec: number;
   lastWriteMs: number;
+  peakWriteMs: number;
   queueAgeMs: number;
   errorCount: number;
   lastError: string;
@@ -198,8 +199,20 @@ export interface PipelineTimings {
   totalTickMs: number;
 }
 let _pipelineTimings: PipelineTimings = { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 };
-export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
+let _pipelinePeakMs = 0;
+let _pipelinePeakResetTime = performance.now();
+
+export function setPipelineTimings(t: PipelineTimings) {
+  _pipelineTimings = t;
+  const now = performance.now();
+  if (now - _pipelinePeakResetTime > 5000) {
+    _pipelinePeakMs = 0;
+    _pipelinePeakResetTime = now;
+  }
+  if (t.totalTickMs > _pipelinePeakMs) _pipelinePeakMs = t.totalTickMs;
+}
 export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
+export function getPipelinePeakMs(): number { return _pipelinePeakMs; }
 
 let _writeCount = 0;
 let _dropCount = 0;
@@ -209,6 +222,10 @@ let _lastTickToWriteMs = 0;
 
 let _errorCount = 0;
 let _lastError = '';
+
+// Peak tracking (rolling 5s window)
+let _peakWriteMs = 0;
+let _peakWriteResetTime = performance.now();
 
 export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
@@ -221,10 +238,16 @@ export function getBleWriteStats(): BleWriteStats {
     _dropCount = 0;
     _statsStart = performance.now();
   }
+  const now = performance.now();
+  if (now - _peakWriteResetTime > 5000) {
+    _peakWriteMs = 0;
+    _peakWriteResetTime = now;
+  }
   return {
     writesPerSec: Math.round(wps),
     droppedPerSec: Math.round(dps),
     lastWriteMs: Math.round(_lastActualWriteMs),
+    peakWriteMs: Math.round(_peakWriteMs),
     queueAgeMs: Math.round(_lastTickToWriteMs),
     errorCount: _errorCount,
     lastError: _lastError,
@@ -251,6 +274,7 @@ async function _flush() {
     _lastSentColor = [r, g, b];
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
+    if (_lastActualWriteMs > _peakWriteMs) _peakWriteMs = _lastActualWriteMs;
 
     if (_onWriteCallback) {
       _onWriteCallback(_lastBright, r, g, b);

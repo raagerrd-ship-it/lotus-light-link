@@ -31,6 +31,7 @@ interface DebugOverlayProps {
   bleColorSource?: 'idle' | 'normal' | 'white' | null;
   bleBaseColor?: [number, number, number] | null;
   bleWriteStats?: BleWriteStats | null;
+  pipelinePeakMs?: number | null;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -58,7 +59,7 @@ export default function DebugOverlay({
   deviceRole, bleMinIntervalMs, dropActive,
   energy, danceability, happiness, loudness,
   bassLevel, midHiLevel,
-  bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats,
+  bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats, pipelinePeakMs,
 }: DebugOverlayProps) {
 
   return (
@@ -156,9 +157,22 @@ export default function DebugOverlay({
         ) : (
           <div className="text-foreground/50">väntar…</div>
         )}
-        {bleMinIntervalMs != null && <div>intervall: <span className="text-foreground">{bleMinIntervalMs}ms</span></div>}
+        {bleMinIntervalMs != null && (() => {
+          const interval = bleMinIntervalMs;
+          const peak = pipelinePeakMs ?? 0;
+          const ratio = interval > 0 ? peak / interval : 0;
+          const peakColor = ratio >= 1 ? 'text-red-400 font-bold' : ratio > 0.8 ? 'text-yellow-400' : 'text-green-400';
+          return (
+            <div>
+              intervall: <span className="text-foreground">{interval}ms</span>
+              <span className="text-foreground/40"> │ </span>
+              peak: <span className={peakColor}>{Math.round(peak)}ms</span>
+              <span className={peakColor}> {ratio >= 1 ? '!!' : '✓'}</span>
+            </div>
+          );
+        })()}
         {bleWriteStats && (
-          <div>queue: <span className="text-foreground">{bleWriteStats.writesPerSec}w/s</span> <span className="text-foreground/50">{bleWriteStats.droppedPerSec}d/s</span> <span className="text-foreground">{bleWriteStats.lastWriteMs}ms</span>
+          <div><span className="text-foreground">{bleWriteStats.writesPerSec}w/s</span>
             {bleWriteStats.errorCount > 0 && <span className="text-red-400"> err:{bleWriteStats.errorCount}</span>}
           </div>
         )}

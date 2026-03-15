@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CalibrationOverlay from "@/components/CalibrationOverlay";
 import { Button } from "@/components/ui/button";
-import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
+import { getBleWriteStats, getPipelineTimings, getPipelinePeakMs } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -116,6 +116,7 @@ const Index = () => {
       setTickToWriteMs(getLastTickToWriteMs());
       const bleStats = getBleWriteStats();
       setBleWriteStats(bleStats);
+      setPipelinePeakMs(getPipelinePeakMs());
       const pipeline = getPipelineTimings();
       const cal = activeCalibration;
       updateLiveSession({
@@ -174,6 +175,7 @@ const Index = () => {
   const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
   const [bleBaseColor, setBleBaseColor] = useState<[number, number, number] | null>(null);
   const [bleWriteStats, setBleWriteStats] = useState<ReturnType<typeof getBleWriteStats> | null>(null);
+  const [pipelinePeakMs, setPipelinePeakMs] = useState(0);
   const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
 
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
@@ -434,6 +436,7 @@ const Index = () => {
         bleColorSource={bleColorSource}
         bleBaseColor={bleBaseColor}
         bleWriteStats={bleWriteStats}
+        pipelinePeakMs={pipelinePeakMs}
       />}
     </div>
   );
