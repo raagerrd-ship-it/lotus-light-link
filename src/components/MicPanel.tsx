@@ -648,12 +648,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
         onBleWrite((bright, r, g, b) => {
           if (stopped) return;
+          const base = lastBaseColorRef.current;
           const sample: ChartSample = {
             pct: bright,
             r: Math.max(r, 20),
             g: Math.max(g, 20),
             b: Math.max(b, 20),
             rawPct: rawEnergyPctRef.current,
+            baseR: base[0],
+            baseG: base[1],
+            baseB: base[2],
           };
           samplesRef.current.push(sample);
           pushChartSample(sample);
