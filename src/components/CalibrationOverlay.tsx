@@ -240,7 +240,7 @@ function PipelineStats() {
         tickMs: pipe.totalTickMs,
         bleMs: ble.lastWriteMs,
         wps: ble.writesPerSec,
-        drops: ble.droppedPerSec,
+        
       });
     }, 300);
     return () => clearInterval(id);
