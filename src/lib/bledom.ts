@@ -223,15 +223,23 @@ export function clearActiveChar() {
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
  *  Sends one 9-byte color packet. Hardware brightness is locked to 100%. */
-export function sendToBLE(r: number, g: number, b: number, brightness: number) {
+export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
+  if (!_char) return;
   const scale = Math.max(0, Math.min(100, brightness)) / 100;
-  _pendingColor = [
-    Math.round(r * scale),
-    Math.round(g * scale),
-    Math.round(b * scale),
-  ];
+  _colorBuf[4] = Math.round(r * scale);
+  _colorBuf[5] = Math.round(g * scale);
+  _colorBuf[6] = Math.round(b * scale);
   _lastBright = brightness;
-  if (!_writing) _flush();
+
+  const t0 = performance.now();
+  try {
+    await _char.writeValueWithoutResponse(_colorBuf);
+    _writeCount++;
+    _lastWriteMs = performance.now() - t0;
+    _onWriteCallback?.(_lastBright, _colorBuf[4], _colorBuf[5], _colorBuf[6]);
+  } catch (e: any) {
+    console.warn('[BLE] write error:', e?.message);
+  }
 }
 
 export async function sendPower(char: any, on: boolean) {
