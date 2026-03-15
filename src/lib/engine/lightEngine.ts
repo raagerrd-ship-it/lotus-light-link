@@ -5,7 +5,7 @@
  * to use in any project.
  */
 
-import { sendToBLE, setActiveChar } from "./bledom";
+import { sendToBLE, addActiveChar, removeActiveChar } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
 import { createAgcState, rescaleAgc, updateGlobalAgc, updateBandPeaks, getEffectiveMax, normalizeBand, type AgcState } from "./agc";
