@@ -745,8 +745,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           maxHeight: '55vh',
           transform: 'scale(1)',
           willChange: 'transform, box-shadow, background',
-          background: `radial-gradient(circle, rgba(${r},${g},${b},0.25) 0%, rgba(${r},${g},${b},0.08) 50%, transparent 72%)`,
-          boxShadow: `0 0 40px rgba(${r},${g},${b},0.15), 0 0 8px 8px rgba(${r},${g},${b},0.4), 0 0 80px rgba(${r},${g},${b},0.12)`,
+          background: 'transparent',
+          boxShadow: 'none',
         }}
       >
         <canvas
