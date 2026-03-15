@@ -205,7 +205,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
           const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
           smoothedRef.current = smooth(smoothedRef.current, bands.totalRms, attackA, releaseA);
 
-          // ── Volume-proportional AGC rescaling ──
+          // ── Volume-proportional AGC rescaling + re-learn on big change ──
           const vol = volumeRef.current;
           const prevVol = lastVolumeRef.current;
           if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 2) {
@@ -213,6 +213,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
             const rawRatio = prevVol > 0 ? (vol / prevVol) : 1;
             rescaleAgc(agc, 1 + (rawRatio - 1) * strength);
             lastVolumeRef.current = vol;
+            // Re-open learning window on significant volume change
+            if (Math.abs(vol - prevVol) > 5 && agcLockedRef.current) {
+              agcLockedRef.current = false;
+              trackStartTimeRef.current = performance.now();
+              console.log('[AGC] Volume change', prevVol, '→', vol, '— re-learning 20s');
+            }
           } else if (prevVol == null && vol != null) {
             lastVolumeRef.current = vol;
           }
@@ -220,20 +226,18 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
           // ── Check if learning window has elapsed → lock AGC ──
           if (!agcLockedRef.current && trackStartTimeRef.current > 0 && (performance.now() - trackStartTimeRef.current) > AGC_LEARN_DURATION_MS) {
             agcLockedRef.current = true;
-            // Snap peakMax to max so effectiveMax = 100% (full range via band normalization)
             agc.peakMax = agc.max;
-            console.log('[AGC] Locked after 20s. max=', agc.max.toFixed(5), 'bassMax=', agc.bassMax.toFixed(5), 'effectiveMax=', getEffectiveMax(agc).toFixed(1));
+            console.log('[AGC] Locked after 20s. max=', agc.max.toFixed(5), 'effectiveMax=', getEffectiveMax(agc).toFixed(1));
           }
 
-          // ── Global + per-band AGC (skip if locked) ──
-          if (!agcLockedRef.current) {
-            updateGlobalAgc(agc, smoothedRef.current);
-            updateBandAgc(bands.bassRms, agc, 'bass', cal.bandAgcAttack, cal.bandAgcDecay);
-            updateBandAgc(bands.midHiRms, agc, 'midHi', cal.bandAgcAttack, cal.bandAgcDecay);
+          // ── Global AGC (skip if locked) ──
+          const isLearning = !agcLockedRef.current;
+          if (isLearning) {
+            updateGlobalAgc(agc, smoothedRef.current, true);
           }
 
-          const rawBassNorm = normalizeBand(bands.bassRms, agc, 'bass');
-          const rawMidHiNorm = normalizeBand(bands.midHiRms, agc, 'midHi');
+          const rawBassNorm = normalizeValue(bands.bassRms, agc);
+          const rawMidHiNorm = normalizeValue(bands.midHiRms, agc);
           const effectiveMax = getEffectiveMax(agc);
 
           const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;

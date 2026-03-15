@@ -265,8 +265,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
       attackAlpha: 1.0,
       releaseAlpha: 1.0,
       dynamicDamping: 0,
-      bandAgcAttack: 0.1,
-      bandAgcDecay: 0.995,
+      bandAgcAttack: 0.15,
+      bandAgcDecay: 0.997,
     };
     setCal(neutral);
     saveCalibration(neutral, conn?.device?.name);
