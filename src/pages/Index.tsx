@@ -429,6 +429,9 @@ const Index = () => {
         loudness={trackTraits.loudness}
         bassLevel={bandLevels.bass}
         midHiLevel={bandLevels.midHi}
+        bleSentColor={bleSentColor}
+        bleSentBright={bleSentBright}
+        bleColorSource={bleColorSource}
       />}
     </div>
   );
