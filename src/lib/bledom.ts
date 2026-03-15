@@ -237,7 +237,6 @@ async function _flush() {
 
     _onWriteCallback?.(_lastBright, r, g, b);
   } catch (e: any) {
-    _errorCount++;
     _backoffUntil = performance.now() + 100;
     console.warn('[BLE] write error (backoff 100ms):', e?.message);
   }
