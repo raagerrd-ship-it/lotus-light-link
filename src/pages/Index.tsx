@@ -48,6 +48,7 @@ const Index = () => {
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
   const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
+  const [tickMs, setTickMs] = useState(25);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -296,7 +297,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} bpm={bpm} energy={trackTraits.energy} danceability={trackTraits.danceability} happiness={trackTraits.happiness} loudness={trackTraits.loudness} onLiveStatus={handleLiveStatus} onColorChange={handleColorChange} />
+        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!nowPlaying || nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} bpm={bpm} energy={trackTraits.energy} danceability={trackTraits.danceability} happiness={trackTraits.happiness} loudness={trackTraits.loudness} tickMs={tickMs} onLiveStatus={handleLiveStatus} onColorChange={handleColorChange} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
@@ -335,6 +336,21 @@ const Index = () => {
               <span className="text-xs text-muted-foreground">Ej ansluten</span>
             )}
           </div>
+          {/* Tick interval tuning slider */}
+          {connection && (
+            <div className="flex items-center gap-1.5 mx-2">
+              <input
+                type="range"
+                min={25}
+                max={75}
+                step={1}
+                value={tickMs}
+                onChange={(e) => setTickMs(Number(e.target.value))}
+                className="w-20 h-1 accent-primary"
+              />
+              <span className="text-[10px] font-mono text-muted-foreground w-8">{tickMs}ms</span>
+            </div>
+          )}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"

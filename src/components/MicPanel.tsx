@@ -16,6 +16,7 @@ interface MicPanelProps {
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
+  tickMs?: number;               // dynamic tick interval for worker (default 25)
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => void;
   onColorChange?: (color: [number, number, number]) => void;
 }
@@ -121,7 +122,7 @@ function getRotationInterval(dance: number | null): number {
 }
 // Crossfade alpha now comes from cal.crossfadeSpeed
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, onLiveStatus, onColorChange }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 25, onLiveStatus, onColorChange }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -207,6 +208,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       console.log('[AGC] loudness comp', prevDb, '→', newDb, 'ratio:', ratio.toFixed(2), 'strength:', strength);
     }
   }, [loudness]);
+
+  // Forward dynamic tick interval to worker
+  useEffect(() => {
+    workerRef.current?.postMessage(tickMs);
+  }, [tickMs]);
 
   // When currentColor changes externally, update colorRef but DON'T snap blended
   // (blended is driven by crossfade; snapping happens only on palette change)
