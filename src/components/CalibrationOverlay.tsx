@@ -293,6 +293,31 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
     onCalibrationChange?.(fresh);
   }, [conn?.device?.name, onCalibrationChange]);
 
+  const bypassAll = useCallback(() => {
+    const neutral: LightCalibration = {
+      ...DEFAULT_CALIBRATION,
+      minBrightness: 0,
+      maxBrightness: 100,
+      bassWeight: 0.5,
+      colorModStrength: 0,
+      hiShelfGainDb: 0,
+      attackAlpha: 0.9,
+      releaseAlpha: 0.3,
+      dynamicDamping: 0,
+      bpmReleaseScale: 0,
+      saturationBoost: 1.0,
+      energyInfluence: 0,
+      danceabilityInfluence: 0,
+      happinessInfluence: 0,
+      whiteKickThreshold: 100,
+      bandAgcAttack: 0.1,
+      bandAgcDecay: 0.995,
+    };
+    setCal(neutral);
+    saveCalibration(neutral, conn?.device?.name);
+    onCalibrationChange?.(neutral);
+  }, [conn?.device?.name, onCalibrationChange]);
+
   const activeDef = SLIDERS[activeSlider];
 
   return (
