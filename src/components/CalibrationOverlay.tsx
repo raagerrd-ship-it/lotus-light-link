@@ -268,24 +268,24 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const activeDef = SLIDERS[activeSlider];
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.92)', backdropFilter: 'blur(20px)' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] border-b border-border/20">
+    <div className="fixed bottom-0 left-0 right-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.88)', backdropFilter: 'blur(20px)' }}>
+      {/* Compact header */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/20">
         <div className="flex items-center gap-2">
-          <h2 className="text-xs font-bold tracking-widest uppercase text-foreground/80">Mixer</h2>
+          <h2 className="text-[10px] font-bold tracking-widest uppercase text-foreground/80">Mixer</h2>
           {conn && <span className="text-[9px] font-mono text-primary/60">{conn.device?.name}</span>}
           <PipelineStats />
         </div>
         <div className="flex items-center gap-1.5">
           <div className="relative flex items-center">
             <button
-              className="w-6 h-6 rounded-full border border-border/40 active:scale-90 transition-transform"
+              className="w-5 h-5 rounded-full border border-border/40 active:scale-90 transition-transform"
               style={{ background: `rgb(${idleColor[0]},${idleColor[1]},${idleColor[2]})` }}
               title="Vilofärg"
               onClick={() => setShowIdleMenu(prev => !prev)}
             />
             {showIdleMenu && (
-              <div className="absolute right-0 top-8 z-10 bg-background/95 backdrop-blur-md border border-border/30 rounded-lg p-2 flex flex-col gap-1 shadow-xl">
+              <div className="absolute right-0 bottom-8 z-10 bg-background/95 backdrop-blur-md border border-border/30 rounded-lg p-2 flex flex-col gap-1 shadow-xl">
                 <span className="text-[9px] text-muted-foreground px-1 pb-1">Färg vid paus</span>
                 {IDLE_PRESETS.map(({ color, label }) => {
                   const isActive = idleColor[0] === color[0] && idleColor[1] === color[1] && idleColor[2] === color[2];
@@ -308,38 +308,31 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
               </div>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={bypassAll} className="rounded-full h-7 px-2 text-[9px] font-bold tracking-wide uppercase" title="Nollställ – ingen påverkan">
+          <Button variant="ghost" size="sm" onClick={bypassAll} className="rounded-full h-6 px-2 text-[9px] font-bold tracking-wide uppercase" title="Nollställ – ingen påverkan">
             Bypass
           </Button>
-          <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-7 h-7" title="Återställ standard">
-            <RotateCcw className="w-3.5 h-3.5" />
+          <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-6 h-6" title="Återställ standard">
+            <RotateCcw className="w-3 h-3" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full w-7 h-7">
-            <X className="w-4 h-4" />
+          <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full w-6 h-6">
+            <X className="w-3.5 h-3.5" />
           </Button>
-        </div>
-      </div>
-
-      {/* Mini live chart */}
-      <div className="flex-1 px-3 pt-2 min-h-0">
-        <div className="w-full h-full">
-          <MiniChart />
         </div>
       </div>
 
       {/* Scrollable fader strip */}
       <div
         ref={scrollRef}
-        className="overflow-x-auto overflow-y-hidden px-2 border-t border-border/20"
+        className="overflow-x-auto overflow-y-hidden px-2"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <div className="flex gap-2 items-center justify-center min-w-max py-2 mx-auto" style={{ height: '12rem' }}>
+        <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '11rem' }}>
           {SLIDERS.map((def, i) => {
             const prevGroup = i > 0 ? SLIDERS[i - 1].group : null;
             const showSep = prevGroup && prevGroup !== def.group;
             return (
               <div key={def.key} className="flex items-center">
-                {showSep && <div className="w-px h-24 bg-border/30 mx-1" />}
+                {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
                 <MixerFader
                   def={def}
                   value={cal[def.key] as number}
@@ -354,8 +347,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
       </div>
 
       {/* Active slider description */}
-      <div className="px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] border-t border-border/20">
-        <p className="text-[10px] text-muted-foreground leading-tight">
+      <div className="px-3 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] border-t border-border/20">
+        <p className="text-[9px] text-muted-foreground leading-tight">
           <span className="font-bold text-foreground/80">{activeDef?.label}</span>{' '}
           {activeDef?.description}
         </p>
