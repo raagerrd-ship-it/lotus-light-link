@@ -31,6 +31,7 @@ interface DebugOverlayProps {
   bleColorSource?: 'idle' | 'normal' | 'white' | null;
   bleBaseColor?: [number, number, number] | null;
   bleWriteStats?: BleWriteStats | null;
+  pipelinePeakMs?: number | null;
 }
 
 const phaseLabels: Record<string, string> = {
