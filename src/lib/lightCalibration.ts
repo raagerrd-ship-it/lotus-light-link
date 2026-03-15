@@ -52,8 +52,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   whiteKickThreshold: 95,
   whiteKickMs: 100,
 
-  bleLatencyMs: 0,
-  chainLatencyMs: 0,
   dynamicDamping: 1.0,
 
   agcMin: 0,
