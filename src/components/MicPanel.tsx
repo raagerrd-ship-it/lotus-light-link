@@ -35,7 +35,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
   useEffect(() => { engineRef.current?.setColor(currentColor); }, [currentColor]);
   useEffect(() => { engineRef.current?.setVolume(sonosVolume); }, [sonosVolume]);
   useEffect(() => { engineRef.current?.setPlaying(isPlaying); }, [isPlaying]);
-  useEffect(() => { engineRef.current?.setTrackName(trackName ?? null); }, [trackName]);
+  const lastTrackRef = useRef(trackName);
+  useEffect(() => {
+    if (trackName && trackName !== lastTrackRef.current) {
+      lastTrackRef.current = trackName;
+      engineRef.current?.resetAgc();
+    }
+  }, [trackName]);
   useEffect(() => { engineRef.current?.setTickMs(tickMs); }, [tickMs]);
 
   // ── Chart rendering via rAF ──
@@ -64,7 +70,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
     engine.setPlaying(isPlaying);
     engine.setTickMs(tickMs);
     if (char) engine.setChar(char);
-    if (trackName) engine.setTrackName(trackName);
+    if (trackName) { lastTrackRef.current = trackName; }
 
     // Listen for ticks → update chart + forward status
     const unsub = engine.onTick((data: TickData) => {
