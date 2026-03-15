@@ -6,11 +6,11 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendPower, addActiveChar, removeActiveChar, clearActiveChar,
-  sendHardwareBrightness,
-  type BLEConnection, type BleReconnectStatus
+  sendHardwareBrightness, updateCharMode, setDeviceMode, getSavedDeviceMode,
+  type BLEConnection, type BleReconnectStatus, type DeviceMode
 } from "@/lib/engine/bledom";
 import { addBleConnection, removeBleConnection } from "@/lib/engine/bleStore";
-import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus } from "lucide-react";
+import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
