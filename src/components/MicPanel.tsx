@@ -474,6 +474,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const midHiRange = Math.max(AGC_FLOOR, midHiAgcMaxRef.current - midHiAgcMinRef.current);
           const rawMidHiNorm = Math.min(1, Math.max(0, (micBands.midHiRms - midHiAgcMinRef.current) / midHiRange));
 
+          // Raw input energy (before any user-adjustable params) — fixed 70/30 blend of AGC-normalized bands
+          rawEnergyPctRef.current = Math.round((rawBassNorm * 0.7 + rawMidHiNorm * 0.3) * 100);
+
           // Apply user's attack/release smoothing to band values
           const prevBass = smoothedBassRef.current;
           const bassAlpha = rawBassNorm > prevBass ? attackA : releaseA;
@@ -486,7 +489,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           smoothedMidHiRef.current = midHiNorm;
 
           // ── Frequency-based brightness ──
-          // Blend bass (weight 0.7) and mid/hi (weight 0.3) for overall energy
           let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
           // Adaptive center so dynamics still work even if laptop mic compression narrows range
@@ -494,24 +496,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           dynamicCenterRef.current = center;
 
           // Dynamic control around adaptive center:
-          //   <0 = expand contrast (more punch)
-          //    0 = neutral
-          //   >0 = compress contrast (smoother)
           if (cal.dynamicDamping < 0) {
-            const amount = Math.min(1, Math.abs(cal.dynamicDamping) / 2); // -2 => full strength
-            const gain = 1 + amount * 10; // max 11x slope around center
+            const amount = Math.min(1, Math.abs(cal.dynamicDamping) / 2);
+            const gain = 1 + amount * 10;
             const centered = energyNorm - center;
             const denom = Math.tanh(0.5 * gain) || 1;
             const expanded = center + 0.5 * (Math.tanh(centered * gain) / denom);
             energyNorm = energyNorm * (1 - amount) + expanded * amount;
           } else if (cal.dynamicDamping > 0) {
-            const amount = Math.min(1, cal.dynamicDamping / 3); // +3 => full smooth
-            const compression = 1 / (1 + amount * 4); // down to 0.2x around center
+            const amount = Math.min(1, cal.dynamicDamping / 3);
+            const compression = 1 / (1 + amount * 4);
             energyNorm = center + (energyNorm - center) * compression;
           }
 
           energyNorm = Math.max(0, Math.min(1, energyNorm));
-          rawEnergyPctRef.current = Math.round(energyNorm * 100);
 
           const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           const pct = Math.round(rawPct * 100);
