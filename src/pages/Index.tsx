@@ -48,7 +48,7 @@ const Index = () => {
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
-  const [showCalibration, setShowCalibration] = useState(false);
+  const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
