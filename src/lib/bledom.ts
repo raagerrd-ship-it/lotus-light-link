@@ -188,6 +188,7 @@ export interface BleWriteStats {
   peakWriteMs: number;
   queueAgeMs: number;
   errorCount: number;
+  errorsPerSec: number;
   lastError: string;
 }
 
