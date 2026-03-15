@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CalibrationOverlay from "@/components/CalibrationOverlay";
 import { Button } from "@/components/ui/button";
-import { getBleWriteStats, getPipelineTimings, getBleMinInterval } from "@/lib/bledom";
+import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -132,7 +132,7 @@ const Index = () => {
           sonosConnected: !!nowPlaying?.trackName,
           sonosRtt: smoothedRtt,
           syncMode: 'mic',
-          bleMinIntervalMs: getBleMinInterval(),
+          bleMinIntervalMs: 50,
           maxBrightness: cal.maxBrightness,
           dynamicDamping: cal.dynamicDamping,
           attackAlpha: cal.attackAlpha,
@@ -404,7 +404,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        bleMinIntervalMs={getBleMinInterval()}
+        bleMinIntervalMs={50}
         deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}

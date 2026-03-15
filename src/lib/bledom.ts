@@ -166,20 +166,7 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-// --- Frame scheduler: max 1 BLE write per MIN_INTERVAL_MS ---
-const BLE_INTERVAL_KEY = 'ble-min-interval-ms';
-const BLE_MIN_FLOOR = 50; // 20 slots/sec max
-let _minIntervalMs = (() => {
-  try {
-    const v = localStorage.getItem(BLE_INTERVAL_KEY);
-    const parsed = v ? parseInt(v, 10) : BLE_MIN_FLOOR;
-    const result = Math.max(BLE_MIN_FLOOR, isNaN(parsed) ? BLE_MIN_FLOOR : parsed);
-    console.log(`[BLE] interval from storage: ${v}, using: ${result}ms`);
-    return result;
-  } catch { return BLE_MIN_FLOOR; }
-})();
-
-export function getBleMinInterval(): number { return _minIntervalMs; }
+// --- BLE write state (tick-worker drives timing at 50ms/20fps) ---
 
 let _char: any = null;
 let _pendingBright: number | null = null;
@@ -187,7 +174,6 @@ let _pendingColor: [number, number, number] | null = null;
 let _lastSentBright = -1;
 let _lastSentColor: [number, number, number] = [-1, -1, -1];
 let _writing = false;
-let _timer: ReturnType<typeof setTimeout> | null = null;
 let _lastWriteTime = 0;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
 
@@ -222,7 +208,7 @@ let _dropCount = 0;
 let _statsStart = performance.now();
 let _lastActualWriteMs = 0;
 let _lastTickToWriteMs = 0;
-let _dirtyWhileWriting = false;
+
 let _errorCount = 0;
 let _lastError = '';
 
@@ -250,31 +236,19 @@ export function getBleWriteStats(): BleWriteStats {
 async function _flush() {
   if (_writing || !_char) return;
 
-  const now = performance.now();
-  const elapsed = now - _lastWriteTime;
-  if (elapsed < _minIntervalMs) {
-    if (!_timer) {
-      _timer = setTimeout(() => { _timer = null; _flush(); }, _minIntervalMs - elapsed);
-    }
-    return;
-  }
-
   const writeColor = !!_pendingColor;
   const writeBright = _pendingBright != null;
 
   if (!writeColor && !writeBright) return;
 
   _writing = true;
-  _dirtyWhileWriting = false;
   const writeStart = performance.now();
   _lastWriteTime = writeStart;
 
   try {
-    // Capture exact values that go to GATT
     let sentR = _lastSentColor[0], sentG = _lastSentColor[1], sentB = _lastSentColor[2];
     let sentBright = _lastSentBright;
 
-    // Color → 1ms → brightness (matches calibration protocol)
     if (writeColor && _pendingColor) {
       sentR = _pendingColor[0] & 0xff;
       sentG = _pendingColor[1] & 0xff;
@@ -301,7 +275,6 @@ async function _flush() {
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
 
-    // Notify with EXACT GATT values — this is what the lamp received
     if (_onWriteCallback) {
       _onWriteCallback(sentBright, sentR, sentG, sentB);
     }
@@ -312,16 +285,6 @@ async function _flush() {
   }
 
   _writing = false;
-
-  // If new data arrived while we were writing, flush again after interval
-  if (_dirtyWhileWriting || _pendingBright != null || _pendingColor) {
-    _dirtyWhileWriting = false;
-    if (!_timer) {
-      const sinceWrite = performance.now() - _lastWriteTime;
-      const delay = Math.max(0, _minIntervalMs - sinceWrite);
-      _timer = setTimeout(() => { _timer = null; _flush(); }, delay);
-    }
-  }
 }
 
 export function setActiveChar(char: any) {
@@ -335,14 +298,13 @@ export function clearActiveChar() {
   _char = null;
   _pendingBright = null;
   _pendingColor = null;
-  if (_timer) { clearTimeout(_timer); _timer = null; }
 }
 
 /** Single unified BLE command — always sets color + brightness atomically */
 export function sendToBLE(_char_unused: any, r: number, g: number, b: number, brightness: number) {
   _pendingColor = [r, g, b];
   _pendingBright = brightness;
-  if (_writing) { _dirtyWhileWriting = true; } else { _flush(); }
+  if (!_writing) { _flush(); }
   _lastTickToWriteMs = 0;
   return Promise.resolve();
 }
