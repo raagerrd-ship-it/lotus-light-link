@@ -17,9 +17,8 @@ import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
 import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
-  applyColorCalibration, getCalibration
+  getCalibration
 } from "@/lib/lightCalibration";
-import { useBpm } from "@/hooks/useBpm";
 import { debugData } from "@/lib/debugStore";
 
 const Index = () => {
@@ -43,13 +42,10 @@ const Index = () => {
 
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
-  const trackTraits = useBpm(nowPlaying?.trackName ?? null, nowPlaying?.artistName ?? null);
-  const bpm = trackTraits.bpm;
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
-
-  // Keep debugStore in sync with slow-changing state
+  // Keep debugStore in sync
   useEffect(() => {
     debugData.bleConnected = !!connection;
     debugData.bleDeviceName = connection?.device?.name ?? null;
@@ -63,13 +59,7 @@ const Index = () => {
     debugData.smoothedRtt = smoothedRtt;
     debugData.sonosVolume = nowPlaying?.volume ?? null;
     debugData.gainMode = nowPlaying?.volume != null ? 'vol' : 'manual';
-    debugData.liveBpm = bpm ?? null;
-  }, [smoothedRtt, nowPlaying?.volume, bpm]);
-
-  useEffect(() => {
-    debugData.energy = trackTraits.energy ?? null;
-    debugData.loudness = trackTraits.loudness ?? null;
-  }, [trackTraits.energy, trackTraits.loudness]);
+  }, [smoothedRtt, nowPlaying?.volume]);
 
   useEffect(() => {
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
@@ -114,9 +104,8 @@ const Index = () => {
     return () => ac.abort();
   }, []);
 
-  // Live status callback from MicPanel — writes directly to debugStore, no React state
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => {
-    debugData.dropActive = status.isDrop;
+  // Live status callback from MicPanel
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean }) => {
     debugData.bassLevel = status.bassLevel;
     debugData.midHiLevel = status.midHiLevel;
     if (status.bleSentColor) {
@@ -124,7 +113,7 @@ const Index = () => {
       debugData.bleSentColor = status.bleSentColor;
     }
     if (status.bleSentBright != null) debugData.bleSentBright = status.bleSentBright;
-    debugData.bleColorSource = status.bleColorSource ?? (status.isDrop ? 'white' : 'normal');
+    debugData.bleColorSource = status.bleColorSource ?? 'normal';
     if (status.micRms != null) debugData.micRms = status.micRms;
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
   }, []);
@@ -194,7 +183,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} bpm={bpm} energy={trackTraits.energy} loudness={trackTraits.loudness} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}

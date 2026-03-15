@@ -12,21 +12,16 @@ export interface DebugData {
   smoothedRtt: number;
   sonosVolume: number | null;
   gainMode: 'agc' | 'vol' | 'manual';
-  liveBpm: number | null;
   micRms: number;
   bassLevel: number;
   midHiLevel: number;
   isPlayingState: boolean;
   // Process
-  energy: number | null;
-  loudness: string | null;
-  
   dynamicDamping: number;
-  dropActive: boolean;
   // BLE Output
   bleSentColor: [number, number, number] | null;
   bleSentBright: number | null;
-  bleColorSource: 'idle' | 'normal' | 'white' | null;
+  bleColorSource: 'idle' | 'normal' | null;
   bleBaseColor: [number, number, number] | null;
 }
 
@@ -37,16 +32,11 @@ export const debugData: DebugData = {
   smoothedRtt: 0,
   sonosVolume: null,
   gainMode: 'manual',
-  liveBpm: null,
   micRms: 0,
   bassLevel: 0,
   midHiLevel: 0,
   isPlayingState: true,
-  energy: null,
-  loudness: null,
-  
   dynamicDamping: 0,
-  dropActive: false,
   bleSentColor: null,
   bleSentBright: null,
   bleColorSource: null,

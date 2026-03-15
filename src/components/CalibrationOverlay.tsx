@@ -28,23 +28,16 @@ interface SliderDef {
 
 const SLIDERS: SliderDef[] = [
   // Frequency
-  { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas påverkar ljusstyrkan. 0.7 = 70% bas, 30% diskant. Lägre = mer känslig för diskant.' },
-  { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Frekvens', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic. 0 = ingen kompensation.' },
+  { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas påverkar ljusstyrkan. 0.7 = 70% bas, 30% diskant.' },
+  { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Frekvens', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic.' },
   // Dynamics
-  { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 1.0, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. Lågt = mjukare fade in, 1.0 = ingen smoothing (bypass).' },
-  { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. Lågt = lång svans, 1.0 = ingen smoothing (bypass).', format: v => v.toFixed(3) },
-  { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -2.0, max: 3.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Negativt = förstärkt kontrast (punch). Positivt = utjämnad dynamik. 0 = neutral.' },
-  { key: 'bpmReleaseScale', label: 'BPM-release', shortLabel: 'BPM', min: 0, max: 100, step: 5, unit: '%', group: 'Dynamik', description: 'Hur mycket BPM modifierar release-hastigheten. 0% = BPM påverkar inte release. 80% = standard (lägre BPM ger långsammare release).' },
-  // Traits
-  { key: 'energyInfluence', label: 'Energy', shortLabel: 'Engy', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket låtens energi-värde påverkar drop-detection och ljusdynamik. 0% = ignorera energy, 100% = full effekt.' },
-  // Kick
-  { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
-  { key: 'whiteKickMs', label: 'Kick tid', shortLabel: 'Tid', min: 20, max: 200, step: 5, unit: 'ms', group: 'Kick', description: 'Hur länge den vita blixten varar vid en drop.' },
+  { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 1.0, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. 1.0 = ingen smoothing.' },
+  { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. 1.0 = ingen smoothing.', format: v => v.toFixed(3) },
+  { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -2.0, max: 3.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Negativt = förstärkt kontrast. Positivt = utjämnad. 0 = neutral.' },
   // AGC
-  { key: 'bandAgcAttack', label: 'Band AGC attack', shortLabel: 'BAtk', min: 0.02, max: 0.5, step: 0.01, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC fångar toppar i bas/diskant. Högt = snabbare anpassning, lågt = stabilare nivåer.' },
-  { key: 'bandAgcDecay', label: 'Band AGC decay', shortLabel: 'BDcy', min: 0.990, max: 0.999, step: 0.001, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC släpper efter toppar. Lägre = snabbare decay, högre = längre minne.', format: v => v.toFixed(3) },
-  { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC. 0% = ignorera, 100% = full instant kompensering.' },
-  { key: 'loudCompensation', label: 'Loudness-komp.', shortLabel: 'Loud', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket låtens loudness-skillnad direkt skalas om i AGC vid spårbyte. 0% = ignorera, 100% = full instant kompensering.' },
+  { key: 'bandAgcAttack', label: 'Band AGC attack', shortLabel: 'BAtk', min: 0.02, max: 0.5, step: 0.01, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC fångar toppar.' },
+  { key: 'bandAgcDecay', label: 'Band AGC decay', shortLabel: 'BDcy', min: 0.990, max: 0.999, step: 0.001, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC släpper efter toppar.', format: v => v.toFixed(3) },
+  { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
 ];
 
 const BYPASS_VALUES: Record<string, number> = {
@@ -53,14 +46,9 @@ const BYPASS_VALUES: Record<string, number> = {
   attackAlpha: 1.0,
   releaseAlpha: 1.0,
   dynamicDamping: 0,
-  bpmReleaseScale: 0,
-  energyInfluence: 0,
-  whiteKickThreshold: 100,
-  whiteKickMs: DEFAULT_CALIBRATION.whiteKickMs,
   bandAgcAttack: 0.1,
   bandAgcDecay: 0.995,
   volCompensation: 80,
-  loudCompensation: 80,
 };
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
@@ -110,7 +98,6 @@ function MixerFader({
 
     const update = (ev: PointerEvent) => {
       const rect = track.getBoundingClientRect();
-      // Vertical: bottom = min, top = max
       const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
       const raw = def.min + rawPct * (def.max - def.min);
       const snapped = Math.round(raw / def.step) * def.step;
@@ -124,14 +111,9 @@ function MixerFader({
     el.addEventListener('pointerup', up);
   }, [def, onChange, onFocus]);
 
-  // Group color coding
   const groupColors: Record<string, string> = {
-    'Ljus': 'hsl(48, 90%, 60%)',
     'Frekvens': 'hsl(200, 80%, 55%)',
     'Dynamik': 'hsl(142, 70%, 50%)',
-    
-    'Traits': 'hsl(35, 90%, 55%)',
-    'Kick': 'hsl(0, 80%, 60%)',
     'AGC': 'hsl(170, 60%, 50%)',
   };
   const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
@@ -141,7 +123,6 @@ function MixerFader({
       className={`flex flex-col items-center gap-1 min-w-[3rem] transition-all ${isActive ? 'scale-105' : ''}`}
       onClick={onFocus}
     >
-      {/* + button */}
       <button
         onClick={(e) => { e.stopPropagation(); nudge(1); }}
         className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
@@ -149,14 +130,12 @@ function MixerFader({
         +
       </button>
 
-      {/* Vertical track */}
       <div
         ref={trackRef}
         className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
         style={{ height: '6rem', background: 'hsl(var(--secondary))' }}
         onPointerDown={handlePointer}
       >
-        {/* Fill from bypass ref to current value */}
         {(() => {
           const bypassVal = BYPASS_VALUES[def.key] ?? def.min;
           const bypassPct = ((bypassVal - def.min) / (def.max - def.min)) * 100;
@@ -169,7 +148,6 @@ function MixerFader({
             />
           );
         })()}
-        {/* Bypass reference line */}
         {(() => {
           const bypassVal = BYPASS_VALUES[def.key] ?? def.min;
           const bypassPct = ((bypassVal - def.min) / (def.max - def.min)) * 100;
@@ -180,7 +158,6 @@ function MixerFader({
             />
           );
         })()}
-        {/* Thumb */}
         <div
           className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border transition-none"
           style={{
@@ -191,7 +168,6 @@ function MixerFader({
         />
       </div>
 
-      {/* - button */}
       <button
         onClick={(e) => { e.stopPropagation(); nudge(-1); }}
         className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
@@ -199,11 +175,9 @@ function MixerFader({
         −
       </button>
 
-      {/* Label */}
       <span className={`text-[9px] font-bold tracking-wide leading-tight text-center ${isDefault ? 'text-muted-foreground' : 'text-foreground'}`}>
         {def.shortLabel}
       </span>
-      {/* Value */}
       <span className={`text-[9px] font-mono leading-tight ${isDefault ? 'text-muted-foreground/60' : 'text-foreground/80'}`}>
         {formatValue(def, value)}{def.unit}
       </span>
@@ -211,7 +185,7 @@ function MixerFader({
   );
 }
 
-/* ── Pipeline stats (header) ── */
+/* ── Pipeline stats ── */
 
 function PipelineStats() {
   const [stats, setStats] = useState({ tickMs: 0 });
@@ -233,7 +207,7 @@ function PipelineStats() {
   );
 }
 
-/* ── Mini live chart (last ~3s) ── */
+/* ── Mini live chart ── */
 
 function MiniChart() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -253,7 +227,7 @@ function MiniChart() {
   }, []);
 
   useEffect(() => {
-    const CHART_LEN = 90; // ~4.5s at 20fps
+    const CHART_LEN = 90;
     let raf: number;
     const draw = () => {
       const canvas = canvasRef.current;
@@ -274,8 +248,6 @@ function MiniChart() {
     </div>
   );
 }
-
-
 
 interface CalibrationOverlayProps {
   onClose: () => void;
@@ -321,9 +293,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
       attackAlpha: 1.0,
       releaseAlpha: 1.0,
       dynamicDamping: 0,
-      bpmReleaseScale: 0,
-      energyInfluence: 0,
-      whiteKickThreshold: 100,
       bandAgcAttack: 0.1,
       bandAgcDecay: 0.995,
     };
@@ -344,7 +313,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           <PipelineStats />
         </div>
         <div className="flex items-center gap-1.5">
-          {/* Idle color dropdown */}
           <div className="relative flex items-center">
             <button
               className="w-6 h-6 rounded-full border border-border/40 active:scale-90 transition-transform"
@@ -388,14 +356,14 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         </div>
       </div>
 
-      {/* Mini live chart — takes remaining space above faders */}
+      {/* Mini live chart */}
       <div className="flex-1 px-3 pt-2 min-h-0">
         <div className="w-full h-full">
           <MiniChart />
         </div>
       </div>
 
-      {/* Scrollable fader strip — fixed height */}
+      {/* Scrollable fader strip */}
       <div
         ref={scrollRef}
         className="overflow-x-auto overflow-y-hidden px-2 border-t border-border/20"
@@ -421,12 +389,11 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         </div>
       </div>
 
-      {/* Description box */}
-      <div className="px-3 py-2 border-t border-border/20 bg-secondary/30 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <p className="text-[10px] font-bold text-foreground/80">{activeDef.label} <span className="text-muted-foreground font-normal">({activeDef.group})</span></p>
-        <p className="text-[10px] text-muted-foreground leading-relaxed mt-0.5">{activeDef.description}</p>
-        <p className="text-[9px] text-muted-foreground/60 mt-0.5">
-          Standard: {formatValue(activeDef, DEFAULT_CALIBRATION[activeDef.key] as number)}{activeDef.unit} · Nu: <span className="text-foreground/80 font-bold">{formatValue(activeDef, cal[activeDef.key] as number)}{activeDef.unit}</span>
+      {/* Active slider description */}
+      <div className="px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] border-t border-border/20">
+        <p className="text-[10px] text-muted-foreground leading-tight">
+          <span className="font-bold text-foreground/80">{activeDef?.label}</span>{' '}
+          {activeDef?.description}
         </p>
       </div>
     </div>

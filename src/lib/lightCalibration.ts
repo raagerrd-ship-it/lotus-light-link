@@ -25,7 +25,7 @@ export function saveIdleColor(color: [number, number, number]): void {
 }
 
 export interface LightCalibration {
-  // Color correction (defaults are neutral — not exposed in UI but used by applyColorCalibration)
+  // Color correction (defaults are neutral)
   gammaR: number;
   gammaG: number;
   gammaB: number;
@@ -36,31 +36,18 @@ export interface LightCalibration {
   // Dynamics
   attackAlpha: number;      // 0.05–0.9
   releaseAlpha: number;     // 0.01–0.3
-
-  // White kick
-  whiteKickThreshold: number; // 80–100 (%)
-  whiteKickMs: number;        // 50–300 (ms)
-
-  // Dynamic damping (1.0 = linear, >1.0 = compress dynamics)
-  dynamicDamping: number;
+  dynamicDamping: number;   // <0 = expand, >0 = compress, 0 = neutral
 
   // Frequency blend
   bassWeight: number;        // 0–1, how much bass affects brightness
   hiShelfGainDb: number;     // 0–12, hi-shelf filter gain for mic compensation
 
-  // BPM-release scaling
-  bpmReleaseScale: number;   // 0–100 (%), how much BPM modulates release speed
-
   // Per-band AGC
-  bandAgcAttack: number;     // 0.02–0.5, per-band AGC attack speed
-  bandAgcDecay: number;      // 0.990–0.999, per-band AGC decay speed
+  bandAgcAttack: number;     // 0.02–0.5
+  bandAgcDecay: number;      // 0.990–0.999
 
-  // Volume/loudness compensation
-  volCompensation: number;   // 0–100 (%), how much volume changes instantly rescale AGC
-  loudCompensation: number;  // 0–100 (%), how much loudness changes instantly rescale AGC
-
-  // Trait influence (individual)
-  energyInfluence: number;       // 0–100
+  // Volume compensation
+  volCompensation: number;   // 0–100 (%)
 
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
@@ -78,25 +65,15 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   attackAlpha: 0.3,
   releaseAlpha: 0.025,
-
-  whiteKickThreshold: 95,
-  whiteKickMs: 100,
-
   dynamicDamping: 1.0,
 
   bassWeight: 0.7,
-  
   hiShelfGainDb: 6,
-
-  bpmReleaseScale: 80,
 
   bandAgcAttack: 0.15,
   bandAgcDecay: 0.997,
 
   volCompensation: 80,
-  loudCompensation: 80,
-
-  energyInfluence: 100,
 
   agcMin: 0,
   agcMax: 0.01,
@@ -113,12 +90,8 @@ export function getCalibration(): LightCalibration {
   }
 }
 
-/** Save to localStorage + optionally to cloud.
- *  localOnly=true skips cloud (used for frequent AGC saves).
- *  createNewEntry=true creates a new cloud row (explicit calibration actions). */
 export function saveCalibration(cal: LightCalibration, deviceName?: string, { localOnly = false, createNewEntry = false } = {}): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
-  // Notify same-tab listeners (StorageEvent only fires cross-tab)
   window.dispatchEvent(new CustomEvent('calibration-changed'));
   if (localOnly) return;
   const name = deviceName ?? getActiveDeviceName();
@@ -126,8 +99,6 @@ export function saveCalibration(cal: LightCalibration, deviceName?: string, { lo
     _upsertCloud(name, { calibration: cal }, createNewEntry);
   }
 }
-
-// --- Device name tracking ---
 
 export function setActiveDeviceName(name: string) {
   localStorage.setItem(DEVICE_STORAGE_KEY, name);
@@ -137,12 +108,9 @@ export function getActiveDeviceName(): string | null {
   return localStorage.getItem(DEVICE_STORAGE_KEY) || null;
 }
 
-// --- Cloud persistence ---
-
 async function _upsertCloud(deviceName: string, patch: Record<string, unknown>, createNewEntry = false) {
   try {
     if (!createNewEntry) {
-      // Update the most recent entry for this device
       const { data: existing } = await (supabase as any)
         .from('device_calibration')
         .select('id')
@@ -159,7 +127,6 @@ async function _upsertCloud(deviceName: string, patch: Record<string, unknown>, 
       }
     }
 
-    // Create new row (explicit calibration or first-ever entry)
     await (supabase as any).from('device_calibration').insert(
       { device_name: deviceName, ...patch, updated_at: new Date().toISOString() },
     );
@@ -168,7 +135,6 @@ async function _upsertCloud(deviceName: string, patch: Record<string, unknown>, 
   }
 }
 
-/** Load calibration from cloud for a device. */
 export async function loadCalibrationFromCloud(deviceName: string): Promise<{
   calibration: LightCalibration;
 } | null> {
@@ -183,8 +149,6 @@ export async function loadCalibrationFromCloud(deviceName: string): Promise<{
     if (error || !data) return null;
 
     const cal = { ...DEFAULT_CALIBRATION, ...(data.calibration as object) };
-
-    // Cache locally
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
     return { calibration: cal as LightCalibration };
   } catch {
@@ -192,9 +156,6 @@ export async function loadCalibrationFromCloud(deviceName: string): Promise<{
   }
 }
 
-/**
- * Apply color calibration: gamma correction + offset + saturation boost per channel.
- */
 export function applyColorCalibration(
   r: number, g: number, b: number,
   cal?: LightCalibration,
