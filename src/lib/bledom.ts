@@ -285,11 +285,7 @@ export function sendToBLE(_char_unused: any, r: number, g: number, b: number, br
     Math.round(g * scale),
     Math.round(b * scale),
   ];
-  _pendingBright = null; // Skip brightness packet — pre-multiplied RGB handles dimming
-  // Fire callback with original (pre-multiply) values for debug display
-  if (_onWriteCallback) {
-    _onWriteCallback(brightness, r, g, b);
-  }
+  _lastBright = brightness;
   if (!_writing) { _flush(); }
   _lastTickToWriteMs = 0;
   return Promise.resolve();
