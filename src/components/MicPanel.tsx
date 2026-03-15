@@ -222,6 +222,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         const nextIdx = (paletteIndexRef.current + 1) % p.length;
         paletteIndexRef.current = nextIdx;
         targetColorRef.current = p[nextIdx];
+        console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'interval:', interval, 'ms');
         // Restart with current danceability (may have changed)
         startTimer();
       }, interval);
