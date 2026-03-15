@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
-import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, type LightCalibration } from "@/lib/lightCalibration";
+import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
