@@ -180,11 +180,6 @@ let _minIntervalMs = (() => {
 })();
 
 export function getBleMinInterval(): number { return _minIntervalMs; }
-export function setBleMinInterval(ms: number) {
-  // Floor at 50ms (20 cmd/s max) regardless of calibration result
-  _minIntervalMs = Math.max(50, Math.min(200, Math.round(ms)));
-  try { localStorage.setItem(BLE_INTERVAL_KEY, String(_minIntervalMs)); } catch {}
-}
 
 let _char: any = null;
 let _pendingBright: number | null = null;
