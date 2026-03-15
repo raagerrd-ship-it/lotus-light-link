@@ -136,15 +136,24 @@ const Index = () => {
     overlayTimerRef.current = setTimeout(() => setShowOverlay(false), 3000);
   };
 
+  const handleToggleDeviceMode = (conn: BLEConnection) => {
+    const newMode: DeviceMode = conn.mode === 'rgb' ? 'brightness' : 'rgb';
+    setDeviceMode(conn.device?.id, newMode);
+    updateCharMode(conn.characteristic, newMode);
+    conn.mode = newMode;
+    setConnections(prev => prev.map(c =>
+      c.device?.id === conn.device?.id ? { ...c, mode: newMode } : c
+    ));
+  };
+
   const finishConnect = async (conn: BLEConnection) => {
     setConnections(prev => {
-      // Avoid duplicates
       if (prev.some(c => c.device?.id === conn.device?.id)) return prev;
       return [...prev, conn];
     });
     addBleConnection(conn);
     setBusy(false);
-    addActiveChar(conn.characteristic);
+    addActiveChar(conn.characteristic, conn.mode);
     await sendPower(conn.characteristic, true);
     await sendHardwareBrightness(conn.characteristic);
 
