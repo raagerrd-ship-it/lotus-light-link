@@ -56,11 +56,6 @@ export function drawIntensityChart(
     ctx.strokeStyle = level === 0 || level === 100 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)';
     ctx.lineWidth = 1;
     ctx.stroke();
-    // Label
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.font = `${Math.max(8, h * 0.06)}px monospace`;
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(`${level}%`, 2, y - 1);
   }
   ctx.restore();
 
