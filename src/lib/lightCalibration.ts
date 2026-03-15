@@ -52,8 +52,10 @@ export interface LightCalibration {
   colorModStrength: number;  // 0–1, how much frequency modulates color
   crossfadeSpeed: number;    // 0.002–0.03, palette transition speed per frame
 
-  // Trait influence
-  traitInfluence: number;    // 0–100, how much track traits (energy/dance/happy) affect output
+  // Trait influence (individual)
+  energyInfluence: number;       // 0–100
+  danceabilityInfluence: number; // 0–100
+  happinessInfluence: number;    // 0–100
 
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
@@ -84,7 +86,9 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   colorModStrength: 0.35,
   crossfadeSpeed: 0.008,
 
-  traitInfluence: 100,
+  energyInfluence: 100,
+  danceabilityInfluence: 100,
+  happinessInfluence: 100,
 
   agcMin: 0,
   agcMax: 0.01,
