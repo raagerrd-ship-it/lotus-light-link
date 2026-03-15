@@ -612,18 +612,23 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           // BLE commands
           const c = charRef.current;
+          let bleSentR = 0, bleSentG = 0, bleSentB = 0, bleSentBr = pct;
+          let bleSrc: 'normal' | 'white' = 'normal';
           if (c) {
             if (isWhite) {
               const warmR = 255;
               const warmG = Math.round(240 + traitHappy * 15);
               const warmB = Math.round(200 + (1 - traitHappy) * 55);
-              sendToBLE(c, warmR, Math.min(255, warmG), warmB, 100);
+              bleSentR = warmR; bleSentG = Math.min(255, warmG); bleSentB = warmB; bleSentBr = 100;
+              bleSrc = 'white';
+              sendToBLE(c, bleSentR, bleSentG, bleSentB, 100);
               lastColorStateRef.current = 'white';
             } else {
               const baseColor = colorRef.current;
               const calibrated = applyColorCalibration(...baseColor, cal);
               const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
+              bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
               sendToBLE(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
             }
