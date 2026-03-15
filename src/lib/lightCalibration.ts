@@ -51,6 +51,14 @@ export interface LightCalibration {
   bassWeight: number;        // 0–1, how much bass affects brightness
   colorModStrength: number;  // 0–1, how much frequency modulates color
   crossfadeSpeed: number;    // 0.002–0.03, palette transition speed per frame
+  hiShelfGainDb: number;     // 0–12, hi-shelf filter gain for mic compensation
+
+  // BPM-release scaling
+  bpmReleaseScale: number;   // 0–100 (%), how much BPM modulates release speed
+
+  // Per-band AGC
+  bandAgcAttack: number;     // 0.02–0.5, per-band AGC attack speed
+  bandAgcDecay: number;      // 0.990–0.999, per-band AGC decay speed
 
   // Trait influence (individual)
   energyInfluence: number;       // 0–100
