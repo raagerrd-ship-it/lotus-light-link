@@ -212,37 +212,8 @@ export function getBleWriteStats(): BleWriteStats {
   };
 }
 
-async function _flush() {
-  if (_writing || !_char || !_pendingColor) return;
-  if (performance.now() < _backoffUntil) return;
-
-  _writing = true;
-  const t0 = performance.now();
-
-  try {
-    const [r, g, b] = _pendingColor;
-    _pendingColor = null;
-
-    _colorBuf[4] = r;
-    _colorBuf[5] = g;
-    _colorBuf[6] = b;
-
-    await _char.writeValueWithoutResponse(_colorBuf);
-    _writeCount++;
-    _lastWriteMs = performance.now() - t0;
-
-    _onWriteCallback?.(_lastBright, r, g, b);
-  } catch (e: any) {
-    _backoffUntil = performance.now() + 100;
-    console.warn('[BLE] write error (backoff 100ms):', e?.message);
-  }
-
-  _writing = false;
-}
-
 export function setActiveChar(char: any) {
   _char = char;
-  _backoffUntil = 0;
 }
 
 /** Clear active char on disconnect to prevent stale GATT writes */
