@@ -180,7 +180,6 @@ export function onBleWrite(cb: ((bright: number, r: number, g: number, b: number
 
 export interface BleWriteStats {
   writesPerSec: number;
-  droppedPerSec: number;
   lastWriteMs: number;
 }
 
