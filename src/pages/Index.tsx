@@ -252,7 +252,6 @@ const Index = () => {
     setActiveChar(conn.characteristic);
     await sendPower(conn.characteristic, true);
     const calibrated = applyColorCalibration(...currentColorRef.current);
-    await sendBaseColor(conn.characteristic, calibrated[0], calibrated[1], calibrated[2]);
     await sendToBLE(...calibrated, 100);
 
     const deviceName = conn.device?.name;
