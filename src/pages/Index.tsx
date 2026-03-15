@@ -28,8 +28,6 @@ const Index = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
-  const [palette, setPalette] = useState<[number, number, number][]>([]);
-  const [livePaletteIndex, setLivePaletteIndex] = useState(0);
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
