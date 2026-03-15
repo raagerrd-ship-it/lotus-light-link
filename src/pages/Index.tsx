@@ -438,7 +438,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        bleMinIntervalMs={25}
+        bleMinIntervalMs={tickMs}
         deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}
