@@ -348,7 +348,7 @@ const Index = () => {
               <input
                 type="range"
                 min={25}
-                max={75}
+                max={500}
                 step={1}
                 value={tickMs}
                 onChange={(e) => setTickMs(Number(e.target.value))}
