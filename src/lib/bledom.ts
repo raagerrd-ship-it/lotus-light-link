@@ -167,8 +167,6 @@ const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 
 // --- BLE write state (tick-worker drives timing) ---
 
 let _char: any = null;
-let _pendingColor: [number, number, number] | null = null;
-let _writing = false;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
 
 /** Register callback invoked after each actual BLE write with the sent values */
@@ -199,8 +197,6 @@ let _statsStart = performance.now();
 let _lastWriteMs = 0;
 let _lastBright = 0;
 
-let _backoffUntil = 0;
-
 export function getBleWriteStats(): BleWriteStats {
   const now = performance.now();
   const elapsed = (now - _statsStart) / 1000;
@@ -216,56 +212,34 @@ export function getBleWriteStats(): BleWriteStats {
   };
 }
 
-async function _flush() {
-  if (_writing || !_char || !_pendingColor) return;
-  if (performance.now() < _backoffUntil) return;
-
-  _writing = true;
-  const t0 = performance.now();
-
-  try {
-    const [r, g, b] = _pendingColor;
-    _pendingColor = null;
-
-    _colorBuf[4] = r;
-    _colorBuf[5] = g;
-    _colorBuf[6] = b;
-
-    await _char.writeValueWithoutResponse(_colorBuf);
-    _writeCount++;
-    _lastWriteMs = performance.now() - t0;
-
-    _onWriteCallback?.(_lastBright, r, g, b);
-  } catch (e: any) {
-    _backoffUntil = performance.now() + 100;
-    console.warn('[BLE] write error (backoff 100ms):', e?.message);
-  }
-
-  _writing = false;
-}
-
 export function setActiveChar(char: any) {
   _char = char;
-  _backoffUntil = 0;
 }
 
 /** Clear active char on disconnect to prevent stale GATT writes */
 export function clearActiveChar() {
   _char = null;
-  _pendingColor = null;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
  *  Sends one 9-byte color packet. Hardware brightness is locked to 100%. */
-export function sendToBLE(r: number, g: number, b: number, brightness: number) {
+export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
+  if (!_char) return;
   const scale = Math.max(0, Math.min(100, brightness)) / 100;
-  _pendingColor = [
-    Math.round(r * scale),
-    Math.round(g * scale),
-    Math.round(b * scale),
-  ];
+  _colorBuf[4] = Math.round(r * scale);
+  _colorBuf[5] = Math.round(g * scale);
+  _colorBuf[6] = Math.round(b * scale);
   _lastBright = brightness;
-  if (!_writing) _flush();
+
+  const t0 = performance.now();
+  try {
+    await _char.writeValueWithoutResponse(_colorBuf);
+    _writeCount++;
+    _lastWriteMs = performance.now() - t0;
+    _onWriteCallback?.(_lastBright, _colorBuf[4], _colorBuf[5], _colorBuf[6]);
+  } catch (e: any) {
+    console.warn('[BLE] write error:', e?.message);
+  }
 }
 
 export async function sendPower(char: any, on: boolean) {
