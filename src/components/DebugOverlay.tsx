@@ -29,6 +29,8 @@ interface DebugOverlayProps {
   bleSentColor?: [number, number, number] | null;
   bleSentBright?: number | null;
   bleColorSource?: 'idle' | 'normal' | 'white' | null;
+  bleBaseColor?: [number, number, number] | null;
+  bleWriteStats?: BleWriteStats | null;
 }
 
 const phaseLabels: Record<string, string> = {
