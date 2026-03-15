@@ -164,21 +164,10 @@ export async function autoReconnect(signal?: AbortSignal, onStatus?: (s: BleReco
   return null;
 }
 
-export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
+export async function connectBLEDOM(): Promise<BLEConnection> {
   const nav = navigator as any;
 
-  const options = scanAll
-    ? { acceptAllDevices: true, optionalServices: [SERVICE_UUID] }
-    : {
-        filters: [
-          { namePrefix: 'ELK-BLEDOM' },
-          { namePrefix: 'BLEDOM' },
-          { namePrefix: 'ELK' },
-          { namePrefix: 'MELK' },
-          { services: [SERVICE_UUID] },
-        ],
-        optionalServices: [SERVICE_UUID],
-      };
+  const options: any = { acceptAllDevices: true, optionalServices: [SERVICE_UUID] };
 
   const device = await nav.bluetooth.requestDevice(options);
   return connectToDevice(device);

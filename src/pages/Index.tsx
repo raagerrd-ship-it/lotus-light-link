@@ -195,11 +195,11 @@ const Index = () => {
     });
   };
 
-  const handleConnect = async (scanAll = false) => {
+  const handleConnect = async () => {
     setBusy(true);
     setError(null);
     try {
-      await finishConnect(await connectBLEDOM(scanAll));
+      await finishConnect(await connectBLEDOM());
     } catch (e: any) {
       setError(e.message || "Kunde inte ansluta");
       setBusy(false);
@@ -210,7 +210,7 @@ const Index = () => {
     setBusy(true);
     setError(null);
     try {
-      await finishConnect(await connectBLEDOM(true));
+      await finishConnect(await connectBLEDOM());
     } catch (e: any) {
       setError(e.message || "Kunde inte ansluta");
       setBusy(false);
