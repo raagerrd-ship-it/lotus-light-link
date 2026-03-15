@@ -48,9 +48,6 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
-  const handleColorChange = useCallback((color: [number, number, number]) => {
-    setCurrentColor(color);
-  }, []);
 
   // Keep debugStore in sync with slow-changing state
   useEffect(() => {
