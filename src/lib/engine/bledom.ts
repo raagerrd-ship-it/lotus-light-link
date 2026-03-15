@@ -65,7 +65,7 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
   const service = await server.getPrimaryService(SERVICE_UUID);
   const characteristic = await service.getCharacteristic(CHAR_UUID);
   saveLastDevice(device);
-  return { device, characteristic };
+  return { device, characteristic, mode: getSavedDeviceMode(device?.id) };
 }
 
 async function connectAfterAdvertisement(device: any, timeoutMs = 20000): Promise<BLEConnection | null> {

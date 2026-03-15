@@ -271,6 +271,20 @@ const Index = () => {
                     : `${connections.length} enheter`
                   }
                 </span>
+                {/* Per-device mode toggles */}
+                {connections.map((c, i) => (
+                  <button
+                    key={c.device?.id || i}
+                    onClick={() => handleToggleDeviceMode(c)}
+                    className="p-0.5 rounded-full active:scale-90 transition-transform"
+                    title={`${c.device?.name || `Enhet ${i+1}`}: ${c.mode === 'rgb' ? 'RGB' : 'Brightness'} — tryck för att byta`}
+                  >
+                    {c.mode === 'rgb'
+                      ? <Palette className="w-3 h-3 text-foreground/60" />
+                      : <Sun className="w-3 h-3 text-foreground/60" />
+                    }
+                  </button>
+                ))}
                 {/* Add device button */}
                 <button
                   onClick={handleAddDevice}

@@ -91,9 +91,9 @@ export class LightEngine {
     if (char) this.addChar(char);
   }
 
-  addChar(char: BluetoothRemoteGATTCharacteristic) {
+  addChar(char: BluetoothRemoteGATTCharacteristic, mode: DeviceMode = 'rgb') {
     this.chars.add(char);
-    addActiveChar(char);
+    addActiveChar(char, mode);
   }
 
   removeChar(char: BluetoothRemoteGATTCharacteristic) {
