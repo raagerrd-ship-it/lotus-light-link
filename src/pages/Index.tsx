@@ -369,7 +369,7 @@ const Index = () => {
                 >
                   {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => navigate('/calibrate')} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
+                <Button variant="ghost" size="icon" onClick={() => setShowCalibration(true)} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
                   <Settings className="w-3.5 h-3.5" />
                 </Button>
                 <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
