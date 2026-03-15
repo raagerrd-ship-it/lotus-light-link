@@ -91,7 +91,6 @@ function MixerFader({
     'Ljus': 'hsl(48, 90%, 60%)',
     'Dynamik': 'hsl(142, 70%, 50%)',
     'Kick': 'hsl(0, 80%, 60%)',
-    'Färg': 'hsl(270, 70%, 65%)',
   };
   const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
 
