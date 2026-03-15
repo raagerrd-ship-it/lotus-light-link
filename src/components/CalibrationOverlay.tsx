@@ -245,6 +245,30 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           </div>
         </div>
 
+        {/* Idle color picker */}
+        <div className="px-3 py-2 border-t border-border/20 flex items-center gap-3">
+          <span className="text-[10px] font-bold text-foreground/80 whitespace-nowrap">Viloläge</span>
+          <div className="flex gap-1.5">
+            {IDLE_PRESETS.map(({ color, label }) => {
+              const isActive = idleColor[0] === color[0] && idleColor[1] === color[1] && idleColor[2] === color[2];
+              return (
+                <button
+                  key={label}
+                  title={label}
+                  onClick={() => {
+                    setIdleColorState(color);
+                    saveIdleColor(color);
+                    window.dispatchEvent(new CustomEvent('idle-color-changed'));
+                  }}
+                  className={`w-7 h-7 rounded-full border-2 transition-transform active:scale-90 ${isActive ? 'scale-110 border-foreground' : 'border-transparent'}`}
+                  style={{ background: `rgb(${color[0]},${color[1]},${color[2]})` }}
+                />
+              );
+            })}
+          </div>
+          <span className="text-[9px] text-muted-foreground ml-auto">Färg vid paus</span>
+        </div>
+
         {/* Description box */}
         <div className="px-3 py-2 border-t border-border/20 bg-secondary/30">
           <p className="text-[10px] font-bold text-foreground/80">{activeDef.label} <span className="text-muted-foreground font-normal">({activeDef.group})</span></p>
