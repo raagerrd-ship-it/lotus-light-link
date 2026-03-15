@@ -208,6 +208,11 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
+        <div
+          ref={punchFlashRef}
+          className="absolute inset-0 pointer-events-none transition-opacity"
+          style={{ opacity: 0, background: 'radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.7) 0%, transparent 70%)', transitionDuration: '80ms' }}
+        />
         <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
