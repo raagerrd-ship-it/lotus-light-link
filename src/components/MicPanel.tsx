@@ -114,11 +114,6 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-// Palette rotation: 10s at max danceability (100), 30s at min (0), 20s default
-function getRotationInterval(dance: number | null): number {
-  const d = (dance ?? 50) / 100; // 0-1
-  return Math.round(30_000 - d * 20_000); // 30s → 10s
-}
 /** Update a single band's AGC max/min refs */
 function updateBandAgc(
   value: number,
