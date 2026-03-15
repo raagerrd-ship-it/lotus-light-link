@@ -255,28 +255,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           </p>
         </div>
 
-        {/* Collapsible sections */}
-        <div className="px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-1 overflow-y-auto max-h-[30vh]">
-          {/* BLE Speed */}
-          <button
-            onClick={() => setShowBle(!showBle)}
-            className="w-full flex items-center justify-between py-1.5 text-[10px] font-bold text-foreground/70"
-          >
-            BLE-hastighetstest
-            {showBle ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </button>
-          {showBle && <BleSpeedSection conn={conn} />}
-
-          {/* History */}
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="w-full flex items-center justify-between py-1.5 text-[10px] font-bold text-foreground/70"
-          >
-            Kalibreringshistorik
-            {showHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </button>
-          {showHistory && <HistorySection deviceName={conn?.device?.name ?? null} />}
-        </div>
       </div>
     </div>
   );
