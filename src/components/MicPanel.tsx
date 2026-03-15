@@ -173,6 +173,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bassHistoryRef = useRef<number[]>([]);
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
+  const quietFramesRef = useRef(0);
+  const SILENCE_THRESHOLD = 0.001; // RMS below this = silence
+  const SILENCE_FRAMES = 40; // ~1s at 25ms ticks → auto-idle
 
   // Palette rotation + crossfade
   const paletteRef = useRef(palette ?? []);
