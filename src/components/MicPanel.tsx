@@ -16,7 +16,7 @@ interface MicPanelProps {
   happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
-  tickMs?: number;               // dynamic tick interval for worker (default 25)
+  tickMs?: number;               // tick interval for worker (default 125ms = 8fps)
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean; quietFrames?: number }) => void;
   onColorChange?: (color: [number, number, number]) => void;
 }
@@ -122,7 +122,7 @@ function getRotationInterval(dance: number | null): number {
 }
 // Crossfade alpha now comes from cal.crossfadeSpeed
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 25, onLiveStatus, onColorChange }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus, onColorChange }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
