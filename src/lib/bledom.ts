@@ -236,31 +236,19 @@ export function getBleWriteStats(): BleWriteStats {
 async function _flush() {
   if (_writing || !_char) return;
 
-  const now = performance.now();
-  const elapsed = now - _lastWriteTime;
-  if (elapsed < _minIntervalMs) {
-    if (!_timer) {
-      _timer = setTimeout(() => { _timer = null; _flush(); }, _minIntervalMs - elapsed);
-    }
-    return;
-  }
-
   const writeColor = !!_pendingColor;
   const writeBright = _pendingBright != null;
 
   if (!writeColor && !writeBright) return;
 
   _writing = true;
-  _dirtyWhileWriting = false;
   const writeStart = performance.now();
   _lastWriteTime = writeStart;
 
   try {
-    // Capture exact values that go to GATT
     let sentR = _lastSentColor[0], sentG = _lastSentColor[1], sentB = _lastSentColor[2];
     let sentBright = _lastSentBright;
 
-    // Color → 1ms → brightness (matches calibration protocol)
     if (writeColor && _pendingColor) {
       sentR = _pendingColor[0] & 0xff;
       sentG = _pendingColor[1] & 0xff;
@@ -287,7 +275,6 @@ async function _flush() {
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
 
-    // Notify with EXACT GATT values — this is what the lamp received
     if (_onWriteCallback) {
       _onWriteCallback(sentBright, sentR, sentG, sentB);
     }
@@ -298,16 +285,6 @@ async function _flush() {
   }
 
   _writing = false;
-
-  // If new data arrived while we were writing, flush again after interval
-  if (_dirtyWhileWriting || _pendingBright != null || _pendingColor) {
-    _dirtyWhileWriting = false;
-    if (!_timer) {
-      const sinceWrite = performance.now() - _lastWriteTime;
-      const delay = Math.max(0, _minIntervalMs - sinceWrite);
-      _timer = setTimeout(() => { _timer = null; _flush(); }, delay);
-    }
-  }
 }
 
 export function setActiveChar(char: any) {
