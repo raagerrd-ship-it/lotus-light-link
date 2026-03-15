@@ -26,15 +26,6 @@ import { useBpm } from "@/hooks/useBpm";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [isMaster, setIsMaster] = useState(() => {
-    const forcedRole = new URLSearchParams(window.location.search).get("role");
-    if (forcedRole === "master") return true;
-    if (forcedRole === "monitor") return false;
-    const storedRole = localStorage.getItem("deviceRole");
-    if (storedRole === "master") return true;
-    if (storedRole === "monitor") return false;
-    return false;
-  });
   const [connection, setConnection] = useState<BLEConnection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
