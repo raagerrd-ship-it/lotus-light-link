@@ -255,6 +255,24 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
+      // Palette rotation (time-driven, inside rAF — no separate timer)
+      const now = performance.now();
+      const p = paletteRef.current;
+      if (p.length > 1) {
+        if (nextRotationAtRef.current === 0) {
+          // First frame: schedule first rotation
+          nextRotationAtRef.current = now + getRotationInterval(danceabilityRef.current);
+        }
+        if (now >= nextRotationAtRef.current) {
+          const nextIdx = (paletteIndexRef.current + 1) % p.length;
+          paletteIndexRef.current = nextIdx;
+          targetColorRef.current = p[nextIdx];
+          const interval = getRotationInterval(danceabilityRef.current);
+          nextRotationAtRef.current = now + interval;
+          console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'next in', interval, 'ms');
+        }
+      }
+
       // Crossfade blendedColor toward targetColor
       const [br, bg, bb] = blendedColorRef.current;
       const [tr, tg, tb] = targetColorRef.current;
