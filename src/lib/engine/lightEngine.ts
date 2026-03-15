@@ -35,7 +35,6 @@ export class LightEngine {
   private color: [number, number, number] = [255, 80, 0];
   private volume: number | undefined;
   private playing = true;
-  private trackName: string | null = null;
   private char: BluetoothRemoteGATTCharacteristic | null = null;
   private tickMs = 125;
 
@@ -119,8 +118,10 @@ export class LightEngine {
     console.log('[AGC] Reset → vol-scaled start (max=', startMax.toFixed(5), 'vol=', currentVol, ')');
   }
 
-  /** Initialize mic, audio pipeline, and start the tick loop */
+  /** Initialize mic, audio pipeline, and start the tick loop.
+   *  Safe to call multiple times — stops previous instance first. */
   async start(): Promise<void> {
+    if (this.worker || this.stream) this.stop();
     this.stopped = false;
 
     // Listen for calibration changes
