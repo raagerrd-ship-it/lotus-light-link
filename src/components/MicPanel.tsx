@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
+import { pushChartSample } from "@/lib/chartStore";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
 
 interface MicPanelProps {
@@ -601,12 +602,14 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
         onBleWrite((bright, r, g, b) => {
           if (stopped) return;
-          samplesRef.current.push({
+          const sample: ChartSample = {
             pct: bright,
             r: Math.max(r, 20),
             g: Math.max(g, 20),
             b: Math.max(b, 20),
-          });
+          };
+          samplesRef.current.push(sample);
+          pushChartSample(sample);
           if (samplesRef.current.length > effectiveHistoryLen) {
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
