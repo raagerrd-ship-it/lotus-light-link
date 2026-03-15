@@ -160,6 +160,7 @@ interface CalibrationOverlayProps {
 }
 
 export default function CalibrationOverlay({ onClose, onCalibrationChange }: CalibrationOverlayProps) {
+  const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [activeSlider, setActiveSlider] = useState<number>(0);
   const [conn, setConn] = useState(getBleConnection);
