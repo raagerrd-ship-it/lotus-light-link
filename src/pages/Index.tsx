@@ -8,19 +8,19 @@ import {
   sendPower, setActiveChar, clearActiveChar,
   sendHardwareBrightness,
   type BLEConnection, type BleReconnectStatus
-} from "@/lib/bledom";
-import { setBleConnection } from "@/lib/bleStore";
+} from "@/lib/engine/bledom";
+import { setBleConnection } from "@/lib/engine/bleStore";
 import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Bug } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
-import { extractPalette } from "@/lib/colorExtract";
+import { extractPalette } from "@/lib/engine/colorExtract";
 import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
   getCalibration, getPresets, getActivePreset, setActivePreset,
   savePresetCalibration, PRESET_NAMES, type PresetName,
-} from "@/lib/lightCalibration";
-import { debugData } from "@/lib/debugStore";
+} from "@/lib/engine/lightCalibration";
+import { debugData } from "@/lib/ui/debugStore";
 
 const Index = () => {
   const navigate = useNavigate();

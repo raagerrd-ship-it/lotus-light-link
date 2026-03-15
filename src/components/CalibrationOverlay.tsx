@@ -5,9 +5,9 @@ import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
   getIdleColor, saveIdleColor,
   type LightCalibration, type PresetName,
-} from "@/lib/lightCalibration";
-import { getBleConnection, subscribeBle } from "@/lib/bleStore";
-import { getPipelineTimings } from "@/lib/pipelineTimings";
+} from "@/lib/engine/lightCalibration";
+import { getBleConnection, subscribeBle } from "@/lib/engine/bleStore";
+import { getPipelineTimings } from "@/lib/ui/pipelineTimings";
 
 /* ── Slider definitions ── */
 

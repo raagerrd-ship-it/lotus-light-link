@@ -41,7 +41,7 @@ export class LightEngine {
 
   // --- Internal ---
   private analyser: AnalyserNode | null = null;
-  private freqBuf: Float32Array | null = null;
+  private freqBuf: Float32Array<ArrayBuffer> | null = null;
   private smoothed = 0;
   private smoothedBass = 0;
   private smoothedMidHi = 0;
