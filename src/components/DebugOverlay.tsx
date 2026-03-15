@@ -27,6 +27,9 @@ interface DebugOverlayProps {
   loudness?: string | null;
   bassLevel?: number;
   midHiLevel?: number;
+  bleSentColor?: [number, number, number] | null;
+  bleSentBright?: number | null;
+  bleColorSource?: 'idle' | 'normal' | 'white' | null;
 }
 
 const phaseLabels: Record<string, string> = {
