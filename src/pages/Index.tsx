@@ -426,7 +426,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        bleMinIntervalMs={50}
+        bleMinIntervalMs={25}
         deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}
@@ -438,6 +438,8 @@ const Index = () => {
         bleSentColor={bleSentColor}
         bleSentBright={bleSentBright}
         bleColorSource={bleColorSource}
+        bleBaseColor={bleBaseColor}
+        bleWriteStats={bleWriteStats}
       />}
     </div>
   );
