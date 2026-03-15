@@ -54,6 +54,27 @@ const SLIDERS: SliderDef[] = [
   { key: 'bandAgcDecay', label: 'Band AGC decay', shortLabel: 'BDcy', min: 0.990, max: 0.999, step: 0.001, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC släpper efter toppar. Lägre = snabbare decay, högre = längre minne.', format: v => v.toFixed(3) },
 ];
 
+const BYPASS_VALUES: Record<string, number> = {
+  minBrightness: 0,
+  maxBrightness: 100,
+  bassWeight: 0.5,
+  colorModStrength: 0,
+  hiShelfGainDb: 0,
+  attackAlpha: 0.9,
+  releaseAlpha: 0.3,
+  dynamicDamping: 0,
+  bpmReleaseScale: 0,
+  crossfadeSpeed: DEFAULT_CALIBRATION.crossfadeSpeed,
+  saturationBoost: 1.0,
+  energyInfluence: 0,
+  danceabilityInfluence: 0,
+  happinessInfluence: 0,
+  whiteKickThreshold: 100,
+  whiteKickMs: DEFAULT_CALIBRATION.whiteKickMs,
+  bandAgcAttack: 0.1,
+  bandAgcDecay: 0.995,
+};
+
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
   { color: [255, 60, 0], label: 'Orange' },
   { color: [255, 0, 0], label: 'Röd' },
