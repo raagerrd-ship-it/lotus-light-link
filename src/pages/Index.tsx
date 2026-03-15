@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CalibrationOverlay from "@/components/CalibrationOverlay";
 import { Button } from "@/components/ui/button";
-import { getBleWriteStats, getPipelineTimings, onBleWrite } from "@/lib/bledom";
+import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
@@ -173,27 +173,14 @@ const Index = () => {
   const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
   const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
 
-  useEffect(() => {
-    if (!isMaster) return;
-    onBleWrite((bright, r, g, b) => {
-      bleSentRef.current = { r, g, b, bright };
-    });
-    const id = setInterval(() => {
-      const v = bleSentRef.current;
-      if (v) {
-        setBleSentColor([v.r, v.g, v.b]);
-        setBleSentBright(v.bright);
-      }
-    }, 500);
-    return () => { onBleWrite(null); clearInterval(id); };
-  }, [isMaster]);
-
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     setLivePaletteIndex(status.paletteIndex);
-    setBleColorSource(status.isWhiteKick ? 'white' : status.isDrop ? 'white' : 'normal');
+    if (status.bleSentColor) setBleSentColor(status.bleSentColor);
+    if (status.bleSentBright != null) setBleSentBright(status.bleSentBright);
+    setBleColorSource(status.bleColorSource ?? (status.isDrop ? 'white' : 'normal'));
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
