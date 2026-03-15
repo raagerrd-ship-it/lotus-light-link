@@ -34,6 +34,7 @@ const Index = () => {
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
+  const [activePreset, setActivePresetState] = useState<PresetName | null>(() => getActivePreset());
   const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
   const tickMs = 125;
 
