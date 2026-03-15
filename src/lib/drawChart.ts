@@ -12,6 +12,7 @@ export interface ChartSample {
   g: number;
   b: number;
   beat?: boolean;
+  rawPct?: number; // raw energy before brightness mapping (0-100)
 }
 
 /**
