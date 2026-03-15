@@ -275,6 +275,11 @@ async function _flush() {
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
 
+    // Debug: log actual BLE writes periodically
+    if (_writeCount % 40 === 0) {
+      console.log('[BLE _flush] wrote color:', [sentR, sentG, sentB], 'bright:', sentBright, 'writeMs:', Math.round(_lastActualWriteMs));
+    }
+
     if (_onWriteCallback) {
       _onWriteCallback(sentBright, sentR, sentG, sentB);
     }
