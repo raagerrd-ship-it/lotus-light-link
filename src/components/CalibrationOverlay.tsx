@@ -336,7 +336,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           className="flex-1 overflow-x-auto overflow-y-hidden px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '9rem' }}>
+          <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '11rem' }}>
             {SLIDERS.map((def, i) => {
               const prevGroup = i > 0 ? SLIDERS[i - 1].group : null;
               const showSep = prevGroup && prevGroup !== def.group;
