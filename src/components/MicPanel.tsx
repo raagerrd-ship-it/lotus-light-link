@@ -632,7 +632,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           onLiveStatusRef.current?.({
             brightness: bleSentBr,
             color: [bleSentR, bleSentG, bleSentB],
-            isWhiteKick: false,
             isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
@@ -642,7 +641,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
-            quietFrames: 0,
           });
 
           setPipelineTimings({
