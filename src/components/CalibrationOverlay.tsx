@@ -1,14 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { X, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
-  saveBleSpeedToCloud, listCalibrationsFromCloud, deleteCalibrationFromCloud,
-  type LightCalibration, type LatencyResults,
+  type LightCalibration,
 } from "@/lib/lightCalibration";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
-import { setBleMinInterval } from "@/lib/bledom";
-import { Trash2, RefreshCw, Play, Check, Square } from "lucide-react";
 
 /* ── Slider definitions ── */
 
