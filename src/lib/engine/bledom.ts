@@ -166,31 +166,50 @@ const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 
 
 // --- BLE write state (tick-worker drives timing) ---
 
-let _char: any = null;
+const _chars = new Set<any>();
 
+/** @deprecated Use addActiveChar/removeActiveChar instead */
 export function setActiveChar(char: any) {
-  _char = char;
+  _chars.add(char);
 }
 
-/** Clear active char on disconnect to prevent stale GATT writes */
+export function addActiveChar(char: any) {
+  _chars.add(char);
+}
+
+export function removeActiveChar(char: any) {
+  _chars.delete(char);
+}
+
+/** Clear all active chars (e.g. full reset) */
 export function clearActiveChar() {
-  _char = null;
+  _chars.clear();
+}
+
+/** Clear all active chars */
+export function clearAllChars() {
+  _chars.clear();
+}
+
+export function getActiveCharCount(): number {
+  return _chars.size;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
- *  Sends one 9-byte color packet. Hardware brightness is locked to 100%. */
+ *  Sends one 9-byte color packet to ALL connected devices. Hardware brightness is locked to 100%. */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
-  if (!_char) return;
+  if (_chars.size === 0) return;
   const scale = Math.max(0, Math.min(100, brightness)) / 100;
   _colorBuf[4] = Math.round(r * scale);
   _colorBuf[5] = Math.round(g * scale);
   _colorBuf[6] = Math.round(b * scale);
 
-  try {
-    await _char.writeValueWithoutResponse(_colorBuf);
-  } catch (e: any) {
-    console.warn('[BLE] write error:', e?.message);
-  }
+  const writes = Array.from(_chars).map(char =>
+    char.writeValueWithoutResponse(_colorBuf).catch((e: any) => {
+      console.warn('[BLE] write error:', e?.message);
+    })
+  );
+  await Promise.allSettled(writes);
 }
 
 export async function sendPower(char: any, on: boolean) {

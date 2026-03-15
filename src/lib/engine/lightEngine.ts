@@ -339,7 +339,7 @@ export class LightEngine {
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];
 
     // ── BLE output ──
-    if (this.char) {
+    if (this.chars.size > 0) {
       if (isPunch) sendToBLE(255, 255, 255, pct);
       else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
     }
