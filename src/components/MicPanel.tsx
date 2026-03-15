@@ -236,7 +236,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
           if (samplesRef.current.length > effectiveHistoryLen) {
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
-          chartDirtyRef.current = true;
+          
 
           // ── Status callback ──
           onLiveStatusRef.current?.({
