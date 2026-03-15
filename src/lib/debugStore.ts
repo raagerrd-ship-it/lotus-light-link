@@ -43,8 +43,6 @@ export const debugData: DebugData = {
   midHiLevel: 0,
   isPlayingState: true,
   energy: null,
-  danceability: null,
-  happiness: null,
   loudness: null,
   maxBrightness: 100,
   dynamicDamping: 0,
