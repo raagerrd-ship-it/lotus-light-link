@@ -171,6 +171,7 @@ const Index = () => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
+    setLivePaletteIndex(status.paletteIndex);
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
