@@ -108,7 +108,7 @@ const Index = () => {
   }, []);
 
   // Live status callback from MicPanel
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => {
     debugData.bassLevel = status.bassLevel;
     debugData.midHiLevel = status.midHiLevel;
     if (status.bleSentColor) {
@@ -120,12 +120,8 @@ const Index = () => {
     if (status.micRms != null) debugData.micRms = status.micRms;
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
 
-    // Punch flash — detect white color (punch white sends 255,255,255)
     const el = punchFlashRef.current;
-    if (el) {
-      const isPunch = status.bleSentColor && status.bleSentColor[0] === 255 && status.bleSentColor[1] === 255 && status.bleSentColor[2] === 255 && (status.bleSentBright ?? 0) > 50;
-      el.style.opacity = isPunch ? '0.6' : '0';
-    }
+    if (el) el.style.opacity = status.isPunch ? '0.6' : '0';
   }, []);
 
   // Auto-hide overlay after 3s
