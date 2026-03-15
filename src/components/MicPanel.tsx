@@ -136,6 +136,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
+  const lastBaseColorRef = useRef<[number, number, number]>([0, 0, 0]);
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
   const initCal = calRef.current;
