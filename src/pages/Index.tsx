@@ -396,7 +396,7 @@ const Index = () => {
       {showDebug && <DebugOverlay
         smoothedRtt={smoothedRtt}
         palette={palette}
-        paletteIndex={paletteIndexRef.current}
+        paletteIndex={livePaletteIndex}
         sonosVolume={nowPlaying?.volume}
         liveBpm={bpm}
         maxBrightness={activeCalibration.maxBrightness}
