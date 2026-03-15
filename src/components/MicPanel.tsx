@@ -705,7 +705,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
-            quietFrames: quietFramesRef.current,
+            quietFrames: 0,
           });
         });
 
