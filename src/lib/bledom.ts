@@ -168,19 +168,6 @@ const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 
 
 let _char: any = null;
 
-// --- Stats (used by CalibrationOverlay PipelineStats) ---
-
-export interface PipelineTimings {
-  rmsMs: number;
-  smoothMs: number;
-  bleCallMs: number;
-  totalTickMs: number;
-}
-let _pipelineTimings: PipelineTimings = { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 };
-
-export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
-export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
-
 export function setActiveChar(char: any) {
   _char = char;
 }
