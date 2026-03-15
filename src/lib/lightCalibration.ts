@@ -91,7 +91,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   dynamicDamping: 1.0,
 
   bassWeight: 0.7,
-  colorModStrength: 0.35,
   
   hiShelfGainDb: 6,
 
