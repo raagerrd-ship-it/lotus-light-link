@@ -227,13 +227,7 @@ export default function DebugOverlay() {
         <div ref={dropRef} />
       </div>
 
-      {/* 4. FÄRGVAL */}
-      <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">färg</div>
-        <div ref={paletteRef} className="flex items-center gap-1" style={{ display: 'none' }} />
-      </div>
-
-      {/* 5. BLE OUTPUT */}
+      {/* 4. BLE OUTPUT */}
       <div className="border-t border-border/30 pt-0.5 mt-0.5">
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">ble output</div>
         <div ref={bleOutContainerRef} className="flex items-center gap-1.5" style={{ display: 'none' }}>
