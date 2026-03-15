@@ -285,9 +285,11 @@ async function _flush() {
       await _char.writeValueWithoutResponse(_colorBuf);
       _lastSentColor = [sentR, sentG, sentB];
       _pendingColor = null;
-      // No delay — BLEDOM handles back-to-back writeValueWithoutResponse
+      // 1ms delay between color and brightness — BLEDOM needs this to parse correctly
+      if (writeBright && _pendingBright != null) {
+        await new Promise(r => setTimeout(r, 1));
+      }
     }
-
     if (writeBright && _pendingBright != null) {
       sentBright = Math.max(0, Math.min(100, Math.round(_pendingBright)));
       _brightBuf[3] = sentBright;
