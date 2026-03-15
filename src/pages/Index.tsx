@@ -406,9 +406,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        
         bleMinIntervalMs={getBleMinInterval()}
-        bleLatencyMs={activeCalibration.bleLatencyMs}
         deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}
