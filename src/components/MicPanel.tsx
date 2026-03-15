@@ -271,7 +271,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       // Crossfade blendedColor toward targetColor
       const [br, bg, bb] = blendedColorRef.current;
       const [tr, tg, tb] = targetColorRef.current;
-      const a = CROSSFADE_ALPHA;
+      const a = calRef.current.crossfadeSpeed;
       const nr = br + (tr - br) * a;
       const ng = bg + (tg - bg) * a;
       const nb = bb + (tb - bb) * a;
