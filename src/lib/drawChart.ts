@@ -33,12 +33,37 @@ export function drawIntensityChart(
   const w = canvas.width;
   const h = canvas.height;
   const len = samples.length;
-  if (len <= 1) return;
+  if (len <= 1) { ctx.clearRect(0, 0, w, h); }
+
+  const chartHeight = h * 0.92;
+  const chartTop = (h - chartHeight) / 2;
 
   ctx.clearRect(0, 0, w, h);
   ctx.globalAlpha = 1;
 
-  const chartHeight = h * 0.92;
+  // Grid lines at 0%, 25%, 50%, 75%, 100%
+  const gridLevels = [0, 25, 50, 75, 100];
+  const clampPct = (p: number) => Math.max(0, Math.min(100, p));
+  const yForPct = (p: number) => chartTop + chartHeight - (clampPct(p) / 100) * chartHeight;
+
+  ctx.save();
+  for (const level of gridLevels) {
+    const y = yForPct(level);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.strokeStyle = level === 0 || level === 100 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.font = `${Math.max(8, h * 0.06)}px monospace`;
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`${level}%`, 2, y - 1);
+  }
+  ctx.restore();
+
+  if (len <= 1) return;
   const chartTop = (h - chartHeight) / 2;
   const step = w / (historyLen - 1);
   const offsetX = (historyLen - len) * step;
