@@ -116,6 +116,7 @@ const Index = () => {
       setTickToWriteMs(getLastTickToWriteMs());
       const bleStats = getBleWriteStats();
       setBleWriteStats(bleStats);
+      setPipelinePeakMs(getPipelinePeakMs());
       const pipeline = getPipelineTimings();
       const cal = activeCalibration;
       updateLiveSession({
