@@ -192,11 +192,40 @@ export class LightEngine {
     this.stopped = true;
     this.idleCleanup?.();
     this.calCleanup?.();
-    if (this.agcSaveTimer) clearInterval(this.agcSaveTimer);
+    this.idleCleanup = null;
+    this.calCleanup = null;
+    if (this.agcSaveTimer) { clearInterval(this.agcSaveTimer); this.agcSaveTimer = 0; }
     this.worker?.postMessage("stop");
     this.worker?.terminate();
+    this.worker = null;
     this.stream?.getTracks().forEach(t => t.stop());
+    this.stream = null;
     this.audioCtx?.close().catch(() => {});
+    this.audioCtx = null;
+    this.analyser = null;
+    this.freqBuf = null;
+    this.hiShelf = null;
+  }
+
+  /** Full teardown — stop + reset all state and callbacks. Instance is unusable after this. */
+  destroy(): void {
+    this.stop();
+    this.tickCallbacks = [];
+    this.color = [255, 80, 0];
+    this.volume = undefined;
+    this.playing = true;
+    this.char = null;
+    this.smoothed = 0;
+    this.smoothedBass = 0;
+    this.smoothedMidHi = 0;
+    this.dynamicCenter = 0.5;
+    this.agc = createAgcState(0.01, 0);
+    this.lastBaseColor = [0, 0, 0];
+    this.lastVolume = undefined;
+    this.agcLocked = false;
+    this.trackStartTime = 0;
+    this.idleSent = false;
+    this.idleColor = [255, 60, 0];
   }
 
   /** Core tick — called by worker */
