@@ -225,13 +225,15 @@ const Index = () => {
     const firstDeviceName = connections[0]?.device?.name;
     saveCalibration(cal, firstDeviceName, { localOnly: true });
     setActiveCalibration(cal);
-  }, [connections]);
+    if (user) saveSettingsToCloud();
+  }, [connections, user]);
 
   const handlePresetSave = useCallback((name: PresetName, cal: import("@/lib/engine/lightCalibration").LightCalibration) => {
     savePresetCalibration(name, cal);
     setActivePresetState(name);
     setActivePreset(name);
-  }, []);
+    if (user) saveSettingsToCloud();
+  }, [user]);
 
   const handlePowerToggle = async () => {
     if (!connected) return;
