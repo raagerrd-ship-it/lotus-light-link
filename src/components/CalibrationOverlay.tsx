@@ -376,7 +376,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-7 h-7" title="Återställ allt">
             <RotateCcw className="w-3.5 h-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full w-7 h-7">
+          <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full w-7 h-7">
             <X className="w-4 h-4" />
           </Button>
         </div>
