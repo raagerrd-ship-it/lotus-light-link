@@ -251,7 +251,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     if (char) {
       setActiveChar(char);
       const [r, g, b] = colorRef.current;
-      sendToBLE(r, g, b, 100);
+      sendBaseColor(char, r, g, b).then(() => sendToBLE(r, g, b, 100));
     }
   }, [char]);
 
