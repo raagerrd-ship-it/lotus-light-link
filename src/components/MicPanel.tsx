@@ -668,6 +668,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
             paletteIndex: paletteIndexRef.current,
+            bleSentColor: [bleSentR, bleSentG, bleSentB] as [number, number, number],
+            bleSentBright: bleSentBr,
+            bleColorSource: bleSrc,
           });
         });
 
