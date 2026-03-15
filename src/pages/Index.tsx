@@ -183,13 +183,7 @@ const Index = () => {
     setLivePaletteIndex(status.paletteIndex);
     if (status.bleSentColor) {
       setBleBaseColor(status.bleSentColor);
-      // Compute pre-multiplied color (what actually goes to hardware)
-      const s = Math.max(0, Math.min(100, status.bleSentBright ?? 100)) / 100;
-      setBleSentColor([
-        Math.round(status.bleSentColor[0] * s),
-        Math.round(status.bleSentColor[1] * s),
-        Math.round(status.bleSentColor[2] * s),
-      ]);
+      setBleSentColor(status.bleSentColor);
     }
     if (status.bleSentBright != null) setBleSentBright(status.bleSentBright);
     setBleColorSource(status.bleColorSource ?? (status.isDrop ? 'white' : 'normal'));
