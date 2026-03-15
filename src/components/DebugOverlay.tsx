@@ -59,7 +59,7 @@ export default function DebugOverlay({
   deviceRole, bleMinIntervalMs, dropActive,
   energy, danceability, happiness, loudness,
   bassLevel, midHiLevel,
-  bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats,
+  bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats, pipelinePeakMs,
 }: DebugOverlayProps) {
 
   return (
