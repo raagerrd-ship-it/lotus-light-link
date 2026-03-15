@@ -186,6 +186,7 @@ const Index = () => {
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     setLivePaletteIndex(status.paletteIndex);
+    setBleColorSource(status.isWhiteKick ? 'white' : status.isDrop ? 'white' : 'normal');
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
