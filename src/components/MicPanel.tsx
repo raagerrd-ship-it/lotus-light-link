@@ -470,29 +470,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const BAND_AGC_ATTACK = cal.bandAgcAttack;
           const BAND_AGC_DECAY = cal.bandAgcDecay;
 
-          // Bass AGC
-          if (micBands.bassRms > bassAgcMaxRef.current) {
-            bassAgcMaxRef.current += (micBands.bassRms - bassAgcMaxRef.current) * BAND_AGC_ATTACK;
-          } else {
-            bassAgcMaxRef.current *= BAND_AGC_DECAY;
-          }
-          if (micBands.bassRms < bassAgcMinRef.current || bassAgcMinRef.current === 0) {
-            bassAgcMinRef.current = micBands.bassRms;
-          } else {
-            bassAgcMinRef.current += (micBands.bassRms - bassAgcMinRef.current) * 0.001;
-          }
-
-          // MidHi AGC
-          if (micBands.midHiRms > midHiAgcMaxRef.current) {
-            midHiAgcMaxRef.current += (micBands.midHiRms - midHiAgcMaxRef.current) * BAND_AGC_ATTACK;
-          } else {
-            midHiAgcMaxRef.current *= BAND_AGC_DECAY;
-          }
-          if (micBands.midHiRms < midHiAgcMinRef.current || midHiAgcMinRef.current === 0) {
-            midHiAgcMinRef.current = micBands.midHiRms;
-          } else {
-            midHiAgcMinRef.current += (micBands.midHiRms - midHiAgcMinRef.current) * 0.001;
-          }
+          // Per-band AGC
+          updateBandAgc(micBands.bassRms, bassAgcMaxRef, bassAgcMinRef, BAND_AGC_ATTACK, BAND_AGC_DECAY);
+          updateBandAgc(micBands.midHiRms, midHiAgcMaxRef, midHiAgcMinRef, BAND_AGC_ATTACK, BAND_AGC_DECAY);
 
           // Normalize each band 0-1
           const bassRange = Math.max(AGC_FLOOR, bassAgcMaxRef.current - bassAgcMinRef.current);
