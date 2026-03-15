@@ -119,7 +119,7 @@ function getRotationInterval(dance: number | null): number {
   const d = (dance ?? 50) / 100; // 0-1
   return Math.round(30_000 - d * 20_000); // 30s → 10s
 }
-const CROSSFADE_ALPHA = 0.008;      // per-frame lerp → ~3-5s fade at 60fps
+// Crossfade alpha now comes from cal.crossfadeSpeed
 
 const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, onLiveStatus, onColorChange }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
@@ -271,7 +271,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       // Crossfade blendedColor toward targetColor
       const [br, bg, bb] = blendedColorRef.current;
       const [tr, tg, tb] = targetColorRef.current;
-      const a = CROSSFADE_ALPHA;
+      const a = calRef.current.crossfadeSpeed;
       const nr = br + (tr - br) * a;
       const ng = bg + (tg - bg) * a;
       const nb = bb + (tb - bb) * a;
@@ -486,7 +486,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           // ── Frequency-based brightness ──
           // Blend bass (weight 0.7) and mid/hi (weight 0.3) for overall energy
-          let energyNorm = bassNorm * 0.7 + midHiNorm * 0.3;
+          let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
           // Adaptive center so dynamics still work even if laptop mic compression narrows range
           const center = dynamicCenterRef.current + (energyNorm - dynamicCenterRef.current) * 0.008;
@@ -584,7 +584,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               lastColorStateRef.current = 'white';
             } else {
               const calibrated = applyColorCalibration(...colorRef.current, cal);
-              const modStrength = 0.2 + traitHappy * 0.25;
+              const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               sendColorAndBrightness(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';

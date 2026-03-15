@@ -29,10 +29,15 @@ const SLIDERS: SliderDef[] = [
   // Brightness
   { key: 'minBrightness', label: 'Min ljusstyrka', shortLabel: 'Min', min: 0, max: 30, step: 1, unit: '%', group: 'Ljus', description: 'Lägsta ljusnivå vid tystnad. Högre = lampan släcks aldrig helt.' },
   { key: 'maxBrightness', label: 'Max ljusstyrka', shortLabel: 'Max', min: 30, max: 100, step: 1, unit: '%', group: 'Ljus', description: 'Högsta ljusnivå vid maximal ljudvolym.' },
+  // Frequency
+  { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas påverkar ljusstyrkan. 0.7 = 70% bas, 30% diskant. Lägre = mer känslig för diskant.' },
+  { key: 'colorModStrength', label: 'Färgmodulering', shortLabel: 'Mod', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket frekvensinnehållet modulerar färgen. 0 = statisk färg, 1 = maximal modulering.' },
   // Dynamics
   { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 0.9, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. Lågt = mjukare fade in, högt = omedelbar respons.' },
   { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 0.3, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. Lågt = lång svans, högt = snabb dip.', format: v => v.toFixed(3) },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -2.0, max: 3.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Negativt = förstärkt kontrast (punch). Positivt = utjämnad dynamik. 0 = neutral.' },
+  // Palette
+  { key: 'crossfadeSpeed', label: 'Färgövergång', shortLabel: 'Fade', min: 0.002, max: 0.03, step: 0.001, unit: '', group: 'Palett', description: 'Hastigheten på övergången mellan palettfärger. Lågt = mjuk lång fade, högt = snabb skarp övergång.', format: v => v.toFixed(3) },
   // Kick
   { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
   { key: 'whiteKickMs', label: 'Kick tid', shortLabel: 'Tid', min: 20, max: 200, step: 5, unit: 'ms', group: 'Kick', description: 'Hur länge den vita blixten varar vid en drop.' },
@@ -102,7 +107,9 @@ function MixerFader({
   // Group color coding
   const groupColors: Record<string, string> = {
     'Ljus': 'hsl(48, 90%, 60%)',
+    'Frekvens': 'hsl(200, 80%, 55%)',
     'Dynamik': 'hsl(142, 70%, 50%)',
+    'Palett': 'hsl(280, 70%, 60%)',
     'Kick': 'hsl(0, 80%, 60%)',
   };
   const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
@@ -269,12 +276,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
 
       {/* Mixer faders — horizontal scroll */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Group labels */}
-        <div className="px-3 pt-2 pb-1 flex gap-3 text-[9px] font-bold text-muted-foreground tracking-wide">
-          <span style={{ color: 'hsl(48, 90%, 60%)' }}>LJUS</span>
-          <span style={{ color: 'hsl(142, 70%, 50%)' }}>DYNAMIK</span>
-          <span style={{ color: 'hsl(0, 80%, 60%)' }}>KICK</span>
-        </div>
 
         {/* Scrollable fader strip */}
         <div
