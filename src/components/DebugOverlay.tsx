@@ -35,6 +35,7 @@ interface DebugOverlayProps {
   micRms?: number;
   isPlayingState?: boolean;
   quietFrames?: number;
+  bleCharProps?: { write: boolean; writeWithoutResponse: boolean; read: boolean; notify: boolean } | null;
 }
 
 const phaseLabels: Record<string, string> = {
