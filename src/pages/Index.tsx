@@ -144,7 +144,7 @@ const Index = () => {
           sonosVolume: nowPlaying?.volume ?? null,
         },
       });
-    }, 500);
+    }, 2000);
     return () => clearInterval(id);
   }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.playbackState, nowPlaying?.volume, smoothedRtt, activeCalibration]);
 

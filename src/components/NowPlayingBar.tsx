@@ -10,13 +10,14 @@ interface Props {
 export default function NowPlayingBar({ nowPlaying, accentColor, getPosition }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
   const barRef = useRef<HTMLDivElement>(null);
-  const rafRef = useRef(0);
 
+  // Update width via CSS transition instead of 60fps rAF loop
+  // Poll position at ~4fps and let CSS animate the bar smoothly
   useEffect(() => {
     const dur = nowPlaying.durationMs;
     if (!dur || dur <= 0 || !getPosition) return;
 
-    const tick = () => {
+    const update = () => {
       const pos = getPosition();
       if (pos && barRef.current) {
         const elapsed = performance.now() - pos.receivedAt;
@@ -24,10 +25,10 @@ export default function NowPlayingBar({ nowPlaying, accentColor, getPosition }: 
         const fraction = Math.min(1, Math.max(0, currentMs / dur));
         barRef.current.style.width = `${fraction * 100}%`;
       }
-      rafRef.current = requestAnimationFrame(tick);
     };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    update();
+    const id = setInterval(update, 250); // ~4fps
+    return () => clearInterval(id);
   }, [nowPlaying.durationMs, getPosition]);
 
   return (
@@ -38,6 +39,7 @@ export default function NowPlayingBar({ nowPlaying, accentColor, getPosition }: 
           className="h-full"
           style={{
             width: '0%',
+            transition: 'width 300ms linear',
             backgroundColor: `rgb(${r}, ${g}, ${b})`,
             boxShadow: `0 0 6px rgba(${r},${g},${b},0.5)`,
           }}

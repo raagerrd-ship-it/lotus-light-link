@@ -173,9 +173,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const bassHistoryRef = useRef<number[]>([]);
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
-  const quietFramesRef = useRef(0);
-  const SILENCE_THRESHOLD = 0.001; // RMS below this = silence
-  const SILENCE_FRAMES = 40; // ~1s at 25ms ticks → auto-idle
 
   // Palette rotation + crossfade
   const paletteRef = useRef(palette ?? []);
@@ -284,19 +281,28 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   // Decoupled chart rendering + sun pulse via rAF
   useEffect(() => {
     const drawLoop = () => {
-      // Only redraw chart when new data has been pushed (not during idle/pause)
-      if (chartDirtyRef.current && isPlayingRef.current) {
+      const isActive = isPlayingRef.current;
+
+      // Skip ALL work when paused — no crossfade, no sun updates, no chart
+      if (!isActive) {
+        // Reset rotation timer so it starts fresh when music resumes
+        nextRotationAtRef.current = 0;
+        rafIdRef.current = requestAnimationFrame(drawLoop);
+        return;
+      }
+
+      // Only redraw chart when new data has been pushed
+      if (chartDirtyRef.current) {
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
           drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
-      // Palette rotation (time-driven, inside rAF — paused during idle/silence)
+      // Palette rotation (time-driven, inside rAF)
       const now = performance.now();
-      const isActive = isPlayingRef.current;
       const p = paletteRef.current;
-      if (p.length > 1 && isActive) {
+      if (p.length > 1) {
         if (nextRotationAtRef.current === 0) {
           nextRotationAtRef.current = now + getRotationInterval(danceabilityRef.current);
         }
@@ -308,9 +314,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           nextRotationAtRef.current = now + interval;
           console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'next in', interval, 'ms');
         }
-      } else if (!isActive) {
-        // Reset rotation timer so it starts fresh when music resumes
-        nextRotationAtRef.current = 0;
       }
 
       // Crossfade blendedColor toward targetColor
@@ -402,7 +405,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           if (!isPlayingRef.current) {
             // Paused: send idle color once, then stop the worker to prevent further ticks
-            quietFramesRef.current = 0;
+            // idle — worker will be stopped below
             if (!idleSent && charRef.current) {
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
@@ -702,7 +705,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
-            quietFrames: quietFramesRef.current,
+            quietFrames: 0,
           });
         });
 
