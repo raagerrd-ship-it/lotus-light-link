@@ -114,7 +114,7 @@ export default function DebugOverlay() {
   }, []);
 
   return (
-    <div ref={rootRef} className="fixed left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]" style={{ bottom: 'calc(4rem + 20px)' }}>
+    <div ref={rootRef} className="fixed bottom-20 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
       <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">enhet</div>
       <div ref={deviceRef} />
       <div ref={reconnectRef} style={{ display: 'none' }} />
