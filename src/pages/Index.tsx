@@ -2,11 +2,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CalibrationOverlay from "@/components/CalibrationOverlay";
 import { Button } from "@/components/ui/button";
-import { getBleWriteStats, getPipelineTimings, getPipelinePeakMs } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
-  sendToBLE, sendPower, setActiveChar, clearActiveChar, getLastTickToWriteMs,
+  sendToBLE, sendPower, setActiveChar, clearActiveChar,
   sendHardwareBrightness,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
@@ -21,6 +20,7 @@ import {
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
 import { useBpm } from "@/hooks/useBpm";
+import { debugData } from "@/lib/debugStore";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -35,7 +35,6 @@ const Index = () => {
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
-  const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
   const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
   const tickMs = 125;
@@ -54,6 +53,39 @@ const Index = () => {
   const handleColorChange = useCallback((color: [number, number, number]) => {
     setCurrentColor(color);
   }, []);
+
+  // Keep debugStore in sync with slow-changing state
+  useEffect(() => {
+    debugData.bleConnected = !!connection;
+    debugData.bleDeviceName = connection?.device?.name ?? null;
+  }, [connection]);
+
+  useEffect(() => {
+    debugData.bleReconnectStatus = bleReconnectStatus;
+  }, [bleReconnectStatus]);
+
+  useEffect(() => {
+    debugData.smoothedRtt = smoothedRtt;
+    debugData.sonosVolume = nowPlaying?.volume ?? null;
+    debugData.gainMode = nowPlaying?.volume != null ? 'vol' : 'manual';
+    debugData.liveBpm = bpm ?? null;
+  }, [smoothedRtt, nowPlaying?.volume, bpm]);
+
+  useEffect(() => {
+    debugData.energy = trackTraits.energy ?? null;
+    debugData.danceability = trackTraits.danceability ?? null;
+    debugData.happiness = trackTraits.happiness ?? null;
+    debugData.loudness = trackTraits.loudness ?? null;
+  }, [trackTraits.energy, trackTraits.danceability, trackTraits.happiness, trackTraits.loudness]);
+
+  useEffect(() => {
+    debugData.maxBrightness = activeCalibration.maxBrightness;
+    debugData.dynamicDamping = activeCalibration.dynamicDamping;
+  }, [activeCalibration]);
+
+  useEffect(() => {
+    debugData.palette = palette;
+  }, [palette]);
 
   // Extract palette from album art when track changes
   useEffect(() => {
@@ -96,47 +128,21 @@ const Index = () => {
     return () => ac.abort();
   }, []);
 
-  // Poll e2e latency metric
-  useEffect(() => {
-    if (!connection && !nowPlaying?.trackName) return;
-
-    const id = setInterval(() => {
-      setTickToWriteMs(getLastTickToWriteMs());
-      const bleStats = getBleWriteStats();
-      setBleWriteStats(bleStats);
-      setPipelinePeakMs(getPipelinePeakMs());
-    }, 2000);
-    return () => clearInterval(id);
-  }, [connection, nowPlaying?.trackName, nowPlaying?.playbackState, nowPlaying?.volume, smoothedRtt, activeCalibration]);
-
-  // Live status callback from MicPanel
-  const [dropActive, setDropActive] = useState(false);
-  const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
-
-  // BLE write tracking for debug overlay
-  const [bleSentColor, setBleSentColor] = useState<[number, number, number] | null>(null);
-  const [bleSentBright, setBleSentBright] = useState<number | null>(null);
-  const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
-  const [bleBaseColor, setBleBaseColor] = useState<[number, number, number] | null>(null);
-  const [bleWriteStats, setBleWriteStats] = useState<ReturnType<typeof getBleWriteStats> | null>(null);
-  const [pipelinePeakMs, setPipelinePeakMs] = useState(0);
-  const [micRms, setMicRms] = useState(0);
-  const [isPlayingState, setIsPlayingState] = useState(true);
-  const [quietFrames, setQuietFrames] = useState(0);
-
+  // Live status callback from MicPanel — writes directly to debugStore, no React state
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean; quietFrames?: number }) => {
-    setDropActive(status.isDrop);
-    setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
+    debugData.dropActive = status.isDrop;
+    debugData.bassLevel = status.bassLevel;
+    debugData.midHiLevel = status.midHiLevel;
+    debugData.paletteIndex = status.paletteIndex;
     setLivePaletteIndex(status.paletteIndex);
     if (status.bleSentColor) {
-      setBleBaseColor(status.bleSentColor);
-      setBleSentColor(status.bleSentColor);
+      debugData.bleBaseColor = status.bleSentColor;
+      debugData.bleSentColor = status.bleSentColor;
     }
-    if (status.bleSentBright != null) setBleSentBright(status.bleSentBright);
-    setBleColorSource(status.bleColorSource ?? (status.isDrop ? 'white' : 'normal'));
-    if (status.micRms != null) setMicRms(status.micRms);
-    if (status.isPlayingState != null) setIsPlayingState(status.isPlayingState);
-    if (status.quietFrames != null) setQuietFrames(status.quietFrames);
+    if (status.bleSentBright != null) debugData.bleSentBright = status.bleSentBright;
+    debugData.bleColorSource = status.bleColorSource ?? (status.isDrop ? 'white' : 'normal');
+    if (status.micRms != null) debugData.micRms = status.micRms;
+    if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
   }, []);
 
   // Auto-hide overlay after 3s
@@ -310,33 +316,7 @@ const Index = () => {
         />
       )}
 
-      {showDebug && <DebugOverlay
-        smoothedRtt={smoothedRtt}
-        palette={palette}
-        paletteIndex={livePaletteIndex}
-        sonosVolume={nowPlaying?.volume}
-        liveBpm={bpm}
-        maxBrightness={activeCalibration.maxBrightness}
-        dynamicDamping={activeCalibration.dynamicDamping}
-        gainMode={nowPlaying?.volume != null ? 'vol' : 'manual'}
-        bleConnected={!!connection}
-        bleDeviceName={connection?.device?.name}
-        bleReconnectStatus={bleReconnectStatus}
-        dropActive={dropActive}
-        energy={trackTraits.energy}
-        danceability={trackTraits.danceability}
-        happiness={trackTraits.happiness}
-        loudness={trackTraits.loudness}
-        bassLevel={bandLevels.bass}
-        midHiLevel={bandLevels.midHi}
-        bleSentColor={bleSentColor}
-        bleSentBright={bleSentBright}
-        bleColorSource={bleColorSource}
-        bleBaseColor={bleBaseColor}
-        micRms={micRms}
-        isPlayingState={isPlayingState}
-        quietFrames={quietFrames}
-      />}
+      {showDebug && <DebugOverlay />}
     </div>
   );
 };
