@@ -25,9 +25,6 @@ export interface DebugData {
   maxBrightness: number;
   dynamicDamping: number;
   dropActive: boolean;
-  // Color
-  palette: [number, number, number][];
-  paletteIndex: number;
   // BLE Output
   bleSentColor: [number, number, number] | null;
   bleSentBright: number | null;
@@ -54,8 +51,6 @@ export const debugData: DebugData = {
   maxBrightness: 100,
   dynamicDamping: 0,
   dropActive: false,
-  palette: [],
-  paletteIndex: 0,
   bleSentColor: null,
   bleSentBright: null,
   bleColorSource: null,

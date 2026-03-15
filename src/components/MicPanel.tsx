@@ -8,7 +8,6 @@ import { getCalibration, saveCalibration, applyColorCalibration, getActiveDevice
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
-  palette?: [number, number, number][];
   sonosVolume?: number;
   isPlaying?: boolean;
   bpm?: number | null;
@@ -18,8 +17,7 @@ interface MicPanelProps {
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
   tickMs?: number;               // tick interval for worker (default 125ms = 8fps)
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
-  onColorChange?: (color: [number, number, number]) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
 }
 
 /** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
@@ -116,11 +114,6 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-// Palette rotation: 10s at max danceability (100), 30s at min (0), 20s default
-function getRotationInterval(dance: number | null): number {
-  const d = (dance ?? 50) / 100; // 0-1
-  return Math.round(30_000 - d * 20_000); // 30s → 10s
-}
 /** Update a single band's AGC max/min refs */
 function updateBandAgc(
   value: number,
@@ -142,7 +135,7 @@ function updateBandAgc(
 }
 
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus, onColorChange }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -205,15 +198,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   };
 
 
-  const paletteRef = useRef(palette ?? []);
-  const paletteIndexRef = useRef(0);
-  const targetColorRef = useRef<[number, number, number]>(currentColor);
-  const blendedColorRef = useRef<[number, number, number]>(currentColor);
-  const onColorChangeRef = useRef(onColorChange);
-  const nextRotationAtRef = useRef(0); // timestamp for next palette advance
-
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
-  useEffect(() => { onColorChangeRef.current = onColorChange; }, [onColorChange]);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
     // Restart worker when transitioning from paused to playing
@@ -244,30 +229,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     workerRef.current?.postMessage(tickMs);
   }, [tickMs]);
 
-  // When currentColor changes externally, update colorRef but DON'T snap blended
-  // (blended is driven by crossfade; snapping happens only on palette change)
+  // When currentColor changes externally (new track), update colorRef
   useEffect(() => {
     colorRef.current = currentColor;
   }, [currentColor]);
-
-  // Sync palette ref and snap rotation when palette changes (new album art)
-  useEffect(() => {
-    paletteRef.current = palette ?? [];
-    paletteIndexRef.current = 0;
-    if (palette && palette.length > 0) {
-      targetColorRef.current = palette[0];
-      blendedColorRef.current = palette[0];
-      colorRef.current = palette[0];
-    }
-    // Reset rotation timer so first advance uses fresh interval
-    nextRotationAtRef.current = 0;
-    // Reset AGC on new palette
-    lastColorStateRef.current = 'normal';
-    agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
-    agcMinRef.current = 0;
-    samplesRef.current = [];
-    resetChartScaler();
-  }, [palette]);
 
   // Palette rotation is now driven inside the rAF loop (no separate timer)
 
@@ -307,8 +272,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
       // Skip ALL work when paused — no crossfade, no sun updates, no chart
       if (!isActive) {
-        // Reset rotation timer so it starts fresh when music resumes
-        nextRotationAtRef.current = 0;
         rafIdRef.current = requestAnimationFrame(drawLoop);
         return;
       }
@@ -321,39 +284,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
-      // Palette rotation (time-driven, inside rAF)
-      const now = performance.now();
-      const p = paletteRef.current;
-      if (p.length > 1) {
-        if (nextRotationAtRef.current === 0) {
-          nextRotationAtRef.current = now + getRotationInterval(danceabilityRef.current);
-        }
-        if (now >= nextRotationAtRef.current) {
-          const nextIdx = (paletteIndexRef.current + 1) % p.length;
-          paletteIndexRef.current = nextIdx;
-          targetColorRef.current = p[nextIdx];
-          const interval = getRotationInterval(danceabilityRef.current);
-          nextRotationAtRef.current = now + interval;
-          console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'next in', interval, 'ms');
-        }
-      }
-
-      // Crossfade blendedColor toward targetColor
-      const [br, bg, bb] = blendedColorRef.current;
-      const [tr, tg, tb] = targetColorRef.current;
-      const a = calRef.current.crossfadeSpeed;
-      const nr = br + (tr - br) * a;
-      const ng = bg + (tg - bg) * a;
-      const nb = bb + (tb - bb) * a;
-      blendedColorRef.current = [nr, ng, nb];
-      colorRef.current = [Math.round(nr), Math.round(ng), Math.round(nb)];
-      // Notify parent of color change (throttled: only when integer values change)
-      const rounded: [number, number, number] = [Math.round(nr), Math.round(ng), Math.round(nb)];
-      if (rounded[0] !== Math.round(br) || rounded[1] !== Math.round(bg) || rounded[2] !== Math.round(bb)) {
-        onColorChangeRef.current?.(rounded);
-      }
-
-      // No sun animation — chart only
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
     rafIdRef.current = requestAnimationFrame(drawLoop);
@@ -411,7 +341,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
               idleSent = true;
-              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false });
+              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isDrop: false, bassLevel: 0, midHiLevel: 0, bleColorSource: 'idle', micRms: 0, isPlayingState: false });
             }
             // Stop worker — will be restarted when isPlaying becomes true
             worker.postMessage('stop');
@@ -664,7 +594,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
-            paletteIndex: paletteIndexRef.current,
             bleSentColor: lastBaseColorRef.current,
             bleSentBright: bleSentBr,
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,

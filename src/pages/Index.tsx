@@ -28,8 +28,6 @@ const Index = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
-  const [palette, setPalette] = useState<[number, number, number][]>([]);
-  const [livePaletteIndex, setLivePaletteIndex] = useState(0);
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
@@ -50,9 +48,6 @@ const Index = () => {
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
-  const handleColorChange = useCallback((color: [number, number, number]) => {
-    setCurrentColor(color);
-  }, []);
 
   // Keep debugStore in sync with slow-changing state
   useEffect(() => {
@@ -83,20 +78,14 @@ const Index = () => {
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
   }, [activeCalibration]);
 
-  useEffect(() => {
-    debugData.palette = palette;
-  }, [palette]);
-
-  // Extract palette from album art when track changes
+  // Extract dominant color from album art when track changes
   useEffect(() => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
-    extractPalette(artUrl, 5).then((colors) => {
+    extractPalette(artUrl, 1).then((colors) => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
-        setPalette(colors);
-        setLivePaletteIndex(0);
       }
     });
   }, [nowPlaying?.albumArtUrl]);
@@ -129,12 +118,10 @@ const Index = () => {
   }, []);
 
   // Live status callback from MicPanel — writes directly to debugStore, no React state
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => {
     debugData.dropActive = status.isDrop;
     debugData.bassLevel = status.bassLevel;
     debugData.midHiLevel = status.midHiLevel;
-    debugData.paletteIndex = status.paletteIndex;
-    setLivePaletteIndex(status.paletteIndex);
     if (status.bleSentColor) {
       debugData.bleBaseColor = status.bleSentColor;
       debugData.bleSentColor = status.bleSentColor;
@@ -210,7 +197,7 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0">
-        <MicPanel char={char} currentColor={currentColor} palette={palette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} bpm={bpm} energy={trackTraits.energy} danceability={trackTraits.danceability} happiness={trackTraits.happiness} loudness={trackTraits.loudness} tickMs={tickMs} onLiveStatus={handleLiveStatus} onColorChange={handleColorChange} />
+        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} bpm={bpm} energy={trackTraits.energy} danceability={trackTraits.danceability} happiness={trackTraits.happiness} loudness={trackTraits.loudness} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}

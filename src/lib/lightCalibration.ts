@@ -50,7 +50,7 @@ export interface LightCalibration {
   // Frequency blend
   bassWeight: number;        // 0–1, how much bass affects brightness
   colorModStrength: number;  // 0–1, how much frequency modulates color
-  crossfadeSpeed: number;    // 0.002–0.03, palette transition speed per frame
+  
   hiShelfGainDb: number;     // 0–12, hi-shelf filter gain for mic compensation
 
   // BPM-release scaling
@@ -96,7 +96,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   bassWeight: 0.7,
   colorModStrength: 0.35,
-  crossfadeSpeed: 0.008,
+  
   hiShelfGainDb: 6,
 
   bpmReleaseScale: 80,

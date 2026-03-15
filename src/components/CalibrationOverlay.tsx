@@ -39,12 +39,11 @@ const SLIDERS: SliderDef[] = [
   { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. Lågt = lång svans, 1.0 = ingen smoothing (bypass).', format: v => v.toFixed(3) },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -2.0, max: 3.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Negativt = förstärkt kontrast (punch). Positivt = utjämnad dynamik. 0 = neutral.' },
   { key: 'bpmReleaseScale', label: 'BPM-release', shortLabel: 'BPM', min: 0, max: 100, step: 5, unit: '%', group: 'Dynamik', description: 'Hur mycket BPM modifierar release-hastigheten. 0% = BPM påverkar inte release. 80% = standard (lägre BPM ger långsammare release).' },
-  // Palette
-  { key: 'crossfadeSpeed', label: 'Färgövergång', shortLabel: 'Fade', min: 0.002, max: 0.03, step: 0.001, unit: '', group: 'Palett', description: 'Hastigheten på övergången mellan palettfärger. Lågt = mjuk lång fade, högt = snabb skarp övergång.', format: v => v.toFixed(3) },
-  { key: 'saturationBoost', label: 'Färgmättnad', shortLabel: 'Sat', min: 0.5, max: 2.0, step: 0.05, unit: '×', group: 'Palett', description: 'Justerar färgmättnaden. 1.0 = neutral, <1 = urtvättad, >1 = intensivare färger.' },
+  // Color
+  { key: 'saturationBoost', label: 'Färgmättnad', shortLabel: 'Sat', min: 0.5, max: 2.0, step: 0.05, unit: '×', group: 'Färg', description: 'Justerar färgmättnaden. 1.0 = neutral, <1 = urtvättad, >1 = intensivare färger.' },
   // Traits
   { key: 'energyInfluence', label: 'Energy', shortLabel: 'Engy', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket låtens energi-värde påverkar drop-detection och ljusdynamik. 0% = ignorera energy, 100% = full effekt.' },
-  { key: 'danceabilityInfluence', label: 'Danceability', shortLabel: 'Danc', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket danceability påverkar palett-rotationshastighet. 0% = neutral hastighet, 100% = full effekt.' },
+  { key: 'danceabilityInfluence', label: 'Danceability', shortLabel: 'Danc', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket danceability påverkar ljusdynamik. 0% = ignorera, 100% = full effekt.' },
   { key: 'happinessInfluence', label: 'Happiness', shortLabel: 'Happ', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket happiness påverkar färgtemperatur och modulering. 0% = neutral, 100% = full effekt (varmare vid glad musik).' },
   // Kick
   { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
@@ -66,7 +65,7 @@ const BYPASS_VALUES: Record<string, number> = {
   releaseAlpha: 1.0,
   dynamicDamping: 0,
   bpmReleaseScale: 0,
-  crossfadeSpeed: DEFAULT_CALIBRATION.crossfadeSpeed,
+  
   saturationBoost: 1.0,
   energyInfluence: 0,
   danceabilityInfluence: 0,
@@ -145,7 +144,7 @@ function MixerFader({
     'Ljus': 'hsl(48, 90%, 60%)',
     'Frekvens': 'hsl(200, 80%, 55%)',
     'Dynamik': 'hsl(142, 70%, 50%)',
-    'Palett': 'hsl(280, 70%, 60%)',
+    'Färg': 'hsl(280, 70%, 60%)',
     'Traits': 'hsl(35, 90%, 55%)',
     'Kick': 'hsl(0, 80%, 60%)',
     'AGC': 'hsl(170, 60%, 50%)',

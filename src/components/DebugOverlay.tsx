@@ -34,7 +34,7 @@ export default function DebugOverlay() {
   const loudRef = useRef<HTMLDivElement>(null);
   const ljusRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
-  const paletteRef = useRef<HTMLDivElement>(null);
+  
   const bleOutSwatchRef = useRef<HTMLDivElement>(null);
   const bleOutBarRef = useRef<HTMLDivElement>(null);
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
@@ -152,20 +152,7 @@ export default function DebugOverlay() {
           : 'drop: <span class="text-foreground/50">—</span>';
       }
 
-      // 4. FÄRGVAL
-      if (paletteRef.current) {
-        const p = d.palette;
-        if (p.length > 0) {
-          paletteRef.current.innerHTML = p.map((c, i) =>
-            `<div class="w-2.5 h-2.5 rounded-sm" style="background:rgb(${c[0]},${c[1]},${c[2]});${i === d.paletteIndex ? 'outline:1.5px solid white' : ''}"></div>`
-          ).join('');
-          paletteRef.current.style.display = '';
-        } else {
-          paletteRef.current.style.display = 'none';
-        }
-      }
-
-      // 5. BLE OUTPUT
+      // 4. BLE OUTPUT
       const sc = d.bleSentColor;
       if (sc) {
         if (bleOutContainerRef.current) bleOutContainerRef.current.style.display = '';
@@ -227,13 +214,7 @@ export default function DebugOverlay() {
         <div ref={dropRef} />
       </div>
 
-      {/* 4. FÄRGVAL */}
-      <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">färg</div>
-        <div ref={paletteRef} className="flex items-center gap-1" style={{ display: 'none' }} />
-      </div>
-
-      {/* 5. BLE OUTPUT */}
+      {/* 4. BLE OUTPUT */}
       <div className="border-t border-border/30 pt-0.5 mt-0.5">
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">ble output</div>
         <div ref={bleOutContainerRef} className="flex items-center gap-1.5" style={{ display: 'none' }}>
