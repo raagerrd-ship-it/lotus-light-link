@@ -347,13 +347,6 @@ export function sendToBLE(_char_unused: any, r: number, g: number, b: number, br
   return Promise.resolve();
 }
 
-// Legacy aliases — kept temporarily for any straggling imports
-export const sendColor = (_c: any, r: number, g: number, b: number) => sendToBLE(_c, r, g, b, _pendingBright ?? 100);
-export const sendBrightness = (_c: any, brightness: number) => {
-  if (_pendingColor) sendToBLE(_c, _pendingColor[0], _pendingColor[1], _pendingColor[2], brightness);
-};
-export const sendColorAndBrightness = sendToBLE;
-
 export async function sendPower(char: any, on: boolean) {
   const cmd = on ? 0x23 : 0x24;
   const data = new Uint8Array([0x7e, 0x04, 0x04, cmd, 0x01, 0xff, 0x00, 0x00, 0xef]);
