@@ -14,42 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      calibration_songs: {
-        Row: {
-          artist: string
-          category: string
-          created_at: string
-          id: string
-          spotify_uri: string | null
-          title: string
-          votes_down: number
-          votes_up: number
-          why: string
-        }
-        Insert: {
-          artist: string
-          category?: string
-          created_at?: string
-          id?: string
-          spotify_uri?: string | null
-          title: string
-          votes_down?: number
-          votes_up?: number
-          why: string
-        }
-        Update: {
-          artist?: string
-          category?: string
-          created_at?: string
-          id?: string
-          spotify_uri?: string | null
-          title?: string
-          votes_down?: number
-          votes_up?: number
-          why?: string
-        }
-        Relationships: []
-      }
       device_calibration: {
         Row: {
           ble_min_interval_ms: number | null
