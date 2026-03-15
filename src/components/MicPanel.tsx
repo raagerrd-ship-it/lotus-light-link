@@ -73,6 +73,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
     if (char) setActiveChar(char);
   }, [char]);
 
+  // ── Track change → reset AGC and start learning window ──
+  useEffect(() => {
+    if (!trackName || trackName === lastTrackNameRef.current) return;
+    lastTrackNameRef.current = trackName;
+    // Reset AGC to fresh defaults so the new track starts clean
+    agcRef.current = createAgcState(0.01, 0);
+    smoothedBassRef.current = 0;
+    smoothedMidHiRef.current = 0;
+    dynamicCenterRef.current = 0.5;
+    agcLockedRef.current = false;
+    trackStartTimeRef.current = performance.now();
+    console.log('[AGC] Track change → learning for 20s:', trackName);
+  }, [trackName]);
+
   // ── Calibration reload ──
   useEffect(() => {
     const reload = () => {
