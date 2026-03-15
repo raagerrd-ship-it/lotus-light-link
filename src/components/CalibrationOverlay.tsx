@@ -193,7 +193,7 @@ function PipelineStats() {
       const ble = getBleWriteStats();
       const pipe = getPipelineTimings();
       setStats({
-        tickMs: Math.round(pipe.totalTickMs),
+        tickMs: pipe.totalTickMs,
         bleMs: ble.lastWriteMs,
         wps: ble.writesPerSec,
         drops: ble.droppedPerSec,
