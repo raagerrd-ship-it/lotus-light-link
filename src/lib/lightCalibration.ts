@@ -65,8 +65,6 @@ export interface LightCalibration {
 
   // Trait influence (individual)
   energyInfluence: number;       // 0–100
-  danceabilityInfluence: number; // 0–100
-  happinessInfluence: number;    // 0–100
 
   // Learned AGC state (persisted so it survives restarts)
   agcMin: number;
