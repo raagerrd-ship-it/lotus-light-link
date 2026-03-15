@@ -324,6 +324,15 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-6 h-6" title="Återställ standard">
             <RotateCcw className="w-3 h-3" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleSave}
+            className={`rounded-full w-6 h-6 transition-colors ${isDirty ? 'text-primary animate-pulse' : ''}`}
+            title={isDirty ? 'Spara ändringar' : 'Sparad'}
+          >
+            {justSaved ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Save className={`w-3.5 h-3.5 ${isDirty ? '' : 'text-muted-foreground/40'}`} />}
+          </Button>
           <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full w-6 h-6">
             <X className="w-3.5 h-3.5" />
           </Button>
