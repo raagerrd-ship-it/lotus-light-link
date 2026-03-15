@@ -52,6 +52,8 @@ const SLIDERS: SliderDef[] = [
   // AGC
   { key: 'bandAgcAttack', label: 'Band AGC attack', shortLabel: 'BAtk', min: 0.02, max: 0.5, step: 0.01, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC fångar toppar i bas/diskant. Högt = snabbare anpassning, lågt = stabilare nivåer.' },
   { key: 'bandAgcDecay', label: 'Band AGC decay', shortLabel: 'BDcy', min: 0.990, max: 0.999, step: 0.001, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC släpper efter toppar. Lägre = snabbare decay, högre = längre minne.', format: v => v.toFixed(3) },
+  { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC. 0% = ignorera, 100% = full instant kompensering.' },
+  { key: 'loudCompensation', label: 'Loudness-komp.', shortLabel: 'Loud', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket låtens loudness-skillnad direkt skalas om i AGC vid spårbyte. 0% = ignorera, 100% = full instant kompensering.' },
 ];
 
 const BYPASS_VALUES: Record<string, number> = {
@@ -73,6 +75,8 @@ const BYPASS_VALUES: Record<string, number> = {
   whiteKickMs: DEFAULT_CALIBRATION.whiteKickMs,
   bandAgcAttack: 0.1,
   bandAgcDecay: 0.995,
+  volCompensation: 80,
+  loudCompensation: 80,
 };
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [

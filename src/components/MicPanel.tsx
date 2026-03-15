@@ -191,9 +191,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     const prevDb = loudnessDbRef.current;
     const newDb = parseLoudnessDb(loudness);
     loudnessDbRef.current = newDb;
-    // Immediately rescale AGC when track loudness changes
+    // Immediately rescale AGC when track loudness changes (scaled by loudCompensation)
     if (prevDb != null && newDb != null && prevDb !== newDb) {
-      const ratio = loudnessToAgcFactor(newDb) / loudnessToAgcFactor(prevDb);
+      const strength = calRef.current.loudCompensation / 100;
+      const rawRatio = loudnessToAgcFactor(newDb) / loudnessToAgcFactor(prevDb);
+      const ratio = 1 + (rawRatio - 1) * strength; // blend toward 1.0 when strength < 100%
       agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
       agcMinRef.current *= ratio;
       agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
@@ -201,7 +203,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       bassAgcMinRef.current *= ratio;
       midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
       midHiAgcMinRef.current *= ratio;
-      console.log('[AGC] loudness changed', prevDb, '→', newDb, 'ratio:', ratio.toFixed(2));
+      console.log('[AGC] loudness comp', prevDb, '→', newDb, 'ratio:', ratio.toFixed(2), 'strength:', strength);
     }
   }, [loudness]);
 
@@ -419,11 +421,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          // Volume-proportional AGC rescaling (volume ≈ linear to mic RMS)
+          // Volume-proportional AGC rescaling (scaled by volCompensation)
           const vol = volumeRef.current;
           const prevVol = lastVolumeRef.current;
           if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 2) {
-            const ratio = prevVol > 0 ? (vol / prevVol) : 1;
+            const strength = cal.volCompensation / 100;
+            const rawRatio = prevVol > 0 ? (vol / prevVol) : 1;
+            const ratio = 1 + (rawRatio - 1) * strength;
             agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
             agcMinRef.current = Math.max(0, agcMinRef.current * ratio);
             agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
