@@ -49,7 +49,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
 
     if (buckets.size === 0) return [];
 
-    // Score by pixel count — no saturation filtering, keep natural/pastel tones
+    // Score by pixel count, filter low-chroma, boost saturation for LED use
     const scored: { color: RGB; score: number }[] = [];
     for (const bucket of buckets.values()) {
       const avgR = Math.round(bucket.r / bucket.count);
@@ -61,7 +61,9 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       const min = Math.min(avgR, avgG, avgB);
       if (max - min < 15) continue;
 
-      scored.push({ color: [avgR, avgG, avgB], score: bucket.count });
+      // Boost saturation for vivid LED colors
+      const boosted = boostSaturation(avgR, avgG, avgB);
+      scored.push({ color: boosted, score: bucket.count });
     }
     scored.sort((a, b) => b.score - a.score);
 
