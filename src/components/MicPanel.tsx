@@ -424,13 +424,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             quietFramesRef.current = 0;
           }
           if (quietFramesRef.current >= SILENCE_FRAMES && charRef.current) {
-            // Mic has been silent long enough — force idle
-            if (!idleSent) {
-              const calibrated = applyColorCalibration(...idleColor);
-              sendToBLE(calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
-              idleSent = true;
-            }
-            onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: rms, isPlayingState: true, quietFrames: quietFramesRef.current });
+            // Mic has been silent long enough — force idle (resend each tick for reliability)
+            const calibrated = applyColorCalibration(...idleColor);
+            sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
+            idleSent = true;
+            onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: rms, isPlayingState: true, quietFrames: quietFramesRef.current });
             return;
           }
 
