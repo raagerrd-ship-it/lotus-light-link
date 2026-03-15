@@ -395,15 +395,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           if (stopped) return;
 
           if (!isPlayingRef.current) {
-            // Paused/no valid now-playing: keep forcing full-brightness idle color.
-            // With writeWithoutResponse, single packets can drop, so resend each tick.
-            quietFramesRef.current = 0; // reset when explicitly paused
-            if (charRef.current) {
+            // Paused: send idle color once, then stop the worker to prevent further ticks
+            quietFramesRef.current = 0;
+            if (!idleSent && charRef.current) {
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
               idleSent = true;
+              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false, quietFrames: 0 });
             }
-            onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false, quietFrames: 0 });
+            // Stop worker — will be restarted when isPlaying becomes true
+            worker.postMessage('stop');
             return;
           }
           idleSent = false;
