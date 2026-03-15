@@ -14,12 +14,13 @@ import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Bug } from "lucide-re
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
-import { extractPalette } from "@/lib/engine/colorExtract";
+import { extractPalette } from "@/lib/ui/colorExtract";
 import {
-  loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
+  setActiveDeviceName, saveCalibration,
   getCalibration, getPresets, getActivePreset, setActivePreset,
   savePresetCalibration, PRESET_NAMES, type PresetName,
 } from "@/lib/engine/lightCalibration";
+import { loadCalibrationFromCloud, installCloudSync } from "@/lib/ui/calibrationCloud";
 import { debugData } from "@/lib/ui/debugStore";
 
 const Index = () => {
