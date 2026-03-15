@@ -429,7 +429,6 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        bleMinIntervalMs={tickMs}
         deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}
@@ -442,12 +441,9 @@ const Index = () => {
         bleSentBright={bleSentBright}
         bleColorSource={bleColorSource}
         bleBaseColor={bleBaseColor}
-        bleWriteStats={bleWriteStats}
-        pipelinePeakMs={pipelinePeakMs}
         micRms={micRms}
         isPlayingState={isPlayingState}
         quietFrames={quietFrames}
-        bleCharProps={connection?.charProperties ?? null}
       />}
     </div>
   );
