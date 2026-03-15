@@ -153,6 +153,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const agcSaveTimerRef = useRef(0);
   const agcPeakMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
   const idleCleanupRef = useRef<(() => void) | null>(null);
+  const hiShelfRef = useRef<BiquadFilterNode | null>(null);
   const onLiveStatusRef = useRef(onLiveStatus);
   const isPlayingRef = useRef(isPlaying);
   const bassRef = useRef(0);
@@ -247,6 +248,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => {
     const reload = () => {
       calRef.current = getCalibration();
+      // Update hi-shelf gain dynamically
+      if (hiShelfRef.current) {
+        hiShelfRef.current.gain.value = calRef.current.hiShelfGainDb;
+      }
       console.log('[MicPanel] cal updated:', { attack: calRef.current.attackAlpha.toFixed(3), release: calRef.current.releaseAlpha.toFixed(4), damping: calRef.current.dynamicDamping.toFixed(1) });
     };
     const onStorage = (e: StorageEvent) => {
@@ -331,7 +336,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         const hiShelf = audioCtx.createBiquadFilter();
         hiShelf.type = 'highshelf';
         hiShelf.frequency.value = 2000;
-        hiShelf.gain.value = 6;
+        hiShelf.gain.value = calRef.current.hiShelfGainDb;
+        hiShelfRef.current = hiShelf;
 
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512;
@@ -385,11 +391,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const prev = smoothedRef.current;
           const attackA = Math.min(1.0, cal.attackAlpha * reactivity);
           // Scale release by BPM: reference 160 BPM = full speed, lower = longer fade
-          // But respect user's setting — don't scale below their chosen value
+          // bpmReleaseScale controls how much BPM affects release (0 = no effect, 100 = full effect)
           const currentBpm = bpmRef.current;
-          const bpmReleaseFactor = currentBpm && currentBpm > 0
+          const bpmReleaseScale = cal.bpmReleaseScale / 100;
+          const rawBpmFactor = currentBpm && currentBpm > 0
             ? Math.max(0.5, Math.min(1.0, currentBpm / 160))
             : 0.8;
+          const bpmReleaseFactor = 1 - bpmReleaseScale * (1 - rawBpmFactor);
           const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity * bpmReleaseFactor);
           const alpha = rms > prev ? attackA : releaseA;
           const smoothed = prev + alpha * (rms - prev);
@@ -441,8 +449,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           midHiRef.current = micBands.midHiRms;
 
           // ── Per-band AGC for frequency-based brightness ──
-          const BAND_AGC_ATTACK = 0.15;
-          const BAND_AGC_DECAY = 0.997;
+          const BAND_AGC_ATTACK = cal.bandAgcAttack;
+          const BAND_AGC_DECAY = cal.bandAgcDecay;
 
           // Bass AGC
           if (micBands.bassRms > bassAgcMaxRef.current) {

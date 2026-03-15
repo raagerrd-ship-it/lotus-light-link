@@ -33,12 +33,15 @@ const SLIDERS: SliderDef[] = [
   // Frequency
   { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas påverkar ljusstyrkan. 0.7 = 70% bas, 30% diskant. Lägre = mer känslig för diskant.' },
   { key: 'colorModStrength', label: 'Färgmodulering', shortLabel: 'Mod', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket frekvensinnehållet modulerar färgen. 0 = statisk färg, 1 = maximal modulering.' },
+  { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Frekvens', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic. 0 = ingen kompensation.' },
   // Dynamics
   { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 0.9, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. Lågt = mjukare fade in, högt = omedelbar respons.' },
   { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 0.3, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. Lågt = lång svans, högt = snabb dip.', format: v => v.toFixed(3) },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -2.0, max: 3.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Negativt = förstärkt kontrast (punch). Positivt = utjämnad dynamik. 0 = neutral.' },
+  { key: 'bpmReleaseScale', label: 'BPM-release', shortLabel: 'BPM', min: 0, max: 100, step: 5, unit: '%', group: 'Dynamik', description: 'Hur mycket BPM modifierar release-hastigheten. 0% = BPM påverkar inte release. 80% = standard (lägre BPM ger långsammare release).' },
   // Palette
   { key: 'crossfadeSpeed', label: 'Färgövergång', shortLabel: 'Fade', min: 0.002, max: 0.03, step: 0.001, unit: '', group: 'Palett', description: 'Hastigheten på övergången mellan palettfärger. Lågt = mjuk lång fade, högt = snabb skarp övergång.', format: v => v.toFixed(3) },
+  { key: 'saturationBoost', label: 'Färgmättnad', shortLabel: 'Sat', min: 0.5, max: 2.0, step: 0.05, unit: '×', group: 'Palett', description: 'Justerar färgmättnaden. 1.0 = neutral, <1 = urtvättad, >1 = intensivare färger.' },
   // Traits
   { key: 'energyInfluence', label: 'Energy', shortLabel: 'Engy', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket låtens energi-värde påverkar drop-detection och ljusdynamik. 0% = ignorera energy, 100% = full effekt.' },
   { key: 'danceabilityInfluence', label: 'Danceability', shortLabel: 'Danc', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket danceability påverkar palett-rotationshastighet. 0% = neutral hastighet, 100% = full effekt.' },
@@ -46,6 +49,9 @@ const SLIDERS: SliderDef[] = [
   // Kick
   { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
   { key: 'whiteKickMs', label: 'Kick tid', shortLabel: 'Tid', min: 20, max: 200, step: 5, unit: 'ms', group: 'Kick', description: 'Hur länge den vita blixten varar vid en drop.' },
+  // AGC
+  { key: 'bandAgcAttack', label: 'Band AGC attack', shortLabel: 'BAtk', min: 0.02, max: 0.5, step: 0.01, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC fångar toppar i bas/diskant. Högt = snabbare anpassning, lågt = stabilare nivåer.' },
+  { key: 'bandAgcDecay', label: 'Band AGC decay', shortLabel: 'BDcy', min: 0.990, max: 0.999, step: 0.001, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC släpper efter toppar. Lägre = snabbare decay, högre = längre minne.', format: v => v.toFixed(3) },
 ];
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
@@ -117,6 +123,7 @@ function MixerFader({
     'Palett': 'hsl(280, 70%, 60%)',
     'Traits': 'hsl(35, 90%, 55%)',
     'Kick': 'hsl(0, 80%, 60%)',
+    'AGC': 'hsl(170, 60%, 50%)',
   };
   const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
 
