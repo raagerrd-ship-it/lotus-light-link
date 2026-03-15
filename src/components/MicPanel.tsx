@@ -248,6 +248,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => {
     const reload = () => {
       calRef.current = getCalibration();
+      // Update hi-shelf gain dynamically
+      if (hiShelfRef.current) {
+        hiShelfRef.current.gain.value = calRef.current.hiShelfGainDb;
+      }
       console.log('[MicPanel] cal updated:', { attack: calRef.current.attackAlpha.toFixed(3), release: calRef.current.releaseAlpha.toFixed(4), damping: calRef.current.dynamicDamping.toFixed(1) });
     };
     const onStorage = (e: StorageEvent) => {
