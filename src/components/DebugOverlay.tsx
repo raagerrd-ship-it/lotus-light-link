@@ -29,12 +29,9 @@ interface DebugOverlayProps {
   bleSentBright?: number | null;
   bleColorSource?: 'idle' | 'normal' | 'white' | null;
   bleBaseColor?: [number, number, number] | null;
-  bleWriteStats?: BleWriteStats | null;
-  pipelinePeakMs?: number | null;
   micRms?: number;
   isPlayingState?: boolean;
   quietFrames?: number;
-  bleCharProps?: { write: boolean; writeWithoutResponse: boolean; read: boolean; notify: boolean } | null;
 }
 
 const phaseLabels: Record<string, string> = {
