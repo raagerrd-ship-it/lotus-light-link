@@ -285,8 +285,8 @@ async function _flush() {
     _colorBuf[5] = g;
     _colorBuf[6] = b;
 
-    // writeValue (WITH response) for backpressure — prevents OS buffer buildup
-    await _char.writeValue(_colorBuf);
+    // writeValueWithoutResponse — no GATT ack, testing throughput
+    await _char.writeValueWithoutResponse(_colorBuf);
     _lastSentColor = [r, g, b];
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
