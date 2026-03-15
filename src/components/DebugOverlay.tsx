@@ -17,7 +17,7 @@ interface DebugOverlayProps {
   bleConnected?: boolean;
   bleDeviceName?: string | null;
   bleReconnectStatus?: BleReconnectStatus | null;
-  deviceRole?: 'master' | 'monitor';
+  
   dropActive?: boolean;
   energy?: number | null;
   danceability?: number | null;
