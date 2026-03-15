@@ -3,7 +3,7 @@
 export const AGC_MAX_DECAY = 0.995;
 export const AGC_MIN_RISE = 0.9999;
 export const AGC_ATTACK = 0.1;
-export const AGC_ATTACK_LEARN = 0.25; // Faster attack during learning phase
+export const AGC_ATTACK_LEARN = 0.15; // Moderately faster attack during learning phase
 export const AGC_FLOOR = 0.002;
 export const PEAK_MAX_DECAY = 0.9998;
 
