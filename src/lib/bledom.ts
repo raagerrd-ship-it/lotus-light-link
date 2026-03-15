@@ -295,8 +295,10 @@ async function _flush() {
     }
   } catch (e: any) {
     _errorCount++;
+    _errorCountWindow++;
     _lastError = e?.message || 'GATT write failed';
-    console.warn('[BLE] write error:', _lastError);
+    _backoffUntil = performance.now() + 100;
+    console.warn('[BLE] write error (backoff 100ms):', _lastError);
   }
 
   _writing = false;
