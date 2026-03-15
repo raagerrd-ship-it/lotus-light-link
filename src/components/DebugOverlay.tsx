@@ -56,11 +56,11 @@ export default function DebugOverlay({
   smoothedRtt, palette, paletteIndex = 0,
   source, sonosVolume, gainMode, volCalibrationVol, liveBpm, maxBrightness, dynamicDamping,
   bleConnected, bleDeviceName, bleReconnectStatus,
-  deviceRole, bleMinIntervalMs, dropActive,
+  deviceRole, dropActive,
   energy, danceability, happiness, loudness,
   bassLevel, midHiLevel,
-  bleSentColor, bleSentBright, bleColorSource, bleBaseColor, bleWriteStats, pipelinePeakMs,
-  micRms, isPlayingState, quietFrames, bleCharProps,
+  bleSentColor, bleSentBright, bleColorSource, bleBaseColor,
+  micRms, isPlayingState, quietFrames,
 }: DebugOverlayProps) {
 
   return (
