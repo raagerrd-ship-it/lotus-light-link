@@ -297,10 +297,14 @@ async function _flush() {
     _colorBuf[5] = g;
     _colorBuf[6] = b;
 
-    // writeValueWithoutResponse — no GATT ack, testing throughput
     await _char.writeValueWithoutResponse(_colorBuf);
     _lastSentColor = [r, g, b];
     _writeCount++;
+
+    // Periodically force hardware brightness to 100%
+    if (_writeCount % BRIGHT_REFRESH_INTERVAL === 0) {
+      await _char.writeValueWithoutResponse(_brightMaxBuf);
+    }
     _lastActualWriteMs = performance.now() - writeStart;
     if (_lastActualWriteMs > _peakWriteMs) _peakWriteMs = _lastActualWriteMs;
 
