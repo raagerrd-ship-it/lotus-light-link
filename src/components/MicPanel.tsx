@@ -226,18 +226,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
     };
   }, []);
 
-  // Decoupled chart rendering + sun pulse via rAF
+  // Chart rendering via rAF (decoupled from worker tick for smooth visuals)
   useEffect(() => {
     const drawLoop = () => {
-      const isActive = isPlayingRef.current;
-
-      // Skip ALL work when paused — no crossfade, no sun updates, no chart
-      if (!isActive) {
-        rafIdRef.current = requestAnimationFrame(drawLoop);
-        return;
-      }
-
-      // Only redraw chart when new data has been pushed
       if (chartDirtyRef.current) {
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
