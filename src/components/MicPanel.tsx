@@ -511,6 +511,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           }
 
           energyNorm = Math.max(0, Math.min(1, energyNorm));
+          rawEnergyPctRef.current = Math.round(energyNorm * 100);
 
           const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
           const pct = Math.round(rawPct * 100);
