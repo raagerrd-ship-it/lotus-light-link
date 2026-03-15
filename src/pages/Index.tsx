@@ -166,6 +166,21 @@ const Index = () => {
     }
   };
 
+  const handlePresetSwitch = useCallback((name: PresetName) => {
+    const presets = getPresets();
+    const cal = presets[name];
+    setActivePresetState(name);
+    setActivePreset(name);
+    saveCalibration(cal, connection?.device?.name, { localOnly: true });
+    setActiveCalibration(cal);
+  }, [connection?.device?.name]);
+
+  const handlePresetSave = useCallback((name: PresetName, cal: import("@/lib/lightCalibration").LightCalibration) => {
+    savePresetCalibration(name, cal);
+    setActivePresetState(name);
+    setActivePreset(name);
+  }, []);
+
   const handlePowerToggle = async () => {
     if (!connection) return;
     const next = !isOn;
