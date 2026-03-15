@@ -191,19 +191,23 @@ const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 
 
 // --- BLE write state (tick-worker drives timing) ---
 
-const _chars = new Set<any>();
+const _charModes = new Map<any, DeviceMode>();
 
 /** @deprecated Use addActiveChar/removeActiveChar instead */
-export function setActiveChar(char: any) {
-  _chars.add(char);
+export function setActiveChar(char: any, mode: DeviceMode = 'rgb') {
+  _charModes.set(char, mode);
 }
 
-export function addActiveChar(char: any) {
-  _chars.add(char);
+export function addActiveChar(char: any, mode: DeviceMode = 'rgb') {
+  _charModes.set(char, mode);
 }
 
 export function removeActiveChar(char: any) {
-  _chars.delete(char);
+  _charModes.delete(char);
+}
+
+export function updateCharMode(char: any, mode: DeviceMode) {
+  if (_charModes.has(char)) _charModes.set(char, mode);
 }
 
 /** Clear all active chars (e.g. full reset) */
