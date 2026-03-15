@@ -363,3 +363,7 @@ export async function sendPower(char: any, on: boolean) {
   await char.writeValueWithoutResponse(data);
 }
 
+/** Force hardware brightness to 100% — call at connect to ensure pre-multiplication works */
+export async function sendHardwareBrightness(char: any) {
+  await char.writeValueWithoutResponse(_brightMaxBuf);
+}
