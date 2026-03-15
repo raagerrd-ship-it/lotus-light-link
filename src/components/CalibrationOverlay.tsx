@@ -230,7 +230,7 @@ function MixerFader({
 /* ── Pipeline stats (header) ── */
 
 function PipelineStats() {
-  const [stats, setStats] = useState({ tickMs: 0, bleMs: 0, wps: 0, drops: 0 });
+  const [stats, setStats] = useState({ tickMs: 0, bleMs: 0, wps: 0 });
 
   useEffect(() => {
     const id = setInterval(() => {
