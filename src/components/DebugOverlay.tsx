@@ -1,5 +1,4 @@
-import type { BleReconnectStatus } from "@/lib/bledom";
-
+import type { BleReconnectStatus, BleWriteStats } from "@/lib/bledom";
 // Injected by Vite define at build time
 declare const __BUILD_TIME__: string;
 
