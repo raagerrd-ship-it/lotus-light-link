@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import CalibrationOverlay from "@/components/CalibrationOverlay";
 import { Button } from "@/components/ui/button";
 import { getBleWriteStats, getPipelineTimings, getBleMinInterval } from "@/lib/bledom";
 import NowPlayingBar from "@/components/NowPlayingBar";
@@ -47,6 +48,7 @@ const Index = () => {
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
+  const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -367,7 +369,7 @@ const Index = () => {
                 >
                   {autoHide ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => navigate('/calibrate')} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
+                <Button variant="ghost" size="icon" onClick={() => setShowCalibration(true)} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
                   <Settings className="w-3.5 h-3.5" />
                 </Button>
                 <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
@@ -390,6 +392,14 @@ const Index = () => {
       )}
 
       {/* Debug overlay */}
+      {/* Calibration overlay */}
+      {showCalibration && (
+        <CalibrationOverlay
+          onClose={() => setShowCalibration(false)}
+          onCalibrationChange={(cal) => setActiveCalibration(cal)}
+        />
+      )}
+
       {showDebug && <DebugOverlay
         smoothedRtt={smoothedRtt}
         palette={palette}
