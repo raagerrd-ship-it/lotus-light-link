@@ -304,6 +304,10 @@ export function clearActiveChar() {
 export function sendToBLE(_char_unused: any, r: number, g: number, b: number, brightness: number) {
   _pendingColor = [r, g, b];
   _pendingBright = brightness;
+  // Fire callback immediately with intent (not waiting for actual write)
+  if (_onWriteCallback) {
+    _onWriteCallback(brightness, r, g, b);
+  }
   if (!_writing) { _flush(); }
   _lastTickToWriteMs = 0;
   return Promise.resolve();
