@@ -339,6 +339,7 @@ const Index = () => {
             )}
           </div>
           <div className="flex items-center gap-1">
+            <AuthButton user={user} loading={authLoading} onSignIn={signIn} onSignOut={signOut} accent={accent} />
             <Button
               variant="ghost"
               size="icon"
