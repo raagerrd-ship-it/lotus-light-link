@@ -99,7 +99,29 @@ export function drawIntensityChart(
     ctx.fill();
   }
 
-  // Line + dots
+  // Raw RMS line (behind the main line)
+  const hasRaw = samples.some(s => s.rawPct != null);
+  if (hasRaw) {
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = Math.max(1, lineWidth * 0.8);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < len; i++) {
+      const s = samples[i];
+      if (s.rawPct == null) continue;
+      const x = offsetX + i * step;
+      const y = yForPct(s.rawPct);
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Line + dots (output brightness)
   for (let i = 0; i < points.length; i++) {
     const { x, y, color } = points[i];
 
