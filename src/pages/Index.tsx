@@ -131,8 +131,6 @@ const Index = () => {
           totalTickMs: pipeline.totalTickMs,
           sonosConnected: !!nowPlaying?.trackName,
           sonosRtt: smoothedRtt,
-          bleLatencyMs: cal.bleLatencyMs,
-          activeLookAheadMs: cal.bleLatencyMs,
           syncMode: 'mic',
           bleMinIntervalMs: getBleMinInterval(),
           maxBrightness: cal.maxBrightness,
