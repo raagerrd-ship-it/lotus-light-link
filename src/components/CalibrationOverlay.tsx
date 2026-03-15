@@ -9,6 +9,7 @@ import {
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 import { getChartSamples } from "@/lib/chartStore";
 import { drawIntensityChart } from "@/lib/drawChart";
+import { getBleWriteStats, getPipelineTimings } from "@/lib/bledom";
 
 /* ── Slider definitions ── */
 
@@ -170,6 +171,37 @@ function MixerFader({
   );
 }
 
+/* ── Pipeline stats (header) ── */
+
+function PipelineStats() {
+  const [stats, setStats] = useState({ tickMs: 0, bleMs: 0, wps: 0, drops: 0, queue: false });
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const ble = getBleWriteStats();
+      const pipe = getPipelineTimings();
+      setStats({
+        tickMs: Math.round(pipe.totalTickMs),
+        bleMs: ble.lastWriteMs,
+        wps: ble.writesPerSec,
+        drops: ble.droppedPerSec,
+        queue: ble.queueAgeMs > 80,
+      });
+    }, 300);
+    return () => clearInterval(id);
+  }, []);
+
+  const warn = stats.tickMs > 20 || stats.queue;
+
+  return (
+    <span className={`text-[8px] font-mono leading-none ${warn ? 'text-red-400' : 'text-muted-foreground/60'}`}>
+      {stats.tickMs}ms · BLE {stats.bleMs}ms · {stats.wps}w/s
+      {stats.drops > 0 && <span className="text-red-400"> ⚠{stats.drops}d/s</span>}
+      {stats.queue && <span className="text-red-400"> Q!</span>}
+    </span>
+  );
+}
+
 /* ── Mini live chart (last ~3s) ── */
 
 function MiniChart() {
@@ -259,6 +291,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         <div className="flex items-center gap-2">
           <h2 className="text-xs font-bold tracking-widest uppercase text-foreground/80">Mixer</h2>
           {conn && <span className="text-[9px] font-mono text-primary/60">{conn.device?.name}</span>}
+          <PipelineStats />
         </div>
         <div className="flex items-center gap-1.5">
           {/* Idle color dropdown */}
