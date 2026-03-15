@@ -70,7 +70,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
     engine.setPlaying(isPlaying);
     engine.setTickMs(tickMs);
     if (char) engine.setChar(char);
-    if (trackName) engine.setTrackName(trackName);
+    if (trackName) { lastTrackRef.current = trackName; }
 
     // Listen for ticks → update chart + forward status
     const unsub = engine.onTick((data: TickData) => {
