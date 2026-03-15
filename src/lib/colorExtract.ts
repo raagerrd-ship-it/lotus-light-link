@@ -112,12 +112,6 @@ function fetchWithTimeout(url: string, timeoutMs = 3000): Promise<Response> {
   return fetch(url, { mode: 'cors', signal: ac.signal }).finally(() => clearTimeout(timer));
 }
 
-export async function extractDominantColor(
-  imageUrl: string
-): Promise<[number, number, number] | null> {
-  const palette = await extractPalette(imageUrl);
-  return palette.length > 0 ? palette[0] : null;
-}
 
 export async function extractPalette(
   imageUrl: string,
