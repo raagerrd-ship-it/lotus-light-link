@@ -177,7 +177,7 @@ const Index = () => {
     setActiveCalibration(cal);
   }, [connection?.device?.name]);
 
-  const handlePresetSave = useCallback((name: PresetName, cal: import("@/lib/lightCalibration").LightCalibration) => {
+  const handlePresetSave = useCallback((name: PresetName, cal: import("@/lib/engine/lightCalibration").LightCalibration) => {
     savePresetCalibration(name, cal);
     setActivePresetState(name);
     setActivePreset(name);
