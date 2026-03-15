@@ -28,8 +28,8 @@ function boostSaturation(r: number, g: number, b: number): RGB {
 
   const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
 
-  // Boost: push saturation toward 1.0, clamp lightness to bright pastel range
-  const boostedS = Math.min(1, s * 2.0);
+  // Boost: push saturation toward 1.0, enforce minimum so we never get white/gray
+  const boostedS = Math.max(0.4, Math.min(1, s * 2.0));
   const boostedL = Math.max(0.45, Math.min(0.65, l));
 
   // HSL → RGB
