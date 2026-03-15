@@ -403,7 +403,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           }
 
           const absoluteFactor = Math.min(1, Math.max(0.08, (agcMaxRef.current * loudFactor) / agcPeakMaxRef.current));
-          const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+          const effectiveMax = 100 * absoluteFactor;
 
           // micBands already computed above
           bassRef.current = micBands.bassRms;
