@@ -38,6 +38,8 @@ const SLIDERS: SliderDef[] = [
   { key: 'bandAgcAttack', label: 'Band AGC attack', shortLabel: 'BAtk', min: 0.02, max: 0.5, step: 0.01, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC fångar toppar.' },
   { key: 'bandAgcDecay', label: 'Band AGC decay', shortLabel: 'BDcy', min: 0.990, max: 0.999, step: 0.001, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC släpper efter toppar.', format: v => v.toFixed(3) },
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
+  // Punch
+  { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 0, max: 100, step: 5, unit: '%', group: 'Punch', description: 'Ljusstyrka över detta värde → vit färg. 0 = av.' },
 ];
 
 const BYPASS_VALUES: Record<string, number> = {
