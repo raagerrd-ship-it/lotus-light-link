@@ -29,8 +29,6 @@ export default function DebugOverlay() {
   const rmsRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef<HTMLDivElement>(null);
   const nrgRef = useRef<HTMLDivElement>(null);
-  const dncRef = useRef<HTMLDivElement>(null);
-  const hpyRef = useRef<HTMLDivElement>(null);
   const loudRef = useRef<HTMLDivElement>(null);
   const ljusRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
