@@ -162,17 +162,15 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   return connectToDevice(device);
 }
 
-// Pre-allocated buffers to avoid GC in hot loops
+// Pre-allocated buffer to avoid GC in hot loops
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
-const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
 // --- BLE write state (tick-worker drives timing at 25ms/40fps) ---
 
 let _char: any = null;
-let _pendingBright: number | null = null;
 let _pendingColor: [number, number, number] | null = null;
-let _lastSentBright = -1;
 let _lastSentColor: [number, number, number] = [-1, -1, -1];
+let _lastBright = 0; // For callback/debug only — not sent as separate packet
 let _writing = false;
 let _lastWriteTime = 0;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
@@ -234,50 +232,28 @@ export function getBleWriteStats(): BleWriteStats {
 }
 
 async function _flush() {
-  if (_writing || !_char) return;
-
-  const writeColor = !!_pendingColor;
-  const writeBright = _pendingBright != null;
-
-  if (!writeColor && !writeBright) return;
+  if (_writing || !_char || !_pendingColor) return;
 
   _writing = true;
   const writeStart = performance.now();
   _lastWriteTime = writeStart;
 
   try {
-    let sentR = _lastSentColor[0], sentG = _lastSentColor[1], sentB = _lastSentColor[2];
-    let sentBright = _lastSentBright;
+    const r = _pendingColor[0] & 0xff;
+    const g = _pendingColor[1] & 0xff;
+    const b = _pendingColor[2] & 0xff;
+    _colorBuf[4] = r;
+    _colorBuf[5] = g;
+    _colorBuf[6] = b;
+    _pendingColor = null;
 
-    if (writeColor && _pendingColor) {
-      sentR = _pendingColor[0] & 0xff;
-      sentG = _pendingColor[1] & 0xff;
-      sentB = _pendingColor[2] & 0xff;
-      // BLEDOM ELK protocol: byte order is R, G, B
-      _colorBuf[4] = sentR;
-      _colorBuf[5] = sentG;
-      _colorBuf[6] = sentB;
-      await _char.writeValueWithoutResponse(_colorBuf);
-      _lastSentColor = [sentR, sentG, sentB];
-      _pendingColor = null;
-      // 1ms delay between color and brightness — BLEDOM needs this to parse correctly
-      if (writeBright && _pendingBright != null) {
-        await new Promise(r => setTimeout(r, 1));
-      }
-    }
-    if (writeBright && _pendingBright != null) {
-      sentBright = Math.max(0, Math.min(100, Math.round(_pendingBright)));
-      _brightBuf[3] = sentBright;
-      await _char.writeValueWithoutResponse(_brightBuf);
-      _lastSentBright = sentBright;
-      _pendingBright = null;
-    }
-
+    await _char.writeValueWithoutResponse(_colorBuf);
+    _lastSentColor = [r, g, b];
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
 
     if (_onWriteCallback) {
-      _onWriteCallback(sentBright, sentR, sentG, sentB);
+      _onWriteCallback(_lastBright, r, g, b);
     }
   } catch (e: any) {
     _errorCount++;
@@ -290,14 +266,12 @@ async function _flush() {
 
 export function setActiveChar(char: any) {
   _char = char;
-  _lastSentBright = -1;
   _lastSentColor = [-1, -1, -1];
 }
 
 /** Clear active char on disconnect to prevent stale GATT writes */
 export function clearActiveChar() {
   _char = null;
-  _pendingBright = null;
   _pendingColor = null;
 }
 
@@ -311,11 +285,7 @@ export function sendToBLE(_char_unused: any, r: number, g: number, b: number, br
     Math.round(g * scale),
     Math.round(b * scale),
   ];
-  _pendingBright = null; // Skip brightness packet — pre-multiplied RGB handles dimming
-  // Fire callback with original (pre-multiply) values for debug display
-  if (_onWriteCallback) {
-    _onWriteCallback(brightness, r, g, b);
-  }
+  _lastBright = brightness;
   if (!_writing) { _flush(); }
   _lastTickToWriteMs = 0;
   return Promise.resolve();
