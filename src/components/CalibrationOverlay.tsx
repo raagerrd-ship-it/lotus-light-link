@@ -36,6 +36,16 @@ const SLIDERS: SliderDef[] = [
   { key: 'whiteKickMs', label: 'Kick tid', shortLabel: 'Tid', min: 20, max: 200, step: 5, unit: 'ms', group: 'Kick', description: 'Hur länge den vita blixten varar vid en drop.' },
 ];
 
+const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
+  { color: [255, 60, 0], label: 'Orange' },
+  { color: [255, 0, 0], label: 'Röd' },
+  { color: [255, 140, 0], label: 'Amber' },
+  { color: [255, 200, 50], label: 'Varm vit' },
+  { color: [0, 80, 255], label: 'Blå' },
+  { color: [180, 0, 255], label: 'Lila' },
+  { color: [0, 255, 80], label: 'Grön' },
+];
+
 function formatValue(def: SliderDef, val: number): string {
   if (def.format) return def.format(val);
   if (def.step < 0.1) return val.toFixed(2);
