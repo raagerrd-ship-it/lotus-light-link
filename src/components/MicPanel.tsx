@@ -285,12 +285,12 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
-      // Palette rotation (time-driven, inside rAF — no separate timer)
+      // Palette rotation (time-driven, inside rAF — paused during idle/silence)
       const now = performance.now();
+      const isActive = isPlayingRef.current && quietFramesRef.current < SILENCE_FRAMES;
       const p = paletteRef.current;
-      if (p.length > 1) {
+      if (p.length > 1 && isActive) {
         if (nextRotationAtRef.current === 0) {
-          // First frame: schedule first rotation
           nextRotationAtRef.current = now + getRotationInterval(danceabilityRef.current);
         }
         if (now >= nextRotationAtRef.current) {
@@ -301,6 +301,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           nextRotationAtRef.current = now + interval;
           console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'next in', interval, 'ms');
         }
+      } else if (!isActive) {
+        // Reset rotation timer so it starts fresh when music resumes
+        nextRotationAtRef.current = 0;
       }
 
       // Crossfade blendedColor toward targetColor
