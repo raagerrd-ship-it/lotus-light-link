@@ -34,7 +34,6 @@ const SLIDERS: SliderDef[] = [
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -2.0, max: 3.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Negativt = förstärkt kontrast. Positivt = utjämnad. 0 = neutral.' },
   // AGC
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
-  { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
   // Punch
   { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 0, max: 100, step: 5, unit: '%', group: 'Punch', description: 'Ljusstyrka över detta värde → vit färg. 0 = av.' },
 ];
