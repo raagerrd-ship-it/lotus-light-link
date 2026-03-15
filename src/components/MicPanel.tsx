@@ -281,19 +281,28 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   // Decoupled chart rendering + sun pulse via rAF
   useEffect(() => {
     const drawLoop = () => {
-      // Only redraw chart when new data has been pushed (not during idle/pause)
-      if (chartDirtyRef.current && isPlayingRef.current) {
+      const isActive = isPlayingRef.current;
+
+      // Skip ALL work when paused — no crossfade, no sun updates, no chart
+      if (!isActive) {
+        // Reset rotation timer so it starts fresh when music resumes
+        nextRotationAtRef.current = 0;
+        rafIdRef.current = requestAnimationFrame(drawLoop);
+        return;
+      }
+
+      // Only redraw chart when new data has been pushed
+      if (chartDirtyRef.current) {
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) {
           drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
-      // Palette rotation (time-driven, inside rAF — paused during idle/silence)
+      // Palette rotation (time-driven, inside rAF)
       const now = performance.now();
-      const isActive = isPlayingRef.current;
       const p = paletteRef.current;
-      if (p.length > 1 && isActive) {
+      if (p.length > 1) {
         if (nextRotationAtRef.current === 0) {
           nextRotationAtRef.current = now + getRotationInterval(danceabilityRef.current);
         }
