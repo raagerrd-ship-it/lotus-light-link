@@ -609,6 +609,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             r: Math.max(r, 20),
             g: Math.max(g, 20),
             b: Math.max(b, 20),
+            rawPct: rawEnergyPctRef.current,
           };
           samplesRef.current.push(sample);
           pushChartSample(sample);
