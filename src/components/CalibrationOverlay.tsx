@@ -186,7 +186,7 @@ function MixerFader({
 /* ── Pipeline stats (header) ── */
 
 function PipelineStats() {
-  const [stats, setStats] = useState({ tickMs: 0, bleMs: 0, wps: 0, drops: 0, queue: false });
+  const [stats, setStats] = useState({ tickMs: 0, bleMs: 0, wps: 0, drops: 0, queueMs: 0 });
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -197,19 +197,18 @@ function PipelineStats() {
         bleMs: ble.lastWriteMs,
         wps: ble.writesPerSec,
         drops: ble.droppedPerSec,
-        queue: ble.queueAgeMs > 80,
+        queueMs: ble.queueAgeMs,
       });
     }, 300);
     return () => clearInterval(id);
   }, []);
 
-  const warn = stats.tickMs > 20 || stats.queue;
+  const warn = stats.tickMs > 20 || stats.queueMs > 80;
 
   return (
     <div className={`text-[10px] font-mono leading-tight ${warn ? 'text-red-400' : 'text-muted-foreground/70'}`}>
-      Pipeline {stats.tickMs.toFixed(1)}ms · BLE Write {stats.bleMs}ms · {stats.wps} writes/s
+      Pipeline {stats.tickMs.toFixed(1)}ms · BLE {stats.bleMs}ms · {stats.wps}w/s · Q {stats.queueMs}ms
       {stats.drops > 0 && <span className="text-red-400"> · ⚠ {stats.drops} drops/s</span>}
-      {stats.queue && <span className="text-red-400"> · Queue backlog!</span>}
     </div>
   );
 }
