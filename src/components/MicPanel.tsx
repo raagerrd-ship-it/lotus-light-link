@@ -13,6 +13,7 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   sonosVolume?: number;
   isPlaying?: boolean;
+  trackName?: string | null;
   historyLen?: number;
   tickMs?: number;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
@@ -20,7 +21,9 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 120;
 
-const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
+const AGC_LEARN_DURATION_MS = 20_000;
+
+const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -51,6 +54,11 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
   const isPlayingRef = useRef(isPlaying);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // AGC learn-then-lock state
+  const agcLockedRef = useRef(false);
+  const trackStartTimeRef = useRef(0);
+  const lastTrackNameRef = useRef<string | null>(null);
+
   // ── Prop sync effects ──
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => {
@@ -64,6 +72,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
     charRef.current = char;
     if (char) setActiveChar(char);
   }, [char]);
+
+  // ── Track change → reset AGC and start learning window ──
+  useEffect(() => {
+    if (!trackName || trackName === lastTrackNameRef.current) return;
+    lastTrackNameRef.current = trackName;
+    // Reset AGC to fresh defaults so the new track starts clean
+    agcRef.current = createAgcState(0.01, 0);
+    smoothedBassRef.current = 0;
+    smoothedMidHiRef.current = 0;
+    dynamicCenterRef.current = 0.5;
+    agcLockedRef.current = false;
+    trackStartTimeRef.current = performance.now();
+    console.log('[AGC] Track change → learning for 20s:', trackName);
+  }, [trackName]);
 
   // ── Calibration reload ──
   useEffect(() => {
@@ -179,10 +201,18 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
             lastVolumeRef.current = vol;
           }
 
-          // ── Global + per-band AGC ──
-          updateGlobalAgc(agc, smoothedRef.current);
-          updateBandAgc(bands.bassRms, agc, 'bass', cal.bandAgcAttack, cal.bandAgcDecay);
-          updateBandAgc(bands.midHiRms, agc, 'midHi', cal.bandAgcAttack, cal.bandAgcDecay);
+          // ── Check if learning window has elapsed → lock AGC ──
+          if (!agcLockedRef.current && trackStartTimeRef.current > 0 && (performance.now() - trackStartTimeRef.current) > AGC_LEARN_DURATION_MS) {
+            agcLockedRef.current = true;
+            console.log('[AGC] Locked after 20s learning. max=', agc.max.toFixed(5), 'bassMax=', agc.bassMax.toFixed(5));
+          }
+
+          // ── Global + per-band AGC (skip if locked) ──
+          if (!agcLockedRef.current) {
+            updateGlobalAgc(agc, smoothedRef.current);
+            updateBandAgc(bands.bassRms, agc, 'bass', cal.bandAgcAttack, cal.bandAgcDecay);
+            updateBandAgc(bands.midHiRms, agc, 'midHi', cal.bandAgcAttack, cal.bandAgcDecay);
+          }
 
           const rawBassNorm = normalizeBand(bands.bassRms, agc, 'bass');
           const rawMidHiNorm = normalizeBand(bands.midHiRms, agc, 'midHi');
