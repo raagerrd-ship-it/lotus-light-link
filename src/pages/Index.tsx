@@ -10,7 +10,7 @@ import {
   type BLEConnection, type BleReconnectStatus, type DeviceMode
 } from "@/lib/engine/bledom";
 import { addBleConnection, removeBleConnection } from "@/lib/engine/bleStore";
-import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun } from "lucide-react";
+import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun, X } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
@@ -140,10 +140,16 @@ const Index = () => {
     const newMode: DeviceMode = conn.mode === 'rgb' ? 'brightness' : 'rgb';
     setDeviceMode(conn.device?.id, newMode);
     updateCharMode(conn.characteristic, newMode);
-    conn.mode = newMode;
     setConnections(prev => prev.map(c =>
       c.device?.id === conn.device?.id ? { ...c, mode: newMode } : c
     ));
+  };
+
+  const handleDisconnectDevice = (conn: BLEConnection) => {
+    try { conn.device?.gatt?.disconnect(); } catch {}
+    removeActiveChar(conn.characteristic);
+    removeBleConnection(conn);
+    setConnections(prev => prev.filter(c => c.device?.id !== conn.device?.id));
   };
 
   const finishConnect = async (conn: BLEConnection) => {
@@ -255,45 +261,48 @@ const Index = () => {
           className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] transition-opacity duration-500 backdrop-blur-lg border-b border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.3)' }}
         >
-          <div className="flex items-center gap-2">
-            {connected ? (
-              <>
-                <button
-                  onClick={() => handleConnect(true)}
-                  className="p-0.5 rounded-full active:scale-90 transition-transform"
-                  title="Byt enhet"
-                >
-                  <Bluetooth className="w-3.5 h-3.5" style={{ color: isOn ? accent : "hsl(var(--muted-foreground))" }} />
-                </button>
-                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase truncate max-w-[5rem]">
-                  {connections.length === 1
-                    ? (connections[0].device.name || "BLEDOM01")
-                    : `${connections.length} enheter`
-                  }
-                </span>
-                {/* Per-device mode toggles */}
-                {connections.map((c, i) => (
-                  <button
-                    key={c.device?.id || i}
-                    onClick={() => handleToggleDeviceMode(c)}
-                    className="p-0.5 rounded-full active:scale-90 transition-transform"
-                    title={`${c.device?.name || `Enhet ${i+1}`}: ${c.mode === 'rgb' ? 'RGB' : 'Brightness'} — tryck för att byta`}
-                  >
-                    {c.mode === 'rgb'
-                      ? <Palette className="w-3 h-3 text-foreground/60" />
-                      : <Sun className="w-3 h-3 text-foreground/60" />
-                    }
-                  </button>
-                ))}
-                {/* Add device button */}
-                <button
-                  onClick={handleAddDevice}
-                  className="p-0.5 rounded-full active:scale-90 transition-transform"
-                  title="Lägg till enhet"
-                  disabled={busy}
-                >
-                  <Plus className="w-3 h-3 text-foreground/50 hover:text-foreground/80" />
-                </button>
+           <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
+             {connected ? (
+               <>
+                 {/* Per-device chips */}
+                 {connections.map((c, i) => (
+                   <div
+                     key={c.device?.id || i}
+                     className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 shrink-0"
+                     style={{ background: 'hsl(var(--foreground) / 0.08)' }}
+                   >
+                     <Bluetooth className="w-2.5 h-2.5 shrink-0" style={{ color: isOn ? accent : 'hsl(var(--muted-foreground))' }} />
+                     <span className="text-[10px] font-bold tracking-wide text-foreground/70 uppercase truncate max-w-[4rem]">
+                       {c.device?.name || `BLE${i + 1}`}
+                     </span>
+                     <button
+                       onClick={() => handleToggleDeviceMode(c)}
+                       className="p-0.5 rounded-full active:scale-90 transition-transform"
+                       title={c.mode === 'rgb' ? 'RGB → Brightness' : 'Brightness → RGB'}
+                     >
+                       {c.mode === 'rgb'
+                         ? <Palette className="w-2.5 h-2.5 text-foreground/50" />
+                         : <Sun className="w-2.5 h-2.5 text-foreground/50" />
+                       }
+                     </button>
+                     <button
+                       onClick={() => handleDisconnectDevice(c)}
+                       className="p-0.5 rounded-full active:scale-90 transition-transform"
+                       title="Koppla bort"
+                     >
+                       <X className="w-2.5 h-2.5 text-foreground/40 hover:text-foreground/80" />
+                     </button>
+                   </div>
+                 ))}
+                 {/* Add device */}
+                 <button
+                   onClick={handleAddDevice}
+                   className="p-1 rounded-full active:scale-90 transition-transform shrink-0"
+                   title="Lägg till enhet"
+                   disabled={busy}
+                 >
+                   <Plus className="w-3 h-3 text-foreground/50 hover:text-foreground/80" />
+                 </button>
                 <div className="flex items-center gap-0.5 ml-1">
                   {PRESET_NAMES.map(name => (
                     <button
