@@ -54,6 +54,27 @@ const SLIDERS: SliderDef[] = [
   { key: 'bandAgcDecay', label: 'Band AGC decay', shortLabel: 'BDcy', min: 0.990, max: 0.999, step: 0.001, unit: '', group: 'AGC', description: 'Hur snabbt per-band AGC släpper efter toppar. Lägre = snabbare decay, högre = längre minne.', format: v => v.toFixed(3) },
 ];
 
+const BYPASS_VALUES: Record<string, number> = {
+  minBrightness: 0,
+  maxBrightness: 100,
+  bassWeight: 0.5,
+  colorModStrength: 0,
+  hiShelfGainDb: 0,
+  attackAlpha: 0.9,
+  releaseAlpha: 0.3,
+  dynamicDamping: 0,
+  bpmReleaseScale: 0,
+  crossfadeSpeed: DEFAULT_CALIBRATION.crossfadeSpeed,
+  saturationBoost: 1.0,
+  energyInfluence: 0,
+  danceabilityInfluence: 0,
+  happinessInfluence: 0,
+  whiteKickThreshold: 100,
+  whiteKickMs: DEFAULT_CALIBRATION.whiteKickMs,
+  bandAgcAttack: 0.1,
+  bandAgcDecay: 0.995,
+};
+
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
   { color: [255, 60, 0], label: 'Orange' },
   { color: [255, 0, 0], label: 'Röd' },
@@ -147,11 +168,30 @@ function MixerFader({
         style={{ height: '6rem', background: 'hsl(var(--secondary))' }}
         onPointerDown={handlePointer}
       >
-        {/* Fill from bottom */}
-        <div
-          className="absolute bottom-0 left-0 right-0 rounded-full transition-none"
-          style={{ height: `${pct}%`, background: accentColor, opacity: 0.5 }}
-        />
+        {/* Fill from bypass ref to current value */}
+        {(() => {
+          const bypassVal = BYPASS_VALUES[def.key] ?? def.min;
+          const bypassPct = ((bypassVal - def.min) / (def.max - def.min)) * 100;
+          const bottom = Math.min(pct, bypassPct);
+          const top = Math.max(pct, bypassPct);
+          return (
+            <div
+              className="absolute left-0 right-0 rounded-full transition-none"
+              style={{ bottom: `${bottom}%`, height: `${top - bottom}%`, background: accentColor, opacity: 0.45 }}
+            />
+          );
+        })()}
+        {/* Bypass reference line */}
+        {(() => {
+          const bypassVal = BYPASS_VALUES[def.key] ?? def.min;
+          const bypassPct = ((bypassVal - def.min) / (def.max - def.min)) * 100;
+          return (
+            <div
+              className="absolute left-0 right-0 h-px transition-none"
+              style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }}
+            />
+          );
+        })()}
         {/* Thumb */}
         <div
           className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border transition-none"
