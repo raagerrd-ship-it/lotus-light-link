@@ -43,7 +43,7 @@ const SLIDERS: SliderDef[] = [
   { key: 'saturationBoost', label: 'Färgmättnad', shortLabel: 'Sat', min: 0.5, max: 2.0, step: 0.05, unit: '×', group: 'Färg', description: 'Justerar färgmättnaden. 1.0 = neutral, <1 = urtvättad, >1 = intensivare färger.' },
   // Traits
   { key: 'energyInfluence', label: 'Energy', shortLabel: 'Engy', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket låtens energi-värde påverkar drop-detection och ljusdynamik. 0% = ignorera energy, 100% = full effekt.' },
-  { key: 'danceabilityInfluence', label: 'Danceability', shortLabel: 'Danc', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket danceability påverkar palett-rotationshastighet. 0% = neutral hastighet, 100% = full effekt.' },
+  { key: 'danceabilityInfluence', label: 'Danceability', shortLabel: 'Danc', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket danceability påverkar ljusdynamik. 0% = ignorera, 100% = full effekt.' },
   { key: 'happinessInfluence', label: 'Happiness', shortLabel: 'Happ', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket happiness påverkar färgtemperatur och modulering. 0% = neutral, 100% = full effekt (varmare vid glad musik).' },
   // Kick
   { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
