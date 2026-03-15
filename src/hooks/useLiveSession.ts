@@ -12,17 +12,9 @@ export interface MasterDebugState {
   smoothMs?: number;
   bleCallMs?: number;
   totalTickMs?: number;
-  curveStatus?: 'none' | 'recording' | 'saved' | 'loading';
-  curveTrackName?: string | null;
-  curveSamples?: number;
   sonosConnected?: boolean;
   sonosRtt?: number;
-  // Calibration & sync fields
-  autoDriftMs?: number;
-  chainLatencyMs?: number;
-  bleLatencyMs?: number;
-  activeLookAheadMs?: number;
-  syncMode?: 'curve' | 'mic';
+  syncMode?: 'mic';
   bleMinIntervalMs?: number;
   maxBrightness?: number;
   dynamicDamping?: number;

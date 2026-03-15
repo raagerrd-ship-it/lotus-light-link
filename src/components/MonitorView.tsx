@@ -17,7 +17,6 @@ function DebugPanel({ d }: { d: MasterDebugState }) {
       <div>sonos: {d.sonosConnected ? <span className="text-green-400">ok</span> : <span className="text-red-400">offline</span>} {d.sonosRtt != null && <span>RTT {Math.round(d.sonosRtt)}ms</span>}</div>
       <div>BLE w/s: <span className="text-foreground">{d.bleWritesPerSec ?? 0}</span> e2e: <span className="text-foreground">{Math.round(d.e2eMs ?? 0)}ms</span> tick: <span className="text-foreground">{(d.totalTickMs ?? 0).toFixed(1)}ms</span></div>
       <div className="mt-1 pt-1 border-t border-border/30">
-        <div>BLE latens: <span className="text-foreground">{Math.round(d.bleLatencyMs ?? 0)}ms</span></div>
         {d.bleMinIntervalMs != null && <div>BLE intervall: <span className="text-foreground">{d.bleMinIntervalMs}ms</span></div>}
       </div>
       <div className="mt-1 pt-1 border-t border-border/30">

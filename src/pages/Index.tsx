@@ -131,8 +131,6 @@ const Index = () => {
           totalTickMs: pipeline.totalTickMs,
           sonosConnected: !!nowPlaying?.trackName,
           sonosRtt: smoothedRtt,
-          bleLatencyMs: cal.bleLatencyMs,
-          activeLookAheadMs: cal.bleLatencyMs,
           syncMode: 'mic',
           bleMinIntervalMs: getBleMinInterval(),
           maxBrightness: cal.maxBrightness,
@@ -408,9 +406,7 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        
         bleMinIntervalMs={getBleMinInterval()}
-        bleLatencyMs={activeCalibration.bleLatencyMs}
         deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}
