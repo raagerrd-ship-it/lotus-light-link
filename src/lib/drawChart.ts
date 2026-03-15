@@ -87,7 +87,7 @@ export function drawIntensityChart(
   if (points.length >= 2) {
     const bottom = chartTop + chartHeight;
     const fillGrad = ctx.createLinearGradient(0, chartTop, 0, bottom);
-    fillGrad.addColorStop(0, `rgba(${baseR}, ${baseG}, ${baseB}, 0.5)`);
+    fillGrad.addColorStop(0, `rgba(${baseR}, ${baseG}, ${baseB}, 1)`);
     fillGrad.addColorStop(1, `rgba(${baseR}, ${baseG}, ${baseB}, 0)`);
 
     ctx.beginPath();
