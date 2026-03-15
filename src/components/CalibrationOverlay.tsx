@@ -331,7 +331,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
       bpmReleaseScale: 0,
       energyInfluence: 0,
       whiteKickThreshold: 100,
-      whiteKickThreshold: 100,
       bandAgcAttack: 0.1,
       bandAgcDecay: 0.995,
     };
