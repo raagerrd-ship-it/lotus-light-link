@@ -28,6 +28,7 @@ const Index = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
+  const punchFlashRef = useRef<HTMLDivElement>(null);
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
@@ -118,6 +119,13 @@ const Index = () => {
     debugData.bleColorSource = status.bleColorSource ?? 'normal';
     if (status.micRms != null) debugData.micRms = status.micRms;
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
+
+    // Punch flash — detect white color (punch white sends 255,255,255)
+    const el = punchFlashRef.current;
+    if (el) {
+      const isPunch = status.bleSentColor && status.bleSentColor[0] === 255 && status.bleSentColor[1] === 255 && status.bleSentColor[2] === 255 && (status.bleSentBright ?? 0) > 50;
+      el.style.opacity = isPunch ? '0.6' : '0';
+    }
   }, []);
 
   // Auto-hide overlay after 3s
@@ -200,6 +208,11 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
+        <div
+          ref={punchFlashRef}
+          className="absolute inset-0 pointer-events-none transition-opacity"
+          style={{ opacity: 0, background: 'radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.7) 0%, transparent 70%)', transitionDuration: '80ms' }}
+        />
         <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
