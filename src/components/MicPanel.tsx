@@ -204,6 +204,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       blendedColorRef.current = palette[0];
       colorRef.current = palette[0];
     }
+    // Reset rotation timer so first advance uses fresh interval
+    nextRotationAtRef.current = 0;
     // Reset AGC on new palette
     lastColorStateRef.current = 'normal';
     agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
