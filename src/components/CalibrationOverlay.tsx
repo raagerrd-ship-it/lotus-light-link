@@ -362,7 +362,10 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
               </div>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-7 h-7" title="Återställ allt">
+          <Button variant="ghost" size="sm" onClick={bypassAll} className="rounded-full h-7 px-2 text-[9px] font-bold tracking-wide uppercase" title="Nollställ – ingen påverkan">
+            Bypass
+          </Button>
+          <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-7 h-7" title="Återställ standard">
             <RotateCcw className="w-3.5 h-3.5" />
           </Button>
           <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full w-7 h-7">
