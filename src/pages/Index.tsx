@@ -132,7 +132,7 @@ const Index = () => {
           sonosConnected: !!nowPlaying?.trackName,
           sonosRtt: smoothedRtt,
           syncMode: 'mic',
-          bleMinIntervalMs: getBleMinInterval(),
+          bleMinIntervalMs: 50,
           maxBrightness: cal.maxBrightness,
           dynamicDamping: cal.dynamicDamping,
           attackAlpha: cal.attackAlpha,
