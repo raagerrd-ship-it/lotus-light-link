@@ -142,6 +142,14 @@ export async function loadSettingsFromCloud(): Promise<void> {
         setDeviceMode(deviceId, mode as any);
       }
     }
+
+    // Apply color source preference
+    if (data.color_source) {
+      localStorage.setItem('colorSource', data.color_source);
+    }
+    if (Array.isArray(data.manual_color) && data.manual_color.length === 3) {
+      localStorage.setItem('manualColor', JSON.stringify(data.manual_color));
+    }
   } catch (e) {
     console.warn('[settings] cloud load failed', e);
   }

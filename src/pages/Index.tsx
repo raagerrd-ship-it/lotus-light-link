@@ -354,6 +354,50 @@ const Index = () => {
             )}
           </div>
           <div className="flex items-center gap-1">
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (colorSource === 'proxy') {
+                    setColorSource('manual');
+                    localStorage.setItem('colorSource', 'manual');
+                    setShowColorPicker(true);
+                  } else {
+                    setColorSource('proxy');
+                    localStorage.setItem('colorSource', 'proxy');
+                    setShowColorPicker(false);
+                    lastArtUrlRef.current = null; // force re-extract
+                  }
+                  if (user) saveSettingsToCloud();
+                }}
+                className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+                title={colorSource === 'proxy' ? 'Byt till manuell färg' : 'Byt till proxy-färg'}
+                style={colorSource === 'manual' ? { color: accent } : undefined}
+              >
+                {colorSource === 'proxy' ? <Plug className="w-3.5 h-3.5" /> : <Pipette className="w-3.5 h-3.5" />}
+              </Button>
+              {showColorPicker && colorSource === 'manual' && (
+                <div className="absolute right-0 top-full mt-1 p-2 rounded-lg backdrop-blur-xl border border-white/10 z-50" style={{ background: 'hsl(var(--background) / 0.85)' }}>
+                  <input
+                    type="color"
+                    value={`#${manualColor.map(c => c.toString(16).padStart(2, '0')).join('')}`}
+                    onChange={(e) => {
+                      const hex = e.target.value;
+                      const rgb: [number, number, number] = [
+                        parseInt(hex.slice(1, 3), 16),
+                        parseInt(hex.slice(3, 5), 16),
+                        parseInt(hex.slice(5, 7), 16),
+                      ];
+                      setManualColor(rgb);
+                      localStorage.setItem('manualColor', JSON.stringify(rgb));
+                      if (user) saveSettingsToCloud();
+                    }}
+                    className="w-10 h-10 rounded-lg cursor-pointer border-0 p-0 bg-transparent"
+                  />
+                </div>
+              )}
+            </div>
             <AuthButton user={user} loading={authLoading} onSignIn={signIn} onSignOut={signOut} accent={accent} />
             <Button
               variant="ghost"
