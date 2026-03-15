@@ -694,7 +694,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
     return () => {
       stopped = true;
-      onBleWrite(null);
       idleCleanupRef.current?.();
       if (agcSaveTimerRef.current) clearInterval(agcSaveTimerRef.current);
       workerRef.current?.postMessage("stop");

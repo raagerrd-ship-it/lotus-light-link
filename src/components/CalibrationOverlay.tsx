@@ -230,27 +230,21 @@ function MixerFader({
 /* ── Pipeline stats (header) ── */
 
 function PipelineStats() {
-  const [stats, setStats] = useState({ tickMs: 0, bleMs: 0, wps: 0 });
+  const [stats, setStats] = useState({ tickMs: 0 });
 
   useEffect(() => {
     const id = setInterval(() => {
-      const ble = getBleWriteStats();
       const pipe = getPipelineTimings();
-      setStats({
-        tickMs: pipe.totalTickMs,
-        bleMs: ble.lastWriteMs,
-        wps: ble.writesPerSec,
-        
-      });
+      setStats({ tickMs: pipe.totalTickMs });
     }, 300);
     return () => clearInterval(id);
   }, []);
 
-  const warn = stats.tickMs > 20 || stats.bleMs > 24;
+  const warn = stats.tickMs > 20;
 
   return (
     <div className={`text-[10px] font-mono leading-tight ${warn ? 'text-red-400' : 'text-muted-foreground/70'}`}>
-      Pipeline {stats.tickMs.toFixed(1)}ms · BLE {stats.bleMs}ms · {stats.wps}w/s
+      Pipeline {stats.tickMs.toFixed(1)}ms
     </div>
   );
 }

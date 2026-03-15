@@ -167,19 +167,8 @@ const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 
 // --- BLE write state (tick-worker drives timing) ---
 
 let _char: any = null;
-let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
-
-/** Register callback invoked after each actual BLE write with the sent values */
-export function onBleWrite(cb: ((bright: number, r: number, g: number, b: number) => void) | null) {
-  _onWriteCallback = cb;
-}
 
 // --- Stats (used by CalibrationOverlay PipelineStats) ---
-
-export interface BleWriteStats {
-  writesPerSec: number;
-  lastWriteMs: number;
-}
 
 export interface PipelineTimings {
   rmsMs: number;
@@ -191,26 +180,6 @@ let _pipelineTimings: PipelineTimings = { rmsMs: 0, smoothMs: 0, bleCallMs: 0, t
 
 export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
 export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
-
-let _writeCount = 0;
-let _statsStart = performance.now();
-let _lastWriteMs = 0;
-let _lastBright = 0;
-
-export function getBleWriteStats(): BleWriteStats {
-  const now = performance.now();
-  const elapsed = (now - _statsStart) / 1000;
-  const wps = elapsed > 0 ? _writeCount / elapsed : 0;
-
-  if (elapsed > 2) {
-    _writeCount = 0;
-    _statsStart = now;
-  }
-  return {
-    writesPerSec: Math.round(wps),
-    lastWriteMs: Math.round(_lastWriteMs),
-  };
-}
 
 export function setActiveChar(char: any) {
   _char = char;
@@ -229,14 +198,9 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   _colorBuf[4] = Math.round(r * scale);
   _colorBuf[5] = Math.round(g * scale);
   _colorBuf[6] = Math.round(b * scale);
-  _lastBright = brightness;
 
-  const t0 = performance.now();
   try {
     await _char.writeValueWithoutResponse(_colorBuf);
-    _writeCount++;
-    _lastWriteMs = performance.now() - t0;
-    _onWriteCallback?.(_lastBright, _colorBuf[4], _colorBuf[5], _colorBuf[6]);
   } catch (e: any) {
     console.warn('[BLE] write error:', e?.message);
   }
