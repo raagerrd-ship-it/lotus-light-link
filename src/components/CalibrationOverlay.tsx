@@ -251,7 +251,6 @@ function PipelineStats() {
   return (
     <div className={`text-[10px] font-mono leading-tight ${warn ? 'text-red-400' : 'text-muted-foreground/70'}`}>
       Pipeline {stats.tickMs.toFixed(1)}ms · BLE {stats.bleMs}ms · {stats.wps}w/s
-      {stats.drops > 0 && <span className="text-red-400"> · ⚠ {stats.drops} drops/s</span>}
     </div>
   );
 }
