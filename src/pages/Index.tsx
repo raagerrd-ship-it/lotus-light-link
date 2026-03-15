@@ -348,11 +348,11 @@ const Index = () => {
               <input
                 type="range"
                 min={25}
-                max={500}
+                max={125}
                 step={1}
                 value={tickMs}
                 onChange={(e) => setTickMs(Number(e.target.value))}
-                className="w-20 h-1 accent-primary"
+                className="w-80 h-1 accent-primary"
               />
               <span className="text-[10px] font-mono text-muted-foreground w-8">{tickMs}ms</span>
             </div>
