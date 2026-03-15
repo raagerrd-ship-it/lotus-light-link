@@ -174,6 +174,7 @@ const Index = () => {
   const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
   const [bleBaseColor, setBleBaseColor] = useState<[number, number, number] | null>(null);
   const [bleWriteStats, setBleWriteStats] = useState<ReturnType<typeof getBleWriteStats> | null>(null);
+  const [pipelinePeakMs, setPipelinePeakMs] = useState(0);
   const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
 
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
