@@ -271,20 +271,30 @@ async function _flush() {
   if (_writing || !_char || !_pendingColor) return;
   if (performance.now() < _backoffUntil) return;
 
+  // Dedup: skip if color hasn't changed
+  const r = _pendingColor[0] & 0xff;
+  const g = _pendingColor[1] & 0xff;
+  const b = _pendingColor[2] & 0xff;
+  if (r === _lastSentColor[0] && g === _lastSentColor[1] && b === _lastSentColor[2]) {
+    _pendingColor = null;
+    _dropCount++;
+    return;
+  }
+
   _writing = true;
   const writeStart = performance.now();
   _lastWriteTime = writeStart;
 
   try {
-    const r = _pendingColor[0] & 0xff;
-    const g = _pendingColor[1] & 0xff;
-    const b = _pendingColor[2] & 0xff;
     _colorBuf[4] = r;
     _colorBuf[5] = g;
     _colorBuf[6] = b;
     _pendingColor = null;
 
-    await _char.writeValueWithoutResponse(_colorBuf);
+    // Use writeValue (WITH response) for backpressure — prevents OS buffer buildup.
+    // writeValueWithoutResponse returns instantly, causing an unbounded queue
+    // in the OS Bluetooth stack that creates minutes of latency.
+    await _char.writeValue(_colorBuf);
     _lastSentColor = [r, g, b];
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
@@ -292,6 +302,13 @@ async function _flush() {
 
     if (_onWriteCallback) {
       _onWriteCallback(_lastBright, r, g, b);
+    }
+
+    // If new color arrived while writing, flush again after a short yield
+    if (_pendingColor) {
+      _writing = false;
+      _flush();
+      return;
     }
   } catch (e: any) {
     _errorCount++;
