@@ -135,7 +135,7 @@ function updateBandAgc(
 }
 
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus, onColorChange }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
