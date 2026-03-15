@@ -316,8 +316,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const bypassAll = useCallback(() => {
     const neutral: LightCalibration = {
       ...DEFAULT_CALIBRATION,
-      minBrightness: 0,
-      maxBrightness: 100,
       bassWeight: 0.5,
       hiShelfGainDb: 0,
       attackAlpha: 1.0,

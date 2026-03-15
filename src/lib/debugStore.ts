@@ -44,7 +44,7 @@ export const debugData: DebugData = {
   isPlayingState: true,
   energy: null,
   loudness: null,
-  maxBrightness: 100,
+  
   dynamicDamping: 0,
   dropActive: false,
   bleSentColor: null,

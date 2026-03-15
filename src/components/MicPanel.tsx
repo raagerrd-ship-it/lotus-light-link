@@ -462,7 +462,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
 
           energyNorm = Math.max(0, Math.min(1, energyNorm));
 
-          const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
+          const rawPct = (energyNorm * effectiveMax) / 100;
           const pct = Math.round(rawPct * 100);
 
           // ── Drop detection (uses bassRms, not total RMS) ──

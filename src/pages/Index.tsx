@@ -72,7 +72,6 @@ const Index = () => {
   }, [trackTraits.energy, trackTraits.loudness]);
 
   useEffect(() => {
-    debugData.maxBrightness = activeCalibration.maxBrightness;
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
   }, [activeCalibration]);
 
