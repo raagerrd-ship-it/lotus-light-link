@@ -195,7 +195,6 @@ export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
 export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
 
 let _writeCount = 0;
-let _dropCount = 0;
 let _statsStart = performance.now();
 let _lastWriteMs = 0;
 let _lastBright = 0;
