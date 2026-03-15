@@ -197,8 +197,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
     colorRef.current = currentColor;
   }, [currentColor]);
 
-  // Palette rotation is now driven inside the rAF loop (no separate timer)
-
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
 
   useEffect(() => {
