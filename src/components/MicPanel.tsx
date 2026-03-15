@@ -602,12 +602,14 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
         onBleWrite((bright, r, g, b) => {
           if (stopped) return;
-          samplesRef.current.push({
+          const sample: ChartSample = {
             pct: bright,
             r: Math.max(r, 20),
             g: Math.max(g, 20),
             b: Math.max(b, 20),
-          });
+          };
+          samplesRef.current.push(sample);
+          pushChartSample(sample);
           if (samplesRef.current.length > effectiveHistoryLen) {
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
