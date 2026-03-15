@@ -435,7 +435,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
 
           // micBands already computed above
-          bassRef.current = micBands.lo;
+          bassRef.current = micBands.bassRms;
           midHiRef.current = micBands.midHiRms;
 
           // ── Per-band AGC for frequency-based brightness ──
