@@ -7,6 +7,7 @@ import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
   sendToBLE, sendPower, setActiveChar, clearActiveChar, getLastTickToWriteMs,
+  sendHardwareBrightness,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
