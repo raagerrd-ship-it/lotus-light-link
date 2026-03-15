@@ -188,12 +188,14 @@ const Index = () => {
     return () => { onBleWrite(null); clearInterval(id); };
   }, [isMaster]);
 
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     setLivePaletteIndex(status.paletteIndex);
-    setBleColorSource(status.isWhiteKick ? 'white' : status.isDrop ? 'white' : 'normal');
+    if (status.bleSentColor) setBleSentColor(status.bleSentColor);
+    if (status.bleSentBright != null) setBleSentBright(status.bleSentBright);
+    setBleColorSource(status.bleColorSource ?? (status.isDrop ? 'white' : 'normal'));
     const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
     updateLiveSession({
       color_r: r,
