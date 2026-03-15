@@ -342,21 +342,6 @@ const Index = () => {
               <span className="text-xs text-muted-foreground">Ej ansluten</span>
             )}
           </div>
-          {/* Tick interval tuning slider */}
-          {connection && (
-            <div className="flex items-center gap-1.5 mx-2">
-              <input
-                type="range"
-                min={25}
-                max={125}
-                step={1}
-                value={tickMs}
-                onChange={(e) => setTickMs(Number(e.target.value))}
-                className="w-80 h-1 accent-primary"
-              />
-              <span className="text-[10px] font-mono text-muted-foreground w-8">{tickMs}ms</span>
-            </div>
-          )}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
