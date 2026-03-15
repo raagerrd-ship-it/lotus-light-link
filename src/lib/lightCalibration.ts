@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 const STORAGE_KEY = 'light-calibration';
 const DEVICE_STORAGE_KEY = 'light-calibration-device';
 const IDLE_COLOR_KEY = 'idle-color';
+const PRESETS_KEY = 'calibration-presets';
+const ACTIVE_PRESET_KEY = 'active-preset';
 
 const DEFAULT_IDLE_COLOR: [number, number, number] = [255, 60, 0];
 
