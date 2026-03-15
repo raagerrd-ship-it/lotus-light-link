@@ -238,10 +238,16 @@ export function getBleWriteStats(): BleWriteStats {
     _dropCount = 0;
     _statsStart = performance.now();
   }
+  const now = performance.now();
+  if (now - _peakWriteResetTime > 5000) {
+    _peakWriteMs = 0;
+    _peakWriteResetTime = now;
+  }
   return {
     writesPerSec: Math.round(wps),
     droppedPerSec: Math.round(dps),
     lastWriteMs: Math.round(_lastActualWriteMs),
+    peakWriteMs: Math.round(_peakWriteMs),
     queueAgeMs: Math.round(_lastTickToWriteMs),
     errorCount: _errorCount,
     lastError: _lastError,
