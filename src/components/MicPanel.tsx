@@ -676,6 +676,14 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             quietFrames: 0,
           });
 
+          setPipelineTimings({
+            rmsMs: rmsEnd - tickStart,
+            smoothMs: smoothEnd - rmsEnd,
+            bleCallMs: bleEnd - smoothEnd,
+            totalTickMs: bleEnd - tickStart,
+          });
+        };
+
         // AGC save on separate interval — out of hot tick path
         agcSaveTimerRef.current = window.setInterval(() => {
           if (stopped) return;
