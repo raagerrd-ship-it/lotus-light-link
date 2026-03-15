@@ -289,7 +289,7 @@ async function _flush() {
       if (writeBright && _pendingBright != null) {
         await new Promise(r => setTimeout(r, 1));
       }
-
+    }
     if (writeBright && _pendingBright != null) {
       sentBright = Math.max(0, Math.min(100, Math.round(_pendingBright)));
       _brightBuf[3] = sentBright;
