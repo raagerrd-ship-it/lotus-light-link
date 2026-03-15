@@ -166,7 +166,7 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-// --- BLE write state (tick-worker drives timing at 50ms/20fps) ---
+// --- BLE write state (tick-worker drives timing at 25ms/40fps) ---
 
 let _char: any = null;
 let _pendingBright: number | null = null;
