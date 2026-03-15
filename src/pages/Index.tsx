@@ -208,7 +208,7 @@ const Index = () => {
         <div
           ref={punchFlashRef}
           className="absolute inset-0 pointer-events-none transition-opacity"
-          style={{ opacity: 0, background: 'radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.6) 0%, transparent 70%)', transitionDuration: '80ms' }}
+          style={{ opacity: 0, background: 'radial-gradient(ellipse at 50% 50%, hsl(var(--foreground) / 0.6) 0%, transparent 70%)', transitionDuration: '80ms' }}
         />
       </div>
 
