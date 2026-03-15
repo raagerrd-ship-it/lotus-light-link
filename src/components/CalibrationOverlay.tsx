@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { X, RotateCcw } from "lucide-react";
+import { X, RotateCcw, Save, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
@@ -219,10 +219,14 @@ interface CalibrationOverlayProps {
 export default function CalibrationOverlay({ onClose, onCalibrationChange }: CalibrationOverlayProps) {
   const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
+  const [savedCal, setSavedCal] = useState<LightCalibration>(getCalibration);
   const [activeSlider, setActiveSlider] = useState<number>(0);
   const [conn, setConn] = useState(getBleConnection);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showIdleMenu, setShowIdleMenu] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const isDirty = JSON.stringify(cal) !== JSON.stringify(savedCal);
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
@@ -235,6 +239,13 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
     });
   }, [conn?.device?.name, onCalibrationChange]);
 
+  const handleSave = useCallback(() => {
+    saveCalibration(cal, conn?.device?.name);
+    setSavedCal(cal);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1500);
+  }, [cal, conn?.device?.name]);
+
   const handleClose = useCallback(() => {
     saveCalibration(cal, conn?.device?.name);
     onClose();
@@ -243,6 +254,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const resetAll = useCallback(() => {
     const fresh = { ...DEFAULT_CALIBRATION };
     setCal(fresh);
+    setSavedCal(fresh);
     saveCalibration(fresh, conn?.device?.name);
     onCalibrationChange?.(fresh);
   }, [conn?.device?.name, onCalibrationChange]);
@@ -311,6 +323,15 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           </Button>
           <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-6 h-6" title="Återställ standard">
             <RotateCcw className="w-3 h-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleSave}
+            className={`rounded-full w-6 h-6 transition-colors ${isDirty ? 'text-primary animate-pulse' : ''}`}
+            title={isDirty ? 'Spara ändringar' : 'Sparad'}
+          >
+            {justSaved ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Save className={`w-3.5 h-3.5 ${isDirty ? '' : 'text-muted-foreground/40'}`} />}
           </Button>
           <Button variant="ghost" size="icon" onClick={handleClose} className="rounded-full w-6 h-6">
             <X className="w-3.5 h-3.5" />
