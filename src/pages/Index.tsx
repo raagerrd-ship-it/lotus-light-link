@@ -23,6 +23,9 @@ import {
 import { loadCalibrationFromCloud, installCloudSync } from "@/lib/ui/calibrationCloud";
 import { debugData } from "@/lib/ui/debugStore";
 
+// Install cloud sync for calibration persistence
+installCloudSync();
+
 const Index = () => {
   const navigate = useNavigate();
   const [connection, setConnection] = useState<BLEConnection | null>(null);
