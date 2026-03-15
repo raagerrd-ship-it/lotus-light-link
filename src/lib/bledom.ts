@@ -39,16 +39,8 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
     : await device.gatt.connect();
   const service = await server.getPrimaryService(SERVICE_UUID);
   const characteristic = await service.getCharacteristic(CHAR_UUID);
-  const props = characteristic.properties;
-  const charProperties = {
-    write: !!props?.write,
-    writeWithoutResponse: !!props?.writeWithoutResponse,
-    read: !!props?.read,
-    notify: !!props?.notify,
-  };
-  console.log('[BLE] characteristic properties:', charProperties);
   saveLastDevice(device);
-  return { device, characteristic, charProperties };
+  return { device, characteristic };
 }
 
 async function connectAfterAdvertisement(device: any, timeoutMs = 20000): Promise<BLEConnection | null> {
