@@ -187,7 +187,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { onColorChangeRef.current = onColorChange; }, [onColorChange]);
-  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    // Restart worker when transitioning from paused to playing
+    if (isPlaying && workerRef.current) {
+      workerRef.current.postMessage('start');
+    }
+  }, [isPlaying]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
   useEffect(() => { energyRef.current = energy; }, [energy]);
   useEffect(() => { danceabilityRef.current = danceability; }, [danceability]);
