@@ -419,12 +419,18 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          // Learned AGC
+          // Volume-proportional AGC rescaling (volume ≈ linear to mic RMS)
           const vol = volumeRef.current;
           const prevVol = lastVolumeRef.current;
-          if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 3) {
-            agcMaxRef.current = smoothed + 0.01;
-            agcMinRef.current = smoothed;
+          if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 2) {
+            const ratio = prevVol > 0 ? (vol / prevVol) : 1;
+            agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
+            agcMinRef.current = Math.max(0, agcMinRef.current * ratio);
+            agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
+            bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
+            bassAgcMinRef.current = Math.max(0, bassAgcMinRef.current * ratio);
+            midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
+            midHiAgcMinRef.current = Math.max(0, midHiAgcMinRef.current * ratio);
             lastVolumeRef.current = vol;
           } else if (prevVol == null && vol != null) {
             lastVolumeRef.current = vol;
