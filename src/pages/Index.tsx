@@ -167,6 +167,20 @@ const Index = () => {
   const [dropActive, setDropActive] = useState(false);
   const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
 
+  // BLE write tracking for debug overlay
+  const [bleSentColor, setBleSentColor] = useState<[number, number, number] | null>(null);
+  const [bleSentBright, setBleSentBright] = useState<number | null>(null);
+  const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
+
+  useEffect(() => {
+    if (!isMaster) return;
+    onBleWrite((bright, r, g, b) => {
+      setBleSentColor([r, g, b]);
+      setBleSentBright(bright);
+    });
+    return () => { onBleWrite(null); };
+  }, [isMaster]);
+
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number }) => {
     if (!isMaster) return;
     setDropActive(status.isDrop);
