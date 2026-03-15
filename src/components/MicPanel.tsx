@@ -226,8 +226,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
           // ── Check if learning window has elapsed → lock AGC ──
           if (!agcLockedRef.current && trackStartTimeRef.current > 0 && (performance.now() - trackStartTimeRef.current) > AGC_LEARN_DURATION_MS) {
             agcLockedRef.current = true;
-            agc.peakMax = agc.max;
-            console.log('[AGC] Locked after 20s. max=', agc.max.toFixed(5), 'effectiveMax=', getEffectiveMax(agc).toFixed(1));
+            // Freeze as-is — don't snap peakMax, keep the natural effectiveMax
+            console.log('[AGC] Locked after 20s. max=', agc.max.toFixed(5), 'peakMax=', agc.peakMax.toFixed(5), 'effectiveMax=', getEffectiveMax(agc).toFixed(1));
           }
 
           // ── Global AGC (skip if locked) ──
