@@ -18,7 +18,7 @@ interface MicPanelProps {
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
   tickMs?: number;               // tick interval for worker (default 125ms = 8fps)
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean; quietFrames?: number }) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
   onColorChange?: (color: [number, number, number]) => void;
 }
 
@@ -121,7 +121,26 @@ function getRotationInterval(dance: number | null): number {
   const d = (dance ?? 50) / 100; // 0-1
   return Math.round(30_000 - d * 20_000); // 30s → 10s
 }
-// Crossfade alpha now comes from cal.crossfadeSpeed
+/** Update a single band's AGC max/min refs */
+function updateBandAgc(
+  value: number,
+  maxRef: React.MutableRefObject<number>,
+  minRef: React.MutableRefObject<number>,
+  attack: number,
+  decay: number
+) {
+  if (value > maxRef.current) {
+    maxRef.current += (value - maxRef.current) * attack;
+  } else {
+    maxRef.current *= decay;
+  }
+  if (value < minRef.current || minRef.current === 0) {
+    minRef.current = value;
+  } else {
+    minRef.current += (value - minRef.current) * 0.001;
+  }
+}
+
 
 const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus, onColorChange }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
@@ -163,7 +182,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const midHiRef = useRef(0);
   const brightPctRef = useRef(0);
   const rawEnergyPctRef = useRef(0);
-  const sunRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
   const energyRef = useRef(energy);
   const danceabilityRef = useRef(danceability);
@@ -175,7 +194,17 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
 
-  // Palette rotation + crossfade
+  const rescaleAllAgc = (ratio: number) => {
+    agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
+    agcMinRef.current = Math.max(0, agcMinRef.current * ratio);
+    agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
+    bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
+    bassAgcMinRef.current = Math.max(0, bassAgcMinRef.current * ratio);
+    midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
+    midHiAgcMinRef.current = Math.max(0, midHiAgcMinRef.current * ratio);
+  };
+
+
   const paletteRef = useRef(palette ?? []);
   const paletteIndexRef = useRef(0);
   const targetColorRef = useRef<[number, number, number]>(currentColor);
@@ -204,14 +233,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     if (prevDb != null && newDb != null && prevDb !== newDb) {
       const strength = calRef.current.loudCompensation / 100;
       const rawRatio = loudnessToAgcFactor(newDb) / loudnessToAgcFactor(prevDb);
-      const ratio = 1 + (rawRatio - 1) * strength; // blend toward 1.0 when strength < 100%
-      agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
-      agcMinRef.current *= ratio;
-      agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
-      bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
-      bassAgcMinRef.current *= ratio;
-      midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
-      midHiAgcMinRef.current *= ratio;
+      const ratio = 1 + (rawRatio - 1) * strength;
+      rescaleAllAgc(ratio);
       console.log('[AGC] loudness comp', prevDb, '→', newDb, 'ratio:', ratio.toFixed(2), 'strength:', strength);
     }
   }, [loudness]);
@@ -388,7 +411,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
               idleSent = true;
-              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false, quietFrames: 0 });
+              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current, bleColorSource: 'idle', micRms: 0, isPlayingState: false });
             }
             // Stop worker — will be restarted when isPlaying becomes true
             worker.postMessage('stop');
@@ -432,13 +455,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             const strength = cal.volCompensation / 100;
             const rawRatio = prevVol > 0 ? (vol / prevVol) : 1;
             const ratio = 1 + (rawRatio - 1) * strength;
-            agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
-            agcMinRef.current = Math.max(0, agcMinRef.current * ratio);
-            agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
-            bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
-            bassAgcMinRef.current = Math.max(0, bassAgcMinRef.current * ratio);
-            midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
-            midHiAgcMinRef.current = Math.max(0, midHiAgcMinRef.current * ratio);
+            rescaleAllAgc(ratio);
             lastVolumeRef.current = vol;
           } else if (prevVol == null && vol != null) {
             lastVolumeRef.current = vol;
@@ -482,29 +499,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const BAND_AGC_ATTACK = cal.bandAgcAttack;
           const BAND_AGC_DECAY = cal.bandAgcDecay;
 
-          // Bass AGC
-          if (micBands.bassRms > bassAgcMaxRef.current) {
-            bassAgcMaxRef.current += (micBands.bassRms - bassAgcMaxRef.current) * BAND_AGC_ATTACK;
-          } else {
-            bassAgcMaxRef.current *= BAND_AGC_DECAY;
-          }
-          if (micBands.bassRms < bassAgcMinRef.current || bassAgcMinRef.current === 0) {
-            bassAgcMinRef.current = micBands.bassRms;
-          } else {
-            bassAgcMinRef.current += (micBands.bassRms - bassAgcMinRef.current) * 0.001;
-          }
-
-          // MidHi AGC
-          if (micBands.midHiRms > midHiAgcMaxRef.current) {
-            midHiAgcMaxRef.current += (micBands.midHiRms - midHiAgcMaxRef.current) * BAND_AGC_ATTACK;
-          } else {
-            midHiAgcMaxRef.current *= BAND_AGC_DECAY;
-          }
-          if (micBands.midHiRms < midHiAgcMinRef.current || midHiAgcMinRef.current === 0) {
-            midHiAgcMinRef.current = micBands.midHiRms;
-          } else {
-            midHiAgcMinRef.current += (micBands.midHiRms - midHiAgcMinRef.current) * 0.001;
-          }
+          // Per-band AGC
+          updateBandAgc(micBands.bassRms, bassAgcMaxRef, bassAgcMinRef, BAND_AGC_ATTACK, BAND_AGC_DECAY);
+          updateBandAgc(micBands.midHiRms, midHiAgcMaxRef, midHiAgcMinRef, BAND_AGC_ATTACK, BAND_AGC_DECAY);
 
           // Normalize each band 0-1
           const bassRange = Math.max(AGC_FLOOR, bassAgcMaxRef.current - bassAgcMinRef.current);
@@ -664,7 +661,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           onLiveStatusRef.current?.({
             brightness: bleSentBr,
             color: [bleSentR, bleSentG, bleSentB],
-            isWhiteKick: false,
             isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
@@ -674,7 +670,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
-            quietFrames: 0,
           });
 
           setPipelineTimings({
@@ -713,12 +708,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     };
   }, []);
 
-  const isCompact = historyLenProp != null;
-
   useEffect(() => {
     const resize = () => {
       const canvas = canvasRef.current;
-      const container = sunRef.current;
+      const container = containerRef.current;
       if (!canvas || !container) return;
       canvas.width = container.clientWidth * devicePixelRatio;
       canvas.height = container.clientHeight * devicePixelRatio;
@@ -726,25 +719,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, [isCompact]);
-
-  const [r, g, b] = currentColor;
-
-  if (isCompact) {
-    // Calibration mode: rectangular chart, no sun glow
-    return (
-      <div className="absolute inset-0" ref={sunRef}>
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ opacity: 0.9 }}
-        />
-      </div>
-    );
-  }
+  }, []);
 
   return (
-    <div className="absolute inset-0" ref={sunRef}>
+    <div className="absolute inset-0" ref={containerRef}>
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
