@@ -254,6 +254,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const resetAll = useCallback(() => {
     const fresh = { ...DEFAULT_CALIBRATION };
     setCal(fresh);
+    setSavedCal(fresh);
     saveCalibration(fresh, conn?.device?.name);
     onCalibrationChange?.(fresh);
   }, [conn?.device?.name, onCalibrationChange]);
