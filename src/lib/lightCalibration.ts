@@ -104,6 +104,9 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   bandAgcAttack: 0.15,
   bandAgcDecay: 0.997,
 
+  volCompensation: 80,
+  loudCompensation: 80,
+
   energyInfluence: 100,
   danceabilityInfluence: 100,
   happinessInfluence: 100,
