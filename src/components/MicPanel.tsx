@@ -97,22 +97,6 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   };
 }
 
-function modulateColor(
-  baseR: number, baseG: number, baseB: number,
-  lo: number, _mid: number, hi: number,
-  strength: number = 0.3
-): [number, number, number] {
-  const whiteBlend = hi * strength * 0.5;
-  let r = baseR + (255 - baseR) * whiteBlend;
-  let g = baseG + (255 - baseG) * whiteBlend;
-  let b = baseB + (255 - baseB) * whiteBlend;
-
-  const warmBlend = lo * strength * 0.4;
-  r = Math.min(255, r + (255 - r) * warmBlend);
-  b = Math.max(0, b - b * warmBlend * 0.5);
-
-  return [Math.round(r), Math.round(g), Math.round(b)];
-}
 
 /** Update a single band's AGC max/min refs */
 function updateBandAgc(
