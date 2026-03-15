@@ -43,6 +43,11 @@ const Index = () => {
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
   const [activePreset, setActivePresetState] = useState<PresetName | null>(() => getActivePreset());
   const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
+  const [colorSource, setColorSource] = useState<'proxy' | 'manual'>(() => (localStorage.getItem('colorSource') as 'proxy' | 'manual') || 'proxy');
+  const [manualColor, setManualColor] = useState<[number, number, number]>(() => {
+    try { return JSON.parse(localStorage.getItem('manualColor') || '[255,80,0]'); } catch { return [255, 80, 0]; }
+  });
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const tickMs = 125;
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
