@@ -355,10 +355,10 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             // Send idle color once, then skip processing
             if (!idleSent && charRef.current) {
               const cal = calRef.current;
-              const calibrated = applyColorCalibration(...IDLE_COLOR);
+              const calibrated = applyColorCalibration(...idleColor);
               sendColorAndBrightness(charRef.current, calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
               idleSent = true;
-              onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: IDLE_COLOR, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0 });
+              onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0 });
             }
             return;
           }
