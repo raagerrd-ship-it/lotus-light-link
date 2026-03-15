@@ -68,7 +68,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   attackAlpha: 0.3,
   releaseAlpha: 0.025,
-  dynamicDamping: 1.0,
+  dynamicDamping: -1.0,
 
   bassWeight: 0.7,
   hiShelfGainDb: 6,
