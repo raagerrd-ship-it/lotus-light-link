@@ -305,12 +305,8 @@ async function _flush() {
       _onWriteCallback(_lastBright, r, g, b);
     }
 
-    // If new color arrived while writing, flush again
-    if (_pendingColor) {
-      _writing = false;
-      _flush();
-      return;
-    }
+    // Don't re-flush recursively — let the next tick drive writes
+    // to prevent OS buffer bloat with writeValueWithoutResponse
   } catch (e: any) {
     _errorCount++;
     _errorCountWindow++;
