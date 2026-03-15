@@ -198,15 +198,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   };
 
 
-  const paletteRef = useRef(palette ?? []);
-  const paletteIndexRef = useRef(0);
-  const targetColorRef = useRef<[number, number, number]>(currentColor);
-  const blendedColorRef = useRef<[number, number, number]>(currentColor);
-  const onColorChangeRef = useRef(onColorChange);
-  const nextRotationAtRef = useRef(0); // timestamp for next palette advance
-
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
-  useEffect(() => { onColorChangeRef.current = onColorChange; }, [onColorChange]);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
     // Restart worker when transitioning from paused to playing
