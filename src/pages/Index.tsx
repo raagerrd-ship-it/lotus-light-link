@@ -13,17 +13,19 @@ import { addBleConnection, removeBleConnection } from "@/lib/engine/bleStore";
 import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun, X } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
+import AuthButton from "@/components/AuthButton";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
+import { useAuth } from "@/hooks/useAuth";
 import { extractPalette } from "@/lib/ui/colorExtract";
 import {
   setActiveDeviceName, saveCalibration,
   getCalibration, getPresets, getActivePreset, setActivePreset,
   savePresetCalibration, PRESET_NAMES, type PresetName,
 } from "@/lib/engine/lightCalibration";
-import { loadCalibrationFromCloud, installCloudSync } from "@/lib/ui/calibrationCloud";
+import { loadCalibrationFromCloud, installCloudSync, setCloudUserId, loadSettingsFromCloud, saveSettingsToCloud } from "@/lib/ui/calibrationCloud";
 import { debugData } from "@/lib/ui/debugStore";
 
-// Install cloud sync for calibration persistence
+// Install cloud sync hook (only fires when userId is set)
 installCloudSync();
 
 const Index = () => {
@@ -49,8 +51,20 @@ const Index = () => {
 
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
+  const { user, loading: authLoading, signIn, signOut } = useAuth();
 
   const connected = connections.length > 0;
+
+  // Sync cloud user id
+  useEffect(() => {
+    setCloudUserId(user?.id ?? null);
+    if (user?.id) {
+      loadSettingsFromCloud().then(() => {
+        setActiveCalibration(getCalibration());
+        setActivePresetState(getActivePreset());
+      });
+    }
+  }, [user?.id]);
 
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
@@ -211,13 +225,15 @@ const Index = () => {
     const firstDeviceName = connections[0]?.device?.name;
     saveCalibration(cal, firstDeviceName, { localOnly: true });
     setActiveCalibration(cal);
-  }, [connections]);
+    if (user) saveSettingsToCloud();
+  }, [connections, user]);
 
   const handlePresetSave = useCallback((name: PresetName, cal: import("@/lib/engine/lightCalibration").LightCalibration) => {
     savePresetCalibration(name, cal);
     setActivePresetState(name);
     setActivePreset(name);
-  }, []);
+    if (user) saveSettingsToCloud();
+  }, [user]);
 
   const handlePowerToggle = async () => {
     if (!connected) return;
@@ -325,6 +341,7 @@ const Index = () => {
             )}
           </div>
           <div className="flex items-center gap-1">
+            <AuthButton user={user} loading={authLoading} onSignIn={signIn} onSignOut={signOut} accent={accent} />
             <Button
               variant="ghost"
               size="icon"

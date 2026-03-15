@@ -23,6 +23,7 @@ export type Database = {
           id: string
           latency_results: Json | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           ble_min_interval_ms?: number | null
@@ -32,6 +33,7 @@ export type Database = {
           id?: string
           latency_results?: Json | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           ble_min_interval_ms?: number | null
@@ -41,6 +43,37 @@ export type Database = {
           id?: string
           latency_results?: Json | null
           updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          active_preset: string | null
+          device_modes: Json | null
+          id: string
+          idle_color: Json | null
+          presets: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active_preset?: string | null
+          device_modes?: Json | null
+          id?: string
+          idle_color?: Json | null
+          presets?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active_preset?: string | null
+          device_modes?: Json | null
+          id?: string
+          idle_color?: Json | null
+          presets?: Json | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
