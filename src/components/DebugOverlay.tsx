@@ -144,16 +144,13 @@ export default function DebugOverlay({
       {/* ── 5. BLE OUTPUT ── */}
       <Section label="ble output">
         {bleSentColor ? (
-          <div className="flex items-center gap-1">
-            {/* Base color dot */}
-            <div className="w-3 h-3 rounded-sm border border-border/40" style={{ backgroundColor: bleBaseColor ? `rgb(${bleBaseColor[0]},${bleBaseColor[1]},${bleBaseColor[2]})` : `rgb(${bleSentColor[0]},${bleSentColor[1]},${bleSentColor[2]})` }} />
-            {/* Brightness bar */}
-            <div className="w-1 h-3 rounded-sm bg-foreground/20 overflow-hidden flex flex-col-reverse">
-              <div className="w-full rounded-sm bg-foreground/80" style={{ height: `${bleSentBright ?? 0}%` }} />
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm border border-border/40 shrink-0" style={{ backgroundColor: bleBaseColor ? `rgb(${bleBaseColor[0]},${bleBaseColor[1]},${bleBaseColor[2]})` : `rgb(${bleSentColor[0]},${bleSentColor[1]},${bleSentColor[2]})` }} />
+            <div className="flex-1 h-2.5 rounded-sm bg-foreground/10 overflow-hidden">
+              <div className="h-full rounded-sm transition-[width] duration-100" style={{ width: `${bleSentBright ?? 0}%`, backgroundColor: bleBaseColor ? `rgb(${bleBaseColor[0]},${bleBaseColor[1]},${bleBaseColor[2]})` : `rgb(${bleSentColor[0]},${bleSentColor[1]},${bleSentColor[2]})` }} />
             </div>
-            <span className="text-foreground/50">@{bleSentBright ?? '?'}%</span>
             {bleColorSource && bleColorSource !== 'normal' && (
-              <span className={bleColorSource === 'idle' ? 'text-yellow-400' : 'text-foreground'}>{bleColorSource}</span>
+              <span className={`shrink-0 ${bleColorSource === 'idle' ? 'text-yellow-400' : 'text-foreground'}`}>{bleColorSource}</span>
             )}
           </div>
         ) : (
