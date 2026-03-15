@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { sendToBLE, setActiveChar, setPipelineTimings } from "@/lib/bledom";
+import { sendToBLE, setActiveChar } from "@/lib/bledom";
+import { setPipelineTimings } from "@/lib/pipelineTimings";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { pushChartSample } from "@/lib/chartStore";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
