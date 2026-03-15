@@ -197,8 +197,6 @@ let _statsStart = performance.now();
 let _lastWriteMs = 0;
 let _lastBright = 0;
 
-let _backoffUntil = 0;
-
 export function getBleWriteStats(): BleWriteStats {
   const now = performance.now();
   const elapsed = (now - _statsStart) / 1000;
