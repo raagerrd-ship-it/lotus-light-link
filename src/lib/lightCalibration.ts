@@ -48,8 +48,6 @@ export interface LightCalibration {
 
   // Frequency blend
   bassWeight: number;        // 0–1, how much bass affects brightness
-  colorModStrength: number;  // 0–1, how much frequency modulates color
-  
   hiShelfGainDb: number;     // 0–12, hi-shelf filter gain for mic compensation
 
   // BPM-release scaling
