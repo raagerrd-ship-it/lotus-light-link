@@ -135,7 +135,7 @@ function MixerFader({
       <div
         ref={trackRef}
         className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
-        style={{ height: '6rem', background: 'hsl(var(--secondary))' }}
+        style={{ height: '4.5rem', background: 'hsl(var(--secondary))' }}
         onPointerDown={handlePointer}
       >
         {(() => {
