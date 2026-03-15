@@ -403,7 +403,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           }
 
           const absoluteFactor = Math.min(1, Math.max(0.08, (agcMaxRef.current * loudFactor) / agcPeakMaxRef.current));
-          const effectiveMax = cal.minBrightness + (cal.maxBrightness - cal.minBrightness) * absoluteFactor;
+          const effectiveMax = 100 * absoluteFactor;
 
           // micBands already computed above
           bassRef.current = micBands.bassRms;
@@ -424,9 +424,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           const midHiRange = Math.max(AGC_FLOOR, midHiAgcMaxRef.current - midHiAgcMinRef.current);
           const rawMidHiNorm = Math.min(1, Math.max(0, (micBands.midHiRms - midHiAgcMinRef.current) / midHiRange));
 
-          // Raw = per-band AGC output, equal weight, with volume compensation but no smoothing/damping
           const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
-          const rawMapped = (cal.minBrightness + rawEnergy * (effectiveMax - cal.minBrightness)) / 100;
+          const rawMapped = (rawEnergy * effectiveMax) / 100;
           rawEnergyPctRef.current = Math.round(rawMapped * 100);
 
           // Apply user's attack/release smoothing to band values
@@ -463,7 +462,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
 
           energyNorm = Math.max(0, Math.min(1, energyNorm));
 
-          const rawPct = (cal.minBrightness + energyNorm * (effectiveMax - cal.minBrightness)) / 100;
+          const rawPct = (energyNorm * effectiveMax) / 100;
           const pct = Math.round(rawPct * 100);
 
           // ── Drop detection (uses bassRms, not total RMS) ──

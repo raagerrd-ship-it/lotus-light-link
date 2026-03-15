@@ -121,7 +121,7 @@ export default function DebugOverlay() {
         }
       }
       if (ljusRef.current) {
-        let html = `ljus: <span class="text-foreground">${d.maxBrightness}%</span>`;
+        let html = `ljus: <span class="text-foreground">0–100%</span>`;
         if (d.dynamicDamping !== 0) {
           html += `<span class="text-foreground/40"> dyn ${d.dynamicDamping > 0 ? '+' : ''}${d.dynamicDamping.toFixed(1)}</span>`;
         }

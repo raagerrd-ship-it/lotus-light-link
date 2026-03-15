@@ -20,7 +20,7 @@ export interface DebugData {
   // Process
   energy: number | null;
   loudness: string | null;
-  maxBrightness: number;
+  
   dynamicDamping: number;
   dropActive: boolean;
   // BLE Output
@@ -44,7 +44,7 @@ export const debugData: DebugData = {
   isPlayingState: true,
   energy: null,
   loudness: null,
-  maxBrightness: 100,
+  
   dynamicDamping: 0,
   dropActive: false,
   bleSentColor: null,

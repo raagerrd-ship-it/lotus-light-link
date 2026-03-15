@@ -27,9 +27,6 @@ interface SliderDef {
 }
 
 const SLIDERS: SliderDef[] = [
-  // Brightness
-  { key: 'minBrightness', label: 'Min ljusstyrka', shortLabel: 'Min', min: 0, max: 30, step: 1, unit: '%', group: 'Ljus', description: 'Lägsta ljusnivå vid tystnad. Högre = lampan släcks aldrig helt.' },
-  { key: 'maxBrightness', label: 'Max ljusstyrka', shortLabel: 'Max', min: 30, max: 100, step: 1, unit: '%', group: 'Ljus', description: 'Högsta ljusnivå vid maximal ljudvolym.' },
   // Frequency
   { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas påverkar ljusstyrkan. 0.7 = 70% bas, 30% diskant. Lägre = mer känslig för diskant.' },
   { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Frekvens', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic. 0 = ingen kompensation.' },
@@ -51,8 +48,6 @@ const SLIDERS: SliderDef[] = [
 ];
 
 const BYPASS_VALUES: Record<string, number> = {
-  minBrightness: 0,
-  maxBrightness: 100,
   bassWeight: 0.5,
   hiShelfGainDb: 0,
   attackAlpha: 1.0,
@@ -321,8 +316,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   const bypassAll = useCallback(() => {
     const neutral: LightCalibration = {
       ...DEFAULT_CALIBRATION,
-      minBrightness: 0,
-      maxBrightness: 100,
       bassWeight: 0.5,
       hiShelfGainDb: 0,
       attackAlpha: 1.0,

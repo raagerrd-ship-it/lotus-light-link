@@ -33,9 +33,7 @@ export interface LightCalibration {
   offsetG: number;
   offsetB: number;
 
-  // Brightness & dynamics
-  minBrightness: number;   // 0–30 (%)
-  maxBrightness: number;   // 30–100 (%)
+  // Dynamics
   attackAlpha: number;      // 0.05–0.9
   releaseAlpha: number;     // 0.01–0.3
 
@@ -78,8 +76,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   offsetG: 0,
   offsetB: 0,
 
-  minBrightness: 3,
-  maxBrightness: 100,
   attackAlpha: 0.3,
   releaseAlpha: 0.025,
 
