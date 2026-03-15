@@ -32,7 +32,6 @@ export interface LightCalibration {
   offsetR: number;
   offsetG: number;
   offsetB: number;
-  saturationBoost: number;
 
   // Brightness & dynamics
   minBrightness: number;   // 0–30 (%)
