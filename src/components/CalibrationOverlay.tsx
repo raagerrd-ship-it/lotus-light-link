@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
   getIdleColor, saveIdleColor,
-  type LightCalibration,
+  type LightCalibration, type PresetName,
 } from "@/lib/lightCalibration";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 import { getPipelineTimings } from "@/lib/pipelineTimings";
@@ -210,9 +210,11 @@ function PipelineStats() {
 interface CalibrationOverlayProps {
   onClose: () => void;
   onCalibrationChange?: (cal: LightCalibration) => void;
+  activePreset?: PresetName | null;
+  onPresetSave?: (name: PresetName, cal: LightCalibration) => void;
 }
 
-export default function CalibrationOverlay({ onClose, onCalibrationChange }: CalibrationOverlayProps) {
+export default function CalibrationOverlay({ onClose, onCalibrationChange, activePreset, onPresetSave }: CalibrationOverlayProps) {
   const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [savedCal, setSavedCal] = useState<LightCalibration>(getCalibration);
@@ -236,11 +238,13 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
   }, [conn?.device?.name, onCalibrationChange]);
 
   const handleSave = useCallback(() => {
+    const targetPreset = activePreset ?? 'Custom';
     saveCalibration(cal, conn?.device?.name);
+    onPresetSave?.(targetPreset, cal);
     setSavedCal(cal);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1500);
-  }, [cal, conn?.device?.name]);
+  }, [cal, conn?.device?.name, activePreset, onPresetSave]);
 
   const handleClose = useCallback(() => {
     saveCalibration(cal, conn?.device?.name);
@@ -276,7 +280,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
       {/* Compact header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/20">
         <div className="flex items-center gap-2">
-          <h2 className="text-[10px] font-bold tracking-widest uppercase text-foreground/80">Mixer</h2>
+          <h2 className="text-[10px] font-bold tracking-widest uppercase text-foreground/80">Mixer{activePreset ? ` — ${activePreset}` : ''}</h2>
           {conn && <span className="text-[9px] font-mono text-primary/60">{conn.device?.name}</span>}
           <PipelineStats />
         </div>

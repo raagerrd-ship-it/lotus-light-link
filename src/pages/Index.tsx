@@ -17,7 +17,8 @@ import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
 import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
-  getCalibration
+  getCalibration, getPresets, getActivePreset, setActivePreset,
+  savePresetCalibration, PRESET_NAMES, type PresetName,
 } from "@/lib/lightCalibration";
 import { debugData } from "@/lib/debugStore";
 
@@ -33,6 +34,7 @@ const Index = () => {
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
+  const [activePreset, setActivePresetState] = useState<PresetName | null>(() => getActivePreset());
   const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
   const tickMs = 125;
 
@@ -164,6 +166,21 @@ const Index = () => {
     }
   };
 
+  const handlePresetSwitch = useCallback((name: PresetName) => {
+    const presets = getPresets();
+    const cal = presets[name];
+    setActivePresetState(name);
+    setActivePreset(name);
+    saveCalibration(cal, connection?.device?.name, { localOnly: true });
+    setActiveCalibration(cal);
+  }, [connection?.device?.name]);
+
+  const handlePresetSave = useCallback((name: PresetName, cal: import("@/lib/lightCalibration").LightCalibration) => {
+    savePresetCalibration(name, cal);
+    setActivePresetState(name);
+    setActivePreset(name);
+  }, []);
+
   const handlePowerToggle = async () => {
     if (!connection) return;
     const next = !isOn;
@@ -214,9 +231,25 @@ const Index = () => {
                 >
                   <Bluetooth className="w-3.5 h-3.5" style={{ color: isOn ? accent : "hsl(var(--muted-foreground))" }} />
                 </button>
-                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase">
+                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase truncate max-w-[4rem]">
                   {connection.device.name || "BLEDOM01"}
                 </span>
+                <div className="flex items-center gap-0.5 ml-1">
+                  {PRESET_NAMES.map(name => (
+                    <button
+                      key={name}
+                      onClick={() => handlePresetSwitch(name)}
+                      className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all active:scale-90 ${
+                        activePreset === name
+                          ? 'text-background'
+                          : 'text-foreground/50 hover:text-foreground/80'
+                      }`}
+                      style={activePreset === name ? { background: accent } : undefined}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
               </>
             ) : (
               <span className="text-xs text-muted-foreground">Ej ansluten</span>
@@ -284,6 +317,8 @@ const Index = () => {
         <CalibrationOverlay
           onClose={() => setShowCalibration(false)}
           onCalibrationChange={(cal) => setActiveCalibration(cal)}
+          activePreset={activePreset}
+          onPresetSave={handlePresetSave}
         />
       )}
 
