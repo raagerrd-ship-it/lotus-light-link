@@ -247,7 +247,7 @@ function PipelineStats() {
     return () => clearInterval(id);
   }, []);
 
-  const warn = stats.tickMs > 20 || (stats.queueMs + stats.bleMs) > 49;
+  const warn = stats.tickMs > 20 || (stats.queueMs + stats.bleMs) > 24;
 
   return (
     <div className={`text-[10px] font-mono leading-tight ${warn ? 'text-red-400' : 'text-muted-foreground/70'}`}>
