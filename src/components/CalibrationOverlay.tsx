@@ -280,7 +280,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
       {/* Compact header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/20">
         <div className="flex items-center gap-2">
-          <h2 className="text-[10px] font-bold tracking-widest uppercase text-foreground/80">Mixer</h2>
+          <h2 className="text-[10px] font-bold tracking-widest uppercase text-foreground/80">Mixer{activePreset ? ` — ${activePreset}` : ''}</h2>
           {conn && <span className="text-[9px] font-mono text-primary/60">{conn.device?.name}</span>}
           <PipelineStats />
         </div>
