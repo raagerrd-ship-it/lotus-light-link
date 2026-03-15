@@ -12,8 +12,6 @@ interface MicPanelProps {
   isPlaying?: boolean;
   bpm?: number | null;
   energy?: number | null;        // 0-100
-  danceability?: number | null;  // 0-100
-  happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
   tickMs?: number;               // tick interval for worker (default 125ms = 8fps)
@@ -51,11 +49,9 @@ const AGC_ATTACK = 0.1;
 const AGC_FLOOR = 0.002;
 const PEAK_MAX_DECAY = 0.9998;
 
-// FFT band boundaries — returns both normalized (for color) and raw RMS (for brightness/drop)
 interface BandResult {
-  lo: number; mid: number; hi: number;       // normalized 0-1 (relative)
-  bassRms: number; midHiRms: number;          // raw RMS values for AGC
-  totalRms: number;                           // total RMS from freq domain
+  bassRms: number; midHiRms: number;
+  totalRms: number;
 }
 
 function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer>): BandResult {
@@ -78,23 +74,11 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
     else { hiSum += power; hiCount++; }
   }
 
-  const loAvg = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
-  const midAvg = midCount > 0 ? Math.sqrt(midSum / midCount) : 0;
-  const hiAvg = hiCount > 0 ? Math.sqrt(hiSum / hiCount) : 0;
+  const bassRms = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
+  const midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
   const totalRms = bins > 0 ? Math.sqrt(totalSum / bins) : 0;
 
-  const bassRms = loAvg;
-  const midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
-
-  const maxBand = Math.max(loAvg, midAvg, hiAvg, 0.0001);
-  return {
-    lo: Math.min(1, loAvg / maxBand),
-    mid: Math.min(1, midAvg / maxBand),
-    hi: Math.min(1, hiAvg / maxBand),
-    bassRms,
-    midHiRms,
-    totalRms,
-  };
+  return { bassRms, midHiRms, totalRms };
 }
 
 
@@ -119,7 +103,7 @@ function updateBandAgc(
 }
 
 
-const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, energy, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -130,7 +114,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   const workerRef = useRef<Worker | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
-  // whiteKickUntilRef removed — drops handle white kicks now
+  
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
   const lastColorStateRef = useRef<'normal' | 'white'>('normal');
@@ -157,15 +141,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   const isPlayingRef = useRef(isPlaying);
   const bassRef = useRef(0);
   const midHiRef = useRef(0);
-  const brightPctRef = useRef(0);
+  
   const rawEnergyPctRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
   const energyRef = useRef(energy);
-  const danceabilityRef = useRef(danceability);
-  const happinessRef = useRef(happiness);
   const loudnessDbRef = useRef(parseLoudnessDb(loudness));
-  // beatPhaseRef and lastBeatTimeRef removed — unused dead code
   // Drop detection state — now tracks bassRms only
   const bassHistoryRef = useRef<number[]>([]);
   const dropActiveUntilRef = useRef(0);
@@ -192,8 +173,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   }, [isPlaying]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
   useEffect(() => { energyRef.current = energy; }, [energy]);
-  useEffect(() => { danceabilityRef.current = danceability; }, [danceability]);
-  useEffect(() => { happinessRef.current = happiness; }, [happiness]);
   useEffect(() => {
     const prevDb = loudnessDbRef.current;
     const newDb = parseLoudnessDb(loudness);
@@ -217,8 +196,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   useEffect(() => {
     colorRef.current = currentColor;
   }, [currentColor]);
-
-  // Palette rotation is now driven inside the rAF loop (no separate timer)
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
 
@@ -249,18 +226,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
     };
   }, []);
 
-  // Decoupled chart rendering + sun pulse via rAF
+  // Chart rendering via rAF (decoupled from worker tick for smooth visuals)
   useEffect(() => {
     const drawLoop = () => {
-      const isActive = isPlayingRef.current;
-
-      // Skip ALL work when paused — no crossfade, no sun updates, no chart
-      if (!isActive) {
-        rafIdRef.current = requestAnimationFrame(drawLoop);
-        return;
-      }
-
-      // Only redraw chart when new data has been pushed
       if (chartDirtyRef.current) {
         chartDirtyRef.current = false;
         const canvas = canvasRef.current;
@@ -388,10 +356,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           }
 
           const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
-          let normalized = Math.min(1, Math.max(0, (smoothed - agcMinRef.current) / range));
-
-          // dynamicDamping now applied to final brightness below, not here
-          // normalized is used only for AGC tracking
           // Loudness-aware AGC: scale peakMax expectation based on master loudness
           const loudDb = loudnessDbRef.current;
           const loudFactor = loudDb != null ? loudnessToAgcFactor(loudDb) : 1.0;
@@ -515,9 +479,6 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
             }
           }
 
-          // ── Track trait modulation (individual influence sliders) ──
-          const traitEnergy = 0.5 + ((energyRef.current ?? 50) / 100 - 0.5) * (cal.energyInfluence / 100);
-          
 
           // White = ONLY on drops (duration already includes traitEnergy from detection above)
           const isWhite = isDrop;
@@ -526,14 +487,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           // BLE commands
           const c = charRef.current;
           let bleSentR = 0, bleSentG = 0, bleSentB = 0, bleSentBr = pct;
-          let bleSrc: 'normal' | 'white' = 'normal';
           if (c) {
             if (isWhite) {
               const warmR = 255;
               const warmG = 250;
               const warmB = 220;
               bleSentR = warmR; bleSentG = warmG; bleSentB = warmB; bleSentBr = 100;
-              bleSrc = 'white';
+              
               lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
               sendToBLE(bleSentR, bleSentG, bleSentB, 100);
               lastColorStateRef.current = 'white';
@@ -566,7 +526,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
           chartDirtyRef.current = true;
-          brightPctRef.current = bleSentBr;
+          
 
           onLiveStatusRef.current?.({
             brightness: bleSentBr,
