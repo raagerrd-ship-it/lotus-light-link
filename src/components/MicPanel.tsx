@@ -486,7 +486,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
           // ── Frequency-based brightness ──
           // Blend bass (weight 0.7) and mid/hi (weight 0.3) for overall energy
-          let energyNorm = bassNorm * 0.7 + midHiNorm * 0.3;
+          let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
           // Adaptive center so dynamics still work even if laptop mic compression narrows range
           const center = dynamicCenterRef.current + (energyNorm - dynamicCenterRef.current) * 0.008;
