@@ -331,28 +331,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         onColorChangeRef.current?.(rounded);
       }
 
-      // Animate sun
-      const sun = sunRef.current;
-      if (sun) {
-        const b = brightPctRef.current / 100;
-        const [cr, cg, cb] = rounded;
-        const ringSpread = 4 + b * 80;
-        const outerGlow = 50 + b * 700;
-        const farGlow = 100 + b * 900;
-        const ringAlpha = 0.08 + b * 0.8;
-        const outerAlpha = 0.05 + b * 0.55;
-        const farAlpha = 0.02 + b * 0.3;
-        const bgCore = 0.08 + b * 0.35;
-        const bgMid = 0.02 + b * 0.15;
-
-        sun.style.transform = 'scale(1)';
-        sun.style.boxShadow = [
-          `0 0 ${ringSpread}px ${ringSpread}px rgba(${cr},${cg},${cb},${ringAlpha})`,
-          `0 0 ${outerGlow}px rgba(${cr},${cg},${cb},${outerAlpha})`,
-          `0 0 ${farGlow}px rgba(${cr},${cg},${cb},${farAlpha})`,
-        ].join(', ');
-        sun.style.background = `radial-gradient(circle, rgba(${cr},${cg},${cb},${bgCore}) 0%, rgba(${cr},${cg},${cb},${bgMid}) 55%, transparent 78%)`;
-      }
+      // No sun animation — chart only
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
     rafIdRef.current = requestAnimationFrame(drawLoop);
