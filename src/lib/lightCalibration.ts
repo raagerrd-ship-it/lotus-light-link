@@ -138,58 +138,25 @@ async function _upsertCloud(deviceName: string, patch: Record<string, unknown>, 
 }
 
 
-export interface LatencyResults {
-  tapMs: number | null;
-  metroMs: number | null;
-  gattRoundtripMs: number | null;
-  verifiedAt: string | null;
-  verified: boolean;
-}
-
-/** Save detailed latency results to cloud. */
-export function saveLatencyToCloud(deviceName: string, latency: LatencyResults) {
-  _upsertCloud(deviceName, {
-    latency_results: latency,
-    calibration: getCalibration(),
-  }, true);
-}
-
-/** Load calibration from cloud for a device. 
- *  BLE interval is AVERAGED across all entries for this device. */
+/** Load calibration from cloud for a device. */
 export async function loadCalibrationFromCloud(deviceName: string): Promise<{
   calibration: LightCalibration;
-  bleMinIntervalMs: number | null;
-  bleSpeedResults: Record<string, number> | null;
-  latencyResults: LatencyResults | null;
 } | null> {
   try {
     const { data, error } = await (supabase as any)
       .from('device_calibration')
-      .select('calibration, ble_min_interval_ms, ble_speed_results, latency_results')
+      .select('calibration')
       .eq('device_name', deviceName)
-      .order('updated_at', { ascending: false });
-    if (error || !data || data.length === 0) return null;
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+    if (error || !data) return null;
 
-    // Use the most recent calibration & latency
-    const latest = data[0];
-    const cal = { ...DEFAULT_CALIBRATION, ...(latest.calibration as object) };
-
-    // Average BLE interval across all entries that have one
-    const bleIntervals = data
-      .map((d: any) => d.ble_min_interval_ms)
-      .filter((v: any): v is number => v != null && v > 0);
-    const avgBleInterval = bleIntervals.length > 0
-      ? Math.round(bleIntervals.reduce((a: number, b: number) => a + b, 0) / bleIntervals.length)
-      : latest.ble_min_interval_ms;
+    const cal = { ...DEFAULT_CALIBRATION, ...(data.calibration as object) };
 
     // Cache locally
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cal));
-    return {
-      calibration: cal as LightCalibration,
-      bleMinIntervalMs: avgBleInterval,
-      bleSpeedResults: latest.ble_speed_results as Record<string, number> | null,
-      latencyResults: latest.latency_results as LatencyResults | null,
-    };
+    return { calibration: cal as LightCalibration };
   } catch {
     return null;
   }
