@@ -10,34 +10,9 @@ interface MicPanelProps {
   currentColor: [number, number, number];
   sonosVolume?: number;
   isPlaying?: boolean;
-  bpm?: number | null;
-  energy?: number | null;        // 0-100
-  loudness?: string | null;      // e.g. "-5 dB"
-  historyLen?: number;           // override chart history length (default 120)
-  tickMs?: number;               // tick interval for worker (default 125ms = 8fps)
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
-}
-
-/** Parse loudness string like "-5 dB" to a number. Returns null if unparseable. */
-function parseLoudnessDb(s: string | null | undefined): number | null {
-  if (!s) return null;
-  const m = s.match(/-?\d+(\.\d+)?/);
-  return m ? parseFloat(m[0]) : null;
-}
-
-/**
- * Convert loudness (LUFS/dB, typically -3 to -20) to an AGC scaling factor.
- * Loud masters (-3 to -6 dB) → factor ~1.3-1.5 (expect higher RMS)
- * Normal (-8 to -10 dB) → factor ~1.0
- * Quiet (-14 to -20 dB) → factor ~0.5-0.7 (expect lower RMS)
- */
-function loudnessToAgcFactor(db: number): number {
-  // Reference point: -9 dB is "normal" → factor 1.0
-  // Each dB above -9 adds ~6% to expected RMS
-  // Each dB below -9 reduces ~6%
-  const refDb = -9;
-  const diff = db - refDb; // positive = louder than ref
-  return Math.max(0.4, Math.min(2.0, 1.0 + diff * 0.06));
+  historyLen?: number;
+  tickMs?: number;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean }) => void;
 }
 
 const HISTORY_LEN = 120;
@@ -81,7 +56,6 @@ function computeBands(analyser: AnalyserNode, freqData: Float32Array<ArrayBuffer
   return { bassRms, midHiRms, totalRms };
 }
 
-
 /** Update a single band's AGC max/min refs */
 function updateBandAgc(
   value: number,
@@ -103,7 +77,7 @@ function updateBandAgc(
 }
 
 
-const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, energy, loudness, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -114,17 +88,14 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   const workerRef = useRef<Worker | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
-  
   const volumeRef = useRef(sonosVolume);
   const calRef = useRef<LightCalibration>(getCalibration());
-  const lastColorStateRef = useRef<'normal' | 'white'>('normal');
   const lastBaseColorRef = useRef<[number, number, number]>([0, 0, 0]);
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
   const initCal = calRef.current;
   const agcMaxRef = useRef(initCal.agcMax > 0 ? initCal.agcMax : 0.01);
   const agcMinRef = useRef(initCal.agcMin);
-  // Per-band AGC for frequency-based brightness
   const bassAgcMaxRef = useRef(0.01);
   const bassAgcMinRef = useRef(0);
   const midHiAgcMaxRef = useRef(0.01);
@@ -141,16 +112,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   const isPlayingRef = useRef(isPlaying);
   const bassRef = useRef(0);
   const midHiRef = useRef(0);
-  
   const rawEnergyPctRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const bpmRef = useRef(bpm);
-  const energyRef = useRef(energy);
-  const loudnessDbRef = useRef(parseLoudnessDb(loudness));
-  // Drop detection state — now tracks bassRms only
-  const bassHistoryRef = useRef<number[]>([]);
-  const dropActiveUntilRef = useRef(0);
-  const lastDropTimeRef = useRef(0);
 
   const rescaleAllAgc = (ratio: number) => {
     agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
@@ -162,37 +125,18 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
     midHiAgcMinRef.current = Math.max(0, midHiAgcMinRef.current * ratio);
   };
 
-
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
-    // Restart worker when transitioning from paused to playing
     if (isPlaying && workerRef.current) {
       workerRef.current.postMessage('start');
     }
   }, [isPlaying]);
-  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
-  useEffect(() => { energyRef.current = energy; }, [energy]);
-  useEffect(() => {
-    const prevDb = loudnessDbRef.current;
-    const newDb = parseLoudnessDb(loudness);
-    loudnessDbRef.current = newDb;
-    // Immediately rescale AGC when track loudness changes (scaled by loudCompensation)
-    if (prevDb != null && newDb != null && prevDb !== newDb) {
-      const strength = calRef.current.loudCompensation / 100;
-      const rawRatio = loudnessToAgcFactor(newDb) / loudnessToAgcFactor(prevDb);
-      const ratio = 1 + (rawRatio - 1) * strength;
-      rescaleAllAgc(ratio);
-      console.log('[AGC] loudness comp', prevDb, '→', newDb, 'ratio:', ratio.toFixed(2), 'strength:', strength);
-    }
-  }, [loudness]);
 
-  // Forward dynamic tick interval to worker
   useEffect(() => {
     workerRef.current?.postMessage(tickMs);
   }, [tickMs]);
 
-  // When currentColor changes externally (new track), update colorRef
   useEffect(() => {
     colorRef.current = currentColor;
   }, [currentColor]);
@@ -209,11 +153,9 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
   useEffect(() => {
     const reload = () => {
       calRef.current = getCalibration();
-      // Update hi-shelf gain dynamically
       if (hiShelfRef.current) {
         hiShelfRef.current.gain.value = calRef.current.hiShelfGainDb;
       }
-      console.log('[MicPanel] cal updated:', { attack: calRef.current.attackAlpha.toFixed(3), release: calRef.current.releaseAlpha.toFixed(4), damping: calRef.current.dynamicDamping.toFixed(1) });
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'light-calibration') reload();
@@ -226,7 +168,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
     };
   }, []);
 
-  // Chart rendering via rAF (decoupled from worker tick for smooth visuals)
+  // Chart rendering via rAF
   useEffect(() => {
     const drawLoop = () => {
       if (chartDirtyRef.current) {
@@ -274,12 +216,10 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
         workerRef.current = worker;
         const freqBuf = new Float32Array(analyser.frequencyBinCount);
 
-        // Idle color when nothing is playing — user-configurable
         let idleColor = getIdleColor();
         let idleSent = false;
 
-        // Listen for idle color changes from settings
-        const onIdleColorChanged = () => { idleColor = getIdleColor(); idleSent = false; }; 
+        const onIdleColorChanged = () => { idleColor = getIdleColor(); idleSent = false; };
         window.addEventListener('idle-color-changed', onIdleColorChanged);
         idleCleanupRef.current = () => window.removeEventListener('idle-color-changed', onIdleColorChanged);
 
@@ -287,15 +227,12 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           if (stopped) return;
 
           if (!isPlayingRef.current) {
-            // Paused: send idle color once, then stop the worker to prevent further ticks
-            // idle — worker will be stopped below
             if (!idleSent && charRef.current) {
               const calibrated = applyColorCalibration(...idleColor);
               sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
               idleSent = true;
-              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, isDrop: false, bassLevel: 0, midHiLevel: 0, bleColorSource: 'idle', micRms: 0, isPlayingState: false });
+              onLiveStatusRef.current?.({ brightness: 100, color: idleColor, bassLevel: 0, midHiLevel: 0, bleColorSource: 'idle', micRms: 0, isPlayingState: false });
             }
-            // Stop worker — will be restarted when isPlaying becomes true
             worker.postMessage('stop');
             return;
           }
@@ -306,31 +243,22 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           const tickStart = performance.now();
           const cal = calRef.current;
 
-          // ── Frequency bands (also computes RMS from freq domain) ──
+          // ── Frequency bands ──
           const micBands = computeBands(an, freqBuf);
           const rms = micBands.totalRms;
           const rmsEnd = performance.now();
-
 
           const prevAbsFactor = agcPeakMaxRef.current > 0
             ? Math.min(1, agcMaxRef.current / agcPeakMaxRef.current) : 1;
           const reactivity = 1 + (1 - prevAbsFactor) * 2;
           const prev = smoothedRef.current;
           const attackA = Math.min(1.0, cal.attackAlpha * reactivity);
-          // Scale release by BPM: reference 160 BPM = full speed, lower = longer fade
-          // bpmReleaseScale controls how much BPM affects release (0 = no effect, 100 = full effect)
-          const currentBpm = bpmRef.current;
-          const bpmReleaseScale = cal.bpmReleaseScale / 100;
-          const rawBpmFactor = currentBpm && currentBpm > 0
-            ? Math.max(0.5, Math.min(1.0, currentBpm / 160))
-            : 0.8;
-          const bpmReleaseFactor = 1 - bpmReleaseScale * (1 - rawBpmFactor);
-          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity * bpmReleaseFactor);
+          const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
           const alpha = rms > prev ? attackA : releaseA;
           const smoothed = prev + alpha * (rms - prev);
           smoothedRef.current = smoothed;
 
-          // Volume-proportional AGC rescaling (scaled by volCompensation)
+          // Volume-proportional AGC rescaling
           const vol = volumeRef.current;
           const prevVol = lastVolumeRef.current;
           if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 2) {
@@ -355,33 +283,22 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
             agcMinRef.current += (smoothed - agcMinRef.current) * (1 - AGC_MIN_RISE);
           }
 
-          const range = Math.max(AGC_FLOOR, agcMaxRef.current - agcMinRef.current);
-          // Loudness-aware AGC: scale peakMax expectation based on master loudness
-          const loudDb = loudnessDbRef.current;
-          const loudFactor = loudDb != null ? loudnessToAgcFactor(loudDb) : 1.0;
-
           if (agcMaxRef.current > agcPeakMaxRef.current) {
             agcPeakMaxRef.current = agcMaxRef.current;
           } else {
             agcPeakMaxRef.current *= PEAK_MAX_DECAY;
           }
 
-          const absoluteFactor = Math.min(1, Math.max(0.08, (agcMaxRef.current * loudFactor) / agcPeakMaxRef.current));
+          const absoluteFactor = Math.min(1, Math.max(0.08, agcMaxRef.current / agcPeakMaxRef.current));
           const effectiveMax = 100 * absoluteFactor;
 
-          // micBands already computed above
           bassRef.current = micBands.bassRms;
           midHiRef.current = micBands.midHiRms;
 
-          // ── Per-band AGC for frequency-based brightness ──
-          const BAND_AGC_ATTACK = cal.bandAgcAttack;
-          const BAND_AGC_DECAY = cal.bandAgcDecay;
+          // ── Per-band AGC ──
+          updateBandAgc(micBands.bassRms, bassAgcMaxRef, bassAgcMinRef, cal.bandAgcAttack, cal.bandAgcDecay);
+          updateBandAgc(micBands.midHiRms, midHiAgcMaxRef, midHiAgcMinRef, cal.bandAgcAttack, cal.bandAgcDecay);
 
-          // Per-band AGC
-          updateBandAgc(micBands.bassRms, bassAgcMaxRef, bassAgcMinRef, BAND_AGC_ATTACK, BAND_AGC_DECAY);
-          updateBandAgc(micBands.midHiRms, midHiAgcMaxRef, midHiAgcMinRef, BAND_AGC_ATTACK, BAND_AGC_DECAY);
-
-          // Normalize each band 0-1
           const bassRange = Math.max(AGC_FLOOR, bassAgcMaxRef.current - bassAgcMinRef.current);
           const rawBassNorm = Math.min(1, Math.max(0, (micBands.bassRms - bassAgcMinRef.current) / bassRange));
 
@@ -392,7 +309,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           const rawMapped = (rawEnergy * effectiveMax) / 100;
           rawEnergyPctRef.current = Math.round(rawMapped * 100);
 
-          // Apply user's attack/release smoothing to band values
+          // Smoothing per band
           const prevBass = smoothedBassRef.current;
           const bassAlpha = rawBassNorm > prevBass ? attackA : releaseA;
           const bassNorm = prevBass + bassAlpha * (rawBassNorm - prevBass);
@@ -403,14 +320,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           const midHiNorm = prevMidHi + midHiAlpha * (rawMidHiNorm - prevMidHi);
           smoothedMidHiRef.current = midHiNorm;
 
-          // ── Frequency-based brightness ──
+          // ── Frequency-weighted brightness ──
           let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
-          // Adaptive center so dynamics still work even if laptop mic compression narrows range
+          // Adaptive center for dynamics
           const center = dynamicCenterRef.current + (energyNorm - dynamicCenterRef.current) * 0.008;
           dynamicCenterRef.current = center;
 
-          // Dynamic control around adaptive center:
           if (cal.dynamicDamping < 0) {
             const amount = Math.min(1, Math.abs(cal.dynamicDamping) / 2);
             const gain = 1 + amount * 10;
@@ -428,87 +344,21 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
 
           const rawPct = (energyNorm * effectiveMax) / 100;
           const pct = Math.round(rawPct * 100);
-
-          // ── Drop detection (uses bassRms, not total RMS) ──
-          const DROP_HISTORY_LEN = 120;  // ~2s of history
-          const DROP_COOLDOWN_MS = 6000;
-          const DROP_DURATION_MS = cal.whiteKickMs; // from calibration slider
-
-          const bassHist = bassHistoryRef.current;
-          bassHist.push(micBands.bassRms); // bass RMS only!
-          if (bassHist.length > DROP_HISTORY_LEN) bassHist.shift();
-
-          const now = tickStart; // reuse cached timestamp
-          let isDrop = now < dropActiveUntilRef.current;
-
-          const len = bassHist.length;
-          if (len >= 50 && now - lastDropTimeRef.current > DROP_COOLDOWN_MS) {
-            // Index-based averaging — no slice allocations
-            let recentSum = 0;
-            for (let i = len - 8; i < len; i++) recentSum += bassHist[i];
-            const recentAvg = recentSum / 8;
-            let pastSum = 0;
-            const pastStart = len - 60;
-            const pastEnd = len - 8;
-            for (let i = pastStart; i < pastEnd; i++) pastSum += bassHist[i];
-            const pastAvg = pastSum / (pastEnd - pastStart);
-
-            const eInf = cal.energyInfluence / 100;
-            const traitEnergy = 0.5 + ((energyRef.current ?? 50) / 100 - 0.5) * eInf;
-            const quietThreshold = bassAgcMaxRef.current * (0.08 + traitEnergy * 0.10);
-            const surgeMin = 6.0 - traitEnergy * 2.0;
-            const absMin = bassAgcMaxRef.current * (0.75 - traitEnergy * 0.15);
-
-            const surgeRatio = pastAvg > 0.0001 ? recentAvg / pastAvg : 0;
-
-            if (pastAvg < quietThreshold && surgeRatio > surgeMin && recentAvg > absMin) {
-              // Scale drop duration: massive surges (10x+) get full duration, weaker ones get half
-              const surgeStrength = Math.min(1, (surgeRatio - surgeMin) / (surgeMin * 1.5));
-              const dropDurationMod = 1.0 + traitEnergy * 0.5;
-              const dropDur = DROP_DURATION_MS * (0.5 + surgeStrength * 0.5) * dropDurationMod;
-              dropActiveUntilRef.current = now + dropDur;
-              lastDropTimeRef.current = now;
-              isDrop = true;
-              console.log('[Drop/bass]', {
-                bassPast: pastAvg.toFixed(5),
-                bassRecent: recentAvg.toFixed(5),
-                ratio: surgeRatio.toFixed(1),
-                bassAgcMax: bassAgcMaxRef.current.toFixed(5),
-                energy: energyRef.current,
-              });
-            }
-          }
-
-
-          // White = ONLY on drops (duration already includes traitEnergy from detection above)
-          const isWhite = isDrop;
           const smoothEnd = performance.now();
 
-          // BLE commands
+          // ── BLE output ──
           const c = charRef.current;
           let bleSentR = 0, bleSentG = 0, bleSentB = 0, bleSentBr = pct;
           if (c) {
-            if (isWhite) {
-              const warmR = 255;
-              const warmG = 250;
-              const warmB = 220;
-              bleSentR = warmR; bleSentG = warmG; bleSentB = warmB; bleSentBr = 100;
-              
-              lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
-              sendToBLE(bleSentR, bleSentG, bleSentB, 100);
-              lastColorStateRef.current = 'white';
-            } else {
-              const baseColor = colorRef.current;
-              const finalColor = applyColorCalibration(...baseColor, cal);
-              bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
-              lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
-              sendToBLE(...finalColor, pct);
-              lastColorStateRef.current = 'normal';
-            }
+            const baseColor = colorRef.current;
+            const finalColor = applyColorCalibration(...baseColor, cal);
+            bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
+            lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
+            sendToBLE(...finalColor, pct);
           }
           const bleEnd = performance.now();
 
-          // Chart sampling — inline in tick loop
+          // Chart sampling
           const base = lastBaseColorRef.current;
           const sample: ChartSample = {
             pct: bleSentBr,
@@ -526,17 +376,15 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
           chartDirtyRef.current = true;
-          
 
           onLiveStatusRef.current?.({
             brightness: bleSentBr,
             color: [bleSentR, bleSentG, bleSentB],
-            isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
             bleSentColor: lastBaseColorRef.current,
             bleSentBright: bleSentBr,
-            bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
+            bleColorSource: 'normal',
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
           });
@@ -549,7 +397,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, bpm, ener
           });
         };
 
-        // AGC save on separate interval — out of hot tick path
+        // AGC save on separate interval
         agcSaveTimerRef.current = window.setInterval(() => {
           if (stopped) return;
           const updated = { ...calRef.current, agcMin: agcMinRef.current, agcMax: agcMaxRef.current, agcVolume: volumeRef.current ?? null };
