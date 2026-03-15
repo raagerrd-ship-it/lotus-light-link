@@ -104,8 +104,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   loudCompensation: 80,
 
   energyInfluence: 100,
-  danceabilityInfluence: 100,
-  happinessInfluence: 100,
 
   agcMin: 0,
   agcMax: 0.01,
