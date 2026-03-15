@@ -564,10 +564,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             }
           }
 
-          // ── Track trait modulation ──
-          const traitEnergy = (energyRef.current ?? 50) / 100;
-          const traitDance = (danceabilityRef.current ?? 50) / 100;
-          const traitHappy = (happinessRef.current ?? 50) / 100;
+          // ── Track trait modulation (scaled by traitInfluence) ──
+          const inf = cal.traitInfluence / 100; // 0-1
+          const traitEnergy = 0.5 + ((energyRef.current ?? 50) / 100 - 0.5) * inf;
+          const traitDance = 0.5 + ((danceabilityRef.current ?? 50) / 100 - 0.5) * inf;
+          const traitHappy = 0.5 + ((happinessRef.current ?? 50) / 100 - 0.5) * inf;
 
           // White = ONLY on drops (duration already includes traitEnergy from detection above)
           const isWhite = isDrop;
