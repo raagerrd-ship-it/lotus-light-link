@@ -81,6 +81,7 @@ export function saveCalibration(cal: LightCalibration, deviceName?: string, { lo
   if (name) {
     _upsertCloud(name, { calibration: cal }, createNewEntry);
   }
+}
 
 // --- Device name tracking ---
 
