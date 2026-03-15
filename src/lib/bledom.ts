@@ -279,9 +279,10 @@ async function _flush() {
     const r = _pendingColor[0] & 0xff;
     const g = _pendingColor[1] & 0xff;
     const b = _pendingColor[2] & 0xff;
-    _colorBuf[4] = r;
+    // BLEDOM hardware has R↔B channels swapped
+    _colorBuf[4] = b;
     _colorBuf[5] = g;
-    _colorBuf[6] = b;
+    _colorBuf[6] = r;
     _pendingColor = null;
 
     await _char.writeValueWithoutResponse(_colorBuf);
