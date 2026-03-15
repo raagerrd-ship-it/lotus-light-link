@@ -79,7 +79,6 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   offsetR: 0,
   offsetG: 0,
   offsetB: 0,
-  saturationBoost: 1.0,
 
   minBrightness: 3,
   maxBrightness: 100,
