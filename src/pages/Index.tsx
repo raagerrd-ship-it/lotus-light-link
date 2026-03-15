@@ -118,12 +118,10 @@ const Index = () => {
   }, []);
 
   // Live status callback from MicPanel — writes directly to debugStore, no React state
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isDrop: boolean; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean }) => {
     debugData.dropActive = status.isDrop;
     debugData.bassLevel = status.bassLevel;
     debugData.midHiLevel = status.midHiLevel;
-    debugData.paletteIndex = status.paletteIndex;
-    setLivePaletteIndex(status.paletteIndex);
     if (status.bleSentColor) {
       debugData.bleBaseColor = status.bleSentColor;
       debugData.bleSentColor = status.bleSentColor;
