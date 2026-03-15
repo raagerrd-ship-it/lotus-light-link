@@ -65,7 +65,7 @@ const BYPASS_VALUES: Record<string, number> = {
   releaseAlpha: 1.0,
   dynamicDamping: 0,
   bpmReleaseScale: 0,
-  crossfadeSpeed: DEFAULT_CALIBRATION.crossfadeSpeed,
+  
   saturationBoost: 1.0,
   energyInfluence: 0,
   danceabilityInfluence: 0,
