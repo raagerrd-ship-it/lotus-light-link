@@ -748,27 +748,12 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   }
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div
-        ref={sunRef}
-        className="rounded-full relative"
-        style={{
-          width: '55vw',
-          height: '55vw',
-          maxWidth: '55vh',
-          maxHeight: '55vh',
-          transform: 'scale(1)',
-          willChange: 'transform, box-shadow, background',
-          background: 'transparent',
-          boxShadow: 'none',
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full rounded-full"
-          style={{ opacity: 0.6, clipPath: 'circle(50%)' }}
-        />
-      </div>
+    <div className="absolute inset-0" ref={sunRef}>
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ opacity: 0.9 }}
+      />
     </div>
   );
 };
