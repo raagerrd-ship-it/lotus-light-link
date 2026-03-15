@@ -90,8 +90,6 @@ export interface BleReconnectStatus {
   error?: string;
 }
 
-// Auto-reconnect: retry loop — keeps trying until connected or unmounted
-// Returns a promise that resolves when connected, or null if aborted via signal
 export async function autoReconnect(signal?: AbortSignal, onStatus?: (s: BleReconnectStatus) => void): Promise<BLEConnection | null> {
   const nav = navigator as any;
   if (!nav.bluetooth?.getDevices) return null;
@@ -121,7 +119,6 @@ export async function autoReconnect(signal?: AbortSignal, onStatus?: (s: BleReco
       if (!target) return null;
       const targetName = target.name || target.id;
 
-      // Try direct GATT first
       try {
         report({ attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, phase: 'directGatt', targetName });
         console.log(`[BLE] trying direct GATT to ${targetName}...`);
@@ -171,20 +168,16 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   return connectToDevice(device);
 }
 
-// Pre-allocated buffers
+// Pre-allocated color buffer — single 9-byte packet per tick
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
-// Hardware brightness = max (0xFF) — some BLEDOM variants use 0-255 scale
+// Hardware brightness = max (0xFF)
 const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 0x00, 0xef]);
-const BRIGHT_REFRESH_INTERVAL = 100; // send brightness=max every N writes (replaces color that tick)
 
 // --- BLE write state (tick-worker drives timing) ---
 
 let _char: any = null;
 let _pendingColor: [number, number, number] | null = null;
-let _lastSentColor: [number, number, number] = [-1, -1, -1];
-let _lastBright = 0;
 let _writing = false;
-let _lastWriteTime = 0;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
 
 /** Register callback invoked after each actual BLE write with the sent values */
@@ -192,19 +185,14 @@ export function onBleWrite(cb: ((bright: number, r: number, g: number, b: number
   _onWriteCallback = cb;
 }
 
-// Debug stats
+// --- Stats (used by CalibrationOverlay PipelineStats) ---
+
 export interface BleWriteStats {
   writesPerSec: number;
   droppedPerSec: number;
   lastWriteMs: number;
-  peakWriteMs: number;
-  queueAgeMs: number;
-  errorCount: number;
-  errorsPerSec: number;
-  lastError: string;
 }
 
-// Pipeline step timings (set externally by MicPanel tick loop)
 export interface PipelineTimings {
   rmsMs: number;
   smoothMs: number;
@@ -212,38 +200,19 @@ export interface PipelineTimings {
   totalTickMs: number;
 }
 let _pipelineTimings: PipelineTimings = { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 };
-let _pipelinePeakMs = 0;
-let _pipelinePeakResetTime = performance.now();
 
-export function setPipelineTimings(t: PipelineTimings) {
-  _pipelineTimings = t;
-  const now = performance.now();
-  if (now - _pipelinePeakResetTime > 5000) {
-    _pipelinePeakMs = 0;
-    _pipelinePeakResetTime = now;
-  }
-  if (t.totalTickMs > _pipelinePeakMs) _pipelinePeakMs = t.totalTickMs;
-}
+export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
 export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
-export function getPipelinePeakMs(): number { return _pipelinePeakMs; }
 
 let _writeCount = 0;
 let _dropCount = 0;
 let _statsStart = performance.now();
-let _lastActualWriteMs = 0;
-let _lastTickToWriteMs = 0;
+let _lastWriteMs = 0;
+let _lastBright = 0;
 
+// Error tracking
 let _errorCount = 0;
-let _errorCountWindow = 0;
-let _errorWindowStart = performance.now();
-let _lastError = '';
 let _backoffUntil = 0;
-
-// Peak tracking (rolling 5s window)
-let _peakWriteMs = 0;
-let _peakWriteResetTime = performance.now();
-
-export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
 export function getBleWriteStats(): BleWriteStats {
   const now = performance.now();
@@ -251,31 +220,15 @@ export function getBleWriteStats(): BleWriteStats {
   const wps = elapsed > 0 ? _writeCount / elapsed : 0;
   const dps = elapsed > 0 ? _dropCount / elapsed : 0;
 
-  const errElapsed = (now - _errorWindowStart) / 1000;
-  const eps = errElapsed > 0 ? _errorCountWindow / errElapsed : 0;
-
   if (elapsed > 2) {
     _writeCount = 0;
     _dropCount = 0;
     _statsStart = now;
   }
-  if (errElapsed > 2) {
-    _errorCountWindow = 0;
-    _errorWindowStart = now;
-  }
-  if (now - _peakWriteResetTime > 5000) {
-    _peakWriteMs = 0;
-    _peakWriteResetTime = now;
-  }
   return {
     writesPerSec: Math.round(wps),
     droppedPerSec: Math.round(dps),
-    lastWriteMs: Math.round(_lastActualWriteMs),
-    peakWriteMs: Math.round(_peakWriteMs),
-    queueAgeMs: Math.round(_lastTickToWriteMs),
-    errorCount: _errorCount,
-    errorsPerSec: Math.round(eps),
-    lastError: _lastError,
+    lastWriteMs: Math.round(_lastWriteMs),
   };
 }
 
@@ -284,42 +237,25 @@ async function _flush() {
   if (performance.now() < _backoffUntil) return;
 
   _writing = true;
-  const writeStart = performance.now();
-  _lastWriteTime = writeStart;
+  const t0 = performance.now();
 
   try {
-    const r = _pendingColor[0] & 0xff;
-    const g = _pendingColor[1] & 0xff;
-    const b = _pendingColor[2] & 0xff;
+    const [r, g, b] = _pendingColor;
     _pendingColor = null;
 
     _colorBuf[4] = r;
     _colorBuf[5] = g;
     _colorBuf[6] = b;
 
-    // Every Nth write, send brightness=100% INSTEAD of color (not in addition)
-    if (_writeCount % BRIGHT_REFRESH_INTERVAL === 0) {
-      await _char.writeValueWithoutResponse(_brightMaxBuf);
-    } else {
-      await _char.writeValueWithoutResponse(_colorBuf);
-    }
-    _lastSentColor = [r, g, b];
+    await _char.writeValueWithoutResponse(_colorBuf);
     _writeCount++;
-    _lastActualWriteMs = performance.now() - writeStart;
-    if (_lastActualWriteMs > _peakWriteMs) _peakWriteMs = _lastActualWriteMs;
+    _lastWriteMs = performance.now() - t0;
 
-    if (_onWriteCallback) {
-      _onWriteCallback(_lastBright, r, g, b);
-    }
-
-    // Don't re-flush recursively — let the next tick drive writes
-    // to prevent OS buffer bloat with writeValueWithoutResponse
+    _onWriteCallback?.(_lastBright, r, g, b);
   } catch (e: any) {
     _errorCount++;
-    _errorCountWindow++;
-    _lastError = e?.message || 'GATT write failed';
     _backoffUntil = performance.now() + 100;
-    console.warn('[BLE] write error (backoff 100ms):', _lastError);
+    console.warn('[BLE] write error (backoff 100ms):', e?.message);
   }
 
   _writing = false;
@@ -327,11 +263,7 @@ async function _flush() {
 
 export function setActiveChar(char: any) {
   _char = char;
-  _lastSentColor = [-1, -1, -1];
   _errorCount = 0;
-  _errorCountWindow = 0;
-  _errorWindowStart = performance.now();
-  _lastError = '';
   _backoffUntil = 0;
 }
 
@@ -341,9 +273,8 @@ export function clearActiveChar() {
   _pendingColor = null;
 }
 
-/** Single unified BLE command — always sets color + brightness atomically.
- *  Pre-multiplies RGB by brightness to avoid BLEDOM's poor color rendering
- *  at low hardware brightness levels. Sends brightness=100% to BLEDOM. */
+/** Single unified BLE command — pre-multiplies RGB by brightness.
+ *  Sends one 9-byte color packet. Hardware brightness is locked to 100%. */
 export function sendToBLE(r: number, g: number, b: number, brightness: number) {
   const scale = Math.max(0, Math.min(100, brightness)) / 100;
   _pendingColor = [
@@ -352,9 +283,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number) {
     Math.round(b * scale),
   ];
   _lastBright = brightness;
-  if (!_writing) { _flush(); }
-  _lastTickToWriteMs = 0;
-  return Promise.resolve();
+  if (!_writing) _flush();
 }
 
 export async function sendPower(char: any, on: boolean) {
