@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
-  sendPower, setActiveChar, clearActiveChar,
+  sendPower, addActiveChar, removeActiveChar, clearActiveChar,
   sendHardwareBrightness,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/engine/bledom";
-import { setBleConnection } from "@/lib/engine/bleStore";
-import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Bug } from "lucide-react";
+import { addBleConnection, removeBleConnection } from "@/lib/engine/bleStore";
+import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
@@ -28,7 +28,7 @@ installCloudSync();
 
 const Index = () => {
   const navigate = useNavigate();
-  const [connection, setConnection] = useState<BLEConnection | null>(null);
+  const [connections, setConnections] = useState<BLEConnection[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
@@ -50,13 +50,15 @@ const Index = () => {
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
 
+  const connected = connections.length > 0;
+
   useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
 
   // Keep debugStore in sync
   useEffect(() => {
-    debugData.bleConnected = !!connection;
-    debugData.bleDeviceName = connection?.device?.name ?? null;
-  }, [connection]);
+    debugData.bleConnected = connected;
+    debugData.bleDeviceName = connections.map(c => c.device?.name).filter(Boolean).join(', ') || null;
+  }, [connections, connected]);
 
   useEffect(() => {
     debugData.bleReconnectStatus = bleReconnectStatus;
@@ -86,7 +88,7 @@ const Index = () => {
 
   // Auto-reconnect to last known BLE device on mount
   useEffect(() => {
-    if (connection) return;
+    if (connected) return;
     const last = getLastDevice();
     if (!last) return;
 
@@ -135,10 +137,14 @@ const Index = () => {
   };
 
   const finishConnect = async (conn: BLEConnection) => {
-    setConnection(conn);
-    setBleConnection(conn);
+    setConnections(prev => {
+      // Avoid duplicates
+      if (prev.some(c => c.device?.id === conn.device?.id)) return prev;
+      return [...prev, conn];
+    });
+    addBleConnection(conn);
     setBusy(false);
-    setActiveChar(conn.characteristic);
+    addActiveChar(conn.characteristic);
     await sendPower(conn.characteristic, true);
     await sendHardwareBrightness(conn.characteristic);
 
@@ -154,10 +160,9 @@ const Index = () => {
     }
 
     conn.device.addEventListener("gattserverdisconnected", () => {
-      clearActiveChar();
-      setConnection(null);
-      setBleConnection(null);
-      setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || undefined });
+      removeActiveChar(conn.characteristic);
+      setConnections(prev => prev.filter(c => c.device?.id !== conn.device?.id));
+      removeBleConnection(conn);
     });
   };
 
@@ -172,14 +177,26 @@ const Index = () => {
     }
   };
 
+  const handleAddDevice = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await finishConnect(await connectBLEDOM(true));
+    } catch (e: any) {
+      setError(e.message || "Kunde inte ansluta");
+      setBusy(false);
+    }
+  };
+
   const handlePresetSwitch = useCallback((name: PresetName) => {
     const presets = getPresets();
     const cal = presets[name];
     setActivePresetState(name);
     setActivePreset(name);
-    saveCalibration(cal, connection?.device?.name, { localOnly: true });
+    const firstDeviceName = connections[0]?.device?.name;
+    saveCalibration(cal, firstDeviceName, { localOnly: true });
     setActiveCalibration(cal);
-  }, [connection?.device?.name]);
+  }, [connections]);
 
   const handlePresetSave = useCallback((name: PresetName, cal: import("@/lib/engine/lightCalibration").LightCalibration) => {
     savePresetCalibration(name, cal);
@@ -188,29 +205,31 @@ const Index = () => {
   }, []);
 
   const handlePowerToggle = async () => {
-    if (!connection) return;
+    if (!connected) return;
     const next = !isOn;
     setIsOn(next);
-    await sendPower(connection.characteristic, next).catch(() => {});
+    await Promise.allSettled(
+      connections.map(c => sendPower(c.characteristic, next).catch(() => {}))
+    );
   };
 
   const [r, g, b] = currentColor;
   const accent = `rgb(${r},${g},${b})`;
-  const char = connection?.characteristic;
+  const firstChar = connections[0]?.characteristic;
 
   return (
     <div
       className="relative h-[100dvh] bg-background overflow-hidden"
       style={{ backgroundImage: `radial-gradient(ellipse at 50% 60%, rgba(${r},${g},${b},0.08) 0%, transparent 70%)` }}
-      onPointerMove={connection ? resetOverlayTimer : undefined}
-      onPointerDown={connection ? resetOverlayTimer : undefined}
+      onPointerMove={connected ? resetOverlayTimer : undefined}
+      onPointerDown={connected ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
-        <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={firstChar} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
-      {!connection && busy && (
+      {!connected && busy && (
         <div className="absolute inset-0 z-30 flex items-center justify-center animate-fade-in" style={{ background: 'hsl(var(--background) / 0.82)' }}>
           <div className="flex flex-col items-center gap-4 text-center px-8">
             <Loader2 className="w-8 h-8 animate-spin" style={{ color: accent }} />
@@ -222,13 +241,13 @@ const Index = () => {
       )}
 
       {/* Header */}
-      {(connection || !busy) && (
+      {(connected || !busy) && (
         <div
           className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] transition-opacity duration-500 backdrop-blur-lg border-b border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.3)' }}
         >
           <div className="flex items-center gap-2">
-            {connection ? (
+            {connected ? (
               <>
                 <button
                   onClick={() => handleConnect(true)}
@@ -237,9 +256,21 @@ const Index = () => {
                 >
                   <Bluetooth className="w-3.5 h-3.5" style={{ color: isOn ? accent : "hsl(var(--muted-foreground))" }} />
                 </button>
-                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase truncate max-w-[4rem]">
-                  {connection.device.name || "BLEDOM01"}
+                <span className="text-xs font-bold tracking-widest text-foreground/70 uppercase truncate max-w-[5rem]">
+                  {connections.length === 1
+                    ? (connections[0].device.name || "BLEDOM01")
+                    : `${connections.length} enheter`
+                  }
                 </span>
+                {/* Add device button */}
+                <button
+                  onClick={handleAddDevice}
+                  className="p-0.5 rounded-full active:scale-90 transition-transform"
+                  title="Lägg till enhet"
+                  disabled={busy}
+                >
+                  <Plus className="w-3 h-3 text-foreground/50 hover:text-foreground/80" />
+                </button>
                 <div className="flex items-center gap-0.5 ml-1">
                   {PRESET_NAMES.map(name => (
                     <button
@@ -277,7 +308,7 @@ const Index = () => {
             >
               <Bug className="w-3.5 h-3.5" />
             </Button>
-            {connection && (
+            {connected && (
               <>
                 <Button
                   variant="ghost"
