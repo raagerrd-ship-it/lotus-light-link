@@ -392,6 +392,14 @@ const Index = () => {
       )}
 
       {/* Debug overlay */}
+      {/* Calibration overlay */}
+      {showCalibration && (
+        <CalibrationOverlay
+          onClose={() => setShowCalibration(false)}
+          onCalibrationChange={(cal) => setActiveCalibration(cal)}
+        />
+      )}
+
       {showDebug && <DebugOverlay
         smoothedRtt={smoothedRtt}
         palette={palette}
