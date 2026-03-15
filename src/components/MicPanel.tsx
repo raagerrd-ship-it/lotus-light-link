@@ -385,11 +385,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           const prev = smoothedRef.current;
           const attackA = Math.min(1.0, cal.attackAlpha * reactivity);
           // Scale release by BPM: reference 160 BPM = full speed, lower = longer fade
-          // But respect user's setting — don't scale below their chosen value
+          // bpmReleaseScale controls how much BPM affects release (0 = no effect, 100 = full effect)
           const currentBpm = bpmRef.current;
-          const bpmReleaseFactor = currentBpm && currentBpm > 0
+          const bpmReleaseScale = cal.bpmReleaseScale / 100;
+          const rawBpmFactor = currentBpm && currentBpm > 0
             ? Math.max(0.5, Math.min(1.0, currentBpm / 160))
             : 0.8;
+          const bpmReleaseFactor = 1 - bpmReleaseScale * (1 - rawBpmFactor);
           const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity * bpmReleaseFactor);
           const alpha = rms > prev ? attackA : releaseA;
           const smoothed = prev + alpha * (rms - prev);
