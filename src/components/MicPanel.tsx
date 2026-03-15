@@ -301,6 +301,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
             bleColorSource: 'normal',
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
+            isPunch,
           });
 
           setPipelineTimings({
