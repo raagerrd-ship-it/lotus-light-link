@@ -166,20 +166,7 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 const _brightBuf = new Uint8Array([0x7e, 0x04, 0x01, 0, 0x01, 0xff, 0x00, 0x00, 0xef]);
 
-// --- Frame scheduler: max 1 BLE write per MIN_INTERVAL_MS ---
-const BLE_INTERVAL_KEY = 'ble-min-interval-ms';
-const BLE_MIN_FLOOR = 50; // 20 slots/sec max
-let _minIntervalMs = (() => {
-  try {
-    const v = localStorage.getItem(BLE_INTERVAL_KEY);
-    const parsed = v ? parseInt(v, 10) : BLE_MIN_FLOOR;
-    const result = Math.max(BLE_MIN_FLOOR, isNaN(parsed) ? BLE_MIN_FLOOR : parsed);
-    console.log(`[BLE] interval from storage: ${v}, using: ${result}ms`);
-    return result;
-  } catch { return BLE_MIN_FLOOR; }
-})();
-
-export function getBleMinInterval(): number { return _minIntervalMs; }
+// --- BLE write state (tick-worker drives timing at 50ms/20fps) ---
 
 let _char: any = null;
 let _pendingBright: number | null = null;
@@ -187,7 +174,6 @@ let _pendingColor: [number, number, number] | null = null;
 let _lastSentBright = -1;
 let _lastSentColor: [number, number, number] = [-1, -1, -1];
 let _writing = false;
-let _timer: ReturnType<typeof setTimeout> | null = null;
 let _lastWriteTime = 0;
 let _onWriteCallback: ((bright: number, r: number, g: number, b: number) => void) | null = null;
 
