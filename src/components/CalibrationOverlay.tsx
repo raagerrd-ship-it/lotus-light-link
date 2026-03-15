@@ -371,7 +371,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
         </div>
         <div className="flex items-center gap-1.5">
           {/* Idle color dropdown */}
-          <div className="relative">
+          <div className="relative flex items-center">
             <button
               className="w-6 h-6 rounded-full border border-border/40 active:scale-90 transition-transform"
               style={{ background: `rgb(${idleColor[0]},${idleColor[1]},${idleColor[2]})` }}
