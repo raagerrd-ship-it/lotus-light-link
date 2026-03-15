@@ -52,7 +52,7 @@ export class LightEngine {
   private lastVolume: number | undefined;
   private agcLocked = false;
   private trackStartTime = 0;
-  private lastTrackName: string | null = null;
+  
   private idleSent = false;
 
   private worker: Worker | null = null;
