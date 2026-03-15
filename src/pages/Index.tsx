@@ -140,10 +140,16 @@ const Index = () => {
     const newMode: DeviceMode = conn.mode === 'rgb' ? 'brightness' : 'rgb';
     setDeviceMode(conn.device?.id, newMode);
     updateCharMode(conn.characteristic, newMode);
-    conn.mode = newMode;
     setConnections(prev => prev.map(c =>
       c.device?.id === conn.device?.id ? { ...c, mode: newMode } : c
     ));
+  };
+
+  const handleDisconnectDevice = (conn: BLEConnection) => {
+    try { conn.device?.gatt?.disconnect(); } catch {}
+    removeActiveChar(conn.characteristic);
+    removeBleConnection(conn);
+    setConnections(prev => prev.filter(c => c.device?.id !== conn.device?.id));
   };
 
   const finishConnect = async (conn: BLEConnection) => {
