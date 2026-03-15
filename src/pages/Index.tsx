@@ -6,7 +6,7 @@ import { getBleWriteStats, getPipelineTimings, getBleMinInterval } from "@/lib/b
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
-  sendColor, sendBrightness, sendPower, setActiveChar, clearActiveChar, getLastTickToWriteMs,
+  sendToBLE, sendPower, setActiveChar, clearActiveChar, getLastTickToWriteMs,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
