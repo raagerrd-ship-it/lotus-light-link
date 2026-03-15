@@ -178,7 +178,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const targetColorRef = useRef<[number, number, number]>(currentColor);
   const blendedColorRef = useRef<[number, number, number]>(currentColor);
   const onColorChangeRef = useRef(onColorChange);
-  const rotationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const nextRotationAtRef = useRef(0); // timestamp for next palette advance
 
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { onColorChangeRef.current = onColorChange; }, [onColorChange]);
@@ -204,6 +204,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       blendedColorRef.current = palette[0];
       colorRef.current = palette[0];
     }
+    // Reset rotation timer so first advance uses fresh interval
+    nextRotationAtRef.current = 0;
     // Reset AGC on new palette
     lastColorStateRef.current = 'normal';
     agcMaxRef.current = Math.max(agcMaxRef.current * 0.5, 0.01);
@@ -212,27 +214,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     resetChartScaler();
   }, [palette]);
 
-  // Rotation timer: advance palette index, interval driven by danceability
-  useEffect(() => {
-    const startTimer = () => {
-      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
-      const interval = getRotationInterval(danceabilityRef.current);
-      rotationTimerRef.current = setInterval(() => {
-        const p = paletteRef.current;
-        if (p.length <= 1) return;
-        const nextIdx = (paletteIndexRef.current + 1) % p.length;
-        paletteIndexRef.current = nextIdx;
-        targetColorRef.current = p[nextIdx];
-        console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'interval:', interval, 'ms');
-        // Restart with current danceability (may have changed)
-        startTimer();
-      }, interval);
-    };
-    startTimer();
-    return () => {
-      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
-    };
-  }, []);
+  // Palette rotation is now driven inside the rAF loop (no separate timer)
 
   useEffect(() => { volumeRef.current = sonosVolume; }, [sonosVolume]);
 
@@ -275,6 +257,24 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, 0, 0, false, 1);
         }
       }
+      // Palette rotation (time-driven, inside rAF — no separate timer)
+      const now = performance.now();
+      const p = paletteRef.current;
+      if (p.length > 1) {
+        if (nextRotationAtRef.current === 0) {
+          // First frame: schedule first rotation
+          nextRotationAtRef.current = now + getRotationInterval(danceabilityRef.current);
+        }
+        if (now >= nextRotationAtRef.current) {
+          const nextIdx = (paletteIndexRef.current + 1) % p.length;
+          paletteIndexRef.current = nextIdx;
+          targetColorRef.current = p[nextIdx];
+          const interval = getRotationInterval(danceabilityRef.current);
+          nextRotationAtRef.current = now + interval;
+          console.log('[Palette] rotate →', nextIdx, p[nextIdx], 'next in', interval, 'ms');
+        }
+      }
+
       // Crossfade blendedColor toward targetColor
       const [br, bg, bb] = blendedColorRef.current;
       const [tr, tg, tb] = targetColorRef.current;
