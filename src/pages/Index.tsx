@@ -13,7 +13,6 @@ import {
 import { setBleConnection } from "@/lib/bleStore";
 import { Power, Bluetooth, Loader2, Eye, EyeOff, Settings, Bug } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
-
 import DebugOverlay from "@/components/DebugOverlay";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { extractPalette } from "@/lib/colorExtract";
@@ -21,7 +20,6 @@ import {
   loadCalibrationFromCloud, setActiveDeviceName, saveCalibration,
   applyColorCalibration, getCalibration
 } from "@/lib/lightCalibration";
-
 import { useBpm } from "@/hooks/useBpm";
 
 const Index = () => {
@@ -48,7 +46,6 @@ const Index = () => {
 
   const [lastDevice] = useState(() => getLastDevice());
   const { nowPlaying, smoothedRtt, getPosition } = useSonosNowPlaying();
-  
   const trackTraits = useBpm(nowPlaying?.trackName ?? null, nowPlaying?.artistName ?? null);
   const bpm = trackTraits.bpm;
 
@@ -74,7 +71,6 @@ const Index = () => {
 
   // Auto-reconnect to last known BLE device on mount
   useEffect(() => {
-    if (!isMaster) return;
     if (connection) return;
     const last = getLastDevice();
     if (!last) return;
@@ -98,11 +94,10 @@ const Index = () => {
     });
 
     return () => ac.abort();
-  }, [isMaster]);
+  }, []);
 
   // Poll e2e latency metric
   useEffect(() => {
-    if (!isMaster) return;
     if (!connection && !nowPlaying?.trackName) return;
 
     const id = setInterval(() => {
@@ -110,72 +105,26 @@ const Index = () => {
       const bleStats = getBleWriteStats();
       setBleWriteStats(bleStats);
       setPipelinePeakMs(getPipelinePeakMs());
-      const pipeline = getPipelineTimings();
-      const cal = activeCalibration;
-      updateLiveSession({
-        debug_state: {
-          bleConnected: !!connection,
-          bleDeviceName: connection?.device?.name ?? null,
-          bleWritesPerSec: bleStats.writesPerSec,
-          bleDropsPerSec: bleStats.droppedPerSec,
-          bleLastWriteMs: bleStats.lastWriteMs,
-          e2eMs: getLastTickToWriteMs(),
-          rmsMs: pipeline.rmsMs,
-          smoothMs: pipeline.smoothMs,
-          bleCallMs: pipeline.bleCallMs,
-          totalTickMs: pipeline.totalTickMs,
-          sonosConnected: !!nowPlaying?.trackName,
-          sonosRtt: smoothedRtt,
-          syncMode: 'mic',
-          bleMinIntervalMs: tickMs,
-          maxBrightness: cal.maxBrightness,
-          dynamicDamping: cal.dynamicDamping,
-          attackAlpha: cal.attackAlpha,
-          releaseAlpha: cal.releaseAlpha,
-          sonosVolume: nowPlaying?.volume ?? null,
-        },
-      });
     }, 2000);
     return () => clearInterval(id);
-  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.playbackState, nowPlaying?.volume, smoothedRtt, activeCalibration]);
-
-  // Push now-playing info to live session when master
-  useEffect(() => {
-    if (!isMaster) return;
-    if (!connection && !nowPlaying?.trackName) return;
-
-    const posFn = getPosition;
-    const pos = posFn?.();
-    updateLiveSession({
-      track_name: nowPlaying?.trackName ?? null,
-      artist_name: nowPlaying?.artistName ?? null,
-      album_art_url: nowPlaying?.albumArtUrl ?? null,
-      bpm: bpm ?? null,
-      is_playing: nowPlaying?.playbackState === "PLAYBACK_STATE_PLAYING",
-      position_ms: pos?.positionMs ?? 0,
-      duration_ms: nowPlaying?.durationMs ?? 0,
-      device_name: connection?.device?.name ?? null,
-    });
-  }, [isMaster, connection, nowPlaying?.trackName, nowPlaying?.artistName, nowPlaying?.albumArtUrl, nowPlaying?.playbackState, nowPlaying?.durationMs, connection?.device?.name]);
+  }, [connection, nowPlaying?.trackName, nowPlaying?.playbackState, nowPlaying?.volume, smoothedRtt, activeCalibration]);
 
   // Live status callback from MicPanel
   const [dropActive, setDropActive] = useState(false);
   const [bandLevels, setBandLevels] = useState<{ bass: number; midHi: number }>({ bass: 0, midHi: 0 });
 
-  // BLE write tracking for debug overlay (ref + interval to avoid 40fps state churn)
+  // BLE write tracking for debug overlay
   const [bleSentColor, setBleSentColor] = useState<[number, number, number] | null>(null);
   const [bleSentBright, setBleSentBright] = useState<number | null>(null);
   const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
   const [bleBaseColor, setBleBaseColor] = useState<[number, number, number] | null>(null);
   const [bleWriteStats, setBleWriteStats] = useState<ReturnType<typeof getBleWriteStats> | null>(null);
   const [pipelinePeakMs, setPipelinePeakMs] = useState(0);
-  const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
   const [micRms, setMicRms] = useState(0);
   const [isPlayingState, setIsPlayingState] = useState(true);
   const [quietFrames, setQuietFrames] = useState(0);
 
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' | 'idle'; micRms?: number; isPlayingState?: boolean; quietFrames?: number }) => {
-    if (!isMaster) return;
     setDropActive(status.isDrop);
     setBandLevels({ bass: status.bassLevel, midHi: status.midHiLevel });
     setLivePaletteIndex(status.paletteIndex);
@@ -188,46 +137,7 @@ const Index = () => {
     if (status.micRms != null) setMicRms(status.micRms);
     if (status.isPlayingState != null) setIsPlayingState(status.isPlayingState);
     if (status.quietFrames != null) setQuietFrames(status.quietFrames);
-    const [r, g, b] = status.isWhiteKick ? [255, 255, 255] : status.color;
-    updateLiveSession({
-      color_r: r,
-      color_g: g,
-      color_b: b,
-      brightness: status.brightness,
-      section_type: null,
-    });
-  }, [isMaster, updateLiveSession]);
-
-  // Toggle role
-  const toggleRole = useCallback(() => {
-    setIsMaster(prev => {
-      const next = !prev;
-      localStorage.setItem("deviceRole", next ? "master" : "monitor");
-      return next;
-    });
   }, []);
-
-  const activateMaster = useCallback(() => {
-    localStorage.setItem("deviceRole", "master");
-    setIsMaster(true);
-  }, []);
-
-  // If monitor mode, render MonitorView
-  if (!isMaster) {
-    return (
-      <div className="relative h-[100dvh]">
-        <MonitorView />
-        <div className="pointer-events-none absolute inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[200] px-4 flex justify-center">
-          <button
-            onClick={activateMaster}
-            className="pointer-events-auto w-full max-w-sm h-11 rounded-full text-sm font-bold tracking-wide uppercase bg-secondary text-foreground border border-border shadow-lg active:scale-95 transition-transform"
-          >
-            Aktivera Master på denna enhet
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // Auto-hide overlay after 3s
   const resetOverlayTimer = () => {
@@ -351,15 +261,6 @@ const Index = () => {
             >
               <Bug className="w-3.5 h-3.5" />
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleRole}
-              className="rounded-full h-7 px-2.5 text-[10px] font-bold tracking-wide active:scale-90 transition-all duration-200 text-muted-foreground"
-            >
-              <Monitor className="w-3.5 h-3.5 mr-1" />
-              Monitor
-            </Button>
             {connection && (
               <>
                 <Button
@@ -401,7 +302,6 @@ const Index = () => {
         </div>
       )}
 
-      {/* Debug overlay */}
       {/* Calibration overlay */}
       {showCalibration && (
         <CalibrationOverlay
@@ -422,7 +322,6 @@ const Index = () => {
         bleConnected={!!connection}
         bleDeviceName={connection?.device?.name}
         bleReconnectStatus={bleReconnectStatus}
-        deviceRole="master"
         dropActive={dropActive}
         energy={trackTraits.energy}
         danceability={trackTraits.danceability}
