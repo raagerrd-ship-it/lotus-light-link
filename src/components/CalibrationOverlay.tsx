@@ -107,7 +107,9 @@ function MixerFader({
   // Group color coding
   const groupColors: Record<string, string> = {
     'Ljus': 'hsl(48, 90%, 60%)',
+    'Frekvens': 'hsl(200, 80%, 55%)',
     'Dynamik': 'hsl(142, 70%, 50%)',
+    'Palett': 'hsl(280, 70%, 60%)',
     'Kick': 'hsl(0, 80%, 60%)',
   };
   const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
