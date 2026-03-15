@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { sendToBLE, setActiveChar, setPipelineTimings, onBleWrite } from "@/lib/bledom";
+import { sendToBLE, setActiveChar, setPipelineTimings } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { pushChartSample } from "@/lib/chartStore";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
@@ -640,22 +640,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           }
           const bleEnd = performance.now();
 
-          setPipelineTimings({
-            rmsMs: rmsEnd - tickStart,
-            smoothMs: smoothEnd - rmsEnd,
-            bleCallMs: bleEnd - smoothEnd,
-            totalTickMs: bleEnd - tickStart,
-          });
-        };
-
-        onBleWrite((bright, r, g, b) => {
-          if (stopped) return;
+          // Chart sampling — inline in tick loop
           const base = lastBaseColorRef.current;
           const sample: ChartSample = {
-            pct: bright,
-            r: Math.max(r, 20),
-            g: Math.max(g, 20),
-            b: Math.max(b, 20),
+            pct: bleSentBr,
+            r: Math.max(bleSentR, 20),
+            g: Math.max(bleSentG, 20),
+            b: Math.max(bleSentB, 20),
             rawPct: rawEnergyPctRef.current,
             baseR: base[0],
             baseG: base[1],
@@ -667,24 +658,31 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
           chartDirtyRef.current = true;
-          brightPctRef.current = bright;
+          brightPctRef.current = bleSentBr;
 
           onLiveStatusRef.current?.({
-            brightness: bright,
-            color: [r, g, b],
+            brightness: bleSentBr,
+            color: [bleSentR, bleSentG, bleSentB],
             isWhiteKick: false,
             isDrop: performance.now() < dropActiveUntilRef.current,
             bassLevel: bassRef.current,
             midHiLevel: midHiRef.current,
             paletteIndex: paletteIndexRef.current,
             bleSentColor: lastBaseColorRef.current,
-            bleSentBright: bright,
+            bleSentBright: bleSentBr,
             bleColorSource: lastColorStateRef.current === 'white' ? 'white' as const : 'normal' as const,
             micRms: smoothedRef.current,
             isPlayingState: isPlayingRef.current,
             quietFrames: 0,
           });
-        });
+
+          setPipelineTimings({
+            rmsMs: rmsEnd - tickStart,
+            smoothMs: smoothEnd - rmsEnd,
+            bleCallMs: bleEnd - smoothEnd,
+            totalTickMs: bleEnd - tickStart,
+          });
+        };
 
         // AGC save on separate interval — out of hot tick path
         agcSaveTimerRef.current = window.setInterval(() => {
@@ -704,7 +702,6 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
     return () => {
       stopped = true;
-      onBleWrite(null);
       idleCleanupRef.current?.();
       if (agcSaveTimerRef.current) clearInterval(agcSaveTimerRef.current);
       workerRef.current?.postMessage("stop");
