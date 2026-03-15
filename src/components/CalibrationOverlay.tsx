@@ -273,7 +273,7 @@ function MiniChart() {
   }, []);
 
   useEffect(() => {
-    const CHART_LEN = 90; // ~3s at 30fps
+    const CHART_LEN = 90; // ~4.5s at 20fps
     let raf: number;
     const draw = () => {
       const canvas = canvasRef.current;
