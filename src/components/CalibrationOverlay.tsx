@@ -32,7 +32,6 @@ const SLIDERS: SliderDef[] = [
   { key: 'maxBrightness', label: 'Max ljusstyrka', shortLabel: 'Max', min: 30, max: 100, step: 1, unit: '%', group: 'Ljus', description: 'Högsta ljusnivå vid maximal ljudvolym.' },
   // Frequency
   { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas påverkar ljusstyrkan. 0.7 = 70% bas, 30% diskant. Lägre = mer känslig för diskant.' },
-  { key: 'colorModStrength', label: 'Färgmodulering', shortLabel: 'Mod', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket frekvensinnehållet modulerar färgen. 0 = statisk färg, 1 = maximal modulering.' },
   { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Frekvens', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic. 0 = ingen kompensation.' },
   // Dynamics
   { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 1.0, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. Lågt = mjukare fade in, 1.0 = ingen smoothing (bypass).' },
