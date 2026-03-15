@@ -5,7 +5,7 @@
  * to use in any project.
  */
 
-import { sendToBLE, setActiveChar } from "./bledom";
+import { sendToBLE, addActiveChar, removeActiveChar } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
 import { createAgcState, rescaleAgc, updateGlobalAgc, updateBandPeaks, getEffectiveMax, normalizeBand, type AgcState } from "./agc";
@@ -35,7 +35,7 @@ export class LightEngine {
   private color: [number, number, number] = [255, 80, 0];
   private volume: number | undefined;
   private playing = true;
-  private char: BluetoothRemoteGATTCharacteristic | null = null;
+  private chars = new Set<BluetoothRemoteGATTCharacteristic>();
   private tickMs = 125;
 
   // --- Internal ---
@@ -86,9 +86,23 @@ export class LightEngine {
     if (playing && this.worker) this.worker.postMessage('start');
   }
 
+  /** @deprecated Use addChar/removeChar for multi-device */
   setChar(char: BluetoothRemoteGATTCharacteristic | null) {
-    this.char = char;
-    if (char) setActiveChar(char);
+    if (char) this.addChar(char);
+  }
+
+  addChar(char: BluetoothRemoteGATTCharacteristic) {
+    this.chars.add(char);
+    addActiveChar(char);
+  }
+
+  removeChar(char: BluetoothRemoteGATTCharacteristic) {
+    this.chars.delete(char);
+    removeActiveChar(char);
+  }
+
+  hasChars(): boolean {
+    return this.chars.size > 0;
   }
 
   /** Reset AGC — call on track change or other events that invalidate learned levels.
@@ -214,7 +228,7 @@ export class LightEngine {
     this.color = [255, 80, 0];
     this.volume = undefined;
     this.playing = true;
-    this.char = null;
+    this.chars.clear();
     this.smoothed = 0;
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
@@ -234,7 +248,7 @@ export class LightEngine {
 
     // ── Idle mode ──
     if (!this.playing) {
-      if (!this.idleSent && this.char) {
+      if (!this.idleSent && this.chars.size > 0) {
         const calibrated = applyColorCalibration(...this.idleColor);
         sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
         this.idleSent = true;
@@ -325,7 +339,7 @@ export class LightEngine {
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];
 
     // ── BLE output ──
-    if (this.char) {
+    if (this.chars.size > 0) {
       if (isPunch) sendToBLE(255, 255, 255, pct);
       else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
     }
