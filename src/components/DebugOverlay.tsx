@@ -196,6 +196,14 @@ export default function DebugOverlay({
             )}
           </div>
         )}
+        {bleCharProps && (
+          <div>
+            props: {bleCharProps.write ? <span className="text-green-400">W</span> : <span className="text-red-400">w</span>}
+            {' '}{bleCharProps.writeWithoutResponse ? <span className="text-green-400">WnR</span> : <span className="text-red-400">wnr</span>}
+            {' '}{bleCharProps.read ? <span className="text-foreground/40">R</span> : null}
+            {' '}{bleCharProps.notify ? <span className="text-foreground/40">N</span> : null}
+          </div>
+        )}
       </Section>
 
       {/* Build info */}

@@ -462,6 +462,7 @@ const Index = () => {
         micRms={micRms}
         isPlayingState={isPlayingState}
         quietFrames={quietFrames}
+        bleCharProps={connection?.charProperties ?? null}
       />}
     </div>
   );
