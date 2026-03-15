@@ -32,6 +32,9 @@ interface DebugOverlayProps {
   bleBaseColor?: [number, number, number] | null;
   bleWriteStats?: BleWriteStats | null;
   pipelinePeakMs?: number | null;
+  micRms?: number;
+  isPlayingState?: boolean;
+  quietFrames?: number;
 }
 
 const phaseLabels: Record<string, string> = {

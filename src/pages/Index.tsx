@@ -459,6 +459,9 @@ const Index = () => {
         bleBaseColor={bleBaseColor}
         bleWriteStats={bleWriteStats}
         pipelinePeakMs={pipelinePeakMs}
+        micRms={micRms}
+        isPlayingState={isPlayingState}
+        quietFrames={quietFrames}
       />}
     </div>
   );
