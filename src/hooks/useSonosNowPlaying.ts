@@ -96,7 +96,24 @@ export function useSonosNowPlaying() {
     };
 
     const applyStatus = (s: any, rtt: number) => {
-      if (!s?.ok || !s.trackName) return;
+      if (!s?.ok) return;
+
+      // Allow state-only updates (e.g. pause/stop) even without trackName
+      if (!s.trackName) {
+        if (s.playbackState && dataRef.current) {
+          const prev = dataRef.current;
+          if (prev.playbackState !== s.playbackState) {
+            apply({
+              ...prev,
+              playbackState: s.playbackState,
+              volume: s.volume ?? prev.volume,
+              receivedAt: performance.now(),
+              smoothedRtt: rtt,
+            });
+          }
+        }
+        return;
+      }
 
       const prev = dataRef.current;
       const isTrackChange = !prev || s.trackName !== prev.trackName;
