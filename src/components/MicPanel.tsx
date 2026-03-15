@@ -241,7 +241,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     if (char) {
       setActiveChar(char);
       const [r, g, b] = colorRef.current;
-      sendToBLE(char, r, g, b, 100);
+      sendToBLE(r, g, b, 100);
     }
   }, [char]);
 
@@ -385,7 +385,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             if (!idleSent && charRef.current) {
               const cal = calRef.current;
               const calibrated = applyColorCalibration(...idleColor);
-              sendToBLE(charRef.current, calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
+              sendToBLE(calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
               idleSent = true;
               onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0, paletteIndex: paletteIndexRef.current });
             }
@@ -621,7 +621,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const warmB = Math.round(200 + (1 - traitHappy) * 55);
               bleSentR = warmR; bleSentG = Math.min(255, warmG); bleSentB = warmB; bleSentBr = 100;
               bleSrc = 'white';
-              sendToBLE(c, bleSentR, bleSentG, bleSentB, 100);
+              sendToBLE(bleSentR, bleSentG, bleSentB, 100);
               lastColorStateRef.current = 'white';
             } else {
               const baseColor = colorRef.current;
@@ -629,7 +629,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
-              sendToBLE(c, ...finalColor, pct);
+              sendToBLE(...finalColor, pct);
               lastColorStateRef.current = 'normal';
             }
           }
