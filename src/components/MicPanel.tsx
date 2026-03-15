@@ -36,6 +36,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
   const lastBaseColorRef = useRef<[number, number, number]>([0, 0, 0]);
   const chartDirtyRef = useRef(false);
   const rafIdRef = useRef(0);
+  const lastSampleTimeRef = useRef(0);
 
   const initCal = calRef.current;
   const agcRef = useRef<AgcState>(createAgcState(initCal.agcMax, initCal.agcMin));
