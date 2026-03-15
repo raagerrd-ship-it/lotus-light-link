@@ -234,7 +234,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
           className="flex-1 overflow-x-auto overflow-y-hidden px-2 pb-1"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <div className="flex gap-2 h-full items-center min-w-max py-2">
+          <div className="flex gap-2 h-full items-center justify-center min-w-max py-2 mx-auto">
             {SLIDERS.map((def, i) => {
               // Add group separator
               const prevGroup = i > 0 ? SLIDERS[i - 1].group : null;
