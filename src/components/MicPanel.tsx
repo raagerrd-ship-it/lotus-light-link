@@ -113,7 +113,11 @@ function modulateColor(
   return [Math.round(r), Math.round(g), Math.round(b)];
 }
 
-const ROTATION_INTERVAL_MS = 20_000; // rotate palette every 20s
+// Palette rotation: 10s at max danceability (100), 30s at min (0), 20s default
+function getRotationInterval(dance: number | null): number {
+  const d = (dance ?? 50) / 100; // 0-1
+  return Math.round(30_000 - d * 20_000); // 30s → 10s
+}
 const CROSSFADE_ALPHA = 0.008;      // per-frame lerp → ~3-5s fade at 60fps
 
 const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, bpm, energy, danceability, happiness, loudness, historyLen: historyLenProp, onLiveStatus, onColorChange }: MicPanelProps) => {
@@ -204,16 +208,22 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     resetChartScaler();
   }, [palette]);
 
-  // Rotation timer: advance palette index every ROTATION_INTERVAL_MS
+  // Rotation timer: advance palette index, interval driven by danceability
   useEffect(() => {
-    if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
-    rotationTimerRef.current = setInterval(() => {
-      const p = paletteRef.current;
-      if (p.length <= 1) return;
-      const nextIdx = (paletteIndexRef.current + 1) % p.length;
-      paletteIndexRef.current = nextIdx;
-      targetColorRef.current = p[nextIdx];
-    }, ROTATION_INTERVAL_MS);
+    const startTimer = () => {
+      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
+      const interval = getRotationInterval(danceabilityRef.current);
+      rotationTimerRef.current = setInterval(() => {
+        const p = paletteRef.current;
+        if (p.length <= 1) return;
+        const nextIdx = (paletteIndexRef.current + 1) % p.length;
+        paletteIndexRef.current = nextIdx;
+        targetColorRef.current = p[nextIdx];
+        // Restart with current danceability (may have changed)
+        startTimer();
+      }, interval);
+    };
+    startTimer();
     return () => {
       if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
     };
