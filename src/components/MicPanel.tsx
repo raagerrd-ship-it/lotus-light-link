@@ -5,7 +5,7 @@ import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/dr
 import { pushChartSample } from "@/lib/chartStore";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
 import { computeBands } from "@/lib/audioAnalysis";
-import { createAgcState, rescaleAgc, updateGlobalAgc, updateBandAgc, getEffectiveMax, normalizeBand, type AgcState } from "@/lib/agc";
+import { createAgcState, rescaleAgc, updateGlobalAgc, getEffectiveMax, normalizeValue, type AgcState } from "@/lib/agc";
 import { smooth, computeBrightnessPct } from "@/lib/brightnessEngine";
 
 interface MicPanelProps {
