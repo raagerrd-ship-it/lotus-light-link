@@ -198,8 +198,20 @@ export interface PipelineTimings {
   totalTickMs: number;
 }
 let _pipelineTimings: PipelineTimings = { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 };
-export function setPipelineTimings(t: PipelineTimings) { _pipelineTimings = t; }
+let _pipelinePeakMs = 0;
+let _pipelinePeakResetTime = performance.now();
+
+export function setPipelineTimings(t: PipelineTimings) {
+  _pipelineTimings = t;
+  const now = performance.now();
+  if (now - _pipelinePeakResetTime > 5000) {
+    _pipelinePeakMs = 0;
+    _pipelinePeakResetTime = now;
+  }
+  if (t.totalTickMs > _pipelinePeakMs) _pipelinePeakMs = t.totalTickMs;
+}
 export function getPipelineTimings(): PipelineTimings { return _pipelineTimings; }
+export function getPipelinePeakMs(): number { return _pipelinePeakMs; }
 
 let _writeCount = 0;
 let _dropCount = 0;
