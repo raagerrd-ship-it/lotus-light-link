@@ -40,8 +40,6 @@ const SLIDERS: SliderDef[] = [
   { key: 'bpmReleaseScale', label: 'BPM-release', shortLabel: 'BPM', min: 0, max: 100, step: 5, unit: '%', group: 'Dynamik', description: 'Hur mycket BPM modifierar release-hastigheten. 0% = BPM påverkar inte release. 80% = standard (lägre BPM ger långsammare release).' },
   // Traits
   { key: 'energyInfluence', label: 'Energy', shortLabel: 'Engy', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket låtens energi-värde påverkar drop-detection och ljusdynamik. 0% = ignorera energy, 100% = full effekt.' },
-  { key: 'danceabilityInfluence', label: 'Danceability', shortLabel: 'Danc', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket danceability påverkar ljusdynamik. 0% = ignorera, 100% = full effekt.' },
-  { key: 'happinessInfluence', label: 'Happiness', shortLabel: 'Happ', min: 0, max: 100, step: 5, unit: '%', group: 'Traits', description: 'Hur mycket happiness påverkar färgtemperatur och modulering. 0% = neutral, 100% = full effekt (varmare vid glad musik).' },
   // Kick
   { key: 'whiteKickThreshold', label: 'Kick tröskel', shortLabel: 'Kick', min: 50, max: 100, step: 1, unit: '%', group: 'Kick', description: 'Hur stark basökning krävs för att trigga en vit "drop"-blixt. Lägre = fler drops.' },
   { key: 'whiteKickMs', label: 'Kick tid', shortLabel: 'Tid', min: 20, max: 200, step: 5, unit: 'ms', group: 'Kick', description: 'Hur länge den vita blixten varar vid en drop.' },
