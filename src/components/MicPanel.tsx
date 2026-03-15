@@ -443,8 +443,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
           midHiRef.current = micBands.midHiRms;
 
           // ── Per-band AGC for frequency-based brightness ──
-          const BAND_AGC_ATTACK = 0.15;
-          const BAND_AGC_DECAY = 0.997;
+          const BAND_AGC_ATTACK = cal.bandAgcAttack;
+          const BAND_AGC_DECAY = cal.bandAgcDecay;
 
           // Bass AGC
           if (micBands.bassRms > bassAgcMaxRef.current) {

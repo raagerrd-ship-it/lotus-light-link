@@ -123,6 +123,7 @@ function MixerFader({
     'Palett': 'hsl(280, 70%, 60%)',
     'Traits': 'hsl(35, 90%, 55%)',
     'Kick': 'hsl(0, 80%, 60%)',
+    'AGC': 'hsl(170, 60%, 50%)',
   };
   const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
 
