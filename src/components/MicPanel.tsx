@@ -345,8 +345,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         let idleSent = false;
 
         // Listen for idle color changes from settings
-        const onIdleColorChange = () => { idleColor = getIdleColor(); idleSent = false; }; 
-        window.addEventListener('idle-color-changed', onIdleColorChange);
+        const onIdleColorChanged = () => { idleColor = getIdleColor(); idleSent = false; }; 
+        window.addEventListener('idle-color-changed', onIdleColorChanged);
+        idleCleanupRef.current = () => window.removeEventListener('idle-color-changed', onIdleColorChanged);
 
         worker.onmessage = () => {
           if (stopped) return;
