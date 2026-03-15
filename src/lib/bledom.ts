@@ -221,7 +221,10 @@ let _lastActualWriteMs = 0;
 let _lastTickToWriteMs = 0;
 
 let _errorCount = 0;
+let _errorCountWindow = 0;
+let _errorWindowStart = performance.now();
 let _lastError = '';
+let _backoffUntil = 0;
 
 // Peak tracking (rolling 5s window)
 let _peakWriteMs = 0;
@@ -230,15 +233,23 @@ let _peakWriteResetTime = performance.now();
 export function getLastTickToWriteMs(): number { return _lastTickToWriteMs; }
 
 export function getBleWriteStats(): BleWriteStats {
-  const elapsed = (performance.now() - _statsStart) / 1000;
+  const now = performance.now();
+  const elapsed = (now - _statsStart) / 1000;
   const wps = elapsed > 0 ? _writeCount / elapsed : 0;
   const dps = elapsed > 0 ? _dropCount / elapsed : 0;
+
+  const errElapsed = (now - _errorWindowStart) / 1000;
+  const eps = errElapsed > 0 ? _errorCountWindow / errElapsed : 0;
+
   if (elapsed > 2) {
     _writeCount = 0;
     _dropCount = 0;
-    _statsStart = performance.now();
+    _statsStart = now;
   }
-  const now = performance.now();
+  if (errElapsed > 2) {
+    _errorCountWindow = 0;
+    _errorWindowStart = now;
+  }
   if (now - _peakWriteResetTime > 5000) {
     _peakWriteMs = 0;
     _peakWriteResetTime = now;
@@ -250,6 +261,7 @@ export function getBleWriteStats(): BleWriteStats {
     peakWriteMs: Math.round(_peakWriteMs),
     queueAgeMs: Math.round(_lastTickToWriteMs),
     errorCount: _errorCount,
+    errorsPerSec: Math.round(eps),
     lastError: _lastError,
   };
 }
