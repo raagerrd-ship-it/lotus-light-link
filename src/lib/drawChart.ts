@@ -18,14 +18,14 @@ export interface ChartSample {
 }
 
 /**
- * Draw the intensity chart — each dot = exact BLE color at exact BLE brightness %.
- * pct is clamped to 0–100 to prevent drawing outside the chart area.
+ * Draw the intensity chart with smooth sub-sample scrolling.
+ * scrollFraction (0–1) = how far we've progressed toward the next sample slot.
  */
 export function drawIntensityChart(
   canvas: HTMLCanvasElement,
   samples: ChartSample[],
   historyLen: number,
-  globalBrightness: number = 1,
+  scrollFraction: number = 0,
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -33,7 +33,7 @@ export function drawIntensityChart(
   const w = canvas.width;
   const h = canvas.height;
   const len = samples.length;
-  if (len <= 1) { ctx.clearRect(0, 0, w, h); }
+  if (len <= 1) { ctx.clearRect(0, 0, w, h); return; }
 
   const chartHeight = h * 0.92;
   const chartTop = (h - chartHeight) / 2;
@@ -58,9 +58,10 @@ export function drawIntensityChart(
   }
   ctx.restore();
 
-  if (len <= 1) return;
   const step = w / (historyLen - 1);
-  const offsetX = (historyLen - len) * step;
+  // Shift everything left by scrollFraction of one step for smooth scrolling
+  const scroll = scrollFraction * step;
+  const offsetX = (historyLen - len) * step - scroll;
   const lineWidth = Math.max(1.5, Math.min(step * 0.6, 3));
 
   // Resolve base color for line (un-brightness-compensated)
