@@ -274,6 +274,7 @@ async function _flush() {
     _lastSentColor = [r, g, b];
     _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
+    if (_lastActualWriteMs > _peakWriteMs) _peakWriteMs = _lastActualWriteMs;
 
     if (_onWriteCallback) {
       _onWriteCallback(_lastBright, r, g, b);
