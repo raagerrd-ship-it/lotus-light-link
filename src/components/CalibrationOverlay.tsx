@@ -239,6 +239,13 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange }: Cal
     });
   }, [conn?.device?.name, onCalibrationChange]);
 
+  const handleSave = useCallback(() => {
+    saveCalibration(cal, conn?.device?.name);
+    setSavedCal(cal);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1500);
+  }, [cal, conn?.device?.name]);
+
   const handleClose = useCallback(() => {
     saveCalibration(cal, conn?.device?.name);
     onClose();
