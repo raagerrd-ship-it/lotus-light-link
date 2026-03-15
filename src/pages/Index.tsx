@@ -28,7 +28,7 @@ const Index = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
-  const punchFlashRef = useRef<HTMLDivElement>(null);
+  
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
@@ -120,8 +120,6 @@ const Index = () => {
     if (status.micRms != null) debugData.micRms = status.micRms;
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
 
-    const el = punchFlashRef.current;
-    if (el) el.style.opacity = status.isPunch ? '1' : '0';
   }, []);
 
   // Auto-hide overlay after 3s
@@ -204,11 +202,6 @@ const Index = () => {
       onPointerDown={connection ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
-        <div
-          ref={punchFlashRef}
-          className="absolute inset-0 pointer-events-none transition-opacity"
-          style={{ opacity: 0, background: 'radial-gradient(ellipse at 50% 50%, hsl(var(--foreground)) 0%, hsl(var(--foreground) / 0.4) 40%, transparent 75%)', transitionDuration: '80ms' }}
-        />
         <MicPanel char={char} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
