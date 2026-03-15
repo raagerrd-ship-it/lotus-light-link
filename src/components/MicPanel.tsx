@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { sendColorAndBrightness, setActiveChar, setPipelineTimings, onBleWrite, sendColor } from "@/lib/bledom";
+import { sendToBLE, setActiveChar, setPipelineTimings, onBleWrite } from "@/lib/bledom";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/drawChart";
 import { pushChartSample } from "@/lib/chartStore";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "@/lib/lightCalibration";
@@ -240,7 +240,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     if (char) {
       setActiveChar(char);
       const [r, g, b] = colorRef.current;
-      sendColor(char, r, g, b);
+      sendToBLE(char, r, g, b, 100);
     }
   }, [char]);
 
@@ -361,7 +361,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
             if (!idleSent && charRef.current) {
               const cal = calRef.current;
               const calibrated = applyColorCalibration(...idleColor);
-              sendColorAndBrightness(charRef.current, calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
+              sendToBLE(charRef.current, calibrated[0], calibrated[1], calibrated[2], cal.maxBrightness);
               idleSent = true;
               onLiveStatusRef.current?.({ brightness: cal.maxBrightness, color: idleColor, isWhiteKick: false, isDrop: false, bassLevel: 0, midHiLevel: 0 });
             }
@@ -581,14 +581,14 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               const warmR = 255;
               const warmG = Math.round(240 + traitHappy * 15);
               const warmB = Math.round(200 + (1 - traitHappy) * 55);
-              sendColorAndBrightness(c, warmR, Math.min(255, warmG), warmB, 100);
+              sendToBLE(c, warmR, Math.min(255, warmG), warmB, 100);
               lastColorStateRef.current = 'white';
             } else {
               const baseColor = colorRef.current;
               const calibrated = applyColorCalibration(...baseColor, cal);
               const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
-              sendColorAndBrightness(c, ...finalColor, pct);
+              sendToBLE(c, ...finalColor, pct);
               lastColorStateRef.current = 'normal';
             }
           }

@@ -6,7 +6,7 @@ import { getBleWriteStats, getPipelineTimings, getBleMinInterval } from "@/lib/b
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
   connectBLEDOM, getLastDevice, autoReconnect,
-  sendColor, sendBrightness, sendPower, setActiveChar, clearActiveChar, getLastTickToWriteMs,
+  sendToBLE, sendPower, setActiveChar, clearActiveChar, getLastTickToWriteMs,
   type BLEConnection, type BleReconnectStatus
 } from "@/lib/bledom";
 import { setBleConnection } from "@/lib/bleStore";
@@ -226,10 +226,8 @@ const Index = () => {
     setBusy(false);
     setActiveChar(conn.characteristic);
     await sendPower(conn.characteristic, true);
-    await sendBrightness(conn.characteristic, 100);
-
     const calibrated = applyColorCalibration(...currentColorRef.current);
-    await sendColor(conn.characteristic, ...calibrated).catch(() => {});
+    await sendToBLE(conn.characteristic, ...calibrated, 100);
 
     const deviceName = conn.device?.name;
     if (deviceName) {

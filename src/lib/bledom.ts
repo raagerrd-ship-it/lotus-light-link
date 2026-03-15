@@ -338,28 +338,21 @@ export function clearActiveChar() {
   if (_timer) { clearTimeout(_timer); _timer = null; }
 }
 
-export function sendColor(_char_unused: any, r: number, g: number, b: number) {
-  _pendingColor = [r, g, b];
-  // Don't flush here — let sendBrightness or sendColorAndBrightness trigger it
-  if (_writing) { _dirtyWhileWriting = true; }
-  _lastTickToWriteMs = 0;
-  return Promise.resolve();
-}
-
-export function sendBrightness(_char_unused: any, brightness: number) {
-  _pendingBright = brightness;
-  if (_writing) { _dirtyWhileWriting = true; } else { _flush(); }
-  return Promise.resolve();
-}
-
-/** Atomic: set both color + brightness pending, then flush once */
-export function sendColorAndBrightness(_char_unused: any, r: number, g: number, b: number, brightness: number) {
+/** Single unified BLE command — always sets color + brightness atomically */
+export function sendToBLE(_char_unused: any, r: number, g: number, b: number, brightness: number) {
   _pendingColor = [r, g, b];
   _pendingBright = brightness;
   if (_writing) { _dirtyWhileWriting = true; } else { _flush(); }
   _lastTickToWriteMs = 0;
   return Promise.resolve();
 }
+
+// Legacy aliases — kept temporarily for any straggling imports
+export const sendColor = (_c: any, r: number, g: number, b: number) => sendToBLE(_c, r, g, b, _pendingBright ?? 100);
+export const sendBrightness = (_c: any, brightness: number) => {
+  if (_pendingColor) sendToBLE(_c, _pendingColor[0], _pendingColor[1], _pendingColor[2], brightness);
+};
+export const sendColorAndBrightness = sendToBLE;
 
 export async function sendPower(char: any, on: boolean) {
   const cmd = on ? 0x23 : 0x24;
