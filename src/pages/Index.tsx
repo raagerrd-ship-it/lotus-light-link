@@ -170,23 +170,7 @@ const Index = () => {
   // BLE write tracking for debug overlay (ref + interval to avoid 20fps state churn)
   const [bleSentColor, setBleSentColor] = useState<[number, number, number] | null>(null);
   const [bleSentBright, setBleSentBright] = useState<number | null>(null);
-  const [bleColorSource, setBleColorSource] = useState<'idle' | 'normal' | 'white' | null>(null);
   const bleSentRef = useRef<{ r: number; g: number; b: number; bright: number } | null>(null);
-
-  useEffect(() => {
-    if (!isMaster) return;
-    onBleWrite((bright, r, g, b) => {
-      bleSentRef.current = { r, g, b, bright };
-    });
-    const id = setInterval(() => {
-      const v = bleSentRef.current;
-      if (v) {
-        setBleSentColor([v.r, v.g, v.b]);
-        setBleSentBright(v.bright);
-      }
-    }, 500);
-    return () => { onBleWrite(null); clearInterval(id); };
-  }, [isMaster]);
 
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; isWhiteKick: boolean; isDrop: boolean; bassLevel: number; midHiLevel: number; paletteIndex: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'white' }) => {
     if (!isMaster) return;
