@@ -175,7 +175,7 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 // Hardware brightness = 100% (0x64) — sent periodically to prevent hardware dimming
 const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x64, 0x00, 0x00, 0x00, 0x00, 0xef]);
-const BRIGHT_REFRESH_INTERVAL = 50; // send brightness=100% every N writes
+const BRIGHT_REFRESH_INTERVAL = 100; // send brightness=100% every N writes (replaces color that tick)
 
 // --- BLE write state (tick-worker drives timing) ---
 
@@ -297,14 +297,14 @@ async function _flush() {
     _colorBuf[5] = g;
     _colorBuf[6] = b;
 
-    await _char.writeValueWithoutResponse(_colorBuf);
-    _lastSentColor = [r, g, b];
-    _writeCount++;
-
-    // Periodically force hardware brightness to 100%
+    // Every Nth write, send brightness=100% INSTEAD of color (not in addition)
     if (_writeCount % BRIGHT_REFRESH_INTERVAL === 0) {
       await _char.writeValueWithoutResponse(_brightMaxBuf);
+    } else {
+      await _char.writeValueWithoutResponse(_colorBuf);
     }
+    _lastSentColor = [r, g, b];
+    _writeCount++;
     _lastActualWriteMs = performance.now() - writeStart;
     if (_lastActualWriteMs > _peakWriteMs) _peakWriteMs = _lastActualWriteMs;
 
