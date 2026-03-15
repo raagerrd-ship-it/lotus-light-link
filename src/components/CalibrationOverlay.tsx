@@ -118,6 +118,7 @@ function MixerFader({
     'Frekvens': 'hsl(200, 80%, 55%)',
     'Dynamik': 'hsl(142, 70%, 50%)',
     'AGC': 'hsl(170, 60%, 50%)',
+    'Punch': 'hsl(45, 90%, 55%)',
   };
   const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
 

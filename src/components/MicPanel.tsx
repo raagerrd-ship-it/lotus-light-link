@@ -348,13 +348,20 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, historyLe
 
           // ── BLE output ──
           const c = charRef.current;
+          const isPunch = cal.punchWhiteThreshold > 0 && pct >= cal.punchWhiteThreshold;
           let bleSentR = 0, bleSentG = 0, bleSentB = 0, bleSentBr = pct;
           if (c) {
-            const baseColor = colorRef.current;
-            const finalColor = applyColorCalibration(...baseColor, cal);
-            bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
-            lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
-            sendToBLE(...finalColor, pct);
+            if (isPunch) {
+              bleSentR = 255; bleSentG = 255; bleSentB = 255;
+              lastBaseColorRef.current = [255, 255, 255];
+              sendToBLE(255, 255, 255, pct);
+            } else {
+              const baseColor = colorRef.current;
+              const finalColor = applyColorCalibration(...baseColor, cal);
+              bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
+              lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
+              sendToBLE(...finalColor, pct);
+            }
           }
           const bleEnd = performance.now();
 

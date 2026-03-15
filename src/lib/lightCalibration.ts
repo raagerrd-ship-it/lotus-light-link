@@ -78,6 +78,8 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
 
   volCompensation: 80,
 
+  punchWhiteThreshold: 0,
+
   agcMin: 0,
   agcMax: 0.01,
   agcVolume: null,
