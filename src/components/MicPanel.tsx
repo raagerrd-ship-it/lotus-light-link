@@ -258,26 +258,21 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
           dynamicCenterRef.current = newCenter;
           const smoothEnd = performance.now();
 
-          // ── BLE output ──
+          // ── Resolve colors (before chart + BLE) ──
           const c = charRef.current;
           const isPunch = cal.punchWhiteThreshold > 0 && pct >= cal.punchWhiteThreshold;
           let bleSentR = 0, bleSentG = 0, bleSentB = 0;
           const bleSentBr = pct;
-          if (c) {
-            if (isPunch) {
-              bleSentR = 255; bleSentG = 255; bleSentB = 255;
-              lastBaseColorRef.current = [255, 255, 255];
-              sendToBLE(255, 255, 255, pct);
-            } else {
-              const finalColor = applyColorCalibration(...colorRef.current, cal);
-              bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
-              lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
-              sendToBLE(...finalColor, pct);
-            }
+          if (isPunch) {
+            bleSentR = 255; bleSentG = 255; bleSentB = 255;
+            lastBaseColorRef.current = [255, 255, 255];
+          } else if (c) {
+            const finalColor = applyColorCalibration(...colorRef.current, cal);
+            bleSentR = finalColor[0]; bleSentG = finalColor[1]; bleSentB = finalColor[2];
+            lastBaseColorRef.current = [bleSentR, bleSentG, bleSentB];
           }
-          const bleEnd = performance.now();
 
-          // ── Chart ──
+          // ── Chart (before BLE so diagram and light are in sync) ──
           const base = lastBaseColorRef.current;
           const sample: ChartSample = {
             pct: bleSentBr,
@@ -291,6 +286,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
           if (samplesRef.current.length > effectiveHistoryLen) {
             samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
           }
+
+          // ── BLE output ──
+          if (c) {
+            if (isPunch) sendToBLE(255, 255, 255, pct);
+            else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
+          }
+          const bleEnd = performance.now();
           
 
           // ── Status callback ──
