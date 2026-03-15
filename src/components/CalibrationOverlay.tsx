@@ -168,11 +168,30 @@ function MixerFader({
         style={{ height: '6rem', background: 'hsl(var(--secondary))' }}
         onPointerDown={handlePointer}
       >
-        {/* Fill from bottom */}
-        <div
-          className="absolute bottom-0 left-0 right-0 rounded-full transition-none"
-          style={{ height: `${pct}%`, background: accentColor, opacity: 0.5 }}
-        />
+        {/* Fill from bypass ref to current value */}
+        {(() => {
+          const bypassVal = BYPASS_VALUES[def.key] ?? def.min;
+          const bypassPct = ((bypassVal - def.min) / (def.max - def.min)) * 100;
+          const bottom = Math.min(pct, bypassPct);
+          const top = Math.max(pct, bypassPct);
+          return (
+            <div
+              className="absolute left-0 right-0 rounded-full transition-none"
+              style={{ bottom: `${bottom}%`, height: `${top - bottom}%`, background: accentColor, opacity: 0.45 }}
+            />
+          );
+        })()}
+        {/* Bypass reference line */}
+        {(() => {
+          const bypassVal = BYPASS_VALUES[def.key] ?? def.min;
+          const bypassPct = ((bypassVal - def.min) / (def.max - def.min)) * 100;
+          return (
+            <div
+              className="absolute left-0 right-0 h-px transition-none"
+              style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }}
+            />
+          );
+        })()}
         {/* Thumb */}
         <div
           className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border transition-none"
