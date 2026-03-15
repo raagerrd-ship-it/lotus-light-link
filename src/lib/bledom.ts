@@ -301,11 +301,18 @@ export function clearActiveChar() {
   _pendingColor = null;
 }
 
-/** Single unified BLE command — always sets color + brightness atomically */
+/** Single unified BLE command — always sets color + brightness atomically.
+ *  Pre-multiplies RGB by brightness to avoid BLEDOM's poor color rendering
+ *  at low hardware brightness levels. Sends brightness=100% to BLEDOM. */
 export function sendToBLE(_char_unused: any, r: number, g: number, b: number, brightness: number) {
-  _pendingColor = [r, g, b];
-  _pendingBright = brightness;
-  // Fire callback immediately with intent (not waiting for actual write)
+  const scale = Math.max(0, Math.min(100, brightness)) / 100;
+  _pendingColor = [
+    Math.round(r * scale),
+    Math.round(g * scale),
+    Math.round(b * scale),
+  ];
+  _pendingBright = 100; // Always full hardware brightness — dimming via RGB
+  // Fire callback with original (pre-multiply) values for debug display
   if (_onWriteCallback) {
     _onWriteCallback(brightness, r, g, b);
   }
