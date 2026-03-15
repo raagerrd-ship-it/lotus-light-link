@@ -173,9 +173,9 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
 
 // Pre-allocated buffers
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
-// Hardware brightness = 100% (0x64) — sent periodically to prevent hardware dimming
-const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x64, 0x00, 0x00, 0x00, 0x00, 0xef]);
-const BRIGHT_REFRESH_INTERVAL = 100; // send brightness=100% every N writes (replaces color that tick)
+// Hardware brightness = max (0xFF) — some BLEDOM variants use 0-255 scale
+const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 0x00, 0xef]);
+const BRIGHT_REFRESH_INTERVAL = 100; // send brightness=max every N writes (replaces color that tick)
 
 // --- BLE write state (tick-worker drives timing) ---
 
