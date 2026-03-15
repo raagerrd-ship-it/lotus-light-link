@@ -48,6 +48,7 @@ const Index = () => {
   const [tickToWriteMs, setTickToWriteMs] = useState(0);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
   const [showCalibration, setShowCalibration] = useState(() => new URLSearchParams(window.location.search).has('cal'));
+  const [tickMs, setTickMs] = useState(25);
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);

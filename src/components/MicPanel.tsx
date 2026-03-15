@@ -209,6 +209,11 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     }
   }, [loudness]);
 
+  // Forward dynamic tick interval to worker
+  useEffect(() => {
+    workerRef.current?.postMessage(tickMs);
+  }, [tickMs]);
+
   // When currentColor changes externally, update colorRef but DON'T snap blended
   // (blended is driven by crossfade; snapping happens only on palette change)
   useEffect(() => {
