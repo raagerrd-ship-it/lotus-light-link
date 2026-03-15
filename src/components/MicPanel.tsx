@@ -584,7 +584,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
               sendColorAndBrightness(c, warmR, Math.min(255, warmG), warmB, 100);
               lastColorStateRef.current = 'white';
             } else {
-              const calibrated = applyColorCalibration(...colorRef.current, cal);
+              const baseColor = colorRef.current;
+              const calibrated = applyColorCalibration(...baseColor, cal);
               const modStrength = cal.colorModStrength * (0.5 + traitHappy * 0.7);
               const finalColor = modulateColor(...calibrated, micBands.lo, micBands.mid, micBands.hi, modStrength);
               sendColorAndBrightness(c, ...finalColor, pct);
