@@ -171,8 +171,11 @@ export async function connectBLEDOM(scanAll = false): Promise<BLEConnection> {
   return connectToDevice(device);
 }
 
-// Pre-allocated buffer to avoid GC in hot loops
+// Pre-allocated buffers
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
+// Hardware brightness = 100% (0x64) — sent periodically to prevent hardware dimming
+const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x64, 0x00, 0x00, 0x00, 0x00, 0xef]);
+const BRIGHT_REFRESH_INTERVAL = 50; // send brightness=100% every N writes
 
 // --- BLE write state (tick-worker drives timing) ---
 
@@ -294,10 +297,14 @@ async function _flush() {
     _colorBuf[5] = g;
     _colorBuf[6] = b;
 
-    // writeValueWithoutResponse — no GATT ack, testing throughput
     await _char.writeValueWithoutResponse(_colorBuf);
     _lastSentColor = [r, g, b];
     _writeCount++;
+
+    // Periodically force hardware brightness to 100%
+    if (_writeCount % BRIGHT_REFRESH_INTERVAL === 0) {
+      await _char.writeValueWithoutResponse(_brightMaxBuf);
+    }
     _lastActualWriteMs = performance.now() - writeStart;
     if (_lastActualWriteMs > _peakWriteMs) _peakWriteMs = _lastActualWriteMs;
 
@@ -356,3 +363,7 @@ export async function sendPower(char: any, on: boolean) {
   await char.writeValueWithoutResponse(data);
 }
 
+/** Force hardware brightness to 100% — call at connect to ensure pre-multiplication works */
+export async function sendHardwareBrightness(char: any) {
+  await char.writeValueWithoutResponse(_brightMaxBuf);
+}
