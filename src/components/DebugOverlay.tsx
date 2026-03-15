@@ -109,23 +109,6 @@ export default function DebugOverlay() {
           nrgRef.current.style.display = 'none';
         }
       }
-      if (dncRef.current) {
-        if (d.danceability != null) {
-          dncRef.current.innerHTML = `dnc <span class="text-foreground">${d.danceability}</span>`;
-          dncRef.current.style.display = '';
-        } else {
-          dncRef.current.style.display = 'none';
-        }
-      }
-      if (hpyRef.current) {
-        if (d.happiness != null) {
-          const mod = (0.2 + (d.happiness / 100) * 0.25).toFixed(2);
-          hpyRef.current.innerHTML = `hpy <span class="text-foreground">${d.happiness}</span> <span class="text-foreground/40">mod${mod}</span>`;
-          hpyRef.current.style.display = '';
-        } else {
-          hpyRef.current.style.display = 'none';
-        }
-      }
       if (loudRef.current) {
         if (d.loudness != null) {
           const m = d.loudness.match(/-?\d+(\.\d+)?/);
