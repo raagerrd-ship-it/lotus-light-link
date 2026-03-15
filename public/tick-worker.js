@@ -1,6 +1,6 @@
 // Background tick worker — continues running when tab is hidden
 let intervalId = null;
-let currentMs = 25;
+let currentMs = 125;
 
 self.onmessage = (e) => {
   if (e.data === 'start') {
