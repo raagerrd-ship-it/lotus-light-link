@@ -35,7 +35,13 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
   useEffect(() => { engineRef.current?.setColor(currentColor); }, [currentColor]);
   useEffect(() => { engineRef.current?.setVolume(sonosVolume); }, [sonosVolume]);
   useEffect(() => { engineRef.current?.setPlaying(isPlaying); }, [isPlaying]);
-  useEffect(() => { engineRef.current?.setTrackName(trackName ?? null); }, [trackName]);
+  const lastTrackRef = useRef(trackName);
+  useEffect(() => {
+    if (trackName && trackName !== lastTrackRef.current) {
+      lastTrackRef.current = trackName;
+      engineRef.current?.resetAgc();
+    }
+  }, [trackName]);
   useEffect(() => { engineRef.current?.setTickMs(tickMs); }, [tickMs]);
 
   // ── Chart rendering via rAF ──
