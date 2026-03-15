@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
   getIdleColor, saveIdleColor,
-  type LightCalibration,
+  type LightCalibration, type PresetName,
 } from "@/lib/lightCalibration";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
 import { getPipelineTimings } from "@/lib/pipelineTimings";
