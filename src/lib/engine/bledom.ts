@@ -224,20 +224,25 @@ export function getActiveCharCount(): number {
   return _charModes.size;
 }
 
+// Brightness-only buffer: white light at variable brightness
+const _brightOnlyBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xef]);
+
 /** Single unified BLE command — pre-multiplies RGB by brightness.
- *  Sends one 9-byte color packet to ALL connected devices. Hardware brightness is locked to 100%. */
+ *  Sends packets to ALL connected devices. RGB devices get color, brightness-only get dimming. */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
-  if (_chars.size === 0) return;
+  if (_charModes.size === 0) return;
   const scale = Math.max(0, Math.min(100, brightness)) / 100;
   _colorBuf[4] = Math.round(r * scale);
   _colorBuf[5] = Math.round(g * scale);
   _colorBuf[6] = Math.round(b * scale);
+  _brightOnlyBuf[3] = Math.round(scale * 0xff);
 
-  const writes = Array.from(_chars).map(char =>
-    char.writeValueWithoutResponse(_colorBuf).catch((e: any) => {
+  const writes = Array.from(_charModes.entries()).map(([char, mode]) => {
+    const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
+    return char.writeValueWithoutResponse(buf).catch((e: any) => {
       console.warn('[BLE] write error:', e?.message);
-    })
-  );
+    });
+  });
   await Promise.allSettled(writes);
 }
 
