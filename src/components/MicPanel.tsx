@@ -163,7 +163,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const midHiRef = useRef(0);
   const brightPctRef = useRef(0);
   const rawEnergyPctRef = useRef(0);
-  const sunRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
   const energyRef = useRef(energy);
   const danceabilityRef = useRef(danceability);
