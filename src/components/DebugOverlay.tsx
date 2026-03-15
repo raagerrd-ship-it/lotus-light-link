@@ -151,7 +151,6 @@ export default function DebugOverlay({
             <div className="w-1 h-3 rounded-sm bg-foreground/20 overflow-hidden flex flex-col-reverse">
               <div className="w-full rounded-sm bg-foreground/80" style={{ height: `${bleSentBright ?? 0}%` }} />
             </div>
-            <span className="text-foreground">{bleSentColor[0]},{bleSentColor[1]},{bleSentColor[2]}</span>
             <span className="text-foreground/50">@{bleSentBright ?? '?'}%</span>
             {bleColorSource && bleColorSource !== 'normal' && (
               <span className={bleColorSource === 'idle' ? 'text-yellow-400' : 'text-foreground'}>{bleColorSource}</span>
