@@ -187,7 +187,23 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => { energyRef.current = energy; }, [energy]);
   useEffect(() => { danceabilityRef.current = danceability; }, [danceability]);
   useEffect(() => { happinessRef.current = happiness; }, [happiness]);
-  useEffect(() => { loudnessDbRef.current = parseLoudnessDb(loudness); }, [loudness]);
+  useEffect(() => {
+    const prevDb = loudnessDbRef.current;
+    const newDb = parseLoudnessDb(loudness);
+    loudnessDbRef.current = newDb;
+    // Immediately rescale AGC when track loudness changes
+    if (prevDb != null && newDb != null && prevDb !== newDb) {
+      const ratio = loudnessToAgcFactor(newDb) / loudnessToAgcFactor(prevDb);
+      agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
+      agcMinRef.current *= ratio;
+      agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
+      bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
+      bassAgcMinRef.current *= ratio;
+      midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
+      midHiAgcMinRef.current *= ratio;
+      console.log('[AGC] loudness changed', prevDb, '→', newDb, 'ratio:', ratio.toFixed(2));
+    }
+  }, [loudness]);
 
   // When currentColor changes externally, update colorRef but DON'T snap blended
   // (blended is driven by crossfade; snapping happens only on palette change)
