@@ -272,7 +272,6 @@ export function setActiveChar(char: any) {
 /** Clear active char on disconnect to prevent stale GATT writes */
 export function clearActiveChar() {
   _char = null;
-  _pendingBright = null;
   _pendingColor = null;
 }
 
