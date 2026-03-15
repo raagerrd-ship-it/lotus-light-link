@@ -194,7 +194,17 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const dropActiveUntilRef = useRef(0);
   const lastDropTimeRef = useRef(0);
 
-  // Palette rotation + crossfade
+  const rescaleAllAgc = (ratio: number) => {
+    agcMaxRef.current = Math.max(AGC_FLOOR, agcMaxRef.current * ratio);
+    agcMinRef.current = Math.max(0, agcMinRef.current * ratio);
+    agcPeakMaxRef.current = Math.max(agcMaxRef.current, agcPeakMaxRef.current * ratio);
+    bassAgcMaxRef.current = Math.max(AGC_FLOOR, bassAgcMaxRef.current * ratio);
+    bassAgcMinRef.current = Math.max(0, bassAgcMinRef.current * ratio);
+    midHiAgcMaxRef.current = Math.max(AGC_FLOOR, midHiAgcMaxRef.current * ratio);
+    midHiAgcMinRef.current = Math.max(0, midHiAgcMinRef.current * ratio);
+  };
+
+
   const paletteRef = useRef(palette ?? []);
   const paletteIndexRef = useRef(0);
   const targetColorRef = useRef<[number, number, number]>(currentColor);
