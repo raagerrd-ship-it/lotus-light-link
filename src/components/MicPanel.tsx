@@ -178,7 +178,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const targetColorRef = useRef<[number, number, number]>(currentColor);
   const blendedColorRef = useRef<[number, number, number]>(currentColor);
   const onColorChangeRef = useRef(onColorChange);
-  const rotationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const nextRotationAtRef = useRef(0); // timestamp for next palette advance
 
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
   useEffect(() => { onColorChangeRef.current = onColorChange; }, [onColorChange]);
