@@ -26,13 +26,15 @@ export function applyDynamics(
     // Power curve pushes away from center, tanh soft-clips the extremes
     const amount = Math.min(1, dynamicDamping / 2);
     const exponent = 1 / (1 + amount * 4);
-    const maxRange = Math.max(center, 1 - center) || 0.5;
-    const normalized = (result - center) / maxRange; // -1..1
+    // Asymmetric range: above center uses (1-center), below uses center
+    // This prevents net upward drift from expansion
+    const range = result >= center ? (1 - center) || 0.5 : center || 0.5;
+    const normalized = (result - center) / range; // -1..1
     const expanded = Math.sign(normalized) * Math.pow(Math.abs(normalized), exponent);
     // Soft-limit: tanh squashes extremes so it doesn't just pin at 0%/100%
-    const softLimit = 1.2 + amount * 0.8; // how hard we clip (higher = less clip)
+    const softLimit = 1.2 + amount * 0.8;
     const softened = Math.tanh(expanded * softLimit) / Math.tanh(softLimit);
-    result = center + softened * maxRange;
+    result = center + softened * range;
   } else if (dynamicDamping < 0) {
     // Negative = compress dynamics (less contrast)
     const amount = Math.min(1, Math.abs(dynamicDamping) / 3);
