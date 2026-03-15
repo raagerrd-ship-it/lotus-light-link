@@ -163,8 +163,6 @@ interface CalibrationOverlayProps {
 export default function CalibrationOverlay({ onClose, onCalibrationChange }: CalibrationOverlayProps) {
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [activeSlider, setActiveSlider] = useState<number>(0);
-  const [showBle, setShowBle] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [conn, setConn] = useState(getBleConnection);
   const scrollRef = useRef<HTMLDivElement>(null);
 
