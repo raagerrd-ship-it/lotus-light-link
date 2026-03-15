@@ -7,6 +7,8 @@ import {
   type LightCalibration,
 } from "@/lib/lightCalibration";
 import { getBleConnection, subscribeBle } from "@/lib/bleStore";
+import { getChartSamples } from "@/lib/chartStore";
+import { drawIntensityChart } from "@/lib/drawChart";
 
 /* ── Slider definitions ── */
 
