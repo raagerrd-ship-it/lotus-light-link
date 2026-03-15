@@ -12,8 +12,6 @@ interface MicPanelProps {
   isPlaying?: boolean;
   bpm?: number | null;
   energy?: number | null;        // 0-100
-  danceability?: number | null;  // 0-100
-  happiness?: number | null;     // 0-100
   loudness?: string | null;      // e.g. "-5 dB"
   historyLen?: number;           // override chart history length (default 120)
   tickMs?: number;               // tick interval for worker (default 125ms = 8fps)
