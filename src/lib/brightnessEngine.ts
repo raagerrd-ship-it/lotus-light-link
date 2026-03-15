@@ -22,13 +22,13 @@ export function applyDynamics(
   let result = energyNorm;
 
   if (dynamicDamping > 0) {
-    // Positive = expand dynamics (more contrast)
+    // Positive = expand dynamics (more contrast both up AND down)
     const amount = Math.min(1, dynamicDamping / 2);
-    const gain = 1 + amount * 10;
-    const centered = result - center;
-    const denom = Math.tanh(0.5 * gain) || 1;
-    const expanded = center + 0.5 * (Math.tanh(centered * gain) / denom);
-    result = result * (1 - amount) + expanded * amount;
+    const exponent = 1 / (1 + amount * 4); // <1 = push away from center
+    const maxRange = Math.max(center, 1 - center) || 0.5;
+    const normalized = (result - center) / maxRange; // -1..1
+    const expanded = Math.sign(normalized) * Math.pow(Math.abs(normalized), exponent);
+    result = center + expanded * maxRange;
   } else if (dynamicDamping < 0) {
     // Negative = compress dynamics (less contrast)
     const amount = Math.min(1, Math.abs(dynamicDamping) / 3);
