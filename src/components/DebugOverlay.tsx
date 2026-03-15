@@ -164,42 +164,6 @@ export default function DebugOverlay({
         ) : (
           <div className="text-foreground/50">väntar…</div>
         )}
-        {bleMinIntervalMs != null && (() => {
-          const interval = bleMinIntervalMs;
-          const peak = pipelinePeakMs ?? 0;
-          const ratio = interval > 0 ? peak / interval : 0;
-          const peakColor = ratio >= 1 ? 'text-red-400 font-bold' : ratio > 0.8 ? 'text-yellow-400' : 'text-green-400';
-          return (
-            <div>
-              intervall: <span className="text-foreground">{interval}ms</span>
-              <span className="text-foreground/40"> │ </span>
-              peak: <span className={peakColor}>{Math.round(peak)}ms</span>
-              <span className={peakColor}> {ratio >= 1 ? '!!' : '✓'}</span>
-            </div>
-          );
-        })()}
-        {bleWriteStats && (
-          <div>
-            <span className="text-foreground">{bleWriteStats.writesPerSec}w/s</span>
-            {' '}
-            {bleWriteStats.errorsPerSec > 0
-              ? <span className="text-red-400 animate-pulse">err:{bleWriteStats.errorsPerSec}/s</span>
-              : <span className="text-green-400">0 err</span>
-            }
-            {bleWriteStats.errorCount > 0 && <span className="text-foreground/40"> Σ{bleWriteStats.errorCount}</span>}
-            {bleWriteStats.errorsPerSec > 0 && bleWriteStats.lastError && (
-              <div className="text-red-300 truncate max-w-[200px]">{bleWriteStats.lastError}</div>
-            )}
-          </div>
-        )}
-        {bleCharProps && (
-          <div>
-            props: {bleCharProps.write ? <span className="text-green-400">W</span> : <span className="text-red-400">w</span>}
-            {' '}{bleCharProps.writeWithoutResponse ? <span className="text-green-400">WnR</span> : <span className="text-red-400">wnr</span>}
-            {' '}{bleCharProps.read ? <span className="text-foreground/40">R</span> : null}
-            {' '}{bleCharProps.notify ? <span className="text-foreground/40">N</span> : null}
-          </div>
-        )}
       </Section>
 
       {/* Build info */}
