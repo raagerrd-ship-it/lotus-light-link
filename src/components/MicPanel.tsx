@@ -15,7 +15,7 @@ interface MicPanelProps {
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => void;
 }
 
-const HISTORY_LEN = 72; // ~9s at 8Hz, fewer points to draw
+const HISTORY_LEN = 64; // ~8s at 8Hz, fewer visible points
 
 const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
