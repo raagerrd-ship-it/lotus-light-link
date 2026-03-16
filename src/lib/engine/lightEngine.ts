@@ -333,7 +333,7 @@ export class LightEngine {
     const smoothEnd = performance.now();
 
     // ── Resolve colors ──
-    const isPunch = cal.punchWhiteThreshold > 0 && pct >= cal.punchWhiteThreshold;
+    const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
     const finalColor = applyColorCalibration(...this.color, cal);
     const bleSentR = finalColor[0], bleSentG = finalColor[1], bleSentB = finalColor[2];
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];

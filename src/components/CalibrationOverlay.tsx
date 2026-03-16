@@ -45,7 +45,7 @@ const BYPASS_VALUES: Record<string, number> = {
   releaseAlpha: 1.0,
   dynamicDamping: 0,
   volCompensation: 80,
-  punchWhiteThreshold: 0,
+  punchWhiteThreshold: 100,
 };
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
