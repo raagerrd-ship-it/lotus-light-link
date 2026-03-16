@@ -28,13 +28,15 @@ export interface TickData {
 
 export type TickCallback = (data: TickData) => void;
 
+export const DEFAULT_TICK_MS = 100;
+
 export class LightEngine {
   // --- State ---
   private color: [number, number, number] = [255, 80, 0];
   private volume: number | undefined;
   private playing = true;
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
-  private tickMs = 125;
+  private tickMs = DEFAULT_TICK_MS;
 
   // --- Internal ---
   private analyser: AnalyserNode | null = null;
@@ -184,6 +186,7 @@ export class LightEngine {
         saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
       }, 10_000);
 
+      worker.postMessage(this.tickMs);
       worker.postMessage("start");
     } catch (e) {
       console.error("[LightEngine] mic init failed", e);

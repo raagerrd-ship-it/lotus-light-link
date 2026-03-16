@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LightEngine, type TickData } from "@/lib/engine/lightEngine";
+import { LightEngine, DEFAULT_TICK_MS, type TickData } from "@/lib/engine/lightEngine";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/ui/drawChart";
 import { pushChartSample, getChartSamples } from "@/lib/ui/chartStore";
 import { setPipelineTimings } from "@/lib/ui/pipelineTimings";
@@ -17,7 +17,7 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 64; // ~8s at 8Hz, fewer visible points
 
-const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = 125, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = DEFAULT_TICK_MS, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
