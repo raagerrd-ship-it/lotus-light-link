@@ -33,6 +33,7 @@ const SLIDERS: SliderDef[] = [
   { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 1.0, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. 1.0 = ingen smoothing.' },
   { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. 1.0 = ingen smoothing.', format: v => v.toFixed(3) },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -3.0, max: 2.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Positivt = förstärkt kontrast. Negativt = utjämnad. 0 = neutral.' },
+  { key: 'smoothing', label: 'Smoothing', shortLabel: 'Smth', min: 0, max: 100, step: 1, unit: '%', group: 'Dynamik', description: 'Extra utjämning av ljuskurvan. 0 = av, högre = mjukare.' },
   // AGC
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
   // Punch
