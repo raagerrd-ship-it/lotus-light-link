@@ -13,18 +13,29 @@ export function smooth(prev: number, raw: number, attackAlpha: number, releaseAl
   return prev + alpha * (raw - prev);
 }
 
-/** Extra moving-average smoothing. Returns new smoothed value and updated history buffer. */
+/** Extra Gaussian-weighted smoothing for a naturally smooth curve between values.
+ *  Returns new smoothed value and updated history buffer. */
 export function extraSmooth(history: number[], newVal: number, windowSize: number): { smoothed: number; history: number[] } {
   if (windowSize <= 1) return { smoothed: newVal, history: [] };
   const buf = history.length >= windowSize ? history.slice(-(windowSize - 1)) : [...history];
   buf.push(newVal);
-  const avg = buf.reduce((s, v) => s + v, 0) / buf.length;
-  return { smoothed: avg, history: buf };
+  // Gaussian weights: center (newest) has highest weight, tails fall off
+  const len = buf.length;
+  const sigma = len / 3; // ~3 sigma covers the window
+  let weightSum = 0;
+  let valSum = 0;
+  for (let i = 0; i < len; i++) {
+    const dist = len - 1 - i; // distance from newest sample
+    const w = Math.exp(-(dist * dist) / (2 * sigma * sigma));
+    valSum += buf[i] * w;
+    weightSum += w;
+  }
+  return { smoothed: valSum / weightSum, history: buf };
 }
 
-/** Convert smoothing 0–100 to window size 1–20 */
+/** Convert smoothing 0–100 to window size 1–10 */
 export function smoothingToWindow(smoothing: number): number {
-  return Math.max(1, Math.round(smoothing / 5));
+  return Math.max(1, Math.round(smoothing / 10));
 }
 
 /** Apply dynamic damping (expansion or compression around adaptive center) */
