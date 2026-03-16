@@ -28,6 +28,8 @@ export interface TickData {
 
 export type TickCallback = (data: TickData) => void;
 
+export const DEFAULT_TICK_MS = 100;
+
 export class LightEngine {
   // --- State ---
   private color: [number, number, number] = [255, 80, 0];
