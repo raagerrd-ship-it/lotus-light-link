@@ -186,6 +186,7 @@ export class LightEngine {
         saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
       }, 10_000);
 
+      worker.postMessage(this.tickMs);
       worker.postMessage("start");
     } catch (e) {
       console.error("[LightEngine] mic init failed", e);
