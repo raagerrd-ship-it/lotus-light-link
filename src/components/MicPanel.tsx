@@ -81,12 +81,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
         rawPct: data.rawEnergyPct,
         baseR: base[0], baseG: base[1], baseB: base[2],
       };
-      samplesRef.current.push(sample);
-      lastSampleTimeRef.current = performance.now();
       pushChartSample(sample);
-      if (samplesRef.current.length > effectiveHistoryLen) {
-        samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
-      }
+      lastSampleTimeRef.current = performance.now();
 
       setPipelineTimings(data.timings);
 
