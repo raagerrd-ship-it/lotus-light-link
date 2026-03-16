@@ -233,6 +233,17 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
+  // Sync local state when calibration changes externally (e.g. preset switch)
+  useEffect(() => {
+    const handler = () => {
+      const fresh = getCalibration();
+      setCal(fresh);
+      setSavedCal(fresh);
+    };
+    window.addEventListener('calibration-changed', handler);
+    return () => window.removeEventListener('calibration-changed', handler);
+  }, []);
+
   const update = useCallback((key: keyof LightCalibration, value: number) => {
     setCal(prev => {
       const next = { ...prev, [key]: value };
