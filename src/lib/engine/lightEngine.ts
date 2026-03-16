@@ -52,6 +52,7 @@ export class LightEngine {
   private lastBucket: number = 0;
   private extraSmoothBass = 0;
   private extraSmoothMidHi = 0;
+  private extraSmoothPct = 0;
 
   private idleSent = false;
 
@@ -115,6 +116,7 @@ export class LightEngine {
     this.dynamicCenter = 0.5;
     this.extraSmoothBass = 0;
     this.extraSmoothMidHi = 0;
+    this.extraSmoothPct = 0;
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
@@ -230,6 +232,7 @@ export class LightEngine {
     this.dynamicCenter = 0.5;
     this.extraSmoothBass = 0;
     this.extraSmoothMidHi = 0;
+    this.extraSmoothPct = 0;
     this.agc = createAgcState(0.01);
     this.volumeTable = {};
     this.lastBaseColor = [0, 0, 0];
@@ -310,11 +313,17 @@ export class LightEngine {
     }
 
     // ── Brightness ──
-    const { pct, newCenter } = computeBrightnessPct(
+    let { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
       100, this.dynamicCenter, cal,
     );
     this.dynamicCenter = newCenter;
+
+    // ── Extra smoothing on final output ──
+    if (sm > 0) {
+      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
+      pct = Math.round(this.extraSmoothPct);
+    }
     const smoothEnd = performance.now();
 
     // ── Resolve colors ──
