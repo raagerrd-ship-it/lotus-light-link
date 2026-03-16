@@ -42,6 +42,7 @@ export interface LightCalibration {
   bandAgcDecay: number;
   volCompensation: number;
   punchWhiteThreshold: number;
+  smoothing: number;
   agcVolumeTable: AgcVolumeTable;
 }
 
