@@ -113,11 +113,12 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
+    this.smoothHistoryBass = [];
+    this.smoothHistoryMidHi = [];
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
     this.lastBucket = bucket;
-    
   }
 
   /** Initialize mic, audio pipeline, and start the tick loop.
