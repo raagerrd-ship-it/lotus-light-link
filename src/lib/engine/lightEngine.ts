@@ -311,11 +311,17 @@ export class LightEngine {
     }
 
     // ── Brightness ──
-    const { pct, newCenter } = computeBrightnessPct(
+    let { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
       100, this.dynamicCenter, cal,
     );
     this.dynamicCenter = newCenter;
+
+    // ── Extra smoothing on final output ──
+    if (sm > 0) {
+      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
+      pct = Math.round(this.extraSmoothPct);
+    }
     const smoothEnd = performance.now();
 
     // ── Resolve colors ──
