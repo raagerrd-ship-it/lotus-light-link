@@ -50,8 +50,6 @@ export class LightEngine {
   private volumeTable: AgcVolumeTable;
   private lastBaseColor: [number, number, number] = [0, 0, 0];
   private lastBucket: number = 0;
-  private extraSmoothBass = 0;
-  private extraSmoothMidHi = 0;
   private extraSmoothPct = 0;
 
   private idleSent = false;
