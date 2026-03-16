@@ -50,8 +50,6 @@ export class LightEngine {
   private volumeTable: AgcVolumeTable;
   private lastBaseColor: [number, number, number] = [0, 0, 0];
   private lastBucket: number = 0;
-  private extraSmoothBass = 0;
-  private extraSmoothMidHi = 0;
   private extraSmoothPct = 0;
 
   private idleSent = false;
@@ -114,8 +112,6 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
-    this.extraSmoothBass = 0;
-    this.extraSmoothMidHi = 0;
     this.extraSmoothPct = 0;
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
@@ -230,8 +226,6 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
-    this.extraSmoothBass = 0;
-    this.extraSmoothMidHi = 0;
     this.extraSmoothPct = 0;
     this.agc = createAgcState(0.01);
     this.volumeTable = {};
@@ -303,15 +297,6 @@ export class LightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
-    // ── Extra smoothing (symmetric low-pass for smooth curves) ──
-    const sm = cal.smoothing ?? 0;
-    if (sm > 0) {
-      this.extraSmoothBass = extraSmooth(this.extraSmoothBass, this.smoothedBass, sm);
-      this.smoothedBass = this.extraSmoothBass;
-      this.extraSmoothMidHi = extraSmooth(this.extraSmoothMidHi, this.smoothedMidHi, sm);
-      this.smoothedMidHi = this.extraSmoothMidHi;
-    }
-
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
@@ -320,6 +305,7 @@ export class LightEngine {
     this.dynamicCenter = newCenter;
 
     // ── Extra smoothing on final output ──
+    const sm = cal.smoothing ?? 0;
     if (sm > 0) {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
       pct = Math.round(this.extraSmoothPct);
