@@ -50,6 +50,8 @@ export class LightEngine {
   private volumeTable: AgcVolumeTable;
   private lastBaseColor: [number, number, number] = [0, 0, 0];
   private lastBucket: number = 0;
+  private smoothHistoryBass: number[] = [];
+  private smoothHistoryMidHi: number[] = [];
 
   private idleSent = false;
 
