@@ -375,6 +375,60 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 </div>
               );
             })}
+            {/* Tick rate fader — after calibration sliders */}
+            <div className="flex items-center">
+              <div className="w-px h-20 bg-border/30 mx-1" />
+              <div className="flex flex-col items-center gap-1 min-w-[3rem]">
+                <button
+                  onClick={() => { const next = Math.min(20, Math.round(1000 / tickMs) + 1); onTickMsChange?.(Math.round(1000 / next)); }}
+                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
+                >+</button>
+                <div
+                  className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
+                  style={{ height: '4.5rem', background: 'hsl(var(--secondary))' }}
+                  onPointerDown={(e) => {
+                    const track = e.currentTarget;
+                    const el = e.currentTarget as HTMLElement;
+                    el.setPointerCapture(e.pointerId);
+                    const update = (ev: PointerEvent) => {
+                      const rect = track.getBoundingClientRect();
+                      const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+                      const wps = Math.round(8 + rawPct * 12); // 8-20
+                      onTickMsChange?.(Math.round(1000 / wps));
+                    };
+                    update(e.nativeEvent);
+                    const move = (ev: PointerEvent) => update(ev);
+                    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
+                    el.addEventListener('pointermove', move);
+                    el.addEventListener('pointerup', up);
+                  }}
+                >
+                  {/* Default reference line */}
+                  {(() => {
+                    const defaultWps = Math.round(1000 / DEFAULT_TICK_MS);
+                    const bypassPct = ((defaultWps - 8) / 12) * 100;
+                    return <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />;
+                  })()}
+                  {/* Thumb */}
+                  {(() => {
+                    const wps = Math.round(1000 / tickMs);
+                    const pct = ((wps - 8) / 12) * 100;
+                    return (
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border"
+                        style={{ bottom: `calc(${pct}% - 6px)`, background: 'hsl(30, 90%, 55%)', borderColor: 'hsl(30, 90%, 55%)' }}
+                      />
+                    );
+                  })()}
+                </div>
+                <button
+                  onClick={() => { const next = Math.max(8, Math.round(1000 / tickMs) - 1); onTickMsChange?.(Math.round(1000 / next)); }}
+                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
+                >−</button>
+                <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">w/s</span>
+                <span className="text-[9px] font-mono leading-tight text-foreground/80">{Math.round(1000 / tickMs)}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
