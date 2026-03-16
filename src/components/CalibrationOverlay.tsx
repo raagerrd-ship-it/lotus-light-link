@@ -393,7 +393,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                     const update = (ev: PointerEvent) => {
                       const rect = track.getBoundingClientRect();
                       const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
-                      const wps = Math.round(8 + rawPct * 22); // 8-30
+                      const wps = Math.round(8 + rawPct * 42); // 8-50
                       onTickMsChange?.(Math.round(1000 / wps));
                     };
                     update(e.nativeEvent);
