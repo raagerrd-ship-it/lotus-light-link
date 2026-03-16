@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { DEFAULT_TICK_MS } from "@/lib/engine/lightEngine";
 import { useNavigate } from "react-router-dom";
 import CalibrationOverlay from "@/components/CalibrationOverlay";
 import { Button } from "@/components/ui/button";
