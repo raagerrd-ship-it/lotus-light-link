@@ -53,6 +53,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   bassWeight: 0.7, hiShelfGainDb: 6,
   bandAgcAttack: 0.15, bandAgcDecay: 0.997,
   volCompensation: 80, punchWhiteThreshold: 100,
+  smoothing: 0,
   agcVolumeTable: {},
 };
 
