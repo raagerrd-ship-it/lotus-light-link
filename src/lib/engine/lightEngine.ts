@@ -113,8 +113,8 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
-    this.smoothHistoryBass = [];
-    this.smoothHistoryMidHi = [];
+    this.extraSmoothBass = 0;
+    this.extraSmoothMidHi = 0;
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
