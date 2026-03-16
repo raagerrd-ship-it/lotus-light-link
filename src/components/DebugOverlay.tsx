@@ -18,9 +18,6 @@ export default function DebugOverlay() {
   const reconnectRef = useRef<HTMLDivElement>(null);
   const sonosRef = useRef<HTMLDivElement>(null);
   const rttRef = useRef<HTMLDivElement>(null);
-  const micRef = useRef<HTMLDivElement>(null);
-  const rmsRef = useRef<HTMLDivElement>(null);
-  const ljusRef = useRef<HTMLDivElement>(null);
   const bleOutSwatchRef = useRef<HTMLDivElement>(null);
   const bleOutBarRef = useRef<HTMLDivElement>(null);
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
@@ -65,21 +62,7 @@ export default function DebugOverlay() {
       if (rttRef.current) {
         rttRef.current.textContent = `RTT: ${Math.round(d.smoothedRtt)}ms`;
       }
-      if (micRef.current) {
-        micRef.current.innerHTML = `mic: <span class="text-foreground">lo ${d.bassLevel.toFixed(3)}</span> <span class="text-foreground/40">|</span> <span class="text-foreground">hi ${d.midHiLevel.toFixed(3)}</span>`;
-      }
-      if (rmsRef.current) {
-        const playIcon = d.isPlayingState ? '<span class="text-green-400">▶</span>' : '<span class="text-yellow-400">⏸</span>';
-        rmsRef.current.innerHTML = `rms: <span class="text-foreground">${d.micRms.toFixed(5)}</span><span class="text-foreground/40"> │ </span>play: ${playIcon}`;
-      }
 
-      if (ljusRef.current) {
-        let html = `ljus: <span class="text-foreground">0–100%</span>`;
-        if (d.dynamicDamping !== 0) {
-          html += `<span class="text-foreground/40"> dyn ${d.dynamicDamping > 0 ? '+' : ''}${d.dynamicDamping.toFixed(1)}</span>`;
-        }
-        ljusRef.current.innerHTML = html;
-      }
 
       const sc = d.bleSentColor;
       if (sc) {
@@ -123,14 +106,8 @@ export default function DebugOverlay() {
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">input</div>
         <div ref={sonosRef} />
         <div ref={rttRef} />
-        <div ref={micRef} />
-        <div ref={rmsRef} />
       </div>
 
-      <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">process</div>
-        <div ref={ljusRef} />
-      </div>
 
       <div className="border-t border-border/30 pt-0.5 mt-0.5">
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">ble output</div>
