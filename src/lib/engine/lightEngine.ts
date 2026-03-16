@@ -8,10 +8,8 @@
 import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
-import { createAgcState, rescaleAgc, updateGlobalAgc, updateBandPeaks, getEffectiveMax, normalizeBand, type AgcState } from "./agc";
+import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
 import { smooth, computeBrightnessPct } from "./brightnessEngine";
-
-const AGC_LEARN_DURATION_MS = 20_000;
 
 export interface TickData {
   brightness: number;
@@ -47,11 +45,10 @@ export class LightEngine {
   private dynamicCenter = 0.5;
   private agc: AgcState;
   private cal: LightCalibration;
+  private volumeTable: AgcVolumeTable;
   private lastBaseColor: [number, number, number] = [0, 0, 0];
-  private lastVolume: number | undefined;
-  private agcLocked = false;
-  private trackStartTime = 0;
-  
+  private lastBucket: number = 0;
+
   private idleSent = false;
 
   private worker: Worker | null = null;
@@ -67,7 +64,8 @@ export class LightEngine {
 
   constructor() {
     this.cal = getCalibration();
-    this.agc = createAgcState(this.cal.agcMax, this.cal.agcMin);
+    this.volumeTable = { ...this.cal.agcVolumeTable };
+    this.agc = createAgcState(0.01);
     this.idleColor = getIdleColor();
   }
 
@@ -105,31 +103,17 @@ export class LightEngine {
     return this.chars.size > 0;
   }
 
-  /** Reset AGC — call on track change or other events that invalidate learned levels.
-   *  Scales saved AGC baseline by current/saved volume ratio. */
-  resetAgc(): void {
-    const cal = this.cal;
-    const currentVol = this.volume;
-    const savedVol = cal.agcVolume;
-    const savedMax = cal.agcMax > 0 ? cal.agcMax : 0.01;
-    const savedMin = cal.agcMin;
-
-    let startMax = savedMax;
-    let startMin = savedMin;
-    if (currentVol != null && currentVol > 0 && savedVol != null && savedVol > 0) {
-      const ratio = currentVol / savedVol;
-      startMax = Math.max(0.01, savedMax * ratio);
-      startMin = Math.max(0, savedMin * ratio);
-    }
-
-    this.agc = createAgcState(startMax, startMin);
+  /** Reset smoothing state (e.g. on manual recalibration). AGC table persists. */
+  resetSmoothing(): void {
+    this.smoothed = 0;
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
-    this.agcLocked = false;
-    this.trackStartTime = performance.now();
-    this.lastVolume = currentVol;
-    console.log('[AGC] Reset → vol-scaled start (max=', startMax.toFixed(5), 'vol=', currentVol, ')');
+    const bucket = volumeToBucket(this.volume);
+    const floor = getFloorForVolume(this.volumeTable, bucket);
+    this.agc = createAgcState(floor);
+    this.lastBucket = bucket;
+    console.log('[AGC] Smoothing reset. Floor for bucket', bucket, '=', floor.toFixed(5));
   }
 
   /** Initialize mic, audio pipeline, and start the tick loop.
@@ -155,6 +139,12 @@ export class LightEngine {
     const onIdleColorChanged = () => { this.idleColor = getIdleColor(); this.idleSent = false; };
     window.addEventListener('idle-color-changed', onIdleColorChanged);
     this.idleCleanup = () => window.removeEventListener('idle-color-changed', onIdleColorChanged);
+
+    // Set initial AGC floor from volume table
+    const bucket = volumeToBucket(this.volume);
+    const floor = getFloorForVolume(this.volumeTable, bucket);
+    this.agc = createAgcState(floor);
+    this.lastBucket = bucket;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -186,11 +176,10 @@ export class LightEngine {
 
       worker.onmessage = () => this.tick();
 
-      // AGC save on separate interval
+      // Save volume table periodically
       this.agcSaveTimer = window.setInterval(() => {
         if (this.stopped) return;
-        const agc = this.agc;
-        const updated = { ...this.cal, agcMin: agc.min, agcMax: agc.max, agcVolume: this.volume ?? null };
+        const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
         this.cal = updated;
         saveCalibration(updated, getActiveDeviceName() ?? undefined, { localOnly: true });
       }, 10_000);
@@ -233,11 +222,10 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
-    this.agc = createAgcState(0.01, 0);
+    this.agc = createAgcState(0.01);
+    this.volumeTable = {};
     this.lastBaseColor = [0, 0, 0];
-    this.lastVolume = undefined;
-    this.agcLocked = false;
-    this.trackStartTime = 0;
+    this.lastBucket = 0;
     this.idleSent = false;
     this.idleColor = [255, 60, 0];
   }
@@ -275,62 +263,39 @@ export class LightEngine {
     const bands = computeBands(an, this.freqBuf);
     const rmsEnd = performance.now();
 
-    // ── Smoothing with reactivity scaling ──
-    const prevAbsFactor = agc.peakMax > 0 ? Math.min(1, agc.max / agc.peakMax) : 1;
-    const reactivity = 1 + (1 - prevAbsFactor) * 2;
-    const attackA = Math.min(1.0, cal.attackAlpha * reactivity);
-    const releaseA = Math.min(0.5, cal.releaseAlpha * reactivity);
-    this.smoothed = smooth(this.smoothed, bands.totalRms, attackA, releaseA);
+    // ── Smoothing ──
+    this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha);
 
-    // ── Volume-proportional AGC rescaling ──
-    const vol = this.volume;
-    const prevVol = this.lastVolume;
-    if (prevVol != null && vol != null && Math.abs(vol - prevVol) > 2) {
-      const strength = cal.volCompensation / 100;
-      const rawRatio = prevVol > 0 ? (vol / prevVol) : 1;
-      rescaleAgc(agc, 1 + (rawRatio - 1) * strength);
-      this.lastVolume = vol;
-      if (Math.abs(vol - prevVol) > 5 && this.agcLocked) {
-        this.agcLocked = false;
-        this.trackStartTime = performance.now();
-        console.log('[AGC] Volume change', prevVol, '→', vol, '— re-learning 20s');
-      }
-    } else if (prevVol == null && vol != null) {
-      this.lastVolume = vol;
+    // ── Volume bucket & AGC update ──
+    const bucket = volumeToBucket(this.volume);
+
+    // If volume bucket changed, update AGC floor from table
+    if (bucket !== this.lastBucket) {
+      const floor = getFloorForVolume(this.volumeTable, bucket);
+      if (floor > agc.max) agc.max = floor;
+      this.lastBucket = bucket;
     }
 
-    // ── Check if learning window has elapsed → lock AGC ──
-    if (!this.agcLocked && this.trackStartTime > 0 && (performance.now() - this.trackStartTime) > AGC_LEARN_DURATION_MS) {
-      this.agcLocked = true;
-      agc.peakMax = agc.max;
-      console.log('[AGC] Locked. max=', agc.max.toFixed(5), 'effectiveMax=', getEffectiveMax(agc).toFixed(1));
-    }
+    // Update running max (only grows)
+    updateRunningMax(agc, this.smoothed, bands.bassRms, bands.midHiRms);
 
-    // ── Global AGC + band peak tracking ──
-    const isLearning = !this.agcLocked;
-    if (isLearning) {
-      updateGlobalAgc(agc, this.smoothed, true);
-      updateBandPeaks(agc, bands.bassRms, bands.midHiRms);
-    } else if (this.smoothed > agc.max) {
-      // After lock: allow max to grow upward (never shrink)
-      agc.max = this.smoothed;
-    }
+    // Update volume table with current observation
+    updateVolumeTable(this.volumeTable, bucket, this.smoothed);
 
     // Normalize bands
     const rawBassNorm = normalizeBand(bands.bassRms, agc, 'bass');
     const rawMidHiNorm = normalizeBand(bands.midHiRms, agc, 'midHi');
-    const effectiveMax = getEffectiveMax(agc);
     const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
-    const rawEnergyPct = Math.round(((rawEnergy * effectiveMax) / 100) * 100);
+    const rawEnergyPct = Math.round(rawEnergy * 100);
 
     // ── Per-band smoothing ──
-    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, attackA, releaseA);
-    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, attackA, releaseA);
+    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
+    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
     // ── Brightness ──
     const { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
-      effectiveMax, this.dynamicCenter, cal,
+      100, this.dynamicCenter, cal,
     );
     this.dynamicCenter = newCenter;
     const smoothEnd = performance.now();

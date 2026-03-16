@@ -39,7 +39,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
   useEffect(() => {
     if (trackName && trackName !== lastTrackRef.current) {
       lastTrackRef.current = trackName;
-      engineRef.current?.resetAgc();
+      engineRef.current?.resetSmoothing();
     }
   }, [trackName]);
   useEffect(() => { engineRef.current?.setTickMs(tickMs); }, [tickMs]);

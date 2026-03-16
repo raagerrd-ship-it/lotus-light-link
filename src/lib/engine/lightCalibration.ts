@@ -1,6 +1,8 @@
 // Light calibration — simplified for RMS→brightness model
 // Persisted in localStorage only. Cloud sync handled externally.
 
+import { type AgcVolumeTable, migrateToVolumeTable, createVolumeTable } from './agc';
+
 const STORAGE_KEY = 'light-calibration';
 const DEVICE_STORAGE_KEY = 'light-calibration-device';
 const IDLE_COLOR_KEY = 'idle-color';
@@ -40,9 +42,7 @@ export interface LightCalibration {
   bandAgcDecay: number;
   volCompensation: number;
   punchWhiteThreshold: number;
-  agcMin: number;
-  agcMax: number;
-  agcVolume: number | null;
+  agcVolumeTable: AgcVolumeTable;
 }
 
 export const DEFAULT_CALIBRATION: LightCalibration = {
@@ -52,14 +52,29 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   bassWeight: 0.7, hiShelfGainDb: 6,
   bandAgcAttack: 0.15, bandAgcDecay: 0.997,
   volCompensation: 80, punchWhiteThreshold: 100,
-  agcMin: 0, agcMax: 0.01, agcVolume: null,
+  agcVolumeTable: {},
 };
 
 export function getCalibration(): LightCalibration {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return { ...DEFAULT_CALIBRATION };
-    return { ...DEFAULT_CALIBRATION, ...JSON.parse(stored) };
+    const parsed = JSON.parse(stored);
+
+    // Migrate old agcMax/agcMin/agcVolume → agcVolumeTable
+    if (!parsed.agcVolumeTable && (parsed.agcMax != null || parsed.agcVolume != null)) {
+      parsed.agcVolumeTable = migrateToVolumeTable(
+        parsed.agcMax ?? 0.01,
+        parsed.agcVolume ?? null,
+      );
+      delete parsed.agcMax;
+      delete parsed.agcMin;
+      delete parsed.agcVolume;
+      // Save migrated version
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
+
+    return { ...DEFAULT_CALIBRATION, ...parsed, agcVolumeTable: parsed.agcVolumeTable ?? {} };
   } catch {
     return { ...DEFAULT_CALIBRATION };
   }
