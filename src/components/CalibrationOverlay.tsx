@@ -217,6 +217,8 @@ interface CalibrationOverlayProps {
   onCalibrationChange?: (cal: LightCalibration) => void;
   activePreset?: PresetName | null;
   onPresetSave?: (name: PresetName, cal: LightCalibration) => void;
+  tickMs?: number;
+  onTickMsChange?: (ms: number) => void;
 }
 
 export default function CalibrationOverlay({ onClose, onCalibrationChange, activePreset, onPresetSave }: CalibrationOverlayProps) {
