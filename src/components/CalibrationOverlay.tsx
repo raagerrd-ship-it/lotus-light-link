@@ -35,7 +35,7 @@ const SLIDERS: SliderDef[] = [
   // AGC
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
   // Punch
-  { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 0, max: 100, step: 5, unit: '%', group: 'Punch', description: 'Ljusstyrka över detta värde → vit färg. 0 = av.' },
+  { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 90, max: 100, step: 0.5, unit: '%', group: 'Punch', description: '100 = av. Ljusstyrka över detta → vit färg.' },
 ];
 
 const BYPASS_VALUES: Record<string, number> = {
@@ -45,7 +45,7 @@ const BYPASS_VALUES: Record<string, number> = {
   releaseAlpha: 1.0,
   dynamicDamping: 0,
   volCompensation: 80,
-  punchWhiteThreshold: 0,
+  punchWhiteThreshold: 100,
 };
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
