@@ -113,7 +113,7 @@ export class LightEngine {
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
     this.lastBucket = bucket;
-    console.log('[AGC] Smoothing reset. Floor for bucket', bucket, '=', floor.toFixed(5));
+    
   }
 
   /** Initialize mic, audio pipeline, and start the tick loop.
