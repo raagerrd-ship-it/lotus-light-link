@@ -1,6 +1,8 @@
 // Automatic Gain Control — volume→max lookup table, no learn/lock phases
 
 export const AGC_FLOOR = 0.002;
+/** Per-tick decay factor for running max — slowly "challenges" peaks to confirm they're real */
+export const AGC_MAX_DECAY = 0.9998;
 export const BUCKET_SIZE = 5;
 
 export type AgcVolumeTable = Record<number, number>;
