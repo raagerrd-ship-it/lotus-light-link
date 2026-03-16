@@ -380,7 +380,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               <div className="w-px h-20 bg-border/30 mx-1" />
               <div className="flex flex-col items-center gap-1 min-w-[3rem]">
                 <button
-                  onClick={() => { const next = Math.min(30, Math.round(1000 / tickMs) + 1); onTickMsChange?.(Math.round(1000 / next)); }}
+                  onClick={() => { const next = Math.min(50, Math.round(1000 / tickMs) + 1); onTickMsChange?.(Math.round(1000 / next)); }}
                   className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
                 >+</button>
                 <div
