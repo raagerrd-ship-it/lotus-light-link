@@ -13,29 +13,16 @@ export function smooth(prev: number, raw: number, attackAlpha: number, releaseAl
   return prev + alpha * (raw - prev);
 }
 
-/** Extra Gaussian-weighted smoothing for a naturally smooth curve between values.
- *  Returns new smoothed value and updated history buffer. */
-export function extraSmooth(history: number[], newVal: number, windowSize: number): { smoothed: number; history: number[] } {
-  if (windowSize <= 1) return { smoothed: newVal, history: [] };
-  const buf = history.length >= windowSize ? history.slice(-(windowSize - 1)) : [...history];
-  buf.push(newVal);
-  // Gaussian weights: center (newest) has highest weight, tails fall off
-  const len = buf.length;
-  const sigma = len / 3; // ~3 sigma covers the window
-  let weightSum = 0;
-  let valSum = 0;
-  for (let i = 0; i < len; i++) {
-    const dist = len - 1 - i; // distance from newest sample
-    const w = Math.exp(-(dist * dist) / (2 * sigma * sigma));
-    valSum += buf[i] * w;
-    weightSum += w;
-  }
-  return { smoothed: valSum / weightSum, history: buf };
-}
-
-/** Convert smoothing 0–100 to window size 1–10 */
-export function smoothingToWindow(smoothing: number): number {
-  return Math.max(1, Math.round(smoothing / 10));
+/** Symmetric exponential low-pass filter for smooth curves between values.
+ *  Unlike attack/release (asymmetric), this smooths equally in both directions
+ *  giving naturally rounded transitions — like cubic spline interpolation on a chart.
+ *  smoothing 0 = bypass, 100 = very smooth curves. */
+export function extraSmooth(prev: number, newVal: number, smoothing: number): number {
+  if (smoothing <= 0) return newVal;
+  // Alpha from 1.0 (no filter) to 0.05 (heavy smoothing)
+  // Using exponential curve for natural feel
+  const alpha = Math.exp(-smoothing * 0.04);  // 0→1.0, 50→0.135, 100→0.018
+  return prev + alpha * (newVal - prev);
 }
 
 /** Apply dynamic damping (expansion or compression around adaptive center) */
