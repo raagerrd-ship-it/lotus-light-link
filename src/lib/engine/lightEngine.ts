@@ -52,6 +52,7 @@ export class LightEngine {
   private lastBucket: number = 0;
   private extraSmoothBass = 0;
   private extraSmoothMidHi = 0;
+  private extraSmoothPct = 0;
 
   private idleSent = false;
 
