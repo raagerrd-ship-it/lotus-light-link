@@ -9,7 +9,7 @@ import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./b
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
-import { smooth, computeBrightnessPct, extraSmooth, smoothingToWindow } from "./brightnessEngine";
+import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
 
 export interface TickData {
   brightness: number;
