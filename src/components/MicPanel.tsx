@@ -46,14 +46,18 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
 
   // ── Chart rendering via rAF ──
   useEffect(() => {
+    const FRAME_MS = 1000 / 30; // 30fps cap
+    let lastFrame = 0;
     const drawLoop = (now: number) => {
+      rafIdRef.current = requestAnimationFrame(drawLoop);
+      if (now - lastFrame < FRAME_MS) return;
+      lastFrame = now;
       const canvas = canvasRef.current;
       if (canvas) {
         const elapsed = now - lastSampleTimeRef.current;
         const scrollFraction = Math.min(1, elapsed / tickMs);
         drawIntensityChart(canvas, getChartSamples(), effectiveHistoryLen, scrollFraction);
       }
-      rafIdRef.current = requestAnimationFrame(drawLoop);
     };
     rafIdRef.current = requestAnimationFrame(drawLoop);
     return () => cancelAnimationFrame(rafIdRef.current);
