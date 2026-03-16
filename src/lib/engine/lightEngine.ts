@@ -228,8 +228,8 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
-    this.smoothHistoryBass = [];
-    this.smoothHistoryMidHi = [];
+    this.extraSmoothBass = 0;
+    this.extraSmoothMidHi = 0;
     this.agc = createAgcState(0.01);
     this.volumeTable = {};
     this.lastBaseColor = [0, 0, 0];
