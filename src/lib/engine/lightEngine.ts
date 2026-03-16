@@ -307,6 +307,7 @@ export class LightEngine {
     this.dynamicCenter = newCenter;
 
     // ── Extra smoothing on final output ──
+    const sm = cal.smoothing ?? 0;
     if (sm > 0) {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
       pct = Math.round(this.extraSmoothPct);
