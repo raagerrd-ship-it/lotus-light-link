@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { LightEngine, type TickData } from "@/lib/engine/lightEngine";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/ui/drawChart";
-import { pushChartSample } from "@/lib/ui/chartStore";
+import { pushChartSample, getChartSamples } from "@/lib/ui/chartStore";
 import { setPipelineTimings } from "@/lib/ui/pipelineTimings";
 
 interface MicPanelProps {
@@ -22,7 +22,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<LightEngine | null>(null);
-  const samplesRef = useRef<ChartSample[]>([]);
+  // samplesRef removed — single ring buffer in chartStore
   const rafIdRef = useRef(0);
   const lastSampleTimeRef = useRef(0);
   const onLiveStatusRef = useRef(onLiveStatus);
@@ -51,7 +51,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
       if (canvas) {
         const elapsed = now - lastSampleTimeRef.current;
         const scrollFraction = Math.min(1, elapsed / tickMs);
-        drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, scrollFraction);
+        drawIntensityChart(canvas, getChartSamples(), effectiveHistoryLen, scrollFraction);
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
@@ -81,12 +81,8 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
         rawPct: data.rawEnergyPct,
         baseR: base[0], baseG: base[1], baseB: base[2],
       };
-      samplesRef.current.push(sample);
-      lastSampleTimeRef.current = performance.now();
       pushChartSample(sample);
-      if (samplesRef.current.length > effectiveHistoryLen) {
-        samplesRef.current = samplesRef.current.slice(-effectiveHistoryLen);
-      }
+      lastSampleTimeRef.current = performance.now();
 
       setPipelineTimings(data.timings);
 
