@@ -298,6 +298,17 @@ export class LightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
+    // ── Extra smoothing (moving average) ──
+    const windowSize = smoothingToWindow(cal.smoothing ?? 0);
+    if (windowSize > 1) {
+      const bassResult = extraSmooth(this.smoothHistoryBass, this.smoothedBass, windowSize);
+      this.smoothedBass = bassResult.smoothed;
+      this.smoothHistoryBass = bassResult.history;
+      const midHiResult = extraSmooth(this.smoothHistoryMidHi, this.smoothedMidHi, windowSize);
+      this.smoothedMidHi = midHiResult.smoothed;
+      this.smoothHistoryMidHi = midHiResult.history;
+    }
+
     // ── Brightness ──
     const { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
