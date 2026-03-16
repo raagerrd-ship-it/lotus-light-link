@@ -463,6 +463,8 @@ const Index = () => {
           onCalibrationChange={(cal) => setActiveCalibration(cal)}
           activePreset={activePreset}
           onPresetSave={handlePresetSave}
+          tickMs={tickMs}
+          onTickMsChange={setTickMs}
         />
       )}
 
