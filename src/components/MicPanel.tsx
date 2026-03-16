@@ -51,7 +51,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
       if (canvas) {
         const elapsed = now - lastSampleTimeRef.current;
         const scrollFraction = Math.min(1, elapsed / tickMs);
-        drawIntensityChart(canvas, samplesRef.current, effectiveHistoryLen, scrollFraction);
+        drawIntensityChart(canvas, getChartSamples(), effectiveHistoryLen, scrollFraction);
       }
       rafIdRef.current = requestAnimationFrame(drawLoop);
     };
