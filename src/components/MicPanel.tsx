@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LightEngine, type TickData } from "@/lib/engine/lightEngine";
+import { LightEngine, DEFAULT_TICK_MS, type TickData } from "@/lib/engine/lightEngine";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/ui/drawChart";
 import { pushChartSample, getChartSamples } from "@/lib/ui/chartStore";
 import { setPipelineTimings } from "@/lib/ui/pipelineTimings";
