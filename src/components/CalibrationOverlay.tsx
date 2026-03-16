@@ -221,7 +221,7 @@ interface CalibrationOverlayProps {
   onTickMsChange?: (ms: number) => void;
 }
 
-export default function CalibrationOverlay({ onClose, onCalibrationChange, activePreset, onPresetSave }: CalibrationOverlayProps) {
+export default function CalibrationOverlay({ onClose, onCalibrationChange, activePreset, onPresetSave, tickMs = DEFAULT_TICK_MS, onTickMsChange }: CalibrationOverlayProps) {
   const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [savedCal, setSavedCal] = useState<LightCalibration>(getCalibration);
