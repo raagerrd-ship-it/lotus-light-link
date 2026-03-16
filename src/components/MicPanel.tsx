@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { LightEngine, type TickData } from "@/lib/engine/lightEngine";
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/ui/drawChart";
-import { pushChartSample } from "@/lib/ui/chartStore";
+import { pushChartSample, getChartSamples } from "@/lib/ui/chartStore";
 import { setPipelineTimings } from "@/lib/ui/pipelineTimings";
 
 interface MicPanelProps {

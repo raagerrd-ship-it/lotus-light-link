@@ -1,18 +1,34 @@
 import type { ChartSample } from "./drawChart";
 
-/** Shared chart samples — written by MicPanel, read by CalibrationOverlay */
-let samples: ChartSample[] = [];
+/**
+ * Zero-allocation ring buffer for chart samples.
+ * Single source of truth — written by MicPanel tick, read by drawChart & CalibrationOverlay.
+ */
 const MAX_LEN = 200;
+const slots: (ChartSample | null)[] = new Array(MAX_LEN).fill(null);
+let cursor = 0;
+let count = 0;
 
 export function pushChartSample(s: ChartSample) {
-  samples.push(s);
-  if (samples.length > MAX_LEN) samples = samples.slice(-MAX_LEN);
+  slots[cursor] = s;
+  cursor = (cursor + 1) % MAX_LEN;
+  if (count < MAX_LEN) count++;
 }
 
+/** Return samples in chronological order (oldest → newest). Reuses a module-level array. */
+const outBuf: ChartSample[] = [];
+
 export function getChartSamples(): ChartSample[] {
-  return samples;
+  outBuf.length = count;
+  const start = (cursor - count + MAX_LEN) % MAX_LEN;
+  for (let i = 0; i < count; i++) {
+    outBuf[i] = slots[(start + i) % MAX_LEN] as ChartSample;
+  }
+  return outBuf;
 }
 
 export function clearChartSamples() {
-  samples = [];
+  cursor = 0;
+  count = 0;
+  // No need to null-out slots — count guards reads
 }
