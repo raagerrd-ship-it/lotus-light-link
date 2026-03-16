@@ -48,7 +48,7 @@ const Index = () => {
     try { return JSON.parse(localStorage.getItem('manualColor') || '[255,80,0]'); } catch { return [255, 80, 0]; }
   });
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const tickMs = 125;
+  const tickMs = DEFAULT_TICK_MS;
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);

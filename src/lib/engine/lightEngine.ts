@@ -36,7 +36,7 @@ export class LightEngine {
   private volume: number | undefined;
   private playing = true;
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
-  private tickMs = 125;
+  private tickMs = DEFAULT_TICK_MS;
 
   // --- Internal ---
   private analyser: AnalyserNode | null = null;
