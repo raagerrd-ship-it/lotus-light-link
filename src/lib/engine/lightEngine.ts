@@ -299,15 +299,6 @@ export class LightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
-    // ── Extra smoothing (symmetric low-pass for smooth curves) ──
-    const sm = cal.smoothing ?? 0;
-    if (sm > 0) {
-      this.extraSmoothBass = extraSmooth(this.extraSmoothBass, this.smoothedBass, sm);
-      this.smoothedBass = this.extraSmoothBass;
-      this.extraSmoothMidHi = extraSmooth(this.extraSmoothMidHi, this.smoothedMidHi, sm);
-      this.smoothedMidHi = this.extraSmoothMidHi;
-    }
-
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
