@@ -9,7 +9,7 @@ import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./b
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
-import { smooth, computeBrightnessPct } from "./brightnessEngine";
+import { smooth, computeBrightnessPct, extraSmooth, smoothingToWindow } from "./brightnessEngine";
 
 export interface TickData {
   brightness: number;
@@ -50,6 +50,8 @@ export class LightEngine {
   private volumeTable: AgcVolumeTable;
   private lastBaseColor: [number, number, number] = [0, 0, 0];
   private lastBucket: number = 0;
+  private smoothHistoryBass: number[] = [];
+  private smoothHistoryMidHi: number[] = [];
 
   private idleSent = false;
 
@@ -111,11 +113,12 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
+    this.smoothHistoryBass = [];
+    this.smoothHistoryMidHi = [];
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
     this.lastBucket = bucket;
-    
   }
 
   /** Initialize mic, audio pipeline, and start the tick loop.
@@ -225,6 +228,8 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
+    this.smoothHistoryBass = [];
+    this.smoothHistoryMidHi = [];
     this.agc = createAgcState(0.01);
     this.volumeTable = {};
     this.lastBaseColor = [0, 0, 0];
@@ -294,6 +299,17 @@ export class LightEngine {
     // ── Per-band smoothing ──
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
+
+    // ── Extra smoothing (moving average) ──
+    const windowSize = smoothingToWindow(cal.smoothing ?? 0);
+    if (windowSize > 1) {
+      const bassResult = extraSmooth(this.smoothHistoryBass, this.smoothedBass, windowSize);
+      this.smoothedBass = bassResult.smoothed;
+      this.smoothHistoryBass = bassResult.history;
+      const midHiResult = extraSmooth(this.smoothHistoryMidHi, this.smoothedMidHi, windowSize);
+      this.smoothedMidHi = midHiResult.smoothed;
+      this.smoothHistoryMidHi = midHiResult.history;
+    }
 
     // ── Brightness ──
     const { pct, newCenter } = computeBrightnessPct(

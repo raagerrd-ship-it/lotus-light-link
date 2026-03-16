@@ -5,4 +5,4 @@ export { getBleConnection, getBleConnections, setBleConnection, addBleConnection
 export { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, setActiveDeviceName, getIdleColor, saveIdleColor, setCloudSaveHook, DEFAULT_CALIBRATION, PRESET_NAMES, getPresets, getActivePreset, setActivePreset, savePresetCalibration, type LightCalibration, type PresetName } from './lightCalibration';
 export { computeBands, type BandResult } from './audioAnalysis';
 export { createAgcState, rescaleAgc, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, normalizeValue, createVolumeTable, migrateToVolumeTable, type AgcState, type AgcVolumeTable } from './agc';
-export { smooth, computeBrightnessPct, applyDynamics } from './brightnessEngine';
+export { smooth, computeBrightnessPct, applyDynamics, extraSmooth, smoothingToWindow } from './brightnessEngine';

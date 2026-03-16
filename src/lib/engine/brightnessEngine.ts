@@ -13,6 +13,20 @@ export function smooth(prev: number, raw: number, attackAlpha: number, releaseAl
   return prev + alpha * (raw - prev);
 }
 
+/** Extra moving-average smoothing. Returns new smoothed value and updated history buffer. */
+export function extraSmooth(history: number[], newVal: number, windowSize: number): { smoothed: number; history: number[] } {
+  if (windowSize <= 1) return { smoothed: newVal, history: [] };
+  const buf = history.length >= windowSize ? history.slice(-(windowSize - 1)) : [...history];
+  buf.push(newVal);
+  const avg = buf.reduce((s, v) => s + v, 0) / buf.length;
+  return { smoothed: avg, history: buf };
+}
+
+/** Convert smoothing 0–100 to window size 1–20 */
+export function smoothingToWindow(smoothing: number): number {
+  return Math.max(1, Math.round(smoothing / 5));
+}
+
 /** Apply dynamic damping (expansion or compression around adaptive center) */
 export function applyDynamics(
   energyNorm: number,
