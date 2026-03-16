@@ -18,9 +18,6 @@ export default function DebugOverlay() {
   const reconnectRef = useRef<HTMLDivElement>(null);
   const sonosRef = useRef<HTMLDivElement>(null);
   const rttRef = useRef<HTMLDivElement>(null);
-  const micRef = useRef<HTMLDivElement>(null);
-  const rmsRef = useRef<HTMLDivElement>(null);
-  const ljusRef = useRef<HTMLDivElement>(null);
   const bleOutSwatchRef = useRef<HTMLDivElement>(null);
   const bleOutBarRef = useRef<HTMLDivElement>(null);
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
