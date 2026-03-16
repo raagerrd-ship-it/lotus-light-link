@@ -406,7 +406,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                   {/* Default reference line */}
                   {(() => {
                     const defaultWps = Math.round(1000 / DEFAULT_TICK_MS);
-                    const bypassPct = ((defaultWps - 8) / 42) * 100;
+                    const bypassPct = ((defaultWps - 25) / 50) * 100;
                     return <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />;
                   })()}
                   {/* Thumb */}
