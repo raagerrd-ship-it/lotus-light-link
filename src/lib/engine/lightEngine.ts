@@ -226,8 +226,6 @@ export class LightEngine {
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
-    this.extraSmoothBass = 0;
-    this.extraSmoothMidHi = 0;
     this.extraSmoothPct = 0;
     this.agc = createAgcState(0.01);
     this.volumeTable = {};
