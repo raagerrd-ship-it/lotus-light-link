@@ -64,17 +64,25 @@ export function getFloorForVolume(table: AgcVolumeTable, bucket: number): number
   return Math.max(AGC_FLOOR, table[nearestBucket] * (currentVol / nearestVol));
 }
 
-/** Update running max for global + band values. Only grows, never decays. */
+/** Update running max for global + band values. Grows on new peaks, slowly decays otherwise. */
 export function updateRunningMax(
   state: AgcState,
   smoothed: number,
   bassRms: number,
   midHiRms: number,
 ): void {
+  // Grow on new peaks
   if (smoothed > state.max) state.max = smoothed;
+  else state.max = Math.max(AGC_FLOOR, state.max * AGC_MAX_DECAY);
+
   if (bassRms > state.bassMax) state.bassMax = bassRms;
+  else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * AGC_MAX_DECAY);
+
   if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
+
   if (midHiRms > state.midHiMax) state.midHiMax = midHiRms;
+  else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * AGC_MAX_DECAY);
+
   if (midHiRms < state.midHiMin || state.midHiMin === 0) state.midHiMin = midHiRms;
 }
 
