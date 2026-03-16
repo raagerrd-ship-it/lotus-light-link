@@ -314,7 +314,6 @@ export class LightEngine {
     } else if (this.smoothed > agc.max) {
       // After lock: allow max to grow upward (never shrink)
       agc.max = this.smoothed;
-      console.log('[AGC] Post-lock max raised →', agc.max.toFixed(5));
     }
 
     // Normalize bands
