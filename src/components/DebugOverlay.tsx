@@ -65,13 +65,6 @@ export default function DebugOverlay() {
       if (rttRef.current) {
         rttRef.current.textContent = `RTT: ${Math.round(d.smoothedRtt)}ms`;
       }
-      if (micRef.current) {
-        micRef.current.innerHTML = `mic: <span class="text-foreground">lo ${d.bassLevel.toFixed(3)}</span> <span class="text-foreground/40">|</span> <span class="text-foreground">hi ${d.midHiLevel.toFixed(3)}</span>`;
-      }
-      if (rmsRef.current) {
-        const playIcon = d.isPlayingState ? '<span class="text-green-400">▶</span>' : '<span class="text-yellow-400">⏸</span>';
-        rmsRef.current.innerHTML = `rms: <span class="text-foreground">${d.micRms.toFixed(5)}</span><span class="text-foreground/40"> │ </span>play: ${playIcon}`;
-      }
 
       if (ljusRef.current) {
         let html = `ljus: <span class="text-foreground">0–100%</span>`;
