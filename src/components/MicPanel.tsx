@@ -22,7 +22,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<LightEngine | null>(null);
-  const samplesRef = useRef<ChartSample[]>([]);
+  // samplesRef removed — single ring buffer in chartStore
   const rafIdRef = useRef(0);
   const lastSampleTimeRef = useRef(0);
   const onLiveStatusRef = useRef(onLiveStatus);
