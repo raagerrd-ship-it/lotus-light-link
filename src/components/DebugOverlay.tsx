@@ -115,10 +115,6 @@ export default function DebugOverlay() {
         <div ref={rttRef} />
       </div>
 
-      <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">process</div>
-        <div ref={ljusRef} />
-      </div>
 
       <div className="border-t border-border/30 pt-0.5 mt-0.5">
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">ble output</div>
