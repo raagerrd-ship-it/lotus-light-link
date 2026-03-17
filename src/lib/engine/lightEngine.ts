@@ -351,8 +351,8 @@ export class LightEngine {
 
     // ── BLE output ──
     if (this.chars.size > 0) {
-      if (isPunch) this.queueBleSend(255, 255, 255, pct);
-      else this.queueBleSend(bleSentR, bleSentG, bleSentB, pct);
+      if (isPunch) sendToBLE(255, 255, 255, pct);
+      else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
     }
     const bleEnd = performance.now();
 
