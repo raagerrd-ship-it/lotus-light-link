@@ -50,28 +50,37 @@ export type Database = {
       user_settings: {
         Row: {
           active_preset: string | null
+          color_source: string | null
           device_modes: Json | null
           id: string
           idle_color: Json | null
+          manual_color: Json | null
           presets: Json | null
+          tick_ms: number | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           active_preset?: string | null
+          color_source?: string | null
           device_modes?: Json | null
           id?: string
           idle_color?: Json | null
+          manual_color?: Json | null
           presets?: Json | null
+          tick_ms?: number | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           active_preset?: string | null
+          color_source?: string | null
           device_modes?: Json | null
           id?: string
           idle_color?: Json | null
+          manual_color?: Json | null
           presets?: Json | null
+          tick_ms?: number | null
           updated_at?: string | null
           user_id?: string
         }
