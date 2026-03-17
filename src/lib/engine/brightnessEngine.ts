@@ -63,7 +63,7 @@ export function computeBrightnessPct(
   midHiNorm: number,
   effectiveMax: number,
   dynamicCenter: number,
-  cal: Pick<LightCalibration, 'bassWeight' | 'dynamicDamping'>,
+  cal: Pick<LightCalibration, 'bassWeight' | 'dynamicDamping' | 'brightnessFloor'>,
 ): { pct: number; newCenter: number } {
   let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
@@ -71,7 +71,8 @@ export function computeBrightnessPct(
   energyNorm = applyDynamics(energyNorm, newCenter, cal.dynamicDamping);
 
   const rawPct = (energyNorm * effectiveMax) / 100;
-  const pct = Math.round(rawPct * 100);
+  const floor = cal.brightnessFloor ?? 0;
+  const pct = Math.max(floor, Math.round(rawPct * 100));
 
   return { pct, newCenter };
 }
