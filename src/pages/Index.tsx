@@ -49,7 +49,11 @@ const Index = () => {
     try { return JSON.parse(localStorage.getItem('manualColor') || '[255,80,0]'); } catch { return [255, 80, 0]; }
   });
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [tickMs, setTickMs] = useState(Math.max(40, Math.min(125, DEFAULT_TICK_MS)));
+  const [tickMs, setTickMs] = useState(() => {
+    const saved = localStorage.getItem('tickMs');
+    if (saved) return Math.max(40, Math.min(125, Number(saved)));
+    return Math.max(40, Math.min(125, DEFAULT_TICK_MS));
+  });
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -464,7 +468,7 @@ const Index = () => {
           activePreset={activePreset}
           onPresetSave={handlePresetSave}
           tickMs={tickMs}
-          onTickMsChange={setTickMs}
+          onTickMsChange={(ms) => { setTickMs(ms); localStorage.setItem('tickMs', String(ms)); }}
         />
       )}
 
