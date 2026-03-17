@@ -253,6 +253,9 @@ export class LightEngine {
     this.analyser = null;
     this.freqBuf = null;
     this.hiShelf = null;
+    this.pendingBleFrame = null;
+    this.bleWriteInFlight = false;
+    this.bleWriteEpoch += 1;
   }
 
   /** Full teardown — stop + reset all state and callbacks. Instance is unusable after this. */
