@@ -94,7 +94,38 @@ export class LightEngine {
 
   setPlaying(playing: boolean) {
     this.playing = playing;
-    if (playing && this.worker) this.worker.postMessage('start');
+
+    if (playing) {
+      this.idleSent = false;
+      if (this.worker) this.worker.postMessage('start');
+      return;
+    }
+
+    this.worker?.postMessage('stop');
+
+    if (this.chars.size > 0) {
+      const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+      this.pendingBleFrame = null;
+      this.queueBleSend(calibrated[0], calibrated[1], calibrated[2], 100);
+    }
+
+    if (!this.idleSent) {
+      this.emit({
+        brightness: 100,
+        color: this.idleColor,
+        baseColor: this.idleColor,
+        bassLevel: 0,
+        midHiLevel: 0,
+        rawEnergyPct: 0,
+        isPunch: false,
+        bleColorSource: 'idle',
+        micRms: 0,
+        isPlaying: false,
+        timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+      });
+    }
+
+    this.idleSent = true;
   }
 
   /** @deprecated Use addChar/removeChar for multi-device */
