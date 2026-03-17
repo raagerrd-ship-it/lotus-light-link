@@ -28,14 +28,8 @@ export interface TickData {
 
 export type TickCallback = (data: TickData) => void;
 
-export const DEFAULT_TICK_MS = 100;
+export const DEFAULT_TICK_MS = 125;
 
-type BleFrame = {
-  r: number;
-  g: number;
-  b: number;
-  brightness: number;
-};
 
 export class LightEngine {
   // --- State ---
@@ -71,9 +65,6 @@ export class LightEngine {
   private idleColor: [number, number, number];
   private idleCleanup: (() => void) | null = null;
   private calCleanup: (() => void) | null = null;
-  private bleWriteInFlight = false;
-  private pendingBleFrame: BleFrame | null = null;
-  private bleWriteEpoch = 0;
 
   constructor() {
     this.cal = getCalibration();
@@ -105,8 +96,7 @@ export class LightEngine {
 
     if (this.chars.size > 0) {
       const calibrated = applyColorCalibration(...this.idleColor, this.cal);
-      this.pendingBleFrame = null;
-      this.queueBleSend(calibrated[0], calibrated[1], calibrated[2], 100);
+      sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
     }
 
     if (!this.idleSent) {
@@ -253,9 +243,6 @@ export class LightEngine {
     this.analyser = null;
     this.freqBuf = null;
     this.hiShelf = null;
-    this.pendingBleFrame = null;
-    this.bleWriteInFlight = false;
-    this.bleWriteEpoch += 1;
   }
 
   /** Full teardown — stop + reset all state and callbacks. Instance is unusable after this. */
@@ -287,8 +274,7 @@ export class LightEngine {
     if (!this.playing) {
       if (!this.idleSent && this.chars.size > 0) {
         const calibrated = applyColorCalibration(...this.idleColor, this.cal);
-        this.pendingBleFrame = null;
-        this.queueBleSend(calibrated[0], calibrated[1], calibrated[2], 100);
+        sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
         this.idleSent = true;
         this.emit({
           brightness: 100, color: this.idleColor, baseColor: this.idleColor,
@@ -365,8 +351,8 @@ export class LightEngine {
 
     // ── BLE output ──
     if (this.chars.size > 0) {
-      if (isPunch) this.queueBleSend(255, 255, 255, pct);
-      else this.queueBleSend(bleSentR, bleSentG, bleSentB, pct);
+      if (isPunch) sendToBLE(255, 255, 255, pct);
+      else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
     }
     const bleEnd = performance.now();
 
@@ -391,27 +377,6 @@ export class LightEngine {
     });
   }
 
-  private queueBleSend(r: number, g: number, b: number, brightness: number) {
-    this.pendingBleFrame = { r, g, b, brightness };
-    if (!this.bleWriteInFlight) this.flushBleQueue(this.bleWriteEpoch);
-  }
-
-  private flushBleQueue(epoch: number) {
-    if (this.bleWriteInFlight) return;
-    const frame = this.pendingBleFrame;
-    if (!frame) return;
-
-    this.pendingBleFrame = null;
-    this.bleWriteInFlight = true;
-
-    void sendToBLE(frame.r, frame.g, frame.b, frame.brightness)
-      .catch(() => {})
-      .finally(() => {
-        if (epoch !== this.bleWriteEpoch) return;
-        this.bleWriteInFlight = false;
-        if (this.pendingBleFrame) this.flushBleQueue(epoch);
-      });
-  }
 
   private emit(data: TickData) {
     for (const cb of this.tickCallbacks) cb(data);

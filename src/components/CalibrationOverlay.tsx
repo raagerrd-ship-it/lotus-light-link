@@ -393,7 +393,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               <div className="w-px h-20 bg-border/30 mx-1" />
               <div className="flex flex-col items-center gap-1 min-w-[3rem]">
                 <button
-                  onClick={() => onTickMsChange?.(Math.max(20, tickMs - 1))}
+                  onClick={() => onTickMsChange?.(Math.max(40, tickMs - 1))}
                   className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
                 >+</button>
                 <div
@@ -406,8 +406,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                     const update = (ev: PointerEvent) => {
                       const rect = track.getBoundingClientRect();
                       const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
-                      const ms = Math.round(100 - rawPct * 80);
-                      onTickMsChange?.(Math.max(20, Math.min(100, ms)));
+                      const ms = Math.round(125 - rawPct * 85);
+                      onTickMsChange?.(Math.max(40, Math.min(125, ms)));
                     };
                     update(e.nativeEvent);
                     const move = (ev: PointerEvent) => update(ev);
@@ -418,13 +418,13 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 >
                   {/* Default reference line */}
                   {(() => {
-                    const defMs = Math.max(20, Math.min(100, DEFAULT_TICK_MS));
-                    const bypassPct = ((100 - defMs) / 80) * 100;
+                    const defMs = Math.max(40, Math.min(125, DEFAULT_TICK_MS));
+                    const bypassPct = ((125 - defMs) / 85) * 100;
                     return <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />;
                   })()}
                   {/* Thumb */}
                   {(() => {
-                    const pct = ((100 - tickMs) / 80) * 100;
+                    const pct = ((125 - tickMs) / 85) * 100;
                     return (
                       <div
                         className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border"
@@ -434,7 +434,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                   })()}
                 </div>
                 <button
-                  onClick={() => onTickMsChange?.(Math.min(100, tickMs + 1))}
+                  onClick={() => onTickMsChange?.(Math.min(125, tickMs + 1))}
                   className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
                 >−</button>
                 <span className="text-[9px] font-mono leading-tight text-foreground/80">{tickMs}</span>
