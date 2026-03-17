@@ -71,6 +71,9 @@ export class LightEngine {
   private idleColor: [number, number, number];
   private idleCleanup: (() => void) | null = null;
   private calCleanup: (() => void) | null = null;
+  private bleWriteInFlight = false;
+  private pendingBleFrame: BleFrame | null = null;
+  private bleWriteEpoch = 0;
 
   constructor() {
     this.cal = getCalibration();
