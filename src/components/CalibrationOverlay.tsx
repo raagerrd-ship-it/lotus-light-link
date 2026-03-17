@@ -437,8 +437,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                   onClick={() => onTickMsChange?.(Math.min(100, tickMs + 1))}
                   className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
                 >−</button>
-                <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">w/s</span>
-                <span className="text-[9px] font-mono leading-tight text-foreground/80">{Math.round(1000 / tickMs)}</span>
+                <span className="text-[9px] font-mono leading-tight text-foreground/80">{tickMs}</span>
+                <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">ms</span>
               </div>
             </div>
           </div>
