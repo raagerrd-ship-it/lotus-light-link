@@ -468,7 +468,7 @@ const Index = () => {
           activePreset={activePreset}
           onPresetSave={handlePresetSave}
           tickMs={tickMs}
-          onTickMsChange={setTickMs}
+          onTickMsChange={(ms) => { setTickMs(ms); localStorage.setItem('tickMs', String(ms)); }}
         />
       )}
 
