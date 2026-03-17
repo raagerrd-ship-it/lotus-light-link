@@ -151,6 +151,9 @@ export async function loadSettingsFromCloud(): Promise<void> {
     if (Array.isArray(data.manual_color) && data.manual_color.length === 3) {
       localStorage.setItem('manualColor', JSON.stringify(data.manual_color));
     }
+    if (data.tick_ms != null) {
+      localStorage.setItem('tickMs', String(data.tick_ms));
+    }
   } catch (e) {
     console.warn('[settings] cloud load failed', e);
   }
