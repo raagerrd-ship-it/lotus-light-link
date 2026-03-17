@@ -286,8 +286,9 @@ export class LightEngine {
     // ── Idle mode ──
     if (!this.playing) {
       if (!this.idleSent && this.chars.size > 0) {
-        const calibrated = applyColorCalibration(...this.idleColor);
-        sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
+        const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+        this.pendingBleFrame = null;
+        this.queueBleSend(calibrated[0], calibrated[1], calibrated[2], 100);
         this.idleSent = true;
         this.emit({
           brightness: 100, color: this.idleColor, baseColor: this.idleColor,
