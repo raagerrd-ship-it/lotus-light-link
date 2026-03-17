@@ -30,12 +30,6 @@ export type TickCallback = (data: TickData) => void;
 
 export const DEFAULT_TICK_MS = 125;
 
-type BleFrame = {
-  r: number;
-  g: number;
-  b: number;
-  brightness: number;
-};
 
 export class LightEngine {
   // --- State ---
