@@ -30,6 +30,13 @@ export type TickCallback = (data: TickData) => void;
 
 export const DEFAULT_TICK_MS = 100;
 
+type BleFrame = {
+  r: number;
+  g: number;
+  b: number;
+  brightness: number;
+};
+
 export class LightEngine {
   // --- State ---
   private color: [number, number, number] = [255, 80, 0];
@@ -64,6 +71,9 @@ export class LightEngine {
   private idleColor: [number, number, number];
   private idleCleanup: (() => void) | null = null;
   private calCleanup: (() => void) | null = null;
+  private bleWriteInFlight = false;
+  private pendingBleFrame: BleFrame | null = null;
+  private bleWriteEpoch = 0;
 
   constructor() {
     this.cal = getCalibration();
@@ -84,7 +94,38 @@ export class LightEngine {
 
   setPlaying(playing: boolean) {
     this.playing = playing;
-    if (playing && this.worker) this.worker.postMessage('start');
+
+    if (playing) {
+      this.idleSent = false;
+      if (this.worker) this.worker.postMessage('start');
+      return;
+    }
+
+    this.worker?.postMessage('stop');
+
+    if (this.chars.size > 0) {
+      const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+      this.pendingBleFrame = null;
+      this.queueBleSend(calibrated[0], calibrated[1], calibrated[2], 100);
+    }
+
+    if (!this.idleSent) {
+      this.emit({
+        brightness: 100,
+        color: this.idleColor,
+        baseColor: this.idleColor,
+        bassLevel: 0,
+        midHiLevel: 0,
+        rawEnergyPct: 0,
+        isPunch: false,
+        bleColorSource: 'idle',
+        micRms: 0,
+        isPlaying: false,
+        timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+      });
+    }
+
+    this.idleSent = true;
   }
 
   /** @deprecated Use addChar/removeChar for multi-device */
@@ -212,6 +253,9 @@ export class LightEngine {
     this.analyser = null;
     this.freqBuf = null;
     this.hiShelf = null;
+    this.pendingBleFrame = null;
+    this.bleWriteInFlight = false;
+    this.bleWriteEpoch += 1;
   }
 
   /** Full teardown — stop + reset all state and callbacks. Instance is unusable after this. */
@@ -242,8 +286,9 @@ export class LightEngine {
     // ── Idle mode ──
     if (!this.playing) {
       if (!this.idleSent && this.chars.size > 0) {
-        const calibrated = applyColorCalibration(...this.idleColor);
-        sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
+        const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+        this.pendingBleFrame = null;
+        this.queueBleSend(calibrated[0], calibrated[1], calibrated[2], 100);
         this.idleSent = true;
         this.emit({
           brightness: 100, color: this.idleColor, baseColor: this.idleColor,
@@ -320,8 +365,8 @@ export class LightEngine {
 
     // ── BLE output ──
     if (this.chars.size > 0) {
-      if (isPunch) sendToBLE(255, 255, 255, pct);
-      else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
+      if (isPunch) this.queueBleSend(255, 255, 255, pct);
+      else this.queueBleSend(bleSentR, bleSentG, bleSentB, pct);
     }
     const bleEnd = performance.now();
 
@@ -344,6 +389,28 @@ export class LightEngine {
         totalTickMs: bleEnd - tickStart,
       },
     });
+  }
+
+  private queueBleSend(r: number, g: number, b: number, brightness: number) {
+    this.pendingBleFrame = { r, g, b, brightness };
+    if (!this.bleWriteInFlight) this.flushBleQueue(this.bleWriteEpoch);
+  }
+
+  private flushBleQueue(epoch: number) {
+    if (this.bleWriteInFlight) return;
+    const frame = this.pendingBleFrame;
+    if (!frame) return;
+
+    this.pendingBleFrame = null;
+    this.bleWriteInFlight = true;
+
+    void sendToBLE(frame.r, frame.g, frame.b, frame.brightness)
+      .catch(() => {})
+      .finally(() => {
+        if (epoch !== this.bleWriteEpoch) return;
+        this.bleWriteInFlight = false;
+        if (this.pendingBleFrame) this.flushBleQueue(epoch);
+      });
   }
 
   private emit(data: TickData) {
