@@ -96,8 +96,7 @@ export class LightEngine {
 
     if (this.chars.size > 0) {
       const calibrated = applyColorCalibration(...this.idleColor, this.cal);
-      this.pendingBleFrame = null;
-      this.queueBleSend(calibrated[0], calibrated[1], calibrated[2], 100);
+      sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
     }
 
     if (!this.idleSent) {
