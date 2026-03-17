@@ -377,27 +377,6 @@ export class LightEngine {
     });
   }
 
-  private queueBleSend(r: number, g: number, b: number, brightness: number) {
-    this.pendingBleFrame = { r, g, b, brightness };
-    if (!this.bleWriteInFlight) this.flushBleQueue(this.bleWriteEpoch);
-  }
-
-  private flushBleQueue(epoch: number) {
-    if (this.bleWriteInFlight) return;
-    const frame = this.pendingBleFrame;
-    if (!frame) return;
-
-    this.pendingBleFrame = null;
-    this.bleWriteInFlight = true;
-
-    void sendToBLE(frame.r, frame.g, frame.b, frame.brightness)
-      .catch(() => {})
-      .finally(() => {
-        if (epoch !== this.bleWriteEpoch) return;
-        this.bleWriteInFlight = false;
-        if (this.pendingBleFrame) this.flushBleQueue(epoch);
-      });
-  }
 
   private emit(data: TickData) {
     for (const cb of this.tickCallbacks) cb(data);
