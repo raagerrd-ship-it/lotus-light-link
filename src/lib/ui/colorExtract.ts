@@ -29,8 +29,8 @@ function boostSaturation(r: number, g: number, b: number): RGB {
   const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
 
   // Boost: push saturation toward 1.0, enforce minimum so we never get white/gray
-  const boostedS = Math.max(0.6, Math.min(1, s * 2.5));
-  const boostedL = Math.max(0.35, Math.min(0.55, l));
+  const boostedS = Math.max(0.75, Math.min(1, s * 3.0));
+  const boostedL = Math.max(0.30, Math.min(0.45, l));
 
   // HSL → RGB
   const c = (1 - Math.abs(2 * boostedL - 1)) * boostedS;
@@ -75,7 +75,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
 
       // Skip near-black and near-white
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (lum < 20 || lum > 240) continue;
+      if (lum < 20 || lum > 200) continue;
 
       // Quantize to 4-bit per channel buckets
       const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
@@ -102,7 +102,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       // Skip pure grays (very low chroma)
       const max = Math.max(avgR, avgG, avgB);
       const min = Math.min(avgR, avgG, avgB);
-      if (max - min < 30) continue;
+      if (max - min < 45) continue;
 
       // Boost saturation for vivid LED colors
       const boosted = boostSaturation(avgR, avgG, avgB);
