@@ -75,7 +75,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
 
       // Skip near-black and near-white
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (lum < 20 || lum > 240) continue;
+      if (lum < 20 || lum > 200) continue;
 
       // Quantize to 4-bit per channel buckets
       const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
