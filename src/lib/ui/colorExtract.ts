@@ -102,7 +102,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       // Skip pure grays (very low chroma)
       const max = Math.max(avgR, avgG, avgB);
       const min = Math.min(avgR, avgG, avgB);
-      if (max - min < 30) continue;
+      if (max - min < 45) continue;
 
       // Boost saturation for vivid LED colors
       const boosted = boostSaturation(avgR, avgG, avgB);
