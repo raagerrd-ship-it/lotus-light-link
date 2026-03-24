@@ -177,11 +177,27 @@ export async function connectBLEDOM(): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 // Hardware brightness = max (0xFF)
 const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 0x00, 0xef]);
-const SOFTWARE_DIMMING_GAMMA = 1.8;
+const DIMMING_GAMMA_KEY = 'dimming-gamma';
+const DEFAULT_DIMMING_GAMMA = 1.8;
+
+let _dimmingGamma = DEFAULT_DIMMING_GAMMA;
+
+// Load on init
+try {
+  const stored = localStorage.getItem(DIMMING_GAMMA_KEY);
+  if (stored) _dimmingGamma = Math.max(1.0, Math.min(3.0, Number(stored)));
+} catch {}
+
+export function getDimmingGamma(): number { return _dimmingGamma; }
+export function setDimmingGamma(v: number) {
+  _dimmingGamma = Math.max(1.0, Math.min(3.0, v));
+  localStorage.setItem(DIMMING_GAMMA_KEY, String(_dimmingGamma));
+}
+export { DEFAULT_DIMMING_GAMMA };
 
 function brightnessToScale(brightness: number): number {
   const normalized = Math.max(0, Math.min(100, brightness)) / 100;
-  return normalized <= 0 ? 0 : Math.pow(normalized, SOFTWARE_DIMMING_GAMMA);
+  return normalized <= 0 ? 0 : Math.pow(normalized, _dimmingGamma);
 }
 
 // --- BLE write state (tick-worker drives timing) ---

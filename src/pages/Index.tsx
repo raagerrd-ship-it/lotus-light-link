@@ -18,6 +18,7 @@ import AuthButton from "@/components/AuthButton";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { useAuth } from "@/hooks/useAuth";
 import { extractPalette } from "@/lib/ui/colorExtract";
+import { getDimmingGamma, setDimmingGamma } from "@/lib/engine/bledom";
 import {
   setActiveDeviceName, saveCalibration,
   getCalibration, getPresets, getActivePreset, setActivePreset,
@@ -54,6 +55,7 @@ const Index = () => {
     if (saved) return Math.max(40, Math.min(125, Number(saved)));
     return Math.max(40, Math.min(125, DEFAULT_TICK_MS));
   });
+  const [dimmingGamma, setDimmingGammaState] = useState(() => getDimmingGamma());
 
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastArtUrlRef = useRef<string | null>(null);
@@ -469,6 +471,8 @@ const Index = () => {
           onPresetSave={handlePresetSave}
           tickMs={tickMs}
           onTickMsChange={(ms) => { setTickMs(ms); localStorage.setItem('tickMs', String(ms)); }}
+          dimmingGamma={dimmingGamma}
+          onDimmingGammaChange={(v) => { setDimmingGammaState(v); setDimmingGamma(v); }}
         />
       )}
 
