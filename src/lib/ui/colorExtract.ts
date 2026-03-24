@@ -29,8 +29,8 @@ function boostSaturation(r: number, g: number, b: number): RGB {
   const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
 
   // Boost: push saturation toward 1.0, enforce minimum so we never get white/gray
-  const boostedS = Math.max(0.4, Math.min(1, s * 2.0));
-  const boostedL = Math.max(0.45, Math.min(0.65, l));
+  const boostedS = Math.max(0.6, Math.min(1, s * 2.5));
+  const boostedL = Math.max(0.35, Math.min(0.55, l));
 
   // HSL → RGB
   const c = (1 - Math.abs(2 * boostedL - 1)) * boostedS;
