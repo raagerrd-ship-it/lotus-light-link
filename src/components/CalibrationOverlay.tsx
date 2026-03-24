@@ -7,6 +7,7 @@ import {
   type LightCalibration, type PresetName,
 } from "@/lib/engine/lightCalibration";
 import { DEFAULT_TICK_MS } from "@/lib/engine/lightEngine";
+import { getDimmingGamma, setDimmingGamma, DEFAULT_DIMMING_GAMMA } from "@/lib/engine/bledom";
 import { getBleConnection, subscribeBle } from "@/lib/engine/bleStore";
 import { getPipelineTimings } from "@/lib/ui/pipelineTimings";
 
@@ -219,9 +220,11 @@ interface CalibrationOverlayProps {
   onPresetSave?: (name: PresetName, cal: LightCalibration) => void;
   tickMs?: number;
   onTickMsChange?: (ms: number) => void;
+  dimmingGamma?: number;
+  onDimmingGammaChange?: (v: number) => void;
 }
 
-export default function CalibrationOverlay({ onClose, onCalibrationChange, activePreset, onPresetSave, tickMs = DEFAULT_TICK_MS, onTickMsChange }: CalibrationOverlayProps) {
+export default function CalibrationOverlay({ onClose, onCalibrationChange, activePreset, onPresetSave, tickMs = DEFAULT_TICK_MS, onTickMsChange, dimmingGamma = DEFAULT_DIMMING_GAMMA, onDimmingGammaChange }: CalibrationOverlayProps) {
   const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [savedCal, setSavedCal] = useState<LightCalibration>(getCalibration);
@@ -441,6 +444,58 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 >−</button>
                 <span className="text-[9px] font-mono leading-tight text-foreground/80">{tickMs}</span>
                 <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">ms</span>
+              </div>
+            </div>
+            {/* Dimming gamma fader */}
+            <div className="flex items-center">
+              <div className="w-px h-20 bg-border/30 mx-1" />
+              <div className="flex flex-col items-center gap-1 min-w-[3rem]">
+                <button
+                  onClick={() => onDimmingGammaChange?.(Math.min(3.0, Math.round((dimmingGamma + 0.1) * 10) / 10))}
+                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
+                >+</button>
+                <div
+                  className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
+                  style={{ height: '4.5rem', background: 'hsl(var(--secondary))' }}
+                  onPointerDown={(e) => {
+                    const track = e.currentTarget;
+                    const el = e.currentTarget as HTMLElement;
+                    el.setPointerCapture(e.pointerId);
+                    const update = (ev: PointerEvent) => {
+                      const rect = track.getBoundingClientRect();
+                      const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+                      const v = Math.round((1.0 + rawPct * 2.0) * 10) / 10;
+                      onDimmingGammaChange?.(Math.max(1.0, Math.min(3.0, v)));
+                    };
+                    update(e.nativeEvent);
+                    const move = (ev: PointerEvent) => update(ev);
+                    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
+                    el.addEventListener('pointermove', move);
+                    el.addEventListener('pointerup', up);
+                  }}
+                >
+                  {/* Default reference line */}
+                  {(() => {
+                    const bypassPct = ((DEFAULT_DIMMING_GAMMA - 1.0) / 2.0) * 100;
+                    return <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />;
+                  })()}
+                  {/* Thumb */}
+                  {(() => {
+                    const pct = ((dimmingGamma - 1.0) / 2.0) * 100;
+                    return (
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border"
+                        style={{ bottom: `calc(${pct}% - 6px)`, background: 'hsl(200, 80%, 50%)', borderColor: 'hsl(200, 80%, 50%)' }}
+                      />
+                    );
+                  })()}
+                </div>
+                <button
+                  onClick={() => onDimmingGammaChange?.(Math.max(1.0, Math.round((dimmingGamma - 0.1) * 10) / 10))}
+                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
+                >−</button>
+                <span className="text-[9px] font-mono leading-tight text-foreground/80">{dimmingGamma.toFixed(1)}</span>
+                <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">γ</span>
               </div>
             </div>
           </div>
