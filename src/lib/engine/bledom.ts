@@ -177,6 +177,12 @@ export async function connectBLEDOM(): Promise<BLEConnection> {
 const _colorBuf = new Uint8Array([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
 // Hardware brightness = max (0xFF)
 const _brightMaxBuf = new Uint8Array([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 0x00, 0xef]);
+const SOFTWARE_DIMMING_GAMMA = 1.8;
+
+function brightnessToScale(brightness: number): number {
+  const normalized = Math.max(0, Math.min(100, brightness)) / 100;
+  return normalized <= 0 ? 0 : Math.pow(normalized, SOFTWARE_DIMMING_GAMMA);
+}
 
 // --- BLE write state (tick-worker drives timing) ---
 
@@ -220,7 +226,7 @@ const _brightOnlyBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00,
  *  Sends packets to ALL connected devices. RGB devices get color, brightness-only get dimming. */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
   if (_charModes.size === 0) return;
-  const scale = Math.max(0, Math.min(100, brightness)) / 100;
+  const scale = brightnessToScale(brightness);
   _colorBuf[4] = Math.round(r * scale);
   _colorBuf[5] = Math.round(g * scale);
   _colorBuf[6] = Math.round(b * scale);
