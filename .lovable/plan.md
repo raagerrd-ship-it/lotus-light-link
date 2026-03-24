@@ -1,27 +1,50 @@
 
 
-## Starkare albumfärger — mindre bleka/vita
+## Starkare albumfärger — aggressivare boost
 
 ### Problem
-`boostSaturation` tillåter lightness upp till 65% (`boostedL max 0.65`) och saturation ner till 0.4. Det ger bleka, nästan vita toner — särskilt på ljusa albumomslag.
+Trots senaste ändringen (S≥0.6, L 0.35–0.55) upplever du fortfarande bleka färger. Vid L=0.55, S=0.6 kan färger fortfarande vara halvljusa. Dessutom kan albumomslag med övervägande ljusa/vita ytor fortfarande producera bleka toner.
 
 ### Åtgärd — `src/lib/ui/colorExtract.ts`
 
-Ändra `boostSaturation`-funktionens clamp-värden:
-
+**1. Hårdare clamp i `boostSaturation`:**
 ```typescript
 // Nuvarande:
-const boostedS = Math.max(0.4, Math.min(1, s * 2.0));
-const boostedL = Math.max(0.45, Math.min(0.65, l));
-
-// Nytt:
 const boostedS = Math.max(0.6, Math.min(1, s * 2.5));
 const boostedL = Math.max(0.35, Math.min(0.55, l));
+
+// Nytt:
+const boostedS = Math.max(0.75, Math.min(1, s * 3.0));
+const boostedL = Math.max(0.30, Math.min(0.45, l));
 ```
 
-**Effekt:**
-- **Saturation**: Minimum höjs 0.4 → 0.6, multiplikator 2.0 → 2.5. Inga bleka/gråa färger slipper igenom.
-- **Lightness**: Max sänks 0.65 → 0.55, min sänks 0.45 → 0.35. Mörkare, mer mättade toner istället för pastellvitt.
+- **Saturation**: Min höjs 0.6 → 0.75, multiplikator 2.5 → 3.0. Inga halvmättade färger.
+- **Lightness**: Max sänks 0.55 → 0.45, min 0.35 → 0.30. Mörkare, renare toner — inget som liknar vitt.
 
-Dessutom höja chroma-filtret i `extractColorsFromImage` från `max - min < 15` till `< 30` för att filtrera bort fler gråaktiga pixlar innan de ens når boosting.
+**2. Höj chroma-filtret ytterligare:**
+```typescript
+// Nuvarande:
+if (max - min < 30) continue;
+
+// Nytt:
+if (max - min < 45) continue;
+```
+
+Filtrerar bort fler "nästan grå"-pixlar så att bara riktigt färgstarka regioner i bilden bidrar.
+
+**3. Höj luminans-filtret:**
+```typescript
+// Nuvarande:
+if (lum > 240) continue;
+
+// Nytt:
+if (lum > 200) continue;
+```
+
+Skär bort fler ljusa/vita pixlar redan vid sampling.
+
+### Effekt
+- Vid 100% brightness: starka, rena färger direkt på LED:n
+- Vid lägre %: färgen blir mörkare (RGB pre-multiplikation fungerar redan korrekt)
+- Albumomslag med mycket vitt/ljust ger ändå mättade toner
 
