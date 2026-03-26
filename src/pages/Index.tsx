@@ -215,17 +215,17 @@ const Index = () => {
       removeBleConnection(conn);
 
       // Try to reconnect automatically
-      setReconnectStatus({ attempt: 1, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || conn.device?.id });
+      setBleReconnectStatus({ attempt: 1, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || conn.device?.id });
       try {
-        const newConn = await autoReconnect(undefined, setReconnectStatus);
-        setReconnectStatus(null);
+        const newConn = await autoReconnect(undefined, setBleReconnectStatus);
+        setBleReconnectStatus(null);
         if (newConn) {
           console.log('[BLE] reconnected successfully');
           await finishConnect(newConn);
         }
       } catch (e: any) {
         console.warn('[BLE] reconnect failed:', e?.message);
-        setReconnectStatus(null);
+        setBleReconnectStatus(null);
       }
     });
   };
