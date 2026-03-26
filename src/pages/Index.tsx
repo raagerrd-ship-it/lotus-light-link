@@ -208,10 +208,25 @@ const Index = () => {
       }).catch(() => {});
     }
 
-    conn.device.addEventListener("gattserverdisconnected", () => {
+    conn.device.addEventListener("gattserverdisconnected", async () => {
+      console.log('[BLE] device disconnected, attempting reconnect...');
       removeActiveChar(conn.characteristic);
       setConnections(prev => prev.filter(c => c.device?.id !== conn.device?.id));
       removeBleConnection(conn);
+
+      // Try to reconnect automatically
+      setBleReconnectStatus({ attempt: 1, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || conn.device?.id });
+      try {
+        const newConn = await autoReconnect(undefined, setBleReconnectStatus);
+        setBleReconnectStatus(null);
+        if (newConn) {
+          console.log('[BLE] reconnected successfully');
+          await finishConnect(newConn);
+        }
+      } catch (e: any) {
+        console.warn('[BLE] reconnect failed:', e?.message);
+        setBleReconnectStatus(null);
+      }
     });
   };
 
