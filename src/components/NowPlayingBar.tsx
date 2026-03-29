@@ -8,7 +8,7 @@ interface Props {
   nextPrefetched?: boolean;
 }
 
-export default function NowPlayingBar({ nowPlaying, accentColor, getPosition }: Props) {
+export default function NowPlayingBar({ nowPlaying, accentColor, getPosition, nextPrefetched }: Props) {
   const [r, g, b] = accentColor ?? [255, 255, 255];
   const barRef = useRef<HTMLDivElement>(null);
 
