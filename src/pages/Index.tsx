@@ -17,7 +17,7 @@ import DebugOverlay from "@/components/DebugOverlay";
 import AuthButton from "@/components/AuthButton";
 import { useSonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 import { useAuth } from "@/hooks/useAuth";
-import { extractPalette } from "@/lib/ui/colorExtract";
+import { extractPalette, getCachedPalette, prefetchPalette } from "@/lib/ui/colorExtract";
 import { getDimmingGamma, setDimmingGamma } from "@/lib/engine/bledom";
 import {
   setActiveDeviceName, saveCalibration,
