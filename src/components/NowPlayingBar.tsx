@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { Radio } from "lucide-react";
 import type { SonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 
 interface Props {
@@ -69,7 +70,8 @@ export default function NowPlayingBar({ nowPlaying, accentColor, getPosition, ne
           <p className="text-sm font-medium text-foreground truncate">
             {nowPlaying.trackName}
           </p>
-          <p className="text-xs text-muted-foreground truncate">
+          <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+            {nowPlaying.mediaType === 'radio' && <Radio className="w-3 h-3 shrink-0 text-accent" />}
             {nowPlaying.artistName}
           </p>
         </div>

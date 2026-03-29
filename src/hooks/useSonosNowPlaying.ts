@@ -31,6 +31,7 @@ export interface SonosNowPlaying {
   nextTrackName: string | null;
   nextArtistName: string | null;
   nextAlbumArtUrl: string | null;
+  mediaType: 'radio' | 'track' | null;
   volume: number | null;
   source: 'local';
 }
@@ -138,6 +139,7 @@ export function useSonosNowPlaying() {
           nextTrackName: decodeEntities(s.nextTrackName),
           nextArtistName: decodeEntities(s.nextArtistName),
           nextAlbumArtUrl: nextArt,
+          mediaType: s.mediaType === 'radio' ? 'radio' : s.mediaType === 'track' ? 'track' : null,
           volume: s.volume ?? prev?.volume ?? null,
           source: 'local',
         });
@@ -163,6 +165,7 @@ export function useSonosNowPlaying() {
         nextTrackName: decodeEntities(s.nextTrackName) ?? prev!.nextTrackName ?? null,
         nextArtistName: decodeEntities(s.nextArtistName) ?? prev!.nextArtistName ?? null,
         nextAlbumArtUrl: nextArt ?? prev!.nextAlbumArtUrl ?? null,
+        mediaType: s.mediaType === 'radio' ? 'radio' : s.mediaType === 'track' ? 'track' : prev!.mediaType ?? null,
         volume: s.volume ?? prev!.volume ?? null,
         source: 'local',
       });
