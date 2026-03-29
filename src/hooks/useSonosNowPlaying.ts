@@ -31,6 +31,7 @@ export interface SonosNowPlaying {
   nextTrackName: string | null;
   nextArtistName: string | null;
   nextAlbumArtUrl: string | null;
+  mediaType: 'radio' | 'track' | null;
   volume: number | null;
   source: 'local';
 }
