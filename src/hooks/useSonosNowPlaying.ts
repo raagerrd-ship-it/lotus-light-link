@@ -165,6 +165,7 @@ export function useSonosNowPlaying() {
         nextTrackName: decodeEntities(s.nextTrackName) ?? prev!.nextTrackName ?? null,
         nextArtistName: decodeEntities(s.nextArtistName) ?? prev!.nextArtistName ?? null,
         nextAlbumArtUrl: nextArt ?? prev!.nextAlbumArtUrl ?? null,
+        mediaType: s.mediaType === 'radio' ? 'radio' : s.mediaType === 'track' ? 'track' : prev!.mediaType ?? null,
         volume: s.volume ?? prev!.volume ?? null,
         source: 'local',
       });
