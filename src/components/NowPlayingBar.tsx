@@ -5,6 +5,7 @@ interface Props {
   nowPlaying: SonosNowPlaying;
   accentColor?: [number, number, number];
   getPosition?: () => { positionMs: number; receivedAt: number } | null;
+  nextPrefetched?: boolean;
 }
 
 export default function NowPlayingBar({ nowPlaying, accentColor, getPosition }: Props) {
