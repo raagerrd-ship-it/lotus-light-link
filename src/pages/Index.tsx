@@ -106,12 +106,29 @@ const Index = () => {
     const artUrl = nowPlaying?.albumArtUrl;
     if (!artUrl || artUrl === lastArtUrlRef.current) return;
     lastArtUrlRef.current = artUrl;
+
+    // Try cache first (from prefetch), otherwise extract
+    const cached = getCachedPalette(artUrl);
+    if (cached && cached.length > 0) {
+      console.log('[palette] cache hit — instant color');
+      setCurrentColor(cached[0]);
+      return;
+    }
     extractPalette(artUrl, 1).then((colors) => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
       }
     });
   }, [nowPlaying?.albumArtUrl, colorSource]);
+
+  // Prefetch next track's palette in the background
+  useEffect(() => {
+    if (colorSource !== 'proxy') return;
+    const nextArt = nowPlaying?.nextAlbumArtUrl;
+    if (nextArt) {
+      prefetchPalette(nextArt, 1);
+    }
+  }, [nowPlaying?.nextAlbumArtUrl, colorSource]);
 
   // Apply manual color when in manual mode
   useEffect(() => {
