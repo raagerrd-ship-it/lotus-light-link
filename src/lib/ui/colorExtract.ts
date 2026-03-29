@@ -145,10 +145,38 @@ function fetchWithTimeout(url: string, timeoutMs = 3000): Promise<Response> {
 }
 
 
+// --- Palette cache (LRU, max 20 entries) ---
+const paletteCache = new Map<string, RGB[]>();
+const CACHE_MAX = 20;
+
+function cacheSet(url: string, colors: RGB[]) {
+  if (paletteCache.size >= CACHE_MAX) {
+    const oldest = paletteCache.keys().next().value;
+    if (oldest) paletteCache.delete(oldest);
+  }
+  paletteCache.set(url, colors);
+}
+
+/** Return cached palette for a URL, or null if not cached. */
+export function getCachedPalette(url: string): RGB[] | null {
+  return paletteCache.get(url) ?? null;
+}
+
+/** Pre-fetch and cache palette for a URL (fire-and-forget). */
+export function prefetchPalette(url: string, count: number = 1): void {
+  if (paletteCache.has(url)) return;
+  extractPalette(url, count).then((colors) => {
+    if (colors.length > 0) cacheSet(url, colors);
+  }).catch(() => {});
+}
+
 export async function extractPalette(
   imageUrl: string,
   count: number = 4
 ): Promise<RGB[]> {
+  // Check cache first
+  const cached = paletteCache.get(imageUrl);
+  if (cached && cached.length >= count) return cached.slice(0, count);
   const t0 = performance.now();
   const isLocal = imageUrl.startsWith('http://localhost') || imageUrl.startsWith('http://127.');
 
