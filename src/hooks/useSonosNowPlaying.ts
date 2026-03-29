@@ -120,6 +120,10 @@ export function useSonosNowPlaying() {
       const isTrackChange = !prev || s.trackName !== prev.trackName;
       const localArt = buildArtUrl(resolveAlbumArtUri(s));
 
+      // Resolve next track art URL from proxy payload
+      const nextArtRaw = s?.nextAlbumArtUri ?? s?.nextAlbumArtURI ?? s?.nextAlbumArtUrl ?? s?.next_album_art_uri ?? null;
+      const nextArt = buildArtUrl(nextArtRaw);
+
       if (isTrackChange) {
         apply({
           trackName: decodeEntities(s.trackName),
@@ -133,6 +137,7 @@ export function useSonosNowPlaying() {
           smoothedRtt: rtt,
           nextTrackName: decodeEntities(s.nextTrackName),
           nextArtistName: decodeEntities(s.nextArtistName),
+          nextAlbumArtUrl: nextArt,
           volume: s.volume ?? prev?.volume ?? null,
           source: 'local',
         });
