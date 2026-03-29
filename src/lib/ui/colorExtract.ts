@@ -225,6 +225,7 @@ export async function extractPalette(
           const colors = extractColorsFromImage(img, count);
           if (colors.length > 0) {
             console.log(`[palette] blob ${Math.round(performance.now() - t0)}ms, ${colors.length} colors`);
+            cacheSet(imageUrl, colors);
             return colors;
           }
         } finally {
