@@ -162,6 +162,7 @@ export function useSonosNowPlaying() {
         smoothedRtt: rtt,
         nextTrackName: decodeEntities(s.nextTrackName) ?? prev!.nextTrackName ?? null,
         nextArtistName: decodeEntities(s.nextArtistName) ?? prev!.nextArtistName ?? null,
+        nextAlbumArtUrl: nextArt ?? prev!.nextAlbumArtUrl ?? null,
         volume: s.volume ?? prev!.volume ?? null,
         source: 'local',
       });
