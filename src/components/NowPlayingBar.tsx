@@ -73,6 +73,36 @@ export default function NowPlayingBar({ nowPlaying, accentColor, getPosition, ne
             {nowPlaying.artistName}
           </p>
         </div>
+
+        {/* Next track */}
+        {nowPlaying.nextTrackName && (
+          <div className="flex items-center gap-2 ml-auto opacity-50 shrink-0 max-w-[40%]">
+            {nowPlaying.nextAlbumArtUrl && (
+              <img
+                src={nowPlaying.nextAlbumArtUrl}
+                alt="Next"
+                className="w-8 h-8 rounded-lg"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (img.dataset.fallbackApplied === "1") return;
+                  img.dataset.fallbackApplied = "1";
+                  img.src = "/placeholder.svg";
+                }}
+              />
+            )}
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-foreground truncate">
+                {nowPlaying.nextTrackName}
+              </p>
+              <p className="text-[10px] text-muted-foreground truncate">
+                {nowPlaying.nextArtistName}
+                {nextPrefetched && (
+                  <span className="ml-1 text-green-400">●</span>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
