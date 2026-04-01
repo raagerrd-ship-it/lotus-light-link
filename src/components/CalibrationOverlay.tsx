@@ -434,8 +434,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                     const update = (ev: PointerEvent) => {
                       const rect = track.getBoundingClientRect();
                       const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
-                      const ms = Math.round(125 - rawPct * 85);
-                      onTickMsChange?.(Math.max(40, Math.min(125, ms)));
+                      const ms = Math.round(125 - rawPct * 105);
+                      onTickMsChange?.(Math.max(20, Math.min(125, ms)));
                     };
                     update(e.nativeEvent);
                     const move = (ev: PointerEvent) => update(ev);
