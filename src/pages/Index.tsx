@@ -129,7 +129,7 @@ const Index = () => {
     if (colorSource !== 'proxy') return;
     const nextArt = nowPlaying?.nextAlbumArtUrl;
     if (nextArt) {
-      prefetchPalette(nextArt, 1);
+      prefetchPalette(nextArt, 4);
     }
   }, [nowPlaying?.nextAlbumArtUrl, colorSource]);
 
