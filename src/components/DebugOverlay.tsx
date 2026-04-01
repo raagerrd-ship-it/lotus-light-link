@@ -24,6 +24,9 @@ export default function DebugOverlay() {
   const bleOutContainerRef = useRef<HTMLDivElement>(null);
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
   const bleStatsRef = useRef<HTMLDivElement>(null);
+  const bleRateRef = useRef<HTMLDivElement>(null);
+  const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
+  const bleRateValueRef = useRef(0);
 
   useEffect(() => {
     const tick = () => {
