@@ -46,6 +46,6 @@ export const debugData: DebugData = {
   bleColorSource: null,
   bleBaseColor: null,
   bleSentCount: 0,
-  bleSkipDedupCount: 0,
+  bleSkipDeltaCount: 0,
   bleSkipThrottleCount: 0,
 };

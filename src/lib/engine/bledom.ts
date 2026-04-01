@@ -269,7 +269,8 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const cb = Math.round(b * scale);
   const cbr = Math.round(scale * 0xff);
 
-  if (cr === _lastR && cg === _lastG && cb === _lastB && cbr === _lastBr) { debugData.bleSkipDedupCount++; return; }
+  const maxDelta = Math.max(Math.abs(cr - _lastR), Math.abs(cg - _lastG), Math.abs(cb - _lastB), Math.abs(cbr - _lastBr));
+  if (maxDelta < 8) { debugData.bleSkipDeltaCount++; return; }
 
   // Throttle: don't write faster than the tick interval
   const now = performance.now();

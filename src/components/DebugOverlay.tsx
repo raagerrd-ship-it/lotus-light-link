@@ -97,7 +97,7 @@ export default function DebugOverlay() {
       // BLE send/skip stats
       if (bleStatsRef.current) {
         const sent = d.bleSentCount;
-        const skipD = d.bleSkipDedupCount;
+        const skipD = d.bleSkipDeltaCount;
         const skipT = d.bleSkipThrottleCount;
         const total = sent + skipD + skipT;
         const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
