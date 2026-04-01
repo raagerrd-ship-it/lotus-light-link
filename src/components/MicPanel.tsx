@@ -34,6 +34,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   // ── Sync props to engine ──
   useEffect(() => { engineRef.current?.setChar(char ?? null); }, [char]);
   useEffect(() => { engineRef.current?.setColor(currentColor); }, [currentColor]);
+  useEffect(() => { engineRef.current?.setPalette(palette ?? []); }, [palette]);
   useEffect(() => { engineRef.current?.setVolume(sonosVolume); }, [sonosVolume]);
   useEffect(() => { engineRef.current?.setPlaying(isPlaying); }, [isPlaying]);
   const lastTrackRef = useRef(trackName);
