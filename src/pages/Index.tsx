@@ -101,7 +101,7 @@ const Index = () => {
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
   }, [activeCalibration]);
 
-  // Extract dominant color from album art when track changes (proxy mode only)
+  // Extract dominant colors from album art when track changes (proxy mode only)
   useEffect(() => {
     if (colorSource !== 'proxy') return;
     const artUrl = nowPlaying?.albumArtUrl;
@@ -113,11 +113,13 @@ const Index = () => {
     if (cached && cached.length > 0) {
       console.log('[palette] cache hit — instant color');
       setCurrentColor(cached[0]);
+      setCurrentPalette(cached.slice(0, 4));
       return;
     }
-    extractPalette(artUrl, 1).then((colors) => {
+    extractPalette(artUrl, 4).then((colors) => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
+        setCurrentPalette(colors.slice(0, 4));
       }
     });
   }, [nowPlaying?.albumArtUrl, colorSource]);
