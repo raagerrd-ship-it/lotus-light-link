@@ -36,6 +36,7 @@ const Index = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
+  const [currentPalette, setCurrentPalette] = useState<[number, number, number][]>([]);
   
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
