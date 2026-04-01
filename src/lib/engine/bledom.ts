@@ -238,15 +238,32 @@ export function getActiveCharCount(): number {
 // Brightness-only buffer: white light at variable brightness
 const _brightOnlyBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xef]);
 
+// Deduplication state — skip identical BLE writes
+let _lastR = -1, _lastG = -1, _lastB = -1, _lastBr = -1;
+
+/** Reset dedup state so the next command is always sent (call on reconnect) */
+export function resetLastSent() {
+  _lastR = _lastG = _lastB = _lastBr = -1;
+}
+
 /** Single unified BLE command — pre-multiplies RGB by brightness.
- *  Sends packets to ALL connected devices. RGB devices get color, brightness-only get dimming. */
+ *  Sends packets to ALL connected devices. RGB devices get color, brightness-only get dimming.
+ *  Skips sending if the computed bytes are identical to the previous call. */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
   if (_charModes.size === 0) return;
   const scale = brightnessToScale(brightness);
-  _colorBuf[4] = Math.round(r * scale);
-  _colorBuf[5] = Math.round(g * scale);
-  _colorBuf[6] = Math.round(b * scale);
-  _brightOnlyBuf[3] = Math.round(scale * 0xff);
+  const cr = Math.round(r * scale);
+  const cg = Math.round(g * scale);
+  const cb = Math.round(b * scale);
+  const cbr = Math.round(scale * 0xff);
+
+  if (cr === _lastR && cg === _lastG && cb === _lastB && cbr === _lastBr) return;
+  _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
+
+  _colorBuf[4] = cr;
+  _colorBuf[5] = cg;
+  _colorBuf[6] = cb;
+  _brightOnlyBuf[3] = cbr;
 
   const writes = Array.from(_charModes.entries()).map(([char, mode]) => {
     const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
