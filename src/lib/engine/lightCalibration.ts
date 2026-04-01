@@ -11,6 +11,16 @@ const ACTIVE_PRESET_KEY = 'active-preset';
 
 const DEFAULT_IDLE_COLOR: [number, number, number] = [255, 60, 0];
 
+export const PALETTE_MODES = ['off', 'timed', 'bass', 'energy', 'blend'] as const;
+export type PaletteMode = typeof PALETTE_MODES[number];
+export const PALETTE_MODE_LABELS: Record<PaletteMode, string> = {
+  off: 'Av',
+  timed: 'Tid',
+  bass: 'Bas',
+  energy: 'Energi',
+  blend: 'Blend',
+};
+
 export function getIdleColor(): [number, number, number] {
   try {
     const stored = localStorage.getItem(IDLE_COLOR_KEY);
@@ -44,7 +54,7 @@ export interface LightCalibration {
   punchWhiteThreshold: number;
   smoothing: number;
   brightnessFloor: number;
-  paletteRotation: boolean;
+  paletteMode: PaletteMode;
   paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
 }
@@ -57,7 +67,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   bandAgcAttack: 0.15, bandAgcDecay: 0.997,
   volCompensation: 80, punchWhiteThreshold: 100,
   smoothing: 0, brightnessFloor: 0,
-  paletteRotation: false, paletteRotationSpeed: 8,
+  paletteMode: 'off', paletteRotationSpeed: 8,
   agcVolumeTable: {},
 };
 
@@ -77,6 +87,13 @@ export function getCalibration(): LightCalibration {
       delete parsed.agcMin;
       delete parsed.agcVolume;
       // Save migrated version
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
+
+    // Migrate old paletteRotation boolean → paletteMode
+    if (parsed.paletteRotation != null && !parsed.paletteMode) {
+      parsed.paletteMode = parsed.paletteRotation ? 'timed' : 'off';
+      delete parsed.paletteRotation;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
     }
 
@@ -136,7 +153,7 @@ export type PresetName = typeof PRESET_NAMES[number];
 const BUILT_IN_PRESETS: Record<PresetName, Partial<LightCalibration>> = {
   Lugn: { attackAlpha: 0.08, releaseAlpha: 0.01, dynamicDamping: 1.5, bassWeight: 0.5, punchWhiteThreshold: 100 },
   Normal: {},
-  Party: { attackAlpha: 0.6, releaseAlpha: 0.08, dynamicDamping: -2.0, bassWeight: 0.85, punchWhiteThreshold: 95, paletteRotation: true, paletteRotationSpeed: 6 },
+  Party: { attackAlpha: 0.6, releaseAlpha: 0.08, dynamicDamping: -2.0, bassWeight: 0.85, punchWhiteThreshold: 95, paletteMode: 'bass', paletteRotationSpeed: 6 },
   Custom: {},
 };
 
