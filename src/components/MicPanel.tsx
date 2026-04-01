@@ -3,6 +3,7 @@ import { LightEngine, DEFAULT_TICK_MS, type TickData } from "@/lib/engine/lightE
 import { drawIntensityChart, type ChartSample, resetChartScaler } from "@/lib/ui/drawChart";
 import { pushChartSample, getChartSamples } from "@/lib/ui/chartStore";
 import { setPipelineTimings } from "@/lib/ui/pipelineTimings";
+import { debugData } from "@/lib/ui/debugStore";
 
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
