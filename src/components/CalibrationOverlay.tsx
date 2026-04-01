@@ -446,8 +446,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 >
                   {/* Default reference line */}
                   {(() => {
-                    const defMs = Math.max(40, Math.min(125, DEFAULT_TICK_MS));
-                    const bypassPct = ((125 - defMs) / 85) * 100;
+                    const defMs = Math.max(20, Math.min(125, DEFAULT_TICK_MS));
+                    const bypassPct = ((125 - defMs) / 105) * 100;
                     return <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />;
                   })()}
                   {/* Thumb */}
