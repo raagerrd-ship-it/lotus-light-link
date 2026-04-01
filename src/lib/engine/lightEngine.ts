@@ -34,6 +34,9 @@ export const DEFAULT_TICK_MS = 125;
 export class LightEngine {
   // --- State ---
   private color: [number, number, number] = [255, 80, 0];
+  private palette: [number, number, number][] = [];
+  private paletteIndex = 0;
+  private paletteTickCounter = 0;
   private volume: number | undefined;
   private playing = true;
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
