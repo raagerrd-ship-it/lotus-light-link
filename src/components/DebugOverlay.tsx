@@ -90,6 +90,16 @@ export default function DebugOverlay() {
         if (bleOutContainerRef.current) bleOutContainerRef.current.style.display = 'none';
         if (bleOutWaitRef.current) bleOutWaitRef.current.style.display = '';
       }
+
+      // BLE send/skip stats
+      if (bleStatsRef.current) {
+        const sent = d.bleSentCount;
+        const skipD = d.bleSkipDedupCount;
+        const skipT = d.bleSkipThrottleCount;
+        const total = sent + skipD + skipT;
+        const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
+        bleStatsRef.current.textContent = `tx ${sent} skip ${skipD + skipT} (${pct}%)`;
+      }
     };
 
     const id = setInterval(tick, 200);
