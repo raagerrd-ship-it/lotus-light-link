@@ -1,4 +1,5 @@
 // BLEDOM BLE LED strip protocol
+import { debugData } from '@/lib/ui/debugStore';
 
 const SERVICE_UUID = 0xfff0;
 const CHAR_UUID = 0xfff3;
