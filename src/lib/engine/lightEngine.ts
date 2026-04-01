@@ -37,6 +37,8 @@ export class LightEngine {
   private palette: [number, number, number][] = [];
   private paletteIndex = 0;
   private paletteTickCounter = 0;
+  private lastBassNorm = 0;
+  private bassWasHigh = false;
   private volume: number | undefined;
   private playing = true;
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
