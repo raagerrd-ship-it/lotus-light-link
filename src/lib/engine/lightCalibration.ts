@@ -90,6 +90,13 @@ export function getCalibration(): LightCalibration {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
     }
 
+    // Migrate old paletteRotation boolean → paletteMode
+    if (parsed.paletteRotation != null && !parsed.paletteMode) {
+      parsed.paletteMode = parsed.paletteRotation ? 'timed' : 'off';
+      delete parsed.paletteRotation;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
+
     return { ...DEFAULT_CALIBRATION, ...parsed, agcVolumeTable: parsed.agcVolumeTable ?? {} };
   } catch {
     return { ...DEFAULT_CALIBRATION };
