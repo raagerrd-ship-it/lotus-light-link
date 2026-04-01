@@ -352,14 +352,48 @@ export class LightEngine {
     }
     const smoothEnd = performance.now();
 
-    // ── Palette rotation ──
-    if (cal.paletteRotation && this.palette.length > 1) {
-      this.paletteTickCounter++;
-      const speed = Math.max(1, cal.paletteRotationSpeed ?? 8);
-      if (this.paletteTickCounter >= speed) {
-        this.paletteTickCounter = 0;
-        this.paletteIndex = (this.paletteIndex + 1) % this.palette.length;
+    // ── Palette mode ──
+    const pm = cal.paletteMode ?? 'off';
+    if (pm !== 'off' && this.palette.length > 1) {
+      const pLen = this.palette.length;
+
+      if (pm === 'timed') {
+        this.paletteTickCounter++;
+        const speed = Math.max(1, cal.paletteRotationSpeed ?? 8);
+        if (this.paletteTickCounter >= speed) {
+          this.paletteTickCounter = 0;
+          this.paletteIndex = (this.paletteIndex + 1) % pLen;
+        }
         this.color = this.palette[this.paletteIndex];
+
+      } else if (pm === 'bass') {
+        // Advance on bass transient (rising edge above 0.5)
+        const bassNorm = this.smoothedBass;
+        const isHigh = bassNorm > 0.45;
+        if (isHigh && !this.bassWasHigh) {
+          this.paletteIndex = (this.paletteIndex + 1) % pLen;
+        }
+        this.bassWasHigh = isHigh;
+        this.color = this.palette[this.paletteIndex];
+
+      } else if (pm === 'energy') {
+        // Map energy % directly to palette index
+        const idx = Math.min(pLen - 1, Math.floor((rawEnergy) * pLen));
+        this.color = this.palette[idx];
+
+      } else if (pm === 'blend') {
+        // Smooth interpolation across palette based on energy
+        const pos = rawEnergy * (pLen - 1);
+        const lo = Math.floor(pos);
+        const hi = Math.min(pLen - 1, lo + 1);
+        const t = pos - lo;
+        const cLo = this.palette[lo];
+        const cHi = this.palette[hi];
+        this.color = [
+          Math.round(cLo[0] + (cHi[0] - cLo[0]) * t),
+          Math.round(cLo[1] + (cHi[1] - cLo[1]) * t),
+          Math.round(cLo[2] + (cHi[2] - cLo[2]) * t),
+        ];
       }
     }
 
