@@ -44,7 +44,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       lastTrackRef.current = trackName;
       engineRef.current?.resetSmoothing();
       debugData.bleSentCount = 0;
-      debugData.bleSkipDedupCount = 0;
+      debugData.bleSkipDeltaCount = 0;
       debugData.bleSkipThrottleCount = 0;
     }
   }, [trackName]);
