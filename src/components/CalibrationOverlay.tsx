@@ -339,22 +339,27 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               </div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={() => {
               setCal(prev => {
-                const next = { ...prev, paletteRotation: !prev.paletteRotation };
+                const modes = PALETTE_MODES;
+                const curIdx = modes.indexOf(prev.paletteMode ?? 'off');
+                const nextMode = modes[(curIdx + 1) % modes.length];
+                const next = { ...prev, paletteMode: nextMode };
                 saveCalibration(next, conn?.device?.name, { localOnly: true });
                 onCalibrationChange?.(next);
                 return next;
               });
             }}
-            className={`rounded-full w-6 h-6 transition-colors ${cal.paletteRotation ? 'text-primary' : 'text-muted-foreground/40'}`}
-            title={cal.paletteRotation ? 'Palett-rotation PÅ' : 'Palett-rotation AV'}
+            className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all active:scale-90 ${
+              (cal.paletteMode ?? 'off') !== 'off'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground/50 hover:text-foreground/80'
+            }`}
+            title={`Palettläge: ${PALETTE_MODE_LABELS[cal.paletteMode ?? 'off']}`}
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
+            🎨 {PALETTE_MODE_LABELS[cal.paletteMode ?? 'off']}
+          </button>
           <Button variant="ghost" size="sm" onClick={bypassAll} className="rounded-full h-6 px-2 text-[9px] font-bold tracking-wide uppercase" title="Nollställ – ingen påverkan">
             Bypass
           </Button>
