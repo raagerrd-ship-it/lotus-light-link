@@ -210,11 +210,11 @@ export function useSonosNowPlaying() {
     };
 
     const pollId = setInterval(() => {
-      // Only poll if SSE hasn't delivered anything in 3s
-      if (Date.now() - lastSseMessage > 3000) {
+      // Only poll if SSE hasn't delivered anything in 1.5s
+      if (Date.now() - lastSseMessage > 1500) {
         pollStatus();
       }
-    }, 5000);
+    }, 2000);
 
     return () => {
       if (es) { es.close(); es = null; }
