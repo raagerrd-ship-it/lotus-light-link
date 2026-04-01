@@ -259,6 +259,8 @@ export class LightEngine {
     this.palette = [];
     this.paletteIndex = 0;
     this.paletteTickCounter = 0;
+    this.lastBassNorm = 0;
+    this.bassWasHigh = false;
     this.volume = undefined;
     this.playing = true;
     this.chars.clear();
