@@ -44,6 +44,8 @@ export interface LightCalibration {
   punchWhiteThreshold: number;
   smoothing: number;
   brightnessFloor: number;
+  paletteRotation: boolean;
+  paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
 }
 
