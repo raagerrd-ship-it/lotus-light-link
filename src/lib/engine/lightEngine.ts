@@ -83,6 +83,7 @@ export class LightEngine {
   }
 
   setColor(rgb: [number, number, number]) { this.color = rgb; }
+  setPalette(colors: [number, number, number][]) { this.palette = colors; }
   setVolume(vol: number | undefined) { this.volume = vol; }
   setTickMs(ms: number) { this.tickMs = ms; this.worker?.postMessage(ms); }
 
