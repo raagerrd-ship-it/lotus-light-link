@@ -244,7 +244,12 @@ let _lastR = -1, _lastG = -1, _lastB = -1, _lastBr = -1;
 
 // Throttle state — prevent writes faster than tick interval
 let _lastWriteTime = 0;
-const MIN_WRITE_INTERVAL_MS = 125;
+let _minWriteIntervalMs = 125;
+
+/** Update the BLE write throttle interval (should match tickMs) */
+export function setBleThrottleMs(ms: number) {
+  _minWriteIntervalMs = Math.max(20, ms);
+}
 
 /** Reset dedup/throttle state so the next command is always sent (call on reconnect) */
 export function resetLastSent() {
@@ -267,7 +272,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
 
   // Throttle: don't write faster than the tick interval
   const now = performance.now();
-  if (now - _lastWriteTime < MIN_WRITE_INTERVAL_MS) return;
+  if (now - _lastWriteTime < _minWriteIntervalMs) return;
   _lastWriteTime = now;
 
   _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
