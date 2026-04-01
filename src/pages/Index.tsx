@@ -311,7 +311,7 @@ const Index = () => {
       onPointerDown={connected ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
-        <MicPanel char={firstChar} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
