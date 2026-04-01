@@ -1,32 +1,23 @@
 
 
-## Slutsats: Write gate hjälper inte — tidsspärr istället
+## Optimera BLE-kommandon med minimum-ändringströskel
 
-### Varför write gate inte fungerar
-`writeValueWithoutResponse` resolvar direkt (sub-ms) när datan lämnas till OS-bufferten, inte när den sänts. Flaggan `_writing` hinner alltid resetta sig innan nästa tick — den blockerar aldrig.
+### Vad
+Lägg till en "delta-gate" i `sendToBLE` — skippa sändning om skillnaden mot senast skickade värde är under en tröskel (default ~3% av 255 ≈ 8 steg). Detta minskar antalet skickade kommandon avsevärt vid långsamma fades utan att påverka snabba förändringar.
 
-### Nuläge
-Dedupliceringen (skippa identiska paket) är redan implementerad och fungerar. Det som saknas är skydd mot att skicka *olika* värden för snabbt.
+### Ändring — en fil: `src/lib/engine/bledom.ts`
 
-### Plan: Lägg till minsta skriv-intervall
-
-**Fil: `src/lib/engine/bledom.ts`**
-
-1. Lägg till `let _lastWriteTime = 0` modulvariabel
-2. I `sendToBLE()`, efter dedup-check men före write:
-   - `const now = performance.now()`
-   - Om `now - _lastWriteTime < MIN_WRITE_INTERVAL_MS` → return (skippa)
-   - Sätt `_lastWriteTime = now` efter godkänd check
-3. `MIN_WRITE_INTERVAL_MS` sätts till tickMs-värdet (default ~125ms) så att vi aldrig skickar snabbare än en gång per tick
-4. Nollställ `_lastWriteTime` i `resetLastSent()` (vid reconnect)
-
-**Inga andra filer ändras.** Tillsammans med befintlig dedup ger detta fullständigt skydd mot köbildning.
+1. Byt ut den exakta dedup-checken (rad 272) mot en **delta-check**: beräkna `maxDelta = max(|cr-_lastR|, |cg-_lastG|, |cb-_lastB|, |cbr-_lastBr|)` och skippa om `maxDelta < MIN_DELTA` (default 8, ~3% av 255)
+2. Lägg till ny räknare `bleSkipDeltaCount` i `debugStore.ts` och visa i debug-overlayen
+3. Nollställ räknaren vid låtbyte (MicPanel.tsx)
 
 ### Teknisk detalj
 ```text
-tick() → sendToBLE()
-          ├─ dedup: samma värde? → skip ✓ (finns redan)
-          ├─ throttle: för snart? → skip (NYTT)
-          └─ write + uppdatera _lastWriteTime
+sendToBLE()
+  ├─ delta < 8? → skip (NY — ersätter exakt dedup)
+  ├─ throttle: för snart? → skip
+  └─ write
 ```
+
+Delta-gaten subsumerar den gamla exakta dedupen (delta 0 fångas också). En enda check istället för två.
 
