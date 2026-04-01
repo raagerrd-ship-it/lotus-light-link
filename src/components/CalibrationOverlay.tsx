@@ -40,6 +40,7 @@ const SLIDERS: SliderDef[] = [
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
   // Punch
   { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 90, max: 100, step: 0.5, unit: '%', group: 'Punch', description: '100 = av. Ljusstyrka över detta → vit färg.' },
+  { key: 'paletteRotationSpeed', label: 'Palett-hastighet', shortLabel: 'PalSpd', min: 1, max: 32, step: 1, unit: 'ticks', group: 'Punch', description: 'Antal ticks mellan färgbyten vid palett-rotation. Lägre = snabbare.' },
 ];
 
 const BYPASS_VALUES: Record<string, number> = {

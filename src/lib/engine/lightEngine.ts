@@ -254,6 +254,9 @@ export class LightEngine {
     this.stop();
     this.tickCallbacks = [];
     this.color = [255, 80, 0];
+    this.palette = [];
+    this.paletteIndex = 0;
+    this.paletteTickCounter = 0;
     this.volume = undefined;
     this.playing = true;
     this.chars.clear();
