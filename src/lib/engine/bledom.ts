@@ -264,6 +264,12 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const cbr = Math.round(scale * 0xff);
 
   if (cr === _lastR && cg === _lastG && cb === _lastB && cbr === _lastBr) return;
+
+  // Throttle: don't write faster than the tick interval
+  const now = performance.now();
+  if (now - _lastWriteTime < MIN_WRITE_INTERVAL_MS) return;
+  _lastWriteTime = now;
+
   _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
 
   _colorBuf[4] = cr;
