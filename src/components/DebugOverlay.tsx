@@ -103,6 +103,20 @@ export default function DebugOverlay() {
         const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
         bleStatsRef.current.textContent = `tx ${sent} skip ${skipD + skipT} (${pct}%)`;
       }
+
+      // BLE writes/sec (computed over each poll interval)
+      if (bleRateRef.current) {
+        const now = performance.now();
+        const snap = lastSentSnapshotRef.current;
+        const dt = (now - snap.time) / 1000;
+        if (dt >= 0.5) {
+          const delta = d.bleSentCount - snap.count;
+          bleRateValueRef.current = Math.round(delta / dt * 10) / 10;
+          snap.count = d.bleSentCount;
+          snap.time = now;
+        }
+        bleRateRef.current.textContent = `${bleRateValueRef.current} w/s`;
+      }
     };
 
     const id = setInterval(tick, 200);
