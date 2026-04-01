@@ -347,6 +347,17 @@ export class LightEngine {
     }
     const smoothEnd = performance.now();
 
+    // ── Palette rotation ──
+    if (cal.paletteRotation && this.palette.length > 1) {
+      this.paletteTickCounter++;
+      const speed = Math.max(1, cal.paletteRotationSpeed ?? 8);
+      if (this.paletteTickCounter >= speed) {
+        this.paletteTickCounter = 0;
+        this.paletteIndex = (this.paletteIndex + 1) % this.palette.length;
+        this.color = this.palette[this.paletteIndex];
+      }
+    }
+
     // ── Resolve colors ──
     const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
     const finalColor = applyColorCalibration(...this.color, cal);
