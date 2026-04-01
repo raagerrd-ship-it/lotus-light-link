@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
   getIdleColor, saveIdleColor,
-  type LightCalibration, type PresetName,
+  PALETTE_MODES, PALETTE_MODE_LABELS,
+  type LightCalibration, type PresetName, type PaletteMode,
 } from "@/lib/engine/lightCalibration";
 import { DEFAULT_TICK_MS } from "@/lib/engine/lightEngine";
 import { getDimmingGamma, setDimmingGamma, DEFAULT_DIMMING_GAMMA } from "@/lib/engine/bledom";
