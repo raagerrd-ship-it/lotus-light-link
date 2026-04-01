@@ -16,11 +16,12 @@ export type AgcVolumeTable = Record<number, number>;
 export interface AgcState {
   max: number;
   min: number;
-  // Per-band peak tracking (running max, never decays within session)
   bassMax: number;
   bassMin: number;
   midHiMax: number;
   midHiMin: number;
+  /** Consecutive quiet ticks counter for accelerated decay */
+  quietTicks: number;
 }
 
 export function createAgcState(initialMax = 0.01): AgcState {
@@ -31,6 +32,7 @@ export function createAgcState(initialMax = 0.01): AgcState {
     bassMin: 0,
     midHiMax: 0.01,
     midHiMin: 0,
+    quietTicks: 0,
   };
 }
 
