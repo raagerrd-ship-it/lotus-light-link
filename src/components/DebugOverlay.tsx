@@ -23,6 +23,7 @@ export default function DebugOverlay() {
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
   const bleOutContainerRef = useRef<HTMLDivElement>(null);
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
+  const bleStatsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const tick = () => {

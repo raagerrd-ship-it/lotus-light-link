@@ -290,6 +290,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
     });
   });
   await Promise.allSettled(writes);
+  debugData.bleSentCount++;
 }
 
 export async function sendPower(char: any, on: boolean) {
