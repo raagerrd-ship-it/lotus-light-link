@@ -72,24 +72,39 @@ export function getFloorForVolume(table: AgcVolumeTable, bucket: number): number
   return Math.max(AGC_FLOOR, table[nearestBucket] * (currentVol / nearestVol));
 }
 
-/** Update running max for global + band values. Grows on new peaks, slowly decays otherwise. */
+/** Update running max for global + band values. Grows on new peaks, decays faster during quiet periods. */
 export function updateRunningMax(
   state: AgcState,
   smoothed: number,
   bassRms: number,
   midHiRms: number,
 ): void {
-  // Grow on new peaks
+  // Track quiet periods for accelerated decay
+  const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
+  if (isQuiet) {
+    state.quietTicks++;
+  } else {
+    state.quietTicks = 0;
+  }
+
+  // Pick decay rate based on how long it's been quiet
+  const decay = state.quietTicks >= QUIET_TICKS_FAST
+    ? AGC_QUIET_DECAY_FAST
+    : state.quietTicks >= QUIET_TICKS_MEDIUM
+      ? AGC_QUIET_DECAY_MEDIUM
+      : AGC_MAX_DECAY;
+
+  // Grow on new peaks, decay otherwise
   if (smoothed > state.max) state.max = smoothed;
-  else state.max = Math.max(AGC_FLOOR, state.max * AGC_MAX_DECAY);
+  else state.max = Math.max(AGC_FLOOR, state.max * decay);
 
   if (bassRms > state.bassMax) state.bassMax = bassRms;
-  else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * AGC_MAX_DECAY);
+  else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * decay);
 
   if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
 
   if (midHiRms > state.midHiMax) state.midHiMax = midHiRms;
-  else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * AGC_MAX_DECAY);
+  else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * decay);
 
   if (midHiRms < state.midHiMin || state.midHiMin === 0) state.midHiMin = midHiRms;
 }
