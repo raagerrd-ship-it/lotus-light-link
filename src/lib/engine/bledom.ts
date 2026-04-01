@@ -272,7 +272,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
 
   // Throttle: don't write faster than the tick interval
   const now = performance.now();
-  if (now - _lastWriteTime < MIN_WRITE_INTERVAL_MS) return;
+  if (now - _lastWriteTime < _minWriteIntervalMs) return;
   _lastWriteTime = now;
 
   _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
