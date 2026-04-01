@@ -7,6 +7,7 @@ import { setPipelineTimings } from "@/lib/ui/pipelineTimings";
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
+  palette?: [number, number, number][];
   sonosVolume?: number;
   isPlaying?: boolean;
   trackName?: string | null;
