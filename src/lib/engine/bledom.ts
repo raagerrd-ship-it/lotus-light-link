@@ -65,6 +65,7 @@ async function connectToDevice(device: any): Promise<BLEConnection> {
   const service = await server.getPrimaryService(SERVICE_UUID);
   const characteristic = await service.getCharacteristic(CHAR_UUID);
   saveLastDevice(device);
+  resetLastSent();
   return { device, characteristic, mode: getSavedDeviceMode(device?.id) };
 }
 
