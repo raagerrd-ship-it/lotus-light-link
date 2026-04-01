@@ -34,6 +34,9 @@ export const DEFAULT_TICK_MS = 125;
 export class LightEngine {
   // --- State ---
   private color: [number, number, number] = [255, 80, 0];
+  private palette: [number, number, number][] = [];
+  private paletteIndex = 0;
+  private paletteTickCounter = 0;
   private volume: number | undefined;
   private playing = true;
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
@@ -80,6 +83,7 @@ export class LightEngine {
   }
 
   setColor(rgb: [number, number, number]) { this.color = rgb; }
+  setPalette(colors: [number, number, number][]) { this.palette = colors; }
   setVolume(vol: number | undefined) { this.volume = vol; }
   setTickMs(ms: number) { this.tickMs = ms; this.worker?.postMessage(ms); }
 
@@ -250,6 +254,9 @@ export class LightEngine {
     this.stop();
     this.tickCallbacks = [];
     this.color = [255, 80, 0];
+    this.palette = [];
+    this.paletteIndex = 0;
+    this.paletteTickCounter = 0;
     this.volume = undefined;
     this.playing = true;
     this.chars.clear();
@@ -342,6 +349,17 @@ export class LightEngine {
       pct = Math.round(this.extraSmoothPct);
     }
     const smoothEnd = performance.now();
+
+    // ── Palette rotation ──
+    if (cal.paletteRotation && this.palette.length > 1) {
+      this.paletteTickCounter++;
+      const speed = Math.max(1, cal.paletteRotationSpeed ?? 8);
+      if (this.paletteTickCounter >= speed) {
+        this.paletteTickCounter = 0;
+        this.paletteIndex = (this.paletteIndex + 1) % this.palette.length;
+        this.color = this.palette[this.paletteIndex];
+      }
+    }
 
     // ── Resolve colors ──
     const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;

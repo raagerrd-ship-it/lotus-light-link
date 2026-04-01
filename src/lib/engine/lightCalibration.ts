@@ -44,6 +44,8 @@ export interface LightCalibration {
   punchWhiteThreshold: number;
   smoothing: number;
   brightnessFloor: number;
+  paletteRotation: boolean;
+  paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
 }
 
@@ -55,6 +57,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   bandAgcAttack: 0.15, bandAgcDecay: 0.997,
   volCompensation: 80, punchWhiteThreshold: 100,
   smoothing: 0, brightnessFloor: 0,
+  paletteRotation: false, paletteRotationSpeed: 8,
   agcVolumeTable: {},
 };
 
@@ -133,7 +136,7 @@ export type PresetName = typeof PRESET_NAMES[number];
 const BUILT_IN_PRESETS: Record<PresetName, Partial<LightCalibration>> = {
   Lugn: { attackAlpha: 0.08, releaseAlpha: 0.01, dynamicDamping: 1.5, bassWeight: 0.5, punchWhiteThreshold: 100 },
   Normal: {},
-  Party: { attackAlpha: 0.6, releaseAlpha: 0.08, dynamicDamping: -2.0, bassWeight: 0.85, punchWhiteThreshold: 95 },
+  Party: { attackAlpha: 0.6, releaseAlpha: 0.08, dynamicDamping: -2.0, bassWeight: 0.85, punchWhiteThreshold: 95, paletteRotation: true, paletteRotationSpeed: 6 },
   Custom: {},
 };
 

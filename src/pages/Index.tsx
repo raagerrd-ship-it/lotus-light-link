@@ -36,6 +36,7 @@ const Index = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([255, 80, 0]);
+  const [currentPalette, setCurrentPalette] = useState<[number, number, number][]>([]);
   
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
@@ -100,7 +101,7 @@ const Index = () => {
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
   }, [activeCalibration]);
 
-  // Extract dominant color from album art when track changes (proxy mode only)
+  // Extract dominant colors from album art when track changes (proxy mode only)
   useEffect(() => {
     if (colorSource !== 'proxy') return;
     const artUrl = nowPlaying?.albumArtUrl;
@@ -112,11 +113,13 @@ const Index = () => {
     if (cached && cached.length > 0) {
       console.log('[palette] cache hit — instant color');
       setCurrentColor(cached[0]);
+      setCurrentPalette(cached.slice(0, 4));
       return;
     }
-    extractPalette(artUrl, 1).then((colors) => {
+    extractPalette(artUrl, 4).then((colors) => {
       if (colors.length > 0) {
         setCurrentColor(colors[0]);
+        setCurrentPalette(colors.slice(0, 4));
       }
     });
   }, [nowPlaying?.albumArtUrl, colorSource]);
@@ -126,7 +129,7 @@ const Index = () => {
     if (colorSource !== 'proxy') return;
     const nextArt = nowPlaying?.nextAlbumArtUrl;
     if (nextArt) {
-      prefetchPalette(nextArt, 1);
+      prefetchPalette(nextArt, 4);
     }
   }, [nowPlaying?.nextAlbumArtUrl, colorSource]);
 
@@ -308,7 +311,7 @@ const Index = () => {
       onPointerDown={connected ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
-        <MicPanel char={firstChar} currentColor={currentColor} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}

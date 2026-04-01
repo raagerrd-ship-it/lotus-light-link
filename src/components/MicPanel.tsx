@@ -7,6 +7,7 @@ import { setPipelineTimings } from "@/lib/ui/pipelineTimings";
 interface MicPanelProps {
   char?: BluetoothRemoteGATTCharacteristic;
   currentColor: [number, number, number];
+  palette?: [number, number, number][];
   sonosVolume?: number;
   isPlaying?: boolean;
   trackName?: string | null;
@@ -17,7 +18,7 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 64; // ~8s at 8Hz, fewer visible points
 
-const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = DEFAULT_TICK_MS, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = DEFAULT_TICK_MS, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,6 +34,7 @@ const MicPanel = ({ char, currentColor, sonosVolume, isPlaying = true, trackName
   // ── Sync props to engine ──
   useEffect(() => { engineRef.current?.setChar(char ?? null); }, [char]);
   useEffect(() => { engineRef.current?.setColor(currentColor); }, [currentColor]);
+  useEffect(() => { engineRef.current?.setPalette(palette ?? []); }, [palette]);
   useEffect(() => { engineRef.current?.setVolume(sonosVolume); }, [sonosVolume]);
   useEffect(() => { engineRef.current?.setPlaying(isPlaying); }, [isPlaying]);
   const lastTrackRef = useRef(trackName);
