@@ -3,6 +3,12 @@
 export const AGC_FLOOR = 0.002;
 /** Per-tick decay factor for running max — slowly "challenges" peaks to confirm they're real */
 export const AGC_MAX_DECAY = 0.9998;
+/** Faster decay tiers for quiet periods (drop anticipation) */
+const AGC_QUIET_DECAY_MEDIUM = 0.998;   // ~10× faster, after ~2s quiet
+const AGC_QUIET_DECAY_FAST = 0.99;      // ~50× faster, after ~5s quiet
+const QUIET_THRESHOLD_RATIO = 0.10;     // signal < 10% of max = "quiet"
+const QUIET_TICKS_MEDIUM = 16;          // ~2s at 8Hz
+const QUIET_TICKS_FAST = 40;            // ~5s at 8Hz
 export const BUCKET_SIZE = 5;
 
 export type AgcVolumeTable = Record<number, number>;
