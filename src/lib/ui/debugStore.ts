@@ -23,6 +23,10 @@ export interface DebugData {
   bleSentBright: number | null;
   bleColorSource: 'idle' | 'normal' | null;
   bleBaseColor: [number, number, number] | null;
+  // BLE dedup/throttle counters
+  bleSentCount: number;
+  bleSkipDedupCount: number;
+  bleSkipThrottleCount: number;
 }
 
 export const debugData: DebugData = {
