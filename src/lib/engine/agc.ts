@@ -3,6 +3,12 @@
 export const AGC_FLOOR = 0.002;
 /** Per-tick decay factor for running max — slowly "challenges" peaks to confirm they're real */
 export const AGC_MAX_DECAY = 0.9998;
+/** Faster decay tiers for quiet periods (drop anticipation) */
+const AGC_QUIET_DECAY_MEDIUM = 0.998;   // ~10× faster, after ~2s quiet
+const AGC_QUIET_DECAY_FAST = 0.99;      // ~50× faster, after ~5s quiet
+const QUIET_THRESHOLD_RATIO = 0.10;     // signal < 10% of max = "quiet"
+const QUIET_TICKS_MEDIUM = 16;          // ~2s at 8Hz
+const QUIET_TICKS_FAST = 40;            // ~5s at 8Hz
 export const BUCKET_SIZE = 5;
 
 export type AgcVolumeTable = Record<number, number>;
@@ -10,11 +16,12 @@ export type AgcVolumeTable = Record<number, number>;
 export interface AgcState {
   max: number;
   min: number;
-  // Per-band peak tracking (running max, never decays within session)
   bassMax: number;
   bassMin: number;
   midHiMax: number;
   midHiMin: number;
+  /** Consecutive quiet ticks counter for accelerated decay */
+  quietTicks: number;
 }
 
 export function createAgcState(initialMax = 0.01): AgcState {
@@ -25,6 +32,7 @@ export function createAgcState(initialMax = 0.01): AgcState {
     bassMin: 0,
     midHiMax: 0.01,
     midHiMin: 0,
+    quietTicks: 0,
   };
 }
 
@@ -64,24 +72,39 @@ export function getFloorForVolume(table: AgcVolumeTable, bucket: number): number
   return Math.max(AGC_FLOOR, table[nearestBucket] * (currentVol / nearestVol));
 }
 
-/** Update running max for global + band values. Grows on new peaks, slowly decays otherwise. */
+/** Update running max for global + band values. Grows on new peaks, decays faster during quiet periods. */
 export function updateRunningMax(
   state: AgcState,
   smoothed: number,
   bassRms: number,
   midHiRms: number,
 ): void {
-  // Grow on new peaks
+  // Track quiet periods for accelerated decay
+  const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
+  if (isQuiet) {
+    state.quietTicks++;
+  } else {
+    state.quietTicks = 0;
+  }
+
+  // Pick decay rate based on how long it's been quiet
+  const decay = state.quietTicks >= QUIET_TICKS_FAST
+    ? AGC_QUIET_DECAY_FAST
+    : state.quietTicks >= QUIET_TICKS_MEDIUM
+      ? AGC_QUIET_DECAY_MEDIUM
+      : AGC_MAX_DECAY;
+
+  // Grow on new peaks, decay otherwise
   if (smoothed > state.max) state.max = smoothed;
-  else state.max = Math.max(AGC_FLOOR, state.max * AGC_MAX_DECAY);
+  else state.max = Math.max(AGC_FLOOR, state.max * decay);
 
   if (bassRms > state.bassMax) state.bassMax = bassRms;
-  else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * AGC_MAX_DECAY);
+  else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * decay);
 
   if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
 
   if (midHiRms > state.midHiMax) state.midHiMax = midHiRms;
-  else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * AGC_MAX_DECAY);
+  else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * decay);
 
   if (midHiRms < state.midHiMin || state.midHiMin === 0) state.midHiMin = midHiRms;
 }
