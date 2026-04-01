@@ -148,6 +148,7 @@ export default function DebugOverlay() {
         </div>
         <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>
         <div ref={bleStatsRef} className="text-foreground/40" />
+        <div ref={bleRateRef} className="text-foreground/40" />
       </div>
 
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
