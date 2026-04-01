@@ -1,38 +1,21 @@
 
 
-## Prefetch av nästa låts albumomslag
+## Deduplisera BLE-kommandon
 
-### Idé
-Sonos-proxyn ger redan `nextTrackName` och `nextArtistName`. Vi kan använda dessa för att **förladda nästa låts albumomslag och extrahera färgpaletten i förväg**, så att vid låtbyte sätts färgen omedelbart utan att vänta på bildladdning + extraktion (~200–500ms).
+### Problem
+Varje tick skickar ett BLE-paket oavsett om färg/ljusstyrka ändrats — detta köar upp identiska kommandon och skapar upplevd tröghet.
 
-### Åtgärd
+### Lösning
+Lägg till en enkel jämförelse i `sendToBLE()` som sparar de senast skickade värdena (R, G, B efter skalning) och hoppar över `writeValueWithoutResponse` om paketet är identiskt.
 
-**1. `src/lib/ui/colorExtract.ts` — ny export `prefetchPalette`**
-- Lägg till en enkel in-memory cache (`Map<string, RGB[]>`) som lagrar extraherade paletter per bild-URL.
-- `prefetchPalette(url)` — kör `extractPalette` och sparar resultatet i cachen. Returnerar void (fire-and-forget).
-- `getCachedPalette(url)` — returnerar cachad palett eller `null`.
-- Begränsa cachens storlek till ~20 entries (LRU-style: radera äldsta vid overflow).
+### Teknisk plan
 
-**2. `src/hooks/useSonosNowPlaying.ts` — resolve nästa låts art-URL**
-- Proxyn ger redan `nextTrackName`/`nextArtistName`. Utöka med att hämta `nextAlbumArtUrl` från proxyn (om den exponeras) eller bygg URL via iTunes edge function baserat på next-track metadata.
-- Exponera `nextAlbumArtUrl` i `SonosNowPlaying`-interfacet.
+**Fil: `src/lib/engine/bledom.ts`**
 
-**3. `src/pages/Index.tsx` — prefetch + instant apply**
-- Ny `useEffect` som triggar på `nowPlaying?.nextAlbumArtUrl`: kör `prefetchPalette(url)`.
-- I det befintliga palette-effectet (rad 104–114): kolla `getCachedPalette(artUrl)` först — om cache hit, sätt färgen direkt utan async. Annars kör `extractPalette` som fallback.
+1. Lägg till tre modulvariabler: `_lastR`, `_lastG`, `_lastB` (alla initierade till `-1` så första skicket alltid går igenom).
+2. I `sendToBLE()`, efter beräkning av `_colorBuf[4-6]` och `_brightOnlyBuf[3]`, jämför med sparade värden. Om alla tre RGB-bytes OCH brightness-byten är identiska → `return` direkt utan att skicka.
+3. Uppdatera sparade värden efter lyckad skickning.
+4. Lägg till en `resetLastSent()` export som sätter alla till `-1` — anropas vid device-reconnect så att första kommandot efter återanslutning alltid skickas.
 
-### Flöde
-```text
-Låt A spelar → nextTrackName finns
-  → resolve art-URL för nästa låt
-  → prefetchPalette() laddar bild + extraherar färg i bakgrunden
-  → palett sparas i cache
-
-Låtbyte till Låt B
-  → getCachedPalette(B:s art-URL) → instant hit
-  → färg sätts direkt, 0ms fördröjning
-```
-
-### Begränsningar
-- Om proxyn inte exponerar `nextAlbumArtUrl` direkt behöver vi använda iTunes-lookup (edge function) med nextTrackName/nextArtistName för att hitta art-URL. Det kostar ett extra API-anrop men sker i bakgrunden medan nuvarande låt fortfarande spelar.
+Inga andra filer behöver ändras — dedupliceringen sker transparent i det befintliga anropet.
 
