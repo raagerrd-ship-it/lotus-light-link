@@ -23,6 +23,7 @@ export default function DebugOverlay() {
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
   const bleOutContainerRef = useRef<HTMLDivElement>(null);
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
+  const bleStatsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const tick = () => {
@@ -89,6 +90,16 @@ export default function DebugOverlay() {
         if (bleOutContainerRef.current) bleOutContainerRef.current.style.display = 'none';
         if (bleOutWaitRef.current) bleOutWaitRef.current.style.display = '';
       }
+
+      // BLE send/skip stats
+      if (bleStatsRef.current) {
+        const sent = d.bleSentCount;
+        const skipD = d.bleSkipDedupCount;
+        const skipT = d.bleSkipThrottleCount;
+        const total = sent + skipD + skipT;
+        const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
+        bleStatsRef.current.textContent = `tx ${sent} skip ${skipD + skipT} (${pct}%)`;
+      }
     };
 
     const id = setInterval(tick, 200);
@@ -119,6 +130,7 @@ export default function DebugOverlay() {
           <span ref={bleOutSourceRef} style={{ display: 'none' }} />
         </div>
         <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>
+        <div ref={bleStatsRef} className="text-foreground/40" />
       </div>
 
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
