@@ -53,8 +53,8 @@ const Index = () => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [tickMs, setTickMs] = useState(() => {
     const saved = localStorage.getItem('tickMs');
-    if (saved) return Math.max(40, Math.min(125, Number(saved)));
-    return Math.max(40, Math.min(125, DEFAULT_TICK_MS));
+    if (saved) return Math.max(20, Math.min(125, Number(saved)));
+    return Math.max(20, Math.min(125, DEFAULT_TICK_MS));
   });
   const [dimmingGamma, setDimmingGammaState] = useState(() => getDimmingGamma());
 
