@@ -452,7 +452,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                   })()}
                   {/* Thumb */}
                   {(() => {
-                    const pct = ((125 - tickMs) / 85) * 100;
+                    const pct = ((125 - tickMs) / 105) * 100;
                     return (
                       <div
                         className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border"
