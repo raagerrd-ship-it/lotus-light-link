@@ -242,9 +242,14 @@ const _brightOnlyBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00,
 // Deduplication state — skip identical BLE writes
 let _lastR = -1, _lastG = -1, _lastB = -1, _lastBr = -1;
 
-/** Reset dedup state so the next command is always sent (call on reconnect) */
+// Throttle state — prevent writes faster than tick interval
+let _lastWriteTime = 0;
+const MIN_WRITE_INTERVAL_MS = 125;
+
+/** Reset dedup/throttle state so the next command is always sent (call on reconnect) */
 export function resetLastSent() {
   _lastR = _lastG = _lastB = _lastBr = -1;
+  _lastWriteTime = 0;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
