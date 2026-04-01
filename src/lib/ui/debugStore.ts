@@ -25,7 +25,7 @@ export interface DebugData {
   bleBaseColor: [number, number, number] | null;
   // BLE dedup/throttle counters
   bleSentCount: number;
-  bleSkipDedupCount: number;
+  bleSkipDeltaCount: number;
   bleSkipThrottleCount: number;
 }
 
