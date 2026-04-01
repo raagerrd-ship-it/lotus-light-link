@@ -340,12 +340,20 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => update('paletteRotation' as keyof LightCalibration, cal.paletteRotation ? 0 : 1 as any)}
+            onClick={() => {
+              setCal(prev => {
+                const next = { ...prev, paletteRotation: !prev.paletteRotation };
+                saveCalibration(next, conn?.device?.name, { localOnly: true });
+                onCalibrationChange?.(next);
+                return next;
+              });
+            }}
             className={`rounded-full w-6 h-6 transition-colors ${cal.paletteRotation ? 'text-primary' : 'text-muted-foreground/40'}`}
             title={cal.paletteRotation ? 'Palett-rotation PÅ' : 'Palett-rotation AV'}
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </Button>
+          <Button variant="ghost" size="sm" onClick={bypassAll} className="rounded-full h-6 px-2 text-[9px] font-bold tracking-wide uppercase" title="Nollställ – ingen påverkan">
             Bypass
           </Button>
           <Button variant="ghost" size="icon" onClick={resetAll} className="rounded-full w-6 h-6" title="Återställ standard">
