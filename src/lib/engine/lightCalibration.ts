@@ -11,6 +11,16 @@ const ACTIVE_PRESET_KEY = 'active-preset';
 
 const DEFAULT_IDLE_COLOR: [number, number, number] = [255, 60, 0];
 
+export const PALETTE_MODES = ['off', 'timed', 'bass', 'energy', 'blend'] as const;
+export type PaletteMode = typeof PALETTE_MODES[number];
+export const PALETTE_MODE_LABELS: Record<PaletteMode, string> = {
+  off: 'Av',
+  timed: 'Tid',
+  bass: 'Bas',
+  energy: 'Energi',
+  blend: 'Blend',
+};
+
 export function getIdleColor(): [number, number, number] {
   try {
     const stored = localStorage.getItem(IDLE_COLOR_KEY);
