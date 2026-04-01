@@ -24,6 +24,9 @@ export default function DebugOverlay() {
   const bleOutContainerRef = useRef<HTMLDivElement>(null);
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
   const bleStatsRef = useRef<HTMLDivElement>(null);
+  const bleRateRef = useRef<HTMLDivElement>(null);
+  const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
+  const bleRateValueRef = useRef(0);
 
   useEffect(() => {
     const tick = () => {
@@ -100,6 +103,20 @@ export default function DebugOverlay() {
         const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
         bleStatsRef.current.textContent = `tx ${sent} skip ${skipD + skipT} (${pct}%)`;
       }
+
+      // BLE writes/sec (computed over each poll interval)
+      if (bleRateRef.current) {
+        const now = performance.now();
+        const snap = lastSentSnapshotRef.current;
+        const dt = (now - snap.time) / 1000;
+        if (dt >= 0.5) {
+          const delta = d.bleSentCount - snap.count;
+          bleRateValueRef.current = Math.round(delta / dt * 10) / 10;
+          snap.count = d.bleSentCount;
+          snap.time = now;
+        }
+        bleRateRef.current.textContent = `${bleRateValueRef.current} w/s`;
+      }
     };
 
     const id = setInterval(tick, 200);
@@ -131,6 +148,7 @@ export default function DebugOverlay() {
         </div>
         <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>
         <div ref={bleStatsRef} className="text-foreground/40" />
+        <div ref={bleRateRef} className="text-foreground/40" />
       </div>
 
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
