@@ -57,6 +57,8 @@ export class LightEngine {
   private lastBaseColor: [number, number, number] = [0, 0, 0];
   private lastBucket: number = 0;
   private extraSmoothPct = 0;
+  private lastTotalRms = 0;
+  private lastTickData: TickData | null = null;
 
   private idleSent = false;
 
