@@ -128,7 +128,8 @@ export default function DebugOverlay() {
       if (pipelineRef.current) {
         const total = d.pipelineTotalMs;
         const ble = d.pipelineBleMs;
-        const colorClass = total > d.smoothedRtt * 0.8 ? 'text-red-400' : total > 10 ? 'text-yellow-400' : 'text-green-400';
+        const budget = d.tickMs || 125;
+        const colorClass = total > budget * 0.8 ? 'text-red-400' : total > budget * 0.5 ? 'text-yellow-400' : 'text-green-400';
         pipelineRef.current.innerHTML = `<span class="${colorClass}">pipeline: ${total.toFixed(1)}ms</span> (ble ${ble.toFixed(1)}ms)`;
       }
       // Pipeline bar (% of tickMs budget used)
