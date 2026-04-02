@@ -18,6 +18,7 @@ export default function DebugOverlay() {
   const reconnectRef = useRef<HTMLDivElement>(null);
   const sonosRef = useRef<HTMLDivElement>(null);
   const rttRef = useRef<HTMLDivElement>(null);
+  const playbackRef = useRef<HTMLDivElement>(null);
   const bleOutSwatchRef = useRef<HTMLDivElement>(null);
   const bleOutBarRef = useRef<HTMLDivElement>(null);
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
@@ -65,6 +66,21 @@ export default function DebugOverlay() {
       }
       if (rttRef.current) {
         rttRef.current.textContent = `RTT: ${Math.round(d.smoothedRtt)}ms`;
+      }
+
+      if (playbackRef.current) {
+        const ps = d.sonosPlaybackState;
+        if (!ps) {
+          playbackRef.current.innerHTML = '<span class="text-foreground/40">— no state</span>';
+        } else if (ps.includes('PLAYING')) {
+          playbackRef.current.innerHTML = '<span class="text-green-400">▶ playing</span>';
+        } else if (ps.includes('PAUSED')) {
+          playbackRef.current.innerHTML = '<span class="text-yellow-400">⏸ paused</span>';
+        } else if (ps.includes('IDLE') || ps.includes('STOPPED')) {
+          playbackRef.current.innerHTML = '<span class="text-red-400">⏹ idle</span>';
+        } else {
+          playbackRef.current.innerHTML = `<span class="text-foreground/40">${ps}</span>`;
+        }
       }
 
 
@@ -138,6 +154,7 @@ export default function DebugOverlay() {
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">input</div>
         <div ref={sonosRef} />
         <div ref={rttRef} />
+        <div ref={playbackRef} />
       </div>
 
 
