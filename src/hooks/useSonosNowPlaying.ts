@@ -101,17 +101,22 @@ export function useSonosNowPlaying() {
 
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
-      // Always sync raw playback state to debug store
-      if (s.playbackState) debugData.sonosPlaybackState = s.playbackState;
 
-      // Allow state-only updates (e.g. pause/stop) even without trackName
+      // Treat null trackName as idle/paused (e.g. TV input via SPDIF)
+      const effectivePlaybackState =
+        !s.trackName ? 'PLAYBACK_STATE_PAUSED' : (s.playbackState ?? 'PLAYBACK_STATE_PLAYING');
+
+      // Always sync raw playback state to debug store
+      debugData.sonosPlaybackState = effectivePlaybackState;
+
+      // No track info — apply as paused state update
       if (!s.trackName) {
-        if (s.playbackState && dataRef.current) {
+        if (dataRef.current) {
           const prev = dataRef.current;
-          if (prev.playbackState !== s.playbackState) {
+          if (prev.playbackState !== effectivePlaybackState) {
             apply({
               ...prev,
-              playbackState: s.playbackState,
+              playbackState: effectivePlaybackState,
               volume: s.volume ?? prev.volume,
               receivedAt: performance.now(),
               smoothedRtt: rtt,
