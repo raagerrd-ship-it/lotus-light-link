@@ -5,7 +5,7 @@
  * to use in any project.
  */
 
-import { sendToBLE, addActiveChar, removeActiveChar, resetLastSent, type DeviceMode } from "./bledom";
+import { sendToBLE, addActiveChar, removeActiveChar, resetLastSent, setBleMinIntervalMs, type DeviceMode } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
@@ -94,7 +94,7 @@ export class LightEngine {
   setColor(rgb: [number, number, number]) { this.color = rgb; }
   setPalette(colors: [number, number, number][]) { this.palette = colors; }
   setVolume(vol: number | undefined) { this.volume = vol; }
-  setTickMs(ms: number) { this.tickMs = ms; this.worker?.postMessage(ms); }
+  setTickMs(ms: number) { this.tickMs = ms; setBleMinIntervalMs(ms); this.worker?.postMessage(ms); }
 
   setPlaying(playing: boolean) {
     this.playing = playing;

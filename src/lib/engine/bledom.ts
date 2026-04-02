@@ -243,18 +243,29 @@ const _brightOnlyBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00,
 // Deduplication state — skip identical BLE writes
 let _lastR = -1, _lastG = -1, _lastB = -1, _lastBr = -1;
 
-// Non-reentrant guard — prevents Chrome from queuing writes
+// Real throttle — prevents hidden queue buildup in Chrome / OS BLE stack
+const SAFE_MIN_BLE_WRITE_MS = 30;
+let _minWriteIntervalMs = SAFE_MIN_BLE_WRITE_MS;
+let _lastWriteStartedAt = 0;
+
+// Non-reentrant guard — prevents overlapping writes
 let _writeInFlight = false;
+
+export function setBleMinIntervalMs(ms: number) {
+  _minWriteIntervalMs = Math.max(SAFE_MIN_BLE_WRITE_MS, Math.round(ms || SAFE_MIN_BLE_WRITE_MS));
+}
 
 /** Reset dedup/in-flight state so the next command is always sent (call on reconnect) */
 export function resetLastSent() {
   _lastR = _lastG = _lastB = _lastBr = -1;
+  _lastWriteStartedAt = 0;
   _writeInFlight = false;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
  *  Sends packets to ALL connected devices. RGB devices get color, brightness-only get dimming.
  *  Skips sending if the computed bytes are identical to the previous call.
+ *  Applies a real min interval so writes cannot silently queue in the browser / OS BLE stack.
  *  Non-reentrant: if a previous write is still in-flight, the call is skipped. */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
   if (_charModes.size === 0) return;
@@ -268,10 +279,17 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const maxDelta = Math.max(Math.abs(cr - _lastR), Math.abs(cg - _lastG), Math.abs(cb - _lastB), Math.abs(cbr - _lastBr));
   if (maxDelta < 8) { debugData.bleSkipDeltaCount++; return; }
 
-  // Non-reentrant guard — after filtering, prevents OS BLE queue buildup
+  const now = performance.now();
+  if (now - _lastWriteStartedAt < _minWriteIntervalMs) {
+    debugData.bleSkipThrottleCount++;
+    return;
+  }
+
+  // Non-reentrant guard — after filtering + throttle, prevents overlapping writes
   if (_writeInFlight) { debugData.bleSkipBusyCount++; return; }
 
   _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
+  _lastWriteStartedAt = now;
 
   _colorBuf[4] = cr;
   _colorBuf[5] = cg;
@@ -279,7 +297,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   _brightOnlyBuf[3] = cbr;
 
   _writeInFlight = true;
-  const t0 = performance.now();
+  const t0 = now;
   try {
     const writes = Array.from(_charModes.entries()).map(([char, mode]) => {
       const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
