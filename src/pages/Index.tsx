@@ -446,6 +446,22 @@ const Index = () => {
               variant="ghost"
               size="icon"
               onClick={() => {
+                setChartEnabled(prev => {
+                  const next = !prev;
+                  localStorage.setItem("chartEnabled", String(next));
+                  return next;
+                });
+              }}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+              style={chartEnabled ? { color: accent } : undefined}
+              title={chartEnabled ? 'Stäng av diagram' : 'Slå på diagram'}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
                 setShowDebug(prev => {
                   const next = !prev;
                   localStorage.setItem("showDebug", String(next));

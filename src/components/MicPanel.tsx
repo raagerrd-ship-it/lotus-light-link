@@ -55,12 +55,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   }, [trackName]);
   useEffect(() => { engineRef.current?.setTickMs(tickMs); debugData.tickMs = tickMs; }, [tickMs]);
 
-  // ── Chart rendering via rAF ──
+  // ── Chart rendering via rAF (skip when chart disabled) ──
+  const chartEnabledRef = useRef(chartEnabled);
+  useEffect(() => { chartEnabledRef.current = chartEnabled; }, [chartEnabled]);
+
   useEffect(() => {
     const FRAME_MS = 1000 / 30; // 30fps cap
     let lastFrame = 0;
     const drawLoop = (now: number) => {
       rafIdRef.current = requestAnimationFrame(drawLoop);
+      if (!chartEnabledRef.current) return;
       if (now - lastFrame < FRAME_MS) return;
       lastFrame = now;
       const canvas = canvasRef.current;
