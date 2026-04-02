@@ -253,6 +253,7 @@ let _lastWriteTime = 0;
 export function resetLastSent() {
   _lastR = _lastG = _lastB = _lastBr = -1;
   _writeInFlight = false;
+  _lastWriteTime = 0;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
