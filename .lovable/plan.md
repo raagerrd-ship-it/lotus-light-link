@@ -1,49 +1,38 @@
 
 
-## Fix: BLE-kön som orsakar 20–30 sekunders fördröjning
+## Fix pipeline-mätningen
 
-### Problemet
+### Problemanalys
 
-`sendToBLE` är `async` men **anroparen väntar inte** på att föregående write ska bli klar. Chrome köar varje `writeValueWithoutResponse`-anrop internt. Vid 20ms tick byggs det snabbt upp hundratals väntande writes i OS:ets Bluetooth-stack. När musiken pausar tar det 20–30 sekunder att dränera kön.
+Nuvarande mätning har ett grundläggande problem: `totalTickMs` mäter `bleEnd - tickStart`, men `bleEnd` sätts direkt efter `await sendToBLE()`. Problemet är att `writeValueWithoutResponse` returnerar när **OS-bufferten accepterar datat** — inte när det faktiskt sänts över BLE-radion. Därför visar pipelinen 6–8ms trots att hårdvaran behöver ~30ms per connection interval.
 
-### Lösning: Non-reentrant guard + write-latency tracking
+Dessutom: `smoothEnd` (rad 355) sätts **före** palett-logiken (rad 357–399), så `bleCallMs` inkluderar palett-beräkning — inte bara BLE.
 
-Lägg till en **in-flight guard** — om en BLE-write redan pågår, skippa nästa. Kön kan aldrig växa förbi 1 kommando. Plus latency-mätning i debug-overlayen.
+### Vad som behöver fixas
+
+**1. Flytta `smoothEnd`-mätpunkten** (`src/lib/engine/lightEngine.ts`)
+- Flytta `const smoothEnd = performance.now()` till precis före BLE-anropet (efter palett + färgkalibrering), så `bleCallMs` verkligen bara mäter BLE-tiden.
+
+**2. Lägg till "effective write interval"** (`src/lib/engine/bledom.ts`)
+- Spara `performance.now()` vid varje lyckad write (`_lastWriteTime`).
+- Beräkna `bleEffectiveIntervalMs = now - _lastWriteTime` — den **verkliga tiden mellan sändningar** till lampan.
+- Skriv till `debugData.bleEffectiveIntervalMs`.
+
+**3. Uppdatera debugStore** (`src/lib/ui/debugStore.ts`)
+- Lägg till `bleEffectiveIntervalMs: number` (default 0).
+
+**4. Visa i debug-panelen** (`src/components/DebugOverlay.tsx`)
+- Ny rad under pipeline: `interval: 85ms` — den faktiska tiden mellan BLE-kommandon som lampan ser.
+- Färgkoda: grön om nära tickMs, röd om >>tickMs (= många skippade ticks).
+- **Detta värde** är det som ska styra adaptiv tick-rate — inte pipeline-latensen.
+
+### Resultat
 
 ```text
-sendToBLE():
-  ├─ _writeInFlight? → skip (NY räknare: bleSkipBusyCount)
-  ├─ delta < 8? → skip
-  ├─ _writeInFlight = true
-  ├─ t0 = now()
-  ├─ await write
-  ├─ lat = now() - t0
-  ├─ _writeInFlight = false
-  └─ update debugData latency
+pipeline: 8ms (ble 5ms)     ← hur lång tid koden tar
+interval: 95ms              ← hur ofta lampan faktiskt uppdateras  ← NYT!
+████████░░ [pipeline-bar]
 ```
 
-### Filer
-
-1. **`src/lib/engine/bledom.ts`**
-   - Lägg till `let _writeInFlight = false` — sätts `true` före write, `false` efter
-   - Om `_writeInFlight` vid inträde → `debugData.bleSkipBusyCount++; return`
-   - Ta bort throttle-checken (den behövs inte längre — in-flight guard + delta-gate räcker)
-   - Mät write-latency: `performance.now()` före/efter, spara i `debugData`
-
-2. **`src/lib/ui/debugStore.ts`**
-   - Lägg till: `bleSkipBusyCount`, `bleWriteLatMs`, `bleWriteLatAvgMs`
-
-3. **`src/components/DebugOverlay.tsx`**
-   - Visa latency med färgkodning (grön <15ms, gul 15–30ms, röd >30ms)
-   - Visa busy-skip i stats-raden
-
-4. **`src/components/MicPanel.tsx`**
-   - Nollställ `bleSkipBusyCount` vid låtbyte
-
-### Varför detta löser 20–30s-fördröjningen
-
-Idag: tick → fire write (don't await) → tick → fire write → ... → 500 writes i kö
-Efter: tick → fire write → tick → redan in-flight, skip → ... → max 1 write i kö
-
-Lampan reagerar omedelbart på paus eftersom det aldrig finns mer än **ett enda kommando** i Chromes BLE-buffert.
+Nu ser man tydligt: koden tar 8ms, men lampan uppdateras bara var 95:e ms. Om `interval` >> `tickMs` vet man att busy/delta-skips äter upp ticks. Det är **interval**-värdet som adaptiv tick-rate ska optimera mot.
 
