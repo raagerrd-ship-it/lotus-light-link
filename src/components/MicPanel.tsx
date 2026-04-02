@@ -20,7 +20,7 @@ interface MicPanelProps {
 
 const HISTORY_LEN = 64; // ~8s at 8Hz, fewer visible points
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = DEFAULT_TICK_MS, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = DEFAULT_TICK_MS, chartEnabled = true, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
