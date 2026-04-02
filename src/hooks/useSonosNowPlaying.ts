@@ -45,7 +45,8 @@ export function useSonosNowPlaying() {
   const getPosition = useCallback((): { positionMs: number; receivedAt: number } | null => {
     const cur = dataRef.current;
     if (!cur || cur.positionMs == null) return null;
-    return { positionMs: cur.positionMs, receivedAt: cur.receivedAt };
+    const isPlaying = cur.playbackState === "PLAYBACK_STATE_PLAYING";
+    return { positionMs: cur.positionMs, receivedAt: isPlaying ? cur.receivedAt : performance.now() };
   }, []);
 
   useEffect(() => {
