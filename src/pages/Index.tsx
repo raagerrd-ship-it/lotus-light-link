@@ -39,6 +39,7 @@ const Index = () => {
   const [currentPalette, setCurrentPalette] = useState<[number, number, number][]>([]);
   
   const [isOn, setIsOn] = useState(true);
+  const [activated, setActivated] = useState(false);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
   const [chartEnabled, setChartEnabled] = useState(() => localStorage.getItem("chartEnabled") !== "false");
