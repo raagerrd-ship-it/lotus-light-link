@@ -101,17 +101,22 @@ export function useSonosNowPlaying() {
 
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
-      // Always sync raw playback state to debug store
-      if (s.playbackState) debugData.sonosPlaybackState = s.playbackState;
 
-      // Allow state-only updates (e.g. pause/stop) even without trackName
+      // Treat null trackName as idle/paused (e.g. TV input via SPDIF)
+      const effectivePlaybackState =
+        !s.trackName ? 'PLAYBACK_STATE_PAUSED' : (s.playbackState ?? 'PLAYBACK_STATE_PLAYING');
+
+      // Always sync raw playback state to debug store
+      debugData.sonosPlaybackState = effectivePlaybackState;
+
+      // No track info — apply as paused state update
       if (!s.trackName) {
-        if (s.playbackState && dataRef.current) {
+        if (dataRef.current) {
           const prev = dataRef.current;
-          if (prev.playbackState !== s.playbackState) {
+          if (prev.playbackState !== effectivePlaybackState) {
             apply({
               ...prev,
-              playbackState: s.playbackState,
+              playbackState: effectivePlaybackState,
               volume: s.volume ?? prev.volume,
               receivedAt: performance.now(),
               smoothedRtt: rtt,
@@ -135,7 +140,7 @@ export function useSonosNowPlaying() {
           artistName: decodeEntities(s.artistName),
           albumName: decodeEntities(s.albumName) ?? prev?.albumName ?? null,
           albumArtUrl: localArt,
-          playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
+          playbackState: effectivePlaybackState,
           durationMs: s.durationMillis ?? null,
           positionMs: (s.positionMillis ?? 0) + rtt / 2,
           receivedAt: performance.now(),
@@ -154,7 +159,7 @@ export function useSonosNowPlaying() {
       const prevPos = prev!.positionMs ?? 0;
       const timeSinceLastUpdate = performance.now() - prev!.receivedAt;
       const hasNewPosition = s.positionMillis != null;
-      const nextPlaybackState = s.playbackState ?? prev!.playbackState;
+      const nextPlaybackState = effectivePlaybackState;
       const shouldInterpolate = nextPlaybackState === 'PLAYBACK_STATE_PLAYING';
       const interpolatedPos = hasNewPosition
         ? (s.positionMillis + rtt / 2)
@@ -162,7 +167,7 @@ export function useSonosNowPlaying() {
 
       apply({
         ...prev!,
-        playbackState: s.playbackState ?? prev!.playbackState,
+        playbackState: nextPlaybackState,
         positionMs: interpolatedPos,
         durationMs: s.durationMillis ?? prev!.durationMs,
         albumArtUrl: localArt ?? prev!.albumArtUrl,
