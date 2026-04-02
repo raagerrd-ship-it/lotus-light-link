@@ -140,7 +140,7 @@ export function useSonosNowPlaying() {
           artistName: decodeEntities(s.artistName),
           albumName: decodeEntities(s.albumName) ?? prev?.albumName ?? null,
           albumArtUrl: localArt,
-          playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
+          playbackState: effectivePlaybackState,
           durationMs: s.durationMillis ?? null,
           positionMs: (s.positionMillis ?? 0) + rtt / 2,
           receivedAt: performance.now(),
