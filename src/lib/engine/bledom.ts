@@ -246,6 +246,9 @@ let _lastR = -1, _lastG = -1, _lastB = -1, _lastBr = -1;
 // Non-reentrant guard — prevents Chrome from queuing writes
 let _writeInFlight = false;
 
+// Effective interval tracking — real time between successful BLE writes
+let _lastWriteTime = 0;
+
 /** Reset dedup/in-flight state so the next command is always sent (call on reconnect) */
 export function resetLastSent() {
   _lastR = _lastG = _lastB = _lastBr = -1;
