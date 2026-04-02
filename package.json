@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@lovable.dev/cloud-auth-js": "^0.0.3",
+    "@lovable.dev/cloud-auth-js": "^1.0.0",
     "@radix-ui/react-slot": "^1.2.3",
     "@supabase/supabase-js": "^2.99.0",
     "class-variance-authority": "^0.7.1",
