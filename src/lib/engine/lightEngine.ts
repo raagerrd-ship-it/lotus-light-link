@@ -5,7 +5,7 @@
  * to use in any project.
  */
 
-import { sendToBLE, addActiveChar, removeActiveChar, resetLastSent, setBleMinIntervalMs, type DeviceMode } from "./bledom";
+import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
 import { computeBands, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
@@ -43,13 +43,6 @@ export class LightEngine {
   private playing = true;
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
   private tickMs = DEFAULT_TICK_MS;
-
-  // Mic-based silence detection — override Sonos polling lag
-  private silenceTickCount = 0;
-  private readonly SILENCE_THRESHOLD = 0.005; // RMS below this = silence
-  private readonly SILENCE_TICKS_TO_IDLE = 8; // ~1s at 125ms ticks (when Sonos confirms pause)
-  private readonly SILENCE_TICKS_MIC_ONLY = 24; // ~3s at 125ms — mic-only idle (no Sonos data)
-  private micDetectedPlaying = false;
 
   // --- Internal ---
   private analyser: AnalyserNode | null = null;
@@ -94,18 +87,41 @@ export class LightEngine {
   setColor(rgb: [number, number, number]) { this.color = rgb; }
   setPalette(colors: [number, number, number][]) { this.palette = colors; }
   setVolume(vol: number | undefined) { this.volume = vol; }
-  setTickMs(ms: number) { this.tickMs = ms; setBleMinIntervalMs(ms); this.worker?.postMessage(ms); }
+  setTickMs(ms: number) { this.tickMs = ms; this.worker?.postMessage(ms); }
 
   setPlaying(playing: boolean) {
     this.playing = playing;
 
     if (playing) {
       this.idleSent = false;
-      // Worker should already be running; ensure it is
       if (this.worker) this.worker.postMessage('start');
+      return;
     }
-    // Don't stop the worker here — let mic-based silence detection handle idle
-    // so we can wake instantly when sound returns
+
+    this.worker?.postMessage('stop');
+
+    if (this.chars.size > 0) {
+      const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+      sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
+    }
+
+    if (!this.idleSent) {
+      this.emit({
+        brightness: 100,
+        color: this.idleColor,
+        baseColor: this.idleColor,
+        bassLevel: 0,
+        midHiLevel: 0,
+        rawEnergyPct: 0,
+        isPunch: false,
+        bleColorSource: 'idle',
+        micRms: 0,
+        isPlaying: false,
+        timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+      });
+    }
+
+    this.idleSent = true;
   }
 
   /** @deprecated Use addChar/removeChar for multi-device */
@@ -258,14 +274,30 @@ export class LightEngine {
     this.lastBaseColor = [0, 0, 0];
     this.lastBucket = 0;
     this.idleSent = false;
-    this.silenceTickCount = 0;
-    this.micDetectedPlaying = false;
     this.idleColor = [255, 60, 0];
   }
 
   /** Core tick — called by worker */
   private tick(): void {
     if (this.stopped) return;
+
+    // ── Idle mode ──
+    if (!this.playing) {
+      if (!this.idleSent && this.chars.size > 0) {
+        const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+        sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
+        this.idleSent = true;
+        this.emit({
+          brightness: 100, color: this.idleColor, baseColor: this.idleColor,
+          bassLevel: 0, midHiLevel: 0, rawEnergyPct: 0,
+          isPunch: false, bleColorSource: 'idle', micRms: 0, isPlaying: false,
+          timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+        });
+      }
+      this.worker?.postMessage('stop');
+      return;
+    }
+    this.idleSent = false;
 
     const an = this.analyser;
     if (!an || !this.freqBuf) return;
@@ -280,42 +312,6 @@ export class LightEngine {
 
     // ── Smoothing ──
     this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha);
-
-    // ── Mic-based silence detection ──
-    // Detect silence from mic directly — much faster than waiting for Sonos polling
-    if (bands.totalRms < this.SILENCE_THRESHOLD) {
-      this.silenceTickCount++;
-    } else {
-      this.silenceTickCount = 0;
-      this.micDetectedPlaying = true;
-    }
-
-    const micSaysIdle = this.silenceTickCount >= this.SILENCE_TICKS_TO_IDLE;
-    const micOnlyIdle = this.silenceTickCount >= this.SILENCE_TICKS_MIC_ONLY;
-    // Effective playing: either Sonos says playing OR mic hears sound
-    const effectivePlaying = this.playing || this.micDetectedPlaying;
-    // Go idle when: (Sonos paused AND mic confirms silence) OR mic alone detects prolonged silence
-    const shouldIdle = (!this.playing && micSaysIdle) || (!this.playing && !this.micDetectedPlaying) || micOnlyIdle;
-
-    if (shouldIdle) {
-      this.micDetectedPlaying = false;
-      if (!this.idleSent) {
-        if (this.chars.size > 0) {
-          resetLastSent();
-          const calibrated = applyColorCalibration(...this.idleColor, this.cal);
-          sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
-        }
-        this.idleSent = true;
-        this.emit({
-          brightness: 100, color: this.idleColor, baseColor: this.idleColor,
-          bassLevel: 0, midHiLevel: 0, rawEnergyPct: 0,
-          isPunch: false, bleColorSource: 'idle', micRms: this.smoothed, isPlaying: false,
-          timings: { rmsMs: rmsEnd - tickStart, smoothMs: 0, bleCallMs: 0, totalTickMs: performance.now() - tickStart },
-        });
-      }
-      return;
-    }
-    this.idleSent = false;
 
     // ── Volume bucket & AGC update ──
     const bucket = volumeToBucket(this.volume);

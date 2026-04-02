@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { debugData } from "@/lib/ui/debugStore";
 
 // Local proxy URL — auto-fallback to localhost if localStorage key is missing
 const DEFAULT_LOCAL_PROXY_URL = "http://localhost:3000/api/sonos";
@@ -45,8 +44,7 @@ export function useSonosNowPlaying() {
   const getPosition = useCallback((): { positionMs: number; receivedAt: number } | null => {
     const cur = dataRef.current;
     if (!cur || cur.positionMs == null) return null;
-    const isPlaying = cur.playbackState === "PLAYBACK_STATE_PLAYING";
-    return { positionMs: cur.positionMs, receivedAt: isPlaying ? cur.receivedAt : performance.now() };
+    return { positionMs: cur.positionMs, receivedAt: cur.receivedAt };
   }, []);
 
   useEffect(() => {
@@ -99,30 +97,17 @@ export function useSonosNowPlaying() {
       return `${proxyUrl}/${uri}`;
     };
 
-    const isSpdifSource = (s: any): boolean => {
-      const uri = s?.trackURI ?? s?.currentURI ?? '';
-      return typeof uri === 'string' && uri.includes('x-sonos-htastream:');
-    };
-
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
 
-      // Treat SPDIF/TV input as paused (no meaningful track data)
-      const isTvInput = isSpdifSource(s);
-      const effectivePlaybackState =
-        isTvInput ? 'PLAYBACK_STATE_PAUSED' : (s.playbackState ?? 'PLAYBACK_STATE_PLAYING');
-
-      // Always sync raw playback state to debug store
-      debugData.sonosPlaybackState = effectivePlaybackState;
-
-      // TV/SPDIF source — apply as paused state update
-      if (isTvInput) {
-        if (dataRef.current) {
+      // Allow state-only updates (e.g. pause/stop) even without trackName
+      if (!s.trackName) {
+        if (s.playbackState && dataRef.current) {
           const prev = dataRef.current;
-          if (prev.playbackState !== effectivePlaybackState) {
+          if (prev.playbackState !== s.playbackState) {
             apply({
               ...prev,
-              playbackState: effectivePlaybackState,
+              playbackState: s.playbackState,
               volume: s.volume ?? prev.volume,
               receivedAt: performance.now(),
               smoothedRtt: rtt,
@@ -146,7 +131,7 @@ export function useSonosNowPlaying() {
           artistName: decodeEntities(s.artistName),
           albumName: decodeEntities(s.albumName) ?? prev?.albumName ?? null,
           albumArtUrl: localArt,
-          playbackState: effectivePlaybackState,
+          playbackState: s.playbackState ?? "PLAYBACK_STATE_PLAYING",
           durationMs: s.durationMillis ?? null,
           positionMs: (s.positionMillis ?? 0) + rtt / 2,
           receivedAt: performance.now(),
@@ -161,19 +146,17 @@ export function useSonosNowPlaying() {
         return;
       }
 
-      // For non-track-change updates: interpolate position only while actively playing
+      // For non-track-change updates: interpolate position if not provided
       const prevPos = prev!.positionMs ?? 0;
       const timeSinceLastUpdate = performance.now() - prev!.receivedAt;
       const hasNewPosition = s.positionMillis != null;
-      const nextPlaybackState = effectivePlaybackState;
-      const shouldInterpolate = nextPlaybackState === 'PLAYBACK_STATE_PLAYING';
       const interpolatedPos = hasNewPosition
         ? (s.positionMillis + rtt / 2)
-        : (shouldInterpolate ? (prevPos + timeSinceLastUpdate) : prevPos);
+        : (prevPos + timeSinceLastUpdate);
 
       apply({
         ...prev!,
-        playbackState: nextPlaybackState,
+        playbackState: s.playbackState ?? prev!.playbackState,
         positionMs: interpolatedPos,
         durationMs: s.durationMillis ?? prev!.durationMs,
         albumArtUrl: localArt ?? prev!.albumArtUrl,
@@ -226,8 +209,12 @@ export function useSonosNowPlaying() {
       } catch { /* ignore poll errors */ }
     };
 
-    // Always poll every 5s to catch state changes SSE may miss (pause/stop)
-    const pollId = setInterval(pollStatus, 5000);
+    const pollId = setInterval(() => {
+      // Only poll if SSE hasn't delivered anything in 1.5s
+      if (Date.now() - lastSseMessage > 1500) {
+        pollStatus();
+      }
+    }, 2000);
 
     return () => {
       if (es) { es.close(); es = null; }

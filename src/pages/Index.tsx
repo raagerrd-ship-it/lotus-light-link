@@ -179,14 +179,8 @@ const Index = () => {
     debugData.bleColorSource = status.bleColorSource ?? 'normal';
     if (status.micRms != null) debugData.micRms = status.micRms;
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
-    
 
   }, []);
-
-  // Sync tickMs to debug store
-  useEffect(() => { debugData.tickMs = tickMs; }, [tickMs]);
-
-
 
   // Auto-hide overlay after 3s
   const resetOverlayTimer = () => {

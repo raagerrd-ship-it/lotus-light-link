@@ -18,13 +18,11 @@ export default function DebugOverlay() {
   const reconnectRef = useRef<HTMLDivElement>(null);
   const sonosRef = useRef<HTMLDivElement>(null);
   const rttRef = useRef<HTMLDivElement>(null);
-  const playbackRef = useRef<HTMLDivElement>(null);
   const bleOutSwatchRef = useRef<HTMLDivElement>(null);
   const bleOutBarRef = useRef<HTMLDivElement>(null);
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
   const bleOutContainerRef = useRef<HTMLDivElement>(null);
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
-  const bleOutLatLabelRef = useRef<HTMLSpanElement>(null);
   const bleStatsRef = useRef<HTMLDivElement>(null);
   const bleRateRef = useRef<HTMLDivElement>(null);
   const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
@@ -69,21 +67,6 @@ export default function DebugOverlay() {
         rttRef.current.textContent = `RTT: ${Math.round(d.smoothedRtt)}ms`;
       }
 
-      if (playbackRef.current) {
-        const ps = d.sonosPlaybackState;
-        if (!ps) {
-          playbackRef.current.innerHTML = '<span class="text-foreground/40">— no state</span>';
-        } else if (ps.includes('PLAYING')) {
-          playbackRef.current.innerHTML = '<span class="text-green-400">▶ playing</span>';
-        } else if (ps.includes('PAUSED')) {
-          playbackRef.current.innerHTML = '<span class="text-yellow-400">⏸ paused</span>';
-        } else if (ps.includes('IDLE') || ps.includes('STOPPED')) {
-          playbackRef.current.innerHTML = '<span class="text-red-400">⏹ idle</span>';
-        } else {
-          playbackRef.current.innerHTML = `<span class="text-foreground/40">${ps}</span>`;
-        }
-      }
-
 
       const sc = d.bleSentColor;
       if (sc) {
@@ -93,13 +76,8 @@ export default function DebugOverlay() {
         const rgb = `rgb(${bc[0]},${bc[1]},${bc[2]})`;
         if (bleOutSwatchRef.current) bleOutSwatchRef.current.style.backgroundColor = rgb;
         if (bleOutBarRef.current) {
-          const pct = d.tickMs > 0 ? Math.min(100, (d.bleWriteLatMs / d.tickMs) * 100) : 0;
-          bleOutBarRef.current.style.width = `${pct}%`;
-          const barColor = pct > 80 ? '#f87171' : pct > 50 ? '#facc15' : '#4ade80';
-          bleOutBarRef.current.style.backgroundColor = barColor;
-        }
-        if (bleOutLatLabelRef.current) {
-          bleOutLatLabelRef.current.textContent = `${Math.round(d.bleWriteLatMs)}/${d.tickMs}`;
+          bleOutBarRef.current.style.width = `${d.bleSentBright ?? 0}%`;
+          bleOutBarRef.current.style.backgroundColor = rgb;
         }
         if (bleOutSourceRef.current) {
           const src = d.bleColorSource;
@@ -151,7 +129,7 @@ export default function DebugOverlay() {
   }, []);
 
   return (
-    <div ref={rootRef} className="fixed top-14 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
+    <div ref={rootRef} className="fixed bottom-20 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
       <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">enhet</div>
       <div ref={deviceRef} />
       <div ref={reconnectRef} style={{ display: 'none' }} />
@@ -160,7 +138,6 @@ export default function DebugOverlay() {
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">input</div>
         <div ref={sonosRef} />
         <div ref={rttRef} />
-        <div ref={playbackRef} />
       </div>
 
 
@@ -171,7 +148,6 @@ export default function DebugOverlay() {
           <div className="flex-1 h-2.5 rounded-sm bg-foreground/10 overflow-hidden">
             <div ref={bleOutBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
           </div>
-          <span ref={bleOutLatLabelRef} className="text-foreground/50 shrink-0 tabular-nums" />
           <span ref={bleOutSourceRef} style={{ display: 'none' }} />
         </div>
         <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>

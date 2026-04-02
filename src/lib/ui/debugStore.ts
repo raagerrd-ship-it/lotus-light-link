@@ -16,7 +16,6 @@ export interface DebugData {
   bassLevel: number;
   midHiLevel: number;
   isPlayingState: boolean;
-  sonosPlaybackState: string | null;
   // Process
   dynamicDamping: number;
   // BLE Output
@@ -31,7 +30,6 @@ export interface DebugData {
   bleSkipBusyCount: number;
   bleWriteLatMs: number;
   bleWriteLatAvgMs: number;
-  tickMs: number;
 }
 
 export const debugData: DebugData = {
@@ -45,7 +43,6 @@ export const debugData: DebugData = {
   bassLevel: 0,
   midHiLevel: 0,
   isPlayingState: true,
-  sonosPlaybackState: null,
   dynamicDamping: 0,
   bleSentColor: null,
   bleSentBright: null,
@@ -57,5 +54,4 @@ export const debugData: DebugData = {
   bleSkipBusyCount: 0,
   bleWriteLatMs: 0,
   bleWriteLatAvgMs: 0,
-  tickMs: 125,
 };
