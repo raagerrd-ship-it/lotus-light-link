@@ -57,6 +57,8 @@ export class LightEngine {
   private lastBaseColor: [number, number, number] = [0, 0, 0];
   private lastBucket: number = 0;
   private extraSmoothPct = 0;
+  private lastTotalRms = 0;
+  private lastTickData: TickData | null = null;
 
   private idleSent = false;
 
@@ -275,6 +277,8 @@ export class LightEngine {
     this.lastBucket = 0;
     this.idleSent = false;
     this.idleColor = [255, 60, 0];
+    this.lastTotalRms = 0;
+    this.lastTickData = null;
   }
 
   /** Core tick — called by worker */
@@ -309,6 +313,14 @@ export class LightEngine {
     // ── FFT ──
     const bands = computeBands(an, this.freqBuf);
     const rmsEnd = performance.now();
+
+    // ── RMS-gate: skip pipeline if mic input barely changed ──
+    const rmsChange = Math.abs(bands.totalRms - this.lastTotalRms) / Math.max(this.lastTotalRms, 0.001);
+    if (rmsChange < 0.05 && this.lastTickData) {
+      this.emit(this.lastTickData);
+      return;
+    }
+    this.lastTotalRms = bands.totalRms;
 
     // ── Smoothing ──
     this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha);
@@ -413,7 +425,7 @@ export class LightEngine {
     const bleEnd = performance.now();
 
     // ── Emit tick data ──
-    this.emit({
+    const tickData: TickData = {
       brightness: pct,
       color: [bleSentR, bleSentG, bleSentB],
       baseColor: this.lastBaseColor,
@@ -430,7 +442,9 @@ export class LightEngine {
         bleCallMs: bleEnd - smoothEnd,
         totalTickMs: bleEnd - tickStart,
       },
-    });
+    };
+    this.lastTickData = tickData;
+    this.emit(tickData);
   }
 
 
