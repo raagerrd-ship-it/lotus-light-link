@@ -44,6 +44,7 @@ export const debugData: DebugData = {
   bassLevel: 0,
   midHiLevel: 0,
   isPlayingState: true,
+  sonosPlaybackState: null,
   dynamicDamping: 0,
   bleSentColor: null,
   bleSentBright: null,
