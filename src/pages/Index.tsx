@@ -210,6 +210,8 @@ const Index = () => {
     setConnections(prev => prev.filter(c => c.device?.id !== conn.device?.id));
   };
 
+  const disconnectListenersRef = useRef(new Map<string, () => void>());
+
   const finishConnect = async (conn: BLEConnection) => {
     setConnections(prev => {
       if (prev.some(c => c.device?.id === conn.device?.id)) return prev;
@@ -232,13 +234,20 @@ const Index = () => {
       }).catch(() => {});
     }
 
-    conn.device.addEventListener("gattserverdisconnected", async () => {
+    // Remove previous disconnect listener for this device (prevents accumulation)
+    const deviceId = conn.device?.id;
+    if (deviceId && disconnectListenersRef.current.has(deviceId)) {
+      disconnectListenersRef.current.get(deviceId)!();
+    }
+
+    const onDisconnect = async () => {
       console.log('[BLE] device disconnected, attempting reconnect...');
       removeActiveChar(conn.characteristic);
       setConnections(prev => prev.filter(c => c.device?.id !== conn.device?.id));
       removeBleConnection(conn);
+      // Clean up this listener ref
+      if (deviceId) disconnectListenersRef.current.delete(deviceId);
 
-      // Try to reconnect automatically
       setBleReconnectStatus({ attempt: 1, maxAttempts: 100, phase: 'waiting', targetName: conn.device?.name || conn.device?.id });
       try {
         const newConn = await autoReconnect(undefined, setBleReconnectStatus);
@@ -251,7 +260,14 @@ const Index = () => {
         console.warn('[BLE] reconnect failed:', e?.message);
         setBleReconnectStatus(null);
       }
-    });
+    };
+
+    conn.device.addEventListener("gattserverdisconnected", onDisconnect);
+    if (deviceId) {
+      disconnectListenersRef.current.set(deviceId, () => {
+        conn.device.removeEventListener("gattserverdisconnected", onDisconnect);
+      });
+    }
   };
 
   const handleConnect = async () => {
@@ -296,9 +312,11 @@ const Index = () => {
 
   const handlePowerToggle = async () => {
     if (!activated) return;
-    // Deactivate: disconnect all devices and return to start screen
     if (reconnectAbortRef.current) reconnectAbortRef.current.abort();
     setBleReconnectStatus(null);
+    // Remove all disconnect listeners before disconnecting
+    for (const cleanup of disconnectListenersRef.current.values()) cleanup();
+    disconnectListenersRef.current.clear();
     for (const c of connections) {
       try { c.device?.gatt?.disconnect(); } catch {}
       removeActiveChar(c.characteristic);
