@@ -57,4 +57,5 @@ export const debugData: DebugData = {
   bleSkipBusyCount: 0,
   bleWriteLatMs: 0,
   bleWriteLatAvgMs: 0,
+  tickMs: 125,
 };
