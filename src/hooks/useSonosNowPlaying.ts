@@ -100,6 +100,8 @@ export function useSonosNowPlaying() {
 
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
+      // Always sync raw playback state to debug store
+      if (s.playbackState) debugData.sonosPlaybackState = s.playbackState;
 
       // Allow state-only updates (e.g. pause/stop) even without trackName
       if (!s.trackName) {
