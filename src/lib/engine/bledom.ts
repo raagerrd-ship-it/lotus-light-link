@@ -246,10 +246,14 @@ let _lastR = -1, _lastG = -1, _lastB = -1, _lastBr = -1;
 // Non-reentrant guard — prevents Chrome from queuing writes
 let _writeInFlight = false;
 
+// Effective interval tracking — real time between successful BLE writes
+let _lastWriteTime = 0;
+
 /** Reset dedup/in-flight state so the next command is always sent (call on reconnect) */
 export function resetLastSent() {
   _lastR = _lastG = _lastB = _lastBr = -1;
   _writeInFlight = false;
+  _lastWriteTime = 0;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
@@ -288,9 +292,14 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       });
     });
     await Promise.allSettled(writes);
-    const lat = performance.now() - t0;
+    const now = performance.now();
+    const lat = now - t0;
     debugData.bleWriteLatMs = Math.round(lat * 10) / 10;
     debugData.bleWriteLatAvgMs = Math.round((lat * 0.2 + debugData.bleWriteLatAvgMs * 0.8) * 10) / 10;
+    if (_lastWriteTime > 0) {
+      debugData.bleEffectiveIntervalMs = Math.round(now - _lastWriteTime);
+    }
+    _lastWriteTime = now;
     debugData.bleSentCount++;
   } finally {
     _writeInFlight = false;

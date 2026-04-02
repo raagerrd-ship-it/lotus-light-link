@@ -352,7 +352,6 @@ export class LightEngine {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
       pct = Math.round(this.extraSmoothPct);
     }
-    const smoothEnd = performance.now();
 
     // ── Palette mode ──
     const pm = cal.paletteMode ?? 'off';
@@ -406,6 +405,7 @@ export class LightEngine {
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];
 
     // ── BLE output (awaited for accurate latency) ──
+    const smoothEnd = performance.now();
     if (this.chars.size > 0) {
       if (isPunch) await sendToBLE(255, 255, 255, pct);
       else await sendToBLE(bleSentR, bleSentG, bleSentB, pct);

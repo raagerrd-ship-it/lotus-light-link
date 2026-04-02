@@ -26,6 +26,7 @@ export default function DebugOverlay() {
   const bleStatsRef = useRef<HTMLDivElement>(null);
   const bleRateRef = useRef<HTMLDivElement>(null);
   const pipelineRef = useRef<HTMLDivElement>(null);
+  const intervalRef = useRef<HTMLDivElement>(null);
   const pipelineBarRef = useRef<HTMLDivElement>(null);
   const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
   const bleRateValueRef = useRef(0);
@@ -132,6 +133,14 @@ export default function DebugOverlay() {
         const colorClass = total > budget * 0.8 ? 'text-red-400' : total > budget * 0.5 ? 'text-yellow-400' : 'text-green-400';
         pipelineRef.current.innerHTML = `<span class="${colorClass}">pipeline: ${total.toFixed(1)}ms</span> (ble ${ble.toFixed(1)}ms)`;
       }
+      // Effective write interval
+      if (intervalRef.current) {
+        const iv = d.bleEffectiveIntervalMs;
+        const tick = d.tickMs || 125;
+        const ratio = tick > 0 ? iv / tick : 1;
+        const colorClass = ratio > 2 ? 'text-red-400' : ratio > 1.3 ? 'text-yellow-400' : 'text-green-400';
+        intervalRef.current.innerHTML = `<span class="${colorClass}">interval: ${iv}ms</span> <span class="text-foreground/40">(tick ${tick}ms)</span>`;
+      }
       // Pipeline bar (% of tickMs budget used)
       if (pipelineBarRef.current) {
         const total = d.pipelineTotalMs;
@@ -179,8 +188,9 @@ export default function DebugOverlay() {
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">pipeline</div>
         <div ref={pipelineRef} className="text-foreground/60" />
         <div className="h-2 rounded-sm bg-foreground/10 overflow-hidden mt-0.5">
-          <div ref={pipelineBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
+        <div ref={pipelineBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
         </div>
+        <div ref={intervalRef} className="text-foreground/60 mt-0.5" />
       </div>
 
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
