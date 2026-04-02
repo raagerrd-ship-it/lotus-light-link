@@ -1,38 +1,38 @@
 
 
-## Fix pipeline-mätningen
+## Flytta skip-logik till mikrofoninput
 
-### Problemanalys
+### Problem
+Skip-logiken (delta-gate) sitter idag efter hela pipelinen (FFT → smooth → AGC → brightness → color → **skip-check**). All beräkning görs i onödan om resultatet ändå skippas.
 
-Nuvarande mätning har ett grundläggande problem: `totalTickMs` mäter `bleEnd - tickStart`, men `bleEnd` sätts direkt efter `await sendToBLE()`. Problemet är att `writeValueWithoutResponse` returnerar när **OS-bufferten accepterar datat** — inte när det faktiskt sänts över BLE-radion. Därför visar pipelinen 6–8ms trots att hårdvaran behöver ~30ms per connection interval.
+### Lösning: RMS-gate direkt efter FFT
 
-Dessutom: `smoothEnd` (rad 355) sätts **före** palett-logiken (rad 357–399), så `bleCallMs` inkluderar palett-beräkning — inte bara BLE.
+Direkt efter `computeBands()` (rad 310) jämför vi `totalRms` mot förra tickens värde. Om skillnaden är under en tröskel → skippa resten av pipelinen och emit:a förra tickens data.
 
-### Vad som behöver fixas
+### Vad som händer
 
-**1. Flytta `smoothEnd`-mätpunkten** (`src/lib/engine/lightEngine.ts`)
-- Flytta `const smoothEnd = performance.now()` till precis före BLE-anropet (efter palett + färgkalibrering), så `bleCallMs` verkligen bara mäter BLE-tiden.
+**`src/lib/engine/lightEngine.ts`**:
+1. Ny instansvariabel `lastTotalRms: number = 0` och `lastTickData: TickData | null`
+2. Efter `computeBands()` (rad 310), beräkna `rmsChange = Math.abs(bands.totalRms - this.lastTotalRms) / Math.max(this.lastTotalRms, 0.001)`
+3. Om `rmsChange < 0.05` (5% relativ förändring) **och** det finns `lastTickData`:
+   - Öka `debugData.bleSkipDeltaCount++`
+   - Re-emit `lastTickData` (så chart/UI fortsätter fungera)
+   - `return` — skippa smooth, AGC, brightness, color, BLE
+4. Annars: kör pipelinen som vanligt, spara `this.lastTotalRms = bands.totalRms` och `this.lastTickData = tickData`
 
-**2. Lägg till "effective write interval"** (`src/lib/engine/bledom.ts`)
-- Spara `performance.now()` vid varje lyckad write (`_lastWriteTime`).
-- Beräkna `bleEffectiveIntervalMs = now - _lastWriteTime` — den **verkliga tiden mellan sändningar** till lampan.
-- Skriv till `debugData.bleEffectiveIntervalMs`.
+### Viktigt designbeslut
 
-**3. Uppdatera debugStore** (`src/lib/ui/debugStore.ts`)
-- Lägg till `bleEffectiveIntervalMs: number` (default 0).
-
-**4. Visa i debug-panelen** (`src/components/DebugOverlay.tsx`)
-- Ny rad under pipeline: `interval: 85ms` — den faktiska tiden mellan BLE-kommandon som lampan ser.
-- Färgkoda: grön om nära tickMs, röd om >>tickMs (= många skippade ticks).
-- **Detta värde** är det som ska styra adaptiv tick-rate — inte pipeline-latensen.
+- AGC-decay **pausas** under skippade ticks — detta är OK eftersom om mic-input inte ändrats har AGC-state inte heller behövt ändras
+- Delta-gate i `sendToBLE` (bledom.ts) behålls som backup — den fångar fall där pipelinen körs men BLE-output ändå är identisk
+- Tröskeln 5% är konservativ — kan justeras via calibration senare
 
 ### Resultat
 
 ```text
-pipeline: 8ms (ble 5ms)     ← hur lång tid koden tar
-interval: 95ms              ← hur ofta lampan faktiskt uppdateras  ← NYT!
-████████░░ [pipeline-bar]
+Nuvarande:  FFT → Smooth → AGC → Brightness → Color → BLE(skip?) → emit
+Nytt:       FFT → RMS-GATE → [Smooth → AGC → Brightness → Color → BLE → emit]
+                    ↑ skip här om mic-input oförändrad
 ```
 
-Nu ser man tydligt: koden tar 8ms, men lampan uppdateras bara var 95:e ms. Om `interval` >> `tickMs` vet man att busy/delta-skips äter upp ticks. Det är **interval**-värdet som adaptiv tick-rate ska optimera mot.
+Sparar ~90% av CPU på ticks där mikrofonen inte fångar ny energi (t.ex. tyst passage, hållna toner).
 
