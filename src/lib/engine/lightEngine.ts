@@ -278,7 +278,7 @@ export class LightEngine {
   }
 
   /** Core tick — called by worker */
-  private tick(): void {
+  private async tick(): Promise<void> {
     if (this.stopped) return;
 
     // ── Idle mode ──
