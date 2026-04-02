@@ -98,6 +98,9 @@ export default function DebugOverlay() {
           const barColor = pct > 80 ? '#f87171' : pct > 50 ? '#facc15' : '#4ade80';
           bleOutBarRef.current.style.backgroundColor = barColor;
         }
+        if (bleOutLatLabelRef.current) {
+          bleOutLatLabelRef.current.textContent = `${Math.round(d.bleWriteLatMs)}/${d.tickMs}`;
+        }
         if (bleOutSourceRef.current) {
           const src = d.bleColorSource;
           if (src && src !== 'normal') {
