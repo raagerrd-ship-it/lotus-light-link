@@ -138,7 +138,7 @@ export default function DebugOverlay() {
         </div>
         <div class="flex justify-between mt-0.5">
           <span>BLE w/s</span>
-          <span class="text-foreground/60">${wpsRef.current}</span>
+          <span class="text-foreground/60">${statsRef.current.wps}</span>
         </div>
 
         <div class="mt-1 text-foreground/20 text-[8px]">${buildTime}</div>
