@@ -159,7 +159,7 @@ export function useSonosNowPlaying() {
       const prevPos = prev!.positionMs ?? 0;
       const timeSinceLastUpdate = performance.now() - prev!.receivedAt;
       const hasNewPosition = s.positionMillis != null;
-      const nextPlaybackState = s.playbackState ?? prev!.playbackState;
+      const nextPlaybackState = effectivePlaybackState;
       const shouldInterpolate = nextPlaybackState === 'PLAYBACK_STATE_PLAYING';
       const interpolatedPos = hasNewPosition
         ? (s.positionMillis + rtt / 2)
@@ -167,7 +167,7 @@ export function useSonosNowPlaying() {
 
       apply({
         ...prev!,
-        playbackState: s.playbackState ?? prev!.playbackState,
+        playbackState: nextPlaybackState,
         positionMs: interpolatedPos,
         durationMs: s.durationMillis ?? prev!.durationMs,
         albumArtUrl: localArt ?? prev!.albumArtUrl,
