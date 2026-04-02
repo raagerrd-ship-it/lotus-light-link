@@ -133,6 +133,14 @@ export default function DebugOverlay() {
         const colorClass = total > budget * 0.8 ? 'text-red-400' : total > budget * 0.5 ? 'text-yellow-400' : 'text-green-400';
         pipelineRef.current.innerHTML = `<span class="${colorClass}">pipeline: ${total.toFixed(1)}ms</span> (ble ${ble.toFixed(1)}ms)`;
       }
+      // Effective write interval
+      if (intervalRef.current) {
+        const iv = d.bleEffectiveIntervalMs;
+        const tick = d.tickMs || 125;
+        const ratio = tick > 0 ? iv / tick : 1;
+        const colorClass = ratio > 2 ? 'text-red-400' : ratio > 1.3 ? 'text-yellow-400' : 'text-green-400';
+        intervalRef.current.innerHTML = `<span class="${colorClass}">interval: ${iv}ms</span> <span class="text-foreground/40">(tick ${tick}ms)</span>`;
+      }
       // Pipeline bar (% of tickMs budget used)
       if (pipelineBarRef.current) {
         const total = d.pipelineTotalMs;
