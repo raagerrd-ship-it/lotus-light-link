@@ -214,7 +214,7 @@ export class LightEngine {
       const worker = new Worker("/tick-worker.js");
       this.worker = worker;
 
-      worker.onmessage = () => this.tick();
+      worker.onmessage = () => { this.tick(); };
 
       // Save volume table periodically
       this.agcSaveTimer = window.setInterval(() => {
