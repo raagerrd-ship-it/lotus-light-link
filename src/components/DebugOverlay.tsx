@@ -188,8 +188,9 @@ export default function DebugOverlay() {
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">pipeline</div>
         <div ref={pipelineRef} className="text-foreground/60" />
         <div className="h-2 rounded-sm bg-foreground/10 overflow-hidden mt-0.5">
-          <div ref={pipelineBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
+        <div ref={pipelineBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
         </div>
+        <div ref={intervalRef} className="text-foreground/60 mt-0.5" />
       </div>
 
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
