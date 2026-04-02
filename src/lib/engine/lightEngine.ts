@@ -405,6 +405,7 @@ export class LightEngine {
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];
 
     // ── BLE output (awaited for accurate latency) ──
+    const smoothEnd = performance.now();
     if (this.chars.size > 0) {
       if (isPunch) await sendToBLE(255, 255, 255, pct);
       else await sendToBLE(bleSentR, bleSentG, bleSentB, pct);
