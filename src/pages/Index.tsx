@@ -179,9 +179,14 @@ const Index = () => {
     debugData.bleColorSource = status.bleColorSource ?? 'normal';
     if (status.micRms != null) debugData.micRms = status.micRms;
     if (status.isPlayingState != null) debugData.isPlayingState = status.isPlayingState;
-    if (nowPlaying) debugData.sonosPlaybackState = nowPlaying.playbackState;
+    
 
   }, []);
+
+  // Sync Sonos playback state to debug store
+  useEffect(() => {
+    debugData.sonosPlaybackState = nowPlaying?.playbackState ?? null;
+  }, [nowPlaying?.playbackState]);
 
   // Auto-hide overlay after 3s
   const resetOverlayTimer = () => {
