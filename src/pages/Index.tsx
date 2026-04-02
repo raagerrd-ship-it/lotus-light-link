@@ -142,13 +142,15 @@ const Index = () => {
     }
   }, [colorSource, manualColor]);
 
-  // Auto-reconnect to last known BLE device on mount
+  // Auto-reconnect to last known BLE device — only when activated
+  const reconnectAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (connected) return;
+    if (!activated || connected) return;
     const last = getLastDevice();
     if (!last) return;
 
     const ac = new AbortController();
+    reconnectAbortRef.current = ac;
     setBusy(true);
     setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: last.name || undefined });
 
@@ -167,7 +169,7 @@ const Index = () => {
     });
 
     return () => ac.abort();
-  }, []);
+  }, [activated]);
 
   // Live status callback from MicPanel
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => {
