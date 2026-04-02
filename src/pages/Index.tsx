@@ -295,12 +295,20 @@ const Index = () => {
   }, [user]);
 
   const handlePowerToggle = async () => {
-    if (!connected) return;
-    const next = !isOn;
-    setIsOn(next);
-    await Promise.allSettled(
-      connections.map(c => sendPower(c.characteristic, next).catch(() => {}))
-    );
+    if (!activated) return;
+    // Deactivate: disconnect all devices and return to start screen
+    if (reconnectAbortRef.current) reconnectAbortRef.current.abort();
+    setBleReconnectStatus(null);
+    for (const c of connections) {
+      try { c.device?.gatt?.disconnect(); } catch {}
+      removeActiveChar(c.characteristic);
+      removeBleConnection(c);
+    }
+    clearActiveChar();
+    setConnections([]);
+    setBusy(false);
+    setIsOn(true);
+    setActivated(false);
   };
 
   const [r, g, b] = currentColor;
