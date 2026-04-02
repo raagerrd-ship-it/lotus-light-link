@@ -150,13 +150,15 @@ export function useSonosNowPlaying() {
         return;
       }
 
-      // For non-track-change updates: interpolate position if not provided
+      // For non-track-change updates: interpolate position only while actively playing
       const prevPos = prev!.positionMs ?? 0;
       const timeSinceLastUpdate = performance.now() - prev!.receivedAt;
       const hasNewPosition = s.positionMillis != null;
+      const nextPlaybackState = s.playbackState ?? prev!.playbackState;
+      const shouldInterpolate = nextPlaybackState === 'PLAYBACK_STATE_PLAYING';
       const interpolatedPos = hasNewPosition
         ? (s.positionMillis + rtt / 2)
-        : (prevPos + timeSinceLastUpdate);
+        : (shouldInterpolate ? (prevPos + timeSinceLastUpdate) : prevPos);
 
       apply({
         ...prev!,
