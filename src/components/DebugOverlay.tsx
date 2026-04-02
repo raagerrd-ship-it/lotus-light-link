@@ -68,6 +68,21 @@ export default function DebugOverlay() {
         rttRef.current.textContent = `RTT: ${Math.round(d.smoothedRtt)}ms`;
       }
 
+      if (playbackRef.current) {
+        const ps = d.sonosPlaybackState;
+        if (!ps) {
+          playbackRef.current.innerHTML = '<span class="text-foreground/40">— no state</span>';
+        } else if (ps.includes('PLAYING')) {
+          playbackRef.current.innerHTML = '<span class="text-green-400">▶ playing</span>';
+        } else if (ps.includes('PAUSED')) {
+          playbackRef.current.innerHTML = '<span class="text-yellow-400">⏸ paused</span>';
+        } else if (ps.includes('IDLE') || ps.includes('STOPPED')) {
+          playbackRef.current.innerHTML = '<span class="text-red-400">⏹ idle</span>';
+        } else {
+          playbackRef.current.innerHTML = `<span class="text-foreground/40">${ps}</span>`;
+        }
+      }
+
 
       const sc = d.bleSentColor;
       if (sc) {
