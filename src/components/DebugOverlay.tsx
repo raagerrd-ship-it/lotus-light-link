@@ -13,21 +13,12 @@ const phaseLabels: Record<string, string> = {
 };
 
 export default function DebugOverlay() {
-  const rootRef = useRef<HTMLDivElement>(null);
   const deviceRef = useRef<HTMLDivElement>(null);
   const reconnectRef = useRef<HTMLDivElement>(null);
   const sonosRef = useRef<HTMLDivElement>(null);
-  const rttRef = useRef<HTMLDivElement>(null);
-  const bleOutSwatchRef = useRef<HTMLDivElement>(null);
-  const bleOutBarRef = useRef<HTMLDivElement>(null);
-  const bleOutSourceRef = useRef<HTMLSpanElement>(null);
-  const bleOutContainerRef = useRef<HTMLDivElement>(null);
-  const bleOutWaitRef = useRef<HTMLDivElement>(null);
-  const bleStatsRef = useRef<HTMLDivElement>(null);
-  const bleRateRef = useRef<HTMLDivElement>(null);
-  const pipelineRef = useRef<HTMLDivElement>(null);
-  const intervalRef = useRef<HTMLDivElement>(null);
-  const pipelineBarRef = useRef<HTMLDivElement>(null);
+  const bleLineRef = useRef<HTMLDivElement>(null);
+  const intervalLineRef = useRef<HTMLDivElement>(null);
+  const intervalBarRef = useRef<HTMLDivElement>(null);
   const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
   const bleRateValueRef = useRef(0);
 
@@ -35,6 +26,7 @@ export default function DebugOverlay() {
     const tick = () => {
       const d = debugData;
 
+      // Device
       if (deviceRef.current) {
         if (d.bleConnected) {
           deviceRef.current.innerHTML = `<span class="text-green-400">${d.bleDeviceName || 'ansluten'}</span>`;
@@ -43,6 +35,7 @@ export default function DebugOverlay() {
         }
       }
 
+      // Reconnect status
       if (reconnectRef.current) {
         const rs = d.bleReconnectStatus;
         if (!d.bleConnected && rs) {
@@ -58,58 +51,18 @@ export default function DebugOverlay() {
         }
       }
 
+      // Sonos — just connected/volume, no RTT
       if (sonosRef.current) {
         const vol = d.sonosVolume;
         if (vol != null) {
-          sonosRef.current.innerHTML = `sonos: <span class="text-green-400">ok</span><span class="text-foreground"> ${vol}%</span><span class="text-foreground/40"> ${d.gainMode}</span>`;
+          sonosRef.current.innerHTML = `sonos <span class="text-green-400">ok</span> ${vol}%`;
         } else {
-          sonosRef.current.innerHTML = `sonos: <span class="text-foreground/50">—</span>`;
+          sonosRef.current.innerHTML = `sonos <span class="text-foreground/40">—</span>`;
         }
       }
-      if (rttRef.current) {
-        rttRef.current.textContent = `RTT: ${Math.round(d.smoothedRtt)}ms`;
-      }
 
-
-      const sc = d.bleSentColor;
-      if (sc) {
-        if (bleOutContainerRef.current) bleOutContainerRef.current.style.display = '';
-        if (bleOutWaitRef.current) bleOutWaitRef.current.style.display = 'none';
-        const bc = d.bleBaseColor ?? sc;
-        const rgb = `rgb(${bc[0]},${bc[1]},${bc[2]})`;
-        if (bleOutSwatchRef.current) bleOutSwatchRef.current.style.backgroundColor = rgb;
-        if (bleOutBarRef.current) {
-          bleOutBarRef.current.style.width = `${d.bleSentBright ?? 0}%`;
-          bleOutBarRef.current.style.backgroundColor = rgb;
-        }
-        if (bleOutSourceRef.current) {
-          const src = d.bleColorSource;
-          if (src && src !== 'normal') {
-            bleOutSourceRef.current.textContent = src;
-            bleOutSourceRef.current.className = `shrink-0 text-yellow-400`;
-            bleOutSourceRef.current.style.display = '';
-          } else {
-            bleOutSourceRef.current.style.display = 'none';
-          }
-        }
-      } else {
-        if (bleOutContainerRef.current) bleOutContainerRef.current.style.display = 'none';
-        if (bleOutWaitRef.current) bleOutWaitRef.current.style.display = '';
-      }
-
-      // BLE send/skip stats
-      if (bleStatsRef.current) {
-        const sent = d.bleSentCount;
-        const skipD = d.bleSkipDeltaCount;
-        const skipT = d.bleSkipThrottleCount;
-        const skipB = d.bleSkipBusyCount;
-        const total = sent + skipD + skipT + skipB;
-        const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
-        bleStatsRef.current.textContent = `tx ${sent} skip ${skipD + skipT} busy ${skipB} (${pct}%)`;
-      }
-
-      // BLE writes/sec (computed over each poll interval)
-      if (bleRateRef.current) {
+      // BLE throughput: w/s + write latency
+      if (bleLineRef.current) {
         const now = performance.now();
         const snap = lastSentSnapshotRef.current;
         const dt = (now - snap.time) / 1000;
@@ -119,36 +72,32 @@ export default function DebugOverlay() {
           snap.count = d.bleSentCount;
           snap.time = now;
         }
-        const lat = d.bleWriteLatMs;
         const avg = d.bleWriteLatAvgMs;
-        const colorClass = avg > 30 ? 'text-red-400' : avg > 15 ? 'text-yellow-400' : 'text-green-400';
-        bleRateRef.current.innerHTML = `${bleRateValueRef.current} w/s <span class="${colorClass}">${Math.round(lat)}ms (avg ${Math.round(avg)}ms)</span>`;
+        const latColor = avg > 30 ? 'text-red-400' : avg > 15 ? 'text-yellow-400' : 'text-green-400';
+        const sent = d.bleSentCount;
+        const total = sent + d.bleSkipDeltaCount + d.bleSkipThrottleCount + d.bleSkipBusyCount;
+        const txPct = total > 0 ? Math.round((sent / total) * 100) : 0;
+        bleLineRef.current.innerHTML = `<span class="${latColor}">${bleRateValueRef.current} w/s</span> <span class="text-foreground/40">lat ${Math.round(avg)}ms tx ${txPct}%</span>`;
       }
 
-      // Pipeline latency
-      if (pipelineRef.current) {
-        const total = d.pipelineTotalMs;
-        const ble = d.pipelineBleMs;
-        const budget = d.tickMs || 125;
-        const colorClass = total > budget * 0.8 ? 'text-red-400' : total > budget * 0.5 ? 'text-yellow-400' : 'text-green-400';
-        pipelineRef.current.innerHTML = `<span class="${colorClass}">pipeline: ${total.toFixed(1)}ms</span> (ble ${ble.toFixed(1)}ms)`;
-      }
-      // Effective write interval
-      if (intervalRef.current) {
+      // Interval: real time between BLE writes + bar relative to tickMs
+      if (intervalLineRef.current) {
         const iv = d.bleEffectiveIntervalMs;
         const tick = d.tickMs || 125;
-        const ratio = tick > 0 ? iv / tick : 1;
-        const colorClass = ratio > 2 ? 'text-red-400' : ratio > 1.3 ? 'text-yellow-400' : 'text-green-400';
-        intervalRef.current.innerHTML = `<span class="${colorClass}">interval: ${iv}ms</span> <span class="text-foreground/40">(tick ${tick}ms)</span>`;
+        // Only flag red if busy-skips are significant (real backpressure)
+        const total = d.bleSentCount + d.bleSkipBusyCount;
+        const busyPct = total > 0 ? d.bleSkipBusyCount / total : 0;
+        const colorClass = busyPct > 0.3 ? 'text-red-400' : busyPct > 0.1 ? 'text-yellow-400' : 'text-green-400';
+        intervalLineRef.current.innerHTML = `<span class="${colorClass}">${iv}ms</span> <span class="text-foreground/40">/ ${tick}ms tick</span>`;
       }
-      // Pipeline bar (% of tickMs budget used)
-      if (pipelineBarRef.current) {
-        const total = d.pipelineTotalMs;
-        const budget = d.tickMs || 125;
-        const pct = Math.min(100, (total / budget) * 100);
-        pipelineBarRef.current.style.width = `${pct}%`;
-        const barColor = pct > 80 ? 'rgb(248,113,113)' : pct > 50 ? 'rgb(250,204,21)' : 'rgb(74,222,128)';
-        pipelineBarRef.current.style.backgroundColor = barColor;
+      if (intervalBarRef.current) {
+        const iv = d.bleEffectiveIntervalMs;
+        const tick = d.tickMs || 125;
+        // Bar shows how close interval is to tick (100% = perfect, >100% = slower than desired)
+        const pct = tick > 0 ? Math.min(100, (tick / Math.max(iv, 1)) * 100) : 0;
+        intervalBarRef.current.style.width = `${pct}%`;
+        const barColor = pct > 80 ? 'rgb(74,222,128)' : pct > 50 ? 'rgb(250,204,21)' : 'rgb(248,113,113)';
+        intervalBarRef.current.style.backgroundColor = barColor;
       }
     };
 
@@ -158,43 +107,25 @@ export default function DebugOverlay() {
   }, []);
 
   return (
-    <div ref={rootRef} className="fixed bottom-20 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[220px]">
-      <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">enhet</div>
+    <div className="fixed bottom-20 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[200px]">
       <div ref={deviceRef} />
       <div ref={reconnectRef} style={{ display: 'none' }} />
+      <div ref={sonosRef} className="text-foreground/50" />
 
       <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">input</div>
-        <div ref={sonosRef} />
-        <div ref={rttRef} />
-      </div>
-
-
-      <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">ble output</div>
-        <div ref={bleOutContainerRef} className="flex items-center gap-1.5" style={{ display: 'none' }}>
-          <div ref={bleOutSwatchRef} className="w-3 h-3 rounded-sm border border-border/40 shrink-0" />
-          <div className="flex-1 h-2.5 rounded-sm bg-foreground/10 overflow-hidden">
-            <div ref={bleOutBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
+        <div className="text-foreground/40 text-[9px] uppercase tracking-wider">ble</div>
+        <div ref={bleLineRef} />
+        <div className="flex items-center gap-1 mt-0.5">
+          <span className="text-foreground/40 shrink-0">int</span>
+          <div className="flex-1 h-2 rounded-sm bg-foreground/10 overflow-hidden">
+            <div ref={intervalBarRef} className="h-full rounded-sm transition-[width] duration-200" style={{ width: '0%' }} />
           </div>
-          <span ref={bleOutSourceRef} style={{ display: 'none' }} />
+          <span ref={intervalLineRef} className="shrink-0" />
         </div>
-        <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>
-        <div ref={bleStatsRef} className="text-foreground/40" />
-        <div ref={bleRateRef} className="text-foreground/40" />
       </div>
 
-      <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">pipeline</div>
-        <div ref={pipelineRef} className="text-foreground/60" />
-        <div className="h-2 rounded-sm bg-foreground/10 overflow-hidden mt-0.5">
-        <div ref={pipelineBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
-        </div>
-        <div ref={intervalRef} className="text-foreground/60 mt-0.5" />
-      </div>
-
-      <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
-        {(() => { try { const d = new Date(__BUILD_TIME__); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); } catch { return '?'; } })()}
+      <div className="mt-0.5 text-foreground/30 text-[8px]">
+        {(() => { try { const d = new Date(__BUILD_TIME__); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); } catch { return '?'; } })()}
       </div>
     </div>
   );
