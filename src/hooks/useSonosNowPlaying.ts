@@ -45,7 +45,8 @@ export function useSonosNowPlaying() {
   const getPosition = useCallback((): { positionMs: number; receivedAt: number } | null => {
     const cur = dataRef.current;
     if (!cur || cur.positionMs == null) return null;
-    return { positionMs: cur.positionMs, receivedAt: cur.receivedAt };
+    const isPlaying = cur.playbackState === "PLAYBACK_STATE_PLAYING";
+    return { positionMs: cur.positionMs, receivedAt: isPlaying ? cur.receivedAt : performance.now() };
   }, []);
 
   useEffect(() => {
@@ -149,13 +150,15 @@ export function useSonosNowPlaying() {
         return;
       }
 
-      // For non-track-change updates: interpolate position if not provided
+      // For non-track-change updates: interpolate position only while actively playing
       const prevPos = prev!.positionMs ?? 0;
       const timeSinceLastUpdate = performance.now() - prev!.receivedAt;
       const hasNewPosition = s.positionMillis != null;
+      const nextPlaybackState = s.playbackState ?? prev!.playbackState;
+      const shouldInterpolate = nextPlaybackState === 'PLAYBACK_STATE_PLAYING';
       const interpolatedPos = hasNewPosition
         ? (s.positionMillis + rtt / 2)
-        : (prevPos + timeSinceLastUpdate);
+        : (shouldInterpolate ? (prevPos + timeSinceLastUpdate) : prevPos);
 
       apply({
         ...prev!,
