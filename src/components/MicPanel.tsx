@@ -14,12 +14,13 @@ interface MicPanelProps {
   trackName?: string | null;
   historyLen?: number;
   tickMs?: number;
+  chartEnabled?: boolean;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => void;
 }
 
 const HISTORY_LEN = 64; // ~8s at 8Hz, fewer visible points
 
-const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = DEFAULT_TICK_MS, onLiveStatus }: MicPanelProps) => {
+const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, trackName, historyLen: historyLenProp, tickMs = DEFAULT_TICK_MS, chartEnabled = true, onLiveStatus }: MicPanelProps) => {
   const effectiveHistoryLen = historyLenProp ?? HISTORY_LEN;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,12 +55,16 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   }, [trackName]);
   useEffect(() => { engineRef.current?.setTickMs(tickMs); debugData.tickMs = tickMs; }, [tickMs]);
 
-  // ── Chart rendering via rAF ──
+  // ── Chart rendering via rAF (skip when chart disabled) ──
+  const chartEnabledRef = useRef(chartEnabled);
+  useEffect(() => { chartEnabledRef.current = chartEnabled; }, [chartEnabled]);
+
   useEffect(() => {
     const FRAME_MS = 1000 / 30; // 30fps cap
     let lastFrame = 0;
     const drawLoop = (now: number) => {
       rafIdRef.current = requestAnimationFrame(drawLoop);
+      if (!chartEnabledRef.current) return;
       if (now - lastFrame < FRAME_MS) return;
       lastFrame = now;
       const canvas = canvasRef.current;

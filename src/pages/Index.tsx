@@ -11,7 +11,7 @@ import {
   type BLEConnection, type BleReconnectStatus, type DeviceMode
 } from "@/lib/engine/bledom";
 import { addBleConnection, removeBleConnection } from "@/lib/engine/bleStore";
-import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun, X, Plug, Pipette } from "lucide-react";
+import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun, X, Plug, Pipette, BarChart3 } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import AuthButton from "@/components/AuthButton";
@@ -41,6 +41,7 @@ const Index = () => {
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
+  const [chartEnabled, setChartEnabled] = useState(() => localStorage.getItem("chartEnabled") !== "false");
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
@@ -311,7 +312,7 @@ const Index = () => {
       onPointerDown={connected ? resetOverlayTimer : undefined}
     >
       <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
-        <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} onLiveStatus={handleLiveStatus} />
+        <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} chartEnabled={chartEnabled} onLiveStatus={handleLiveStatus} />
       </div>
 
       {/* Connection overlay — busy auto-connecting */}
@@ -441,6 +442,22 @@ const Index = () => {
               )}
             </div>
             <AuthButton user={user} loading={authLoading} onSignIn={signIn} onSignOut={signOut} accent={accent} />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setChartEnabled(prev => {
+                  const next = !prev;
+                  localStorage.setItem("chartEnabled", String(next));
+                  return next;
+                });
+              }}
+              className="rounded-full w-7 h-7 active:scale-90 transition-transform"
+              style={chartEnabled ? { color: accent } : undefined}
+              title={chartEnabled ? 'Stäng av diagram' : 'Slå på diagram'}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
