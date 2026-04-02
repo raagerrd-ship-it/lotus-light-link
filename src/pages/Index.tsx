@@ -312,9 +312,11 @@ const Index = () => {
 
   const handlePowerToggle = async () => {
     if (!activated) return;
-    // Deactivate: disconnect all devices and return to start screen
     if (reconnectAbortRef.current) reconnectAbortRef.current.abort();
     setBleReconnectStatus(null);
+    // Remove all disconnect listeners before disconnecting
+    for (const cleanup of disconnectListenersRef.current.values()) cleanup();
+    disconnectListenersRef.current.clear();
     for (const c of connections) {
       try { c.device?.gatt?.disconnect(); } catch {}
       removeActiveChar(c.characteristic);
