@@ -13,29 +13,36 @@ const phaseLabels: Record<string, string> = {
 };
 
 export default function DebugOverlay() {
-  const deviceRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const reconnectRef = useRef<HTMLDivElement>(null);
-  const sonosRef = useRef<HTMLDivElement>(null);
-  const bleLineRef = useRef<HTMLDivElement>(null);
-  const intervalLineRef = useRef<HTMLDivElement>(null);
-  const intervalBarRef = useRef<HTMLDivElement>(null);
-  const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
-  const bleRateValueRef = useRef(0);
+  const headroomBarRef = useRef<HTMLDivElement>(null);
+  const headroomLabelRef = useRef<HTMLSpanElement>(null);
+  const peakLatRef = useRef(0);
+  const peakDecayRef = useRef(0);
 
   useEffect(() => {
     const tick = () => {
       const d = debugData;
 
-      // Device
-      if (deviceRef.current) {
-        if (d.bleConnected) {
-          deviceRef.current.innerHTML = `<span class="text-green-400">${d.bleDeviceName || 'ansluten'}</span>`;
+      // --- STATUS: simple "working" / "not working" ---
+      if (statusRef.current) {
+        if (!d.bleConnected) {
+          statusRef.current.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 align-middle"></span><span class="text-red-400">ej ansluten</span>`;
         } else {
-          deviceRef.current.innerHTML = `<span class="text-red-400">ej ansluten</span>`;
+          // "Working" = sent at least 1 write recently (rate > 0)
+          // We check if bleSentCount is increasing
+          const total = d.bleSentCount + d.bleSkipDeltaCount + d.bleSkipThrottleCount + d.bleSkipBusyCount;
+          const txPct = total > 0 ? Math.round((d.bleSentCount / total) * 100) : 0;
+          const isActive = d.bleSentCount > 0;
+          if (isActive) {
+            statusRef.current.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 align-middle"></span><span class="text-green-400">ok</span> <span class="text-foreground/40">${txPct}% tx</span>`;
+          } else {
+            statusRef.current.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-1 align-middle"></span><span class="text-yellow-400">väntar</span>`;
+          }
         }
       }
 
-      // Reconnect status
+      // --- RECONNECT ---
       if (reconnectRef.current) {
         const rs = d.bleReconnectStatus;
         if (!d.bleConnected && rs) {
@@ -51,53 +58,40 @@ export default function DebugOverlay() {
         }
       }
 
-      // Sonos — just connected/volume, no RTT
-      if (sonosRef.current) {
-        const vol = d.sonosVolume;
-        if (vol != null) {
-          sonosRef.current.innerHTML = `sonos <span class="text-green-400">ok</span> ${vol}%`;
+      // --- HEADROOM: how close to breaking point ---
+      // Uses sliding peak of write latency vs tick interval
+      if (headroomBarRef.current && headroomLabelRef.current) {
+        const lat = d.bleWriteLatMs;
+        const tickTarget = d.tickMs || 125;
+
+        // Sliding peak: fast attack, slow decay (decays ~20% per poll = 1/s decay)
+        if (lat > peakLatRef.current) {
+          peakLatRef.current = lat;
+          peakDecayRef.current = 0;
         } else {
-          sonosRef.current.innerHTML = `sonos <span class="text-foreground/40">—</span>`;
+          peakDecayRef.current++;
+          // Decay after 5 polls (1s), drop 10% per poll
+          if (peakDecayRef.current > 5) {
+            peakLatRef.current *= 0.9;
+          }
         }
-      }
 
-      // BLE throughput: w/s + write latency
-      if (bleLineRef.current) {
-        const now = performance.now();
-        const snap = lastSentSnapshotRef.current;
-        const dt = (now - snap.time) / 1000;
-        if (dt >= 0.5) {
-          const delta = d.bleSentCount - snap.count;
-          bleRateValueRef.current = Math.round(delta / dt * 10) / 10;
-          snap.count = d.bleSentCount;
-          snap.time = now;
-        }
-        const avg = d.bleWriteLatAvgMs;
-        const latColor = avg > 30 ? 'text-red-400' : avg > 15 ? 'text-yellow-400' : 'text-green-400';
-        const sent = d.bleSentCount;
-        const total = sent + d.bleSkipDeltaCount + d.bleSkipThrottleCount + d.bleSkipBusyCount;
-        const txPct = total > 0 ? Math.round((sent / total) * 100) : 0;
-        bleLineRef.current.innerHTML = `<span class="${latColor}">${bleRateValueRef.current} w/s</span> <span class="text-foreground/40">lat ${Math.round(avg)}ms tx ${txPct}%</span>`;
-      }
+        const peak = peakLatRef.current;
+        // Load = peak latency / tick interval (100% = at limit, >100% = overloaded)
+        const loadPct = tickTarget > 0 ? Math.min(150, (peak / tickTarget) * 100) : 0;
+        // Headroom = how much capacity is left (invert of load)
+        const headroom = Math.max(0, 100 - loadPct);
 
-      // Interval: real time between BLE writes + bar relative to tickMs
-      if (intervalLineRef.current) {
-        const iv = d.bleEffectiveIntervalMs;
-        const tick = d.tickMs || 125;
-        // Only flag red if busy-skips are significant (real backpressure)
-        const total = d.bleSentCount + d.bleSkipBusyCount;
-        const busyPct = total > 0 ? d.bleSkipBusyCount / total : 0;
-        const colorClass = busyPct > 0.3 ? 'text-red-400' : busyPct > 0.1 ? 'text-yellow-400' : 'text-green-400';
-        intervalLineRef.current.innerHTML = `<span class="${colorClass}">${iv}ms</span> <span class="text-foreground/40">/ ${tick}ms tick</span>`;
-      }
-      if (intervalBarRef.current) {
-        const iv = d.bleEffectiveIntervalMs;
-        const tick = d.tickMs || 125;
-        // Bar shows how close interval is to tick (100% = perfect, >100% = slower than desired)
-        const pct = tick > 0 ? Math.min(100, (tick / Math.max(iv, 1)) * 100) : 0;
-        intervalBarRef.current.style.width = `${pct}%`;
-        const barColor = pct > 80 ? 'rgb(74,222,128)' : pct > 50 ? 'rgb(250,204,21)' : 'rgb(248,113,113)';
-        intervalBarRef.current.style.backgroundColor = barColor;
+        // Bar width = load (fills up as we approach limit)
+        const barPct = Math.min(100, loadPct);
+        headroomBarRef.current.style.width = `${barPct}%`;
+
+        // Color: green = plenty of room, yellow = getting close, red = at/over limit
+        const barColor = loadPct > 90 ? 'rgb(248,113,113)' : loadPct > 60 ? 'rgb(250,204,21)' : 'rgb(74,222,128)';
+        headroomBarRef.current.style.backgroundColor = barColor;
+
+        const peakMs = Math.round(peak);
+        headroomLabelRef.current.innerHTML = `<span style="color:${barColor}">${Math.round(headroom)}%</span> <span class="text-foreground/40">${peakMs}/${tickTarget}ms</span>`;
       }
     };
 
@@ -107,21 +101,18 @@ export default function DebugOverlay() {
   }, []);
 
   return (
-    <div className="fixed bottom-20 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[200px]">
-      <div ref={deviceRef} />
+    <div className="fixed bottom-20 left-2 z-50 font-mono text-[10px] leading-tight bg-background/70 backdrop-blur-sm border border-border/40 rounded-md px-2 py-1.5 text-foreground/70 pointer-events-none select-none max-w-[180px]">
+      <div ref={statusRef} />
       <div ref={reconnectRef} style={{ display: 'none' }} />
-      <div ref={sonosRef} className="text-foreground/50" />
 
-      <div className="border-t border-border/30 pt-0.5 mt-0.5">
-        <div className="text-foreground/40 text-[9px] uppercase tracking-wider">ble</div>
-        <div ref={bleLineRef} />
-        <div className="flex items-center gap-1 mt-0.5">
-          <span className="text-foreground/40 shrink-0">int</span>
-          <div className="flex-1 h-2 rounded-sm bg-foreground/10 overflow-hidden">
-            <div ref={intervalBarRef} className="h-full rounded-sm transition-[width] duration-200" style={{ width: '0%' }} />
+      <div className="mt-1">
+        <div className="flex items-center gap-1">
+          <span className="text-foreground/40 shrink-0 text-[9px]">headroom</span>
+          <div className="flex-1 h-2.5 rounded-sm bg-foreground/10 overflow-hidden">
+            <div ref={headroomBarRef} className="h-full rounded-sm transition-[width] duration-200" style={{ width: '0%' }} />
           </div>
-          <span ref={intervalLineRef} className="shrink-0" />
         </div>
+        <span ref={headroomLabelRef} className="block text-right mt-0.5" />
       </div>
 
       <div className="mt-0.5 text-foreground/30 text-[8px]">
