@@ -101,6 +101,7 @@ export class LightEngine {
     this.worker?.postMessage('stop');
 
     if (this.chars.size > 0) {
+      resetLastSent(); // Force idle color through delta-gate & write guard
       const calibrated = applyColorCalibration(...this.idleColor, this.cal);
       sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
     }
