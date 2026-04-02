@@ -92,8 +92,10 @@ export default function DebugOverlay() {
         const rgb = `rgb(${bc[0]},${bc[1]},${bc[2]})`;
         if (bleOutSwatchRef.current) bleOutSwatchRef.current.style.backgroundColor = rgb;
         if (bleOutBarRef.current) {
-          bleOutBarRef.current.style.width = `${d.bleSentBright ?? 0}%`;
-          bleOutBarRef.current.style.backgroundColor = rgb;
+          const pct = d.tickMs > 0 ? Math.min(100, (d.bleWriteLatMs / d.tickMs) * 100) : 0;
+          bleOutBarRef.current.style.width = `${pct}%`;
+          const barColor = pct > 80 ? '#f87171' : pct > 50 ? '#facc15' : '#4ade80';
+          bleOutBarRef.current.style.backgroundColor = barColor;
         }
         if (bleOutSourceRef.current) {
           const src = d.bleColorSource;
