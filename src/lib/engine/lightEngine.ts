@@ -291,10 +291,11 @@ export class LightEngine {
     }
 
     const micSaysIdle = this.silenceTickCount >= this.SILENCE_TICKS_TO_IDLE;
+    const micOnlyIdle = this.silenceTickCount >= this.SILENCE_TICKS_MIC_ONLY;
     // Effective playing: either Sonos says playing OR mic hears sound
     const effectivePlaying = this.playing || this.micDetectedPlaying;
-    // Go idle when: Sonos says paused AND mic confirms silence, OR mic alone detects prolonged silence
-    const shouldIdle = (!this.playing && micSaysIdle) || (!this.playing && !this.micDetectedPlaying);
+    // Go idle when: (Sonos paused AND mic confirms silence) OR mic alone detects prolonged silence
+    const shouldIdle = (!this.playing && micSaysIdle) || (!this.playing && !this.micDetectedPlaying) || micOnlyIdle;
 
     if (shouldIdle) {
       this.micDetectedPlaying = false;
