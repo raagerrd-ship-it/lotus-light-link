@@ -99,18 +99,24 @@ export function useSonosNowPlaying() {
       return `${proxyUrl}/${uri}`;
     };
 
+    const isSpdifSource = (s: any): boolean => {
+      const uri = s?.trackURI ?? s?.currentURI ?? '';
+      return typeof uri === 'string' && uri.includes('x-sonos-htastream:');
+    };
+
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
 
-      // Treat null trackName as idle/paused (e.g. TV input via SPDIF)
+      // Treat SPDIF/TV input as paused (no meaningful track data)
+      const isTvInput = isSpdifSource(s);
       const effectivePlaybackState =
-        !s.trackName ? 'PLAYBACK_STATE_PAUSED' : (s.playbackState ?? 'PLAYBACK_STATE_PLAYING');
+        isTvInput ? 'PLAYBACK_STATE_PAUSED' : (s.playbackState ?? 'PLAYBACK_STATE_PLAYING');
 
       // Always sync raw playback state to debug store
       debugData.sonosPlaybackState = effectivePlaybackState;
 
-      // No track info — apply as paused state update
-      if (!s.trackName) {
+      // TV/SPDIF source — apply as paused state update
+      if (isTvInput) {
         if (dataRef.current) {
           const prev = dataRef.current;
           if (prev.playbackState !== effectivePlaybackState) {
