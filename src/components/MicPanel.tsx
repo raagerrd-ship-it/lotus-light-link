@@ -98,8 +98,13 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       lastSampleTimeRef.current = performance.now();
 
       setPipelineTimings(data.timings);
-      debugData.pipelineTotalMs = data.timings.totalTickMs;
-      debugData.pipelineBleMs = debugData.bleWriteLatMs;
+      // Only update pipeline display when a BLE write actually happened this tick
+      const currentSent = debugData.bleSentCount;
+      if (currentSent !== lastBleCountRef.current) {
+        lastBleCountRef.current = currentSent;
+        debugData.pipelineTotalMs = data.timings.totalTickMs;
+        debugData.pipelineBleMs = debugData.bleWriteLatMs;
+      }
 
       onLiveStatusRef.current?.({
         brightness: data.brightness,
