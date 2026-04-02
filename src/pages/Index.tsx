@@ -183,10 +183,7 @@ const Index = () => {
 
   }, []);
 
-  // Sync Sonos playback state to debug store
-  useEffect(() => {
-    debugData.sonosPlaybackState = nowPlaying?.playbackState ?? null;
-  }, [nowPlaying?.playbackState]);
+
 
   // Auto-hide overlay after 3s
   const resetOverlayTimer = () => {

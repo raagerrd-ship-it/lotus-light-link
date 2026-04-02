@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { debugData } from "@/lib/ui/debugStore";
 
 // Local proxy URL — auto-fallback to localhost if localStorage key is missing
 const DEFAULT_LOCAL_PROXY_URL = "http://localhost:3000/api/sonos";
@@ -99,6 +100,8 @@ export function useSonosNowPlaying() {
 
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
+      // Always sync raw playback state to debug store
+      if (s.playbackState) debugData.sonosPlaybackState = s.playbackState;
 
       // Allow state-only updates (e.g. pause/stop) even without trackName
       if (!s.trackName) {
