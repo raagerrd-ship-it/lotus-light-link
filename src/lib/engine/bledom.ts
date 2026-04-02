@@ -243,26 +243,25 @@ const _brightOnlyBuf = new Uint8Array([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00,
 // Deduplication state — skip identical BLE writes
 let _lastR = -1, _lastG = -1, _lastB = -1, _lastBr = -1;
 
-// Throttle state — prevent writes faster than tick interval
-let _lastWriteTime = 0;
-let _minWriteIntervalMs = 125;
+// Non-reentrant guard — prevents Chrome from queuing writes
+let _writeInFlight = false;
 
-/** Update the BLE write throttle interval (should match tickMs) */
-export function setBleThrottleMs(ms: number) {
-  _minWriteIntervalMs = Math.max(20, ms);
-}
-
-/** Reset dedup/throttle state so the next command is always sent (call on reconnect) */
+/** Reset dedup/in-flight state so the next command is always sent (call on reconnect) */
 export function resetLastSent() {
   _lastR = _lastG = _lastB = _lastBr = -1;
-  _lastWriteTime = 0;
+  _writeInFlight = false;
 }
 
 /** Single unified BLE command — pre-multiplies RGB by brightness.
  *  Sends packets to ALL connected devices. RGB devices get color, brightness-only get dimming.
- *  Skips sending if the computed bytes are identical to the previous call. */
+ *  Skips sending if the computed bytes are identical to the previous call.
+ *  Non-reentrant: if a previous write is still in-flight, the call is skipped. */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number) {
   if (_charModes.size === 0) return;
+
+  // Non-reentrant guard — prevents OS BLE queue buildup
+  if (_writeInFlight) { debugData.bleSkipBusyCount++; return; }
+
   const scale = brightnessToScale(brightness);
   const cr = Math.round(r * scale);
   const cg = Math.round(g * scale);
@@ -272,11 +271,6 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const maxDelta = Math.max(Math.abs(cr - _lastR), Math.abs(cg - _lastG), Math.abs(cb - _lastB), Math.abs(cbr - _lastBr));
   if (maxDelta < 8) { debugData.bleSkipDeltaCount++; return; }
 
-  // Throttle: don't write faster than the tick interval
-  const now = performance.now();
-  if (now - _lastWriteTime < _minWriteIntervalMs) { debugData.bleSkipThrottleCount++; return; }
-  _lastWriteTime = now;
-
   _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
 
   _colorBuf[4] = cr;
@@ -284,14 +278,23 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   _colorBuf[6] = cb;
   _brightOnlyBuf[3] = cbr;
 
-  const writes = Array.from(_charModes.entries()).map(([char, mode]) => {
-    const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
-    return char.writeValueWithoutResponse(buf).catch((e: any) => {
-      console.warn('[BLE] write error:', e?.message);
+  _writeInFlight = true;
+  const t0 = performance.now();
+  try {
+    const writes = Array.from(_charModes.entries()).map(([char, mode]) => {
+      const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
+      return char.writeValueWithoutResponse(buf).catch((e: any) => {
+        console.warn('[BLE] write error:', e?.message);
+      });
     });
-  });
-  await Promise.allSettled(writes);
-  debugData.bleSentCount++;
+    await Promise.allSettled(writes);
+    const lat = performance.now() - t0;
+    debugData.bleWriteLatMs = Math.round(lat * 10) / 10;
+    debugData.bleWriteLatAvgMs = Math.round((lat * 0.2 + debugData.bleWriteLatAvgMs * 0.8) * 10) / 10;
+    debugData.bleSentCount++;
+  } finally {
+    _writeInFlight = false;
+  }
 }
 
 export async function sendPower(char: any, on: boolean) {
