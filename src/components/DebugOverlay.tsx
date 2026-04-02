@@ -176,6 +176,14 @@ export default function DebugOverlay() {
         <div ref={bleRateRef} className="text-foreground/40" />
       </div>
 
+      <div className="border-t border-border/30 pt-0.5 mt-0.5">
+        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">pipeline</div>
+        <div ref={pipelineRef} className="text-foreground/60" />
+        <div className="h-2 rounded-sm bg-foreground/10 overflow-hidden mt-0.5">
+          <div ref={pipelineBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
+        </div>
+      </div>
+
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">
         {(() => { try { const d = new Date(__BUILD_TIME__); return d.toLocaleString('sv-SE', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }); } catch { return '?'; } })()}
       </div>
