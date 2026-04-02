@@ -249,6 +249,9 @@ let _writeInFlight = false;
 // Effective interval tracking — real time between successful BLE writes
 let _lastWriteTime = 0;
 
+// Pre-allocated promise array for multi-device writes
+const _writePromises: Promise<void>[] = [];
+
 /** Reset dedup/in-flight state so the next command is always sent (call on reconnect) */
 export function resetLastSent() {
   _lastR = _lastG = _lastB = _lastBr = -1;
