@@ -25,6 +25,8 @@ export default function DebugOverlay() {
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
   const bleStatsRef = useRef<HTMLDivElement>(null);
   const bleRateRef = useRef<HTMLDivElement>(null);
+  const pipelineRef = useRef<HTMLDivElement>(null);
+  const pipelineBarRef = useRef<HTMLDivElement>(null);
   const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
   const bleRateValueRef = useRef(0);
 
