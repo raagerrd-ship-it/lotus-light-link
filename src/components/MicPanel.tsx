@@ -44,13 +44,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   useEffect(() => {
     if (trackName && trackName !== lastTrackRef.current) {
       lastTrackRef.current = trackName;
+      // Reset engine smoothing + AGC
       engineRef.current?.resetSmoothing();
+      // Clear chart ring buffer + peak scaler
+      clearChartSamples();
+      resetChartScaler();
+      // Reset all debug counters
       debugData.bleSentCount = 0;
       debugData.bleSkipDeltaCount = 0;
       debugData.bleSkipThrottleCount = 0;
       debugData.bleSkipBusyCount = 0;
       debugData.bleWriteLatMs = 0;
       debugData.bleWriteLatAvgMs = 0;
+      debugData.pipelineTotalMs = 0;
+      debugData.pipelineBleMs = 0;
     }
   }, [trackName]);
   useEffect(() => { engineRef.current?.setTickMs(tickMs); debugData.tickMs = tickMs; }, [tickMs]);
