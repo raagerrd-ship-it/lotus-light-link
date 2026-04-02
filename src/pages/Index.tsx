@@ -322,9 +322,26 @@ const Index = () => {
       onPointerMove={connected ? resetOverlayTimer : undefined}
       onPointerDown={connected ? resetOverlayTimer : undefined}
     >
-      <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
-        <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} chartEnabled={chartEnabled} onLiveStatus={handleLiveStatus} />
-      </div>
+      {/* Start screen — before activation */}
+      {!activated && !busy && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center">
+          <button
+            onClick={() => setActivated(true)}
+            className="flex flex-col items-center gap-3 p-8 rounded-2xl active:scale-95 transition-transform"
+          >
+            <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-foreground/20" style={{ background: `rgba(${r},${g},${b},0.15)` }}>
+              <Play className="w-7 h-7 ml-0.5" style={{ color: accent }} />
+            </div>
+            <span className="text-sm font-medium text-foreground/70">Starta</span>
+          </button>
+        </div>
+      )}
+
+      {activated && (
+        <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
+          <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} chartEnabled={chartEnabled} onLiveStatus={handleLiveStatus} />
+        </div>
+      )}
 
       {/* Connection overlay — busy auto-connecting */}
       {!connected && busy && (
