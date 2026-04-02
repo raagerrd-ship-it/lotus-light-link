@@ -60,4 +60,5 @@ export const debugData: DebugData = {
   bleWriteLatAvgMs: 0,
   pipelineTotalMs: 0,
   pipelineBleMs: 0,
+  tickMs: 125,
 };

@@ -133,11 +133,9 @@ export default function DebugOverlay() {
       }
       // Pipeline bar (% of tickMs budget used)
       if (pipelineBarRef.current) {
-        // Use tickMs from debug data (smoothedRtt is used elsewhere, approximate tickMs)
-        // We'll compute ratio vs a reasonable tick budget
         const total = d.pipelineTotalMs;
-        // Estimate tickMs from write rate or use a reasonable default
-        const pct = Math.min(100, (total / 125) * 100);
+        const budget = d.tickMs || 125;
+        const pct = Math.min(100, (total / budget) * 100);
         pipelineBarRef.current.style.width = `${pct}%`;
         const barColor = pct > 80 ? 'rgb(248,113,113)' : pct > 50 ? 'rgb(250,204,21)' : 'rgb(74,222,128)';
         pipelineBarRef.current.style.backgroundColor = barColor;
