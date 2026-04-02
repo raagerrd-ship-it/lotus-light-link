@@ -154,6 +154,7 @@ export default function DebugOverlay() {
         <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">input</div>
         <div ref={sonosRef} />
         <div ref={rttRef} />
+        <div ref={playbackRef} />
       </div>
 
 
