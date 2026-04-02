@@ -212,12 +212,8 @@ export function useSonosNowPlaying() {
       } catch { /* ignore poll errors */ }
     };
 
-    const pollId = setInterval(() => {
-      // Only poll if SSE hasn't delivered anything in 1.5s
-      if (Date.now() - lastSseMessage > 1500) {
-        pollStatus();
-      }
-    }, 2000);
+    // Always poll every 5s to catch state changes SSE may miss (pause/stop)
+    const pollId = setInterval(pollStatus, 5000);
 
     return () => {
       if (es) { es.close(); es = null; }
