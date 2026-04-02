@@ -99,7 +99,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
       setPipelineTimings(data.timings);
       debugData.pipelineTotalMs = data.timings.totalTickMs;
-      debugData.pipelineBleMs = data.timings.bleCallMs;
+      debugData.pipelineBleMs = debugData.bleWriteLatMs;
 
       onLiveStatusRef.current?.({
         brightness: data.brightness,
