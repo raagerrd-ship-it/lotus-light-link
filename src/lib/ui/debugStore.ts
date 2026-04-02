@@ -31,6 +31,7 @@ export interface DebugData {
   bleSkipBusyCount: number;
   bleWriteLatMs: number;
   bleWriteLatAvgMs: number;
+  tickMs: number;
 }
 
 export const debugData: DebugData = {
@@ -56,4 +57,5 @@ export const debugData: DebugData = {
   bleSkipBusyCount: 0,
   bleWriteLatMs: 0,
   bleWriteLatAvgMs: 0,
+  tickMs: 125,
 };

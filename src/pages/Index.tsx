@@ -183,6 +183,9 @@ const Index = () => {
 
   }, []);
 
+  // Sync tickMs to debug store
+  useEffect(() => { debugData.tickMs = tickMs; }, [tickMs]);
+
 
 
   // Auto-hide overlay after 3s

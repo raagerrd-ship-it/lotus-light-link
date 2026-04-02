@@ -24,6 +24,7 @@ export default function DebugOverlay() {
   const bleOutSourceRef = useRef<HTMLSpanElement>(null);
   const bleOutContainerRef = useRef<HTMLDivElement>(null);
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
+  const bleOutLatLabelRef = useRef<HTMLSpanElement>(null);
   const bleStatsRef = useRef<HTMLDivElement>(null);
   const bleRateRef = useRef<HTMLDivElement>(null);
   const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
@@ -92,8 +93,13 @@ export default function DebugOverlay() {
         const rgb = `rgb(${bc[0]},${bc[1]},${bc[2]})`;
         if (bleOutSwatchRef.current) bleOutSwatchRef.current.style.backgroundColor = rgb;
         if (bleOutBarRef.current) {
-          bleOutBarRef.current.style.width = `${d.bleSentBright ?? 0}%`;
-          bleOutBarRef.current.style.backgroundColor = rgb;
+          const pct = d.tickMs > 0 ? Math.min(100, (d.bleWriteLatMs / d.tickMs) * 100) : 0;
+          bleOutBarRef.current.style.width = `${pct}%`;
+          const barColor = pct > 80 ? '#f87171' : pct > 50 ? '#facc15' : '#4ade80';
+          bleOutBarRef.current.style.backgroundColor = barColor;
+        }
+        if (bleOutLatLabelRef.current) {
+          bleOutLatLabelRef.current.textContent = `${Math.round(d.bleWriteLatMs)}/${d.tickMs}`;
         }
         if (bleOutSourceRef.current) {
           const src = d.bleColorSource;
@@ -165,6 +171,7 @@ export default function DebugOverlay() {
           <div className="flex-1 h-2.5 rounded-sm bg-foreground/10 overflow-hidden">
             <div ref={bleOutBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
           </div>
+          <span ref={bleOutLatLabelRef} className="text-foreground/50 shrink-0 tabular-nums" />
           <span ref={bleOutSourceRef} style={{ display: 'none' }} />
         </div>
         <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>
