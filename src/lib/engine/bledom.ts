@@ -285,13 +285,20 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   _writeInFlight = true;
   const t0 = performance.now();
   try {
-    const writes = Array.from(_charModes.entries()).map(([char, mode]) => {
+    // Single-device fast path (no allocation)
+    if (_charModes.size === 1) {
+      const [char, mode] = _charModes.entries().next().value!;
       const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
-      return char.writeValueWithoutResponse(buf).catch((e: any) => {
-        console.warn('[BLE] write error:', e?.message);
-      });
-    });
-    await Promise.allSettled(writes);
+      await char.writeValueWithoutResponse(buf).catch(() => {});
+    } else {
+      // Multi-device: reuse _writePromises array
+      _writePromises.length = 0;
+      for (const [char, mode] of _charModes) {
+        const buf = mode === 'brightness' ? _brightOnlyBuf : _colorBuf;
+        _writePromises.push(char.writeValueWithoutResponse(buf).catch(() => {}));
+      }
+      await Promise.allSettled(_writePromises);
+    }
     const now = performance.now();
     const lat = now - t0;
     debugData.bleWriteLatMs = Math.round(lat * 10) / 10;
