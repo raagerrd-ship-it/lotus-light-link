@@ -11,7 +11,7 @@ import {
   type BLEConnection, type BleReconnectStatus, type DeviceMode
 } from "@/lib/engine/bledom";
 import { addBleConnection, removeBleConnection } from "@/lib/engine/bleStore";
-import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun, X, Plug, Pipette, BarChart3 } from "lucide-react";
+import { Power, Bluetooth, BluetoothSearching, Loader2, Eye, EyeOff, Settings, Bug, Plus, Palette, Sun, X, Plug, Pipette, BarChart3, Play } from "lucide-react";
 import MicPanel from "@/components/MicPanel";
 import DebugOverlay from "@/components/DebugOverlay";
 import AuthButton from "@/components/AuthButton";
@@ -39,6 +39,7 @@ const Index = () => {
   const [currentPalette, setCurrentPalette] = useState<[number, number, number][]>([]);
   
   const [isOn, setIsOn] = useState(true);
+  const [activated, setActivated] = useState(false);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
   const [chartEnabled, setChartEnabled] = useState(() => localStorage.getItem("chartEnabled") !== "false");
@@ -141,13 +142,15 @@ const Index = () => {
     }
   }, [colorSource, manualColor]);
 
-  // Auto-reconnect to last known BLE device on mount
+  // Auto-reconnect to last known BLE device — only when activated
+  const reconnectAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (connected) return;
+    if (!activated || connected) return;
     const last = getLastDevice();
     if (!last) return;
 
     const ac = new AbortController();
+    reconnectAbortRef.current = ac;
     setBusy(true);
     setBleReconnectStatus({ attempt: 0, maxAttempts: 100, phase: 'waiting', targetName: last.name || undefined });
 
@@ -166,7 +169,7 @@ const Index = () => {
     });
 
     return () => ac.abort();
-  }, []);
+  }, [activated]);
 
   // Live status callback from MicPanel
   const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => {
@@ -292,12 +295,20 @@ const Index = () => {
   }, [user]);
 
   const handlePowerToggle = async () => {
-    if (!connected) return;
-    const next = !isOn;
-    setIsOn(next);
-    await Promise.allSettled(
-      connections.map(c => sendPower(c.characteristic, next).catch(() => {}))
-    );
+    if (!activated) return;
+    // Deactivate: disconnect all devices and return to start screen
+    if (reconnectAbortRef.current) reconnectAbortRef.current.abort();
+    setBleReconnectStatus(null);
+    for (const c of connections) {
+      try { c.device?.gatt?.disconnect(); } catch {}
+      removeActiveChar(c.characteristic);
+      removeBleConnection(c);
+    }
+    clearActiveChar();
+    setConnections([]);
+    setBusy(false);
+    setIsOn(true);
+    setActivated(false);
   };
 
   const [r, g, b] = currentColor;
@@ -311,9 +322,26 @@ const Index = () => {
       onPointerMove={connected ? resetOverlayTimer : undefined}
       onPointerDown={connected ? resetOverlayTimer : undefined}
     >
-      <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
-        <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} chartEnabled={chartEnabled} onLiveStatus={handleLiveStatus} />
-      </div>
+      {/* Start screen — before activation */}
+      {!activated && !busy && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center">
+          <button
+            onClick={() => setActivated(true)}
+            className="flex flex-col items-center gap-3 p-8 rounded-2xl active:scale-95 transition-transform"
+          >
+            <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-foreground/20" style={{ background: `rgba(${r},${g},${b},0.15)` }}>
+              <Play className="w-7 h-7 ml-0.5" style={{ color: accent }} />
+            </div>
+            <span className="text-sm font-medium text-foreground/70">Starta</span>
+          </button>
+        </div>
+      )}
+
+      {activated && (
+        <div className="absolute inset-0 transition-[bottom] duration-300" style={{ bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
+          <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} chartEnabled={chartEnabled} onLiveStatus={handleLiveStatus} />
+        </div>
+      )}
 
       {/* Connection overlay — busy auto-connecting */}
       {!connected && busy && (
@@ -328,7 +356,7 @@ const Index = () => {
       )}
 
       {/* Header */}
-      {(connected || !busy) && (
+      {activated && (connected || !busy) && (
         <div
           className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] transition-opacity duration-500 backdrop-blur-lg border-b border-white/5 ${showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           style={{ background: 'hsl(var(--background) / 0.3)' }}
@@ -495,11 +523,11 @@ const Index = () => {
                 <Button variant="ghost" size="icon" onClick={() => setShowCalibration(true)} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: accent }}>
                   <Settings className="w-3.5 h-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={isOn ? { color: accent } : undefined}>
-                  <Power className="w-4 h-4" />
-                </Button>
               </>
             )}
+            <Button variant="ghost" size="icon" onClick={handlePowerToggle} className="rounded-full w-7 h-7 active:scale-90 transition-transform" style={{ color: 'hsl(var(--destructive))' }} title="Stäng av">
+              <Power className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       )}
