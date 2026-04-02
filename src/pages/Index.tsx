@@ -41,6 +41,7 @@ const Index = () => {
   const [isOn, setIsOn] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [showDebug, setShowDebug] = useState(() => localStorage.getItem("showDebug") !== "false");
+  const [chartEnabled, setChartEnabled] = useState(() => localStorage.getItem("chartEnabled") !== "false");
   const [autoHide, setAutoHide] = useState(() => localStorage.getItem("autoHide") !== "false");
   const [bleReconnectStatus, setBleReconnectStatus] = useState<BleReconnectStatus | null>(null);
   const [activeCalibration, setActiveCalibration] = useState(getCalibration);
