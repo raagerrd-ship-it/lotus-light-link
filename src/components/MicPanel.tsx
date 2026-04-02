@@ -14,6 +14,7 @@ interface MicPanelProps {
   trackName?: string | null;
   historyLen?: number;
   tickMs?: number;
+  chartEnabled?: boolean;
   onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => void;
 }
 
