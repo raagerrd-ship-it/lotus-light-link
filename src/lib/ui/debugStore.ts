@@ -27,6 +27,9 @@ export interface DebugData {
   bleSentCount: number;
   bleSkipDeltaCount: number;
   bleSkipThrottleCount: number;
+  bleSkipBusyCount: number;
+  bleWriteLatMs: number;
+  bleWriteLatAvgMs: number;
 }
 
 export const debugData: DebugData = {
@@ -48,4 +51,7 @@ export const debugData: DebugData = {
   bleSentCount: 0,
   bleSkipDeltaCount: 0,
   bleSkipThrottleCount: 0,
+  bleSkipBusyCount: 0,
+  bleWriteLatMs: 0,
+  bleWriteLatAvgMs: 0,
 };

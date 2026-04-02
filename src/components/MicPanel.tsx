@@ -46,6 +46,9 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       debugData.bleSentCount = 0;
       debugData.bleSkipDeltaCount = 0;
       debugData.bleSkipThrottleCount = 0;
+      debugData.bleSkipBusyCount = 0;
+      debugData.bleWriteLatMs = 0;
+      debugData.bleWriteLatAvgMs = 0;
     }
   }, [trackName]);
   useEffect(() => { engineRef.current?.setTickMs(tickMs); }, [tickMs]);
