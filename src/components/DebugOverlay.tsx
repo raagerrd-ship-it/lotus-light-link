@@ -16,10 +16,12 @@ export default function DebugOverlay() {
   const rootRef = useRef<HTMLDivElement>(null);
   const peakLatRef = useRef(0);
   const peakDecayRef = useRef(0);
-  // For computing writes/sec
-  const prevSentRef = useRef(0);
-  const prevTimeRef = useRef(performance.now());
-  const wpsRef = useRef(0);
+  // Rolling window: snapshot counters every 10s, compute skip%/wps from delta
+  const windowRef = useRef({
+    time: performance.now(),
+    sent: 0, skipDelta: 0, skipThrottle: 0, skipBusy: 0,
+  });
+  const statsRef = useRef({ skipPct: 0, wps: 0 });
 
   useEffect(() => {
     const tick = () => {
@@ -27,19 +29,31 @@ export default function DebugOverlay() {
       if (!el) return;
       const d = debugData;
 
-      // ── Writes per second ──
+      // ── Rolling window (10s) for skip% and writes/sec ──
       const now = performance.now();
-      const dt = (now - prevTimeRef.current) / 1000;
-      if (dt >= 0.5) {
-        const dSent = d.bleSentCount - prevSentRef.current;
-        wpsRef.current = Math.round(dSent / dt);
-        prevSentRef.current = d.bleSentCount;
-        prevTimeRef.current = now;
+      const wdt = (now - windowRef.current.time) / 1000;
+      if (wdt >= 10) {
+        const dSent = d.bleSentCount - windowRef.current.sent;
+        const dSkip = (d.bleSkipDeltaCount - windowRef.current.skipDelta)
+          + (d.bleSkipThrottleCount - windowRef.current.skipThrottle)
+          + (d.bleSkipBusyCount - windowRef.current.skipBusy);
+        const dTotal = dSent + dSkip;
+        statsRef.current.skipPct = dTotal > 0 ? Math.round((dSkip / dTotal) * 100) : 0;
+        statsRef.current.wps = Math.round(dSent / wdt);
+        windowRef.current = {
+          time: now,
+          sent: d.bleSentCount,
+          skipDelta: d.bleSkipDeltaCount,
+          skipThrottle: d.bleSkipThrottleCount,
+          skipBusy: d.bleSkipBusyCount,
+        };
+      } else if (wdt >= 0.5) {
+        // Live wps update (more responsive)
+        const dSent = d.bleSentCount - windowRef.current.sent;
+        statsRef.current.wps = Math.round(dSent / wdt);
       }
 
-      // ── Skip % ──
-      const totalTicks = d.bleSentCount + d.bleSkipDeltaCount + d.bleSkipThrottleCount + d.bleSkipBusyCount;
-      const skipPct = totalTicks > 0 ? Math.round(((d.bleSkipDeltaCount + d.bleSkipThrottleCount + d.bleSkipBusyCount) / totalTicks) * 100) : 0;
+      const skipPct = statsRef.current.skipPct;
 
       // ── Sonos status ──
       const sonosOk = d.sonosVolume !== null;
