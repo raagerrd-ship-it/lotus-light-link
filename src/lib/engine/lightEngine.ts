@@ -264,24 +264,6 @@ export class LightEngine {
   private tick(): void {
     if (this.stopped) return;
 
-    // ── Idle mode ──
-    if (!this.playing) {
-      if (!this.idleSent && this.chars.size > 0) {
-        const calibrated = applyColorCalibration(...this.idleColor, this.cal);
-        sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
-        this.idleSent = true;
-        this.emit({
-          brightness: 100, color: this.idleColor, baseColor: this.idleColor,
-          bassLevel: 0, midHiLevel: 0, rawEnergyPct: 0,
-          isPunch: false, bleColorSource: 'idle', micRms: 0, isPlaying: false,
-          timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
-        });
-      }
-      this.worker?.postMessage('stop');
-      return;
-    }
-    this.idleSent = false;
-
     const an = this.analyser;
     if (!an || !this.freqBuf) return;
 
@@ -295,6 +277,41 @@ export class LightEngine {
 
     // ── Smoothing ──
     this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha);
+
+    // ── Mic-based silence detection ──
+    // Detect silence from mic directly — much faster than waiting for Sonos polling
+    if (bands.totalRms < this.SILENCE_THRESHOLD) {
+      this.silenceTickCount++;
+    } else {
+      this.silenceTickCount = 0;
+      this.micDetectedPlaying = true;
+    }
+
+    const micSaysIdle = this.silenceTickCount >= this.SILENCE_TICKS_TO_IDLE;
+    // Effective playing: either Sonos says playing OR mic hears sound
+    const effectivePlaying = this.playing || this.micDetectedPlaying;
+    // Go idle when: Sonos says paused AND mic confirms silence, OR mic alone detects prolonged silence
+    const shouldIdle = (!this.playing && micSaysIdle) || (!this.playing && !this.micDetectedPlaying);
+
+    if (shouldIdle) {
+      this.micDetectedPlaying = false;
+      if (!this.idleSent) {
+        if (this.chars.size > 0) {
+          resetLastSent();
+          const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+          sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
+        }
+        this.idleSent = true;
+        this.emit({
+          brightness: 100, color: this.idleColor, baseColor: this.idleColor,
+          bassLevel: 0, midHiLevel: 0, rawEnergyPct: 0,
+          isPunch: false, bleColorSource: 'idle', micRms: this.smoothed, isPlaying: false,
+          timings: { rmsMs: rmsEnd - tickStart, smoothMs: 0, bleCallMs: 0, totalTickMs: performance.now() - tickStart },
+        });
+      }
+      return;
+    }
+    this.idleSent = false;
 
     // ── Volume bucket & AGC update ──
     const bucket = volumeToBucket(this.volume);
