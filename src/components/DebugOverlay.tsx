@@ -142,7 +142,6 @@ export default function DebugOverlay() {
         const barColor = pct > 80 ? 'rgb(248,113,113)' : pct > 50 ? 'rgb(250,204,21)' : 'rgb(74,222,128)';
         pipelineBarRef.current.style.backgroundColor = barColor;
       }
-      }
     };
 
     const id = setInterval(tick, 200);
