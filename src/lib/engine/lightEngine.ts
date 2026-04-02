@@ -100,35 +100,11 @@ export class LightEngine {
 
     if (playing) {
       this.idleSent = false;
+      // Worker should already be running; ensure it is
       if (this.worker) this.worker.postMessage('start');
-      return;
     }
-
-    this.worker?.postMessage('stop');
-
-    if (this.chars.size > 0) {
-      resetLastSent(); // Force idle color through delta-gate & write guard
-      const calibrated = applyColorCalibration(...this.idleColor, this.cal);
-      sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
-    }
-
-    if (!this.idleSent) {
-      this.emit({
-        brightness: 100,
-        color: this.idleColor,
-        baseColor: this.idleColor,
-        bassLevel: 0,
-        midHiLevel: 0,
-        rawEnergyPct: 0,
-        isPunch: false,
-        bleColorSource: 'idle',
-        micRms: 0,
-        isPlaying: false,
-        timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
-      });
-    }
-
-    this.idleSent = true;
+    // Don't stop the worker here — let mic-based silence detection handle idle
+    // so we can wake instantly when sound returns
   }
 
   /** @deprecated Use addChar/removeChar for multi-device */
