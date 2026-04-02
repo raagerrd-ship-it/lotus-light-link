@@ -130,7 +130,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
 
     return () => {
       unsub();
-      engine.stop();
+      engine.destroy();
       resetChartScaler();
     };
   }, []);

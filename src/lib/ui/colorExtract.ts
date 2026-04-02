@@ -52,14 +52,22 @@ function boostSaturation(r: number, g: number, b: number): RGB {
   ];
 }
 
+// Reusable offscreen canvas for palette extraction (avoids DOM element creation per call)
+let _extractCanvas: HTMLCanvasElement | null = null;
+function getExtractCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
+  if (!_extractCanvas) _extractCanvas = document.createElement("canvas");
+  _extractCanvas.width = size;
+  _extractCanvas.height = size;
+  const ctx = _extractCanvas.getContext("2d");
+  return ctx ? { canvas: _extractCanvas, ctx } : null;
+}
+
 function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
   try {
     const size = 64;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return [];
+    const result = getExtractCanvas(size);
+    if (!result) return [];
+    const { ctx } = result;
 
     ctx.drawImage(img, 0, 0, size, size);
     const imageData = ctx.getImageData(0, 0, size, size).data;
