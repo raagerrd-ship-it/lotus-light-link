@@ -30,6 +30,10 @@ export interface DebugData {
   bleSkipBusyCount: number;
   bleWriteLatMs: number;
   bleWriteLatAvgMs: number;
+  // Pipeline timing
+  pipelineTotalMs: number;
+  pipelineBleMs: number;
+  tickMs: number;
 }
 
 export const debugData: DebugData = {
@@ -54,4 +58,7 @@ export const debugData: DebugData = {
   bleSkipBusyCount: 0,
   bleWriteLatMs: 0,
   bleWriteLatAvgMs: 0,
+  pipelineTotalMs: 0,
+  pipelineBleMs: 0,
+  tickMs: 125,
 };

@@ -214,7 +214,7 @@ export class LightEngine {
       const worker = new Worker("/tick-worker.js");
       this.worker = worker;
 
-      worker.onmessage = () => this.tick();
+      worker.onmessage = () => { this.tick(); };
 
       // Save volume table periodically
       this.agcSaveTimer = window.setInterval(() => {
@@ -278,7 +278,7 @@ export class LightEngine {
   }
 
   /** Core tick — called by worker */
-  private tick(): void {
+  private async tick(): Promise<void> {
     if (this.stopped) return;
 
     // ── Idle mode ──
@@ -405,10 +405,10 @@ export class LightEngine {
     const bleSentR = finalColor[0], bleSentG = finalColor[1], bleSentB = finalColor[2];
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];
 
-    // ── BLE output ──
+    // ── BLE output (awaited for accurate latency) ──
     if (this.chars.size > 0) {
-      if (isPunch) sendToBLE(255, 255, 255, pct);
-      else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
+      if (isPunch) await sendToBLE(255, 255, 255, pct);
+      else await sendToBLE(bleSentR, bleSentG, bleSentB, pct);
     }
     const bleEnd = performance.now();
 

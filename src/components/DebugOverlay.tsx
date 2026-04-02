@@ -25,6 +25,8 @@ export default function DebugOverlay() {
   const bleOutWaitRef = useRef<HTMLDivElement>(null);
   const bleStatsRef = useRef<HTMLDivElement>(null);
   const bleRateRef = useRef<HTMLDivElement>(null);
+  const pipelineRef = useRef<HTMLDivElement>(null);
+  const pipelineBarRef = useRef<HTMLDivElement>(null);
   const lastSentSnapshotRef = useRef({ count: 0, time: performance.now() });
   const bleRateValueRef = useRef(0);
 
@@ -121,6 +123,24 @@ export default function DebugOverlay() {
         const colorClass = avg > 30 ? 'text-red-400' : avg > 15 ? 'text-yellow-400' : 'text-green-400';
         bleRateRef.current.innerHTML = `${bleRateValueRef.current} w/s <span class="${colorClass}">${Math.round(lat)}ms (avg ${Math.round(avg)}ms)</span>`;
       }
+
+      // Pipeline latency
+      if (pipelineRef.current) {
+        const total = d.pipelineTotalMs;
+        const ble = d.pipelineBleMs;
+        const budget = d.tickMs || 125;
+        const colorClass = total > budget * 0.8 ? 'text-red-400' : total > budget * 0.5 ? 'text-yellow-400' : 'text-green-400';
+        pipelineRef.current.innerHTML = `<span class="${colorClass}">pipeline: ${total.toFixed(1)}ms</span> (ble ${ble.toFixed(1)}ms)`;
+      }
+      // Pipeline bar (% of tickMs budget used)
+      if (pipelineBarRef.current) {
+        const total = d.pipelineTotalMs;
+        const budget = d.tickMs || 125;
+        const pct = Math.min(100, (total / budget) * 100);
+        pipelineBarRef.current.style.width = `${pct}%`;
+        const barColor = pct > 80 ? 'rgb(248,113,113)' : pct > 50 ? 'rgb(250,204,21)' : 'rgb(74,222,128)';
+        pipelineBarRef.current.style.backgroundColor = barColor;
+      }
     };
 
     const id = setInterval(tick, 200);
@@ -153,6 +173,14 @@ export default function DebugOverlay() {
         <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>
         <div ref={bleStatsRef} className="text-foreground/40" />
         <div ref={bleRateRef} className="text-foreground/40" />
+      </div>
+
+      <div className="border-t border-border/30 pt-0.5 mt-0.5">
+        <div className="text-foreground/40 text-[9px] uppercase tracking-wider mb-0.5">pipeline</div>
+        <div ref={pipelineRef} className="text-foreground/60" />
+        <div className="h-2 rounded-sm bg-foreground/10 overflow-hidden mt-0.5">
+          <div ref={pipelineBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
+        </div>
       </div>
 
       <div className="mt-0.5 border-t border-border/30 pt-0.5 text-foreground/40">

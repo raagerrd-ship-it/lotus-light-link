@@ -51,7 +51,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       debugData.bleWriteLatAvgMs = 0;
     }
   }, [trackName]);
-  useEffect(() => { engineRef.current?.setTickMs(tickMs); }, [tickMs]);
+  useEffect(() => { engineRef.current?.setTickMs(tickMs); debugData.tickMs = tickMs; }, [tickMs]);
 
   // ── Chart rendering via rAF ──
   useEffect(() => {
@@ -98,6 +98,8 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
       lastSampleTimeRef.current = performance.now();
 
       setPipelineTimings(data.timings);
+      debugData.pipelineTotalMs = data.timings.totalTickMs;
+      debugData.pipelineBleMs = data.timings.bleCallMs;
 
       onLiveStatusRef.current?.({
         brightness: data.brightness,
