@@ -423,7 +423,7 @@ export class LightEngine {
     const bleEnd = performance.now();
 
     // ── Emit tick data ──
-    this.emit({
+    const tickData: TickData = {
       brightness: pct,
       color: [bleSentR, bleSentG, bleSentB],
       baseColor: this.lastBaseColor,
@@ -440,7 +440,9 @@ export class LightEngine {
         bleCallMs: bleEnd - smoothEnd,
         totalTickMs: bleEnd - tickStart,
       },
-    });
+    };
+    this.lastTickData = tickData;
+    this.emit(tickData);
   }
 
 
