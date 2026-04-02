@@ -277,6 +277,8 @@ export class LightEngine {
     this.lastBucket = 0;
     this.idleSent = false;
     this.idleColor = [255, 60, 0];
+    this.lastTotalRms = 0;
+    this.lastTickData = null;
   }
 
   /** Core tick — called by worker */
