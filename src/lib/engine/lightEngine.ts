@@ -257,6 +257,8 @@ export class LightEngine {
     this.lastBaseColor = [0, 0, 0];
     this.lastBucket = 0;
     this.idleSent = false;
+    this.silenceTickCount = 0;
+    this.micDetectedPlaying = false;
     this.idleColor = [255, 60, 0];
   }
 
