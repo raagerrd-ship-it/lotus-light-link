@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { debugData } from "@/lib/ui/debugStore";
 
 // Local proxy URL — auto-fallback to localhost if localStorage key is missing
 const DEFAULT_LOCAL_PROXY_URL = "http://localhost:3000/api/sonos";
