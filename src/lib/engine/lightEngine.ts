@@ -44,6 +44,12 @@ export class LightEngine {
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
   private tickMs = DEFAULT_TICK_MS;
 
+  // Mic-based silence detection — override Sonos polling lag
+  private silenceTickCount = 0;
+  private readonly SILENCE_THRESHOLD = 0.005; // RMS below this = silence
+  private readonly SILENCE_TICKS_TO_IDLE = 8; // ~1s at 125ms ticks
+  private micDetectedPlaying = false;
+
   // --- Internal ---
   private analyser: AnalyserNode | null = null;
   private freqBuf: Float32Array<ArrayBuffer> | null = null;
