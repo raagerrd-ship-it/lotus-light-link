@@ -112,7 +112,7 @@ export default function DebugOverlay() {
             <div ref={headroomBarRef} className="h-full rounded-sm transition-[width] duration-200" style={{ width: '0%' }} />
           </div>
         </div>
-        <div ref={headroomLabelRef} className="text-right mt-0.5" />
+        <span ref={headroomLabelRef} className="block text-right mt-0.5" />
       </div>
 
       <div className="mt-0.5 text-foreground/30 text-[8px]">
