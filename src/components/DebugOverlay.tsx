@@ -168,6 +168,7 @@ export default function DebugOverlay() {
           <div className="flex-1 h-2.5 rounded-sm bg-foreground/10 overflow-hidden">
             <div ref={bleOutBarRef} className="h-full rounded-sm transition-[width] duration-100" style={{ width: '0%' }} />
           </div>
+          <span ref={bleOutLatLabelRef} className="text-foreground/50 shrink-0 tabular-nums" />
           <span ref={bleOutSourceRef} style={{ display: 'none' }} />
         </div>
         <div ref={bleOutWaitRef} className="text-foreground/50">väntar…</div>
