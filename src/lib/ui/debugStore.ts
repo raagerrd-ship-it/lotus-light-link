@@ -16,6 +16,7 @@ export interface DebugData {
   bassLevel: number;
   midHiLevel: number;
   isPlayingState: boolean;
+  sonosPlaybackState: string | null;
   // Process
   dynamicDamping: number;
   // BLE Output
