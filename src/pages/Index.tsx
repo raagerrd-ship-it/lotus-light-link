@@ -556,7 +556,7 @@ const Index = () => {
         />
       )}
 
-      {showDebug && <DebugOverlay />}
+      {activated && showDebug && <DebugOverlay />}
     </div>
   );
 };
