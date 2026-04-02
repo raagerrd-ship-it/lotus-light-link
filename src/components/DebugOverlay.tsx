@@ -99,9 +99,10 @@ export default function DebugOverlay() {
         const sent = d.bleSentCount;
         const skipD = d.bleSkipDeltaCount;
         const skipT = d.bleSkipThrottleCount;
-        const total = sent + skipD + skipT;
+        const skipB = d.bleSkipBusyCount;
+        const total = sent + skipD + skipT + skipB;
         const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
-        bleStatsRef.current.textContent = `tx ${sent} skip ${skipD + skipT} (${pct}%)`;
+        bleStatsRef.current.textContent = `tx ${sent} skip ${skipD + skipT} busy ${skipB} (${pct}%)`;
       }
 
       // BLE writes/sec (computed over each poll interval)
@@ -115,7 +116,10 @@ export default function DebugOverlay() {
           snap.count = d.bleSentCount;
           snap.time = now;
         }
-        bleRateRef.current.textContent = `${bleRateValueRef.current} w/s`;
+        const lat = d.bleWriteLatMs;
+        const avg = d.bleWriteLatAvgMs;
+        const colorClass = avg > 30 ? 'text-red-400' : avg > 15 ? 'text-yellow-400' : 'text-green-400';
+        bleRateRef.current.innerHTML = `${bleRateValueRef.current} w/s <span class="${colorClass}">${Math.round(lat)}ms (avg ${Math.round(avg)}ms)</span>`;
       }
     };
 
