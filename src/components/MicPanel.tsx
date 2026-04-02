@@ -28,6 +28,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
   const rafIdRef = useRef(0);
   const lastSampleTimeRef = useRef(0);
   const onLiveStatusRef = useRef(onLiveStatus);
+  const lastBleCountRef = useRef(0);
 
   // Keep callback ref fresh
   useEffect(() => { onLiveStatusRef.current = onLiveStatus; }, [onLiveStatus]);
