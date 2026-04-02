@@ -33,6 +33,7 @@ export interface DebugData {
   // Pipeline timing
   pipelineTotalMs: number;
   pipelineBleMs: number;
+  tickMs: number;
 }
 
 export const debugData: DebugData = {
