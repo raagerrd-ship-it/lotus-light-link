@@ -352,7 +352,6 @@ export class LightEngine {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
       pct = Math.round(this.extraSmoothPct);
     }
-    const smoothEnd = performance.now();
 
     // ── Palette mode ──
     const pm = cal.paletteMode ?? 'off';
