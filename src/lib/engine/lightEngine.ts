@@ -326,9 +326,10 @@ export class LightEngine {
     const bands = computeBands(an, this.freqBuf);
     const rmsEnd = performance.now();
 
-    // ── RMS-gate: skip pipeline if mic input barely changed ──
+    // ── RMS-gate: skip pipeline only when palette mode is off ──
     const rmsChange = Math.abs(bands.totalRms - this.lastTotalRms) / Math.max(this.lastTotalRms, 0.001);
-    if (rmsChange < 0.05 && this.lastTickData) {
+    const paletteActive = (cal.paletteMode ?? 'off') !== 'off' && this.palette.length > 1;
+    if (!paletteActive && rmsChange < 0.05 && this.lastTickData) {
       this.emit(this.lastTickData);
       return;
     }
