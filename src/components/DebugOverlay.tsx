@@ -87,10 +87,17 @@ export default function DebugOverlay() {
       const barPct = Math.min(100, loadPct);
       const barColor = loadPct > 90 ? 'rgb(248,113,113)' : loadPct > 60 ? 'rgb(250,204,21)' : 'rgb(74,222,128)';
 
-      // ── Output color ──
+      // ── Output color / active palette slot ──
       const base = d.bleBaseColor || [0, 0, 0];
-      const br = d.bleSentBright ?? 0;
-      const colorSwatch = `rgb(${base[0]},${base[1]},${base[2]})`;
+      const displayPalette = (d.palette.length > 0 ? d.palette : [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]).slice(0, 4);
+      const activePaletteIndex = d.palette.length > 0
+        ? displayPalette.reduce((bestIdx, color, idx, arr) => {
+            const best = arr[bestIdx];
+            const dist = Math.abs(color[0] - base[0]) + Math.abs(color[1] - base[1]) + Math.abs(color[2] - base[2]);
+            const bestDist = Math.abs(best[0] - base[0]) + Math.abs(best[1] - base[1]) + Math.abs(best[2] - base[2]);
+            return dist < bestDist ? idx : bestIdx;
+          }, 0)
+        : 0;
 
       // ── Build ──
       let buildTime = '';
@@ -138,8 +145,8 @@ export default function DebugOverlay() {
 
         <div class="mt-1.5 text-foreground/40 text-[9px] uppercase tracking-wider">Output</div>
         <div class="mt-0.5 flex items-center gap-1">
-          ${(d.palette.length > 0 ? d.palette : [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]).slice(0,4).map((c, i, arr) => {
-            const active = d.palette.length > 0 && i === d.paletteIndex;
+          ${displayPalette.map((c, i, arr) => {
+            const active = i === activePaletteIndex;
             return `<div class="flex-1 h-4 ${i === 0 ? 'rounded-l-sm' : ''} ${i === arr.length - 1 ? 'rounded-r-sm' : ''}" style="background:rgb(${c[0]},${c[1]},${c[2]});border:2px solid ${active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.15)'}"></div>`;
           }).join('')}
         </div>
