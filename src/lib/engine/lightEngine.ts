@@ -59,6 +59,9 @@ export class LightEngine {
   private extraSmoothPct = 0;
   private lastTotalRms = 0;
   private lastTickData: TickData | null = null;
+  // Spectral flux tracking
+  private smoothedFlux = 0;
+  private fluxMax = 0.001; // adaptive ceiling for flux normalization
 
   private idleSent = false;
 
