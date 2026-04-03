@@ -77,10 +77,10 @@ export default function DebugOverlay() {
         reconnectHtml += '</div>';
       }
 
-      // ── Headroom (sliding peak of pipeline total) ──
-      const lat = d.pipelineTotalMs;
+      // ── Headroom bar based on total E2E latency ──
+      const e2e = d.micBufferMs + d.pipelineTotalMs + d.bleRadioEstMs;
       const tickTarget = d.tickMs || 125;
-      if (lat > peakLatRef.current) { peakLatRef.current = lat; peakDecayRef.current = 0; }
+      if (e2e > peakLatRef.current) { peakLatRef.current = e2e; peakDecayRef.current = 0; }
       else { peakDecayRef.current++; if (peakDecayRef.current > 5) peakLatRef.current *= 0.9; }
       const peak = peakLatRef.current;
       const loadPct = tickTarget > 0 ? Math.min(150, (peak / tickTarget) * 100) : 0;
