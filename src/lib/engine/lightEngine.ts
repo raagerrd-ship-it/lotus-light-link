@@ -456,6 +456,7 @@ export class LightEngine {
       bleColorSource: 'normal',
       micRms: this.smoothed,
       isPlaying: this.playing,
+      paletteIndex: this.paletteIndex,
       timings: {
         rmsMs: rmsEnd - tickStart,
         smoothMs: smoothEnd - rmsEnd,
