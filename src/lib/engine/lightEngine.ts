@@ -198,8 +198,11 @@ export class LightEngine {
       const audioCtx = new AudioContext({ latencyHint: 'interactive' });
       this.audioCtx = audioCtx;
       // Report mic buffer latency to debug store
+      // baseLatency = OS audio pipeline, fftSize/sampleRate = analyser window
       const { debugData } = await import('@/lib/ui/debugStore');
-      debugData.micBufferMs = Math.round(((audioCtx.baseLatency ?? 0) + (audioCtx.outputLatency ?? 0)) * 1000);
+      const baseLat = ((audioCtx.baseLatency ?? 0) + (audioCtx.outputLatency ?? 0)) * 1000;
+      const fftWindowMs = (512 / audioCtx.sampleRate) * 1000; // fftSize=512
+      debugData.micBufferMs = Math.round(baseLat + fftWindowMs);
       const source = audioCtx.createMediaStreamSource(stream);
 
       const hiShelf = audioCtx.createBiquadFilter();
