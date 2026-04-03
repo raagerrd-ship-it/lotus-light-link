@@ -138,8 +138,8 @@ export default function DebugOverlay() {
 
         <div class="mt-1.5 text-foreground/40 text-[9px] uppercase tracking-wider">Output</div>
         <div class="mt-0.5 flex items-center gap-1">
-          ${(d.palette.length > 0 ? d.palette : [[0,0,0]]).map((c: number[], i: number) =>
-            `<div class="flex-1 h-4 ${i === 0 ? 'rounded-l-sm' : ''} ${i === (d.palette.length > 0 ? d.palette.length : 1) - 1 ? 'rounded-r-sm' : ''} border border-foreground/20" style="background:rgb(${c[0]},${c[1]},${c[2]})"></div>`
+          ${(d.palette.length > 0 ? d.palette : [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]).slice(0,4).map((c, i, arr) =>
+            `<div class="flex-1 h-4 ${i === 0 ? 'rounded-l-sm' : ''} ${i === arr.length - 1 ? 'rounded-r-sm' : ''} border border-foreground/20" style="background:rgb(${c[0]},${c[1]},${c[2]})"></div>`
           ).join('')}
         </div>
         <div class="flex justify-between mt-0.5">
