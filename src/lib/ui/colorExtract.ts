@@ -110,7 +110,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
       // Skip pure grays (very low chroma)
       const max = Math.max(avgR, avgG, avgB);
       const min = Math.min(avgR, avgG, avgB);
-      if (max - min < 45) continue;
+      if (max - min < 25) continue; // relaxed chroma filter for more palette diversity
 
       // Boost saturation for vivid LED colors
       const boosted = boostSaturation(avgR, avgG, avgB);
@@ -118,7 +118,7 @@ function extractColorsFromImage(img: HTMLImageElement, count: number): RGB[] {
     }
     scored.sort((a, b) => b.score - a.score);
 
-    const MIN_DIST = 40;
+    const MIN_DIST = 30; // reduced from 40 for more palette entries
     const palette: RGB[] = [];
     for (const { color } of scored) {
       if (palette.length >= count) break;
