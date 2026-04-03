@@ -130,6 +130,7 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
         micRms: data.micRms,
         isPlayingState: data.isPlaying,
         isPunch: data.isPunch,
+        paletteIndex: data.paletteIndex,
       });
     });
 
