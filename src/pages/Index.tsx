@@ -135,6 +135,9 @@ const Index = () => {
     }
   }, [nowPlaying?.nextAlbumArtUrl, colorSource]);
 
+  // Sync palette to debug store
+  useEffect(() => { debugData.palette = currentPalette; }, [currentPalette]);
+
   // Apply manual color when in manual mode
   useEffect(() => {
     if (colorSource === 'manual') {
