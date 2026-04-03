@@ -142,18 +142,20 @@ const MicPanel = ({ char, currentColor, palette, sonosVolume, isPlaying = true, 
     };
   }, []);
 
-  // ── Canvas resize ──
+  // ── Canvas resize (tracks container size changes from header/footer show/hide) ──
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
     const resize = () => {
       const canvas = canvasRef.current;
-      const container = containerRef.current;
       if (!canvas || !container) return;
       canvas.width = container.clientWidth * devicePixelRatio;
       canvas.height = container.clientHeight * devicePixelRatio;
     };
     resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+    return () => ro.disconnect();
   }, []);
 
   return (
