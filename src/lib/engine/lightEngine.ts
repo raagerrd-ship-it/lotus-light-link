@@ -155,6 +155,9 @@ export class LightEngine {
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
     this.extraSmoothPct = 0;
+    this.smoothedFlux = 0;
+    this.fluxMax = 0.001;
+    resetFluxState();
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
