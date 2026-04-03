@@ -197,6 +197,9 @@ export class LightEngine {
 
       const audioCtx = new AudioContext({ latencyHint: 'interactive' });
       this.audioCtx = audioCtx;
+      // Report mic buffer latency to debug store
+      const { debugData } = await import('@/lib/ui/debugStore');
+      debugData.micBufferMs = Math.round(((audioCtx.baseLatency ?? 0) + (audioCtx.outputLatency ?? 0)) * 1000);
       const source = audioCtx.createMediaStreamSource(stream);
 
       const hiShelf = audioCtx.createBiquadFilter();

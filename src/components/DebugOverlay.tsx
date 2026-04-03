@@ -112,14 +112,22 @@ export default function DebugOverlay() {
         </div>
         ${reconnectHtml}
 
-        <div class="mt-1.5 text-foreground/40 text-[9px] uppercase tracking-wider">Throughput</div>
+        <div class="mt-1.5 text-foreground/40 text-[9px] uppercase tracking-wider">Latens</div>
         <div class="mt-0.5 flex justify-between">
-          <span>Sonos RTT</span>
-          <span class="text-foreground/60">${sonosOk ? `${sonosRtt} ms` : '—'}</span>
+          <span>Mic buf</span>
+          <span class="text-foreground/60">${d.micBufferMs || '?'} ms</span>
         </div>
         <div class="flex justify-between">
-          <span>Mic → BLE</span>
+          <span>Tick CPU</span>
           <span class="text-foreground/60">${Math.round(d.pipelineTotalMs)} ms</span>
+        </div>
+        <div class="flex justify-between">
+          <span>BLE radio</span>
+          <span class="text-foreground/60">~${d.bleRadioEstMs} ms</span>
+        </div>
+        <div class="flex justify-between font-semibold">
+          <span>Σ E2E</span>
+          <span class="text-foreground/80">${d.micBufferMs + Math.round(d.pipelineTotalMs) + d.bleRadioEstMs} ms</span>
         </div>
         <div class="flex items-center gap-1 mt-0.5">
           <div class="flex-1 h-2.5 rounded-sm bg-foreground/10 overflow-hidden">
