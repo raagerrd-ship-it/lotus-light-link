@@ -35,6 +35,9 @@ export interface DebugData {
   pipelineTotalMs: number;
   pipelineBleMs: number;
   tickMs: number;
+  // End-to-end latency estimation
+  micBufferMs: number;
+  bleRadioEstMs: number;
 }
 
 export const debugData: DebugData = {
@@ -63,4 +66,6 @@ export const debugData: DebugData = {
   pipelineTotalMs: 0,
   pipelineBleMs: 0,
   tickMs: 125,
+  micBufferMs: 0,
+  bleRadioEstMs: 10,
 };
