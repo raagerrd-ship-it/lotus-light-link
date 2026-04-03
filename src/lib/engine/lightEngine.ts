@@ -307,6 +307,7 @@ export class LightEngine {
           bassLevel: 0, midHiLevel: 0, rawEnergyPct: 0,
           isPunch: false, bleColorSource: 'idle', micRms: 0, isPlaying: false,
           timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+          paletteIndex: 0,
         });
       }
       this.worker?.postMessage('stop');
