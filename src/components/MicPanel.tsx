@@ -15,7 +15,7 @@ interface MicPanelProps {
   historyLen?: number;
   tickMs?: number;
   chartEnabled?: boolean;
-  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => void;
+  onLiveStatus?: (status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean; paletteIndex?: number }) => void;
 }
 
 const HISTORY_LEN = 64; // ~8s at 8Hz, fewer visible points
