@@ -41,9 +41,9 @@ export function drawIntensityChart(
   const len = samples.length;
   if (len <= 1) { ctx.clearRect(0, 0, w, h); return; }
 
-  const chartHeight = h * 0.92;
-  const chartTop = (h - chartHeight) / 2;
-  const bottom = chartTop + chartHeight;
+  const chartTop = 0;
+  const chartHeight = h;
+  const bottom = h;
   const scale = chartHeight / 100;
 
   ctx.clearRect(0, 0, w, h);
