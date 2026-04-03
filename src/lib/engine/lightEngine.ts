@@ -7,7 +7,7 @@
 
 import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
-import { computeBands, type BandResult } from "./audioAnalysis";
+import { computeBands, resetFluxState, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
 import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
 
@@ -59,6 +59,9 @@ export class LightEngine {
   private extraSmoothPct = 0;
   private lastTotalRms = 0;
   private lastTickData: TickData | null = null;
+  // Spectral flux tracking
+  private smoothedFlux = 0;
+  private fluxMax = 0.001; // adaptive ceiling for flux normalization
 
   private idleSent = false;
 
@@ -152,6 +155,9 @@ export class LightEngine {
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
     this.extraSmoothPct = 0;
+    this.smoothedFlux = 0;
+    this.fluxMax = 0.001;
+    resetFluxState();
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
@@ -354,10 +360,20 @@ export class LightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
+    // ── Spectral flux → transient boost ──
+    // Adaptive normalization: track peak flux and decay slowly
+    if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
+    else this.fluxMax *= 0.999; // slow decay
+    const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
+    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1);
+    // Boost brightness on transients (max ~15% extra)
+    const fluxBoost = this.smoothedFlux * 0.15;
+
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
       100, this.dynamicCenter, cal,
+      fluxBoost,
     );
     this.dynamicCenter = newCenter;
 
