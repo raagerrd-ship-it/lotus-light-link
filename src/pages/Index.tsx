@@ -175,7 +175,7 @@ const Index = () => {
   }, [activated]);
 
   // Live status callback from MicPanel
-  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean }) => {
+  const handleLiveStatus = useCallback((status: { brightness: number; color: [number, number, number]; bassLevel: number; midHiLevel: number; bleSentColor?: [number, number, number]; bleSentBright?: number; bleColorSource?: 'normal' | 'idle'; micRms?: number; isPlayingState?: boolean; isPunch?: boolean; paletteIndex?: number }) => {
     debugData.bassLevel = status.bassLevel;
     debugData.midHiLevel = status.midHiLevel;
     if (status.bleSentColor) {
