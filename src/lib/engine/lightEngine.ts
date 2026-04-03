@@ -124,6 +124,7 @@ export class LightEngine {
         micRms: 0,
         isPlaying: false,
         timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+        paletteIndex: 0,
       });
     }
 
