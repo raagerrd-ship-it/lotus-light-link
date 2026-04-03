@@ -22,6 +22,7 @@ export interface TickData {
   bleColorSource: 'normal' | 'idle';
   micRms: number;
   isPlaying: boolean;
+  paletteIndex: number;
   /** Pipeline timing in ms */
   timings: { rmsMs: number; smoothMs: number; bleCallMs: number; totalTickMs: number };
 }
