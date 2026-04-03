@@ -356,7 +356,7 @@ const Index = () => {
       )}
 
       {activated && (
-        <div className="absolute inset-0 transition-[top,bottom] duration-300" style={{ top: showOverlay && (connected || !busy) ? '2.75rem' : 0, bottom: showCalibration ? '16rem' : (nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
+        <div className="absolute inset-0 transition-[top,bottom] duration-300" style={{ top: showOverlay && (connected || !busy) ? '2.75rem' : 0, bottom: showCalibration ? '16rem' : (showOverlay && nowPlaying?.trackName && nowPlaying.playbackState !== "PLAYBACK_STATE_IDLE" ? '4.5rem' : 0) }}>
           <MicPanel char={firstChar} currentColor={currentColor} palette={currentPalette} sonosVolume={nowPlaying?.volume} isPlaying={!!nowPlaying?.trackName && nowPlaying.playbackState === "PLAYBACK_STATE_PLAYING"} trackName={nowPlaying?.trackName ?? null} tickMs={tickMs} chartEnabled={chartEnabled} onLiveStatus={handleLiveStatus} />
         </div>
       )}
