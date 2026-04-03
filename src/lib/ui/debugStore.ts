@@ -66,4 +66,6 @@ export const debugData: DebugData = {
   pipelineTotalMs: 0,
   pipelineBleMs: 0,
   tickMs: 125,
+  micBufferMs: 0,
+  bleRadioEstMs: 10,
 };
