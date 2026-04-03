@@ -7,7 +7,7 @@
 
 import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./bledom";
 import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
-import { computeBands, type BandResult } from "./audioAnalysis";
+import { computeBands, resetFluxState, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
 import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
 
