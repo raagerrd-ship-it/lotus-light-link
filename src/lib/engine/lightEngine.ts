@@ -22,6 +22,7 @@ export interface TickData {
   bleColorSource: 'normal' | 'idle';
   micRms: number;
   isPlaying: boolean;
+  paletteIndex: number;
   /** Pipeline timing in ms */
   timings: { rmsMs: number; smoothMs: number; bleCallMs: number; totalTickMs: number };
 }
@@ -123,6 +124,7 @@ export class LightEngine {
         micRms: 0,
         isPlaying: false,
         timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+        paletteIndex: 0,
       });
     }
 
@@ -305,6 +307,7 @@ export class LightEngine {
           bassLevel: 0, midHiLevel: 0, rawEnergyPct: 0,
           isPunch: false, bleColorSource: 'idle', micRms: 0, isPlaying: false,
           timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+          paletteIndex: 0,
         });
       }
       this.worker?.postMessage('stop');
@@ -455,6 +458,7 @@ export class LightEngine {
       bleColorSource: 'normal',
       micRms: this.smoothed,
       isPlaying: this.playing,
+      paletteIndex: this.paletteIndex,
       timings: {
         rmsMs: rmsEnd - tickStart,
         smoothMs: smoothEnd - rmsEnd,

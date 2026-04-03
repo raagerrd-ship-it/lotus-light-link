@@ -138,9 +138,10 @@ export default function DebugOverlay() {
 
         <div class="mt-1.5 text-foreground/40 text-[9px] uppercase tracking-wider">Output</div>
         <div class="mt-0.5 flex items-center gap-1">
-          ${(d.palette.length > 0 ? d.palette : [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]).slice(0,4).map((c, i, arr) =>
-            `<div class="flex-1 h-4 ${i === 0 ? 'rounded-l-sm' : ''} ${i === arr.length - 1 ? 'rounded-r-sm' : ''} border border-foreground/20" style="background:rgb(${c[0]},${c[1]},${c[2]})"></div>`
-          ).join('')}
+          ${(d.palette.length > 0 ? d.palette : [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]).slice(0,4).map((c, i, arr) => {
+            const active = d.palette.length > 0 && i === d.paletteIndex;
+            return `<div class="flex-1 h-4 ${i === 0 ? 'rounded-l-sm' : ''} ${i === arr.length - 1 ? 'rounded-r-sm' : ''}" style="background:rgb(${c[0]},${c[1]},${c[2]});border:2px solid ${active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.15)'}"></div>`;
+          }).join('')}
         </div>
         <div class="flex justify-between mt-0.5">
           <span>BLE w/s</span>
