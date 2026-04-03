@@ -357,10 +357,20 @@ export class LightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
+    // ── Spectral flux → transient boost ──
+    // Adaptive normalization: track peak flux and decay slowly
+    if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
+    else this.fluxMax *= 0.999; // slow decay
+    const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
+    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1);
+    // Boost brightness on transients (max ~15% extra)
+    const fluxBoost = this.smoothedFlux * 0.15;
+
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
       100, this.dynamicCenter, cal,
+      fluxBoost,
     );
     this.dynamicCenter = newCenter;
 
