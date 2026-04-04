@@ -266,11 +266,11 @@ function GenericFader({
 /* ── Toggle fader (on/off, styled like a mini fader) ── */
 
 function ToggleFader({
-  label, title, value, onChange, accentColor,
+  label, title, value, onChange, accentColor, onFocus,
 }: {
   label: string; title: string;
   value: boolean; onChange: (v: boolean) => void;
-  accentColor: string;
+  accentColor: string; onFocus?: () => void;
 }) {
   return (
     <div className="flex flex-col items-center gap-1 min-w-[3rem]" title={title}>
