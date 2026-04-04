@@ -484,6 +484,20 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               const prevGroup = i > 0 ? PROFILE_SLIDERS[i - 1].group : null;
               const showSep = prevGroup && prevGroup !== def.group;
 
+              if (def.key === '_softness') {
+                return (
+                  <div key="_softness" className="flex items-center">
+                    {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
+                    <MixerFader
+                      def={def}
+                      value={softness}
+                      onChange={updateSoftness}
+                      isActive={activeSlider === '_softness'}
+                      onFocus={() => setActiveSlider('_softness')}
+                    />
+                  </div>
+                );
+              }
 
               return (
                 <div key={def.key} className="flex items-center">
