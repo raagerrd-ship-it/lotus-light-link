@@ -15,7 +15,7 @@ import { getPipelineTimings } from "@/lib/ui/pipelineTimings";
 /* ── Slider definitions ── */
 
 interface SliderDef {
-  key: keyof LightCalibration | '_reaktion';
+  key: keyof LightCalibration | '_softness';
   label: string;
   shortLabel: string;
   min: number;
@@ -30,9 +30,8 @@ interface SliderDef {
 /** Profile sliders — saved per-preset */
 const PROFILE_SLIDERS: SliderDef[] = [
   { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas vs diskant påverkar ljusstyrkan. 0.5 = lika, 1.0 = bara bas.' },
-  { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner efter en topp. 1.0 = omedelbart, lågt = långsam fade.', format: v => v.toFixed(3) },
+  { key: '_softness', label: 'Mjukhet', shortLabel: 'Soft', min: 0, max: 100, step: 1, unit: '', group: 'Dynamik', description: 'Hur mjukt ljuset beter sig. 0 = rått/direkt, 100 = mycket mjukt/långsamt. Bypass = 0.' },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -3.0, max: 2.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Positivt = förstärkt kontrast. Negativt = utjämnad. 0 = neutral.' },
-  { key: 'smoothing', label: 'Smoothing', shortLabel: 'Smth', min: 0, max: 100, step: 1, unit: '%', group: 'Dynamik', description: 'Extra utjämning av ljuskurvan. 0 = av, högre = mjukare.' },
   { key: 'brightnessFloor', label: 'Golv', shortLabel: 'Floor', min: 0, max: 25, step: 1, unit: '%', group: 'Dynamik', description: 'Lägsta brightness. Ljuset går aldrig under detta värde.' },
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
   { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 90, max: 100, step: 0.5, unit: '%', group: 'Punch', description: '100 = av. Ljusstyrka över detta → vit färg.' },
@@ -45,13 +44,28 @@ const GLOBAL_SLIDERS: SliderDef[] = [
 
 const BYPASS_VALUES: Record<string, number> = {
   bassWeight: 0.5,
-  releaseAlpha: 1.0,
+  _softness: 0,
   dynamicDamping: 0,
-  smoothing: 0,
   brightnessFloor: 0,
   volCompensation: 80,
   punchWhiteThreshold: 100,
 };
+
+/** Convert Softness 0-100 → releaseAlpha + smoothing */
+function softnessToParams(s: number): { releaseAlpha: number; smoothing: number } {
+  // 0 = raw (release=1.0, smoothing=0), 100 = very smooth (release=0.005, smoothing=80)
+  const t = s / 100;
+  const releaseAlpha = 1.0 - 0.995 * Math.pow(t, 0.7);
+  const smoothing = Math.round(t * 80);
+  return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing };
+}
+
+/** Convert releaseAlpha → approximate Softness 0-100 */
+function paramsToSoftness(releaseAlpha: number): number {
+  // Inverse: t = ((1.0 - releaseAlpha) / 0.995) ^ (1/0.7)
+  const t = Math.pow(Math.max(0, (1.0 - releaseAlpha)) / 0.995, 1 / 0.7);
+  return Math.round(Math.max(0, Math.min(100, t * 100)));
+}
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
   { color: [255, 60, 0], label: 'Orange' },
@@ -290,6 +304,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   const [justSaved, setJustSaved] = useState(false);
 
   const isDirty = JSON.stringify(cal) !== JSON.stringify(savedCal);
+  const softness = paramsToSoftness(cal.releaseAlpha);
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
@@ -301,8 +316,17 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
 
   const update = useCallback((key: keyof LightCalibration, value: number) => {
     setCal(prev => {
-      // Always force attack to max speed
       const next = { ...prev, [key]: value, attackAlpha: 1.0 };
+      saveCalibration(next, conn?.device?.name, { localOnly: true });
+      onCalibrationChange?.(next);
+      return next;
+    });
+  }, [conn?.device?.name, onCalibrationChange]);
+
+  const updateSoftness = useCallback((s: number) => {
+    setCal(prev => {
+      const { releaseAlpha, smoothing } = softnessToParams(s);
+      const next = { ...prev, releaseAlpha, smoothing, attackAlpha: 1.0 };
       saveCalibration(next, conn?.device?.name, { localOnly: true });
       onCalibrationChange?.(next);
       return next;
@@ -347,9 +371,11 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   // Find active slider description
   const allSliders = [...PROFILE_SLIDERS, ...GLOBAL_SLIDERS];
   const activeDef = allSliders.find(s => s.key === activeSlider);
-  const activeValue = activeDef && activeDef.key !== '_reaktion'
-    ? cal[activeDef.key as keyof LightCalibration] as number
-    : 0;
+  const activeValue = activeSlider === '_softness'
+    ? softness
+    : activeDef && activeDef.key !== '_softness'
+      ? cal[activeDef.key as keyof LightCalibration] as number
+      : 0;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.88)', backdropFilter: 'blur(20px)' }}>
@@ -458,6 +484,20 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               const prevGroup = i > 0 ? PROFILE_SLIDERS[i - 1].group : null;
               const showSep = prevGroup && prevGroup !== def.group;
 
+              if (def.key === '_softness') {
+                return (
+                  <div key="_softness" className="flex items-center">
+                    {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
+                    <MixerFader
+                      def={def}
+                      value={softness}
+                      onChange={updateSoftness}
+                      isActive={activeSlider === '_softness'}
+                      onFocus={() => setActiveSlider('_softness')}
+                    />
+                  </div>
+                );
+              }
 
               return (
                 <div key={def.key} className="flex items-center">
