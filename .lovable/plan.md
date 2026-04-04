@@ -1,38 +1,32 @@
 
 
-## Flytta skip-logik till mikrofoninput
+## Lägg till RMS-gate slider + ta bort BLE delta-gate
 
-### Problem
-Skip-logiken (delta-gate) sitter idag efter hela pipelinen (FFT → smooth → AGC → brightness → color → **skip-check**). All beräkning görs i onödan om resultatet ändå skippas.
+### Två ändringar i samma plan
 
-### Lösning: RMS-gate direkt efter FFT
+**1. Ta bort BLE delta-gate** i `src/lib/engine/bledom.ts`:
+- Radera `maxDelta`-beräkningen och `if (maxDelta < 8)` early return i `sendToBLE`
+- Behåll `_lastR/_lastG/_lastB/_lastBr` och non-reentrant guard
 
-Direkt efter `computeBands()` (rad 310) jämför vi `totalRms` mot förra tickens värde. Om skillnaden är under en tröskel → skippa resten av pipelinen och emit:a förra tickens data.
+**2. Lägg till `rmsGate`-parameter**:
 
-### Vad som händer
+**`src/lib/engine/lightCalibration.ts`**:
+- Lägg till `rmsGate: number` i `LightCalibration`-interfacet
+- Default: `rmsGate: 5` i `DEFAULT_CALIBRATION` (representerar 5%)
 
-**`src/lib/engine/lightEngine.ts`**:
-1. Ny instansvariabel `lastTotalRms: number = 0` och `lastTickData: TickData | null`
-2. Efter `computeBands()` (rad 310), beräkna `rmsChange = Math.abs(bands.totalRms - this.lastTotalRms) / Math.max(this.lastTotalRms, 0.001)`
-3. Om `rmsChange < 0.05` (5% relativ förändring) **och** det finns `lastTickData`:
-   - Öka `debugData.bleSkipDeltaCount++`
-   - Re-emit `lastTickData` (så chart/UI fortsätter fungera)
-   - `return` — skippa smooth, AGC, brightness, color, BLE
-4. Annars: kör pipelinen som vanligt, spara `this.lastTotalRms = bands.totalRms` och `this.lastTickData = tickData`
+**`src/lib/engine/lightEngine.ts`** (rad ~332):
+- Ändra `rmsChange < 0.05` → `rmsChange < cal.rmsGate / 100`
 
-### Viktigt designbeslut
-
-- AGC-decay **pausas** under skippade ticks — detta är OK eftersom om mic-input inte ändrats har AGC-state inte heller behövt ändras
-- Delta-gate i `sendToBLE` (bledom.ts) behålls som backup — den fångar fall där pipelinen körs men BLE-output ändå är identisk
-- Tröskeln 5% är konservativ — kan justeras via calibration senare
+**`src/components/CalibrationOverlay.tsx`**:
+- Lägg till en global slider (i samma sektion som ⚡/👁-toggles):
+  - Label: **RMS Gate**
+  - Key: `rmsGate`
+  - Min: 0, Max: 20, Step: 1
+  - Enhet: `%`
+  - Beskrivning: "Tröskel för att skippa beräkning vid oförändrad mic-input. Högre = fler ticks skippas (lägre CPU). Lägre = mjukare övergångar."
+- Bypass-värde: 0 (ingen gate)
 
 ### Resultat
 
-```text
-Nuvarande:  FFT → Smooth → AGC → Brightness → Color → BLE(skip?) → emit
-Nytt:       FFT → RMS-GATE → [Smooth → AGC → Brightness → Color → BLE → emit]
-                    ↑ skip här om mic-input oförändrad
-```
-
-Sparar ~90% av CPU på ticks där mikrofonen inte fångar ny energi (t.ex. tyst passage, hållna toner).
+Användaren kan i realtid justera hur känslig RMS-gaten är, från 0% (aldrig skippa) till 20% (aggressiv filtrering), direkt i mixern.
 
