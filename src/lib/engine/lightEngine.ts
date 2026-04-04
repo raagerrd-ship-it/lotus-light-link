@@ -10,6 +10,7 @@ import { getCalibration, saveCalibration, applyColorCalibration, getActiveDevice
 import { computeBands, resetFluxState, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
 import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
+import { debugData } from "@/lib/ui/debugStore";
 
 export interface TickData {
   brightness: number;
@@ -331,6 +332,7 @@ export class LightEngine {
     const paletteActive = (cal.paletteMode ?? 'off') !== 'off' && this.palette.length > 1;
     const rmsGateThreshold = (cal.rmsGate ?? 5) / 100;
     if (!paletteActive && rmsGateThreshold > 0 && rmsChange < rmsGateThreshold && this.lastTickData) {
+      debugData.rmsGateSkipCount++;
       this.emit(this.lastTickData);
       return;
     }
