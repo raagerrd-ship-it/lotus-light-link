@@ -38,9 +38,7 @@ const PROFILE_SLIDERS: SliderDef[] = [
 ];
 
 /** Global sliders — shared across all presets */
-const GLOBAL_SLIDERS: SliderDef[] = [
-  { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Global', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic.' },
-];
+const GLOBAL_SLIDERS: SliderDef[] = [];
 
 const BYPASS_VALUES: Record<string, number> = {
   bassWeight: 0.5,
