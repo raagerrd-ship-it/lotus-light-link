@@ -513,10 +513,10 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
         {/* Active slider description */}
         <div className="flex items-center px-3 py-1.5 border-r border-border/20 min-w-[5.5rem] max-w-[6.5rem]">
           <p className="text-[9px] text-muted-foreground leading-tight">
-            <span className="font-bold text-foreground/80 block">{activeDef?.label ?? ''}</span>
-            <span className="font-mono text-foreground/70">{activeDef ? formatValue(activeDef, activeValue) : ''}{activeDef?.unit}</span>
+            <span className="font-bold text-foreground/80 block">{activeLabel}</span>
+            <span className="font-mono text-foreground/70">{activeValueStr}</span>
             <br />
-            {activeDef?.description}
+            {activeDesc}
           </p>
         </div>
 
