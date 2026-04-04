@@ -331,13 +331,12 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   }, [conn?.device?.name, onCalibrationChange]);
 
   const bypassAll = useCallback(() => {
-    const { attackAlpha, releaseAlpha } = reaktionToAlphas(100);
     const neutral: LightCalibration = {
       ...DEFAULT_CALIBRATION,
       bassWeight: 0.5,
       hiShelfGainDb: 0,
-      attackAlpha,
-      releaseAlpha,
+      attackAlpha: 1.0,
+      releaseAlpha: 1.0,
       dynamicDamping: 0,
     };
     setCal(neutral);
