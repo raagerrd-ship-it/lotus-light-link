@@ -581,9 +581,9 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               onFocus={() => setActiveSlider('_tickMs')}
             />
 
-            {/* Toggle faders */}
-            <ToggleFader
-              label="⚡" title="Transient-boost"
+            {/* Binary faders */}
+            <BinaryFader
+              label="⚡ Transient" shortLabel="⚡"
               value={cal.transientBoost !== false}
               onChange={(v) => {
                 setCal(prev => {
@@ -594,10 +594,11 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 });
               }}
               accentColor="hsl(45, 90%, 55%)"
+              isActive={activeSlider === '_transient'}
               onFocus={() => setActiveSlider('_transient')}
             />
-            <ToggleFader
-              label="👁" title="Perceptuell kurva"
+            <BinaryFader
+              label="👁 Perceptuell" shortLabel="👁"
               value={cal.perceptualCurve === true}
               onChange={(v) => {
                 setCal(prev => {
@@ -608,6 +609,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 });
               }}
               accentColor="hsl(200, 80%, 55%)"
+              isActive={activeSlider === '_perceptual'}
               onFocus={() => setActiveSlider('_perceptual')}
             />
             {/* Dimming gamma */}
