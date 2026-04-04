@@ -436,6 +436,25 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
           >
             ⚡
           </button>
+          {/* Perceptual curve toggle */}
+          <button
+            onClick={() => {
+              setCal(prev => {
+                const next = { ...prev, perceptualCurve: !(prev.perceptualCurve === true) };
+                saveCalibration(next, conn?.device?.name, { localOnly: true });
+                onCalibrationChange?.(next);
+                return next;
+              });
+            }}
+            className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all active:scale-90 ${
+              cal.perceptualCurve === true
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground/50 hover:text-foreground/80'
+            }`}
+            title={`Perceptuell kurva: ${cal.perceptualCurve === true ? 'På' : 'Av'}`}
+          >
+            👁
+          </button>
           {/* Palette mode toggle */}
           <button
             onClick={() => {

@@ -69,7 +69,7 @@ export function computeBrightnessPct(
   midHiNorm: number,
   effectiveMax: number,
   dynamicCenter: number,
-  cal: Pick<LightCalibration, 'bassWeight' | 'dynamicDamping' | 'brightnessFloor'>,
+  cal: Pick<LightCalibration, 'bassWeight' | 'dynamicDamping' | 'brightnessFloor' | 'perceptualCurve'>,
   fluxBoost: number = 0,
 ): { pct: number; newCenter: number } {
   let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
@@ -83,6 +83,10 @@ export function computeBrightnessPct(
   const rawPct = (energyNorm * effectiveMax) / 100;
   const floor = cal.brightnessFloor ?? 0;
   let pct = Math.max(floor, Math.round(rawPct * 100));
+
+  if (cal.perceptualCurve) {
+    pct = perceptualBrightness(pct);
+  }
 
   return { pct: Math.max(floor, pct), newCenter };
 }
