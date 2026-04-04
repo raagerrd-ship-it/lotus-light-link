@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { X, RotateCcw, Save, Check, RefreshCw } from "lucide-react";
+import { X, RotateCcw, Save, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
   getIdleColor, saveIdleColor,
   PALETTE_MODES, PALETTE_MODE_LABELS,
-  type LightCalibration, type PresetName, type PaletteMode,
+  type LightCalibration, type PresetName,
 } from "@/lib/engine/lightCalibration";
 import { DEFAULT_TICK_MS } from "@/lib/engine/lightEngine";
 import { getDimmingGamma, setDimmingGamma, DEFAULT_DIMMING_GAMMA } from "@/lib/engine/bledom";
@@ -15,7 +15,7 @@ import { getPipelineTimings } from "@/lib/ui/pipelineTimings";
 /* ── Slider definitions ── */
 
 interface SliderDef {
-  key: keyof LightCalibration;
+  key: keyof LightCalibration | '_reaktion';
   label: string;
   shortLabel: string;
   min: number;
@@ -27,34 +27,53 @@ interface SliderDef {
   format?: (v: number) => string;
 }
 
-const SLIDERS: SliderDef[] = [
-  // Frequency
-  { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas påverkar ljusstyrkan. 0.7 = 70% bas, 30% diskant.' },
-  { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Frekvens', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic.' },
-  // Dynamics
-  { key: 'attackAlpha', label: 'Attack', shortLabel: 'Atk', min: 0.05, max: 1.0, step: 0.01, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset reagerar uppåt. 1.0 = ingen smoothing.' },
-  { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner. 1.0 = ingen smoothing.', format: v => v.toFixed(3) },
+/** Profile sliders — saved per-preset */
+const PROFILE_SLIDERS: SliderDef[] = [
+  { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas vs diskant påverkar ljusstyrkan. 0.5 = lika, 1.0 = bara bas.' },
+  { key: '_reaktion', label: 'Reaktion', shortLabel: 'Reak', min: 0, max: 100, step: 1, unit: '', group: 'Dynamik', description: 'Hur snabbt ljuset följer musiken. Vänster = mjukt/långsamt, höger = snabbt/hårt. Bypass = ingen smoothing.' },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -3.0, max: 2.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Positivt = förstärkt kontrast. Negativt = utjämnad. 0 = neutral.' },
   { key: 'smoothing', label: 'Smoothing', shortLabel: 'Smth', min: 0, max: 100, step: 1, unit: '%', group: 'Dynamik', description: 'Extra utjämning av ljuskurvan. 0 = av, högre = mjukare.' },
   { key: 'brightnessFloor', label: 'Golv', shortLabel: 'Floor', min: 0, max: 25, step: 1, unit: '%', group: 'Dynamik', description: 'Lägsta brightness. Ljuset går aldrig under detta värde.' },
-  // AGC
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
-  // Punch
   { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 90, max: 100, step: 0.5, unit: '%', group: 'Punch', description: '100 = av. Ljusstyrka över detta → vit färg.' },
-  { key: 'paletteRotationSpeed', label: 'Palett-hastighet', shortLabel: 'PalSpd', min: 1, max: 32, step: 1, unit: 'ticks', group: 'Punch', description: 'Antal ticks mellan färgbyten vid palett-rotation. Lägre = snabbare.' },
+];
+
+/** Global sliders — shared across all presets */
+const GLOBAL_SLIDERS: SliderDef[] = [
+  { key: 'hiShelfGainDb', label: 'Hi-shelf gain', shortLabel: 'HiSh', min: 0, max: 12, step: 0.5, unit: 'dB', group: 'Global', description: 'Diskantkompensation för mikrofonen. 6 dB = standard för laptopmic.' },
 ];
 
 const BYPASS_VALUES: Record<string, number> = {
   bassWeight: 0.5,
   hiShelfGainDb: 0,
-  attackAlpha: 1.0,
-  releaseAlpha: 1.0,
+  _reaktion: 100,
   dynamicDamping: 0,
   smoothing: 0,
   brightnessFloor: 0,
   volCompensation: 80,
   punchWhiteThreshold: 100,
 };
+
+/** Convert Reaktion 0-100 → attack/release alphas */
+function reaktionToAlphas(r: number): { attackAlpha: number; releaseAlpha: number } {
+  // 0 = slowest, 100 = bypass (no smoothing)
+  const t = r / 100;
+  // Attack: 0.05 → 1.0 (exponential curve)
+  const attackAlpha = 0.05 + 0.95 * Math.pow(t, 1.5);
+  // Release: always ~1/10 of attack, min 0.005
+  const releaseAlpha = Math.max(0.005, attackAlpha * 0.1);
+  return {
+    attackAlpha: Math.round(attackAlpha * 1000) / 1000,
+    releaseAlpha: Math.round(releaseAlpha * 1000) / 1000,
+  };
+}
+
+/** Convert attack/release alphas → Reaktion 0-100 */
+function alphasToReaktion(attack: number): number {
+  // Inverse of attackAlpha = 0.05 + 0.95 * t^1.5
+  const t = Math.pow(Math.max(0, (attack - 0.05)) / 0.95, 1 / 1.5);
+  return Math.round(Math.max(0, Math.min(100, t * 100)));
+}
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
   { color: [255, 60, 0], label: 'Orange' },
@@ -76,15 +95,15 @@ function formatValue(def: SliderDef, val: number): string {
 /* ── Vertical mixer fader ── */
 
 function MixerFader({
-  def, value, onChange, isActive, onFocus,
+  def, value, onChange, isActive, onFocus, accentColor,
 }: {
   def: SliderDef;
   value: number;
   onChange: (v: number) => void;
   isActive: boolean;
   onFocus: () => void;
+  accentColor?: string;
 }) {
-  const isDefault = value === DEFAULT_CALIBRATION[def.key];
   const trackRef = useRef<HTMLDivElement>(null);
 
   const nudge = (dir: 1 | -1) => {
@@ -121,8 +140,10 @@ function MixerFader({
     'Dynamik': 'hsl(142, 70%, 50%)',
     'AGC': 'hsl(170, 60%, 50%)',
     'Punch': 'hsl(45, 90%, 55%)',
+    'Global': 'hsl(30, 90%, 55%)',
   };
-  const accentColor = groupColors[def.group] ?? 'hsl(var(--primary))';
+  const color = accentColor ?? groupColors[def.group] ?? 'hsl(var(--primary))';
+  const isDefault = value === (BYPASS_VALUES[def.key] ?? def.min);
 
   return (
     <div
@@ -132,9 +153,7 @@ function MixerFader({
       <button
         onClick={(e) => { e.stopPropagation(); nudge(1); }}
         className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
-      >
-        +
-      </button>
+      >+</button>
 
       <div
         ref={trackRef}
@@ -150,7 +169,7 @@ function MixerFader({
           return (
             <div
               className="absolute left-0 right-0 rounded-full transition-none"
-              style={{ bottom: `${bottom}%`, height: `${top - bottom}%`, background: accentColor, opacity: 0.45 }}
+              style={{ bottom: `${bottom}%`, height: `${top - bottom}%`, background: color, opacity: 0.45 }}
             />
           );
         })()}
@@ -168,8 +187,8 @@ function MixerFader({
           className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border transition-none"
           style={{
             bottom: `calc(${pct}% - 6px)`,
-            background: isActive ? accentColor : 'hsl(var(--foreground) / 0.9)',
-            borderColor: isActive ? accentColor : 'hsl(var(--border))',
+            background: isActive ? color : 'hsl(var(--foreground) / 0.9)',
+            borderColor: isActive ? color : 'hsl(var(--border))',
           }}
         />
       </div>
@@ -177,9 +196,7 @@ function MixerFader({
       <button
         onClick={(e) => { e.stopPropagation(); nudge(-1); }}
         className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
-      >
-        −
-      </button>
+      >−</button>
 
       <span className={`text-[9px] font-bold tracking-wide leading-tight text-center ${isDefault ? 'text-muted-foreground' : 'text-foreground'}`}>
         {def.shortLabel}
@@ -191,21 +208,80 @@ function MixerFader({
   );
 }
 
+/* ── Generic vertical fader (for tick rate, gamma) ── */
+
+function GenericFader({
+  label, shortLabel, value, min, max, step, unit,
+  defaultValue, onChange, accentColor, isActive, onFocus,
+}: {
+  label: string; shortLabel: string;
+  value: number; min: number; max: number; step: number; unit: string;
+  defaultValue: number; onChange: (v: number) => void;
+  accentColor: string; isActive: boolean; onFocus: () => void;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  const bypassPct = ((defaultValue - min) / (max - min)) * 100;
+
+  return (
+    <div className={`flex flex-col items-center gap-1 min-w-[3rem] transition-all ${isActive ? 'scale-105' : ''}`} onClick={onFocus}>
+      <button
+        onClick={(e) => { e.stopPropagation(); onChange(Math.min(max, Math.round((value + step) * 1000) / 1000)); }}
+        className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
+      >+</button>
+      <div
+        className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
+        style={{ height: '4.5rem', background: 'hsl(var(--secondary))' }}
+        onPointerDown={(e) => {
+          onFocus();
+          const track = e.currentTarget;
+          const el = e.currentTarget as HTMLElement;
+          el.setPointerCapture(e.pointerId);
+          const update = (ev: PointerEvent) => {
+            const rect = track.getBoundingClientRect();
+            const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+            const raw = min + rawPct * (max - min);
+            const snapped = Math.round(raw / step) * step;
+            onChange(Math.max(min, Math.min(max, Math.round(snapped * 1000) / 1000)));
+          };
+          update(e.nativeEvent);
+          const move = (ev: PointerEvent) => update(ev);
+          const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
+          el.addEventListener('pointermove', move);
+          el.addEventListener('pointerup', up);
+        }}
+      >
+        <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />
+        {(() => {
+          const bottom = Math.min(pct, bypassPct);
+          const top = Math.max(pct, bypassPct);
+          return <div className="absolute left-0 right-0 rounded-full" style={{ bottom: `${bottom}%`, height: `${top - bottom}%`, background: accentColor, opacity: 0.45 }} />;
+        })()}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border"
+          style={{ bottom: `calc(${pct}% - 6px)`, background: isActive ? accentColor : 'hsl(var(--foreground) / 0.9)', borderColor: isActive ? accentColor : 'hsl(var(--border))' }}
+        />
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onChange(Math.max(min, Math.round((value - step) * 1000) / 1000)); }}
+        className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
+      >−</button>
+      <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">{shortLabel}</span>
+      <span className="text-[9px] font-mono leading-tight text-foreground/80">
+        {step < 1 ? value.toFixed(1) : String(Math.round(value))}{unit}
+      </span>
+    </div>
+  );
+}
+
 /* ── Pipeline stats ── */
 
 function PipelineStats() {
   const [stats, setStats] = useState({ tickMs: 0 });
-
   useEffect(() => {
-    const id = setInterval(() => {
-      const pipe = getPipelineTimings();
-      setStats({ tickMs: pipe.totalTickMs });
-    }, 300);
+    const id = setInterval(() => { setStats({ tickMs: getPipelineTimings().totalTickMs }); }, 300);
     return () => clearInterval(id);
   }, []);
-
   const warn = stats.tickMs > 20;
-
   return (
     <div className={`text-[10px] font-mono leading-tight ${warn ? 'text-red-400' : 'text-muted-foreground/70'}`}>
       Pipeline {stats.tickMs.toFixed(1)}ms
@@ -213,7 +289,7 @@ function PipelineStats() {
   );
 }
 
-/* ── Mini chart removed — we reuse the main MicPanel chart behind this overlay ── */
+/* ── Main overlay ── */
 
 interface CalibrationOverlayProps {
   onClose: () => void;
@@ -230,23 +306,18 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   const [idleColor, setIdleColorState] = useState(getIdleColor);
   const [cal, setCal] = useState<LightCalibration>(getCalibration);
   const [savedCal, setSavedCal] = useState<LightCalibration>(getCalibration);
-  const [activeSlider, setActiveSlider] = useState<number>(0);
+  const [activeSlider, setActiveSlider] = useState<string>('bassWeight');
   const [conn, setConn] = useState(getBleConnection);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [showIdleMenu, setShowIdleMenu] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
   const isDirty = JSON.stringify(cal) !== JSON.stringify(savedCal);
+  const reaktion = alphasToReaktion(cal.attackAlpha);
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
-  // Sync local state when calibration changes externally (e.g. preset switch)
   useEffect(() => {
-    const handler = () => {
-      const fresh = getCalibration();
-      setCal(fresh);
-      setSavedCal(fresh);
-    };
+    const handler = () => { const fresh = getCalibration(); setCal(fresh); setSavedCal(fresh); };
     window.addEventListener('calibration-changed', handler);
     return () => window.removeEventListener('calibration-changed', handler);
   }, []);
@@ -254,6 +325,16 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   const update = useCallback((key: keyof LightCalibration, value: number) => {
     setCal(prev => {
       const next = { ...prev, [key]: value };
+      saveCalibration(next, conn?.device?.name, { localOnly: true });
+      onCalibrationChange?.(next);
+      return next;
+    });
+  }, [conn?.device?.name, onCalibrationChange]);
+
+  const updateReaktion = useCallback((r: number) => {
+    setCal(prev => {
+      const { attackAlpha, releaseAlpha } = reaktionToAlphas(r);
+      const next = { ...prev, attackAlpha, releaseAlpha };
       saveCalibration(next, conn?.device?.name, { localOnly: true });
       onCalibrationChange?.(next);
       return next;
@@ -276,19 +357,19 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
 
   const resetAll = useCallback(() => {
     const fresh = { ...DEFAULT_CALIBRATION };
-    setCal(fresh);
-    setSavedCal(fresh);
+    setCal(fresh); setSavedCal(fresh);
     saveCalibration(fresh, conn?.device?.name);
     onCalibrationChange?.(fresh);
   }, [conn?.device?.name, onCalibrationChange]);
 
   const bypassAll = useCallback(() => {
+    const { attackAlpha, releaseAlpha } = reaktionToAlphas(100);
     const neutral: LightCalibration = {
       ...DEFAULT_CALIBRATION,
       bassWeight: 0.5,
       hiShelfGainDb: 0,
-      attackAlpha: 1.0,
-      releaseAlpha: 1.0,
+      attackAlpha,
+      releaseAlpha,
       dynamicDamping: 0,
     };
     setCal(neutral);
@@ -296,11 +377,18 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
     onCalibrationChange?.(neutral);
   }, [conn?.device?.name, onCalibrationChange]);
 
-  const activeDef = SLIDERS[activeSlider];
+  // Find active slider description
+  const allSliders = [...PROFILE_SLIDERS, ...GLOBAL_SLIDERS];
+  const activeDef = allSliders.find(s => s.key === activeSlider);
+  const activeValue = activeSlider === '_reaktion'
+    ? reaktion
+    : activeDef && activeDef.key !== '_reaktion'
+      ? cal[activeDef.key as keyof LightCalibration] as number
+      : 0;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.88)', backdropFilter: 'blur(20px)' }}>
-      {/* Compact header */}
+      {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/20">
         <div className="flex items-center gap-2">
           <h2 className="text-[10px] font-bold tracking-widest uppercase text-foreground/80">Mixer{activePreset ? ` — ${activePreset}` : ''}</h2>
@@ -308,6 +396,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
           <PipelineStats />
         </div>
         <div className="flex items-center gap-1.5">
+          {/* Idle color */}
           <div className="relative flex items-center">
             <button
               className="w-5 h-5 rounded-full border border-border/40 active:scale-90 transition-transform"
@@ -339,6 +428,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               </div>
             )}
           </div>
+          {/* Palette mode toggle */}
           <button
             onClick={() => {
               setCal(prev => {
@@ -367,8 +457,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
             <RotateCcw className="w-3 h-3" />
           </Button>
           <Button
-            variant="ghost"
-            size="icon"
+            variant="ghost" size="icon"
             onClick={handleSave}
             className={`rounded-full w-6 h-6 transition-colors ${isDirty ? 'text-primary animate-pulse' : ''}`}
             title={isDirty ? 'Spara ändringar' : 'Sparad'}
@@ -381,13 +470,13 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
         </div>
       </div>
 
-      {/* Fader strip + description side by side */}
+      {/* Fader strip + description */}
       <div className="flex">
-        {/* Active slider description — left column */}
+        {/* Active slider description */}
         <div className="flex items-center px-3 py-1.5 border-r border-border/20 min-w-[5.5rem] max-w-[6.5rem]">
           <p className="text-[9px] text-muted-foreground leading-tight">
-            <span className="font-bold text-foreground/80 block">{activeDef?.label}</span>
-            <span className="font-mono text-foreground/70">{activeDef ? formatValue(activeDef, cal[activeDef.key] as number) : ''}{activeDef?.unit}</span>
+            <span className="font-bold text-foreground/80 block">{activeDef?.label ?? ''}</span>
+            <span className="font-mono text-foreground/70">{activeDef ? formatValue(activeDef, activeValue) : ''}{activeDef?.unit}</span>
             <br />
             {activeDef?.description}
           </p>
@@ -395,132 +484,85 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
 
         {/* Scrollable fader strip */}
         <div
-          ref={scrollRef}
           className="flex-1 overflow-x-auto overflow-y-hidden px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <div className="flex gap-2 items-center justify-center min-w-max py-1.5 mx-auto" style={{ height: '11rem' }}>
-            {SLIDERS.map((def, i) => {
-              const prevGroup = i > 0 ? SLIDERS[i - 1].group : null;
+          <div className="flex gap-2 items-end min-w-max py-1.5 mx-auto" style={{ height: '12rem' }}>
+            {/* ── Profile sliders ── */}
+            {PROFILE_SLIDERS.map((def, i) => {
+              const prevGroup = i > 0 ? PROFILE_SLIDERS[i - 1].group : null;
               const showSep = prevGroup && prevGroup !== def.group;
+
+              if (def.key === '_reaktion') {
+                return (
+                  <div key="_reaktion" className="flex items-center">
+                    {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
+                    <MixerFader
+                      def={def}
+                      value={reaktion}
+                      onChange={updateReaktion}
+                      isActive={activeSlider === '_reaktion'}
+                      onFocus={() => setActiveSlider('_reaktion')}
+                    />
+                  </div>
+                );
+              }
+
               return (
                 <div key={def.key} className="flex items-center">
                   {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
                   <MixerFader
                     def={def}
-                    value={cal[def.key] as number}
-                    onChange={(v) => update(def.key, v)}
-                    isActive={activeSlider === i}
-                    onFocus={() => setActiveSlider(i)}
+                    value={cal[def.key as keyof LightCalibration] as number}
+                    onChange={(v) => update(def.key as keyof LightCalibration, v)}
+                    isActive={activeSlider === def.key}
+                    onFocus={() => setActiveSlider(def.key)}
                   />
                 </div>
               );
             })}
-            {/* Tick rate fader — after calibration sliders */}
-            <div className="flex items-center">
-              <div className="w-px h-20 bg-border/30 mx-1" />
-              <div className="flex flex-col items-center gap-1 min-w-[3rem]">
-                <button
-                  onClick={() => onTickMsChange?.(Math.max(20, tickMs - 1))}
-                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
-                >+</button>
-                <div
-                  className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
-                  style={{ height: '4.5rem', background: 'hsl(var(--secondary))' }}
-                  onPointerDown={(e) => {
-                    const track = e.currentTarget;
-                    const el = e.currentTarget as HTMLElement;
-                    el.setPointerCapture(e.pointerId);
-                    const update = (ev: PointerEvent) => {
-                      const rect = track.getBoundingClientRect();
-                      const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
-                      const ms = Math.round(125 - rawPct * 105);
-                      onTickMsChange?.(Math.max(20, Math.min(125, ms)));
-                    };
-                    update(e.nativeEvent);
-                    const move = (ev: PointerEvent) => update(ev);
-                    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
-                    el.addEventListener('pointermove', move);
-                    el.addEventListener('pointerup', up);
-                  }}
-                >
-                  {/* Default reference line */}
-                  {(() => {
-                    const defMs = Math.max(20, Math.min(125, DEFAULT_TICK_MS));
-                    const bypassPct = ((125 - defMs) / 105) * 100;
-                    return <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />;
-                  })()}
-                  {/* Thumb */}
-                  {(() => {
-                    const pct = ((125 - tickMs) / 105) * 100;
-                    return (
-                      <div
-                        className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border"
-                        style={{ bottom: `calc(${pct}% - 6px)`, background: 'hsl(30, 90%, 55%)', borderColor: 'hsl(30, 90%, 55%)' }}
-                      />
-                    );
-                  })()}
-                </div>
-                <button
-                  onClick={() => onTickMsChange?.(Math.min(125, tickMs + 1))}
-                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
-                >−</button>
-                <span className="text-[9px] font-mono leading-tight text-foreground/80">{tickMs}</span>
-                <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">ms</span>
-              </div>
+
+            {/* ── GLOBAL separator ── */}
+            <div className="flex flex-col items-center justify-center mx-1">
+              <div className="w-px flex-1 bg-border/50" />
+              <span className="text-[8px] font-bold tracking-[0.15em] uppercase text-muted-foreground/60 py-1 [writing-mode:vertical-lr] rotate-180">Global</span>
+              <div className="w-px flex-1 bg-border/50" />
             </div>
-            {/* Dimming gamma fader */}
-            <div className="flex items-center">
-              <div className="w-px h-20 bg-border/30 mx-1" />
-              <div className="flex flex-col items-center gap-1 min-w-[3rem]">
-                <button
-                  onClick={() => onDimmingGammaChange?.(Math.min(3.0, Math.round((dimmingGamma + 0.1) * 10) / 10))}
-                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
-                >+</button>
-                <div
-                  className="relative w-3 rounded-full touch-none select-none cursor-ns-resize"
-                  style={{ height: '4.5rem', background: 'hsl(var(--secondary))' }}
-                  onPointerDown={(e) => {
-                    const track = e.currentTarget;
-                    const el = e.currentTarget as HTMLElement;
-                    el.setPointerCapture(e.pointerId);
-                    const update = (ev: PointerEvent) => {
-                      const rect = track.getBoundingClientRect();
-                      const rawPct = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
-                      const v = Math.round((1.0 + rawPct * 2.0) * 10) / 10;
-                      onDimmingGammaChange?.(Math.max(1.0, Math.min(3.0, v)));
-                    };
-                    update(e.nativeEvent);
-                    const move = (ev: PointerEvent) => update(ev);
-                    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
-                    el.addEventListener('pointermove', move);
-                    el.addEventListener('pointerup', up);
-                  }}
-                >
-                  {/* Default reference line */}
-                  {(() => {
-                    const bypassPct = ((DEFAULT_DIMMING_GAMMA - 1.0) / 2.0) * 100;
-                    return <div className="absolute left-0 right-0 h-px" style={{ bottom: `${bypassPct}%`, borderTop: '1px dashed hsl(var(--foreground) / 0.35)' }} />;
-                  })()}
-                  {/* Thumb */}
-                  {(() => {
-                    const pct = ((dimmingGamma - 1.0) / 2.0) * 100;
-                    return (
-                      <div
-                        className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border"
-                        style={{ bottom: `calc(${pct}% - 6px)`, background: 'hsl(200, 80%, 50%)', borderColor: 'hsl(200, 80%, 50%)' }}
-                      />
-                    );
-                  })()}
-                </div>
-                <button
-                  onClick={() => onDimmingGammaChange?.(Math.max(1.0, Math.round((dimmingGamma - 0.1) * 10) / 10))}
-                  className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold active:scale-90 transition-transform bg-secondary/60 text-foreground/70 hover:bg-secondary"
-                >−</button>
-                <span className="text-[9px] font-mono leading-tight text-foreground/80">{dimmingGamma.toFixed(1)}</span>
-                <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">γ</span>
-              </div>
-            </div>
+
+            {/* Global calibration sliders */}
+            {GLOBAL_SLIDERS.map((def) => (
+              <MixerFader
+                key={def.key}
+                def={def}
+                value={cal[def.key as keyof LightCalibration] as number}
+                onChange={(v) => update(def.key as keyof LightCalibration, v)}
+                isActive={activeSlider === def.key}
+                onFocus={() => setActiveSlider(def.key)}
+                accentColor="hsl(30, 90%, 55%)"
+              />
+            ))}
+
+            {/* Tick rate */}
+            <GenericFader
+              label="Tick-intervall" shortLabel="Tick"
+              value={tickMs} min={20} max={125} step={1} unit="ms"
+              defaultValue={DEFAULT_TICK_MS}
+              onChange={(v) => onTickMsChange?.(v)}
+              accentColor="hsl(30, 90%, 55%)"
+              isActive={activeSlider === '_tickMs'}
+              onFocus={() => setActiveSlider('_tickMs')}
+            />
+
+            {/* Dimming gamma */}
+            <GenericFader
+              label="Dimningsgamma" shortLabel="γ"
+              value={dimmingGamma} min={1.0} max={3.0} step={0.1} unit=""
+              defaultValue={DEFAULT_DIMMING_GAMMA}
+              onChange={(v) => onDimmingGammaChange?.(v)}
+              accentColor="hsl(30, 90%, 55%)"
+              isActive={activeSlider === '_gamma'}
+              onFocus={() => setActiveSlider('_gamma')}
+            />
           </div>
         </div>
       </div>
