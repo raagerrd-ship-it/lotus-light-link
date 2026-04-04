@@ -44,7 +44,6 @@ const BYPASS_VALUES: Record<string, number> = {
   _softness: 0,
   dynamicDamping: 0,
   brightnessFloor: 0,
-  volCompensation: 80,
   punchWhiteThreshold: 100,
 };
 
