@@ -329,7 +329,8 @@ export class LightEngine {
     // ── RMS-gate: skip pipeline only when palette mode is off ──
     const rmsChange = Math.abs(bands.totalRms - this.lastTotalRms) / Math.max(this.lastTotalRms, 0.001);
     const paletteActive = (cal.paletteMode ?? 'off') !== 'off' && this.palette.length > 1;
-    if (!paletteActive && rmsChange < 0.05 && this.lastTickData) {
+    const rmsGateThreshold = (cal.rmsGate ?? 5) / 100;
+    if (!paletteActive && rmsGateThreshold > 0 && rmsChange < rmsGateThreshold && this.lastTickData) {
       this.emit(this.lastTickData);
       return;
     }
