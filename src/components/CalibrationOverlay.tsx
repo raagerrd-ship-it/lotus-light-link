@@ -263,6 +263,42 @@ function GenericFader({
   );
 }
 
+/* ── Toggle fader (on/off, styled like a mini fader) ── */
+
+function ToggleFader({
+  label, title, value, onChange, accentColor,
+}: {
+  label: string; title: string;
+  value: boolean; onChange: (v: boolean) => void;
+  accentColor: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1 min-w-[3rem]" title={title}>
+      <div
+        className="relative w-3 rounded-full cursor-pointer select-none"
+        style={{ height: '2.5rem', background: 'hsl(var(--secondary))' }}
+        onClick={() => onChange(!value)}
+      >
+        {value && (
+          <div className="absolute left-0 right-0 bottom-0 rounded-full" style={{ height: '100%', background: accentColor, opacity: 0.35 }} />
+        )}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border transition-all"
+          style={{
+            bottom: value ? 'calc(100% - 10px)' : '2px',
+            background: value ? accentColor : 'hsl(var(--foreground) / 0.5)',
+            borderColor: value ? accentColor : 'hsl(var(--border))',
+          }}
+        />
+      </div>
+      <span className="text-[10px] leading-tight text-center">{label}</span>
+      <span className={`text-[9px] font-mono leading-tight ${value ? 'text-foreground/80' : 'text-muted-foreground/60'}`}>
+        {value ? 'på' : 'av'}
+      </span>
+    </div>
+  );
+}
+
 /* ── Pipeline stats ── */
 
 function PipelineStats() {
@@ -417,44 +453,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               </div>
             )}
           </div>
-          {/* Transient boost toggle */}
-          <button
-            onClick={() => {
-              setCal(prev => {
-                const next = { ...prev, transientBoost: !(prev.transientBoost !== false) };
-                saveCalibration(next, conn?.device?.name, { localOnly: true });
-                onCalibrationChange?.(next);
-                return next;
-              });
-            }}
-            className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all active:scale-90 ${
-              cal.transientBoost !== false
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground/50 hover:text-foreground/80'
-            }`}
-            title={`Transient-boost: ${cal.transientBoost !== false ? 'På' : 'Av'}`}
-          >
-            ⚡
-          </button>
-          {/* Perceptual curve toggle */}
-          <button
-            onClick={() => {
-              setCal(prev => {
-                const next = { ...prev, perceptualCurve: !(prev.perceptualCurve === true) };
-                saveCalibration(next, conn?.device?.name, { localOnly: true });
-                onCalibrationChange?.(next);
-                return next;
-              });
-            }}
-            className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all active:scale-90 ${
-              cal.perceptualCurve === true
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground/50 hover:text-foreground/80'
-            }`}
-            title={`Perceptuell kurva: ${cal.perceptualCurve === true ? 'På' : 'Av'}`}
-          >
-            👁
-          </button>
           {/* Palette mode toggle */}
           <button
             onClick={() => {
@@ -580,6 +578,33 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               onFocus={() => setActiveSlider('_tickMs')}
             />
 
+            {/* Toggle faders */}
+            <ToggleFader
+              label="⚡" title="Transient-boost"
+              value={cal.transientBoost !== false}
+              onChange={(v) => {
+                setCal(prev => {
+                  const next = { ...prev, transientBoost: v };
+                  saveCalibration(next, conn?.device?.name, { localOnly: true });
+                  onCalibrationChange?.(next);
+                  return next;
+                });
+              }}
+              accentColor="hsl(45, 90%, 55%)"
+            />
+            <ToggleFader
+              label="👁" title="Perceptuell kurva"
+              value={cal.perceptualCurve === true}
+              onChange={(v) => {
+                setCal(prev => {
+                  const next = { ...prev, perceptualCurve: v };
+                  saveCalibration(next, conn?.device?.name, { localOnly: true });
+                  onCalibrationChange?.(next);
+                  return next;
+                });
+              }}
+              accentColor="hsl(200, 80%, 55%)"
+            />
             {/* Dimming gamma */}
             <GenericFader
               label="Dimningsgamma" shortLabel="γ"
