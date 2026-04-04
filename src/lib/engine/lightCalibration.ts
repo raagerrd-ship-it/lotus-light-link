@@ -56,6 +56,7 @@ export interface LightCalibration {
   brightnessFloor: number;
   transientBoost: boolean;
   perceptualCurve: boolean;
+  rmsGate: number;
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
