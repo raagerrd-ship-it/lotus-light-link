@@ -30,9 +30,8 @@ interface SliderDef {
 /** Profile sliders — saved per-preset */
 const PROFILE_SLIDERS: SliderDef[] = [
   { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas vs diskant påverkar ljusstyrkan. 0.5 = lika, 1.0 = bara bas.' },
-  { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner efter en topp. 1.0 = omedelbart, lågt = långsam fade.', format: v => v.toFixed(3) },
+  { key: '_softness', label: 'Mjukhet', shortLabel: 'Soft', min: 0, max: 100, step: 1, unit: '', group: 'Dynamik', description: 'Hur mjukt ljuset beter sig. 0 = rått/direkt, 100 = mycket mjukt/långsamt. Bypass = 0.' },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -3.0, max: 2.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Positivt = förstärkt kontrast. Negativt = utjämnad. 0 = neutral.' },
-  { key: 'smoothing', label: 'Smoothing', shortLabel: 'Smth', min: 0, max: 100, step: 1, unit: '%', group: 'Dynamik', description: 'Extra utjämning av ljuskurvan. 0 = av, högre = mjukare.' },
   { key: 'brightnessFloor', label: 'Golv', shortLabel: 'Floor', min: 0, max: 25, step: 1, unit: '%', group: 'Dynamik', description: 'Lägsta brightness. Ljuset går aldrig under detta värde.' },
   { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
   { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 90, max: 100, step: 0.5, unit: '%', group: 'Punch', description: '100 = av. Ljusstyrka över detta → vit färg.' },
