@@ -371,9 +371,11 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   // Find active slider description
   const allSliders = [...PROFILE_SLIDERS, ...GLOBAL_SLIDERS];
   const activeDef = allSliders.find(s => s.key === activeSlider);
-  const activeValue = activeDef && activeDef.key !== '_reaktion'
-    ? cal[activeDef.key as keyof LightCalibration] as number
-    : 0;
+  const activeValue = activeSlider === '_softness'
+    ? softness
+    : activeDef && activeDef.key !== '_softness'
+      ? cal[activeDef.key as keyof LightCalibration] as number
+      : 0;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.88)', backdropFilter: 'blur(20px)' }}>
