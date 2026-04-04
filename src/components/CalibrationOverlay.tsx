@@ -37,7 +37,9 @@ const PROFILE_SLIDERS: SliderDef[] = [
 ];
 
 /** Global sliders — shared across all presets */
-const GLOBAL_SLIDERS: SliderDef[] = [];
+const GLOBAL_SLIDERS: SliderDef[] = [
+  { key: 'rmsGate', label: 'RMS Gate', shortLabel: 'RMS', min: 0, max: 20, step: 1, unit: '%', group: 'Global', description: 'Tröskel för att skippa beräkning vid oförändrad mic-input. Högre = fler ticks skippas (lägre CPU). Lägre = mjukare övergångar. 0% = av.' },
+];
 
 const BYPASS_VALUES: Record<string, number> = {
   bassWeight: 0.5,
@@ -45,6 +47,7 @@ const BYPASS_VALUES: Record<string, number> = {
   dynamicDamping: 0,
   brightnessFloor: 0,
   punchWhiteThreshold: 100,
+  rmsGate: 0,
 };
 
 /** Convert Softness 0-100 → releaseAlpha + smoothing */
