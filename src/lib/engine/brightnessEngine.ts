@@ -69,7 +69,7 @@ export function computeBrightnessPct(
   midHiNorm: number,
   effectiveMax: number,
   dynamicCenter: number,
-  cal: Pick<LightCalibration, 'bassWeight' | 'dynamicDamping' | 'brightnessFloor'>,
+  cal: Pick<LightCalibration, 'bassWeight' | 'dynamicDamping' | 'brightnessFloor' | 'perceptualCurve'>,
   fluxBoost: number = 0,
 ): { pct: number; newCenter: number } {
   let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
