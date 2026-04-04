@@ -348,7 +348,7 @@ const Index = () => {
       {!activated && !busy && (
         <div className="absolute inset-0 z-30 flex items-center justify-center">
           <button
-            onClick={() => setActivated(true)}
+            onClick={() => { handlePresetSwitch('Normal'); setActivated(true); }}
             className="flex flex-col items-center gap-3 p-8 rounded-2xl active:scale-95 transition-transform"
           >
             <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-foreground/20" style={{ background: `rgba(${r},${g},${b},0.15)` }}>
