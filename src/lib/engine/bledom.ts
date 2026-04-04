@@ -272,10 +272,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const cb = Math.round(b * scale);
   const cbr = Math.round(scale * 0xff);
 
-  const maxDelta = Math.max(Math.abs(cr - _lastR), Math.abs(cg - _lastG), Math.abs(cb - _lastB), Math.abs(cbr - _lastBr));
-  if (maxDelta < 8) { debugData.bleSkipDeltaCount++; return; }
-
-  // Non-reentrant guard — after filtering, prevents OS BLE queue buildup
+  // Non-reentrant guard — prevents OS BLE queue buildup
   if (_writeInFlight) { debugData.bleSkipBusyCount++; return; }
 
   _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
