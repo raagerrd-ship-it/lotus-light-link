@@ -618,6 +618,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 });
               }}
               accentColor="hsl(200, 80%, 55%)"
+              onFocus={() => setActiveSlider('_perceptual')}
             />
             {/* Dimming gamma */}
             <GenericFader
