@@ -19,7 +19,7 @@ export default function DebugOverlay() {
   // Rolling window: snapshot counters every 10s, compute skip%/wps from delta
   const windowRef = useRef({
     time: performance.now(),
-    sent: 0, skipDelta: 0, skipThrottle: 0, skipBusy: 0,
+    sent: 0, skipRms: 0, skipBusy: 0,
   });
   const statsRef = useRef({ skipPct: 0, wps: 0 });
 
