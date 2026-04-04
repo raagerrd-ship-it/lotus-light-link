@@ -402,14 +402,27 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
     onCalibrationChange?.(neutral);
   }, [conn?.device?.name, onCalibrationChange]);
 
+  // Extra descriptions for non-slider controls
+  const EXTRA_DESCS: Record<string, { label: string; description: string; value: string }> = {
+    '_tickMs': { label: 'Tick-intervall', description: 'Hur ofta ljuset uppdateras. Lägre = snabbare men kräver mer BLE-bandbredd.', value: `${tickMs}ms` },
+    '_gamma': { label: 'Dimningsgamma', description: 'Icke-linjär kurva för LED-dimning. Högre γ = djupare mörker vid låga nivåer, mjukare fade.', value: `γ ${dimmingGamma.toFixed(1)}` },
+    '_transient': { label: '⚡ Transient-boost', description: 'Ger upp till 15% extra ljusstyrka vid transienter (trumslag, attacker). Gör rytmen tydligare.', value: cal.transientBoost !== false ? 'På' : 'Av' },
+    '_perceptual': { label: '👁 Perceptuell kurva', description: 'CIE-baserad gammakorrektion som lyfter låga värden så ljusändringar ser jämna ut för ögat.', value: cal.perceptualCurve === true ? 'På' : 'Av' },
+  };
+
   // Find active slider description
   const allSliders = [...PROFILE_SLIDERS, ...GLOBAL_SLIDERS];
   const activeDef = allSliders.find(s => s.key === activeSlider);
-  const activeValue = activeSlider === '_softness'
-    ? softness
-    : activeDef && activeDef.key !== '_softness'
-      ? cal[activeDef.key as keyof LightCalibration] as number
-      : 0;
+  const extraDesc = EXTRA_DESCS[activeSlider];
+  const activeLabel = activeDef?.label ?? extraDesc?.label ?? '';
+  const activeDesc = activeDef?.description ?? extraDesc?.description ?? '';
+  const activeValueStr = activeSlider === '_softness'
+    ? `${softness}`
+    : extraDesc
+      ? extraDesc.value
+      : activeDef && activeDef.key !== '_softness'
+        ? `${formatValue(activeDef, cal[activeDef.key as keyof LightCalibration] as number)}${activeDef.unit}`
+        : '';
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.88)', backdropFilter: 'blur(20px)' }}>
