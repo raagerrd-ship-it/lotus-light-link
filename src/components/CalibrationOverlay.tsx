@@ -30,7 +30,7 @@ interface SliderDef {
 /** Profile sliders — saved per-preset */
 const PROFILE_SLIDERS: SliderDef[] = [
   { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas vs diskant påverkar ljusstyrkan. 0.5 = lika, 1.0 = bara bas.' },
-  { key: '_reaktion', label: 'Reaktion', shortLabel: 'Reak', min: 0, max: 100, step: 1, unit: '', group: 'Dynamik', description: 'Hur snabbt ljuset följer musiken. Vänster = mjukt/långsamt, höger = snabbt/hårt. Bypass = ingen smoothing.' },
+  { key: 'releaseAlpha', label: 'Release', shortLabel: 'Rel', min: 0.005, max: 1.0, step: 0.005, unit: 'α', group: 'Dynamik', description: 'Hur snabbt ljuset tonar ner efter en topp. 1.0 = omedelbart, lågt = långsam fade.', format: v => v.toFixed(3) },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -3.0, max: 2.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Positivt = förstärkt kontrast. Negativt = utjämnad. 0 = neutral.' },
   { key: 'smoothing', label: 'Smoothing', shortLabel: 'Smth', min: 0, max: 100, step: 1, unit: '%', group: 'Dynamik', description: 'Extra utjämning av ljuskurvan. 0 = av, högre = mjukare.' },
   { key: 'brightnessFloor', label: 'Golv', shortLabel: 'Floor', min: 0, max: 25, step: 1, unit: '%', group: 'Dynamik', description: 'Lägsta brightness. Ljuset går aldrig under detta värde.' },
@@ -45,35 +45,13 @@ const GLOBAL_SLIDERS: SliderDef[] = [
 
 const BYPASS_VALUES: Record<string, number> = {
   bassWeight: 0.5,
-  hiShelfGainDb: 0,
-  _reaktion: 100,
+  releaseAlpha: 1.0,
   dynamicDamping: 0,
   smoothing: 0,
   brightnessFloor: 0,
   volCompensation: 80,
   punchWhiteThreshold: 100,
 };
-
-/** Convert Reaktion 0-100 → attack/release alphas */
-function reaktionToAlphas(r: number): { attackAlpha: number; releaseAlpha: number } {
-  // 0 = slowest, 100 = bypass (no smoothing)
-  const t = r / 100;
-  // Attack: 0.05 → 1.0 (exponential curve)
-  const attackAlpha = 0.05 + 0.95 * Math.pow(t, 1.5);
-  // Release: always ~1/10 of attack, min 0.005
-  const releaseAlpha = Math.max(0.005, attackAlpha * 0.1);
-  return {
-    attackAlpha: Math.round(attackAlpha * 1000) / 1000,
-    releaseAlpha: Math.round(releaseAlpha * 1000) / 1000,
-  };
-}
-
-/** Convert attack/release alphas → Reaktion 0-100 */
-function alphasToReaktion(attack: number): number {
-  // Inverse of attackAlpha = 0.05 + 0.95 * t^1.5
-  const t = Math.pow(Math.max(0, (attack - 0.05)) / 0.95, 1 / 1.5);
-  return Math.round(Math.max(0, Math.min(100, t * 100)));
-}
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
   { color: [255, 60, 0], label: 'Orange' },
@@ -312,7 +290,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   const [justSaved, setJustSaved] = useState(false);
 
   const isDirty = JSON.stringify(cal) !== JSON.stringify(savedCal);
-  const reaktion = alphasToReaktion(cal.attackAlpha);
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
@@ -324,17 +301,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
 
   const update = useCallback((key: keyof LightCalibration, value: number) => {
     setCal(prev => {
-      const next = { ...prev, [key]: value };
-      saveCalibration(next, conn?.device?.name, { localOnly: true });
-      onCalibrationChange?.(next);
-      return next;
-    });
-  }, [conn?.device?.name, onCalibrationChange]);
-
-  const updateReaktion = useCallback((r: number) => {
-    setCal(prev => {
-      const { attackAlpha, releaseAlpha } = reaktionToAlphas(r);
-      const next = { ...prev, attackAlpha, releaseAlpha };
+      // Always force attack to max speed
+      const next = { ...prev, [key]: value, attackAlpha: 1.0 };
       saveCalibration(next, conn?.device?.name, { localOnly: true });
       onCalibrationChange?.(next);
       return next;
@@ -363,13 +331,12 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   }, [conn?.device?.name, onCalibrationChange]);
 
   const bypassAll = useCallback(() => {
-    const { attackAlpha, releaseAlpha } = reaktionToAlphas(100);
     const neutral: LightCalibration = {
       ...DEFAULT_CALIBRATION,
       bassWeight: 0.5,
       hiShelfGainDb: 0,
-      attackAlpha,
-      releaseAlpha,
+      attackAlpha: 1.0,
+      releaseAlpha: 1.0,
       dynamicDamping: 0,
     };
     setCal(neutral);
@@ -380,11 +347,9 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   // Find active slider description
   const allSliders = [...PROFILE_SLIDERS, ...GLOBAL_SLIDERS];
   const activeDef = allSliders.find(s => s.key === activeSlider);
-  const activeValue = activeSlider === '_reaktion'
-    ? reaktion
-    : activeDef && activeDef.key !== '_reaktion'
-      ? cal[activeDef.key as keyof LightCalibration] as number
-      : 0;
+  const activeValue = activeDef && activeDef.key !== '_reaktion'
+    ? cal[activeDef.key as keyof LightCalibration] as number
+    : 0;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[60] flex flex-col" style={{ background: 'hsl(var(--background) / 0.88)', backdropFilter: 'blur(20px)' }}>
@@ -493,20 +458,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               const prevGroup = i > 0 ? PROFILE_SLIDERS[i - 1].group : null;
               const showSep = prevGroup && prevGroup !== def.group;
 
-              if (def.key === '_reaktion') {
-                return (
-                  <div key="_reaktion" className="flex items-center">
-                    {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
-                    <MixerFader
-                      def={def}
-                      value={reaktion}
-                      onChange={updateReaktion}
-                      isActive={activeSlider === '_reaktion'}
-                      onFocus={() => setActiveSlider('_reaktion')}
-                    />
-                  </div>
-                );
-              }
 
               return (
                 <div key={def.key} className="flex items-center">
