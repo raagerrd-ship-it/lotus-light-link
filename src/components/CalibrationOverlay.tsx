@@ -15,7 +15,7 @@ import { getPipelineTimings } from "@/lib/ui/pipelineTimings";
 /* ── Slider definitions ── */
 
 interface SliderDef {
-  key: keyof LightCalibration | '_reaktion';
+  key: keyof LightCalibration | '_softness';
   label: string;
   shortLabel: string;
   min: number;
