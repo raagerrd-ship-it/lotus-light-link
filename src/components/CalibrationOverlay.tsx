@@ -604,6 +604,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 });
               }}
               accentColor="hsl(45, 90%, 55%)"
+              onFocus={() => setActiveSlider('_transient')}
             />
             <ToggleFader
               label="👁" title="Perceptuell kurva"
