@@ -331,6 +331,7 @@ export class LightEngine {
     const paletteActive = (cal.paletteMode ?? 'off') !== 'off' && this.palette.length > 1;
     const rmsGateThreshold = (cal.rmsGate ?? 5) / 100;
     if (!paletteActive && rmsGateThreshold > 0 && rmsChange < rmsGateThreshold && this.lastTickData) {
+      debugData.rmsGateSkipCount++;
       this.emit(this.lastTickData);
       return;
     }
