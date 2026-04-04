@@ -277,7 +277,7 @@ function ToggleFader({
       <div
         className="relative w-3 rounded-full cursor-pointer select-none"
         style={{ height: '2.5rem', background: 'hsl(var(--secondary))' }}
-        onClick={() => onChange(!value)}
+        onClick={() => { onFocus?.(); onChange(!value); }}
       >
         {value && (
           <div className="absolute left-0 right-0 bottom-0 rounded-full" style={{ height: '100%', background: accentColor, opacity: 0.35 }} />
