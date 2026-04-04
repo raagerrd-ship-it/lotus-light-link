@@ -28,6 +28,7 @@ export interface DebugData {
   // BLE dedup/throttle counters
   bleSentCount: number;
   bleSkipDeltaCount: number;
+  rmsGateSkipCount: number;
   bleSkipThrottleCount: number;
   bleSkipBusyCount: number;
   bleWriteLatMs: number;
