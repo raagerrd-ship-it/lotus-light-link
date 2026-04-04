@@ -542,6 +542,33 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               onFocus={() => setActiveSlider('_tickMs')}
             />
 
+            {/* Toggle faders */}
+            <ToggleFader
+              label="⚡" title="Transient-boost"
+              value={cal.transientBoost !== false}
+              onChange={(v) => {
+                setCal(prev => {
+                  const next = { ...prev, transientBoost: v };
+                  saveCalibration(next, conn?.device?.name, { localOnly: true });
+                  onCalibrationChange?.(next);
+                  return next;
+                });
+              }}
+              accentColor="hsl(45, 90%, 55%)"
+            />
+            <ToggleFader
+              label="👁" title="Perceptuell kurva"
+              value={cal.perceptualCurve === true}
+              onChange={(v) => {
+                setCal(prev => {
+                  const next = { ...prev, perceptualCurve: v };
+                  saveCalibration(next, conn?.device?.name, { localOnly: true });
+                  onCalibrationChange?.(next);
+                  return next;
+                });
+              }}
+              accentColor="hsl(200, 80%, 55%)"
+            />
             {/* Dimming gamma */}
             <GenericFader
               label="Dimningsgamma" shortLabel="γ"
