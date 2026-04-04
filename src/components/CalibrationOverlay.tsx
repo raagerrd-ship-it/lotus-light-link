@@ -417,6 +417,25 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               </div>
             )}
           </div>
+          {/* Transient boost toggle */}
+          <button
+            onClick={() => {
+              setCal(prev => {
+                const next = { ...prev, transientBoost: !(prev.transientBoost !== false) };
+                saveCalibration(next, conn?.device?.name, { localOnly: true });
+                onCalibrationChange?.(next);
+                return next;
+              });
+            }}
+            className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all active:scale-90 ${
+              cal.transientBoost !== false
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground/50 hover:text-foreground/80'
+            }`}
+            title={`Transient-boost: ${cal.transientBoost !== false ? 'På' : 'Av'}`}
+          >
+            ⚡
+          </button>
           {/* Palette mode toggle */}
           <button
             onClick={() => {
