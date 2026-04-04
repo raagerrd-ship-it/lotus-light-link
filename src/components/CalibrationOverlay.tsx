@@ -203,12 +203,13 @@ function MixerFader({
 
 function GenericFader({
   label, shortLabel, value, min, max, step, unit,
-  defaultValue, onChange, accentColor, isActive, onFocus,
+  defaultValue, onChange, accentColor, isActive, onFocus, format,
 }: {
   label: string; shortLabel: string;
   value: number; min: number; max: number; step: number; unit: string;
   defaultValue: number; onChange: (v: number) => void;
   accentColor: string; isActive: boolean; onFocus: () => void;
+  format?: (v: number) => string;
 }) {
   const pct = ((value - min) / (max - min)) * 100;
   const bypassPct = ((defaultValue - min) / (max - min)) * 100;
