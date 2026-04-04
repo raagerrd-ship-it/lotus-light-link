@@ -458,20 +458,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               const prevGroup = i > 0 ? PROFILE_SLIDERS[i - 1].group : null;
               const showSep = prevGroup && prevGroup !== def.group;
 
-              if (def.key === '_reaktion') {
-                return (
-                  <div key="_reaktion" className="flex items-center">
-                    {showSep && <div className="w-px h-20 bg-border/30 mx-1" />}
-                    <MixerFader
-                      def={def}
-                      value={reaktion}
-                      onChange={updateReaktion}
-                      isActive={activeSlider === '_reaktion'}
-                      onFocus={() => setActiveSlider('_reaktion')}
-                    />
-                  </div>
-                );
-              }
 
               return (
                 <div key={def.key} className="flex items-center">
