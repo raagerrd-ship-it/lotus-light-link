@@ -44,13 +44,28 @@ const GLOBAL_SLIDERS: SliderDef[] = [
 
 const BYPASS_VALUES: Record<string, number> = {
   bassWeight: 0.5,
-  releaseAlpha: 1.0,
+  _softness: 0,
   dynamicDamping: 0,
-  smoothing: 0,
   brightnessFloor: 0,
   volCompensation: 80,
   punchWhiteThreshold: 100,
 };
+
+/** Convert Softness 0-100 → releaseAlpha + smoothing */
+function softnessToParams(s: number): { releaseAlpha: number; smoothing: number } {
+  // 0 = raw (release=1.0, smoothing=0), 100 = very smooth (release=0.005, smoothing=80)
+  const t = s / 100;
+  const releaseAlpha = 1.0 - 0.995 * Math.pow(t, 0.7);
+  const smoothing = Math.round(t * 80);
+  return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing };
+}
+
+/** Convert releaseAlpha → approximate Softness 0-100 */
+function paramsToSoftness(releaseAlpha: number): number {
+  // Inverse: t = ((1.0 - releaseAlpha) / 0.995) ^ (1/0.7)
+  const t = Math.pow(Math.max(0, (1.0 - releaseAlpha)) / 0.995, 1 / 0.7);
+  return Math.round(Math.max(0, Math.min(100, t * 100)));
+}
 
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
   { color: [255, 60, 0], label: 'Orange' },
