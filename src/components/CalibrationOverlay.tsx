@@ -304,6 +304,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   const [justSaved, setJustSaved] = useState(false);
 
   const isDirty = JSON.stringify(cal) !== JSON.stringify(savedCal);
+  const softness = paramsToSoftness(cal.releaseAlpha);
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
@@ -315,8 +316,17 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
 
   const update = useCallback((key: keyof LightCalibration, value: number) => {
     setCal(prev => {
-      // Always force attack to max speed
       const next = { ...prev, [key]: value, attackAlpha: 1.0 };
+      saveCalibration(next, conn?.device?.name, { localOnly: true });
+      onCalibrationChange?.(next);
+      return next;
+    });
+  }, [conn?.device?.name, onCalibrationChange]);
+
+  const updateSoftness = useCallback((s: number) => {
+    setCal(prev => {
+      const { releaseAlpha, smoothing } = softnessToParams(s);
+      const next = { ...prev, releaseAlpha, smoothing, attackAlpha: 1.0 };
       saveCalibration(next, conn?.device?.name, { localOnly: true });
       onCalibrationChange?.(next);
       return next;
