@@ -62,7 +62,7 @@ export interface LightCalibration {
 export const DEFAULT_CALIBRATION: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 0.3, releaseAlpha: 0.025, dynamicDamping: -1.0,
+  attackAlpha: 1.0, releaseAlpha: 0.025, dynamicDamping: -1.0,
   bassWeight: 0.7, hiShelfGainDb: 6,
   bandAgcAttack: 0.15, bandAgcDecay: 0.997,
   volCompensation: 80, punchWhiteThreshold: 100,
