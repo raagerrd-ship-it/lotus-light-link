@@ -53,27 +53,6 @@ const BYPASS_VALUES: Record<string, number> = {
   punchWhiteThreshold: 100,
 };
 
-/** Convert Reaktion 0-100 → attack/release alphas */
-function reaktionToAlphas(r: number): { attackAlpha: number; releaseAlpha: number } {
-  // 0 = slowest, 100 = bypass (no smoothing)
-  const t = r / 100;
-  // Attack: 0.05 → 1.0 (exponential curve)
-  const attackAlpha = 0.05 + 0.95 * Math.pow(t, 1.5);
-  // Release: always ~1/10 of attack, min 0.005
-  const releaseAlpha = Math.max(0.005, attackAlpha * 0.1);
-  return {
-    attackAlpha: Math.round(attackAlpha * 1000) / 1000,
-    releaseAlpha: Math.round(releaseAlpha * 1000) / 1000,
-  };
-}
-
-/** Convert attack/release alphas → Reaktion 0-100 */
-function alphasToReaktion(attack: number): number {
-  // Inverse of attackAlpha = 0.05 + 0.95 * t^1.5
-  const t = Math.pow(Math.max(0, (attack - 0.05)) / 0.95, 1 / 1.5);
-  return Math.round(Math.max(0, Math.min(100, t * 100)));
-}
-
 const IDLE_PRESETS: { color: [number, number, number]; label: string }[] = [
   { color: [255, 60, 0], label: 'Orange' },
   { color: [255, 0, 0], label: 'Röd' },
