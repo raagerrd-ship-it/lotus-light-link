@@ -371,7 +371,7 @@ export class LightEngine {
     const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
     this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1);
     // Boost brightness on transients (max ~15% extra)
-    const fluxBoost = this.smoothedFlux * 0.15;
+    const fluxBoost = (cal.transientBoost !== false) ? this.smoothedFlux * 0.15 : 0;
 
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
