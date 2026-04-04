@@ -151,7 +151,7 @@ export const PRESET_NAMES = ['Lugn', 'Normal', 'Party', 'Custom'] as const;
 export type PresetName = typeof PRESET_NAMES[number];
 
 const BUILT_IN_PRESETS: Record<PresetName, Partial<LightCalibration>> = {
-  Lugn: { attackAlpha: 0.08, releaseAlpha: 0.01, dynamicDamping: 1.5, bassWeight: 0.5, punchWhiteThreshold: 100 },
+  Lugn: { attackAlpha: 1.0, releaseAlpha: 0.01, dynamicDamping: 1.5, bassWeight: 0.5, punchWhiteThreshold: 100 },
   Normal: {},
   Party: { attackAlpha: 0.6, releaseAlpha: 0.08, dynamicDamping: -2.0, bassWeight: 0.85, punchWhiteThreshold: 95, paletteMode: 'bass', paletteRotationSpeed: 6 },
   Custom: {},
