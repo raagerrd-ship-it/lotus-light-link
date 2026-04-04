@@ -29,7 +29,7 @@ interface SliderDef {
 
 /** Profile sliders — saved per-preset */
 const PROFILE_SLIDERS: SliderDef[] = [
-  { key: 'bassWeight', label: 'Basvikt', shortLabel: 'Bass', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Hur mycket bas vs diskant påverkar ljusstyrkan. 0.5 = lika, 1.0 = bara bas.' },
+  { key: 'bassWeight', label: 'Bas ↔ Disk', shortLabel: 'B↔D', min: 0, max: 1, step: 0.05, unit: '', group: 'Frekvens', description: 'Crossfader: hur mycket bas vs diskant styr ljuset. 0 = bara diskant, 0.5 = lika, 1.0 = bara bas.' },
   { key: '_softness', label: 'Mjukhet', shortLabel: 'Soft', min: 0, max: 100, step: 1, unit: '', group: 'Dynamik', description: 'Hur mjukt ljuset beter sig. 0 = rått/direkt, 100 = mycket mjukt/långsamt. Bypass = 0.' },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -3.0, max: 2.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Positivt = förstärkt kontrast. Negativt = utjämnad. 0 = neutral.' },
   { key: 'brightnessFloor', label: 'Golv', shortLabel: 'Floor', min: 0, max: 25, step: 1, unit: '%', group: 'Dynamik', description: 'Lägsta brightness. Ljuset går aldrig under detta värde.' },
