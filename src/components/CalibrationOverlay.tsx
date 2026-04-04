@@ -33,8 +33,7 @@ const PROFILE_SLIDERS: SliderDef[] = [
   { key: '_softness', label: 'Mjukhet', shortLabel: 'Soft', min: 0, max: 100, step: 1, unit: '', group: 'Dynamik', description: 'Hur mjukt ljuset beter sig. 0 = rått/direkt, 100 = mycket mjukt/långsamt. Bypass = 0.' },
   { key: 'dynamicDamping', label: 'Dynamik', shortLabel: 'Dyn', min: -3.0, max: 2.0, step: 0.1, unit: '×', group: 'Dynamik', description: 'Positivt = förstärkt kontrast. Negativt = utjämnad. 0 = neutral.' },
   { key: 'brightnessFloor', label: 'Golv', shortLabel: 'Floor', min: 0, max: 25, step: 1, unit: '%', group: 'Dynamik', description: 'Lägsta brightness. Ljuset går aldrig under detta värde.' },
-  { key: 'volCompensation', label: 'Volymkomp.', shortLabel: 'Vol', min: 0, max: 100, step: 5, unit: '%', group: 'AGC', description: 'Hur mycket en volymändring direkt skalas om i AGC.' },
-  { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 90, max: 100, step: 0.5, unit: '%', group: 'Punch', description: '100 = av. Ljusstyrka över detta → vit färg.' },
+  { key: 'punchWhiteThreshold', label: 'Punch White', shortLabel: 'Punch', min: 90, max: 100, step: 0.5, unit: '%', group: 'Effekt', description: '100 = av. Ljusstyrka över detta → vit färg.' },
 ];
 
 /** Global sliders — shared across all presets */
@@ -45,7 +44,6 @@ const BYPASS_VALUES: Record<string, number> = {
   _softness: 0,
   dynamicDamping: 0,
   brightnessFloor: 0,
-  volCompensation: 80,
   punchWhiteThreshold: 100,
 };
 
