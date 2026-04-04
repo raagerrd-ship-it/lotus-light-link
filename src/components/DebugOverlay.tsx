@@ -34,8 +34,7 @@ export default function DebugOverlay() {
       const wdt = (now - windowRef.current.time) / 1000;
       if (wdt >= 10) {
         const dSent = d.bleSentCount - windowRef.current.sent;
-        const dSkip = (d.bleSkipDeltaCount - windowRef.current.skipDelta)
-          + (d.bleSkipThrottleCount - windowRef.current.skipThrottle)
+        const dSkip = (d.rmsGateSkipCount - (windowRef.current as any).skipRms)
           + (d.bleSkipBusyCount - windowRef.current.skipBusy);
         const dTotal = dSent + dSkip;
         statsRef.current.skipPct = dTotal > 0 ? Math.round((dSkip / dTotal) * 100) : 0;
