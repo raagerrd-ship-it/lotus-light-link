@@ -45,8 +45,7 @@ const GLOBAL_SLIDERS: SliderDef[] = [
 
 const BYPASS_VALUES: Record<string, number> = {
   bassWeight: 0.5,
-  hiShelfGainDb: 0,
-  _reaktion: 100,
+  releaseAlpha: 1.0,
   dynamicDamping: 0,
   smoothing: 0,
   brightnessFloor: 0,
