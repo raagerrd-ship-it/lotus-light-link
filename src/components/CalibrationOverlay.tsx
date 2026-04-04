@@ -290,7 +290,6 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
   const [justSaved, setJustSaved] = useState(false);
 
   const isDirty = JSON.stringify(cal) !== JSON.stringify(savedCal);
-  const reaktion = alphasToReaktion(cal.attackAlpha);
 
   useEffect(() => subscribeBle(() => setConn(getBleConnection())), []);
 
@@ -302,17 +301,8 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
 
   const update = useCallback((key: keyof LightCalibration, value: number) => {
     setCal(prev => {
-      const next = { ...prev, [key]: value };
-      saveCalibration(next, conn?.device?.name, { localOnly: true });
-      onCalibrationChange?.(next);
-      return next;
-    });
-  }, [conn?.device?.name, onCalibrationChange]);
-
-  const updateReaktion = useCallback((r: number) => {
-    setCal(prev => {
-      const { attackAlpha, releaseAlpha } = reaktionToAlphas(r);
-      const next = { ...prev, attackAlpha, releaseAlpha };
+      // Always force attack to max speed
+      const next = { ...prev, [key]: value, attackAlpha: 1.0 };
       saveCalibration(next, conn?.device?.name, { localOnly: true });
       onCalibrationChange?.(next);
       return next;
