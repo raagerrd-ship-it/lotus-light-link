@@ -10,6 +10,7 @@ import { getCalibration, saveCalibration, applyColorCalibration, getActiveDevice
 import { computeBands, resetFluxState, type BandResult } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
 import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
+import { debugData } from "@/lib/ui/debugStore";
 
 export interface TickData {
   brightness: number;
