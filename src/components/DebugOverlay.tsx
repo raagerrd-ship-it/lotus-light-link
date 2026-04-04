@@ -42,8 +42,7 @@ export default function DebugOverlay() {
         windowRef.current = {
           time: now,
           sent: d.bleSentCount,
-          skipDelta: d.bleSkipDeltaCount,
-          skipThrottle: d.bleSkipThrottleCount,
+          skipRms: d.rmsGateSkipCount,
           skipBusy: d.bleSkipBusyCount,
         };
       } else if (wdt >= 0.5) {
