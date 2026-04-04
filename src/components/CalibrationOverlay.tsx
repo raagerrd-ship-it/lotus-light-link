@@ -203,12 +203,13 @@ function MixerFader({
 
 function GenericFader({
   label, shortLabel, value, min, max, step, unit,
-  defaultValue, onChange, accentColor, isActive, onFocus,
+  defaultValue, onChange, accentColor, isActive, onFocus, format,
 }: {
   label: string; shortLabel: string;
   value: number; min: number; max: number; step: number; unit: string;
   defaultValue: number; onChange: (v: number) => void;
   accentColor: string; isActive: boolean; onFocus: () => void;
+  format?: (v: number) => string;
 }) {
   const pct = ((value - min) / (max - min)) * 100;
   const bypassPct = ((defaultValue - min) / (max - min)) * 100;
@@ -258,45 +259,33 @@ function GenericFader({
       >−</button>
       <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">{shortLabel}</span>
       <span className="text-[9px] font-mono leading-tight text-foreground/80">
-        {step < 1 ? value.toFixed(1) : String(Math.round(value))}{unit}
+        {format ? format(value) : (step < 1 ? value.toFixed(1) : String(Math.round(value))) + unit}
       </span>
     </div>
   );
 }
 
-/* ── Toggle fader (on/off, styled like a mini fader) ── */
+/* ── Binary fader (on/off, styled like a two-position slider) ── */
 
-function ToggleFader({
-  label, title, value, onChange, accentColor, onFocus,
+function BinaryFader({
+  label, shortLabel, value, onChange, accentColor, isActive, onFocus,
 }: {
-  label: string; title: string;
+  label: string; shortLabel: string;
   value: boolean; onChange: (v: boolean) => void;
-  accentColor: string; onFocus?: () => void;
+  accentColor: string; isActive?: boolean; onFocus?: () => void;
 }) {
+  const numVal = value ? 1 : 0;
   return (
-    <div className="flex flex-col items-center gap-1 min-w-[3rem]" title={title} onClick={onFocus}>
-      <div
-        className="relative w-3 rounded-full cursor-pointer select-none"
-        style={{ height: '2.5rem', background: 'hsl(var(--secondary))' }}
-        onClick={() => { onFocus?.(); onChange(!value); }}
-      >
-        {value && (
-          <div className="absolute left-0 right-0 bottom-0 rounded-full" style={{ height: '100%', background: accentColor, opacity: 0.35 }} />
-        )}
-        <div
-          className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border transition-all"
-          style={{
-            bottom: value ? 'calc(100% - 10px)' : '2px',
-            background: value ? accentColor : 'hsl(var(--foreground) / 0.5)',
-            borderColor: value ? accentColor : 'hsl(var(--border))',
-          }}
-        />
-      </div>
-      <span className="text-[10px] leading-tight text-center">{label}</span>
-      <span className={`text-[9px] font-mono leading-tight ${value ? 'text-foreground/80' : 'text-muted-foreground/60'}`}>
-        {value ? 'på' : 'av'}
-      </span>
-    </div>
+    <GenericFader
+      label={label} shortLabel={shortLabel}
+      value={numVal} min={0} max={1} step={1} unit=""
+      defaultValue={0}
+      onChange={(v) => onChange(v >= 1)}
+      accentColor={accentColor}
+      isActive={isActive}
+      onFocus={onFocus}
+      format={(v) => v >= 1 ? 'på' : 'av'}
+    />
   );
 }
 
@@ -592,9 +581,9 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               onFocus={() => setActiveSlider('_tickMs')}
             />
 
-            {/* Toggle faders */}
-            <ToggleFader
-              label="⚡" title="Transient-boost"
+            {/* Binary faders */}
+            <BinaryFader
+              label="⚡ Transient" shortLabel="⚡"
               value={cal.transientBoost !== false}
               onChange={(v) => {
                 setCal(prev => {
@@ -605,10 +594,11 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 });
               }}
               accentColor="hsl(45, 90%, 55%)"
+              isActive={activeSlider === '_transient'}
               onFocus={() => setActiveSlider('_transient')}
             />
-            <ToggleFader
-              label="👁" title="Perceptuell kurva"
+            <BinaryFader
+              label="👁 Perceptuell" shortLabel="👁"
               value={cal.perceptualCurve === true}
               onChange={(v) => {
                 setCal(prev => {
@@ -619,6 +609,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
                 });
               }}
               accentColor="hsl(200, 80%, 55%)"
+              isActive={activeSlider === '_perceptual'}
               onFocus={() => setActiveSlider('_perceptual')}
             />
             {/* Dimming gamma */}
