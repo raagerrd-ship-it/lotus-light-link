@@ -264,39 +264,27 @@ function GenericFader({
   );
 }
 
-/* ── Toggle fader (on/off, styled like a mini fader) ── */
+/* ── Binary fader (on/off, styled like a two-position slider) ── */
 
-function ToggleFader({
-  label, title, value, onChange, accentColor, onFocus,
+function BinaryFader({
+  label, shortLabel, value, onChange, accentColor, isActive, onFocus,
 }: {
-  label: string; title: string;
+  label: string; shortLabel: string;
   value: boolean; onChange: (v: boolean) => void;
-  accentColor: string; onFocus?: () => void;
+  accentColor: string; isActive?: boolean; onFocus?: () => void;
 }) {
+  const numVal = value ? 1 : 0;
   return (
-    <div className="flex flex-col items-center gap-1 min-w-[3rem]" title={title} onClick={onFocus}>
-      <div
-        className="relative w-3 rounded-full cursor-pointer select-none"
-        style={{ height: '2.5rem', background: 'hsl(var(--secondary))' }}
-        onClick={() => { onFocus?.(); onChange(!value); }}
-      >
-        {value && (
-          <div className="absolute left-0 right-0 bottom-0 rounded-full" style={{ height: '100%', background: accentColor, opacity: 0.35 }} />
-        )}
-        <div
-          className="absolute left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm shadow-md border transition-all"
-          style={{
-            bottom: value ? 'calc(100% - 10px)' : '2px',
-            background: value ? accentColor : 'hsl(var(--foreground) / 0.5)',
-            borderColor: value ? accentColor : 'hsl(var(--border))',
-          }}
-        />
-      </div>
-      <span className="text-[10px] leading-tight text-center">{label}</span>
-      <span className={`text-[9px] font-mono leading-tight ${value ? 'text-foreground/80' : 'text-muted-foreground/60'}`}>
-        {value ? 'på' : 'av'}
-      </span>
-    </div>
+    <GenericFader
+      label={label} shortLabel={shortLabel}
+      value={numVal} min={0} max={1} step={1} unit=""
+      defaultValue={0}
+      onChange={(v) => onChange(v >= 1)}
+      accentColor={accentColor}
+      isActive={isActive}
+      onFocus={onFocus}
+      format={(v) => v >= 1 ? 'på' : 'av'}
+    />
   );
 }
 
