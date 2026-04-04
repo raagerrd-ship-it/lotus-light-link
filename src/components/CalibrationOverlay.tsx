@@ -259,7 +259,7 @@ function GenericFader({
       >−</button>
       <span className="text-[9px] font-bold tracking-wide leading-tight text-center text-foreground">{shortLabel}</span>
       <span className="text-[9px] font-mono leading-tight text-foreground/80">
-        {step < 1 ? value.toFixed(1) : String(Math.round(value))}{unit}
+        {format ? format(value) : (step < 1 ? value.toFixed(1) : String(Math.round(value))) + unit}
       </span>
     </div>
   );
