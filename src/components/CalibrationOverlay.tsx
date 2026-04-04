@@ -47,6 +47,7 @@ const BYPASS_VALUES: Record<string, number> = {
   dynamicDamping: 0,
   brightnessFloor: 0,
   punchWhiteThreshold: 100,
+  rmsGate: 0,
 };
 
 /** Convert Softness 0-100 → releaseAlpha + smoothing */
