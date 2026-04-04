@@ -271,7 +271,7 @@ function ToggleFader({
   accentColor: string; onFocus?: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1 min-w-[3rem]" title={title}>
+    <div className="flex flex-col items-center gap-1 min-w-[3rem]" title={title} onClick={onFocus}>
       <div
         className="relative w-3 rounded-full cursor-pointer select-none"
         style={{ height: '2.5rem', background: 'hsl(var(--secondary))' }}
