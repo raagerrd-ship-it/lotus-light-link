@@ -61,12 +61,12 @@ SSH into the Pi and run:
 
 ```bash
 # One-liner install (replace with your GitHub URL):
-export REPO_URL="https://github.com/YOUR_USER/lotus-light-link.git"
-curl -fsSL "https://raw.githubusercontent.com/YOUR_USER/lotus-light-link/main/pi/setup-lotus.sh" | sudo bash
+export REPO_URL="https://github.com/raagerrd-ship-it/lotus-light-link.git"
+curl -fsSL "https://raw.githubusercontent.com/raagerrd-ship-it/lotus-light-link/main/pi/setup-lotus.sh" | sudo bash
 
 # Or manual:
 sudo apt-get install -y git
-git clone https://github.com/YOUR_USER/lotus-light-link.git /opt/lotus-light
+git clone https://github.com/raagerrd-ship-it/lotus-light-link.git /opt/lotus-light
 cd /opt/lotus-light
 sudo bash pi/setup-lotus.sh
 ```
