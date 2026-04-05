@@ -284,6 +284,8 @@ export class LightEngine {
     this.smoothed = 0;
     this.smoothedBass = 0;
     this.smoothedMidHi = 0;
+    this.smoothedBass2 = 0;
+    this.smoothedMidHi2 = 0;
     this.dynamicCenter = 0.5;
     this.extraSmoothPct = 0;
     this.agc = createAgcState(0.01);
