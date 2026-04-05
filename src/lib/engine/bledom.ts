@@ -275,6 +275,11 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   // Non-reentrant guard — prevents OS BLE queue buildup
   if (_writeInFlight) { debugData.bleSkipBusyCount++; return; }
 
+  // Dedup — skip if computed bytes are identical to last sent
+  if (cr === _lastR && cg === _lastG && cb === _lastB && cbr === _lastBr) {
+    debugData.bleSkipDeltaCount++;
+    return;
+  }
   _lastR = cr; _lastG = cg; _lastB = cb; _lastBr = cbr;
 
   _colorBuf[4] = cr;
