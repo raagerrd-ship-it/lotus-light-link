@@ -52,6 +52,9 @@ export class LightEngine {
   private smoothed = 0;
   private smoothedBass = 0;
   private smoothedMidHi = 0;
+  // 2nd-order cascade: second stage for each band removes sharp corners
+  private smoothedBass2 = 0;
+  private smoothedMidHi2 = 0;
   private dynamicCenter = 0.5;
   private agc: AgcState;
   private cal: LightCalibration;
