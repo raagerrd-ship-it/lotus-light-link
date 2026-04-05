@@ -93,8 +93,6 @@ function CopyButton({ text }: { text: string }) {
 
 export default function PiSetupDialog() {
   const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState<number | null>(null);
-
   const [activeSection, setActiveSection] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
 
