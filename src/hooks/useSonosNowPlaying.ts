@@ -234,7 +234,7 @@ export function useSonosNowPlaying() {
 
     // Always poll /status every 5s to catch missed state changes (play/pause)
     // Position-ticks via SSE don't carry playbackState, so SSE alone can't fix stale state
-    const pollId = setInterval(pollStatus, 5000);
+    const pollId = setInterval(pollStatus, 2000);
 
     return () => {
       if (es) { es.close(); es = null; }
