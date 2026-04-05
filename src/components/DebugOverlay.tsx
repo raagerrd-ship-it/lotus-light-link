@@ -19,7 +19,7 @@ export default function DebugOverlay() {
   // Rolling window: snapshot counters every 10s, compute skip%/wps from delta
   const windowRef = useRef({
     time: performance.now(),
-    sent: 0, skipRms: 0, skipBusy: 0,
+    sent: 0, skipDedup: 0, skipBusy: 0,
   });
   const statsRef = useRef({ skipPct: 0, wps: 0 });
 
@@ -34,7 +34,7 @@ export default function DebugOverlay() {
       const wdt = (now - windowRef.current.time) / 1000;
       if (wdt >= 10) {
         const dSent = d.bleSentCount - windowRef.current.sent;
-        const dSkip = (d.rmsGateSkipCount - (windowRef.current as any).skipRms)
+        const dSkip = (d.bleSkipDeltaCount - windowRef.current.skipDedup)
           + (d.bleSkipBusyCount - windowRef.current.skipBusy);
         const dTotal = dSent + dSkip;
         statsRef.current.skipPct = dTotal > 0 ? Math.round((dSkip / dTotal) * 100) : 0;
@@ -42,7 +42,7 @@ export default function DebugOverlay() {
         windowRef.current = {
           time: now,
           sent: d.bleSentCount,
-          skipRms: d.rmsGateSkipCount,
+          skipDedup: d.bleSkipDeltaCount,
           skipBusy: d.bleSkipBusyCount,
         };
       } else if (wdt >= 0.5) {
