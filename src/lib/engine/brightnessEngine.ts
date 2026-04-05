@@ -57,7 +57,7 @@ export function perceptualBrightness(pct: number, floor: number = 0): number {
   if (pct <= floor) return floor;
   if (pct >= 100) return 100;
   const norm = (pct - floor) / (100 - floor);
-  const perceived = Math.pow(norm, 0.45); // inverse gamma ≈ 2.2
+  const perceived = Math.pow(norm, 2.2); // gamma 2.2: perceptual → linear LED
   return Math.round(floor + perceived * (100 - floor));
 }
 
