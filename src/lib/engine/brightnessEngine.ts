@@ -1,6 +1,7 @@
 // Brightness calculation — smoothing, dynamics, perceptual curve, final percentage
 
 import type { LightCalibration } from "./lightCalibration";
+import { getDimmingGamma } from "./bledom";
 
 export interface SmoothedBands {
   bass: number;
