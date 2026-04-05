@@ -80,11 +80,12 @@ export function computeBrightnessPct(
 
   const rawPct = (energyNorm * effectiveMax) / 100;
   const floor = cal.brightnessFloor ?? 0;
-  let pct = Math.max(floor, Math.round(rawPct * 100));
+  let pct = Math.max(floor, rawPct * 100);
 
   if (cal.perceptualCurve) {
     pct = perceptualBrightness(pct, floor);
   }
 
+  // Return float — let caller round at the last possible moment (after extraSmooth)
   return { pct: Math.max(floor, pct), newCenter };
 }
