@@ -581,6 +581,7 @@ const Index = () => {
       )}
 
       {activated && showDebug && <DebugOverlay />}
+      <PiSetupDialog />
     </div>
   );
 };
