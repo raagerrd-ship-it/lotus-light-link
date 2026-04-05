@@ -36,6 +36,7 @@ async function main() {
   console.log('╚═══════════════════════════════════════════╝');
   console.log(`  Tick: ${TICK_MS}ms (${Math.round(1000 / TICK_MS)} Hz)`);
   console.log(`  Bridge: ${BRIDGE_URL}`);
+  console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
   console.log(`  Config: :${CONFIG_PORT}`);
   console.log('');
 
@@ -54,9 +55,22 @@ async function main() {
   // Start background reconnect loop
   const reconnectTimer = startReconnectLoop(30000);
 
-  // 4. Start Sonos poller
+  // 4. Start Sonos poller (configurable gateway)
+  // Load saved config or use env vars
+  let sonosConfig: SonosPollerConfig = {
+    baseUrl: BRIDGE_URL,
+    ssePath: SSE_PATH,
+    statusPath: STATUS_PATH,
+    pollIntervalMs: POLL_INTERVAL,
+    disableSSE: DISABLE_SSE,
+  };
+  try {
+    const saved = getItem('sonos-gateway');
+    if (saved) sonosConfig = { ...sonosConfig, ...JSON.parse(saved) };
+  } catch {}
+
   console.log('[Boot] Starting Sonos poller...');
-  startSonosPoller(BRIDGE_URL);
+  await startSonosPoller(sonosConfig);
 
   // React to Sonos state changes
   onSonosChange((state) => {
