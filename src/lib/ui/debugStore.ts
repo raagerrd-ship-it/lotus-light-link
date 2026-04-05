@@ -10,6 +10,7 @@ export interface DebugData {
   bleReconnectStatus: BleReconnectStatus | null;
   // Input
   smoothedRtt: number;
+  sonosPlaybackState: string | null;
   sonosVolume: number | null;
   gainMode: 'agc' | 'vol' | 'manual';
   micRms: number;
