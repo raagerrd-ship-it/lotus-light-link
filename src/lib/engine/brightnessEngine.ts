@@ -58,7 +58,7 @@ export function perceptualBrightness(pct: number, floor: number = 0): number {
   if (pct >= 100) return 100;
   const norm = (pct - floor) / (100 - floor);
   const perceived = Math.pow(norm, getDimmingGamma());
-  return Math.round(floor + perceived * (100 - floor));
+  return floor + perceived * (100 - floor); // float — caller rounds
 }
 
 /** Compute final brightness percentage from smoothed bands */
