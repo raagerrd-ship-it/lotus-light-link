@@ -192,6 +192,42 @@ export default function PiSetupDialog() {
                 </p>
               </div>
 
+              {/* Troubleshooting */}
+              <div className="rounded-xl border border-foreground/5 overflow-hidden">
+                <button
+                  onClick={() => setExpanded(expanded === 'debug' ? null : 'debug')}
+                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-foreground/3 transition-colors"
+                >
+                  <span className="text-sm font-medium">🛠 Felsökning</span>
+                  {expanded === 'debug'
+                    ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
+                    : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                  }
+                </button>
+                {expanded === 'debug' && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {[
+                      { label: "Loggar (live)", cmd: "journalctl -u lotus-light -f" },
+                      { label: "Service-status", cmd: "systemctl status lotus-light" },
+                      { label: "Mic-test (ALSA)", cmd: "arecord -D plughw:0 -c1 -r16000 -f S16_LE -d5 /tmp/test.wav && aplay /tmp/test.wav" },
+                      { label: "BLE-skanning", cmd: "sudo hcitool lescan --passive" },
+                      { label: "BLE-adapterstatus", cmd: "hciconfig hci0" },
+                      { label: "I²S overlay aktiv?", cmd: "arecord -l" },
+                      { label: "Uppdateringslogg", cmd: "journalctl -u lotus-update -n 20" },
+                      { label: "Manuell uppdatering", cmd: "sudo bash /opt/lotus-light/pi/update-services.sh" },
+                    ].map((item, i) => (
+                      <div key={i}>
+                        <p className="text-xs font-medium text-foreground/70 mb-1">{item.label}</p>
+                        <div className="relative rounded-lg bg-foreground/5 p-2.5 pr-8 font-mono text-[10px] leading-relaxed">
+                          <CopyButton text={item.cmd} />
+                          {item.cmd}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Links */}
               <div className="flex gap-2 pt-1">
                 <a href={REPO_URL} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
