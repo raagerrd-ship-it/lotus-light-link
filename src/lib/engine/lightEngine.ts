@@ -437,11 +437,11 @@ export class LightEngine {
     const bleSentR = finalColor[0], bleSentG = finalColor[1], bleSentB = finalColor[2];
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];
 
-    // ── BLE output (awaited for accurate latency) ──
+    // ── BLE output (fire-and-forget — non-reentrant guard in sendToBLE prevents queue buildup) ──
     const smoothEnd = performance.now();
     if (this.chars.size > 0) {
-      if (isPunch) await sendToBLE(255, 255, 255, pct);
-      else await sendToBLE(bleSentR, bleSentG, bleSentB, pct);
+      if (isPunch) sendToBLE(255, 255, 255, pct);
+      else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
     }
     const bleEnd = performance.now();
 
