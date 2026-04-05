@@ -3,8 +3,14 @@
  * Uses SSE (primary) + fallback HTTP poll, same logic as the React hook.
  */
 
-// EventSource polyfill for Node
-import { EventSource } from 'eventsource' as any;
+// Node 18+ has fetch built-in; EventSource needs eventsource package
+let EventSourceImpl: any;
+try {
+  EventSourceImpl = (await import('eventsource')).default ?? (await import('eventsource'));
+} catch {
+  // Fallback: rely on polling only
+  EventSourceImpl = null;
+}
 
 export interface SonosState {
   trackName: string | null;
