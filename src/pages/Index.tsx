@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { DEFAULT_TICK_MS } from "@/lib/engine/lightEngine";
 import { useNavigate } from "react-router-dom";
 import CalibrationOverlay from "@/components/CalibrationOverlay";
+import PiSetupDialog from "@/components/PiSetupDialog";
 import { Button } from "@/components/ui/button";
 import NowPlayingBar from "@/components/NowPlayingBar";
 import {
@@ -580,6 +581,7 @@ const Index = () => {
       )}
 
       {activated && showDebug && <DebugOverlay />}
+      <PiSetupDialog />
     </div>
   );
 };
