@@ -102,12 +102,19 @@ export function useSonosNowPlaying() {
 
       // Position-tick payloads (source='position-tick') carry no trackName/playbackState
       // — merge them into existing state without triggering TV/idle detection
+      // If position is advancing, infer PLAYING (catches missed UPnP play events)
       if (s.source === 'position-tick') {
         const prev = dataRef.current;
         if (!prev) return;
+        const newPos = s.positionMillis != null ? (s.positionMillis + rtt / 2) : prev.positionMs;
+        const posAdvancing = newPos != null && prev.positionMs != null && newPos > prev.positionMs + 50;
+        const inferredState = posAdvancing && prev.playbackState !== 'PLAYBACK_STATE_PLAYING'
+          ? 'PLAYBACK_STATE_PLAYING'
+          : prev.playbackState;
         apply({
           ...prev,
-          positionMs: s.positionMillis != null ? (s.positionMillis + rtt / 2) : prev.positionMs,
+          playbackState: inferredState,
+          positionMs: newPos,
           durationMs: s.durationMillis ?? prev.durationMs,
           volume: s.volume ?? prev.volume,
           receivedAt: performance.now(),
@@ -225,12 +232,9 @@ export function useSonosNowPlaying() {
       } catch { /* ignore poll errors */ }
     };
 
-    const pollId = setInterval(() => {
-      // Only poll if SSE hasn't delivered anything in 1.5s
-      if (Date.now() - lastSseMessage > 1500) {
-        pollStatus();
-      }
-    }, 2000);
+    // Always poll /status every 5s to catch missed state changes (play/pause)
+    // Position-ticks via SSE don't carry playbackState, so SSE alone can't fix stale state
+    const pollId = setInterval(pollStatus, 5000);
 
     return () => {
       if (es) { es.close(); es = null; }
