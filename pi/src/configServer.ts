@@ -7,7 +7,7 @@ import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames } from './nobleBle.js';
 import type { PiLightEngine } from './piEngine.js';
-import { getSonosState } from './sonosPoller.js';
+import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, type SonosPollerConfig } from './sonosPoller.js';
 
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
   const app = express();
