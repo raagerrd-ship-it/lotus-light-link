@@ -50,7 +50,7 @@ function CopyButton({ text }: { text: string }) {
   };
   return (
     <button onClick={handleCopy} className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-white/10 transition-colors">
-      {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+      {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
     </button>
   );
 }
