@@ -190,9 +190,10 @@ GND  → GND (pin 14)
 ## Att bygga
 
 ### Fas 1: Pi #1 (när hårdvaran anländer)
-1. `pi/` headless runtime i Lotus Light Link
-2. `setup-lotus.sh` — install-script
-3. systemd-tjänster
+1. Cast Away Web (Sonos-proxy + Chromecast idle-cast) — port 3000
+2. `pi/` headless runtime i Lotus Light Link — port 3001
+3. `setup-lotus.sh` — install-script
+4. systemd-tjänster för båda
 
 ### Fas 2: Pi #2 (veckor efter Pi #1)
 1. Lokal tjänst: SPI-läsning (MAX31865) + GPIO-styrning (HW-281)
