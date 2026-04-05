@@ -7,7 +7,7 @@ import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames } from './nobleBle.js';
 import type { PiLightEngine } from './piEngine.js';
-import { getSonosState } from './sonosPoller.js';
+import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, type SonosPollerConfig } from './sonosPoller.js';
 
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
   const app = express();
@@ -91,6 +91,28 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     } else {
       res.status(400).json({ error: 'tickMs must be 20-200' });
     }
+  });
+
+  // --- Sonos gateway config ---
+  app.get('/api/sonos-gateway', (_req, res) => {
+    const saved = getItem('sonos-gateway');
+    const current = getPollerConfig();
+    res.json({
+      saved: saved ? JSON.parse(saved) : null,
+      active: current,
+    });
+  });
+
+  app.put('/api/sonos-gateway', async (req, res) => {
+    const config: SonosPollerConfig = req.body;
+    if (!config?.baseUrl) {
+      return res.status(400).json({ error: 'Need baseUrl' });
+    }
+    // Persist and restart poller
+    setItem('sonos-gateway', JSON.stringify(config));
+    stopSonosPoller();
+    await startSonosPoller(config);
+    res.json({ ok: true, config });
   });
 
   app.listen(port, () => {

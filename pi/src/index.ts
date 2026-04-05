@@ -16,14 +16,19 @@ installLocalStorageShim();
 
 import { startMic, stopMic } from './alsaMic.js';
 import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount } from './nobleBle.js';
-import { startSonosPoller, stopSonosPoller, onSonosChange } from './sonosPoller.js';
+import { startSonosPoller, stopSonosPoller, onSonosChange, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
+import { getItem, setItem } from './storage.js';
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://localhost:3000/api/sonos';
 const CONFIG_PORT = Number(process.env.CONFIG_PORT ?? 3001);
 const TICK_MS = Number(process.env.TICK_MS ?? 30);
+const SSE_PATH = process.env.SSE_PATH ?? '/events';
+const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
+const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
+const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
 
 async function main() {
   console.log('╔═══════════════════════════════════════════╗');
@@ -31,6 +36,7 @@ async function main() {
   console.log('╚═══════════════════════════════════════════╝');
   console.log(`  Tick: ${TICK_MS}ms (${Math.round(1000 / TICK_MS)} Hz)`);
   console.log(`  Bridge: ${BRIDGE_URL}`);
+  console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
   console.log(`  Config: :${CONFIG_PORT}`);
   console.log('');
 
@@ -49,9 +55,22 @@ async function main() {
   // Start background reconnect loop
   const reconnectTimer = startReconnectLoop(30000);
 
-  // 4. Start Sonos poller
+  // 4. Start Sonos poller (configurable gateway)
+  // Load saved config or use env vars
+  let sonosConfig: SonosPollerConfig = {
+    baseUrl: BRIDGE_URL,
+    ssePath: SSE_PATH,
+    statusPath: STATUS_PATH,
+    pollIntervalMs: POLL_INTERVAL,
+    disableSSE: DISABLE_SSE,
+  };
+  try {
+    const saved = getItem('sonos-gateway');
+    if (saved) sonosConfig = { ...sonosConfig, ...JSON.parse(saved) };
+  } catch {}
+
   console.log('[Boot] Starting Sonos poller...');
-  startSonosPoller(BRIDGE_URL);
+  await startSonosPoller(sonosConfig);
 
   // React to Sonos state changes
   onSonosChange((state) => {

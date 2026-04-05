@@ -1,7 +1,26 @@
 /**
- * Sonos status poller — fetches now-playing from Cast Away bridge.
- * Uses SSE (primary) + fallback HTTP poll, same logic as the React hook.
+ * Sonos status poller — fetches now-playing from a Sonos gateway/proxy.
+ * Uses SSE (primary) + fallback HTTP poll.
+ * 
+ * Configurable for any gateway that exposes:
+ *   - GET  {baseUrl}/status   → JSON now-playing
+ *   - GET  {baseUrl}/events   → SSE stream
  */
+
+export interface SonosPollerConfig {
+  /** Base URL for the Sonos gateway (e.g. "http://localhost:3000/api/sonos") */
+  baseUrl: string;
+  /** SSE endpoint path appended to baseUrl (default: "/events") */
+  ssePath?: string;
+  /** Status poll endpoint path appended to baseUrl (default: "/status") */
+  statusPath?: string;
+  /** Fallback poll interval in ms (default: 2000) */
+  pollIntervalMs?: number;
+  /** Poll request timeout in ms (default: 4000) */
+  pollTimeoutMs?: number;
+  /** Disable SSE entirely — poll-only mode (default: false) */
+  disableSSE?: boolean;
+}
 
 export interface SonosState {
   trackName: string | null;
@@ -77,36 +96,68 @@ function parseStatus(s: any): void {
 
 let pollTimer: NodeJS.Timeout | null = null;
 let sseCleanup: (() => void) | null = null;
+let activeConfig: SonosPollerConfig | null = null;
 
-export async function startSonosPoller(bridgeUrl = 'http://localhost:3000/api/sonos'): Promise<void> {
-  // Try SSE via eventsource package (optional dep)
-  try {
-    const mod = await import('eventsource');
-    const ESClass = (mod as any).default ?? mod;
-    const es = new ESClass(`${bridgeUrl}/events`);
-    es.onmessage = (e: any) => {
-      try { parseStatus(JSON.parse(e.data)); } catch {}
-    };
-    es.onerror = () => {}; // auto-reconnects
-    sseCleanup = () => es.close();
-    console.log(`[Sonos] SSE connected → ${bridgeUrl}/events`);
-  } catch {
-    console.log('[Sonos] No SSE support, using poll-only mode');
+const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
+  ssePath: '/events',
+  statusPath: '/status',
+  pollIntervalMs: 2000,
+  pollTimeoutMs: 4000,
+  disableSSE: false,
+};
+
+export async function startSonosPoller(configOrUrl: string | SonosPollerConfig = 'http://localhost:3000/api/sonos'): Promise<void> {
+  // Accept simple string (backward-compat) or config object
+  const cfg: SonosPollerConfig = typeof configOrUrl === 'string'
+    ? { baseUrl: configOrUrl }
+    : configOrUrl;
+
+  const baseUrl = cfg.baseUrl.replace(/\/$/, '');
+  const ssePath = cfg.ssePath ?? DEFAULT_CONFIG.ssePath;
+  const statusPath = cfg.statusPath ?? DEFAULT_CONFIG.statusPath;
+  const pollMs = cfg.pollIntervalMs ?? DEFAULT_CONFIG.pollIntervalMs;
+  const pollTimeout = cfg.pollTimeoutMs ?? DEFAULT_CONFIG.pollTimeoutMs;
+  const disableSSE = cfg.disableSSE ?? DEFAULT_CONFIG.disableSSE;
+
+  activeConfig = cfg;
+
+  // SSE connection (unless disabled)
+  if (!disableSSE) {
+    try {
+      const mod = await import('eventsource');
+      const ESClass = (mod as any).default ?? mod;
+      const sseUrl = `${baseUrl}${ssePath}`;
+      const es = new ESClass(sseUrl);
+      es.onmessage = (e: any) => {
+        try { parseStatus(JSON.parse(e.data)); } catch {}
+      };
+      es.onerror = () => {}; // auto-reconnects
+      sseCleanup = () => es.close();
+      console.log(`[Sonos] SSE connected → ${sseUrl}`);
+    } catch {
+      console.log('[Sonos] No SSE support, using poll-only mode');
+    }
   }
 
-  // Fallback poll every 2s
+  // Fallback poll
+  const statusUrl = `${baseUrl}${statusPath}`;
   pollTimer = setInterval(async () => {
     try {
-      const res = await fetch(`${bridgeUrl}/status`, { signal: AbortSignal.timeout(4000) });
+      const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
       if (res.ok) parseStatus(await res.json());
     } catch {}
-  }, 2000);
+  }, pollMs);
 
-  console.log(`[Sonos] Poller started → ${bridgeUrl}`);
+  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath})`);
 }
 
 export function stopSonosPoller(): void {
   sseCleanup?.();
   sseCleanup = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  activeConfig = null;
+}
+
+export function getPollerConfig(): SonosPollerConfig | null {
+  return activeConfig;
 }
