@@ -388,7 +388,7 @@ export class LightEngine {
 
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
-      this.smoothedBass, this.smoothedMidHi,
+      this.smoothedBass2, this.smoothedMidHi2,
       100, this.dynamicCenter, cal,
       fluxBoost,
     );
