@@ -93,6 +93,28 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     }
   });
 
+  // --- Sonos gateway config ---
+  app.get('/api/sonos-gateway', (_req, res) => {
+    const saved = getItem('sonos-gateway');
+    const current = getPollerConfig();
+    res.json({
+      saved: saved ? JSON.parse(saved) : null,
+      active: current,
+    });
+  });
+
+  app.put('/api/sonos-gateway', async (req, res) => {
+    const config: SonosPollerConfig = req.body;
+    if (!config?.baseUrl) {
+      return res.status(400).json({ error: 'Need baseUrl' });
+    }
+    // Persist and restart poller
+    setItem('sonos-gateway', JSON.stringify(config));
+    stopSonosPoller();
+    await startSonosPoller(config);
+    res.json({ ok: true, config });
+  });
+
   app.listen(port, () => {
     console.log(`[Config] Server listening on :${port}`);
   });
