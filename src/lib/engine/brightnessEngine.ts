@@ -83,7 +83,7 @@ export function computeBrightnessPct(
   let pct = Math.max(floor, Math.round(rawPct * 100));
 
   if (cal.perceptualCurve) {
-    pct = perceptualBrightness(pct);
+    pct = perceptualBrightness(pct, floor);
   }
 
   return { pct: Math.max(floor, pct), newCenter };
