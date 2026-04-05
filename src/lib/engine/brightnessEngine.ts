@@ -1,6 +1,7 @@
 // Brightness calculation — smoothing, dynamics, perceptual curve, final percentage
 
 import type { LightCalibration } from "./lightCalibration";
+import { getDimmingGamma } from "./bledom";
 
 export interface SmoothedBands {
   bass: number;
@@ -50,14 +51,13 @@ export function applyDynamics(
 }
 
 /** Perceptual brightness curve — maps linear energy to perceived brightness.
- *  Uses CIE lightness approximation (gamma ~2.2) so that equal steps
- *  in pct produce equal perceived changes in light output.
+ *  Uses the user's dimming gamma setting for consistent behavior.
  *  Input/output: 0-100 */
 export function perceptualBrightness(pct: number, floor: number = 0): number {
   if (pct <= floor) return floor;
   if (pct >= 100) return 100;
   const norm = (pct - floor) / (100 - floor);
-  const perceived = Math.pow(norm, 2.2); // gamma 2.2: perceptual → linear LED
+  const perceived = Math.pow(norm, getDimmingGamma());
   return Math.round(floor + perceived * (100 - floor));
 }
 
