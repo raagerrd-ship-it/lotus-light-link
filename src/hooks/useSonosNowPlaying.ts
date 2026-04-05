@@ -100,19 +100,18 @@ export function useSonosNowPlaying() {
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
 
-      // Allow state-only updates (e.g. pause/stop) even without trackName
+      // No trackName means TV/SPDIF input or idle — treat as PAUSED
       if (!s.trackName) {
-        if (s.playbackState && dataRef.current) {
-          const prev = dataRef.current;
-          if (prev.playbackState !== s.playbackState) {
-            apply({
-              ...prev,
-              playbackState: s.playbackState,
-              volume: s.volume ?? prev.volume,
-              receivedAt: performance.now(),
-              smoothedRtt: rtt,
-            });
-          }
+        const forcedState = 'PLAYBACK_STATE_PAUSED';
+        const prev = dataRef.current;
+        if (prev && prev.playbackState !== forcedState) {
+          apply({
+            ...prev,
+            playbackState: forcedState,
+            volume: s.volume ?? prev.volume,
+            receivedAt: performance.now(),
+            smoothedRtt: rtt,
+          });
         }
         return;
       }
