@@ -327,16 +327,9 @@ export class LightEngine {
     const bands = computeBands(an, this.freqBuf);
     const rmsEnd = performance.now();
 
-    // ── RMS-gate: skip pipeline only when palette mode is off ──
-    const rmsChange = Math.abs(bands.totalRms - this.lastTotalRms) / Math.max(this.lastTotalRms, 0.001);
-    const paletteActive = (cal.paletteMode ?? 'off') !== 'off' && this.palette.length > 1;
-    const rmsGateThreshold = (cal.rmsGate ?? 5) / 100;
-    if (!paletteActive && rmsGateThreshold > 0 && rmsChange < rmsGateThreshold && this.lastTickData) {
-      debugData.rmsGateSkipCount++;
-      this.emit(this.lastTickData);
-      return;
-    }
-    this.lastTotalRms = bands.totalRms;
+    // RMS-gate removed — BLE dedup handles output filtering.
+    // Letting the pipeline always run keeps smoothing filters warm
+    // and prevents the "shelf" artifacts from frozen state.
 
     // ── Smoothing ──
     this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha);
