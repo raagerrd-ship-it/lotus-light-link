@@ -55,6 +55,11 @@ export default function DebugOverlay() {
 
       // ── Sonos status ──
       const sonosOk = d.sonosVolume !== null;
+      const sonosState = d.sonosPlaybackState;
+      const isPaused = sonosState && sonosState !== 'PLAYBACK_STATE_PLAYING';
+      const sonosLabel = sonosOk
+        ? (isPaused ? '<span class="text-yellow-400">OK · PAUSED</span>' : '<span class="text-green-400">OK</span>')
+        : '<span class="text-red-400">—</span>';
       const sonosRtt = Math.round(d.smoothedRtt);
 
       // ── BLE status ──
@@ -105,7 +110,7 @@ export default function DebugOverlay() {
         <div class="text-foreground/40 text-[9px] uppercase tracking-wider">Input</div>
         <div class="mt-0.5 flex justify-between">
           <span>Sonos</span>
-          <span>${sonosOk ? '<span class="text-green-400">OK</span>' : '<span class="text-red-400">—</span>'}</span>
+          <span>${sonosLabel}</span>
         </div>
         <div class="flex justify-between">
           <span>BLE</span>

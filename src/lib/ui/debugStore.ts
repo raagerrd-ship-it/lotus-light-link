@@ -49,6 +49,7 @@ export const debugData: DebugData = {
   bleDeviceName: null,
   bleReconnectStatus: null,
   smoothedRtt: 0,
+  sonosPlaybackState: null,
   sonosVolume: null,
   gainMode: 'manual',
   micRms: 0,
