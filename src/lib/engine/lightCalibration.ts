@@ -56,7 +56,7 @@ export interface LightCalibration {
   brightnessFloor: number;
   transientBoost: boolean;
   perceptualCurve: boolean;
-  rmsGate: number;
+  
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
@@ -69,7 +69,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   bassWeight: 0.7, hiShelfGainDb: 6,
   bandAgcAttack: 0.15, bandAgcDecay: 0.997,
   volCompensation: 80, punchWhiteThreshold: 100,
-  smoothing: 0, brightnessFloor: 0, rmsGate: 5,
+  smoothing: 0, brightnessFloor: 0,
   transientBoost: true,
   perceptualCurve: false,
   paletteMode: 'off', paletteRotationSpeed: 8,
