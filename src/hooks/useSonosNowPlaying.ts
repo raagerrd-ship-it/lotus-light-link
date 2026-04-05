@@ -100,6 +100,23 @@ export function useSonosNowPlaying() {
     const applyStatus = (s: any, rtt: number) => {
       if (!s?.ok) return;
 
+      // Position-tick payloads (source='position-tick') carry no trackName/playbackState
+      // — merge them into existing state without triggering TV/idle detection
+      if (s.source === 'position-tick') {
+        const prev = dataRef.current;
+        if (!prev) return;
+        apply({
+          ...prev,
+          positionMs: s.positionMillis != null ? (s.positionMillis + rtt / 2) : prev.positionMs,
+          durationMs: s.durationMillis ?? prev.durationMs,
+          volume: s.volume ?? prev.volume,
+          receivedAt: performance.now(),
+          smoothedRtt: rtt,
+          mediaType: s.mediaType === 'radio' ? 'radio' : s.mediaType === 'track' ? 'track' : prev.mediaType,
+        });
+        return;
+      }
+
       // No trackName means TV/SPDIF input or idle — treat as PAUSED
       if (!s.trackName) {
         const forcedState = 'PLAYBACK_STATE_PAUSED';
