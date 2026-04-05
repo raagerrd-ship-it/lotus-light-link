@@ -384,12 +384,14 @@ export class LightEngine {
     );
     this.dynamicCenter = newCenter;
 
-    // ── Extra smoothing on final output ──
+    // ── Extra smoothing on final output (float precision until BLE send) ──
     const sm = cal.smoothing ?? 0;
     if (sm > 0) {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
-      pct = Math.round(this.extraSmoothPct);
+      pct = this.extraSmoothPct; // keep float
     }
+    // Round once, right before BLE
+    pct = Math.round(pct);
 
     // ── Palette mode ──
     const pm = cal.paletteMode ?? 'off';

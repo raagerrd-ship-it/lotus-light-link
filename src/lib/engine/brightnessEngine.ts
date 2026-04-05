@@ -58,7 +58,7 @@ export function perceptualBrightness(pct: number, floor: number = 0): number {
   if (pct >= 100) return 100;
   const norm = (pct - floor) / (100 - floor);
   const perceived = Math.pow(norm, getDimmingGamma());
-  return Math.round(floor + perceived * (100 - floor));
+  return floor + perceived * (100 - floor); // float — caller rounds
 }
 
 /** Compute final brightness percentage from smoothed bands */
@@ -80,11 +80,12 @@ export function computeBrightnessPct(
 
   const rawPct = (energyNorm * effectiveMax) / 100;
   const floor = cal.brightnessFloor ?? 0;
-  let pct = Math.max(floor, Math.round(rawPct * 100));
+  let pct = Math.max(floor, rawPct * 100);
 
   if (cal.perceptualCurve) {
     pct = perceptualBrightness(pct, floor);
   }
 
+  // Return float — let caller round at the last possible moment (after extraSmooth)
   return { pct: Math.max(floor, pct), newCenter };
 }
