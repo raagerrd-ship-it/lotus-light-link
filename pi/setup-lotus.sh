@@ -4,16 +4,16 @@
 #
 # Usage:
 #   # First install (clones from GitHub):
-#   curl -fsSL https://raw.githubusercontent.com/YOUR_USER/lotus-light-link/main/pi/setup-lotus.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/raagerrd-ship-it/lotus-light-link/main/pi/setup-lotus.sh | sudo bash
 #
 #   # Or manually:
-#   git clone https://github.com/YOUR_USER/lotus-light-link.git /opt/lotus-light
+#   git clone https://github.com/raagerrd-ship-it/lotus-light-link.git /opt/lotus-light
 #   cd /opt/lotus-light
 #   sudo bash pi/setup-lotus.sh
 
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/YOUR_USER/lotus-light-link.git}"
+REPO_URL="${REPO_URL:-https://github.com/raagerrd-ship-it/lotus-light-link.git}"
 APP_DIR="/opt/lotus-light"
 HOSTNAME_TARGET="lotus"
 
