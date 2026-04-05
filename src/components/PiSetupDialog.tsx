@@ -95,6 +95,9 @@ export default function PiSetupDialog() {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
 
+  const [activeSection, setActiveSection] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
   return (
     <>
       {/* Trigger icon */}
@@ -126,41 +129,65 @@ export default function PiSetupDialog() {
             </div>
 
             {/* Content */}
-            <div className="px-5 py-4 space-y-2">
-              <p className="text-xs text-muted-foreground mb-3">
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-xs text-muted-foreground">
                 Installera Lotus Light Link på en Raspberry Pi Zero 2 W för headless drift med automatiska uppdateringar via GitHub.
               </p>
 
-              {steps.map((step, i) => (
-                <div key={i} className="rounded-xl border border-foreground/5 overflow-hidden">
+              {/* Section tabs */}
+              <div className="flex gap-2">
+                {sections.map((sec, si) => (
                   <button
-                    onClick={() => setExpanded(expanded === i ? null : i)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-foreground/3 transition-colors"
+                    key={si}
+                    onClick={() => { setActiveSection(si); setExpanded(null); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      activeSection === si
+                        ? 'bg-primary/10 text-primary border border-primary/20'
+                        : 'bg-foreground/5 text-muted-foreground border border-foreground/5 hover:bg-foreground/8'
+                    }`}
                   >
-                    <span className="text-sm font-medium">{step.title}</span>
-                    {expanded === i
-                      ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
-                      : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
-                    }
+                    <span>{sec.icon}</span>
+                    <span>{sec.title}</span>
                   </button>
-                  {expanded === i && (
-                    <div className="px-4 pb-4 text-xs text-foreground/80 space-y-2">
-                      {step.content}
-                      {step.code && (
-                        <div className="relative rounded-lg bg-foreground/5 p-3 pr-8 font-mono text-[10px] leading-relaxed overflow-x-auto">
-                          <CopyButton text={step.code.replace(/\\n/g, '\n')} />
-                          {step.code.split('\\n').map((line, j) => (
-                            <div key={j}>{line}</div>
-                          ))}
+                ))}
+              </div>
+
+              {/* Active section steps */}
+              <div className="space-y-2">
+                {sections[activeSection].steps.map((step, i) => {
+                  const key = `${activeSection}-${i}`;
+                  return (
+                    <div key={key} className="rounded-xl border border-foreground/5 overflow-hidden">
+                      <button
+                        onClick={() => setExpanded(expanded === key ? null : key)}
+                        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-foreground/3 transition-colors"
+                      >
+                        <span className="text-sm font-medium">{step.title}</span>
+                        {expanded === key
+                          ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
+                          : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                        }
+                      </button>
+                      {expanded === key && (
+                        <div className="px-4 pb-4 text-xs text-foreground/80 space-y-2">
+                          {step.content}
+                          {step.code && (
+                            <div className="relative rounded-lg bg-foreground/5 p-3 pr-8 font-mono text-[10px] leading-relaxed overflow-x-auto">
+                              <CopyButton text={step.code.replace(/\\n/g, '\n')} />
+                              {step.code.split('\\n').map((line, j) => (
+                                <div key={j}>{line}</div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              ))}
+                  );
+                })}
+              </div>
 
               {/* Auto-update info */}
-              <div className="rounded-xl border border-foreground/5 p-4 mt-3">
+              <div className="rounded-xl border border-foreground/5 p-4">
                 <h3 className="text-sm font-medium mb-1.5">🔄 Auto-uppdatering</h3>
                 <p className="text-xs text-muted-foreground">
                   En systemd-timer kollar GitHub var 5:e minut. Vid ändringar i <code>pi/</code> eller <code>engine/</code> körs automatiskt: pull → build → restart.
@@ -168,21 +195,11 @@ export default function PiSetupDialog() {
               </div>
 
               {/* Links */}
-              <div className="flex gap-2 pt-2">
-                <a
-                  href={REPO_URL}
-                  target="_blank"
-                  rel="noopener"
-                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                >
+              <div className="flex gap-2 pt-1">
+                <a href={REPO_URL} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
                   <ExternalLink className="w-3 h-3" /> GitHub Repo
                 </a>
-                <a
-                  href={`${REPO_URL}/blob/main/pi/README.md`}
-                  target="_blank"
-                  rel="noopener"
-                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                >
+                <a href={`${REPO_URL}/blob/main/pi/README.md`} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-xs text-primary hover:underline">
                   <ExternalLink className="w-3 h-3" /> Full dokumentation
                 </a>
               </div>
