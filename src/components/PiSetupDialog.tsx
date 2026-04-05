@@ -1,23 +1,30 @@
 import { useState } from "react";
-import { HardDrive, X, Copy, Check, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
+import { HardDrive, X, Copy, Check, ExternalLink, ChevronDown, ChevronUp, Zap } from "lucide-react";
 
 const REPO = "raagerrd-ship-it/lotus-light-link";
 const REPO_URL = `https://github.com/${REPO}`;
 
-const steps = [
+type Section = { title: string; icon: string; steps: Step[] };
+type Step = { title: string; content?: React.ReactNode; code?: string };
+
+const sections: Section[] = [
   {
-    title: "1. Flasha SD-kort",
-    content: (
-      <>
-        <p>Ladda ner <a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener" className="underline text-primary">Raspberry Pi Imager</a> och välj <strong>RPi OS Lite (64-bit)</strong>.</p>
-        <p className="mt-1">I ⚙️ inställningar: hostname = <code>lotus</code>, aktivera SSH, WiFi.</p>
-      </>
-    ),
-  },
-  {
-    title: "2. Koppla INMP441-mikrofonen",
-    content: (
-      <pre className="text-[10px] leading-snug whitespace-pre overflow-x-auto">
+    title: "Ny installation",
+    icon: "📦",
+    steps: [
+      {
+        title: "1. Flasha SD-kort",
+        content: (
+          <>
+            <p>Ladda ner <a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener" className="underline text-primary">Raspberry Pi Imager</a> och välj <strong>RPi OS Lite (64-bit)</strong>.</p>
+            <p className="mt-1">I ⚙️ inställningar: hostname = <code>lotus</code>, aktivera SSH, WiFi.</p>
+          </>
+        ),
+      },
+      {
+        title: "2. Koppla INMP441-mikrofonen",
+        content: (
+          <pre className="text-[10px] leading-snug whitespace-pre overflow-x-auto">
 {`INMP441        RPi Zero 2 W
 VDD    → 3.3V  (pin 1)
 GND    → GND   (pin 6)
@@ -25,18 +32,47 @@ SCK    → GPIO 18  (pin 12)
 WS     → GPIO 19  (pin 35)
 SD     → GPIO 20  (pin 38)
 L/R    → GND`}
-      </pre>
-    ),
+          </pre>
+        ),
+      },
+      {
+        title: "3. Installera via SSH",
+        code: `export REPO_URL="${REPO_URL}.git"\ncurl -fsSL "https://raw.githubusercontent.com/${REPO}/main/pi/setup-lotus.sh" | sudo bash`,
+      },
+      {
+        title: "4. Starta om & verifiera",
+        code: `sudo reboot\n# Vänta ~30s, sedan:\ncurl http://lotus.local:3001/api/status`,
+      },
+    ],
   },
   {
-    title: "3. Installera via SSH",
-    content: null, // handled with code block below
-    code: `export REPO_URL="${REPO_URL}.git"\ncurl -fsSL "https://raw.githubusercontent.com/${REPO}/main/pi/setup-lotus.sh" | sudo bash`,
-  },
-  {
-    title: "4. Starta om & verifiera",
-    content: null,
-    code: `sudo reboot\n# Vänta ~30s, sedan:\ncurl http://lotus.local:3001/api/status`,
+    title: "OS redan installerat",
+    icon: "⚡",
+    steps: [
+      {
+        title: "1. SSH:a in till Pi:n",
+        content: <p>Om du redan har RPi OS igång med SSH och WiFi, logga in:</p>,
+        code: `ssh pi@lotus.local\n# eller: ssh pi@<pi-ip-adress>`,
+      },
+      {
+        title: "2. Installera beroenden",
+        content: <p>Setup-scriptet hanterar allt — Node.js 20, BLE, ALSA, I²S overlay:</p>,
+        code: `sudo apt-get install -y git\ngit clone ${REPO_URL}.git /opt/lotus-light\ncd /opt/lotus-light\nsudo bash pi/setup-lotus.sh`,
+      },
+      {
+        title: "3. Koppla mikrofonen & starta om",
+        content: (
+          <>
+            <p>Koppla INMP441 enligt pinout ovan (se "Ny installation" steg 2), sedan:</p>
+          </>
+        ),
+        code: `sudo reboot`,
+      },
+      {
+        title: "4. Starta & verifiera",
+        code: `sudo systemctl start lotus-light\nsudo systemctl status lotus-light\ncurl http://lotus.local:3001/api/status`,
+      },
+    ],
   },
 ];
 
