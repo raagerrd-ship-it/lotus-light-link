@@ -42,6 +42,16 @@ L/R    → GND (vänster kanal)
 - Kärn-engine-filer (`agc.ts`, `brightnessEngine.ts`, `audioAnalysis.ts`, `lightCalibration.ts`) importeras direkt, ingen duplicering
 - Kräver: `noble`, `node-record-lpcm16`, `fft-js`
 
+### BLE-timing & effektkvalitet
+- **Bekräftat baseline (webbläsare):** 40ms tickMs — stabilt
+- **Mål (Pi #1 headless):** ~25–30ms tickMs (33–40 Hz)
+- **Syfte:** Mjukare effekter — fler interpolationssteg per sekund ger
+  glidande övergångar istället för synliga hopp. Inte snabbare blinkande.
+  - 25 Hz → 25 steg/sek per fade; 40 Hz → 40 steg/sek — 60% finare upplösning
+  - Befintlig smoothing/extraSmooth-logik får mer data att jobba med
+- **Möjliggörs av:** ALSA (~1.5ms buffer), noble HCI-socket, ingen GC/DOM-overhead
+- **Hårdvarugräns:** ELK-BLEDOM ~25ms per GATT-write
+
 ---
 
 ## Pi #2: Brew Monitor TV
