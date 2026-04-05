@@ -3,15 +3,6 @@
  * Uses SSE (primary) + fallback HTTP poll, same logic as the React hook.
  */
 
-// Node 18+ has fetch built-in; EventSource needs eventsource package
-let EventSourceImpl: any;
-try {
-  EventSourceImpl = (await import('eventsource')).default ?? (await import('eventsource'));
-} catch {
-  // Fallback: rely on polling only
-  EventSourceImpl = null;
-}
-
 export interface SonosState {
   trackName: string | null;
   artistName: string | null;
@@ -56,7 +47,6 @@ function apply(next: SonosState): void {
 function parseStatus(s: any): void {
   if (!s?.ok) return;
 
-  // Position-tick: only update position
   if (s.source === 'position-tick') {
     apply({
       ...currentState,
@@ -67,7 +57,6 @@ function parseStatus(s: any): void {
     return;
   }
 
-  // No track = TV/idle
   if (!s.trackName) {
     if (currentState.playbackState !== 'PLAYBACK_STATE_PAUSED') {
       apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED' });
@@ -86,26 +75,24 @@ function parseStatus(s: any): void {
   });
 }
 
-let es: any = null;
 let pollTimer: NodeJS.Timeout | null = null;
+let sseCleanup: (() => void) | null = null;
 
-export function startSonosPoller(bridgeUrl = 'http://localhost:3000/api/sonos'): void {
-  // SSE connection
-  const connectSSE = () => {
-    try {
-      es = new EventSource(`${bridgeUrl}/events`);
-      es.onmessage = (e: any) => {
-        try { parseStatus(JSON.parse(e.data)); } catch {}
-      };
-      es.onerror = () => {
-        // EventSource auto-reconnects
-      };
-    } catch (err: any) {
-      console.error('[Sonos] SSE connect failed:', err.message);
-    }
-  };
-
-  connectSSE();
+export async function startSonosPoller(bridgeUrl = 'http://localhost:3000/api/sonos'): Promise<void> {
+  // Try SSE via eventsource package (optional dep)
+  try {
+    const mod = await import('eventsource');
+    const ESClass = (mod as any).default ?? mod;
+    const es = new ESClass(`${bridgeUrl}/events`);
+    es.onmessage = (e: any) => {
+      try { parseStatus(JSON.parse(e.data)); } catch {}
+    };
+    es.onerror = () => {}; // auto-reconnects
+    sseCleanup = () => es.close();
+    console.log(`[Sonos] SSE connected → ${bridgeUrl}/events`);
+  } catch {
+    console.log('[Sonos] No SSE support, using poll-only mode');
+  }
 
   // Fallback poll every 2s
   pollTimer = setInterval(async () => {
@@ -119,6 +106,7 @@ export function startSonosPoller(bridgeUrl = 'http://localhost:3000/api/sonos'):
 }
 
 export function stopSonosPoller(): void {
-  if (es) { es.close(); es = null; }
+  sseCleanup?.();
+  sseCleanup = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
