@@ -363,16 +363,9 @@ export class LightEngine {
     const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
     const rawEnergyPct = Math.round(rawEnergy * 100);
 
-    // ── Per-band smoothing (2nd-order cascade for rounded peaks/valleys) ──
-    // Stage 1: standard attack/release
+    // ── Per-band smoothing (single stage) ──
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
-    // Stage 2: corner-rounding only — same attack, but FASTER release (√alpha)
-    // to avoid doubling the hold time at peaks
-    const releaseS2 = Math.sqrt(cal.releaseAlpha); // e.g. 0.15 → 0.39 — much faster follow
-    const bassReleaseS2 = releaseS2 * 0.8; // bass still slightly slower
-    this.smoothedBass2 = smooth(this.smoothedBass2, this.smoothedBass, cal.attackAlpha, bassReleaseS2);
-    this.smoothedMidHi2 = smooth(this.smoothedMidHi2, this.smoothedMidHi, cal.attackAlpha, releaseS2);
 
     // ── Spectral flux → transient boost ──
     // Adaptive normalization: track peak flux and decay slowly
@@ -385,7 +378,7 @@ export class LightEngine {
 
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
-      this.smoothedBass2, this.smoothedMidHi2,
+      this.smoothedBass, this.smoothedMidHi,
       100, this.dynamicCenter, cal,
       fluxBoost,
     );
