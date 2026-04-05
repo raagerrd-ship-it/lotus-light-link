@@ -16,14 +16,19 @@ installLocalStorageShim();
 
 import { startMic, stopMic } from './alsaMic.js';
 import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount } from './nobleBle.js';
-import { startSonosPoller, stopSonosPoller, onSonosChange } from './sonosPoller.js';
+import { startSonosPoller, stopSonosPoller, onSonosChange, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
+import { getItem, setItem } from './storage.js';
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://localhost:3000/api/sonos';
 const CONFIG_PORT = Number(process.env.CONFIG_PORT ?? 3001);
 const TICK_MS = Number(process.env.TICK_MS ?? 30);
+const SSE_PATH = process.env.SSE_PATH ?? '/events';
+const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
+const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
+const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
 
 async function main() {
   console.log('╔═══════════════════════════════════════════╗');
