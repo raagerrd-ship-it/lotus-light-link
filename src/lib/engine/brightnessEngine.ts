@@ -53,14 +53,12 @@ export function applyDynamics(
  *  Uses CIE lightness approximation (gamma ~2.2) so that equal steps
  *  in pct produce equal perceived changes in light output.
  *  Input/output: 0-100 */
-export function perceptualBrightness(pct: number): number {
-  if (pct <= 0) return 0;
+export function perceptualBrightness(pct: number, floor: number = 0): number {
+  if (pct <= floor) return floor;
   if (pct >= 100) return 100;
-  const norm = pct / 100;
-  // CIE L* inspired curve: slight S-curve that lifts shadows
-  // and compresses highlights for more perceptually even steps
+  const norm = (pct - floor) / (100 - floor);
   const perceived = Math.pow(norm, 0.45); // inverse gamma ≈ 2.2
-  return Math.round(perceived * 100);
+  return Math.round(floor + perceived * (100 - floor));
 }
 
 /** Compute final brightness percentage from smoothed bands */
