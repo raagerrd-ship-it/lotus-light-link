@@ -96,8 +96,9 @@ const Index = () => {
   useEffect(() => {
     debugData.smoothedRtt = smoothedRtt;
     debugData.sonosVolume = nowPlaying?.volume ?? null;
+    debugData.sonosPlaybackState = nowPlaying?.playbackState ?? null;
     debugData.gainMode = nowPlaying?.volume != null ? 'vol' : 'manual';
-  }, [smoothedRtt, nowPlaying?.volume]);
+  }, [smoothedRtt, nowPlaying?.volume, nowPlaying?.playbackState]);
 
   useEffect(() => {
     debugData.dynamicDamping = activeCalibration.dynamicDamping;
