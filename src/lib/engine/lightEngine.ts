@@ -369,13 +369,15 @@ export class LightEngine {
     const rawEnergyPct = Math.round(rawEnergy * 100);
 
     // ── Per-band smoothing (2nd-order cascade for rounded peaks/valleys) ──
-    // Stage 1: standard attack/release (bass gets softer release for natural low-freq response)
-    const bassRelease = cal.releaseAlpha * 0.6; // bass decays ~40% slower — matches longer wavelengths
-    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, bassRelease);
+    // Stage 1: standard attack/release
+    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
-    // Stage 2: cascade — removes sharp direction-change corners
-    this.smoothedBass2 = smooth(this.smoothedBass2, this.smoothedBass, cal.attackAlpha, bassRelease);
-    this.smoothedMidHi2 = smooth(this.smoothedMidHi2, this.smoothedMidHi, cal.attackAlpha, cal.releaseAlpha);
+    // Stage 2: corner-rounding only — same attack, but FASTER release (√alpha)
+    // to avoid doubling the hold time at peaks
+    const releaseS2 = Math.sqrt(cal.releaseAlpha); // e.g. 0.15 → 0.39 — much faster follow
+    const bassReleaseS2 = releaseS2 * 0.8; // bass still slightly slower
+    this.smoothedBass2 = smooth(this.smoothedBass2, this.smoothedBass, cal.attackAlpha, bassReleaseS2);
+    this.smoothedMidHi2 = smooth(this.smoothedMidHi2, this.smoothedMidHi, cal.attackAlpha, releaseS2);
 
     // ── Spectral flux → transient boost ──
     // Adaptive normalization: track peak flux and decay slowly
