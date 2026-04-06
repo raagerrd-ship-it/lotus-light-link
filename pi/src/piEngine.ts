@@ -108,6 +108,8 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
 }
 
 // --- Calibration ---
+export type PaletteMode = 'off' | 'timed' | 'bass' | 'energy' | 'blend';
+
 interface LightCalibration {
   gammaR: number; gammaG: number; gammaB: number;
   offsetR: number; offsetG: number; offsetB: number;
@@ -117,6 +119,8 @@ interface LightCalibration {
   punchWhiteThreshold: number;
   smoothing: number; brightnessFloor: number;
   transientBoost: boolean;
+  paletteMode: PaletteMode;
+  paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
   [key: string]: any;
 }
@@ -129,6 +133,7 @@ const DEFAULT_CAL: LightCalibration = {
   punchWhiteThreshold: 100,
   smoothing: 0, brightnessFloor: 0,
   transientBoost: true,
+  paletteMode: 'off', paletteRotationSpeed: 8,
   agcVolumeTable: {},
 };
 
