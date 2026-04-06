@@ -3,6 +3,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// @ts-ignore - npm import
+import * as jpegJs from "npm:jpeg-js@0.4.4";
+// @ts-ignore - npm import  
+import { PNG } from "npm:pngjs@7.0.0";
+
 type RGB = [number, number, number];
 
 function colorDistance(a: RGB, b: RGB): number {
@@ -37,9 +42,13 @@ function boostSaturation(r: number, g: number, b: number): RGB {
   return [Math.round((r1 + m) * 255), Math.round((g1 + m) * 255), Math.round((b1 + m) * 255)];
 }
 
-function extractFromPixels(data: Uint8Array, channels: number, count: number): RGB[] {
+function extractFromRGBA(data: Uint8Array, pixelCount: number, count: number): RGB[] {
   const buckets = new Map<number, { r: number; g: number; b: number; count: number }>();
-  for (let i = 0; i < data.length; i += channels) {
+  
+  // Sample every Nth pixel to keep it fast (target ~256 samples)
+  const step = Math.max(1, Math.floor(pixelCount / 256)) * 4;
+  
+  for (let i = 0; i < data.length; i += step) {
     const r = data[i], g = data[i + 1], b = data[i + 2];
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
     if (lum < 20 || lum > 200) continue;
@@ -48,6 +57,7 @@ function extractFromPixels(data: Uint8Array, channels: number, count: number): R
     if (e) { e.r += r; e.g += g; e.b += b; e.count++; }
     else buckets.set(key, { r, g, b, count: 1 });
   }
+
   const scored: { color: RGB; score: number }[] = [];
   for (const b of buckets.values()) {
     const ar = Math.round(b.r / b.count), ag = Math.round(b.g / b.count), ab = Math.round(b.b / b.count);
@@ -55,6 +65,7 @@ function extractFromPixels(data: Uint8Array, channels: number, count: number): R
     scored.push({ color: boostSaturation(ar, ag, ab), score: b.count });
   }
   scored.sort((a, b) => b.score - a.score);
+
   const palette: RGB[] = [];
   for (const { color } of scored) {
     if (palette.length >= count) break;
@@ -63,7 +74,21 @@ function extractFromPixels(data: Uint8Array, channels: number, count: number): R
   return palette;
 }
 
-// In-memory cache (per isolate lifetime)
+function decodeImage(buf: Uint8Array, contentType: string): { data: Uint8Array; width: number; height: number } | null {
+  try {
+    if (contentType.includes("png")) {
+      const png = PNG.sync.read(Buffer.from(buf));
+      return { data: new Uint8Array(png.data), width: png.width, height: png.height };
+    }
+    // Default: try JPEG
+    const jpg = jpegJs.decode(buf, { useTArray: true, formatAsRGBA: true });
+    return { data: jpg.data, width: jpg.width, height: jpg.height };
+  } catch {
+    return null;
+  }
+}
+
+// In-memory cache
 const cache = new Map<string, RGB[]>();
 
 Deno.serve(async (req) => {
@@ -87,29 +112,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch image (request smallest version if iTunes URL)
-    const smallUrl = url.replace(/\/\d+x\d+[a-z]*\./, "/60x60bb.");
-    const imgRes = await fetch(smallUrl, { signal: AbortSignal.timeout(5000) });
+    // Fetch image
+    const imgRes = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!imgRes.ok) {
       return new Response(JSON.stringify({ error: "Failed to fetch image", status: imgRes.status }), {
         status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const contentType = imgRes.headers.get("content-type") ?? "";
     const imgBuf = new Uint8Array(await imgRes.arrayBuffer());
+    const decoded = decodeImage(imgBuf, contentType);
 
-    // Decode image using Canvas API (available in Deno Deploy)
-    const blob = new Blob([imgBuf]);
-    const imageBitmap = await createImageBitmap(blob);
-    const size = 32;
-    const canvas = new OffscreenCanvas(size, size);
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(imageBitmap, 0, 0, size, size);
-    const imageData = ctx.getImageData(0, 0, size, size);
+    if (!decoded) {
+      return new Response(JSON.stringify({ error: "Failed to decode image" }), {
+        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const palette = extractFromPixels(new Uint8Array(imageData.data.buffer), 4, count);
+    const palette = extractFromRGBA(decoded.data, decoded.width * decoded.height, count);
 
-    // Cache result
     if (palette.length > 0) {
       if (cache.size >= 100) cache.delete(cache.keys().next().value!);
       cache.set(url, palette);
