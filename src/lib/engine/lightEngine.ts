@@ -6,11 +6,12 @@
  */
 
 import { sendToBLE, addActiveChar, removeActiveChar, type DeviceMode } from "./bledom";
-import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, getIdleColor, type LightCalibration } from "./lightCalibration";
-import { computeBands, resetFluxState, type BandResult } from "./audioAnalysis";
+import { getCalibration, saveCalibration, applyColorCalibration, getActiveDeviceName, type LightCalibration } from "./lightCalibration";
+import { computeBands, resetFluxState } from "./audioAnalysis";
 import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, type AgcState, type AgcVolumeTable } from "./agc";
 import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
-import { debugData } from "@/lib/ui/debugStore";
+import { advancePalette, createPaletteState, type PaletteState } from "./paletteMixer";
+import { createIdleState, sendIdleIfNeeded, listenIdleColorChanges, type IdleState } from "./idleManager";
 
 export interface TickData {
   brightness: number;
@@ -37,10 +38,7 @@ export class LightEngine {
   // --- State ---
   private color: [number, number, number] = [255, 80, 0];
   private palette: [number, number, number][] = [];
-  private paletteIndex = 0;
-  private paletteTickCounter = 0;
-  private lastBassNorm = 0;
-  private bassWasHigh = false;
+  private paletteState: PaletteState = createPaletteState();
   private volume: number | undefined;
   private playing = true;
   private chars = new Set<BluetoothRemoteGATTCharacteristic>();
@@ -59,13 +57,12 @@ export class LightEngine {
   private lastBaseColor: [number, number, number] = [0, 0, 0];
   private lastBucket: number = 0;
   private extraSmoothPct = 0;
-  private lastTotalRms = 0;
   private lastTickData: TickData | null = null;
   // Spectral flux tracking
   private smoothedFlux = 0;
-  private fluxMax = 0.001; // adaptive ceiling for flux normalization
+  private fluxMax = 0.001;
 
-  private idleSent = false;
+  private idle: IdleState;
 
   private worker: Worker | null = null;
   private stream: MediaStream | null = null;
@@ -74,7 +71,6 @@ export class LightEngine {
   private agcSaveTimer = 0;
   private stopped = false;
   private tickCallbacks: TickCallback[] = [];
-  private idleColor: [number, number, number];
   private idleCleanup: (() => void) | null = null;
   private calCleanup: (() => void) | null = null;
 
@@ -82,7 +78,7 @@ export class LightEngine {
     this.cal = getCalibration();
     this.volumeTable = { ...this.cal.agcVolumeTable };
     this.agc = createAgcState(0.01);
-    this.idleColor = getIdleColor();
+    this.idle = createIdleState();
   }
 
   /** Register a tick callback. Returns unsubscribe function. */
@@ -100,7 +96,7 @@ export class LightEngine {
     this.playing = playing;
 
     if (playing) {
-      this.idleSent = false;
+      this.idle.idleSent = false;
       if (this.worker) this.worker.postMessage('start');
       return;
     }
@@ -108,28 +104,13 @@ export class LightEngine {
     this.worker?.postMessage('stop');
 
     if (this.chars.size > 0) {
-      const calibrated = applyColorCalibration(...this.idleColor, this.cal);
+      const calibrated = applyColorCalibration(...this.idle.idleColor, this.cal);
       sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
     }
 
-    if (!this.idleSent) {
-      this.emit({
-        brightness: 100,
-        color: this.idleColor,
-        baseColor: this.idleColor,
-        bassLevel: 0,
-        midHiLevel: 0,
-        rawEnergyPct: 0,
-        isPunch: false,
-        bleColorSource: 'idle',
-        micRms: 0,
-        isPlaying: false,
-        timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
-        paletteIndex: 0,
-      });
+    if (!this.idle.idleSent) {
+      this.idle.idleSent = sendIdleIfNeeded(this.idle, this.cal, this.chars.size > 0, d => this.emit(d));
     }
-
-    this.idleSent = true;
   }
 
   /** @deprecated Use addChar/removeChar for multi-device */
@@ -187,9 +168,7 @@ export class LightEngine {
     };
 
     // Listen for idle color changes
-    const onIdleColorChanged = () => { this.idleColor = getIdleColor(); this.idleSent = false; };
-    window.addEventListener('idle-color-changed', onIdleColorChanged);
-    this.idleCleanup = () => window.removeEventListener('idle-color-changed', onIdleColorChanged);
+    this.idleCleanup = listenIdleColorChanges(this.idle);
 
     // Set initial AGC floor from volume table
     const bucket = volumeToBucket(this.volume);
@@ -206,7 +185,6 @@ export class LightEngine {
 
       const audioCtx = new AudioContext({ latencyHint: 'interactive' });
       this.audioCtx = audioCtx;
-      // Report mic input latency (OS audio pipeline only)
       const { debugData } = await import('@/lib/ui/debugStore');
       debugData.micBufferMs = Math.round((audioCtx.baseLatency ?? 0) * 1000);
       const source = audioCtx.createMediaStreamSource(stream);
@@ -271,10 +249,7 @@ export class LightEngine {
     this.tickCallbacks = [];
     this.color = [255, 80, 0];
     this.palette = [];
-    this.paletteIndex = 0;
-    this.paletteTickCounter = 0;
-    this.lastBassNorm = 0;
-    this.bassWasHigh = false;
+    this.paletteState = createPaletteState();
     this.volume = undefined;
     this.playing = true;
     this.chars.clear();
@@ -287,9 +262,7 @@ export class LightEngine {
     this.volumeTable = {};
     this.lastBaseColor = [0, 0, 0];
     this.lastBucket = 0;
-    this.idleSent = false;
-    this.idleColor = [255, 60, 0];
-    this.lastTotalRms = 0;
+    this.idle = createIdleState();
     this.lastTickData = null;
   }
 
@@ -299,22 +272,13 @@ export class LightEngine {
 
     // ── Idle mode ──
     if (!this.playing) {
-      if (!this.idleSent && this.chars.size > 0) {
-        const calibrated = applyColorCalibration(...this.idleColor, this.cal);
-        sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
-        this.idleSent = true;
-        this.emit({
-          brightness: 100, color: this.idleColor, baseColor: this.idleColor,
-          bassLevel: 0, midHiLevel: 0, rawEnergyPct: 0,
-          isPunch: false, bleColorSource: 'idle', micRms: 0, isPlaying: false,
-          timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
-          paletteIndex: 0,
-        });
+      if (!this.idle.idleSent) {
+        this.idle.idleSent = sendIdleIfNeeded(this.idle, this.cal, this.chars.size > 0, d => this.emit(d));
       }
       this.worker?.postMessage('stop');
       return;
     }
-    this.idleSent = false;
+    this.idle.idleSent = false;
 
     const an = this.analyser;
     if (!an || !this.freqBuf) return;
@@ -327,27 +291,17 @@ export class LightEngine {
     const bands = computeBands(an, this.freqBuf);
     const rmsEnd = performance.now();
 
-    // RMS-gate removed — BLE dedup handles output filtering.
-    // Letting the pipeline always run keeps smoothing filters warm
-    // and prevents the "shelf" artifacts from frozen state.
-
     // ── Smoothing ──
     this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
     // ── Volume bucket & AGC update ──
     const bucket = volumeToBucket(this.volume);
-
-    // If volume bucket changed, update AGC floor from table
     if (bucket !== this.lastBucket) {
       const floor = getFloorForVolume(this.volumeTable, bucket);
       if (floor > agc.max) agc.max = floor;
       this.lastBucket = bucket;
     }
-
-    // Update running max (only grows)
     updateRunningMax(agc, this.smoothed, bands.bassRms, bands.midHiRms, this.tickMs);
-
-    // Update volume table with current observation
     updateVolumeTable(this.volumeTable, bucket, this.smoothed);
 
     // Normalize bands
@@ -356,19 +310,17 @@ export class LightEngine {
     const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
     const rawEnergyPct = Math.round(rawEnergy * 100);
 
-    // ── Per-band smoothing (single stage) ──
+    // ── Per-band smoothing ──
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
     // ── Spectral flux → transient boost ──
-    // Adaptive normalization: track peak flux with tick-rate normalized decay
-    const fluxDecayPerSec = 0.97; // ~3% decay per second
+    const fluxDecayPerSec = 0.97;
     const fluxDecay = Math.pow(fluxDecayPerSec, this.tickMs / 1000);
     if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
     else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
     const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
     this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1, this.tickMs);
-    // Boost brightness on transients (max ~15% extra)
     const fluxBoost = (cal.transientBoost !== false) ? this.smoothedFlux * 0.15 : 0;
 
     // ── Brightness ──
@@ -379,59 +331,23 @@ export class LightEngine {
     );
     this.dynamicCenter = newCenter;
 
-    // ── Extra smoothing on final output (float precision until BLE send) ──
+    // ── Extra smoothing ──
     const sm = cal.smoothing ?? 0;
     if (sm > 0) {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm, this.tickMs);
-      pct = this.extraSmoothPct; // keep float
+      pct = this.extraSmoothPct;
     }
-    // Round once, right before BLE
     pct = Math.round(pct);
 
     // ── Palette mode ──
     const pm = cal.paletteMode ?? 'off';
-    if (pm !== 'off' && this.palette.length > 1) {
-      const pLen = this.palette.length;
-
-      if (pm === 'timed') {
-        this.paletteTickCounter++;
-        const speed = Math.max(1, Math.round((cal.paletteRotationSpeed ?? 8) * (125 / this.tickMs)));
-        if (this.paletteTickCounter >= speed) {
-          this.paletteTickCounter = 0;
-          this.paletteIndex = (this.paletteIndex + 1) % pLen;
-        }
-        this.color = this.palette[this.paletteIndex];
-
-      } else if (pm === 'bass') {
-        // Advance on bass transient (rising edge above 0.5)
-        const bassNorm = this.smoothedBass;
-        const isHigh = bassNorm > 0.45;
-        if (isHigh && !this.bassWasHigh) {
-          this.paletteIndex = (this.paletteIndex + 1) % pLen;
-        }
-        this.bassWasHigh = isHigh;
-        this.color = this.palette[this.paletteIndex];
-
-      } else if (pm === 'energy') {
-        // Map energy % directly to palette index
-        const idx = Math.min(pLen - 1, Math.floor((rawEnergy) * pLen));
-        this.color = this.palette[idx];
-
-      } else if (pm === 'blend') {
-        // Smooth interpolation across palette based on energy (clamped)
-        const clampedEnergy = Math.min(1, Math.max(0, rawEnergy));
-        const pos = clampedEnergy * (pLen - 1);
-        const lo = Math.floor(pos);
-        const hi = Math.min(pLen - 1, lo + 1);
-        const t = pos - lo;
-        const cLo = this.palette[lo];
-        const cHi = this.palette[hi];
-        this.color = [
-          Math.round(cLo[0] + (cHi[0] - cLo[0]) * t),
-          Math.round(cLo[1] + (cHi[1] - cLo[1]) * t),
-          Math.round(cLo[2] + (cHi[2] - cLo[2]) * t),
-        ];
-      }
+    const paletteResult = advancePalette(
+      this.palette, this.paletteState, pm, cal,
+      this.smoothedBass, rawEnergy, this.tickMs,
+    );
+    if (paletteResult) {
+      this.color = paletteResult.color;
+      this.paletteState = paletteResult.state;
     }
 
     // ── Resolve colors ──
@@ -440,7 +356,7 @@ export class LightEngine {
     const bleSentR = finalColor[0], bleSentG = finalColor[1], bleSentB = finalColor[2];
     this.lastBaseColor = [bleSentR, bleSentG, bleSentB];
 
-    // ── BLE output (fire-and-forget — non-reentrant guard in sendToBLE prevents queue buildup) ──
+    // ── BLE output ──
     const smoothEnd = performance.now();
     if (this.chars.size > 0) {
       if (isPunch) sendToBLE(255, 255, 255, pct);
@@ -460,7 +376,7 @@ export class LightEngine {
       bleColorSource: 'normal',
       micRms: this.smoothed,
       isPlaying: this.playing,
-      paletteIndex: this.paletteIndex,
+      paletteIndex: this.paletteState.index,
       timings: {
         rmsMs: rmsEnd - tickStart,
         smoothMs: smoothEnd - rmsEnd,
@@ -471,7 +387,6 @@ export class LightEngine {
     this.lastTickData = tickData;
     this.emit(tickData);
   }
-
 
   private emit(data: TickData) {
     for (const cb of this.tickCallbacks) cb(data);
