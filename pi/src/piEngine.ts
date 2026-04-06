@@ -19,7 +19,6 @@ const AGC_MAX_DECAY_PER_SEC = 0.99840;
 const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410;
 const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;
 const QUIET_THRESHOLD_RATIO = 0.10;
-const QUIET_THRESHOLD_RATIO = 0.10;
 const QUIET_MS_MEDIUM = 2000;
 const QUIET_MS_FAST = 5000;
 const BUCKET_SIZE = 5;
@@ -82,8 +81,13 @@ function normalizeBand(value: number, state: AgcState, band: 'bass' | 'midHi'): 
 }
 
 // --- Smoothing & brightness ---
-function smooth(prev: number, raw: number, attackAlpha: number, releaseAlpha: number): number {
-  const alpha = raw > prev ? attackAlpha : releaseAlpha;
+/** Tick-rate normalized smoothing.  Alpha values are calibrated for 125ms reference tick.
+ *  At faster tick rates, alpha is reduced proportionally to maintain the same time-constant. */
+function smooth(prev: number, raw: number, attackAlpha: number, releaseAlpha: number, tickMs: number = 125): number {
+  const base = raw > prev ? attackAlpha : releaseAlpha;
+  // Convert per-tick alpha to per-second rate, then back to current tickMs
+  // alpha_normalized = 1 - (1 - alpha)^(tickMs/125)
+  const alpha = 1 - Math.pow(1 - base, tickMs / 125);
   return prev + alpha * (raw - prev);
 }
 
@@ -307,7 +311,7 @@ export class PiLightEngine {
     const bands = getLatestBands();
 
     // Smoothing
-    this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha);
+    this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
     // Volume bucket
     const bucket = volumeToBucket(this.volume);
@@ -323,8 +327,8 @@ export class PiLightEngine {
     const rawBassNorm = normalizeBand(bands.bassRms, this.agc, 'bass');
     const rawMidHiNorm = normalizeBand(bands.midHiRms, this.agc, 'midHi');
 
-    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
-    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
+    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
+    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
     // Spectral flux (tick-rate normalized decay)
     const fluxDecayPerSec = 0.97; // ~3% decay per second
@@ -332,14 +336,14 @@ export class PiLightEngine {
     if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
     else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
     const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
-    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1);
+    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1, this.tickMs);
     const fluxBoost = cal.transientBoost ? this.smoothedFlux * 0.15 : 0;
 
     // Brightness
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
     energyNorm = Math.min(1, energyNorm + fluxBoost);
     // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
-    const centerAlpha = 1 - Math.pow(1 - 0.008, 30 / this.tickMs);
+    const centerAlpha = 1 - Math.pow(1 - 0.008, 125 / this.tickMs);
     this.dynamicCenter += (energyNorm - this.dynamicCenter) * centerAlpha;
     energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
 
@@ -370,7 +374,8 @@ export class PiLightEngine {
 
       if (pm === 'timed') {
         this._paletteTickCounter++;
-        const speed = Math.max(1, cal.paletteRotationSpeed ?? 8);
+        // Normalize speed for tick rate: speed is calibrated for 125ms ticks
+        const speed = Math.max(1, Math.round((cal.paletteRotationSpeed ?? 8) * (125 / this.tickMs)));
         if (this._paletteTickCounter >= speed) {
           this._paletteTickCounter = 0;
           this._paletteIndex = (this._paletteIndex + 1) % pLen;

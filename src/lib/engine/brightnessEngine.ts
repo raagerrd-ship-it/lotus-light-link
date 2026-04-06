@@ -8,9 +8,13 @@ export interface SmoothedBands {
   midHi: number;
 }
 
-/** Apply attack/release smoothing to a single value */
-export function smooth(prev: number, raw: number, attackAlpha: number, releaseAlpha: number): number {
-  const alpha = raw > prev ? attackAlpha : releaseAlpha;
+/** Apply attack/release smoothing to a single value.
+ *  Alpha values are calibrated for 125ms reference tick.
+ *  At faster tick rates, alpha is reduced proportionally to maintain the same time-constant. */
+export function smooth(prev: number, raw: number, attackAlpha: number, releaseAlpha: number, tickMs: number = 125): number {
+  const base = raw > prev ? attackAlpha : releaseAlpha;
+  // Convert per-tick alpha to per-second rate, then back to current tickMs
+  const alpha = 1 - Math.pow(1 - base, tickMs / 125);
   return prev + alpha * (raw - prev);
 }
 
