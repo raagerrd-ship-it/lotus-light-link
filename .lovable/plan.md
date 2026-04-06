@@ -1,35 +1,61 @@
 
 
-# Pi Mobile UI — Layoutförhandsvisning på `/pi-mobile`
+# Realtids-visualisering i Pi Mobile UI
 
-Bygger en fullständig mockup av Pi-mobilgränssnittet som en route i Lovable-appen. Använder simulerad data (ingen riktig Pi-anslutning behövs) så du kan se och finslipa layouten direkt i preview.
+## Är det för komplext för Pi?
 
-## Vad som byggs
+Nej. Pi:n har redan all data — `piEngine.ts` emittar `brightness`, `bassLevel`, `midHiLevel` varje tick (25–33ms). Vi behöver bara:
+1. Ett SSE-endpoint som streamar tick-data till mobilen
+2. En enkel canvas-rendering i HTML-filen
 
-### Startskärm
-- Statusrad: anslutningsindikator (simulerad grön) + kugghjulsikon
-- Kompakt info: "BLE: 2 enheter" / "Sonos: ▶ Låtnamn"
-- 2×2 preset-grid (Lugn, Normal, Party, Custom) — aktiv markerad med accent
-- Idle-färg: RGB-sliders + förhandsvisningsruta
+Canvas-rendering av ~64 punkter är trivialt för en mobils webbläsare. SSE kostar nästan ingenting på Pi:n.
 
-### Inställningsvy (via ⚙️)
-- Tillbaka-pil
-- Kalibrerings-sliders: attackAlpha, releaseAlpha, dynamicDamping, bassWeight, brightnessFloor, smoothing
-- Tick rate slider (20–200 ms)
-- Sonos Gateway URL-input
-- Varje slider visar label + aktuellt värde
+## Vad som byggs (mockup i Lovable)
 
-### Design
-- Mörkt tema, samma `bg-background` som resten av appen
-- Optimerat för mobilbredd (single column, 48px+ touch targets)
-- Inga externa beroenden — Tailwind + native inputs
+En kompakt canvas-visualisering på **startskärmen** i PiMobile som visar:
+- **Heldragen linje**: Bearbetad brightness (efter alla sliders)
+- **Streckad linje**: Rå energi (före slider-bearbetning)
+
+Simulerad data med sinusvåg + brus som reagerar på slider-ändringar i realtid, så du kan se hur attack/release/damping/smoothing påverkar kurvan direkt.
 
 ## Filer
 
 | Fil | Ändring |
 |-----|---------|
-| `src/pages/PiMobile.tsx` | **Ny** — Komplett mockup med simulerad data, startskärm + inställningsvy |
-| `src/App.tsx` | Ny route: `/pi-mobile` |
+| `src/pages/PiMobile.tsx` | Lägg till simulerad ljudmotor + canvas-chart på startskärmen |
 
-All data är hårdkodad/simulerad — ingen fetch till Pi. När layouten är godkänd konverterar vi till `pi/src/public/index.html` med riktiga API-anrop.
+## Mockup-layout
+
+```text
+┌──────────────────────────┐
+│  🟢 Lotus Light      ⚙️  │
+├──────────────────────────┤
+│  BLE: 2 st   Sonos: ▶   │
+├──────────────────────────┤
+│  ┌──────────────────────┐│
+│  │ ~~~~~ chart ~~~~~~~ ││  ← ~80px hög canvas
+│  └──────────────────────┘│
+├──────────────────────────┤
+│  ┌──────┐  ┌──────┐     │
+│  │ Lugn │  │Normal│     │
+│  ├──────┤  ├──────┤     │
+│  │Party │  │Custom│     │
+│  └──────┘  └──────┘     │
+├──────────────────────────┤
+│  ■ Idle-färg    [R G B]  │
+└──────────────────────────┘
+```
+
+## Simuleringslogik
+
+En `useEffect` med `setInterval` (25ms) genererar en sinusvåg med brus som basenergi. Slidervärden (attack, release, smoothing, dynamicDamping) appliceras i realtid på signalen, precis som i den riktiga motorn. Resultatet pushas till en ringbuffer och ritas med en enkel canvas-loop.
+
+## För Pi-deploy (senare steg)
+
+Byter ut simuleringen mot ett SSE-endpoint:
+```
+GET /api/stream → Server-Sent Events med { brightness, rawPct, bass, midHi } varje tick
+```
+
+Pi:ns `configServer.ts` får ett `app.get('/api/stream', ...)` som prenumererar på `engine.onTick()`.
 
