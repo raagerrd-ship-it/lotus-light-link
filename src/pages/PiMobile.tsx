@@ -84,8 +84,8 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
 
     // Floor
     val = Math.max(val, cal.brightnessFloor / 100);
-    val = Math.max(0, Math.min(1, val));
-    prev = val;
+    val = Math.max(0, val); // allow > 1.0 so dynamics boost is visible
+    prev = Math.max(0, Math.min(1, val)); // envelope follower stays 0–1
     out.push(val);
   }
   return out;
