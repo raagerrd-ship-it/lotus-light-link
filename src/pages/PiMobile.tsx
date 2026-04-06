@@ -242,7 +242,7 @@ function SettingsView({
           <span className="text-muted-foreground font-mono text-xs">{tickMs} ms</span>
         </div>
         <input
-          type="range" min={20} max={200} step={1} value={tickMs}
+          type="range" min={20} max={50} step={1} value={tickMs}
           onChange={(e) => setTickMs(parseInt(e.target.value))}
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
