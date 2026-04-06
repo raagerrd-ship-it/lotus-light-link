@@ -14,8 +14,8 @@ import { installLocalStorageShim } from './storage.js';
 // Install shims before any engine imports
 installLocalStorageShim();
 
-import { startMic, stopMic } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount } from './nobleBle.js';
+import { startMic, stopMic, setAlsaDevice } from './alsaMic.js';
+import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
@@ -41,10 +41,17 @@ async function main() {
   console.log(`  Config: :${CONFIG_PORT}`);
   console.log('');
 
-  // 1. Create engine
+  // 1. Restore persisted global settings
+  const savedAlsaDevice = getItem('alsa-device');
+  if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
+
+  const savedGamma = getItem('dimming-gamma');
+  if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
+
+  // 2. Create engine
   const engine = new PiLightEngine(TICK_MS);
 
-  // 2. Start microphone
+  // 3. Start microphone
   console.log('[Boot] Starting ALSA microphone...');
   startMic();
 
