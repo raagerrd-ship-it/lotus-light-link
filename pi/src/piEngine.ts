@@ -108,6 +108,8 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
 }
 
 // --- Calibration ---
+export type PaletteMode = 'off' | 'timed' | 'bass' | 'energy' | 'blend';
+
 interface LightCalibration {
   gammaR: number; gammaG: number; gammaB: number;
   offsetR: number; offsetG: number; offsetB: number;
@@ -117,6 +119,8 @@ interface LightCalibration {
   punchWhiteThreshold: number;
   smoothing: number; brightnessFloor: number;
   transientBoost: boolean;
+  paletteMode: PaletteMode;
+  paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
   [key: string]: any;
 }
@@ -129,6 +133,7 @@ const DEFAULT_CAL: LightCalibration = {
   punchWhiteThreshold: 100,
   smoothing: 0, brightnessFloor: 0,
   transientBoost: true,
+  paletteMode: 'off', paletteRotationSpeed: 8,
   agcVolumeTable: {},
 };
 
@@ -167,6 +172,9 @@ export interface TickData {
   color: [number, number, number];
   bassLevel: number;
   midHiLevel: number;
+  isPlaying: boolean;
+  tickMs: number;
+  paletteIndex: number;
   isPlaying: boolean;
   tickMs: number;
 }
@@ -210,8 +218,11 @@ export class PiLightEngine {
   }
 
   setColor(rgb: [number, number, number]) { this.color = rgb; }
-  setPalette(palette: [number, number, number][]) { /* stored for future palette modes */ this._palette = palette; }
+  setPalette(palette: [number, number, number][]) { this._palette = palette; this._paletteIndex = 0; }
   private _palette: [number, number, number][] = [];
+  private _paletteIndex = 0;
+  private _paletteTickCounter = 0;
+  private _bassWasHigh = false;
   setVolume(vol: number | undefined) { this.volume = vol; }
   setTickMs(ms: number) { this.tickMs = ms; }
 
@@ -318,6 +329,46 @@ export class PiLightEngine {
     }
     pct = Math.round(pct);
 
+    // ── Palette mode ──
+    const pm = cal.paletteMode ?? 'off';
+    if (pm !== 'off' && this._palette.length > 1) {
+      const pLen = this._palette.length;
+
+      if (pm === 'timed') {
+        this._paletteTickCounter++;
+        const speed = Math.max(1, cal.paletteRotationSpeed ?? 8);
+        if (this._paletteTickCounter >= speed) {
+          this._paletteTickCounter = 0;
+          this._paletteIndex = (this._paletteIndex + 1) % pLen;
+        }
+        this.color = this._palette[this._paletteIndex];
+
+      } else if (pm === 'bass') {
+        const isHigh = this.smoothedBass > 0.45;
+        if (isHigh && !this._bassWasHigh) {
+          this._paletteIndex = (this._paletteIndex + 1) % pLen;
+        }
+        this._bassWasHigh = isHigh;
+        this.color = this._palette[this._paletteIndex];
+
+      } else if (pm === 'energy') {
+        const idx = Math.min(pLen - 1, Math.floor(energyNorm * pLen));
+        this.color = this._palette[idx];
+
+      } else if (pm === 'blend') {
+        const pos = energyNorm * (pLen - 1);
+        const lo = Math.floor(pos);
+        const hi = Math.min(pLen - 1, lo + 1);
+        const t = pos - lo;
+        const cLo = this._palette[lo], cHi = this._palette[hi];
+        this.color = [
+          Math.round(cLo[0] + (cHi[0] - cLo[0]) * t),
+          Math.round(cLo[1] + (cHi[1] - cLo[1]) * t),
+          Math.round(cLo[2] + (cHi[2] - cLo[2]) * t),
+        ];
+      }
+    }
+
     // Color
     const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
     const finalColor = applyColorCalibration(this.color[0], this.color[1], this.color[2], cal);
@@ -334,6 +385,7 @@ export class PiLightEngine {
       midHiLevel: bands.midHiRms,
       isPlaying: true,
       tickMs: this.tickMs,
+      paletteIndex: this._paletteIndex,
     };
     for (const cb of this.callbacks) cb(data);
   }

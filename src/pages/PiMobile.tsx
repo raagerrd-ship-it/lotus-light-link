@@ -3,13 +3,22 @@ import { Settings, ArrowLeft, Bluetooth, Music, Save, Check } from "lucide-react
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number };
+type PaletteMode = 'off' | 'timed' | 'bass' | 'energy' | 'blend';
+const PALETTE_MODES: { value: PaletteMode; label: string }[] = [
+  { value: 'off', label: 'Av' },
+  { value: 'timed', label: 'Tid' },
+  { value: 'bass', label: 'Bas' },
+  { value: 'energy', label: 'Energi' },
+  { value: 'blend', label: 'Blend' },
+];
+
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode };
 
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100 },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 97 },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93 },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100 },
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off' },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend' },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass' },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off' },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -233,6 +242,25 @@ function SettingsView({
             <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
           </div>
         ))}
+
+        {/* Palette mode */}
+        <div>
+          <div className="text-sm mb-2">Palettläge</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {PALETTE_MODES.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setCal({ ...cal, paletteMode: value })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
+                  cal.paletteMode === value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground"
+                }`}
+              >{label}</button>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">Hur färgen roterar genom albumpalett</p>
+        </div>
       </section>
 
       <section className="mb-8">
