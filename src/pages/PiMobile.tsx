@@ -3,13 +3,16 @@ import { Settings, ArrowLeft, Bluetooth, Music, Save, Check } from "lucide-react
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-const DEFAULT_CAL = {
-  bassWeight: 0.5,
-  softness: 30,
-  dynamicDamping: 0,
-  brightnessFloor: 0,
-  punchWhiteThreshold: 100,
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number };
+
+const PRESET_CALS: Record<string, Cal> = {
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100 },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 97 },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93 },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100 },
 };
+
+const DEFAULT_CAL = PRESET_CALS.Normal;
 
 /** Convert Softness 0-100 → releaseAlpha + smoothing (mirrors CalibrationOverlay) */
 function softnessToParams(s: number) {
