@@ -362,7 +362,7 @@ export class PiLightEngine {
 
     const sm = cal.smoothing ?? 0;
     if (sm > 0) {
-      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
+      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm, this.tickMs);
       pct = this.extraSmoothPct;
     }
     // Clamp to 0-100 for BLE, then round

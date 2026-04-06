@@ -165,6 +165,12 @@ export function stopMic(): void {
   if (recorder) {
     recorder.stop();
     recorder = null;
+    // Reset filter and buffer state to prevent glitches on restart
+    hsState = 0;
+    samplesReceived = 0;
+    ringPos = 0;
+    ringBuf.fill(0);
+    prevPower.fill(0);
     console.log('[ALSA] Microphone stopped');
   }
 }
