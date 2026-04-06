@@ -323,9 +323,11 @@ export class PiLightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
-    // Spectral flux
+    // Spectral flux (tick-rate normalized decay)
+    const fluxDecayPerSec = 0.97; // ~3% decay per second
+    const fluxDecay = Math.pow(fluxDecayPerSec, this.tickMs / 1000);
     if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
-    else this.fluxMax *= 0.999;
+    else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
     const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
     this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1);
     const fluxBoost = cal.transientBoost ? this.smoothedFlux * 0.15 : 0;
@@ -333,7 +335,9 @@ export class PiLightEngine {
     // Brightness
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
     energyNorm = Math.min(1, energyNorm + fluxBoost);
-    this.dynamicCenter += (energyNorm - this.dynamicCenter) * 0.008;
+    // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
+    const centerAlpha = 1 - Math.pow(1 - 0.008, 30 / this.tickMs);
+    this.dynamicCenter += (energyNorm - this.dynamicCenter) * centerAlpha;
     energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
 
     const floor = cal.brightnessFloor ?? 0;
@@ -383,7 +387,8 @@ export class PiLightEngine {
         this.color = this._palette[idx];
 
       } else if (pm === 'blend') {
-        const pos = energyNorm * (pLen - 1);
+        const clampedEnergy = Math.min(1, Math.max(0, energyNorm));
+        const pos = clampedEnergy * (pLen - 1);
         const lo = Math.floor(pos);
         const hi = Math.min(pLen - 1, lo + 1);
         const t = pos - lo;

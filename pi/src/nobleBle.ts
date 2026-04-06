@@ -123,48 +123,64 @@ export function getConnectedNames(): string[] {
  * Scan for and connect to BLEDOM devices.
  * Connects to all found devices matching name pattern.
  */
+let scanning = false;
+
 export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
-  return new Promise((resolve) => {
-    const found: any[] = [];
+  if (scanning) {
+    console.log('[BLE] Scan already in progress, skipping');
+    return 0;
+  }
+  scanning = true;
 
-    const onDiscover = (peripheral: any) => {
-      const name = peripheral.advertisement?.localName ?? '';
-      if (/^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(name)) {
-        console.log(`[BLE] Found: ${name} (${peripheral.id})`);
-        found.push(peripheral);
-      }
-    };
+  try {
+    return await new Promise((resolve) => {
+      const found: any[] = [];
 
-    noble.on('discover', onDiscover);
-
-    const finish = async () => {
-      noble.removeListener('discover', onDiscover);
-      try { await noble.stopScanningAsync(); } catch {}
-
-      let connected = 0;
-      for (const p of found) {
-        try {
-          await connectPeripheral(p);
-          connected++;
-        } catch (e: any) {
-          console.error(`[BLE] Connect failed for ${p.advertisement?.localName}: ${e.message}`);
+      const onDiscover = (peripheral: any) => {
+        const name = peripheral.advertisement?.localName ?? '';
+        // Skip already-connected devices
+        if (connectedDevices.has(peripheral.id)) return;
+        if (/^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(name)) {
+          console.log(`[BLE] Found: ${name} (${peripheral.id})`);
+          found.push(peripheral);
         }
-      }
-      resolve(connected);
-    };
+      };
 
-    setTimeout(finish, timeoutMs);
+      noble.on('discover', onDiscover);
 
-    if (noble.state === 'poweredOn') {
-      noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
-    } else {
-      noble.once('stateChange', (state: string) => {
-        if (state === 'poweredOn') {
-          noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
+      const finish = async () => {
+        noble.removeListener('discover', onDiscover);
+        try { await noble.stopScanningAsync(); } catch {}
+
+        let connected = 0;
+        for (const p of found) {
+          // Double-check not connected during scan
+          if (connectedDevices.has(p.id)) continue;
+          try {
+            await connectPeripheral(p);
+            connected++;
+          } catch (e: any) {
+            console.error(`[BLE] Connect failed for ${p.advertisement?.localName}: ${e.message}`);
+          }
         }
-      });
-    }
-  });
+        resolve(connected);
+      };
+
+      setTimeout(finish, timeoutMs);
+
+      if (noble.state === 'poweredOn') {
+        noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
+      } else {
+        noble.once('stateChange', (state: string) => {
+          if (state === 'poweredOn') {
+            noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
+          }
+        });
+      }
+    });
+  } finally {
+    scanning = false;
+  }
 }
 
 async function connectPeripheral(peripheral: any): Promise<void> {
