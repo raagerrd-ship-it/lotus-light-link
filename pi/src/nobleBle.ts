@@ -211,13 +211,48 @@ async function connectPeripheral(peripheral: any): Promise<void> {
     name,
   });
 
-  // Auto-reconnect on disconnect
+  // Auto-reconnect on disconnect — immediate retry with backoff
   peripheral.once('disconnect', () => {
-    console.log(`[BLE] ${name} disconnected — will reconnect on next scan`);
+    console.log(`[BLE] ${name} disconnected — attempting immediate reconnect`);
     connectedDevices.delete(peripheral.id);
+    reconnectWithBackoff(peripheral, name);
   });
 
   console.log(`[BLE] ${name} ready (hw brightness max)`);
+}
+
+
+/** Reconnect a specific peripheral with exponential backoff */
+async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0): Promise<void> {
+  const maxAttempts = 5;
+  const baseDelay = 2000; // 2s, 4s, 8s, 16s, 32s
+
+  if (attempt >= maxAttempts) {
+    console.log(`[BLE] ${name} — gave up after ${maxAttempts} attempts, will retry on next scan cycle`);
+    return;
+  }
+
+  // Skip if already reconnected (e.g. by scan loop)
+  if (connectedDevices.has(peripheral.id)) return;
+
+  const delay = baseDelay * Math.pow(2, attempt);
+  console.log(`[BLE] ${name} — reconnect attempt ${attempt + 1}/${maxAttempts} in ${delay}ms`);
+
+  await new Promise(r => setTimeout(r, delay));
+
+  // Check again after waiting
+  if (connectedDevices.has(peripheral.id)) return;
+
+  try {
+    await connectPeripheral(peripheral);
+    console.log(`[BLE] ${name} — reconnected successfully`);
+    if (connectedDevices.size > expectedDeviceCount) {
+      expectedDeviceCount = connectedDevices.size;
+    }
+  } catch (e: any) {
+    console.error(`[BLE] ${name} — reconnect attempt ${attempt + 1} failed: ${e.message}`);
+    reconnectWithBackoff(peripheral, name, attempt + 1);
+  }
 }
 
 /**
