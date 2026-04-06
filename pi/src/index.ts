@@ -20,6 +20,7 @@ import { startSonosPoller, stopSonosPoller, onSonosChange, type SonosPollerConfi
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
 import { getItem, setItem } from './storage.js';
+import { extractPalette } from './colorExtract.js';
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://localhost:3000/api/sonos';
