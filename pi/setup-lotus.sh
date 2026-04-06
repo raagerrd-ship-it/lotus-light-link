@@ -95,11 +95,45 @@ echo "[7/8] Setting BLE permissions..."
 setcap cap_net_raw+eip "$(readlink -f "$(which node)")" 2>/dev/null || true
 echo "  ✓ Node.js has BLE raw socket capability"
 
-# ─── 8. systemd services ─────────────────────────────────
-echo "[8/8] Installing systemd services..."
+# ─── 8. CPU core selection ────────────────────────────────
+echo "[8/9] CPU core assignment..."
+echo ""
+echo "  Pi Zero 2 W has 4 CPU cores (0-3)."
+echo "  Dedicating a core to Lotus Light gives precise timing."
+echo ""
+echo "  Recommended layout:"
+echo "  ┌────────┬──────────────────────┬──────┐"
+echo "  │ Core   │ Service              │ Port │"
+echo "  ├────────┼──────────────────────┼──────┤"
+echo "  │   0    │ Cast Away Web        │ 3000 │"
+echo "  │   1    │ Lotus Light Link ◄   │ 3001 │"
+echo "  │   2    │ OS / system (free)   │  —   │"
+echo "  │   3    │ Sonos Proxy          │ 3002 │"
+echo "  └────────┴──────────────────────┴──────┘"
+echo ""
+
+# Default to core 1, allow override via env or interactive
+CPU_CORE="${CPU_CORE:-}"
+if [ -z "$CPU_CORE" ] && [ -t 0 ]; then
+  read -r -p "  Which CPU core for Lotus Light? [1]: " CPU_CORE_INPUT
+  CPU_CORE="${CPU_CORE_INPUT:-1}"
+else
+  CPU_CORE="${CPU_CORE:-1}"
+fi
+
+# Validate
+if ! [[ "$CPU_CORE" =~ ^[0-3]$ ]]; then
+  echo "  ⚠ Invalid core '$CPU_CORE', using default: 1"
+  CPU_CORE=1
+fi
+echo "  ✓ Lotus Light will run on CPU core ${CPU_CORE}"
+echo ""
+
+# ─── 9. systemd services ─────────────────────────────────
+echo "[9/9] Installing systemd services..."
 
 # Main service
-cat > /etc/systemd/system/lotus-light.service << 'EOF'
+cat > /etc/systemd/system/lotus-light.service << EOF
 [Unit]
 Description=Lotus Light Link — Audio-reactive BLE LED controller
 After=network.target bluetooth.target
@@ -120,7 +154,7 @@ Environment=TICK_MS=30
 # Resource limits & CPU pinning
 # Core 0=Cast Away Web, Core 1=Lotus Light, Core 2=OS, Core 3=Sonos Proxy
 MemoryMax=128M
-AllowedCPUs=1
+AllowedCPUs=${CPU_CORE}
 CPUQuota=100%
 Nice=-5
 
