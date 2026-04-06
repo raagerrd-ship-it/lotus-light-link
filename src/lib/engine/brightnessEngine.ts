@@ -90,7 +90,7 @@ export function computeBrightnessPct(
   energyNorm = Math.min(1, energyNorm + fluxBoost);
 
   // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
-  const centerAlpha = 1 - Math.pow(1 - 0.008, 125 / tickMs);
+  const centerAlpha = 1 - Math.pow(1 - 0.008, tickMs / 125);
   const newCenter = dynamicCenter + (energyNorm - dynamicCenter) * centerAlpha;
   energyNorm = applyDynamics(energyNorm, newCenter, cal.dynamicDamping);
 
