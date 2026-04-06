@@ -327,6 +327,8 @@ export class PiLightEngine {
 
     const rawBassNorm = normalizeBand(bands.bassRms, this.agc, 'bass');
     const rawMidHiNorm = normalizeBand(bands.midHiRms, this.agc, 'midHi');
+    // Raw energy for palette modes — matches browser (50/50 weight, pre-smooth, pre-dynamics)
+    const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
@@ -392,11 +394,11 @@ export class PiLightEngine {
         this.color = this._palette[this._paletteIndex];
 
       } else if (pm === 'energy') {
-        const idx = Math.min(pLen - 1, Math.floor(energyNorm * pLen));
+        const idx = Math.min(pLen - 1, Math.floor(rawEnergy * pLen));
         this.color = this._palette[idx];
 
       } else if (pm === 'blend') {
-        const clampedEnergy = Math.min(1, Math.max(0, energyNorm));
+        const clampedEnergy = Math.min(1, Math.max(0, rawEnergy));
         const pos = clampedEnergy * (pLen - 1);
         const lo = Math.floor(pos);
         const hi = Math.min(pLen - 1, lo + 1);
