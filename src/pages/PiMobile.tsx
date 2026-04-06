@@ -242,6 +242,25 @@ function SettingsView({
             <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
           </div>
         ))}
+
+        {/* Palette mode */}
+        <div>
+          <div className="text-sm mb-2">Palettläge</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {PALETTE_MODES.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setCal({ ...cal, paletteMode: value })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
+                  cal.paletteMode === value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground"
+                }`}
+              >{label}</button>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">Hur färgen roterar genom albumpalett</p>
+        </div>
       </section>
 
       <section className="mb-8">
