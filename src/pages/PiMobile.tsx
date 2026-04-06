@@ -315,7 +315,7 @@ export default function PiMobile() {
         <div className="grid grid-cols-2 gap-3">
           {PRESETS.map((name) => (
             <button
-              key={name} onClick={() => setActivePreset(name)}
+              key={name} onClick={() => { setActivePreset(name); setCal({ ...PRESET_CALS[name] }); }}
               className={`py-4 rounded-xl text-sm font-medium transition-all active:scale-95 ${
                 activePreset === name
                   ? "bg-primary text-primary-foreground ring-2 ring-ring"
