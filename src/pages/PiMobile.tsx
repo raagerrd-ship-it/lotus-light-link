@@ -134,7 +134,7 @@ function SettingsView({
       <section className="space-y-5 mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Kalibrering</h2>
         <SignalPreview cal={cal} />
-        </p>
+        
         {SLIDER_CONFIG.map(({ key, label, min, max, step }) => (
           <div key={key}>
             <div className="flex justify-between text-sm mb-1">
