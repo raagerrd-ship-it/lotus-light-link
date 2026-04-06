@@ -12,6 +12,7 @@ import { createAgcState, updateRunningMax, volumeToBucket, updateVolumeTable, ge
 import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
 import { advancePalette, createPaletteState, type PaletteState } from "./paletteMixer";
 import { createIdleState, sendIdleIfNeeded, listenIdleColorChanges, type IdleState } from "./idleManager";
+import { createOnsetState, detectOnset, getOnsetBoost, resizeOnsetBuffer, type OnsetState } from "./onsetDetector";
 
 export interface TickData {
   brightness: number;
@@ -58,9 +59,8 @@ export class LightEngine {
   private lastBucket: number = 0;
   private extraSmoothPct = 0;
   private lastTickData: TickData | null = null;
-  // Spectral flux tracking
-  private smoothedFlux = 0;
-  private fluxMax = 0.001;
+  // Onset detection (replaces smoothedFlux)
+  private onset: OnsetState;
 
   private idle: IdleState;
 
@@ -79,6 +79,7 @@ export class LightEngine {
     this.volumeTable = { ...this.cal.agcVolumeTable };
     this.agc = createAgcState(0.01);
     this.idle = createIdleState();
+    this.onset = createOnsetState();
   }
 
   /** Register a tick callback. Returns unsubscribe function. */
@@ -90,7 +91,7 @@ export class LightEngine {
   setColor(rgb: [number, number, number]) { this.color = rgb; }
   setPalette(colors: [number, number, number][]) { this.palette = colors; }
   setVolume(vol: number | undefined) { this.volume = vol; }
-  setTickMs(ms: number) { this.tickMs = ms; this.worker?.postMessage(ms); }
+  setTickMs(ms: number) { this.tickMs = ms; resizeOnsetBuffer(this.onset, ms); this.worker?.postMessage(ms); }
 
   setPlaying(playing: boolean) {
     this.playing = playing;
@@ -139,8 +140,7 @@ export class LightEngine {
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
     this.extraSmoothPct = 0;
-    this.smoothedFlux = 0;
-    this.fluxMax = 0.001;
+    this.onset = createOnsetState(this.tickMs);
     resetFluxState();
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
@@ -258,6 +258,7 @@ export class LightEngine {
     this.smoothedMidHi = 0;
     this.dynamicCenter = 0.5;
     this.extraSmoothPct = 0;
+    this.onset = createOnsetState();
     this.agc = createAgcState(0.01);
     this.volumeTable = {};
     this.lastBaseColor = [0, 0, 0];
@@ -314,14 +315,9 @@ export class LightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
-    // ── Spectral flux → transient boost ──
-    const fluxDecayPerSec = 0.97;
-    const fluxDecay = Math.pow(fluxDecayPerSec, this.tickMs / 1000);
-    if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
-    else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
-    const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
-    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1, this.tickMs);
-    const fluxBoost = (cal.transientBoost !== false) ? this.smoothedFlux * 0.15 : 0;
+    // ── Onset detection (peak-picking on spectral flux) ──
+    detectOnset(this.onset, bands.flux, this.tickMs);
+    const fluxBoost = (cal.transientBoost !== false) ? getOnsetBoost(this.onset) : 0;
 
     // ── Brightness ──
     let { pct, newCenter } = computeBrightnessPct(
