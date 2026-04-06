@@ -96,15 +96,16 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
     const range = result >= center ? (1 - center) || 0.5 : center || 0.5;
     const normalized = (result - center) / range;
     const expanded = Math.sign(normalized) * Math.pow(Math.abs(normalized), exponent);
-    const softLimit = 1.2 + amount * 0.8;
-    const softened = Math.tanh(expanded * softLimit) / Math.tanh(softLimit);
-    result = center + softened * range;
+    const gain = 1 + amount * 0.5;
+    result = center + expanded * range * gain;
+    const ceiling = 1 + amount * 0.4;
+    if (result > ceiling) result = ceiling + (result - ceiling) * 0.2;
   } else if (dynamicDamping < 0) {
     const amount = Math.min(1, Math.abs(dynamicDamping) / 3);
     const compression = 1 / (1 + amount * 4);
     result = center + (result - center) * compression;
   }
-  return Math.max(0, Math.min(1, result));
+  return Math.max(0, result);
 }
 
 // --- Calibration ---
