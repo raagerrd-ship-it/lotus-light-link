@@ -91,10 +91,11 @@ function smooth(prev: number, raw: number, attackAlpha: number, releaseAlpha: nu
   return prev + alpha * (raw - prev);
 }
 
-function extraSmooth(prev: number, newVal: number, smoothing: number): number {
+function extraSmooth(prev: number, newVal: number, smoothing: number, tickMs: number = 125): number {
   if (smoothing <= 0) return newVal;
-  const alpha = Math.exp(-smoothing * 0.04);
-  return prev + alpha * (newVal - prev);
+  const alphaRef = Math.exp(-smoothing * 0.04);
+  const alpha = Math.pow(alphaRef, tickMs / 125);
+  return prev + (1 - alpha) * (newVal - prev);
 }
 
 function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
@@ -361,7 +362,7 @@ export class PiLightEngine {
 
     const sm = cal.smoothing ?? 0;
     if (sm > 0) {
-      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
+      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm, this.tickMs);
       pct = this.extraSmoothPct;
     }
     // Clamp to 0-100 for BLE, then round

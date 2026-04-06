@@ -382,7 +382,7 @@ export class LightEngine {
     // ── Extra smoothing on final output (float precision until BLE send) ──
     const sm = cal.smoothing ?? 0;
     if (sm > 0) {
-      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
+      this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm, this.tickMs);
       pct = this.extraSmoothPct; // keep float
     }
     // Round once, right before BLE
