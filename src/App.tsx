@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Index from "./pages/Index.tsx";
 import Calibrate from "./pages/Calibrate.tsx";
+import PiMobile from "./pages/PiMobile.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const App = () => (
@@ -8,6 +9,7 @@ const App = () => (
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/calibrate" element={<Calibrate />} />
+      <Route path="/pi-mobile" element={<PiMobile />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>
