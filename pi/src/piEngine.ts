@@ -5,7 +5,7 @@
  */
 
 import { getLatestBands, resetFluxState, setHiShelfGain } from './alsaMic.js';
-import { sendToBLE, bleStats } from './nobleBle.js';
+import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
@@ -13,13 +13,15 @@ import { getItem, setItem } from './storage.js';
 // On update, sync from src/lib/engine/*.ts
 
 // --- AGC ---
+// Note: quiet tick thresholds scaled for ~33Hz tick rate (Pi default 30ms)
+// Browser uses 8Hz so values there are 16/40; at 33Hz we scale proportionally
 const AGC_FLOOR = 0.002;
 const AGC_MAX_DECAY = 0.9998;
 const AGC_QUIET_DECAY_MEDIUM = 0.998;
 const AGC_QUIET_DECAY_FAST = 0.99;
 const QUIET_THRESHOLD_RATIO = 0.10;
-const QUIET_TICKS_MEDIUM = 16;
-const QUIET_TICKS_FAST = 40;
+const QUIET_TICKS_MEDIUM = 66;   // ~2s at 33Hz (was 16 at 8Hz)
+const QUIET_TICKS_FAST = 165;    // ~5s at 33Hz (was 40 at 8Hz)
 const BUCKET_SIZE = 5;
 
 interface AgcState {
@@ -120,6 +122,7 @@ interface LightCalibration {
   punchWhiteThreshold: number;
   smoothing: number; brightnessFloor: number;
   transientBoost: boolean;
+  perceptualCurve: boolean;
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
@@ -134,6 +137,7 @@ const DEFAULT_CAL: LightCalibration = {
   punchWhiteThreshold: 100,
   smoothing: 0, brightnessFloor: 0,
   transientBoost: true,
+  perceptualCurve: false,
   paletteMode: 'off', paletteRotationSpeed: 8,
   agcVolumeTable: {},
 };
@@ -270,6 +274,19 @@ export class PiLightEngine {
     console.log('[Engine] Stopped');
   }
 
+  /** Restart tick timer only — preserves all smoothing/AGC state */
+  restartTimer(): void {
+    if (this.timer) clearInterval(this.timer);
+    if (this.saveTimer) clearInterval(this.saveTimer);
+    this.timer = setInterval(() => this.tick(), this.tickMs);
+    this.saveTimer = setInterval(() => {
+      const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
+      this.cal = updated;
+      saveCalibration(updated);
+    }, 10_000);
+    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz)`);
+  }
+
   private tick(): void {
     if (!this.playing) {
       if (!this.idleSent) {
@@ -321,12 +338,22 @@ export class PiLightEngine {
     const floor = cal.brightnessFloor ?? 0;
     let pct = Math.max(floor, energyNorm * 100);
 
+    // Perceptual brightness curve (matches browser engine)
+    if (cal.perceptualCurve) {
+      if (pct > floor && pct < 100) {
+        const norm = (pct - floor) / (100 - floor);
+        const gamma = getDimmingGamma();
+        pct = floor + Math.pow(norm, gamma) * (100 - floor);
+      }
+    }
+
     const sm = cal.smoothing ?? 0;
     if (sm > 0) {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
       pct = this.extraSmoothPct;
     }
-    pct = Math.round(pct);
+    // Clamp to 0-100 for BLE, then round
+    pct = Math.round(Math.min(100, Math.max(floor, pct)));
 
     // ── Palette mode ──
     const pm = cal.paletteMode ?? 'off';

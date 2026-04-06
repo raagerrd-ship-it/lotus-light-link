@@ -32,7 +32,7 @@ let hsState = 0;
 // Ring buffer for incoming PCM samples
 const ringBuf = new Float32Array(FFT_SIZE);
 let ringPos = 0;
-let ringReady = false;
+let samplesReceived = 0; // total samples since last FFT
 
 // Latest computed bands (polled by engine tick)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
@@ -128,12 +128,14 @@ export function startMic(): void {
       const s16 = buf.readInt16LE(i * 2);
       ringBuf[ringPos] = s16 / 32768;
       ringPos = (ringPos + 1) % FFT_SIZE;
-      if (!ringReady) ringReady = true;
+      samplesReceived++;
     }
 
-    // Process FFT whenever we have enough data
-    if (ringReady) {
+    // Only process FFT when we have at least half a window of new data
+    // Prevents redundant FFTs on the same data (saves CPU on Pi Zero)
+    if (samplesReceived >= FFT_SIZE / 2) {
       processFFT(hiShelfGainDb);
+      samplesReceived = 0;
     }
   });
 
