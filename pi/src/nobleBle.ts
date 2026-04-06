@@ -211,10 +211,11 @@ async function connectPeripheral(peripheral: any): Promise<void> {
     name,
   });
 
-  // Auto-reconnect on disconnect
+  // Auto-reconnect on disconnect — immediate retry with backoff
   peripheral.once('disconnect', () => {
-    console.log(`[BLE] ${name} disconnected — will reconnect on next scan`);
+    console.log(`[BLE] ${name} disconnected — attempting immediate reconnect`);
     connectedDevices.delete(peripheral.id);
+    reconnectWithBackoff(peripheral, name);
   });
 
   console.log(`[BLE] ${name} ready (hw brightness max)`);
