@@ -103,6 +103,7 @@ let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
 export function setHiShelfGain(db: number): void {
   hiShelfGainDb = db;
+  hsGain = Math.pow(10, db / 20);
 }
 
 export function getAlsaDevice(): string {
@@ -133,19 +134,19 @@ export function startMic(): void {
   const stream = recorder.stream();
 
   stream.on('data', (buf: Buffer) => {
-    // 16-bit signed LE PCM → float
+    // 16-bit signed LE PCM → float, high-shelf filtered, into ring buffer
     const samples = buf.length / 2;
     for (let i = 0; i < samples; i++) {
       const s16 = buf.readInt16LE(i * 2);
-      ringBuf[ringPos] = s16 / 32768;
+      const raw = s16 / 32768;
+      ringBuf[ringPos] = applyHighShelfSample(raw);
       ringPos = (ringPos + 1) % FFT_SIZE;
       samplesReceived++;
     }
 
     // Only process FFT when we have at least half a window of new data
-    // Prevents redundant FFTs on the same data (saves CPU on Pi Zero)
     if (samplesReceived >= FFT_SIZE / 2) {
-      processFFT(hiShelfGainDb);
+      processFFT();
       samplesReceived = 0;
     }
   });
