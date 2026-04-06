@@ -89,6 +89,15 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
   let prev = raw[0];
   let dynamicCenter = 0.5;
   let extraSm = raw[0];
+
+  // Onset detection state (mirrors onsetDetector.ts)
+  const onsetBufLen = 7;
+  const fluxBuf: number[] = new Array(onsetBufLen).fill(0);
+  let fluxIdx = 0;
+  let prevFlux = 0;
+  let onsetBoost = 0;
+  const tickMs = 25; // simulated tick rate
+
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i];
     const alpha = r > prev ? attackAlpha : releaseAlpha;
@@ -103,6 +112,23 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
       const k = Math.exp(-smoothing * 0.04);
       extraSm = extraSm + k * (val - extraSm);
       val = extraSm;
+    }
+
+    // Onset detection: simulate spectral flux from signal derivative
+    if (cal.transientBoost) {
+      const flux = Math.max(0, r - (i > 0 ? raw[i - 1] : r));
+      fluxBuf[fluxIdx % onsetBufLen] = flux;
+      fluxIdx++;
+      // Median threshold
+      const sorted = fluxBuf.slice().sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      const threshold = median * 1.5 + 0.005;
+      const isOnset = flux > threshold && flux >= prevFlux;
+      prevFlux = flux;
+      // Exponential decay
+      onsetBoost *= Math.pow(0.10, tickMs / 1000);
+      if (isOnset) onsetBoost = 0.20;
+      val = val * (1 + onsetBoost);
     }
 
     // Floor
