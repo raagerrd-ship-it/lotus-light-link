@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music } from "lucide-react";
+import { useState, useRef } from "react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check } from "lucide-react";
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
@@ -28,20 +28,47 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(33);
   const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleSave = () => {
+    // In real version: PUT /api/calibration + /api/preset/:name
+    setSaved(true);
+    clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSaved(false), 1500);
+  };
 
   if (view === "settings") {
     return (
       <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto">
         {/* Header */}
-        <button
-          onClick={() => setView("home")}
-          className="flex items-center gap-2 text-muted-foreground mb-6 active:text-foreground"
-        >
-          <ArrowLeft size={20} />
-          <span className="text-sm">Tillbaka</span>
-        </button>
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => setView("home")}
+            className="flex items-center gap-2 text-muted-foreground active:text-foreground"
+          >
+            <ArrowLeft size={20} />
+            <span className="text-sm">Tillbaka</span>
+          </button>
+          <button
+            onClick={handleSave}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-95 ${
+              saved
+                ? "bg-green-600 text-foreground"
+                : "bg-primary text-primary-foreground"
+            }`}
+          >
+            {saved ? <Check size={16} /> : <Save size={16} />}
+            {saved ? "Sparat!" : "Spara"}
+          </button>
+        </div>
 
-        <h1 className="text-lg font-bold mb-6">Inställningar</h1>
+        <div className="flex items-center gap-2 mb-6">
+          <h1 className="text-lg font-bold">Inställningar</h1>
+          <span className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full">
+            {activePreset}
+          </span>
+        </div>
 
         {/* Calibration sliders */}
         <section className="space-y-5 mb-8">
