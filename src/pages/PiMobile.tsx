@@ -21,77 +21,151 @@ const SLIDER_CONFIG: { key: keyof typeof DEFAULT_CAL; label: string; min: number
   { key: "smoothing", label: "Utjämning", min: 0, max: 20, step: 1 },
 ];
 
-const SIM_LEVELS = [
-  { label: "Låg", raw: 0.2 },
-  { label: "Mellan", raw: 0.5 },
-  { label: "Hög", raw: 0.85 },
-] as const;
+const CURVE_POINTS = 200; // points to draw
 
-/** Apply calibration to a raw value and return processed brightness 0–1 */
-function applyCalibration(raw: number, cal: typeof DEFAULT_CAL): number {
-  let val = raw;
-
-  // Attack/release — for static preview we treat attack as gain factor
-  val *= cal.attackAlpha;
-
-  // Dynamic damping boosts or compresses deviation from midpoint
-  if (cal.dynamicDamping !== 0) {
-    const mid = 0.5;
-    val = mid + (val - mid) * (1 + cal.dynamicDamping * 0.15);
+/** Pre-compute a 3-wave sinus: low → mid → high amplitude */
+function buildRawCurve(): number[] {
+  const pts: number[] = [];
+  const third = CURVE_POINTS / 3;
+  for (let i = 0; i < CURVE_POINTS; i++) {
+    const t = i / CURVE_POINTS;
+    // Which wave section (0=low, 1=mid, 2=high)
+    const section = Math.min(2, Math.floor(i / third));
+    const amp = [0.2, 0.5, 0.9][section];
+    const freq = 6 * Math.PI; // ~3 full waves per section
+    const val = 0.5 + amp * 0.5 * Math.sin(t * freq);
+    pts.push(Math.max(0, Math.min(1, val)));
   }
-
-  // Smoothing reduces extremes toward center
-  if (cal.smoothing > 0) {
-    const k = 1 / (1 + cal.smoothing * 0.3);
-    val = 0.5 * (1 - k) + val * k;
-  }
-
-  // Floor
-  val = Math.max(val, cal.brightnessFloor / 100);
-  return Math.max(0, Math.min(1, val));
+  return pts;
 }
 
-/* ── Signal Preview — 3 static bars ── */
+const RAW_CURVE = buildRawCurve();
+
+/** Apply calibration to a raw curve and return processed curve */
+function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
+  const out: number[] = [];
+  let smoothed = raw[0];
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i];
+    // Attack / release envelope follower
+    const alpha = r > smoothed ? cal.attackAlpha : cal.releaseAlpha;
+    let val = smoothed + alpha * (r - smoothed);
+
+    // Dynamic damping
+    if (cal.dynamicDamping !== 0) {
+      const diff = val - smoothed;
+      val += diff * cal.dynamicDamping * 0.1;
+    }
+
+    // Smoothing
+    if (cal.smoothing > 0) {
+      const k = 1 / (1 + cal.smoothing * 0.3);
+      val = smoothed * (1 - k) + val * k;
+    }
+
+    // Floor
+    val = Math.max(val, cal.brightnessFloor / 100);
+    val = Math.max(0, Math.min(1, val));
+    smoothed = val;
+    out.push(val);
+  }
+  return out;
+}
+
+/* ── Signal Preview — static sinus canvas ── */
 function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const pad = 4 * dpr;
+    const ch = h - pad * 2;
+    ctx.clearRect(0, 0, w, h);
+
+    const processed = processCurve(RAW_CURVE, cal);
+    const step = w / (CURVE_POINTS - 1);
+
+    // Section labels
+    const labels = ["Låg", "Mellan", "Hög"];
+    const third = w / 3;
+    ctx.font = `${10 * dpr}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    for (let s = 0; s < 3; s++) {
+      ctx.fillText(labels[s], third * s + third / 2, h - 2 * dpr);
+      // Separator line
+      if (s > 0) {
+        ctx.beginPath();
+        ctx.moveTo(third * s, 0);
+        ctx.lineTo(third * s, h);
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    // Raw curve (dashed)
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.setLineDash([3 * dpr, 3 * dpr]);
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < CURVE_POINTS; i++) {
+      const x = i * step;
+      const y = pad + ch * (1 - RAW_CURVE[i]);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // Processed curve (solid + fill)
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgb(255,120,50)";
+    ctx.lineWidth = 2 * dpr;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    for (let i = 0; i < CURVE_POINTS; i++) {
+      const x = i * step;
+      const y = pad + ch * (1 - processed[i]);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Fill under processed
+    const grad = ctx.createLinearGradient(0, pad, 0, pad + ch);
+    grad.addColorStop(0, "rgba(255,120,50,0.4)");
+    grad.addColorStop(1, "rgba(255,120,50,0)");
+    ctx.lineTo((CURVE_POINTS - 1) * step, pad + ch);
+    ctx.lineTo(0, pad + ch);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }, [cal]);
+
   return (
-    <div className="rounded-lg p-3" style={{ background: "rgba(0,0,0,0.3)" }}>
-      <div className="flex items-end gap-3 justify-around" style={{ height: 72 }}>
-        {SIM_LEVELS.map(({ label, raw }) => {
-          const processed = applyCalibration(raw, cal);
-          const rawH = raw * 100;
-          const procH = processed * 100;
-          return (
-            <div key={label} className="flex flex-col items-center gap-1 flex-1">
-              <div className="flex items-end gap-1" style={{ height: 56 }}>
-                {/* Raw bar */}
-                <div
-                  className="w-3 rounded-sm transition-all duration-200"
-                  style={{
-                    height: `${rawH}%`,
-                    background: "rgba(255,255,255,0.15)",
-                    border: "1px dashed rgba(255,255,255,0.3)",
-                  }}
-                />
-                {/* Processed bar */}
-                <div
-                  className="w-5 rounded-sm transition-all duration-200"
-                  style={{
-                    height: `${procH}%`,
-                    background: `rgba(255,120,50,${0.5 + processed * 0.5})`,
-                  }}
-                />
-              </div>
-              <span className="text-[10px] text-muted-foreground">{label}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex justify-center gap-4 mt-2 text-[10px] text-muted-foreground">
+    <div>
+      <canvas
+        ref={canvasRef}
+        className="w-full rounded-lg"
+        style={{ height: 90, background: "rgba(0,0,0,0.3)" }}
+      />
+      <div className="flex justify-center gap-4 mt-1.5 text-[10px] text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm border border-dashed" style={{ borderColor: "rgba(255,255,255,0.3)" }} /> Rå
+          <span className="inline-block w-3 border-t border-dashed" style={{ borderColor: "rgba(255,255,255,0.4)" }} /> Rå signal
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ background: "rgb(255,120,50)" }} /> Bearbetad
+          <span className="inline-block w-3 border-t-2" style={{ borderColor: "rgb(255,120,50)" }} /> Bearbetad
         </span>
       </div>
     </div>
