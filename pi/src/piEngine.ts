@@ -5,7 +5,7 @@
  */
 
 import { getLatestBands, resetFluxState, setHiShelfGain } from './alsaMic.js';
-import { sendToBLE, bleStats } from './nobleBle.js';
+import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
