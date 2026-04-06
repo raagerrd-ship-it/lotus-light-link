@@ -19,7 +19,6 @@ const AGC_MAX_DECAY_PER_SEC = 0.99840;
 const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410;
 const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;
 const QUIET_THRESHOLD_RATIO = 0.10;
-const QUIET_THRESHOLD_RATIO = 0.10;
 const QUIET_MS_MEDIUM = 2000;
 const QUIET_MS_FAST = 5000;
 const BUCKET_SIZE = 5;
@@ -82,8 +81,13 @@ function normalizeBand(value: number, state: AgcState, band: 'bass' | 'midHi'): 
 }
 
 // --- Smoothing & brightness ---
-function smooth(prev: number, raw: number, attackAlpha: number, releaseAlpha: number): number {
-  const alpha = raw > prev ? attackAlpha : releaseAlpha;
+/** Tick-rate normalized smoothing.  Alpha values are calibrated for 125ms reference tick.
+ *  At faster tick rates, alpha is reduced proportionally to maintain the same time-constant. */
+function smooth(prev: number, raw: number, attackAlpha: number, releaseAlpha: number, tickMs: number = 125): number {
+  const base = raw > prev ? attackAlpha : releaseAlpha;
+  // Convert per-tick alpha to per-second rate, then back to current tickMs
+  // alpha_normalized = 1 - (1 - alpha)^(tickMs/125)
+  const alpha = 1 - Math.pow(1 - base, tickMs / 125);
   return prev + alpha * (raw - prev);
 }
 
@@ -339,7 +343,7 @@ export class PiLightEngine {
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
     energyNorm = Math.min(1, energyNorm + fluxBoost);
     // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
-    const centerAlpha = 1 - Math.pow(1 - 0.008, 30 / this.tickMs);
+    const centerAlpha = 1 - Math.pow(1 - 0.008, 125 / this.tickMs);
     this.dynamicCenter += (energyNorm - this.dynamicCenter) * centerAlpha;
     energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
 
