@@ -103,22 +103,35 @@ export function resetFluxState(): void {
 
 let recorder: any = null;
 let hiShelfGainDb = 6;
+let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
 export function setHiShelfGain(db: number): void {
   hiShelfGainDb = db;
 }
 
+export function getAlsaDevice(): string {
+  return currentDevice;
+}
+
+/** Restart mic with a new ALSA device. Stops current recording and starts with the new device. */
+export function setAlsaDevice(device: string): void {
+  if (device === currentDevice && recorder) return;
+  currentDevice = device;
+  if (recorder) {
+    stopMic();
+    startMic();
+  }
+}
+
 export function startMic(): void {
   if (recorder) return;
-
-  const device = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
   recorder = record.record({
     sampleRate: SAMPLE_RATE,
     channels: 1,
     audioType: 'raw',
     recorder: 'arecord',
-    device,
+    device: currentDevice,
   });
 
   const stream = recorder.stream();
@@ -145,7 +158,7 @@ export function startMic(): void {
     console.error('[ALSA] stream error:', err.message);
   });
 
-  console.log(`[ALSA] Microphone started (44.1kHz, 16-bit, mono, device: ${device})`);
+  console.log(`[ALSA] Microphone started (44.1kHz, 16-bit, mono, device: ${currentDevice})`);
 }
 
 export function stopMic(): void {

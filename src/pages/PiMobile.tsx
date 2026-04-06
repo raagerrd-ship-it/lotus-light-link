@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music, Save, Check } from "lucide-react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb } from "lucide-react";
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
@@ -12,13 +12,13 @@ const PALETTE_MODES: { value: PaletteMode; label: string }[] = [
   { value: 'blend', label: 'Blend' },
 ];
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode };
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean; hiShelfGainDb: number };
 
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off' },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend' },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass' },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off' },
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true, hiShelfGainDb: 6 },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true, hiShelfGainDb: 6 },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true, hiShelfGainDb: 8 },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true, hiShelfGainDb: 6 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -31,7 +31,8 @@ function softnessToParams(s: number) {
   return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing };
 }
 
-const SLIDER_CONFIG: { key: keyof typeof DEFAULT_CAL; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
+type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold';
+const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = diskant, 0.5 = lika, 1.0 = bas" },
   { key: "softness", label: "Mjukhet", min: 0, max: 100, step: 1, description: "0 = rått, 100 = mycket mjukt" },
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "Positivt = kontrast, negativt = utjämnad" },
@@ -243,11 +244,15 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
 /* ── Settings View ── */
 function SettingsView({
   cal, setCal, activePreset, tickMs, setTickMs,
-  sonosUrl, setSonosUrl, onBack, onSave, saved,
+  sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
+  dimmingGamma, setDimmingGamma,
+  onBack, onSave, saved,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
   activePreset: string; tickMs: number; setTickMs: (v: number) => void;
   sonosUrl: string; setSonosUrl: (v: string) => void;
+  alsaDevice: string; setAlsaDevice: (v: string) => void;
+  dimmingGamma: number; setDimmingGamma: (v: number) => void;
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
   return (
@@ -310,6 +315,48 @@ function SettingsView({
           </div>
           <p className="text-[10px] text-muted-foreground mt-1">Hur färgen roterar genom albumpalett</p>
         </div>
+
+        {/* Toggles */}
+        <div className="space-y-3">
+          <label className="flex items-center justify-between">
+            <div>
+              <div className="text-sm">Perceptuell kurva</div>
+              <p className="text-[10px] text-muted-foreground">Anpassar ljusstyrka till ögats uppfattning</p>
+            </div>
+            <button
+              onClick={() => setCal({ ...cal, perceptualCurve: !cal.perceptualCurve })}
+              className={`w-11 h-6 rounded-full transition-colors relative ${cal.perceptualCurve ? 'bg-primary' : 'bg-secondary'}`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${cal.perceptualCurve ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </label>
+          <label className="flex items-center justify-between">
+            <div>
+              <div className="text-sm">Transient boost</div>
+              <p className="text-[10px] text-muted-foreground">Extra lyft vid trumslag och attacker</p>
+            </div>
+            <button
+              onClick={() => setCal({ ...cal, transientBoost: !cal.transientBoost })}
+              className={`w-11 h-6 rounded-full transition-colors relative ${cal.transientBoost ? 'bg-primary' : 'bg-secondary'}`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${cal.transientBoost ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </label>
+        </div>
+
+        {/* Hi-shelf gain slider */}
+        <div>
+          <div className="flex justify-between text-sm mb-0.5">
+            <span>Hi-shelf EQ</span>
+            <span className="text-muted-foreground font-mono text-xs">{cal.hiShelfGainDb} dB</span>
+          </div>
+          <input
+            type="range" min={-6} max={12} step={1} value={cal.hiShelfGainDb}
+            onChange={(e) => setCal({ ...cal, hiShelfGainDb: parseInt(e.target.value) })}
+            className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+          />
+          <p className="text-[10px] text-muted-foreground mt-0.5">Kompenserar mikrofon-frekvensrespons för diskant</p>
+        </div>
       </section>
 
       <section className="mb-8">
@@ -323,6 +370,29 @@ function SettingsView({
           onChange={(e) => setTickMs(parseInt(e.target.value))}
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
+
+        <div className="flex justify-between text-sm mb-1 mt-5">
+          <span>Dimming gamma</span>
+          <span className="text-muted-foreground font-mono text-xs">{dimmingGamma.toFixed(1)}</span>
+        </div>
+        <input
+          type="range" min={1.0} max={3.0} step={0.1} value={dimmingGamma}
+          onChange={(e) => setDimmingGamma(parseFloat(e.target.value))}
+          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+        />
+        <p className="text-[10px] text-muted-foreground mt-0.5">Lägre = mer ljus vid låga nivåer, högre = mer kontrast</p>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <Mic size={14} /> Mikrofon
+        </h2>
+        <input
+          type="text" value={alsaDevice} onChange={(e) => setAlsaDevice(e.target.value)}
+          placeholder="plughw:0,0"
+          className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm font-mono border border-border focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <p className="text-[10px] text-muted-foreground mt-1">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0. Ändring kräver mic-omstart.</p>
       </section>
 
       <section className="mb-8">
@@ -345,6 +415,8 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(33);
   const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
+  const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
+  const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -360,6 +432,8 @@ export default function PiMobile() {
         cal={cal} setCal={setCal} activePreset={activePreset}
         tickMs={tickMs} setTickMs={setTickMs}
         sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
+        alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
+        dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
     );

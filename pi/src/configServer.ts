@@ -5,7 +5,8 @@
 
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma } from './nobleBle.js';
+import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, type SonosPollerConfig } from './sonosPoller.js';
 
@@ -90,6 +91,38 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       res.json({ ok: true, tickMs });
     } else {
       res.status(400).json({ error: 'tickMs must be 20-200' });
+    }
+  });
+
+  // --- Microphone device ---
+  app.get('/api/mic-device', (_req, res) => {
+    res.json({ device: getAlsaDevice() });
+  });
+
+  app.put('/api/mic-device', (req, res) => {
+    const { device } = req.body;
+    if (typeof device === 'string' && device.length > 0) {
+      setAlsaDevice(device);
+      setItem('alsa-device', device);
+      res.json({ ok: true, device });
+    } else {
+      res.status(400).json({ error: 'Need device string (e.g. "plughw:0,0")' });
+    }
+  });
+
+  // --- Dimming gamma ---
+  app.get('/api/dimming-gamma', (_req, res) => {
+    res.json({ gamma: getDimmingGamma() });
+  });
+
+  app.put('/api/dimming-gamma', (req, res) => {
+    const { gamma } = req.body;
+    if (typeof gamma === 'number' && gamma >= 1.0 && gamma <= 3.0) {
+      setDimmingGamma(gamma);
+      setItem('dimming-gamma', String(gamma));
+      res.json({ ok: true, gamma });
+    } else {
+      res.status(400).json({ error: 'gamma must be 1.0-3.0' });
     }
   });
 
