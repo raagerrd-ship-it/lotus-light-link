@@ -133,9 +133,7 @@ function SettingsView({
       {/* Calibration sliders + live mini chart */}
       <section className="space-y-5 mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Kalibrering</h2>
-        <SimChart cal={cal} />
-        <p className="text-[10px] text-muted-foreground -mt-3">
-          Heldragen = bearbetad · Streckad = rå signal
+        <SignalPreview cal={cal} />
         </p>
         {SLIDER_CONFIG.map(({ key, label, min, max, step }) => (
           <div key={key}>
@@ -224,8 +222,7 @@ export default function PiMobile() {
 
       {/* Live chart */}
       <div className="mb-6">
-        <SimChart cal={cal} />
-        <p className="text-[10px] text-muted-foreground mt-1">Heldragen = bearbetad · Streckad = rå signal</p>
+        <SignalPreview cal={cal} />
       </div>
 
       <section className="mb-8">
