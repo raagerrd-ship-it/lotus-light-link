@@ -421,8 +421,9 @@ export class PiLightEngine {
     const cal = this.cal;
     const bands = getLatestBands();
 
-    // Smoothing
-    this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
+    // Smoothing — use pre-computed alphas (avoid Math.pow per tick)
+    const sa = this._smoothAttack, sr = this._smoothRelease;
+    this.smoothed += (bands.totalRms > this.smoothed ? sa : sr) * (bands.totalRms - this.smoothed);
 
     // Volume bucket
     const bucket = volumeToBucket(this.volume);
@@ -440,8 +441,9 @@ export class PiLightEngine {
     // Raw energy for palette modes — matches browser (50/50 weight, pre-smooth, pre-dynamics)
     const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
-    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
-    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
+    // Inline smoothing with pre-computed alphas
+    this.smoothedBass += (rawBassNorm > this.smoothedBass ? sa : sr) * (rawBassNorm - this.smoothedBass);
+    this.smoothedMidHi += (rawMidHiNorm > this.smoothedMidHi ? sa : sr) * (rawMidHiNorm - this.smoothedMidHi);
 
     // Onset detection (peak-picking on spectral flux)
     this.processOnset(bands.flux);
@@ -450,9 +452,8 @@ export class PiLightEngine {
     // Brightness
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
     energyNorm = Math.min(1, energyNorm + fluxBoost);
-    // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
-    const centerAlpha = 1 - Math.pow(1 - 0.008, this.tickMs / 125);
-    this.dynamicCenter += (energyNorm - this.dynamicCenter) * centerAlpha;
+    // Use pre-computed center alpha
+    this.dynamicCenter += (energyNorm - this.dynamicCenter) * this._centerAlpha;
     energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
 
     const floor = cal.brightnessFloor ?? 0;
