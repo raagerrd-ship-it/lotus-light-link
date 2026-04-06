@@ -111,12 +111,14 @@ export function setHiShelfGain(db: number): void {
 export function startMic(): void {
   if (recorder) return;
 
+  const device = process.env.ALSA_DEVICE ?? 'plughw:0,0';
+
   recorder = record.record({
     sampleRate: SAMPLE_RATE,
     channels: 1,
     audioType: 'raw',
     recorder: 'arecord',
-    device: 'plughw:0,0',
+    device,
   });
 
   const stream = recorder.stream();
@@ -143,7 +145,7 @@ export function startMic(): void {
     console.error('[ALSA] stream error:', err.message);
   });
 
-  console.log('[ALSA] Microphone started (44.1kHz, 16-bit, mono)');
+  console.log(`[ALSA] Microphone started (44.1kHz, 16-bit, mono, device: ${device})`);
 }
 
 export function stopMic(): void {

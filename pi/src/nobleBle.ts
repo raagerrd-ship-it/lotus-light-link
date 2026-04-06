@@ -89,7 +89,10 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   try {
     const promises: Promise<void>[] = [];
     for (const [, dev] of connectedDevices) {
-      const buf = dev.mode === 'brightness' ? brightOnlyBuf : colorBuf;
+      // Copy buffer per-device to avoid mutation during parallel writes
+      const buf = dev.mode === 'brightness'
+        ? Buffer.from(brightOnlyBuf)
+        : Buffer.from(colorBuf);
       promises.push(dev.characteristic.writeAsync(buf, true).catch(() => {}));
     }
     await Promise.allSettled(promises);

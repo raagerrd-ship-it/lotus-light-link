@@ -58,11 +58,12 @@ if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
   DEPS_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- pi/package.json | head -1)
   if [ -n "$DEPS_CHANGED" ]; then
     echo "$LOG_PREFIX package.json changed — installing dependencies..."
-    npm install --production --no-audit --no-fund 2>&1 | tail -1
+    npm install --no-audit --no-fund 2>&1 | tail -1
   fi
   
   # Rebuild TypeScript
   npm run build
+  npm prune --production 2>/dev/null || true
   echo "$LOG_PREFIX Build complete ✓"
   
   # Restart service
