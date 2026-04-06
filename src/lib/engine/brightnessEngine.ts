@@ -21,11 +21,15 @@ export function smooth(prev: number, raw: number, attackAlpha: number, releaseAl
 /** Symmetric exponential low-pass filter for smooth curves between values.
  *  Unlike attack/release (asymmetric), this smooths equally in both directions
  *  giving naturally rounded transitions — like cubic spline interpolation on a chart.
- *  smoothing 0 = bypass, 100 = very smooth curves. */
-export function extraSmooth(prev: number, newVal: number, smoothing: number): number {
+ *  smoothing 0 = bypass, 100 = very smooth curves.
+ *  Tick-rate normalized: identical behavior at any tickMs. */
+export function extraSmooth(prev: number, newVal: number, smoothing: number, tickMs: number = 125): number {
   if (smoothing <= 0) return newVal;
-  const alpha = Math.exp(-smoothing * 0.04);
-  return prev + alpha * (newVal - prev);
+  // alpha = retention per tick at 125ms reference
+  const alphaRef = Math.exp(-smoothing * 0.04);
+  // Normalize to current tick rate: retention^(tickMs/125)
+  const alpha = Math.pow(alphaRef, tickMs / 125);
+  return prev + (1 - alpha) * (newVal - prev);
 }
 
 /** Apply dynamic damping (expansion or compression around adaptive center) */
