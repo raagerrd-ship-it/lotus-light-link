@@ -13,13 +13,15 @@ import { getItem, setItem } from './storage.js';
 // On update, sync from src/lib/engine/*.ts
 
 // --- AGC ---
+// Note: quiet tick thresholds scaled for ~33Hz tick rate (Pi default 30ms)
+// Browser uses 8Hz so values there are 16/40; at 33Hz we scale proportionally
 const AGC_FLOOR = 0.002;
 const AGC_MAX_DECAY = 0.9998;
 const AGC_QUIET_DECAY_MEDIUM = 0.998;
 const AGC_QUIET_DECAY_FAST = 0.99;
 const QUIET_THRESHOLD_RATIO = 0.10;
-const QUIET_TICKS_MEDIUM = 16;
-const QUIET_TICKS_FAST = 40;
+const QUIET_TICKS_MEDIUM = 66;   // ~2s at 33Hz (was 16 at 8Hz)
+const QUIET_TICKS_FAST = 165;    // ~5s at 33Hz (was 40 at 8Hz)
 const BUCKET_SIZE = 5;
 
 interface AgcState {
@@ -323,12 +325,22 @@ export class PiLightEngine {
     const floor = cal.brightnessFloor ?? 0;
     let pct = Math.max(floor, energyNorm * 100);
 
+    // Perceptual brightness curve (matches browser engine)
+    if (cal.perceptualCurve) {
+      if (pct > floor && pct < 100) {
+        const norm = (pct - floor) / (100 - floor);
+        const gamma = getDimmingGamma();
+        pct = floor + Math.pow(norm, gamma) * (100 - floor);
+      }
+    }
+
     const sm = cal.smoothing ?? 0;
     if (sm > 0) {
       this.extraSmoothPct = extraSmooth(this.extraSmoothPct, pct, sm);
       pct = this.extraSmoothPct;
     }
-    pct = Math.round(pct);
+    // Clamp to 0-100 for BLE, then round
+    pct = Math.round(Math.min(100, Math.max(floor, pct)));
 
     // ── Palette mode ──
     const pm = cal.paletteMode ?? 'off';
