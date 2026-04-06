@@ -4,21 +4,27 @@ import { Settings, ArrowLeft, Bluetooth, Music, Save, Check } from "lucide-react
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
 const DEFAULT_CAL = {
-  attackAlpha: 1.0,
-  releaseAlpha: 0.025,
-  dynamicDamping: -1.0,
-  bassWeight: 0.7,
+  bassWeight: 0.5,
+  softness: 30,
+  dynamicDamping: 0,
   brightnessFloor: 0,
-  smoothing: 0,
+  punchWhiteThreshold: 100,
 };
 
-const SLIDER_CONFIG: { key: keyof typeof DEFAULT_CAL; label: string; min: number; max: number; step: number }[] = [
-  { key: "attackAlpha", label: "Attack", min: 0.1, max: 1.0, step: 0.05 },
-  { key: "releaseAlpha", label: "Release", min: 0.005, max: 0.15, step: 0.005 },
-  { key: "dynamicDamping", label: "Dynamik", min: -3, max: 3, step: 0.1 },
-  { key: "bassWeight", label: "Bas-vikt", min: 0, max: 1, step: 0.05 },
-  { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 50, step: 1 },
-  { key: "smoothing", label: "Utjämning", min: 0, max: 20, step: 1 },
+/** Convert Softness 0-100 → releaseAlpha + smoothing (mirrors CalibrationOverlay) */
+function softnessToParams(s: number) {
+  const t = s / 100;
+  const releaseAlpha = 1.0 - 0.995 * Math.pow(t, 0.7);
+  const smoothing = Math.round(t * 80);
+  return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing };
+}
+
+const SLIDER_CONFIG: { key: keyof typeof DEFAULT_CAL; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
+  { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = diskant, 0.5 = lika, 1.0 = bas" },
+  { key: "softness", label: "Mjukhet", min: 0, max: 100, step: 1, description: "0 = rått, 100 = mycket mjukt" },
+  { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "Positivt = kontrast, negativt = utjämnad" },
+  { key: "brightnessFloor", label: "Golv", min: 0, max: 25, step: 1, unit: "%", description: "Lägsta ljusstyrka" },
+  { key: "punchWhiteThreshold", label: "Punch White", min: 90, max: 100, step: 0.5, unit: "%", description: "100 = av. Över detta → vit" },
 ];
 
 const CURVE_POINTS = 200; // points to draw
