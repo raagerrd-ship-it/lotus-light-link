@@ -216,17 +216,18 @@ function SettingsView({
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Kalibrering</h2>
         <SignalPreview cal={cal} />
         
-        {SLIDER_CONFIG.map(({ key, label, min, max, step }) => (
+        {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => (
           <div key={key}>
-            <div className="flex justify-between text-sm mb-1">
+            <div className="flex justify-between text-sm mb-0.5">
               <span>{label}</span>
-              <span className="text-muted-foreground font-mono text-xs">{cal[key]}</span>
+              <span className="text-muted-foreground font-mono text-xs">{cal[key]}{unit ?? ''}</span>
             </div>
             <input
               type="range" min={min} max={max} step={step} value={cal[key]}
               onChange={(e) => setCal({ ...cal, [key]: parseFloat(e.target.value) })}
               className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
             />
+            <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
           </div>
         ))}
       </section>
