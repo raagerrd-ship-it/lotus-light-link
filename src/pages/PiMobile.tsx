@@ -136,11 +136,10 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
     const processed = processCurve(RAW_CURVE, cal);
     const step = w / (CURVE_POINTS - 1);
 
-    // Dynamic Y scale: max of raw (1.0) and processed peak
     const procMax = Math.max(1, ...processed);
-    const yScale = 1 / procMax; // normalize so peak fits
-
-    const toY = (v: number) => pad + ch * (1 - v * yScale);
+    const showBoost = procMax > 1.02;
+    const yMax = showBoost ? Math.max(1.35, Math.ceil(procMax * 10) / 10) : 1;
+    const toY = (v: number) => pad + ch * (1 - Math.min(v, yMax) / yMax);
 
     // Section labels
     const labels = ["Låg", "Mellan", "Hög"];
@@ -160,22 +159,29 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
       }
     }
 
-    // 100% reference line when output exceeds input
-    if (procMax > 1.05) {
+    // 100% reference line + boost band
+    if (showBoost) {
       const refY = toY(1);
+      ctx.fillStyle = "rgba(255,120,50,0.08)";
+      ctx.fillRect(0, pad, w, Math.max(0, refY - pad));
+
       ctx.beginPath();
       ctx.moveTo(0, refY);
       ctx.lineTo(w, refY);
-      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.strokeStyle = "rgba(255,255,255,0.24)";
       ctx.setLineDash([2 * dpr, 4 * dpr]);
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.setLineDash([]);
-      // Label
-      ctx.fillStyle = "rgba(255,255,255,0.3)";
+
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
       ctx.textAlign = "right";
       ctx.font = `${8 * dpr}px sans-serif`;
       ctx.fillText("100%", w - 2 * dpr, refY - 2 * dpr);
+
+      ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(255,120,50,0.9)";
+      ctx.fillText(`${Math.round(procMax * 100)}% peak`, 4 * dpr, pad + 9 * dpr);
     }
 
     // Raw curve (dashed)
