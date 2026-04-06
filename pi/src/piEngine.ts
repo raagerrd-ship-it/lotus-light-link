@@ -311,7 +311,7 @@ export class PiLightEngine {
     const bands = getLatestBands();
 
     // Smoothing
-    this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha);
+    this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
     // Volume bucket
     const bucket = volumeToBucket(this.volume);
@@ -327,8 +327,8 @@ export class PiLightEngine {
     const rawBassNorm = normalizeBand(bands.bassRms, this.agc, 'bass');
     const rawMidHiNorm = normalizeBand(bands.midHiRms, this.agc, 'midHi');
 
-    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha);
-    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
+    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
+    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
     // Spectral flux (tick-rate normalized decay)
     const fluxDecayPerSec = 0.97; // ~3% decay per second
@@ -336,7 +336,7 @@ export class PiLightEngine {
     if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
     else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
     const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
-    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1);
+    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1, this.tickMs);
     const fluxBoost = cal.transientBoost ? this.smoothedFlux * 0.15 : 0;
 
     // Brightness
@@ -374,7 +374,8 @@ export class PiLightEngine {
 
       if (pm === 'timed') {
         this._paletteTickCounter++;
-        const speed = Math.max(1, cal.paletteRotationSpeed ?? 8);
+        // Normalize speed for tick rate: speed is calibrated for 125ms ticks
+        const speed = Math.max(1, Math.round((cal.paletteRotationSpeed ?? 8) * (125 / this.tickMs)));
         if (this._paletteTickCounter >= speed) {
           this._paletteTickCounter = 0;
           this._paletteIndex = (this._paletteIndex + 1) % pLen;
