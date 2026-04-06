@@ -31,7 +31,8 @@ function softnessToParams(s: number) {
   return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing };
 }
 
-const SLIDER_CONFIG: { key: keyof typeof DEFAULT_CAL; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
+type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold';
+const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = diskant, 0.5 = lika, 1.0 = bas" },
   { key: "softness", label: "Mjukhet", min: 0, max: 100, step: 1, description: "0 = rått, 100 = mycket mjukt" },
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "Positivt = kontrast, negativt = utjämnad" },
@@ -414,6 +415,8 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(33);
   const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
+  const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
+  const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -429,6 +432,8 @@ export default function PiMobile() {
         cal={cal} setCal={setCal} activePreset={activePreset}
         tickMs={tickMs} setTickMs={setTickMs}
         sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
+        alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
+        dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
     );
