@@ -344,7 +344,7 @@ export class PiLightEngine {
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
     energyNorm = Math.min(1, energyNorm + fluxBoost);
     // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
-    const centerAlpha = 1 - Math.pow(1 - 0.008, 125 / this.tickMs);
+    const centerAlpha = 1 - Math.pow(1 - 0.008, this.tickMs / 125);
     this.dynamicCenter += (energyNorm - this.dynamicCenter) * centerAlpha;
     energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
 
