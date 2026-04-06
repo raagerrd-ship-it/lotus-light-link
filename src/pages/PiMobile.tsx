@@ -84,8 +84,8 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
 
     // Floor
     val = Math.max(val, cal.brightnessFloor / 100);
-    val = Math.max(0, Math.min(1, val));
-    prev = val;
+    val = Math.max(0, val); // allow > 1.0 so dynamics boost is visible
+    prev = Math.max(0, Math.min(1, val)); // envelope follower stays 0–1
     out.push(val);
   }
   return out;
@@ -114,6 +114,12 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
     const processed = processCurve(RAW_CURVE, cal);
     const step = w / (CURVE_POINTS - 1);
 
+    // Dynamic Y scale: max of raw (1.0) and processed peak
+    const procMax = Math.max(1, ...processed);
+    const yScale = 1 / procMax; // normalize so peak fits
+
+    const toY = (v: number) => pad + ch * (1 - v * yScale);
+
     // Section labels
     const labels = ["Låg", "Mellan", "Hög"];
     const third = w / 3;
@@ -122,7 +128,6 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
     ctx.fillStyle = "rgba(255,255,255,0.25)";
     for (let s = 0; s < 3; s++) {
       ctx.fillText(labels[s], third * s + third / 2, h - 2 * dpr);
-      // Separator line
       if (s > 0) {
         ctx.beginPath();
         ctx.moveTo(third * s, 0);
@@ -131,6 +136,24 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
         ctx.lineWidth = 1;
         ctx.stroke();
       }
+    }
+
+    // 100% reference line when output exceeds input
+    if (procMax > 1.05) {
+      const refY = toY(1);
+      ctx.beginPath();
+      ctx.moveTo(0, refY);
+      ctx.lineTo(w, refY);
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.setLineDash([2 * dpr, 4 * dpr]);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Label
+      ctx.fillStyle = "rgba(255,255,255,0.3)";
+      ctx.textAlign = "right";
+      ctx.font = `${8 * dpr}px sans-serif`;
+      ctx.fillText("100%", w - 2 * dpr, refY - 2 * dpr);
     }
 
     // Raw curve (dashed)
@@ -142,8 +165,7 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
     ctx.beginPath();
     for (let i = 0; i < CURVE_POINTS; i++) {
       const x = i * step;
-      const y = pad + ch * (1 - RAW_CURVE[i]);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      i === 0 ? ctx.moveTo(x, toY(RAW_CURVE[i])) : ctx.lineTo(x, toY(RAW_CURVE[i]));
     }
     ctx.stroke();
     ctx.restore();
@@ -156,8 +178,7 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
     ctx.beginPath();
     for (let i = 0; i < CURVE_POINTS; i++) {
       const x = i * step;
-      const y = pad + ch * (1 - processed[i]);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      i === 0 ? ctx.moveTo(x, toY(processed[i])) : ctx.lineTo(x, toY(processed[i]));
     }
     ctx.stroke();
 
