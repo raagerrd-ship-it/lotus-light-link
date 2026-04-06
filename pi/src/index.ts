@@ -48,8 +48,11 @@ async function main() {
   const savedGamma = getItem('dimming-gamma');
   if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
 
+  const savedTickMs = getItem('tick-ms');
+  const effectiveTickMs = savedTickMs ? Math.max(20, Math.min(200, Number(savedTickMs))) : TICK_MS;
+
   // 2. Create engine
-  const engine = new PiLightEngine(TICK_MS);
+  const engine = new PiLightEngine(effectiveTickMs);
 
   // 3. Start microphone
   console.log('[Boot] Starting ALSA microphone...');
@@ -109,7 +112,7 @@ async function main() {
   // 7. Stats logging
   const statsTimer = setInterval(() => {
     const ble = getConnectedCount();
-    console.log(`[Stats] BLE: ${ble} device(s) | Engine: ${TICK_MS}ms tick`);
+    console.log(`[Stats] BLE: ${ble} device(s) | Engine: ${engine.getTickMs()}ms tick`);
   }, 60000);
 
   // Graceful shutdown

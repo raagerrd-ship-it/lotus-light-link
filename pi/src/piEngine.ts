@@ -227,6 +227,7 @@ export class PiLightEngine {
   private _paletteTickCounter = 0;
   private _bassWasHigh = false;
   setVolume(vol: number | undefined) { this.volume = vol; }
+  getTickMs(): number { return this.tickMs; }
   setTickMs(ms: number) { this.tickMs = ms; }
 
   setPlaying(playing: boolean): void {
