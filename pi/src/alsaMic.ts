@@ -128,8 +128,8 @@ export function startMic(): void {
       const s16 = buf.readInt16LE(i * 2);
       ringBuf[ringPos] = s16 / 32768;
       ringPos = (ringPos + 1) % FFT_SIZE;
+      if (!ringReady) ringReady = true;
     }
-    if (!ringReady && ringPos === 0) ringReady = true;
 
     // Process FFT whenever we have enough data
     if (ringReady) {
