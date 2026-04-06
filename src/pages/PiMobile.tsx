@@ -60,32 +60,54 @@ function buildRawCurve(): number[] {
 const RAW_CURVE = buildRawCurve();
 
 /** Apply calibration to a raw curve and return processed curve */
+/** Real applyDynamics — mirrors src/lib/engine/brightnessEngine.ts */
+function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
+  let result = energyNorm;
+  if (dynamicDamping > 0) {
+    const amount = Math.min(1, dynamicDamping / 2);
+    const exponent = 1 / (1 + amount * 4);
+    const range = result >= center ? (1 - center) || 0.5 : center || 0.5;
+    const normalized = (result - center) / range;
+    const expanded = Math.sign(normalized) * Math.pow(Math.abs(normalized), exponent);
+    const gain = 1 + amount * 0.5;
+    result = center + expanded * range * gain;
+    const ceiling = 1 + amount * 0.4;
+    if (result > ceiling) result = ceiling + (result - ceiling) * 0.2;
+  } else if (dynamicDamping < 0) {
+    const amount = Math.min(1, Math.abs(dynamicDamping) / 3);
+    const compression = 1 / (1 + amount * 4);
+    result = center + (result - center) * compression;
+  }
+  return Math.max(0, result);
+}
+
 function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
   const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-  const attackAlpha = 1.0; // always instant attack
+  const attackAlpha = 1.0;
   const out: number[] = [];
   let prev = raw[0];
+  let dynamicCenter = 0.5;
+  let extraSm = raw[0];
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i];
     const alpha = r > prev ? attackAlpha : releaseAlpha;
     let val = prev + alpha * (r - prev);
 
-    // Dynamic damping
-    if (cal.dynamicDamping !== 0) {
-      const diff = val - prev;
-      val += diff * cal.dynamicDamping * 0.1;
-    }
+    // Real dynamics processing with adaptive center
+    dynamicCenter += (val - dynamicCenter) * 0.008;
+    val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
 
     // Smoothing
     if (smoothing > 0) {
-      const k = 1 / (1 + smoothing * 0.3);
-      val = prev * (1 - k) + val * k;
+      const k = Math.exp(-smoothing * 0.04);
+      extraSm = extraSm + k * (val - extraSm);
+      val = extraSm;
     }
 
     // Floor
     val = Math.max(val, cal.brightnessFloor / 100);
-    val = Math.max(0, val); // allow > 1.0 so dynamics boost is visible
-    prev = Math.max(0, Math.min(1, val)); // envelope follower stays 0–1
+    val = Math.max(0, val);
+    prev = Math.max(0, Math.min(1, val)); // envelope stays 0–1
     out.push(val);
   }
   return out;
