@@ -20,6 +20,7 @@ import { startSonosPoller, stopSonosPoller, onSonosChange, type SonosPollerConfi
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
 import { getItem, setItem } from './storage.js';
+import { extractPalette } from './colorExtract.js';
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://localhost:3000/api/sonos';
@@ -73,10 +74,23 @@ async function main() {
   await startSonosPoller(sonosConfig);
 
   // React to Sonos state changes
+  let lastArtUrl: string | null = null;
   onSonosChange((state) => {
     const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
     engine.setPlaying(isPlaying);
     if (state.volume != null) engine.setVolume(state.volume);
+
+    // Extract palette from album art on track change
+    if (state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {
+      lastArtUrl = state.albumArtUrl;
+      extractPalette(state.albumArtUrl, 4).then((palette) => {
+        if (palette.length > 0) {
+          engine.setColor(palette[0]);
+          engine.setPalette(palette);
+          console.log(`[Color] Palette from art: ${palette.map(c => `rgb(${c})`).join(', ')}`);
+        }
+      }).catch(() => {});
+    }
   });
 
   // 5. Start engine

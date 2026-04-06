@@ -210,6 +210,8 @@ export class PiLightEngine {
   }
 
   setColor(rgb: [number, number, number]) { this.color = rgb; }
+  setPalette(palette: [number, number, number][]) { /* stored for future palette modes */ this._palette = palette; }
+  private _palette: [number, number, number][] = [];
   setVolume(vol: number | undefined) { this.volume = vol; }
   setTickMs(ms: number) { this.tickMs = ms; }
 
