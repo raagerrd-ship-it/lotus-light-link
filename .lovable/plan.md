@@ -1,61 +1,31 @@
 
 
-# Realtids-visualisering i Pi Mobile UI
+## Dynamiska AGC quiet-tick thresholds
 
-## Är det för komplext för Pi?
+### Problem
+Quiet-tick thresholds är hårdkodade i tre ställen med olika värden:
+- `src/lib/engine/agc.ts`: 16 / 40 (antar 8Hz)
+- `pi/src/piEngine.ts`: 66 / 165 (antar 33Hz)
 
-Nej. Pi:n har redan all data — `piEngine.ts` emittar `brightness`, `bassLevel`, `midHiLevel` varje tick (25–33ms). Vi behöver bara:
-1. Ett SSE-endpoint som streamar tick-data till mobilen
-2. En enkel canvas-rendering i HTML-filen
+Om tickMs ändras runtime (via slider/API) stämmer inte tidsintervallen längre.
 
-Canvas-rendering av ~64 punkter är trivialt för en mobils webbläsare. SSE kostar nästan ingenting på Pi:n.
+### Lösning
+Gör `QUIET_TICKS_MEDIUM` och `QUIET_TICKS_FAST` till funktioner av tickMs istället för konstanter.
 
-## Vad som byggs (mockup i Lovable)
+### Ändringar
 
-En kompakt canvas-visualisering på **startskärmen** i PiMobile som visar:
-- **Heldragen linje**: Bearbetad brightness (efter alla sliders)
-- **Streckad linje**: Rå energi (före slider-bearbetning)
+**1. `src/lib/engine/agc.ts`**
+- Ta bort hårdkodade `QUIET_TICKS_MEDIUM = 16` och `QUIET_TICKS_FAST = 40`
+- Exportera tidskonstanter i millisekunder: `QUIET_MS_MEDIUM = 2000`, `QUIET_MS_FAST = 5000`
+- Lägg till helper: `export function quietTickThresholds(tickMs: number): { medium: number; fast: number }`
+- Uppdatera `updateRunningMax` att ta `tickMs` som parameter och beräkna thresholds internt
 
-Simulerad data med sinusvåg + brus som reagerar på slider-ändringar i realtid, så du kan se hur attack/release/damping/smoothing påverkar kurvan direkt.
+**2. `src/lib/engine/brightnessEngine.ts`**
+- Skicka `tickMs` till `updateRunningMax`-anropet
 
-## Filer
+**3. `pi/src/piEngine.ts`**
+- Ta bort lokala hårdkodade `QUIET_TICKS_MEDIUM = 66` / `QUIET_TICKS_FAST = 165`
+- Använd `quietTickThresholds(this.tickMs)` från agc-modulen (eller beräkna inline med samma formel)
 
-| Fil | Ändring |
-|-----|---------|
-| `src/pages/PiMobile.tsx` | Lägg till simulerad ljudmotor + canvas-chart på startskärmen |
-
-## Mockup-layout
-
-```text
-┌──────────────────────────┐
-│  🟢 Lotus Light      ⚙️  │
-├──────────────────────────┤
-│  BLE: 2 st   Sonos: ▶   │
-├──────────────────────────┤
-│  ┌──────────────────────┐│
-│  │ ~~~~~ chart ~~~~~~~ ││  ← ~80px hög canvas
-│  └──────────────────────┘│
-├──────────────────────────┤
-│  ┌──────┐  ┌──────┐     │
-│  │ Lugn │  │Normal│     │
-│  ├──────┤  ├──────┤     │
-│  │Party │  │Custom│     │
-│  └──────┘  └──────┘     │
-├──────────────────────────┤
-│  ■ Idle-färg    [R G B]  │
-└──────────────────────────┘
-```
-
-## Simuleringslogik
-
-En `useEffect` med `setInterval` (25ms) genererar en sinusvåg med brus som basenergi. Slidervärden (attack, release, smoothing, dynamicDamping) appliceras i realtid på signalen, precis som i den riktiga motorn. Resultatet pushas till en ringbuffer och ritas med en enkel canvas-loop.
-
-## För Pi-deploy (senare steg)
-
-Byter ut simuleringen mot ett SSE-endpoint:
-```
-GET /api/stream → Server-Sent Events med { brightness, rawPct, bass, midHi } varje tick
-```
-
-Pi:ns `configServer.ts` får ett `app.get('/api/stream', ...)` som prenumererar på `engine.onTick()`.
+Totalt ~15 rader ändrade, ingen ny fil, ingen beteendeförändring vid nuvarande tick-rates — bara korrekt vid framtida ändringar.
 
