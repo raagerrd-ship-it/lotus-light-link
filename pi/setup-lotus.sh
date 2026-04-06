@@ -117,9 +117,12 @@ Environment=BRIDGE_URL=http://localhost:3000/api/sonos
 Environment=CONFIG_PORT=3001
 Environment=TICK_MS=30
 
-# Resource limits
+# Resource limits & CPU pinning
+# Core 0=Cast Away Web, Core 1=Lotus Light, Core 2=OS, Core 3=Sonos Proxy
 MemoryMax=128M
-CPUQuota=80%
+AllowedCPUs=1
+CPUQuota=100%
+Nice=-5
 
 # Logging
 StandardOutput=journal
