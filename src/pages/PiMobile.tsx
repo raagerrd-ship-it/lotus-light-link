@@ -420,11 +420,100 @@ export default function PiMobile() {
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const handleSave = () => {
-    setSaved(true);
-    clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setSaved(false), 1500);
+  // Derive Pi base URL from current page (same host, port 3001)
+  const piBase = typeof window !== 'undefined'
+    ? `http://${window.location.hostname}:3001`
+    : 'http://localhost:3001';
+
+  const putJson = (path: string, body: unknown) =>
+    fetch(`${piBase}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  const handleSave = async () => {
+    try {
+      const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
+      await Promise.all([
+        // Calibration
+        putJson('/api/calibration', {
+          calibration: {
+            bassWeight: cal.bassWeight,
+            releaseAlpha,
+            smoothing,
+            dynamicDamping: cal.dynamicDamping,
+            brightnessFloor: cal.brightnessFloor,
+            punchWhiteThreshold: cal.punchWhiteThreshold,
+            paletteMode: cal.paletteMode,
+            perceptualCurve: cal.perceptualCurve,
+            transientBoost: cal.transientBoost,
+            hiShelfGainDb: cal.hiShelfGainDb,
+          },
+        }),
+        // Tick rate
+        putJson('/api/tick-ms', { tickMs }),
+        // Mic device
+        putJson('/api/mic-device', { device: alsaDevice }),
+        // Dimming gamma
+        putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
+        // Idle color
+        putJson('/api/idle-color', { color: idleColor }),
+        // Sonos gateway
+        ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
+      ]);
+      setSaved(true);
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      console.error('[PiMobile] Save failed', e);
+    }
   };
+
+  // Load current settings from Pi on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [calRes, tickRes, micRes, gammaRes, idleRes, sonosRes] = await Promise.all([
+          fetch(`${piBase}/api/calibration`).then(r => r.json()),
+          fetch(`${piBase}/api/status`).then(r => r.json()),
+          fetch(`${piBase}/api/mic-device`).then(r => r.json()),
+          fetch(`${piBase}/api/dimming-gamma`).then(r => r.json()),
+          fetch(`${piBase}/api/idle-color`).then(r => r.json()),
+          fetch(`${piBase}/api/sonos-gateway`).then(r => r.json()),
+        ]);
+
+        if (calRes?.calibration) {
+          const c = calRes.calibration;
+          // Reverse-map releaseAlpha+smoothing back to softness
+          let softness = 30;
+          if (c.releaseAlpha != null) {
+            // releaseAlpha = 1 - 0.995 * t^0.7, solve for t
+            const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
+            softness = Math.round(t * 100);
+          }
+          setCal({
+            bassWeight: c.bassWeight ?? DEFAULT_CAL.bassWeight,
+            softness,
+            dynamicDamping: c.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
+            brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
+            punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
+            paletteMode: c.paletteMode ?? DEFAULT_CAL.paletteMode,
+            perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
+            transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
+            hiShelfGainDb: c.hiShelfGainDb ?? DEFAULT_CAL.hiShelfGainDb,
+          });
+        }
+        if (micRes?.device) setAlsaDevice(micRes.device);
+        if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
+        if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
+        if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
+      } catch (e) {
+        console.warn('[PiMobile] Could not load Pi settings', e);
+      }
+    };
+    load();
+  }, []);
 
   if (view === "settings") {
     return (
