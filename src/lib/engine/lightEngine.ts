@@ -345,7 +345,7 @@ export class LightEngine {
     }
 
     // Update running max (only grows)
-    updateRunningMax(agc, this.smoothed, bands.bassRms, bands.midHiRms);
+    updateRunningMax(agc, this.smoothed, bands.bassRms, bands.midHiRms, this.tickMs);
 
     // Update volume table with current observation
     updateVolumeTable(this.volumeTable, bucket, this.smoothed);

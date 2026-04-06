@@ -4,11 +4,20 @@ export const AGC_FLOOR = 0.002;
 /** Per-tick decay factor for running max — slowly "challenges" peaks to confirm they're real */
 export const AGC_MAX_DECAY = 0.9998;
 /** Faster decay tiers for quiet periods (drop anticipation) */
-const AGC_QUIET_DECAY_MEDIUM = 0.998;   // ~10× faster, after ~2s quiet
-const AGC_QUIET_DECAY_FAST = 0.99;      // ~50× faster, after ~5s quiet
+const AGC_QUIET_DECAY_MEDIUM = 0.998;   // ~10× faster
+const AGC_QUIET_DECAY_FAST = 0.99;      // ~50× faster
 const QUIET_THRESHOLD_RATIO = 0.10;     // signal < 10% of max = "quiet"
-const QUIET_TICKS_MEDIUM = 16;          // ~2s at 8Hz
-const QUIET_TICKS_FAST = 40;            // ~5s at 8Hz
+/** Time-based quiet thresholds (ms) — converted to ticks dynamically */
+export const QUIET_MS_MEDIUM = 2000;
+export const QUIET_MS_FAST = 5000;
+
+/** Convert ms-based quiet thresholds to tick counts */
+export function quietTickThresholds(tickMs: number): { medium: number; fast: number } {
+  return {
+    medium: Math.round(QUIET_MS_MEDIUM / tickMs),
+    fast: Math.round(QUIET_MS_FAST / tickMs),
+  };
+}
 export const BUCKET_SIZE = 5;
 
 export type AgcVolumeTable = Record<number, number>;
@@ -78,6 +87,7 @@ export function updateRunningMax(
   smoothed: number,
   bassRms: number,
   midHiRms: number,
+  tickMs: number = 125,
 ): void {
   // Track quiet periods for accelerated decay
   const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
@@ -88,9 +98,10 @@ export function updateRunningMax(
   }
 
   // Pick decay rate based on how long it's been quiet
-  const decay = state.quietTicks >= QUIET_TICKS_FAST
+  const { medium, fast } = quietTickThresholds(tickMs);
+  const decay = state.quietTicks >= fast
     ? AGC_QUIET_DECAY_FAST
-    : state.quietTicks >= QUIET_TICKS_MEDIUM
+    : state.quietTicks >= medium
       ? AGC_QUIET_DECAY_MEDIUM
       : AGC_MAX_DECAY;
 

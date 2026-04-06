@@ -13,15 +13,13 @@ import { getItem, setItem } from './storage.js';
 // On update, sync from src/lib/engine/*.ts
 
 // --- AGC ---
-// Note: quiet tick thresholds scaled for ~33Hz tick rate (Pi default 30ms)
-// Browser uses 8Hz so values there are 16/40; at 33Hz we scale proportionally
 const AGC_FLOOR = 0.002;
 const AGC_MAX_DECAY = 0.9998;
 const AGC_QUIET_DECAY_MEDIUM = 0.998;
 const AGC_QUIET_DECAY_FAST = 0.99;
 const QUIET_THRESHOLD_RATIO = 0.10;
-const QUIET_TICKS_MEDIUM = 66;   // ~2s at 33Hz (was 16 at 8Hz)
-const QUIET_TICKS_FAST = 165;    // ~5s at 33Hz (was 40 at 8Hz)
+const QUIET_MS_MEDIUM = 2000;
+const QUIET_MS_FAST = 5000;
 const BUCKET_SIZE = 5;
 
 interface AgcState {
@@ -59,11 +57,13 @@ function getFloorForVolume(table: AgcVolumeTable, bucket: number): number {
   return Math.max(AGC_FLOOR, table[nearestBucket] * (currentVol / nearestVol));
 }
 
-function updateRunningMax(state: AgcState, smoothed: number, bassRms: number, midHiRms: number): void {
+function updateRunningMax(state: AgcState, smoothed: number, bassRms: number, midHiRms: number, tickMs: number): void {
   const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
   if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
-  const decay = state.quietTicks >= QUIET_TICKS_FAST ? AGC_QUIET_DECAY_FAST
-    : state.quietTicks >= QUIET_TICKS_MEDIUM ? AGC_QUIET_DECAY_MEDIUM : AGC_MAX_DECAY;
+  const quietMedium = Math.round(QUIET_MS_MEDIUM / tickMs);
+  const quietFast = Math.round(QUIET_MS_FAST / tickMs);
+  const decay = state.quietTicks >= quietFast ? AGC_QUIET_DECAY_FAST
+    : state.quietTicks >= quietMedium ? AGC_QUIET_DECAY_MEDIUM : AGC_MAX_DECAY;
   if (smoothed > state.max) state.max = smoothed; else state.max = Math.max(AGC_FLOOR, state.max * decay);
   if (bassRms > state.bassMax) state.bassMax = bassRms; else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * decay);
   if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
@@ -313,7 +313,7 @@ export class PiLightEngine {
       this.lastBucket = bucket;
     }
 
-    updateRunningMax(this.agc, this.smoothed, bands.bassRms, bands.midHiRms);
+    updateRunningMax(this.agc, this.smoothed, bands.bassRms, bands.midHiRms, this.tickMs);
     updateVolumeTable(this.volumeTable, bucket, this.smoothed);
 
     const rawBassNorm = normalizeBand(bands.bassRms, this.agc, 'bass');
