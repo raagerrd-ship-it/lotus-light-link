@@ -15,7 +15,7 @@ import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
 import { startMic, stopMic, setAlsaDevice } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma } from './nobleBle.js';
+import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
@@ -32,16 +32,7 @@ const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
 
 async function main() {
-  console.log('╔═══════════════════════════════════════════╗');
-  console.log('║   Lotus Light Link — Pi Headless Runtime  ║');
-  console.log('╚═══════════════════════════════════════════╝');
-  console.log(`  Tick: ${TICK_MS}ms (${Math.round(1000 / TICK_MS)} Hz)`);
-  console.log(`  Bridge: ${BRIDGE_URL}`);
-  console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
-  console.log(`  Config: :${CONFIG_PORT}`);
-  console.log('');
-
-  // 1. Restore persisted global settings
+  // 1. Restore persisted global settings (before banner so we can show effective values)
   const savedAlsaDevice = getItem('alsa-device');
   if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
 
@@ -51,6 +42,15 @@ async function main() {
   const savedTickMs = getItem('tick-ms');
   const effectiveTickMs = savedTickMs ? Math.max(20, Math.min(200, Number(savedTickMs))) : TICK_MS;
 
+  console.log('╔═══════════════════════════════════════════╗');
+  console.log('║   Lotus Light Link — Pi Headless Runtime  ║');
+  console.log('╚═══════════════════════════════════════════╝');
+  console.log(`  Tick: ${effectiveTickMs}ms (${Math.round(1000 / effectiveTickMs)} Hz)${savedTickMs ? ' (saved)' : ''}`);
+  console.log(`  Bridge: ${BRIDGE_URL}`);
+  console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
+  console.log(`  Config: :${CONFIG_PORT}`);
+  console.log('');
+
   // 2. Create engine
   const engine = new PiLightEngine(effectiveTickMs);
 
@@ -58,10 +58,11 @@ async function main() {
   console.log('[Boot] Starting ALSA microphone...');
   startMic();
 
-  // 3. Scan for BLE devices
+  // 4. Scan for BLE devices
   console.log('[Boot] Scanning for BLEDOM devices...');
   const found = await scanAndConnect(15000);
   console.log(`[Boot] Found ${found} BLE device(s)`);
+  setExpectedDeviceCount(found);
 
   // Start background reconnect loop
   const reconnectTimer = startReconnectLoop(30000);

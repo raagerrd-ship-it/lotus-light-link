@@ -219,13 +219,28 @@ export async function disconnectAll(): Promise<void> {
 
 /**
  * Background reconnect loop — scans periodically for lost devices.
+ * Also rescans when some devices have disconnected (partial loss).
  */
+let expectedDeviceCount = 0;
+
+export function setExpectedDeviceCount(n: number): void {
+  expectedDeviceCount = n;
+}
+
 export function startReconnectLoop(intervalMs = 30000): NodeJS.Timeout {
   return setInterval(async () => {
-    if (connectedDevices.size === 0) {
-      console.log('[BLE] No devices connected, scanning...');
+    const current = connectedDevices.size;
+    const shouldScan = current === 0 || (expectedDeviceCount > 0 && current < expectedDeviceCount);
+    if (shouldScan) {
+      console.log(`[BLE] ${current}/${expectedDeviceCount || '?'} devices connected, scanning...`);
       const n = await scanAndConnect(10000);
-      if (n > 0) console.log(`[BLE] Reconnected ${n} device(s)`);
+      if (n > 0) {
+        console.log(`[BLE] Reconnected ${n} device(s) (total: ${connectedDevices.size})`);
+        // Update expected count if we found more than before
+        if (connectedDevices.size > expectedDeviceCount) {
+          expectedDeviceCount = connectedDevices.size;
+        }
+      }
     }
   }, intervalMs);
 }
