@@ -274,6 +274,19 @@ export class PiLightEngine {
     console.log('[Engine] Stopped');
   }
 
+  /** Restart tick timer only — preserves all smoothing/AGC state */
+  restartTimer(): void {
+    if (this.timer) clearInterval(this.timer);
+    if (this.saveTimer) clearInterval(this.saveTimer);
+    this.timer = setInterval(() => this.tick(), this.tickMs);
+    this.saveTimer = setInterval(() => {
+      const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
+      this.cal = updated;
+      saveCalibration(updated);
+    }, 10_000);
+    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz)`);
+  }
+
   private tick(): void {
     if (!this.playing) {
       if (!this.idleSent) {
