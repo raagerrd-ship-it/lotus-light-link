@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music } from "lucide-react";
+import { useState, useRef } from "react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check } from "lucide-react";
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
