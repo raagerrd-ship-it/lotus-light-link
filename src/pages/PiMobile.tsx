@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Settings, ArrowLeft, Bluetooth, Music, Save, Check } from "lucide-react";
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
@@ -21,143 +21,80 @@ const SLIDER_CONFIG: { key: keyof typeof DEFAULT_CAL; label: string; min: number
   { key: "smoothing", label: "Utjämning", min: 0, max: 20, step: 1 },
 ];
 
-const HISTORY = 64;
-const TICK_MS = 25;
+const SIM_LEVELS = [
+  { label: "Låg", raw: 0.2 },
+  { label: "Mellan", raw: 0.5 },
+  { label: "Hög", raw: 0.85 },
+] as const;
 
-/* ── Simulated audio chart ── */
-function SimChart({ cal }: { cal: typeof DEFAULT_CAL }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rawBuf = useRef<number[]>([]);
-  const procBuf = useRef<number[]>([]);
-  const smoothed = useRef(0);
-  const phase = useRef(0);
+/** Apply calibration to a raw value and return processed brightness 0–1 */
+function applyCalibration(raw: number, cal: typeof DEFAULT_CAL): number {
+  let val = raw;
 
-  const tick = useCallback(() => {
-    // Generate fake "raw energy" — sine + noise
-    phase.current += 0.07;
-    const base = 0.5 + 0.35 * Math.sin(phase.current) + 0.15 * Math.sin(phase.current * 2.7);
-    const noise = (Math.random() - 0.5) * 0.3;
-    const raw = Math.max(0, Math.min(1, base + noise));
+  // Attack/release — for static preview we treat attack as gain factor
+  val *= cal.attackAlpha;
 
-    // Apply calibration (simplified engine logic)
-    const prev = smoothed.current;
-    const alpha = raw > prev ? cal.attackAlpha : cal.releaseAlpha;
-    let val = prev + alpha * (raw - prev);
+  // Dynamic damping boosts or compresses deviation from midpoint
+  if (cal.dynamicDamping !== 0) {
+    const mid = 0.5;
+    val = mid + (val - mid) * (1 + cal.dynamicDamping * 0.15);
+  }
 
-    // Dynamic damping
-    if (cal.dynamicDamping !== 0) {
-      const diff = val - prev;
-      val += diff * cal.dynamicDamping * 0.1;
-    }
+  // Smoothing reduces extremes toward center
+  if (cal.smoothing > 0) {
+    const k = 1 / (1 + cal.smoothing * 0.3);
+    val = 0.5 * (1 - k) + val * k;
+  }
 
-    // Smoothing (moving average approximation)
-    if (cal.smoothing > 0) {
-      const k = 1 / (1 + cal.smoothing);
-      val = prev * (1 - k) + val * k;
-    }
+  // Floor
+  val = Math.max(val, cal.brightnessFloor / 100);
+  return Math.max(0, Math.min(1, val));
+}
 
-    // Floor
-    val = Math.max(val, cal.brightnessFloor / 100);
-    val = Math.max(0, Math.min(1, val));
-    smoothed.current = val;
-
-    const rb = rawBuf.current;
-    const pb = procBuf.current;
-    rb.push(raw);
-    pb.push(val);
-    if (rb.length > HISTORY) { rb.shift(); pb.shift(); }
-  }, [cal]);
-
-  useEffect(() => {
-    const id = setInterval(tick, TICK_MS);
-    return () => clearInterval(id);
-  }, [tick]);
-
-  // Draw loop
-  useEffect(() => {
-    let raf = 0;
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-      }
-
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-
-      const rb = rawBuf.current;
-      const pb = procBuf.current;
-      if (pb.length < 2) return;
-
-      const step = w / (HISTORY - 1);
-      const off = (HISTORY - pb.length) * step;
-
-      // Grid
-      ctx.strokeStyle = "rgba(255,255,255,0.07)";
-      ctx.lineWidth = 1;
-      for (let pct = 25; pct <= 75; pct += 25) {
-        const y = h - (pct / 100) * h;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
-
-      // Raw (dashed)
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = "rgba(255,255,255,0.6)";
-      ctx.lineWidth = 1.5 * dpr;
-      ctx.beginPath();
-      for (let i = 0; i < rb.length; i++) {
-        const x = off + i * step;
-        const y = h - rb[i] * h;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.restore();
-
-      // Processed (solid, colored)
-      ctx.setLineDash([]);
-      ctx.strokeStyle = "rgb(255,120,50)";
-      ctx.lineWidth = 2 * dpr;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      for (let i = 0; i < pb.length; i++) {
-        const x = off + i * step;
-        const y = h - pb[i] * h;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Fill under processed
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, "rgba(255,120,50,0.5)");
-      grad.addColorStop(1, "rgba(255,120,50,0)");
-      ctx.lineTo(off + (pb.length - 1) * step, h);
-      ctx.lineTo(off, h);
-      ctx.closePath();
-      ctx.fillStyle = grad;
-      ctx.fill();
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
+/* ── Signal Preview — 3 static bars ── */
+function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full rounded-lg"
-      style={{ height: 80, background: "rgba(0,0,0,0.3)" }}
-    />
+    <div className="rounded-lg p-3" style={{ background: "rgba(0,0,0,0.3)" }}>
+      <div className="flex items-end gap-3 justify-around" style={{ height: 72 }}>
+        {SIM_LEVELS.map(({ label, raw }) => {
+          const processed = applyCalibration(raw, cal);
+          const rawH = raw * 100;
+          const procH = processed * 100;
+          return (
+            <div key={label} className="flex flex-col items-center gap-1 flex-1">
+              <div className="flex items-end gap-1" style={{ height: 56 }}>
+                {/* Raw bar */}
+                <div
+                  className="w-3 rounded-sm transition-all duration-200"
+                  style={{
+                    height: `${rawH}%`,
+                    background: "rgba(255,255,255,0.15)",
+                    border: "1px dashed rgba(255,255,255,0.3)",
+                  }}
+                />
+                {/* Processed bar */}
+                <div
+                  className="w-5 rounded-sm transition-all duration-200"
+                  style={{
+                    height: `${procH}%`,
+                    background: `rgba(255,120,50,${0.5 + processed * 0.5})`,
+                  }}
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground">{label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-center gap-4 mt-2 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm border border-dashed" style={{ borderColor: "rgba(255,255,255,0.3)" }} /> Rå
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm" style={{ background: "rgb(255,120,50)" }} /> Bearbetad
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -196,10 +133,8 @@ function SettingsView({
       {/* Calibration sliders + live mini chart */}
       <section className="space-y-5 mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Kalibrering</h2>
-        <SimChart cal={cal} />
-        <p className="text-[10px] text-muted-foreground -mt-3">
-          Heldragen = bearbetad · Streckad = rå signal
-        </p>
+        <SignalPreview cal={cal} />
+        
         {SLIDER_CONFIG.map(({ key, label, min, max, step }) => (
           <div key={key}>
             <div className="flex justify-between text-sm mb-1">
@@ -287,8 +222,7 @@ export default function PiMobile() {
 
       {/* Live chart */}
       <div className="mb-6">
-        <SimChart cal={cal} />
-        <p className="text-[10px] text-muted-foreground mt-1">Heldragen = bearbetad · Streckad = rå signal</p>
+        <SignalPreview cal={cal} />
       </div>
 
       <section className="mb-8">
