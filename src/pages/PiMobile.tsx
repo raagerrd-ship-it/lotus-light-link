@@ -178,8 +178,7 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
     ctx.beginPath();
     for (let i = 0; i < CURVE_POINTS; i++) {
       const x = i * step;
-      const y = pad + ch * (1 - processed[i]);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      i === 0 ? ctx.moveTo(x, toY(processed[i])) : ctx.lineTo(x, toY(processed[i]));
     }
     ctx.stroke();
 
