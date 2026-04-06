@@ -436,20 +436,18 @@ export default function PiMobile() {
     try {
       const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
       await Promise.all([
-        // Calibration
+        // Calibration — send flat fields (server merges into stored object)
         putJson('/api/calibration', {
-          calibration: {
-            bassWeight: cal.bassWeight,
-            releaseAlpha,
-            smoothing,
-            dynamicDamping: cal.dynamicDamping,
-            brightnessFloor: cal.brightnessFloor,
-            punchWhiteThreshold: cal.punchWhiteThreshold,
-            paletteMode: cal.paletteMode,
-            perceptualCurve: cal.perceptualCurve,
-            transientBoost: cal.transientBoost,
-            hiShelfGainDb: cal.hiShelfGainDb,
-          },
+          bassWeight: cal.bassWeight,
+          releaseAlpha,
+          smoothing,
+          dynamicDamping: cal.dynamicDamping,
+          brightnessFloor: cal.brightnessFloor,
+          punchWhiteThreshold: cal.punchWhiteThreshold,
+          paletteMode: cal.paletteMode,
+          perceptualCurve: cal.perceptualCurve,
+          transientBoost: cal.transientBoost,
+          hiShelfGainDb: cal.hiShelfGainDb,
         }),
         // Tick rate
         putJson('/api/tick-ms', { tickMs }),
@@ -474,7 +472,7 @@ export default function PiMobile() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [calRes, tickRes, micRes, gammaRes, idleRes, sonosRes] = await Promise.all([
+        const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes] = await Promise.all([
           fetch(`${piBase}/api/calibration`).then(r => r.json()),
           fetch(`${piBase}/api/status`).then(r => r.json()),
           fetch(`${piBase}/api/mic-device`).then(r => r.json()),
@@ -483,14 +481,14 @@ export default function PiMobile() {
           fetch(`${piBase}/api/sonos-gateway`).then(r => r.json()),
         ]);
 
-        if (calRes?.calibration) {
-          const c = calRes.calibration;
+        // calRes is the flat stored calibration object (or {} if empty)
+        if (calRes && typeof calRes === 'object' && Object.keys(calRes).length > 0) {
+          const c = calRes;
           // Reverse-map releaseAlpha+smoothing back to softness
-          let softness = 30;
+          let softness = DEFAULT_CAL.softness;
           if (c.releaseAlpha != null) {
-            // releaseAlpha = 1 - 0.995 * t^0.7, solve for t
             const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
-            softness = Math.round(t * 100);
+            softness = Math.round(Math.min(100, Math.max(0, t * 100)));
           }
           setCal({
             bassWeight: c.bassWeight ?? DEFAULT_CAL.bassWeight,
