@@ -394,11 +394,11 @@ export class PiLightEngine {
         this.color = this._palette[this._paletteIndex];
 
       } else if (pm === 'energy') {
-        const idx = Math.min(pLen - 1, Math.floor(energyNorm * pLen));
+        const idx = Math.min(pLen - 1, Math.floor(rawEnergy * pLen));
         this.color = this._palette[idx];
 
       } else if (pm === 'blend') {
-        const clampedEnergy = Math.min(1, Math.max(0, energyNorm));
+        const clampedEnergy = Math.min(1, Math.max(0, rawEnergy));
         const pos = clampedEnergy * (pLen - 1);
         const lo = Math.floor(pos);
         const hi = Math.min(pLen - 1, lo + 1);
