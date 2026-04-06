@@ -218,8 +218,11 @@ export class PiLightEngine {
   }
 
   setColor(rgb: [number, number, number]) { this.color = rgb; }
-  setPalette(palette: [number, number, number][]) { /* stored for future palette modes */ this._palette = palette; }
+  setPalette(palette: [number, number, number][]) { this._palette = palette; this._paletteIndex = 0; }
   private _palette: [number, number, number][] = [];
+  private _paletteIndex = 0;
+  private _paletteTickCounter = 0;
+  private _bassWasHigh = false;
   setVolume(vol: number | undefined) { this.volume = vol; }
   setTickMs(ms: number) { this.tickMs = ms; }
 
