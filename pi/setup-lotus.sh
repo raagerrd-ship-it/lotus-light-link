@@ -39,11 +39,11 @@ if ! command -v node &>/dev/null || [[ $(node -v | cut -d. -f1 | tr -d v) -lt 20
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y -qq nodejs
 else
-  echo "[2/8] Node.js $(node -v) already installed ✓"
+  echo "[2/9] Node.js $(node -v) already installed ✓"
 fi
 
 # ─── 3. I²S audio overlay (INMP441 mic) ──────────────────
-echo "[3/8] Configuring I²S audio overlay..."
+echo "[3/9] Configuring I²S audio overlay..."
 NEEDS_REBOOT=false
 CONFIG_FILE="/boot/config.txt"
 [ -f /boot/firmware/config.txt ] && CONFIG_FILE="/boot/firmware/config.txt"
@@ -57,7 +57,7 @@ else
 fi
 
 # ─── 4. Hostname ─────────────────────────────────────────
-echo "[4/8] Setting hostname..."
+echo "[4/9] Setting hostname..."
 CURRENT_HOSTNAME=$(hostname)
 if [ "$CURRENT_HOSTNAME" != "$HOSTNAME_TARGET" ]; then
   hostnamectl set-hostname "$HOSTNAME_TARGET"
@@ -67,7 +67,7 @@ else
 fi
 
 # ─── 5. Clone or update repo ─────────────────────────────
-echo "[5/8] Setting up project..."
+echo "[5/9] Setting up project..."
 if [ -d "$APP_DIR/.git" ]; then
   echo "  Pulling latest from GitHub..."
   cd "$APP_DIR"
@@ -83,7 +83,7 @@ else
 fi
 
 # ─── 6. Build Pi runtime ─────────────────────────────────
-echo "[6/8] Installing dependencies & building..."
+echo "[6/9] Installing dependencies & building..."
 cd "$APP_DIR/pi"
 npm install --no-audit --no-fund 2>&1 | tail -1
 npm run build
@@ -91,7 +91,7 @@ npm prune --production 2>/dev/null
 echo "  ✓ Build complete"
 
 # ─── 7. BLE permissions ──────────────────────────────────
-echo "[7/8] Setting BLE permissions..."
+echo "[7/9] Setting BLE permissions..."
 setcap cap_net_raw+eip "$(readlink -f "$(which node)")" 2>/dev/null || true
 echo "  ✓ Node.js has BLE raw socket capability"
 
