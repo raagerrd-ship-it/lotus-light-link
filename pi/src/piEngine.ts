@@ -203,8 +203,12 @@ export class PiLightEngine {
   private smoothedMidHi = 0;
   private dynamicCenter = 0.5;
   private extraSmoothPct = 0;
-  private smoothedFlux = 0;
-  private fluxMax = 0.001;
+  // Onset detection state (inline — mirrors src/lib/engine/onsetDetector.ts)
+  private onsetBuffer: number[] = [];
+  private onsetPos = 0;
+  private onsetSize = 0;
+  private onsetPrevFlux = 0;
+  private onsetBoost = 0;
   private agc: AgcState;
   private cal: LightCalibration;
   private volumeTable: AgcVolumeTable;
@@ -220,6 +224,7 @@ export class PiLightEngine {
     this.cal = loadCalibration();
     this.volumeTable = { ...this.cal.agcVolumeTable };
     this.agc = createAgcState(0.01);
+    this.initOnsetBuffer(tickMs);
     setHiShelfGain(this.cal.hiShelfGainDb);
   }
 
@@ -236,7 +241,31 @@ export class PiLightEngine {
   private _bassWasHigh = false;
   setVolume(vol: number | undefined) { this.volume = vol; }
   getTickMs(): number { return this.tickMs; }
-  setTickMs(ms: number) { this.tickMs = ms; }
+  setTickMs(ms: number) { this.tickMs = ms; this.initOnsetBuffer(ms); }
+
+  private initOnsetBuffer(tickMs: number): void {
+    this.onsetSize = Math.max(3, Math.round(175 / tickMs));
+    this.onsetBuffer = new Array(this.onsetSize).fill(0);
+    this.onsetPos = 0;
+    this.onsetPrevFlux = 0;
+    this.onsetBoost = 0;
+  }
+
+  private processOnset(flux: number): boolean {
+    this.onsetBuffer[this.onsetPos] = flux;
+    this.onsetPos = (this.onsetPos + 1) % this.onsetSize;
+    const sorted = this.onsetBuffer.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const med = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    const threshold = med * 1.5 + 0.005;
+    const isOnset = flux > threshold && flux >= this.onsetPrevFlux;
+    this.onsetPrevFlux = flux;
+    // Decay: ~90% per second
+    this.onsetBoost *= Math.pow(0.10, this.tickMs / 1000);
+    if (isOnset) this.onsetBoost = 0.20;
+    if (this.onsetBoost < 0.001) this.onsetBoost = 0;
+    return isOnset;
+  }
 
   setPlaying(playing: boolean): void {
     const wasPlaying = this.playing;
@@ -333,14 +362,9 @@ export class PiLightEngine {
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
 
-    // Spectral flux (tick-rate normalized decay)
-    const fluxDecayPerSec = 0.97; // ~3% decay per second
-    const fluxDecay = Math.pow(fluxDecayPerSec, this.tickMs / 1000);
-    if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
-    else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
-    const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
-    this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1, this.tickMs);
-    const fluxBoost = (cal.transientBoost !== false) ? this.smoothedFlux * 0.15 : 0;
+    // Onset detection (peak-picking on spectral flux)
+    this.processOnset(bands.flux);
+    const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
 
     // Brightness
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
