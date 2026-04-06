@@ -471,45 +471,46 @@ export default function PiMobile() {
   // Load current settings from Pi on mount
   useEffect(() => {
     const load = async () => {
-      try {
-        const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes] = await Promise.all([
-          fetch(`${piBase}/api/calibration`).then(r => r.json()),
-          fetch(`${piBase}/api/status`).then(r => r.json()),
-          fetch(`${piBase}/api/mic-device`).then(r => r.json()),
-          fetch(`${piBase}/api/dimming-gamma`).then(r => r.json()),
-          fetch(`${piBase}/api/idle-color`).then(r => r.json()),
-          fetch(`${piBase}/api/sonos-gateway`).then(r => r.json()),
-        ]);
+      const safeFetch = (url: string) =>
+        fetch(url, { signal: AbortSignal.timeout(3000) })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null);
 
-        // calRes is the flat stored calibration object (or {} if empty)
-        if (calRes && typeof calRes === 'object' && Object.keys(calRes).length > 0) {
-          const c = calRes;
-          // Reverse-map releaseAlpha+smoothing back to softness
-          let softness = DEFAULT_CAL.softness;
-          if (c.releaseAlpha != null) {
-            const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
-            softness = Math.round(Math.min(100, Math.max(0, t * 100)));
-          }
-          setCal({
-            bassWeight: c.bassWeight ?? DEFAULT_CAL.bassWeight,
-            softness,
-            dynamicDamping: c.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
-            brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
-            punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
-            paletteMode: c.paletteMode ?? DEFAULT_CAL.paletteMode,
-            perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
-            transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
-            hiShelfGainDb: c.hiShelfGainDb ?? DEFAULT_CAL.hiShelfGainDb,
-          });
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes] = await Promise.all([
+        safeFetch(`${piBase}/api/calibration`),
+        safeFetch(`${piBase}/api/status`),
+        safeFetch(`${piBase}/api/mic-device`),
+        safeFetch(`${piBase}/api/dimming-gamma`),
+        safeFetch(`${piBase}/api/idle-color`),
+        safeFetch(`${piBase}/api/sonos-gateway`),
+      ]);
+
+      // calRes is the flat stored calibration object (or {} if empty)
+      if (calRes && typeof calRes === 'object' && Object.keys(calRes).length > 0) {
+        const c = calRes;
+        // Reverse-map releaseAlpha+smoothing back to softness
+        let softness = DEFAULT_CAL.softness;
+        if (c.releaseAlpha != null) {
+          const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
+          softness = Math.round(Math.min(100, Math.max(0, t * 100)));
         }
-        if (micRes?.device) setAlsaDevice(micRes.device);
-        if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
-        if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
-        if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
-        if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
-      } catch (e) {
-        console.warn('[PiMobile] Could not load Pi settings', e);
+        setCal({
+          bassWeight: c.bassWeight ?? DEFAULT_CAL.bassWeight,
+          softness,
+          dynamicDamping: c.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
+          brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
+          punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
+          paletteMode: c.paletteMode ?? DEFAULT_CAL.paletteMode,
+          perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
+          transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
+          hiShelfGainDb: c.hiShelfGainDb ?? DEFAULT_CAL.hiShelfGainDb,
+        });
       }
+      if (micRes?.device) setAlsaDevice(micRes.device);
+      if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
+      if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
+      if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
+      if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
     };
     load();
   }, []);
