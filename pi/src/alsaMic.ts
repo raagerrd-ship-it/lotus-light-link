@@ -48,15 +48,12 @@ function applyHighShelfSample(sample: number): number {
   return lo + hi * hsGain;
 }
 
-function processFFT(hiShelfGainDb: number): void {
-  // Copy ring buffer in order
+function processFFT(): void {
+  // Copy ring buffer in order (already high-shelf filtered)
   const ordered = new Float32Array(FFT_SIZE);
   for (let i = 0; i < FFT_SIZE; i++) {
     ordered[i] = ringBuf[(ringPos + i) % FFT_SIZE];
   }
-
-  // Apply high-shelf compensation
-  applyHighShelf(ordered, hiShelfGainDb);
 
   // Convert to array for fft-js
   const input: number[][] = [];
