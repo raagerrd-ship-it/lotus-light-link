@@ -28,6 +28,15 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(33);
   const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleSave = () => {
+    // In real version: PUT /api/calibration + /api/preset/:name
+    setSaved(true);
+    clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSaved(false), 1500);
+  };
 
   if (view === "settings") {
     return (
