@@ -15,7 +15,7 @@ import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
 import { startMic, stopMic, setAlsaDevice } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma } from './nobleBle.js';
+import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
@@ -35,7 +35,7 @@ async function main() {
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║   Lotus Light Link — Pi Headless Runtime  ║');
   console.log('╚═══════════════════════════════════════════╝');
-  console.log(`  Tick: ${TICK_MS}ms (${Math.round(1000 / TICK_MS)} Hz)`);
+  console.log(`  Tick: ${effectiveTickMs}ms (${Math.round(1000 / effectiveTickMs)} Hz)${savedTickMs ? ' (saved)' : ''}`);
   console.log(`  Bridge: ${BRIDGE_URL}`);
   console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
   console.log(`  Config: :${CONFIG_PORT}`);
