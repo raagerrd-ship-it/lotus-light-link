@@ -37,16 +37,15 @@ let samplesReceived = 0; // total samples since last FFT
 // Latest computed bands (polled by engine tick)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
-function applyHighShelf(samples: Float32Array, gainDb: number): void {
-  // Simple 1-pole high-shelf approximation
-  const gain = Math.pow(10, gainDb / 20);
-  const alpha = 0.15; // crossover ~2kHz at 44.1k
-  for (let i = 0; i < samples.length; i++) {
-    hsState += alpha * (samples[i] - hsState);
-    const lo = hsState;
-    const hi = samples[i] - lo;
-    samples[i] = lo + hi * gain;
-  }
+let hsGain = Math.pow(10, 6 / 20); // default 6dB
+const HS_ALPHA = 0.15; // crossover ~2kHz at 44.1k
+
+/** Apply high-shelf to a single sample (called on incoming PCM, once per sample) */
+function applyHighShelfSample(sample: number): number {
+  hsState += HS_ALPHA * (sample - hsState);
+  const lo = hsState;
+  const hi = sample - lo;
+  return lo + hi * hsGain;
 }
 
 function processFFT(hiShelfGainDb: number): void {
