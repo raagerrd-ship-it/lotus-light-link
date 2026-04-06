@@ -74,13 +74,16 @@ export function computeBrightnessPct(
   dynamicCenter: number,
   cal: Pick<LightCalibration, 'bassWeight' | 'dynamicDamping' | 'brightnessFloor' | 'perceptualCurve'>,
   fluxBoost: number = 0,
+  tickMs: number = 125,
 ): { pct: number; newCenter: number } {
   let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
   // Add spectral flux boost for transients/onsets
   energyNorm = Math.min(1, energyNorm + fluxBoost);
 
-  const newCenter = dynamicCenter + (energyNorm - dynamicCenter) * 0.008;
+  // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
+  const centerAlpha = 1 - Math.pow(1 - 0.008, 125 / tickMs);
+  const newCenter = dynamicCenter + (energyNorm - dynamicCenter) * centerAlpha;
   energyNorm = applyDynamics(energyNorm, newCenter, cal.dynamicDamping);
 
   const rawPct = (energyNorm * effectiveMax) / 100;
