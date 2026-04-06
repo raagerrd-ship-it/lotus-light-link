@@ -3,7 +3,7 @@
  * Stores calibration, presets, idle color, device modes as JSON files.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 
 const DATA_DIR = join(process.env.HOME ?? '/root', '.lotus-light');
@@ -28,7 +28,6 @@ export function setItem(key: string, value: string): void {
 
 export function removeItem(key: string): void {
   try {
-    const { unlinkSync } = await import('fs');
     unlinkSync(filePath(key));
   } catch {}
 }
