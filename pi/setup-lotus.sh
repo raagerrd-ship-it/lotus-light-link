@@ -35,7 +35,7 @@ apt-get install -y -qq \
 
 # ─── 2. Node.js 20 ───────────────────────────────────────
 if ! command -v node &>/dev/null || [[ $(node -v | cut -d. -f1 | tr -d v) -lt 20 ]]; then
-  echo "[2/8] Installing Node.js 20..."
+  echo "[2/9] Installing Node.js 20..."
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y -qq nodejs
 else
