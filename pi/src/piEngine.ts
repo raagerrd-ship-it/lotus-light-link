@@ -174,6 +174,9 @@ export interface TickData {
   midHiLevel: number;
   isPlaying: boolean;
   tickMs: number;
+  paletteIndex: number;
+  isPlaying: boolean;
+  tickMs: number;
 }
 
 export type TickCallback = (data: TickData) => void;
