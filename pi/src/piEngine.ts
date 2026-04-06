@@ -203,8 +203,9 @@ export class PiLightEngine {
   private smoothedMidHi = 0;
   private dynamicCenter = 0.5;
   private extraSmoothPct = 0;
-  // Onset detection state (inline — mirrors src/lib/engine/onsetDetector.ts)
-  private onsetBuffer: number[] = [];
+  // Onset detection state — zero-alloc insertion-sort median
+  private onsetBuffer: Float64Array;
+  private onsetSorted: Float64Array;
   private onsetPos = 0;
   private onsetSize = 0;
   private onsetPrevFlux = 0;
@@ -215,7 +216,14 @@ export class PiLightEngine {
   private lastBucket = 0;
   private idleSent = false;
 
-  private timer: NodeJS.Timeout | null = null;
+  // Pre-computed tick-rate constants (avoid recomputing every tick)
+  private _tickDecay = 0;        // onset boost decay per tick
+  private _centerAlpha = 0;      // dynamic center tracking alpha
+  private _smoothAttack = 0;     // pre-computed smoothing alphas
+  private _smoothRelease = 0;
+
+  private _running = false;
+  private _immediate: NodeJS.Immediate | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
   private callbacks: TickCallback[] = [];
 
@@ -224,7 +232,10 @@ export class PiLightEngine {
     this.cal = loadCalibration();
     this.volumeTable = { ...this.cal.agcVolumeTable };
     this.agc = createAgcState(0.01);
+    this.onsetBuffer = new Float64Array(7);
+    this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
+    this.precomputeConstants();
     setHiShelfGain(this.cal.hiShelfGainDb);
   }
 
@@ -241,27 +252,59 @@ export class PiLightEngine {
   private _bassWasHigh = false;
   setVolume(vol: number | undefined) { this.volume = vol; }
   getTickMs(): number { return this.tickMs; }
-  setTickMs(ms: number) { this.tickMs = ms; this.initOnsetBuffer(ms); }
+  setTickMs(ms: number) { this.tickMs = ms; this.initOnsetBuffer(ms); this.precomputeConstants(); }
+
+  /** Pre-compute tick-rate dependent constants once instead of every tick */
+  private precomputeConstants(): void {
+    const t = this.tickMs;
+    const cal = this.cal;
+    // Onset decay: 0.10^(tickMs/1000) = e^(ln(0.10)*tickMs/1000)
+    this._tickDecay = Math.pow(0.10, t / 1000);
+    // Dynamic center alpha
+    this._centerAlpha = 1 - Math.pow(1 - 0.008, t / 125);
+    // Smoothing alphas for attack/release
+    this._smoothAttack = 1 - Math.pow(1 - cal.attackAlpha, t / 125);
+    this._smoothRelease = 1 - Math.pow(1 - cal.releaseAlpha, t / 125);
+  }
 
   private initOnsetBuffer(tickMs: number): void {
     this.onsetSize = Math.max(3, Math.round(175 / tickMs));
-    this.onsetBuffer = new Array(this.onsetSize).fill(0);
+    if (this.onsetBuffer.length < this.onsetSize) {
+      this.onsetBuffer = new Float64Array(this.onsetSize);
+      this.onsetSorted = new Float64Array(this.onsetSize);
+    } else {
+      this.onsetBuffer.fill(0);
+      this.onsetSorted.fill(0);
+    }
     this.onsetPos = 0;
     this.onsetPrevFlux = 0;
     this.onsetBoost = 0;
   }
 
+  /** Zero-alloc onset detection using pre-allocated sorted buffer */
   private processOnset(flux: number): boolean {
     this.onsetBuffer[this.onsetPos] = flux;
     this.onsetPos = (this.onsetPos + 1) % this.onsetSize;
-    const sorted = this.onsetBuffer.slice().sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    const med = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+
+    // Copy to sorted buffer and insertion-sort in-place (N≤7, ~20 comparisons max)
+    const n = this.onsetSize;
+    const s = this.onsetSorted;
+    for (let i = 0; i < n; i++) s[i] = this.onsetBuffer[i];
+    for (let i = 1; i < n; i++) {
+      const v = s[i];
+      let j = i - 1;
+      while (j >= 0 && s[j] > v) { s[j + 1] = s[j]; j--; }
+      s[j + 1] = v;
+    }
+
+    const mid = n >> 1;
+    const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
     const threshold = med * 1.5 + 0.005;
     const isOnset = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
-    // Decay: ~90% per second
-    this.onsetBoost *= Math.pow(0.10, this.tickMs / 1000);
+
+    // Decay using pre-computed constant
+    this.onsetBoost *= this._tickDecay;
     if (isOnset) this.onsetBoost = 0.20;
     if (this.onsetBoost < 0.001) this.onsetBoost = 0;
     return isOnset;
@@ -285,44 +328,82 @@ export class PiLightEngine {
 
   reloadCalibration(): void {
     this.cal = loadCalibration();
+    this.precomputeConstants();
     setHiShelfGain(this.cal.hiShelfGainDb);
   }
 
   start(): void {
-    if (this.timer) return;
+    if (this._running) return;
 
     const bucket = volumeToBucket(this.volume);
     const floor = getFloorForVolume(this.volumeTable, bucket);
     this.agc = createAgcState(floor);
     this.lastBucket = bucket;
+    this._running = true;
 
-    this.timer = setInterval(() => this.tick(), this.tickMs);
+    // High-resolution tick loop using process.hrtime.bigint()
+    // With a dedicated CPU core, this gives microsecond-precise timing
+    const tickNs = BigInt(this.tickMs) * 1_000_000n;
+    let nextTick = process.hrtime.bigint() + tickNs;
+
+    const loop = () => {
+      if (!this._running) return;
+
+      const now = process.hrtime.bigint();
+      if (now >= nextTick) {
+        this.tick();
+        // Advance next tick — skip missed beats to avoid cascading
+        nextTick = now + tickNs;
+      }
+
+      // Use setImmediate to yield to I/O (BLE writes, network) between checks
+      // This is ~1ms resolution but allows the event loop to process I/O
+      this._immediate = setImmediate(loop);
+    };
+
+    this._immediate = setImmediate(loop);
+
     this.saveTimer = setInterval(() => {
       const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
       this.cal = updated;
       saveCalibration(updated);
     }, 10_000);
 
-    console.log(`[Engine] Started (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz)`);
+    console.log(`[Engine] Started (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, hrtime loop)`);
   }
 
   stop(): void {
-    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this._running = false;
+    if (this._immediate) { clearImmediate(this._immediate); this._immediate = null; }
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
   }
 
   /** Restart tick timer only — preserves all smoothing/AGC state */
   restartTimer(): void {
-    if (this.timer) clearInterval(this.timer);
-    if (this.saveTimer) clearInterval(this.saveTimer);
-    this.timer = setInterval(() => this.tick(), this.tickMs);
+    this.stop();
+    this._running = true;
+
+    const tickNs = BigInt(this.tickMs) * 1_000_000n;
+    let nextTick = process.hrtime.bigint() + tickNs;
+
+    const loop = () => {
+      if (!this._running) return;
+      const now = process.hrtime.bigint();
+      if (now >= nextTick) {
+        this.tick();
+        nextTick = now + tickNs;
+      }
+      this._immediate = setImmediate(loop);
+    };
+
+    this._immediate = setImmediate(loop);
     this.saveTimer = setInterval(() => {
       const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
       this.cal = updated;
       saveCalibration(updated);
     }, 10_000);
-    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz)`);
+    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, hrtime loop)`);
   }
 
   private tick(): void {
@@ -340,8 +421,9 @@ export class PiLightEngine {
     const cal = this.cal;
     const bands = getLatestBands();
 
-    // Smoothing
-    this.smoothed = smooth(this.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
+    // Smoothing — use pre-computed alphas (avoid Math.pow per tick)
+    const sa = this._smoothAttack, sr = this._smoothRelease;
+    this.smoothed += (bands.totalRms > this.smoothed ? sa : sr) * (bands.totalRms - this.smoothed);
 
     // Volume bucket
     const bucket = volumeToBucket(this.volume);
@@ -359,8 +441,9 @@ export class PiLightEngine {
     // Raw energy for palette modes — matches browser (50/50 weight, pre-smooth, pre-dynamics)
     const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
-    this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
-    this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
+    // Inline smoothing with pre-computed alphas
+    this.smoothedBass += (rawBassNorm > this.smoothedBass ? sa : sr) * (rawBassNorm - this.smoothedBass);
+    this.smoothedMidHi += (rawMidHiNorm > this.smoothedMidHi ? sa : sr) * (rawMidHiNorm - this.smoothedMidHi);
 
     // Onset detection (peak-picking on spectral flux)
     this.processOnset(bands.flux);
@@ -369,9 +452,8 @@ export class PiLightEngine {
     // Brightness
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
     energyNorm = Math.min(1, energyNorm + fluxBoost);
-    // Tick-rate normalized center tracking (~26% per second regardless of tickMs)
-    const centerAlpha = 1 - Math.pow(1 - 0.008, this.tickMs / 125);
-    this.dynamicCenter += (energyNorm - this.dynamicCenter) * centerAlpha;
+    // Use pre-computed center alpha
+    this.dynamicCenter += (energyNorm - this.dynamicCenter) * this._centerAlpha;
     energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
 
     const floor = cal.brightnessFloor ?? 0;
