@@ -49,30 +49,31 @@ const RAW_CURVE = buildRawCurve();
 
 /** Apply calibration to a raw curve and return processed curve */
 function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
+  const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
+  const attackAlpha = 1.0; // always instant attack
   const out: number[] = [];
-  let smoothed = raw[0];
+  let prev = raw[0];
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i];
-    // Attack / release envelope follower
-    const alpha = r > smoothed ? cal.attackAlpha : cal.releaseAlpha;
-    let val = smoothed + alpha * (r - smoothed);
+    const alpha = r > prev ? attackAlpha : releaseAlpha;
+    let val = prev + alpha * (r - prev);
 
     // Dynamic damping
     if (cal.dynamicDamping !== 0) {
-      const diff = val - smoothed;
+      const diff = val - prev;
       val += diff * cal.dynamicDamping * 0.1;
     }
 
     // Smoothing
-    if (cal.smoothing > 0) {
-      const k = 1 / (1 + cal.smoothing * 0.3);
-      val = smoothed * (1 - k) + val * k;
+    if (smoothing > 0) {
+      const k = 1 / (1 + smoothing * 0.3);
+      val = prev * (1 - k) + val * k;
     }
 
     // Floor
     val = Math.max(val, cal.brightnessFloor / 100);
     val = Math.max(0, Math.min(1, val));
-    smoothed = val;
+    prev = val;
     out.push(val);
   }
   return out;
