@@ -85,8 +85,9 @@ fi
 # ─── 6. Build Pi runtime ─────────────────────────────────
 echo "[6/8] Installing dependencies & building..."
 cd "$APP_DIR/pi"
-npm install --production --no-audit --no-fund 2>&1 | tail -1
+npm install --no-audit --no-fund 2>&1 | tail -1
 npm run build
+npm prune --production 2>/dev/null
 echo "  ✓ Build complete"
 
 # ─── 7. BLE permissions ──────────────────────────────────

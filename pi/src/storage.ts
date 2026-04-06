@@ -28,7 +28,7 @@ export function setItem(key: string, value: string): void {
 
 export function removeItem(key: string): void {
   try {
-    const { unlinkSync } = require('fs');
+    const { unlinkSync } = await import('fs');
     unlinkSync(filePath(key));
   } catch {}
 }
