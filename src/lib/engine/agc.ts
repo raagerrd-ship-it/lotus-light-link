@@ -1,11 +1,13 @@
 // Automatic Gain Control — volume→max lookup table, no learn/lock phases
 
 export const AGC_FLOOR = 0.002;
-/** Per-tick decay factor for running max — slowly "challenges" peaks to confirm they're real */
-export const AGC_MAX_DECAY = 0.9998;
-/** Faster decay tiers for quiet periods (drop anticipation) */
-const AGC_QUIET_DECAY_MEDIUM = 0.998;   // ~10× faster
-const AGC_QUIET_DECAY_FAST = 0.99;      // ~50× faster
+
+// Per-second decay rates (tick-rate independent).
+// Converted to per-tick in updateRunningMax via Math.pow(rate, tickMs/1000).
+// Reference: at 125ms tick (8 Hz), these produce the original per-tick constants.
+const AGC_MAX_DECAY_PER_SEC = 0.99840;       // was 0.9998^8
+const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410; // was 0.998^8
+const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;   // was 0.99^8
 const QUIET_THRESHOLD_RATIO = 0.10;     // signal < 10% of max = "quiet"
 /** Time-based quiet thresholds (ms) — converted to ticks dynamically */
 export const QUIET_MS_MEDIUM = 2000;
@@ -98,12 +100,14 @@ export function updateRunningMax(
   }
 
   // Pick decay rate based on how long it's been quiet
+  // Convert per-second rate to per-tick: rate_per_tick = rate_per_sec ^ (tickMs / 1000)
   const { medium, fast } = quietTickThresholds(tickMs);
-  const decay = state.quietTicks >= fast
-    ? AGC_QUIET_DECAY_FAST
+  const decayPerSec = state.quietTicks >= fast
+    ? AGC_QUIET_DECAY_FAST_PER_SEC
     : state.quietTicks >= medium
-      ? AGC_QUIET_DECAY_MEDIUM
-      : AGC_MAX_DECAY;
+      ? AGC_QUIET_DECAY_MEDIUM_PER_SEC
+      : AGC_MAX_DECAY_PER_SEC;
+  const decay = Math.pow(decayPerSec, tickMs / 1000);
 
   // Grow on new peaks, decay otherwise
   if (smoothed > state.max) state.max = smoothed;

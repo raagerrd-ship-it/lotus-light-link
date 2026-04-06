@@ -14,9 +14,11 @@ import { getItem, setItem } from './storage.js';
 
 // --- AGC ---
 const AGC_FLOOR = 0.002;
-const AGC_MAX_DECAY = 0.9998;
-const AGC_QUIET_DECAY_MEDIUM = 0.998;
-const AGC_QUIET_DECAY_FAST = 0.99;
+// Per-second decay rates (tick-rate independent)
+const AGC_MAX_DECAY_PER_SEC = 0.99840;
+const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410;
+const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;
+const QUIET_THRESHOLD_RATIO = 0.10;
 const QUIET_THRESHOLD_RATIO = 0.10;
 const QUIET_MS_MEDIUM = 2000;
 const QUIET_MS_FAST = 5000;
@@ -62,8 +64,9 @@ function updateRunningMax(state: AgcState, smoothed: number, bassRms: number, mi
   if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
   const quietMedium = Math.round(QUIET_MS_MEDIUM / tickMs);
   const quietFast = Math.round(QUIET_MS_FAST / tickMs);
-  const decay = state.quietTicks >= quietFast ? AGC_QUIET_DECAY_FAST
-    : state.quietTicks >= quietMedium ? AGC_QUIET_DECAY_MEDIUM : AGC_MAX_DECAY;
+  const decayPerSec = state.quietTicks >= quietFast ? AGC_QUIET_DECAY_FAST_PER_SEC
+    : state.quietTicks >= quietMedium ? AGC_QUIET_DECAY_MEDIUM_PER_SEC : AGC_MAX_DECAY_PER_SEC;
+  const decay = Math.pow(decayPerSec, tickMs / 1000);
   if (smoothed > state.max) state.max = smoothed; else state.max = Math.max(AGC_FLOOR, state.max * decay);
   if (bassRms > state.bassMax) state.bassMax = bassRms; else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * decay);
   if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
