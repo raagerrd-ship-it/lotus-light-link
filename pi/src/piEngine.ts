@@ -327,6 +327,8 @@ export class PiLightEngine {
 
     const rawBassNorm = normalizeBand(bands.bassRms, this.agc, 'bass');
     const rawMidHiNorm = normalizeBand(bands.midHiRms, this.agc, 'midHi');
+    // Raw energy for palette modes — matches browser (50/50 weight, pre-smooth, pre-dynamics)
+    const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
     this.smoothedBass = smooth(this.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, this.tickMs);
