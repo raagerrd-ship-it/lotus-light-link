@@ -504,6 +504,7 @@ export default function PiMobile() {
         }
         if (micRes?.device) setAlsaDevice(micRes.device);
         if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
+        if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
         if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
         if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
       } catch (e) {
