@@ -340,7 +340,7 @@ export class PiLightEngine {
     else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
     const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
     this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1, this.tickMs);
-    const fluxBoost = cal.transientBoost ? this.smoothedFlux * 0.15 : 0;
+    const fluxBoost = (cal.transientBoost !== false) ? this.smoothedFlux * 0.15 : 0;
 
     // Brightness
     let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
