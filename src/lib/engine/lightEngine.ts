@@ -361,9 +361,11 @@ export class LightEngine {
     this.smoothedMidHi = smooth(this.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha);
 
     // ── Spectral flux → transient boost ──
-    // Adaptive normalization: track peak flux and decay slowly
+    // Adaptive normalization: track peak flux with tick-rate normalized decay
+    const fluxDecayPerSec = 0.97; // ~3% decay per second
+    const fluxDecay = Math.pow(fluxDecayPerSec, this.tickMs / 1000);
     if (bands.flux > this.fluxMax) this.fluxMax = bands.flux;
-    else this.fluxMax *= 0.999; // slow decay
+    else this.fluxMax = Math.max(0.001, this.fluxMax * fluxDecay);
     const fluxNorm = Math.min(1, bands.flux / Math.max(this.fluxMax, 0.0001));
     this.smoothedFlux = smooth(this.smoothedFlux, fluxNorm, 0.5, 0.1);
     // Boost brightness on transients (max ~15% extra)
@@ -373,7 +375,7 @@ export class LightEngine {
     let { pct, newCenter } = computeBrightnessPct(
       this.smoothedBass, this.smoothedMidHi,
       100, this.dynamicCenter, cal,
-      fluxBoost,
+      fluxBoost, this.tickMs,
     );
     this.dynamicCenter = newCenter;
 
@@ -416,8 +418,9 @@ export class LightEngine {
         this.color = this.palette[idx];
 
       } else if (pm === 'blend') {
-        // Smooth interpolation across palette based on energy
-        const pos = rawEnergy * (pLen - 1);
+        // Smooth interpolation across palette based on energy (clamped)
+        const clampedEnergy = Math.min(1, Math.max(0, rawEnergy));
+        const pos = clampedEnergy * (pLen - 1);
         const lo = Math.floor(pos);
         const hi = Math.min(pLen - 1, lo + 1);
         const t = pos - lo;
