@@ -26,7 +26,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # ─── 1. System dependencies ──────────────────────────────
-echo "[1/8] Installing system dependencies..."
+echo "[1/9] Installing system dependencies..."
 apt-get update -qq
 apt-get install -y -qq \
   bluez libbluetooth-dev \
