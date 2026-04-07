@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { Radio } from "lucide-react";
+import { Radio, Tv } from "lucide-react";
 import type { SonosNowPlaying } from "@/hooks/useSonosNowPlaying";
 
 interface Props {
@@ -32,6 +32,33 @@ export default function NowPlayingBar({ nowPlaying, accentColor, getPosition, ne
     const id = setInterval(update, 250); // ~4fps
     return () => clearInterval(id);
   }, [nowPlaying.durationMs, getPosition]);
+
+  // TV-mode: simplified display
+  if (nowPlaying.isTvMode) {
+    return (
+      <div className="shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center"
+            style={{
+              background: `rgba(${r},${g},${b},0.15)`,
+              boxShadow: `0 0 16px rgba(${r},${g},${b},0.3)`,
+            }}
+          >
+            <Tv className="w-6 h-6" style={{ color: `rgb(${r},${g},${b})` }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground truncate">
+              📺 TV-läge
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              Mikrofon-reaktiv belysning
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="shrink-0">

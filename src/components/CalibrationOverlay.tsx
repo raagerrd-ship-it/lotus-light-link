@@ -5,6 +5,7 @@ import {
   getCalibration, saveCalibration, DEFAULT_CALIBRATION,
   getIdleColor, saveIdleColor,
   PALETTE_MODES, PALETTE_MODE_LABELS,
+  getAutoTvMode, setAutoTvMode,
   type LightCalibration, type PresetName,
 } from "@/lib/engine/lightCalibration";
 import { DEFAULT_TICK_MS } from "@/lib/engine/lightEngine";
@@ -618,6 +619,17 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
               accentColor="hsl(30, 90%, 55%)"
               isActive={activeSlider === '_gamma'}
               onFocus={() => setActiveSlider('_gamma')}
+            />
+            {/* Auto TV-mode */}
+            <BinaryFader
+              label="📺 Auto TV-läge" shortLabel="📺"
+              value={getAutoTvMode()}
+              onChange={(v) => {
+                setAutoTvMode(v);
+              }}
+              accentColor="hsl(280, 70%, 55%)"
+              isActive={activeSlider === '_autoTv'}
+              onFocus={() => setActiveSlider('_autoTv')}
             />
           </div>
         </div>
