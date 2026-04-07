@@ -143,7 +143,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
 }
 
 /* ── Signal Preview — static sinus canvas ── */
-function SignalPreview({ cal, height = 90 }: { cal: typeof DEFAULT_CAL; height?: number }) {
+function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DEFAULT_CAL; height?: number; showLegend?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -257,14 +257,16 @@ function SignalPreview({ cal, height = 90 }: { cal: typeof DEFAULT_CAL; height?:
         className="w-full rounded-lg"
         style={{ height, background: "rgba(0,0,0,0.3)" }}
       />
-      <div className="flex justify-center gap-4 mt-1.5 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 border-t border-dashed" style={{ borderColor: "rgba(255,255,255,0.4)" }} /> Rå signal
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 border-t-2" style={{ borderColor: "rgb(255,120,50)" }} /> Bearbetad
-        </span>
-      </div>
+      {showLegend && (
+        <div className="flex justify-center gap-4 mt-1.5 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 border-t border-dashed" style={{ borderColor: "rgba(255,255,255,0.4)" }} /> Rå signal
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 border-t-2" style={{ borderColor: "rgb(255,120,50)" }} /> Bearbetad
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -752,7 +754,7 @@ export default function PiMobile() {
 
       {/* Live chart */}
       <div className="mb-6">
-        <SignalPreview cal={cal} height={180} />
+        <SignalPreview cal={cal} height={180} showLegend={false} />
       </div>
 
       <section className="mb-8">
