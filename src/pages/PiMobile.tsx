@@ -456,9 +456,9 @@ function ProfileSettingsView({
             </div>
             <button
               onClick={() => setCal({ ...cal, perceptualCurve: !cal.perceptualCurve })}
-              className={`w-11 h-6 rounded-full transition-colors relative ${cal.perceptualCurve ? 'bg-primary' : 'bg-secondary'}`}
+              className={`w-12 h-7 rounded-full transition-colors relative ${cal.perceptualCurve ? 'bg-green-500' : 'bg-secondary border border-border'}`}
             >
-              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${cal.perceptualCurve ? 'left-[22px]' : 'left-0.5'}`} />
+              <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${cal.perceptualCurve ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
             </button>
           </label>
           <label className="flex items-center justify-between">
@@ -468,9 +468,9 @@ function ProfileSettingsView({
             </div>
             <button
               onClick={() => setCal({ ...cal, transientBoost: !cal.transientBoost })}
-              className={`w-11 h-6 rounded-full transition-colors relative ${cal.transientBoost ? 'bg-primary' : 'bg-secondary'}`}
+              className={`w-12 h-7 rounded-full transition-colors relative ${cal.transientBoost ? 'bg-green-500' : 'bg-secondary border border-border'}`}
             >
-              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${cal.transientBoost ? 'left-[22px]' : 'left-0.5'}`} />
+              <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${cal.transientBoost ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
             </button>
           </label>
         </div>
@@ -777,9 +777,9 @@ export default function PiMobile() {
           </div>
           <button
             onClick={() => setAutoTvMode(!autoTvMode)}
-            className={`w-11 h-6 rounded-full transition-colors relative ${autoTvMode ? 'bg-primary' : 'bg-secondary'}`}
+            className={`w-12 h-7 rounded-full transition-colors relative ${autoTvMode ? 'bg-green-500' : 'bg-secondary border border-border'}`}
           >
-            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${autoTvMode ? 'left-[22px]' : 'left-0.5'}`} />
+            <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${autoTvMode ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
           </button>
         </label>
       </section>
