@@ -728,7 +728,7 @@ export default function PiMobile() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-          <span className="text-sm font-semibold">Lotus Light</span>
+          <span className="text-sm font-semibold">BLE Light</span>
         </div>
         <div className="flex gap-1">
           <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent" title="Profilinställningar">
