@@ -379,21 +379,13 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 }
 
 /* ── Settings View ── */
-function SettingsView({
-  cal, setCal, activePreset, tickMs, setTickMs,
-  sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
-  dimmingGamma, setDimmingGamma,
-  autoTvMode, setAutoTvMode,
-  piBase,
+/* ── Profile Settings View (calibration per preset) ── */
+function ProfileSettingsView({
+  cal, setCal, activePreset,
   onBack, onSave, saved,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
-  activePreset: string; tickMs: number; setTickMs: (v: number) => void;
-  sonosUrl: string; setSonosUrl: (v: string) => void;
-  alsaDevice: string; setAlsaDevice: (v: string) => void;
-  dimmingGamma: number; setDimmingGamma: (v: number) => void;
-  autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
-  piBase: string;
+  activePreset: string;
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
   return (
@@ -414,11 +406,10 @@ function SettingsView({
       </div>
 
       <div className="flex items-center gap-2 mb-6">
-        <h1 className="text-lg font-bold">Inställningar</h1>
+        <h1 className="text-lg font-bold">Profil</h1>
         <span className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full">{activePreset}</span>
       </div>
 
-      {/* Calibration sliders + live mini chart */}
       <section className="space-y-5 mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Kalibrering</h2>
         <SignalPreview cal={cal} />
@@ -484,8 +475,46 @@ function SettingsView({
             </button>
           </label>
         </div>
-
       </section>
+    </div>
+  );
+}
+
+/* ── Global Settings View (motor, mic, sonos, BLE test) ── */
+function GlobalSettingsView({
+  tickMs, setTickMs,
+  sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
+  dimmingGamma, setDimmingGamma,
+  autoTvMode, setAutoTvMode,
+  piBase,
+  onBack, onSave, saved,
+}: {
+  tickMs: number; setTickMs: (v: number) => void;
+  sonosUrl: string; setSonosUrl: (v: string) => void;
+  alsaDevice: string; setAlsaDevice: (v: string) => void;
+  dimmingGamma: number; setDimmingGamma: (v: number) => void;
+  autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
+  piBase: string;
+  onBack: () => void; onSave: () => void; saved: boolean;
+}) {
+  return (
+    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
+          <ArrowLeft size={20} /><span className="text-sm">Tillbaka</span>
+        </button>
+        <button
+          onClick={onSave}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-95 ${
+            saved ? "bg-green-600 text-foreground" : "bg-primary text-primary-foreground"
+          }`}
+        >
+          {saved ? <Check size={16} /> : <Save size={16} />}
+          {saved ? "Sparat!" : "Spara"}
+        </button>
+      </div>
+
+      <h1 className="text-lg font-bold mb-6">Inställningar</h1>
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Motor</h2>
