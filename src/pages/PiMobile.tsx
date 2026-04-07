@@ -12,13 +12,13 @@ const PALETTE_MODES: { value: PaletteMode; label: string }[] = [
   { value: 'blend', label: 'Blend' },
 ];
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean; hiShelfGainDb: number };
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean };
 
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true, hiShelfGainDb: 6 },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true, hiShelfGainDb: 6 },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true, hiShelfGainDb: 8 },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true, hiShelfGainDb: 6 },
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -370,19 +370,6 @@ function SettingsView({
           </label>
         </div>
 
-        {/* Hi-shelf gain slider */}
-        <div>
-          <div className="flex justify-between text-sm mb-0.5">
-            <span>Hi-shelf EQ</span>
-            <span className="text-muted-foreground font-mono text-xs">{cal.hiShelfGainDb} dB</span>
-          </div>
-          <input
-            type="range" min={-6} max={12} step={1} value={cal.hiShelfGainDb}
-            onChange={(e) => setCal({ ...cal, hiShelfGainDb: parseInt(e.target.value) })}
-            className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-          />
-          <p className="text-[10px] text-muted-foreground mt-0.5">Kompenserar mikrofon-frekvensrespons för diskant</p>
-        </div>
       </section>
 
       <section className="mb-8">
@@ -473,7 +460,7 @@ export default function PiMobile() {
           paletteMode: cal.paletteMode,
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
-          hiShelfGainDb: cal.hiShelfGainDb,
+          hiShelfGainDb: 6,
         }),
         // Tick rate
         putJson('/api/tick-ms', { tickMs }),
@@ -529,7 +516,7 @@ export default function PiMobile() {
           paletteMode: c.paletteMode ?? DEFAULT_CAL.paletteMode,
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
-          hiShelfGainDb: c.hiShelfGainDb ?? DEFAULT_CAL.hiShelfGainDb,
+          
         });
       }
       if (micRes?.device) setAlsaDevice(micRes.device);

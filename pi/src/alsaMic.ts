@@ -37,7 +37,7 @@ let samplesReceived = 0; // total samples since last FFT
 // Latest computed bands (polled by engine tick)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
-let hsGain = Math.pow(10, 6 / 20); // default 6dB
+const hsGain = Math.pow(10, 6 / 20); // fixed 6dB for INMP441 @ ~1m
 const HS_ALPHA = 0.15; // crossover ~2kHz at 44.1k
 
 /** Apply high-shelf to a single sample (called on incoming PCM, once per sample) */
@@ -98,13 +98,7 @@ export function resetFluxState(): void {
 }
 
 let recorder: any = null;
-let hiShelfGainDb = 6;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
-
-export function setHiShelfGain(db: number): void {
-  hiShelfGainDb = db;
-  hsGain = Math.pow(10, db / 20);
-}
 
 export function getAlsaDevice(): string {
   return currentDevice;

@@ -4,7 +4,7 @@
  * Core math (AGC, brightness, smoothing) imported from shared engine.
  */
 
-import { getLatestBands, resetFluxState, setHiShelfGain } from './alsaMic.js';
+import { getLatestBands, resetFluxState } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 
@@ -236,7 +236,6 @@ export class PiLightEngine {
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
     this.precomputeConstants();
-    setHiShelfGain(this.cal.hiShelfGainDb);
   }
 
   onTick(cb: TickCallback): () => void {
@@ -329,7 +328,7 @@ export class PiLightEngine {
   reloadCalibration(): void {
     this.cal = loadCalibration();
     this.precomputeConstants();
-    setHiShelfGain(this.cal.hiShelfGainDb);
+    
   }
 
   start(): void {
