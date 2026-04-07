@@ -367,23 +367,15 @@ export class PiLightEngine {
   }
 
   private startLoop(): void {
-    let tickNs = BigInt(this.tickMs) * 1_000_000n;
+    const tickNs = BigInt(this.tickMs) * 1_000_000n;
     let nextTick = process.hrtime.bigint() + tickNs;
 
     const loop = () => {
       if (!this._running) return;
 
-      // Re-read tickMs in case adaptive changed it
-      const currentTickNs = BigInt(this.tickMs) * 1_000_000n;
-      if (currentTickNs !== tickNs) {
-        tickNs = currentTickNs;
-        // Don't reset nextTick — just use new interval from now
-      }
-
       const now = process.hrtime.bigint();
       if (now >= nextTick) {
         this.tick();
-        this.adaptiveTick();
         nextTick = now + tickNs;
       }
 
