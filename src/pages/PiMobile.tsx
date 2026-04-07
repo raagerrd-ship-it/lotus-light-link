@@ -384,6 +384,7 @@ function SettingsView({
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
   dimmingGamma, setDimmingGamma,
   autoTvMode, setAutoTvMode,
+  piBase,
   onBack, onSave, saved,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
@@ -392,6 +393,7 @@ function SettingsView({
   alsaDevice: string; setAlsaDevice: (v: string) => void;
   dimmingGamma: number; setDimmingGamma: (v: number) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
+  piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
   return (
@@ -670,6 +672,7 @@ export default function PiMobile() {
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
         autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
+        piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
     );
