@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb } from "lucide-react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap } from "lucide-react";
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
@@ -396,6 +396,9 @@ function SettingsView({
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
         <p className="text-[10px] text-muted-foreground mt-0.5">Lägre = mer ljus vid låga nivåer, högre = mer kontrast</p>
+
+        {/* BLE Fade Test */}
+        <BleFadeTest piBase={piBase} onResult={(wps) => { const ms = Math.round(1000 / wps); setTickMs(ms); }} />
       </section>
 
       <section className="mb-8">
