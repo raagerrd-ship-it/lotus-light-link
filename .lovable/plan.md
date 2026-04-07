@@ -1,41 +1,49 @@
 
 
-## Onset Detection med Spectral Flux Peak-Picking
+## TV-läge med auto-detect toggle
 
-### Bakgrund
-Nuvarande metod: rå spectral flux → smoothing → normalisering mot adaptivt max → 15% boost. Detta ger en *kontinuerlig* transient-signal, inte diskreta "slag". Resultat: boost smetas ut över tid istället för att ge snärtiga ljuspulser.
+### Koncept
+En toggle-inställning **"Auto TV-läge"** som användaren kan slå på/av. När aktiverad detekterar systemet automatiskt TV/SPDIF-källa (Sonos PLAYING + inget trackName) och växlar till mikrofon-reaktiv belysning. När avaktiverad behålls nuvarande beteende (idle-färg vid saknad metadata).
 
-**Peak-picking** ger istället binära onset-händelser (ja/nej per tick) genom att jämföra flux mot en adaptiv tröskel och kräva lokal maxima. CPU-kostnaden är försumbar — enbart aritmetik på det redan beräknade flux-värdet.
+### Flödesschema
+```text
+Auto TV-läge: PÅ
+  Sonos PLAYING + trackName  →  Normal-profil (musik + palett)
+  Sonos PLAYING + !trackName →  TV-läge (mikrofon-reaktiv, idle-färg)
+  Sonos PAUSED / idle        →  Idle (fast idle-färg)
 
-### Implementering
+Auto TV-läge: AV
+  Sonos PLAYING + !trackName →  Idle (nuvarande beteende, PAUSED)
+```
 
-**1. Ny modul: `src/lib/engine/onsetDetector.ts`** (~60 rader)
-- Cirkulär buffer med de senaste N flux-värdena (N ≈ 7, ~175ms vid 25ms tick)
-- Adaptiv tröskel = `median(buffer) * multiplier + offset`
-  - `multiplier` = 1.5, `offset` = liten konstant för att undvika falska triggers i tystnad
-- Onset = `flux[current] > threshold` OCH `flux[current] >= flux[current-1]` (lokal peak)
-- Exporterar `createOnsetState()`, `detectOnset(state, flux) → boolean`
-- Tick-rate-oberoende: bufferstorleken anpassas efter `tickMs` (mål ~175ms lookback)
+### Ändringar
 
-**2. Uppdatera `src/lib/engine/lightEngine.ts`**
-- Importera onset detector, skapa state i konstruktorn
-- Ersätt nuvarande `smoothedFlux * 0.15` boost med:
-  - Vid onset: instant boost (t.ex. +20% brightness) som avtar exponentiellt per tick
-  - Decay: `boostLevel *= pow(decayPerSec, tickMs/1000)` (decay ~90%/s)
-- Behåll `transientBoost`-toggle (styr om onset-boost appliceras)
+**1. `src/lib/engine/lightCalibration.ts`** — Ny setting
+- Lägg till `autoTvMode: boolean` i `LightCalibration` (default: `false`)
+- Separat localStorage-nyckel eller del av calibration-objektet
 
-**3. Uppdatera `pi/src/piEngine.ts`**
-- Kopiera/inline samma onset-logik (Pi har redan inline-mönster)
-- Identisk matematik som browser-versionen
+**2. `pi/src/sonosPoller.ts`** — `isTvMode` i SonosState
+- Nytt fält `isTvMode: boolean` (default `false`)
+- I `parseStatus`: om `!trackName` och playbackState innehåller PLAYING → `isTvMode = true`, behåll PLAYING istället för att tvinga PAUSED
+- Ny funktion `setAutoTvMode(enabled: boolean)` som styr om TV-detection är aktiv
 
-**4. Uppdatera `pi/src/alsaMic.ts`**
-- Ingen ändring behövs — `flux` beräknas redan korrekt i FFT-steget
+**3. `src/hooks/useSonosNowPlaying.ts`** — Samma detection i browser
+- Lägg till `isTvMode: boolean` i `SonosNowPlaying`
+- Läs `autoTvMode` från calibration; om aktiv och `!trackName` + PLAYING → `isTvMode = true`
 
-### Pi Zero 2 prestanda
-- Enda nya beräkning per tick: sortera 7 tal (median) + 2 jämförelser = ~microsekunder
-- Ingen extra FFT, ingen extra buffert av betydelse
-- Fullt genomförbart
+**4. `src/components/NowPlayingBar.tsx`** — TV-indikator
+- Om `isTvMode` → visa "📺 TV-läge" istället för låtinfo, dölj progress bar
 
-### Resultat
-Ljuset får snärtiga, diskreta "blixtar" på trumslag/transienter istället för en utsmord kontinuerlig boost.
+**5. `src/pages/Calibrate.tsx`** — Toggle i UI
+- Ny switch/toggle: "Auto TV-läge" med beskrivning "Aktivera mikrofon-reaktiv belysning vid TV/SPDIF-källa"
+
+**6. `pi/src/index.ts`** — Engine-hantering
+- Vid `isTvMode` → `engine.setPlaying(true)`, hoppa över palette-extraktion
+- Vid övergång tillbaka → återställ Normal-profil automatiskt
+
+**7. `pi/src/configServer.ts`** — API-endpoint
+- GET/PUT `/api/auto-tv-mode` för att synka toggle till Pi
+
+### Filer som ändras (7 st)
+`lightCalibration.ts`, `sonosPoller.ts`, `useSonosNowPlaying.ts`, `NowPlayingBar.tsx`, `Calibrate.tsx`, `pi/src/index.ts`, `pi/src/configServer.ts`
 
