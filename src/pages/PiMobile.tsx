@@ -581,8 +581,7 @@ function GlobalSettingsView({
 
 /* ── Main Component ── */
 export default function PiMobile() {
-  const [view, setView] = useState<"home" | "settings">("home");
-  const [activePreset, setActivePreset] = useState<string>("Normal");
+  const [view, setView] = useState<"home" | "profile" | "global">("home");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(33);
