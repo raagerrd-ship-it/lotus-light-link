@@ -254,6 +254,16 @@ async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0):
   }
 }
 
+/** Raw color write — bypasses dedup and brightness scaling. For test tools only. */
+export async function sendRawColor(r: number, g: number, b: number): Promise<void> {
+  if (!device) return;
+  resetLastSent();
+  writeBuf[4] = r; writeBuf[5] = g; writeBuf[6] = b;
+  try {
+    await device.characteristic.writeAsync(writeBuf, true);
+  } catch { /* fire-and-forget */ }
+}
+
 /** Disconnect and clean up */
 export async function disconnect(): Promise<void> {
   if (device) {
