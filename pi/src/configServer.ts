@@ -5,7 +5,7 @@
 
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
@@ -164,6 +164,64 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     stopSonosPoller();
     await startSonosPoller(config);
     res.json({ ok: true, config });
+  });
+
+  // --- BLE Fade Test ---
+  let fadeRunning = false;
+  let fadeCurrentWps = 0;
+  let fadeAbort = false;
+
+  app.post('/api/ble-fade-test', async (_req, res) => {
+    if (fadeRunning) {
+      return res.status(409).json({ error: 'Test already running' });
+    }
+    fadeRunning = true;
+    fadeAbort = false;
+    fadeCurrentWps = 0;
+    res.json({ ok: true, message: 'Fade test started' });
+
+    // Run fade sequence in background
+    const steps = [10, 15, 20, 25, 30, 40, 50, 60, 75, 100];
+    const fadeSteps = 50; // 0→255→0 in this many writes per cycle
+    const cyclesPerStep = 2;
+
+    for (const wps of steps) {
+      if (fadeAbort) break;
+      fadeCurrentWps = wps;
+      const intervalMs = Math.round(1000 / wps);
+
+      for (let cycle = 0; cycle < cyclesPerStep && !fadeAbort; cycle++) {
+        // Up: 0 → 255
+        for (let i = 0; i <= fadeSteps && !fadeAbort; i++) {
+          const v = Math.round((i / fadeSteps) * 255);
+          sendRawColor(v, 0, 0);
+          await new Promise(r => setTimeout(r, intervalMs));
+        }
+        // Down: 255 → 0
+        for (let i = fadeSteps; i >= 0 && !fadeAbort; i--) {
+          const v = Math.round((i / fadeSteps) * 255);
+          sendRawColor(v, 0, 0);
+          await new Promise(r => setTimeout(r, intervalMs));
+        }
+      }
+
+      // Brief pause between steps
+      if (!fadeAbort) await new Promise(r => setTimeout(r, 400));
+    }
+
+    fadeRunning = false;
+  });
+
+  app.get('/api/ble-fade-test/status', (_req, res) => {
+    res.json({ running: fadeRunning, currentWps: fadeCurrentWps });
+  });
+
+  app.post('/api/ble-fade-test/stop', (_req, res) => {
+    const lastWps = fadeCurrentWps;
+    fadeAbort = true;
+    // Turn off after stop
+    sendRawColor(0, 0, 0);
+    res.json({ ok: true, lastWps });
   });
 
   app.listen(port, () => {
