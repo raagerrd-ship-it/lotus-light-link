@@ -223,6 +223,17 @@ export class PiLightEngine {
   private _smoothAttack = 0;     // pre-computed smoothing alphas
   private _smoothRelease = 0;
 
+  // Adaptive tick-rate state
+  private _adaptiveEnabled = true;
+  private _adaptiveMinMs = 8;     // floor — fastest we'll try
+  private _adaptiveMaxMs = 50;    // ceiling — slowest we'll allow
+  private _adaptiveWindow = 0;    // ticks in current measurement window
+  private _adaptiveBusyCount = 0; // busy-skips in window
+  private _adaptiveLatSum = 0;    // cumulative BLE write latency
+  private _adaptiveLastAdjust = 0;// hrtime of last adjustment
+  private _adaptiveSettled = false;// true once we've found the sweet spot
+  private _adaptiveHistory: number[] = []; // last N stable tickMs values for convergence
+
   private _running = false;
   private _immediate: NodeJS.Immediate | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
