@@ -703,6 +703,33 @@ export default function PiMobile() {
     load();
   }, []);
 
+  // Poll status every 5s to get live track, BLE count, palette
+  const lastTrackRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (view !== 'home') return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(3000) });
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        if (cancelled) return;
+        const track = data.sonos?.trackName ?? null;
+        setLiveTrack(track);
+        setLiveBleCount(data.ble?.connected ?? null);
+        // Only update palette when track changes (or first load)
+        if (track && track !== lastTrackRef.current) {
+          lastTrackRef.current = track;
+          const palette = data.engine?.palette ?? [];
+          setLivePalette(palette);
+        }
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [view, piBase]);
+
   if (view === "profile") {
     return (
       <ProfileSettingsView
