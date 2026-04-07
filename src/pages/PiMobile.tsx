@@ -485,7 +485,7 @@ function GlobalSettingsView({
   tickMs, setTickMs,
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
   dimmingGamma, setDimmingGamma,
-  autoTvMode, setAutoTvMode,
+  idleColor, setIdleColor,
   piBase,
   onBack, onSave, saved,
 }: {
@@ -493,7 +493,7 @@ function GlobalSettingsView({
   sonosUrl: string; setSonosUrl: (v: string) => void;
   alsaDevice: string; setAlsaDevice: (v: string) => void;
   dimmingGamma: number; setDimmingGamma: (v: number) => void;
-  autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
+  idleColor: number[]; setIdleColor: (c: number[]) => void;
   piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
@@ -562,18 +562,29 @@ function GlobalSettingsView({
           placeholder="http://192.168.1.x:5005"
           className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
         />
-        <label className="flex items-center justify-between mt-4">
-          <div>
-            <div className="text-sm">📺 Auto TV-läge</div>
-            <p className="text-[10px] text-muted-foreground">Tvingar idle när Sonos spelar från TV/SPDIF</p>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Idle-färg</h2>
+        <div className="flex items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-xl border border-border shrink-0"
+            style={{ backgroundColor: `rgb(${idleColor[0]},${idleColor[1]},${idleColor[2]})` }}
+          />
+          <div className="flex-1 space-y-2">
+            {["R", "G", "B"].map((ch, i) => (
+              <div key={ch} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-3">{ch}</span>
+                <input
+                  type="range" min={0} max={255} value={idleColor[i]}
+                  onChange={(e) => { const next = [...idleColor]; next[i] = parseInt(e.target.value); setIdleColor(next); }}
+                  className="flex-1 h-1.5 rounded-full appearance-none bg-secondary accent-primary"
+                />
+                <span className="text-xs text-muted-foreground font-mono w-7 text-right">{idleColor[i]}</span>
+              </div>
+            ))}
           </div>
-          <button
-            onClick={() => setAutoTvMode(!autoTvMode)}
-            className={`w-11 h-6 rounded-full transition-colors relative ${autoTvMode ? 'bg-primary' : 'bg-secondary'}`}
-          >
-            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${autoTvMode ? 'left-[22px]' : 'left-0.5'}`} />
-          </button>
-        </label>
+        </div>
       </section>
     </div>
   );
@@ -708,7 +719,7 @@ export default function PiMobile() {
         sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
-        autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
+        idleColor={idleColor} setIdleColor={setIdleColor}
         piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
@@ -758,27 +769,20 @@ export default function PiMobile() {
         </div>
       </section>
 
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Idle-färg</h2>
-        <div className="flex items-center gap-4">
-          <div
-            className="w-12 h-12 rounded-xl border border-border shrink-0"
-            style={{ backgroundColor: `rgb(${idleColor[0]},${idleColor[1]},${idleColor[2]})` }}
-          />
-          <div className="flex-1 space-y-2">
-            {["R", "G", "B"].map((ch, i) => (
-              <div key={ch} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-3">{ch}</span>
-                <input
-                  type="range" min={0} max={255} value={idleColor[i]}
-                  onChange={(e) => { const next = [...idleColor]; next[i] = parseInt(e.target.value); setIdleColor(next); }}
-                  className="flex-1 h-1.5 rounded-full appearance-none bg-secondary accent-primary"
-                />
-                <span className="text-xs text-muted-foreground font-mono w-7 text-right">{idleColor[i]}</span>
-              </div>
-            ))}
+      {/* Auto TV-mode toggle */}
+      <section className="mb-8">
+        <label className="flex items-center justify-between">
+          <div>
+            <div className="text-sm">📺 Auto TV-läge</div>
+            <p className="text-[10px] text-muted-foreground">Tvingar idle när Sonos spelar från TV/SPDIF</p>
           </div>
-        </div>
+          <button
+            onClick={() => setAutoTvMode(!autoTvMode)}
+            className={`w-11 h-6 rounded-full transition-colors relative ${autoTvMode ? 'bg-primary' : 'bg-secondary'}`}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${autoTvMode ? 'left-[22px]' : 'left-0.5'}`} />
+          </button>
+        </label>
       </section>
     </div>
   );
