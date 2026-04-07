@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap } from "lucide-react";
 
+const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
+
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
 type PaletteMode = 'off' | 'timed' | 'bass' | 'energy' | 'blend';
@@ -389,7 +391,7 @@ function ProfileSettingsView({
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto">
+    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
       <div className="flex items-center justify-between mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
           <ArrowLeft size={20} /><span className="text-sm">Tillbaka</span>
@@ -498,7 +500,7 @@ function GlobalSettingsView({
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto">
+    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
       <div className="flex items-center justify-between mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
           <ArrowLeft size={20} /><span className="text-sm">Tillbaka</span>
@@ -727,7 +729,7 @@ export default function PiMobile() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto">
+    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
