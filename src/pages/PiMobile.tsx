@@ -602,6 +602,11 @@ export default function PiMobile() {
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
   const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
+  const [bleScanning, setBleScanning] = useState(false);
+  const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number }[]>([]);
+  const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
+  const [bleSavedId, setBleSavedId] = useState<string | null>(null);
+  const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Derive Pi base URL from current page (same host, port 3001)
