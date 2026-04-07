@@ -599,6 +599,9 @@ export default function PiMobile() {
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [liveTrack, setLiveTrack] = useState<string | null>(null);
+  const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
+  const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Derive Pi base URL from current page (same host, port 3001)
