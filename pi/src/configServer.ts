@@ -37,6 +37,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       engine: {
         running: true,
         tickMs: engine.getTickMs(),
+        adaptive: engine.getAdaptiveState(),
       },
     });
   });
