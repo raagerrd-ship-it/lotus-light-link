@@ -272,6 +272,7 @@ function SettingsView({
   cal, setCal, activePreset, tickMs, setTickMs,
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
   dimmingGamma, setDimmingGamma,
+  autoTvMode, setAutoTvMode,
   onBack, onSave, saved,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
@@ -279,6 +280,7 @@ function SettingsView({
   sonosUrl: string; setSonosUrl: (v: string) => void;
   alsaDevice: string; setAlsaDevice: (v: string) => void;
   dimmingGamma: number; setDimmingGamma: (v: number) => void;
+  autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
   return (
@@ -415,6 +417,18 @@ function SettingsView({
           placeholder="http://192.168.1.x:5005"
           className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
         />
+        <label className="flex items-center justify-between mt-4">
+          <div>
+            <div className="text-sm">📺 Auto TV-läge</div>
+            <p className="text-[10px] text-muted-foreground">Tvingar idle när Sonos spelar från TV/SPDIF</p>
+          </div>
+          <button
+            onClick={() => setAutoTvMode(!autoTvMode)}
+            className={`w-11 h-6 rounded-full transition-colors relative ${autoTvMode ? 'bg-primary' : 'bg-secondary'}`}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-foreground transition-transform ${autoTvMode ? 'left-[22px]' : 'left-0.5'}`} />
+          </button>
+        </label>
       </section>
     </div>
   );
@@ -430,6 +444,7 @@ export default function PiMobile() {
   const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
+  const [autoTvMode, setAutoTvMode] = useState(false);
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -472,6 +487,8 @@ export default function PiMobile() {
         putJson('/api/idle-color', { color: idleColor }),
         // Sonos gateway
         ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
+        // Auto TV-mode
+        putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
       ]);
       setSaved(true);
       clearTimeout(savedTimer.current);
@@ -489,13 +506,14 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes] = await Promise.all([
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes] = await Promise.all([
         safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
         safeFetch(`${piBase}/api/dimming-gamma`),
         safeFetch(`${piBase}/api/idle-color`),
         safeFetch(`${piBase}/api/sonos-gateway`),
+        safeFetch(`${piBase}/api/auto-tv-mode`),
       ]);
 
       // calRes is the flat stored calibration object (or {} if empty)
@@ -524,6 +542,7 @@ export default function PiMobile() {
       if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
       if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
       if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
+      if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
     };
     load();
   }, []);
