@@ -722,6 +722,8 @@ export default function PiMobile() {
         const track = data.sonos?.trackName ?? null;
         setLiveTrack(track);
         setLiveBleCount(data.ble?.connected ?? null);
+        setBleConnectedId(data.ble?.connectedDeviceId ?? null);
+        setBleSavedId(data.ble?.savedDeviceId ?? null);
         // Only update palette when track changes (or first load)
         if (track && track !== lastTrackRef.current) {
           lastTrackRef.current = track;
