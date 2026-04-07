@@ -714,6 +714,22 @@ export default function PiMobile() {
       />
     );
   }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+          <span className="text-sm font-semibold">Lotus Light</span>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent" title="Profilinställningar">
+            <Lightbulb size={20} className="text-muted-foreground" />
+          </button>
+          <button onClick={() => setView("global")} className="p-2 rounded-lg active:bg-accent" title="Globala inställningar">
+            <Settings size={20} className="text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-4 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
