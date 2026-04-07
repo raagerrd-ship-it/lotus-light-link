@@ -555,6 +555,7 @@ export default function PiMobile() {
         sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
+        autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
     );
