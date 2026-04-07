@@ -32,6 +32,10 @@ let hsState = 0;
 // Ring buffer for incoming PCM samples
 const ringBuf = new Float32Array(FFT_SIZE);
 let ringPos = 0;
+
+// Pre-allocated FFT working buffers (zero-alloc hot path)
+const orderedBuf = new Float32Array(FFT_SIZE);
+const fftInput: number[][] = Array.from({ length: FFT_SIZE }, () => [0, 0]);
 let samplesReceived = 0; // total samples since last FFT
 
 // Latest computed bands (polled by engine tick)
@@ -49,19 +53,15 @@ function applyHighShelfSample(sample: number): number {
 }
 
 function processFFT(): void {
-  // Copy ring buffer in order (already high-shelf filtered)
-  const ordered = new Float32Array(FFT_SIZE);
+  // Copy ring buffer in order into pre-allocated buffer
   for (let i = 0; i < FFT_SIZE; i++) {
-    ordered[i] = ringBuf[(ringPos + i) % FFT_SIZE];
+    const sample = ringBuf[(ringPos + i) % FFT_SIZE];
+    orderedBuf[i] = sample;
+    fftInput[i][0] = sample;
+    fftInput[i][1] = 0;
   }
 
-  // Convert to array for fft-js
-  const input: number[][] = [];
-  for (let i = 0; i < FFT_SIZE; i++) {
-    input.push([ordered[i], 0]);
-  }
-
-  const spectrum = fft(input);
+  const spectrum = fft(fftInput);
   const magnitudes = fftUtil.fftMag(spectrum);
 
   let loSum = 0, midSum = 0, hiSum = 0;

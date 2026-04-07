@@ -23,6 +23,8 @@ export interface OnsetState {
   prevFlux: number;
   /** Current onset boost level (decays exponentially) */
   boost: number;
+  /** Shaped envelope target — decays to create rounded peak */
+  target: number;
 }
 
 export function createOnsetState(tickMs: number = 125): OnsetState {
@@ -33,6 +35,7 @@ export function createOnsetState(tickMs: number = 125): OnsetState {
     size,
     prevFlux: 0,
     boost: 0,
+    target: 0,
   };
 }
 
@@ -56,7 +59,7 @@ function median(arr: number[]): number {
 
 /**
  * Process a new flux value. Returns true if an onset was detected.
- * Also updates the internal boost level with exponential decay.
+ * Shaped envelope: fast 2-tick rise to rounded peak, smooth exponential fade.
  */
 export function detectOnset(state: OnsetState, flux: number, tickMs: number): boolean {
   // Write to circular buffer
@@ -70,22 +73,29 @@ export function detectOnset(state: OnsetState, flux: number, tickMs: number): bo
   const isOnset = flux > threshold && flux >= state.prevFlux;
   state.prevFlux = flux;
 
-  // Decay existing boost: ~90% decay per second
-  const DECAY_PER_SEC = 0.10; // remaining fraction after 1s
-  state.boost *= Math.pow(DECAY_PER_SEC, tickMs / 1000);
+  // Decay constant: ~90% decay per second
+  const DECAY_PER_SEC = 0.10;
+  const tickDecay = Math.pow(DECAY_PER_SEC, tickMs / 1000);
 
-  // On onset, set boost to peak
-  if (isOnset) {
-    state.boost = 0.20;
+  // On onset, set target high — boost chases target with fast rise
+  if (isOnset) state.target = 0.22;
+
+  // Fast rise (~2 ticks to peak), smooth decay
+  const riseAlpha = 1 - Math.pow(0.15, tickMs / 125);
+  if (state.boost < state.target) {
+    state.boost += riseAlpha * (state.target - state.boost);
+  } else {
+    state.boost *= tickDecay;
   }
+  // Decay target for rounded peak shape
+  state.target *= tickDecay;
 
-  // Clean up tiny values
-  if (state.boost < 0.001) state.boost = 0;
+  if (state.boost < 0.001) { state.boost = 0; state.target = 0; }
 
   return isOnset;
 }
 
-/** Get the current boost value (0–0.20, decaying) */
+/** Get the current boost value (0–0.22, decaying) */
 export function getOnsetBoost(state: OnsetState): number {
   return state.boost;
 }

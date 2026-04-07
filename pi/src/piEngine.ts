@@ -210,6 +210,7 @@ export class PiLightEngine {
   private onsetSize = 0;
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
+  private onsetTarget = 0;  // shaped envelope target for rounded spikes
   private agc: AgcState;
   private cal: LightCalibration;
   private volumeTable: AgcVolumeTable;
@@ -280,7 +281,9 @@ export class PiLightEngine {
     this.onsetBoost = 0;
   }
 
-  /** Zero-alloc onset detection using pre-allocated sorted buffer */
+  /** Zero-alloc onset detection with shaped spike envelope:
+   *  - Fast 2-tick rise to round the peak (not instant step)
+   *  - Smooth exponential decay for natural fade-out */
   private processOnset(flux: number): boolean {
     this.onsetBuffer[this.onsetPos] = flux;
     this.onsetPos = (this.onsetPos + 1) % this.onsetSize;
@@ -302,10 +305,21 @@ export class PiLightEngine {
     const isOnset = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
 
-    // Decay using pre-computed constant
-    this.onsetBoost *= this._tickDecay;
-    if (isOnset) this.onsetBoost = 0.20;
-    if (this.onsetBoost < 0.001) this.onsetBoost = 0;
+    // Shaped envelope: target jumps on onset, boost chases target with fast rise alpha
+    // then target decays smoothly → gives rounded peak + smooth fade
+    if (isOnset) this.onsetTarget = 0.22;
+
+    // Fast rise (~2 ticks to peak), smooth decay
+    const riseAlpha = 1 - Math.pow(0.15, this.tickMs / 125);  // fast: ~85% per tick @125ms
+    if (this.onsetBoost < this.onsetTarget) {
+      this.onsetBoost += riseAlpha * (this.onsetTarget - this.onsetBoost);
+    } else {
+      this.onsetBoost *= this._tickDecay;
+    }
+    // Decay the target itself for rounded top
+    this.onsetTarget *= this._tickDecay;
+
+    if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
     return isOnset;
   }
 

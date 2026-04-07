@@ -23,6 +23,9 @@ interface ConnectedDevice {
   characteristic: PiCharacteristic;
   mode: DeviceMode;
   name: string;
+  // Pre-allocated write buffers per device (zero-alloc hot path)
+  colorBuf: Buffer;
+  brightBuf: Buffer;
 }
 
 const connectedDevices = new Map<string, ConnectedDevice>();
@@ -89,10 +92,13 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   try {
     const promises: Promise<void>[] = [];
     for (const [, dev] of connectedDevices) {
-      // Copy buffer per-device to avoid mutation during parallel writes
-      const buf = dev.mode === 'brightness'
-        ? Buffer.from(brightOnlyBuf)
-        : Buffer.from(colorBuf);
+      // Write directly into pre-allocated per-device buffers (zero-alloc)
+      const buf = dev.mode === 'brightness' ? dev.brightBuf : dev.colorBuf;
+      if (dev.mode !== 'brightness') {
+        buf[4] = cr; buf[5] = cg; buf[6] = cb;
+      } else {
+        buf[3] = cbr;
+      }
       promises.push(dev.characteristic.writeAsync(buf, true).catch(() => {}));
     }
     await Promise.allSettled(promises);
@@ -209,6 +215,9 @@ async function connectPeripheral(peripheral: any): Promise<void> {
     characteristic: char,
     mode: 'rgb',
     name,
+    // Pre-allocate per-device buffers (cloned from templates)
+    colorBuf: Buffer.from(colorBuf),
+    brightBuf: Buffer.from(brightOnlyBuf),
   });
 
   // Auto-reconnect on disconnect — immediate retry with backoff
