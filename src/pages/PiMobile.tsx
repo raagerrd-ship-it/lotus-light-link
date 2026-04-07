@@ -141,7 +141,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
 }
 
 /* ── Signal Preview — static sinus canvas ── */
-function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
+function SignalPreview({ cal, height = 90 }: { cal: typeof DEFAULT_CAL; height?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -253,7 +253,7 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
       <canvas
         ref={canvasRef}
         className="w-full rounded-lg"
-        style={{ height: 90, background: "rgba(0,0,0,0.3)" }}
+        style={{ height, background: "rgba(0,0,0,0.3)" }}
       />
       <div className="flex justify-center gap-4 mt-1.5 text-[10px] text-muted-foreground">
         <span className="flex items-center gap-1">
@@ -750,7 +750,7 @@ export default function PiMobile() {
 
       {/* Live chart */}
       <div className="mb-6">
-        <SignalPreview cal={cal} />
+        <SignalPreview cal={cal} height={180} />
       </div>
 
       <section className="mb-8">
