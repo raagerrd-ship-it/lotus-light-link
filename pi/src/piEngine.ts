@@ -503,27 +503,13 @@ export class PiLightEngine {
   restartTimer(): void {
     this.stop();
     this._running = true;
-
-    const tickNs = BigInt(this.tickMs) * 1_000_000n;
-    let nextTick = process.hrtime.bigint() + tickNs;
-
-    const loop = () => {
-      if (!this._running) return;
-      const now = process.hrtime.bigint();
-      if (now >= nextTick) {
-        this.tick();
-        nextTick = now + tickNs;
-      }
-      this._immediate = setImmediate(loop);
-    };
-
-    this._immediate = setImmediate(loop);
+    this.startLoop();
     this.saveTimer = setInterval(() => {
       const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
       this.cal = updated;
       saveCalibration(updated);
     }, 10_000);
-    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, hrtime loop)`);
+    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz)`);
   }
 
   private tick(): void {
