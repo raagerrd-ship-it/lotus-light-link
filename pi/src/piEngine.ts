@@ -353,7 +353,83 @@ export class PiLightEngine {
   reloadCalibration(): void {
     this.cal = loadCalibration();
     this.precomputeConstants();
-    
+  }
+
+  /** Adaptive tick-rate: aggressively lower tickMs until BLE can't keep up,
+   *  then settle at the fastest sustainable rate.
+   *  Called every ~100 ticks (measurement window). */
+  private adaptiveTick(): void {
+    if (!this._adaptiveEnabled || this._adaptiveSettled) return;
+
+    const windowSize = 100;
+    this._adaptiveWindow++;
+    this._adaptiveBusyCount += bleStats.skipBusyCount > 0 ? 1 : 0; // sample current busy state
+    this._adaptiveLatSum += bleStats.writeLatMs;
+
+    if (this._adaptiveWindow < windowSize) return;
+
+    // Measure window
+    const busyRatio = this._adaptiveBusyCount / windowSize;
+    const avgLat = this._adaptiveLatSum / windowSize;
+    const budgetRatio = avgLat / this.tickMs;
+
+    // Reset counters
+    this._adaptiveWindow = 0;
+    this._adaptiveBusyCount = 0;
+    this._adaptiveLatSum = 0;
+
+    const oldMs = this.tickMs;
+
+    if (busyRatio > 0.15 || budgetRatio > 0.85) {
+      // Too fast — back off by 2ms
+      const newMs = Math.min(this._adaptiveMaxMs, this.tickMs + 2);
+      if (newMs !== this.tickMs) {
+        this.setTickMs(newMs);
+        console.log(`[Adaptive] ▲ ${oldMs}→${newMs}ms (busy=${(busyRatio*100).toFixed(0)}% lat=${avgLat.toFixed(1)}ms budget=${(budgetRatio*100).toFixed(0)}%)`);
+      }
+      // Check if we've been bouncing around the same value
+      this._adaptiveHistory.push(newMs);
+      if (this._adaptiveHistory.length > 6) this._adaptiveHistory.shift();
+      this.checkSettled();
+    } else if (busyRatio < 0.05 && budgetRatio < 0.60) {
+      // Headroom — push faster by 1ms (aggressive but careful)
+      const newMs = Math.max(this._adaptiveMinMs, this.tickMs - 1);
+      if (newMs !== this.tickMs) {
+        this.setTickMs(newMs);
+        console.log(`[Adaptive] ▼ ${oldMs}→${newMs}ms (busy=${(busyRatio*100).toFixed(0)}% lat=${avgLat.toFixed(1)}ms budget=${(budgetRatio*100).toFixed(0)}%)`);
+      }
+      this._adaptiveHistory.push(newMs);
+      if (this._adaptiveHistory.length > 6) this._adaptiveHistory.shift();
+      this.checkSettled();
+    } else {
+      // Goldilocks zone — record and check convergence
+      this._adaptiveHistory.push(this.tickMs);
+      if (this._adaptiveHistory.length > 6) this._adaptiveHistory.shift();
+      this.checkSettled();
+    }
+  }
+
+  /** Check if we've converged on a stable tickMs */
+  private checkSettled(): void {
+    if (this._adaptiveHistory.length < 5) return;
+    const last5 = this._adaptiveHistory.slice(-5);
+    const spread = Math.max(...last5) - Math.min(...last5);
+    if (spread <= 2) {
+      const settled = Math.round(last5.reduce((a, b) => a + b) / last5.length);
+      this._adaptiveSettled = true;
+      this.setTickMs(settled);
+      console.log(`[Adaptive] ✓ Settled at ${settled}ms (${Math.round(1000/settled)} Hz) — adaptive off`);
+    }
+  }
+
+  /** Get current adaptive state for diagnostics */
+  getAdaptiveState() {
+    return {
+      enabled: this._adaptiveEnabled,
+      settled: this._adaptiveSettled,
+      tickMs: this.tickMs,
+      hz: Math.round(1000 / this.tickMs),
+    };
   }
 
   start(): void {
@@ -365,27 +441,20 @@ export class PiLightEngine {
     this.lastBucket = bucket;
     this._running = true;
 
-    // High-resolution tick loop using process.hrtime.bigint()
-    // With a dedicated CPU core, this gives microsecond-precise timing
-    const tickNs = BigInt(this.tickMs) * 1_000_000n;
-    let nextTick = process.hrtime.bigint() + tickNs;
+    // Reset adaptive state for fresh learning on each start
+    this._adaptiveWindow = 0;
+    this._adaptiveBusyCount = 0;
+    this._adaptiveLatSum = 0;
+    this._adaptiveSettled = false;
+    this._adaptiveHistory = [];
 
-    const loop = () => {
-      if (!this._running) return;
+    // Start aggressive — begin at minimum and let adaptive find the limit
+    if (this._adaptiveEnabled) {
+      this.setTickMs(this._adaptiveMinMs);
+      console.log(`[Adaptive] Starting aggressive at ${this.tickMs}ms — learning hardware limits...`);
+    }
 
-      const now = process.hrtime.bigint();
-      if (now >= nextTick) {
-        this.tick();
-        // Advance next tick — skip missed beats to avoid cascading
-        nextTick = now + tickNs;
-      }
-
-      // Use setImmediate to yield to I/O (BLE writes, network) between checks
-      // This is ~1ms resolution but allows the event loop to process I/O
-      this._immediate = setImmediate(loop);
-    };
-
-    this._immediate = setImmediate(loop);
+    this.startLoop();
 
     this.saveTimer = setInterval(() => {
       const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
@@ -394,6 +463,33 @@ export class PiLightEngine {
     }, 10_000);
 
     console.log(`[Engine] Started (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, hrtime loop)`);
+  }
+
+  private startLoop(): void {
+    let tickNs = BigInt(this.tickMs) * 1_000_000n;
+    let nextTick = process.hrtime.bigint() + tickNs;
+
+    const loop = () => {
+      if (!this._running) return;
+
+      // Re-read tickMs in case adaptive changed it
+      const currentTickNs = BigInt(this.tickMs) * 1_000_000n;
+      if (currentTickNs !== tickNs) {
+        tickNs = currentTickNs;
+        // Don't reset nextTick — just use new interval from now
+      }
+
+      const now = process.hrtime.bigint();
+      if (now >= nextTick) {
+        this.tick();
+        this.adaptiveTick();
+        nextTick = now + tickNs;
+      }
+
+      this._immediate = setImmediate(loop);
+    };
+
+    this._immediate = setImmediate(loop);
   }
 
   stop(): void {
