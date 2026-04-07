@@ -500,20 +500,18 @@ function GlobalSettingsView({
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
       <div className="flex items-center justify-between mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
-          <ArrowLeft size={20} /><span className="text-sm">Tillbaka</span>
+          <ArrowLeft size={20} />
         </button>
+        <span className="text-sm font-semibold bg-accent text-accent-foreground px-3 py-1 rounded-full">Inställningar</span>
         <button
           onClick={onSave}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-95 ${
-            saved ? "bg-green-600 text-foreground" : "bg-primary text-primary-foreground"
+          className={`p-2 rounded-lg transition-all active:scale-95 ${
+            saved ? "text-green-500" : "text-primary"
           }`}
         >
-          {saved ? <Check size={16} /> : <Save size={16} />}
-          {saved ? "Sparat!" : "Spara"}
+          {saved ? <Check size={20} /> : <Save size={20} />}
         </button>
       </div>
-
-      <h1 className="text-lg font-bold mb-6">Inställningar</h1>
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Motor</h2>
