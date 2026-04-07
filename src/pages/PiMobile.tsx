@@ -582,6 +582,7 @@ function GlobalSettingsView({
 /* ── Main Component ── */
 export default function PiMobile() {
   const [view, setView] = useState<"home" | "profile" | "global">("home");
+  const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(33);
@@ -691,10 +692,18 @@ export default function PiMobile() {
     load();
   }, []);
 
-  if (view === "settings") {
+  if (view === "profile") {
     return (
-      <SettingsView
+      <ProfileSettingsView
         cal={cal} setCal={setCal} activePreset={activePreset}
+        onBack={() => setView("home")} onSave={handleSave} saved={saved}
+      />
+    );
+  }
+
+  if (view === "global") {
+    return (
+      <GlobalSettingsView
         tickMs={tickMs} setTickMs={setTickMs}
         sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
@@ -705,17 +714,6 @@ export default function PiMobile() {
       />
     );
   }
-
-  return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-          <span className="text-sm font-semibold">Lotus Light</span>
-        </div>
-        <button onClick={() => setView("settings")} className="p-2 rounded-lg active:bg-accent">
-          <Settings size={20} className="text-muted-foreground" />
-        </button>
       </div>
 
       <div className="flex gap-4 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
