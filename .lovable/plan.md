@@ -1,34 +1,49 @@
 
 
-## Hårdkoda Hi-shelf EQ till 6 dB
+## BLE Fade-test — "Accelererande trappa"
 
-### Ändringar
+### Koncept
+Pi:n kör en fade-sekvens (0→255→0) på en kanal (t.ex. rött) med ökande hastighet per steg. Varje steg har fler fade-steg per sekund. Mobilen visar live vilken hastighet (w/s) som körs. Användaren trycker "Stopp" när lampan slutar se mjuk ut — det är din BLE-gräns.
 
-**1. `src/pages/PiMobile.tsx`**
-- Ta bort `hiShelfGainDb` från `Cal`-typen och alla preset-objekt
-- Ta bort slider-blocket (rad ~375–383)
-- Ta bort `hiShelfGainDb` från save-payload och hydrate-logiken
-- Hårdkoda `hiShelfGainDb: 6` i save-anropet
+### Steg
 
-**2. `src/lib/engine/lightCalibration.ts`**
-- Behåll `hiShelfGainDb: 6` i `DEFAULT_CALIBRATION` (används av lightEngine)
-- Ingen ändring behövs — värdet är redan 6
+```text
+Steg 1:  10 w/s  — fade 0→255→0 i ~25 steg (långsam, tydlig)
+Steg 2:  20 w/s  — samma fade, dubbelt så snabbt
+Steg 3:  30 w/s
+Steg 4:  40 w/s
+Steg 5:  50 w/s
+...upp till 100 w/s
+```
 
-**3. `src/lib/engine/lightEngine.ts`**
-- Byt `this.cal.hiShelfGainDb` → konstant `6` för hi-shelf gain
-- Alternativt: behåll som är, den läser alltid 6 från default
+Varje steg kör 2 fulla cykler (upp+ner), sedan kort paus, sedan nästa steg.
 
-**4. `pi/src/piEngine.ts`**
-- Hårdkoda `setHiShelfGain(6)` istället för `setHiShelfGain(this.cal.hiShelfGainDb)`
-- Ta bort `hiShelfGainDb` från cal-typen om den inte längre skickas
+### Tekniska ändringar
 
-**5. `pi/src/alsaMic.ts`**
-- Ta bort `setHiShelfGain()` export — sätt `hsGain = Math.pow(10, 6/20)` som fast konstant
-- Ta bort `hiShelfGainDb` variabel
+**1. `pi/src/configServer.ts`** — Ny endpoint `POST /api/ble-fade-test`
 
-**6. `src/components/CalibrationOverlay.tsx`**
-- Ta bort `hiShelfGainDb: 0` override i test-kalibrering (rad ~383), låt default gälla
+- Importerar `sendToBLE`, `resetLastSent` från nobleBle
+- Startar en fade-sekvens som körs helt server-side (ingen HTTP per steg)
+- Varje steg: beräknar intervall = `1000 / targetWps`, kör fade 0→255→0 med `resetLastSent()` före varje write för att bypassa dedup
+- Exponerar `GET /api/ble-fade-test/status` som returnerar `{ running, currentWps }` — mobilen pollar denna
+- `POST /api/ble-fade-test/stop` avbryter testet, returnerar senaste wps
 
-### Sammanfattning
-6 filer ändras. Slutresultat: hi-shelf EQ är alltid 6 dB, ingen slider synlig, mindre kod att underhålla.
+**2. `pi/src/nobleBle.ts`** — Ny export: `sendRawColor(r,g,b)`
+
+- Skriver direkt till BLE utan dedup/brightness-scaling — specifikt för testet
+- Återanvänder pre-allokerade buffern, sätter `writeInFlight = false` och `resetLastSent()` internt
+
+**3. `src/pages/PiMobile.tsx`** — Ny sektion "⚡ BLE Hastighetstest"
+
+- Knapp "Starta test" → `POST /api/ble-fade-test`
+- Under körning: pollar `/api/ble-fade-test/status` var 500ms
+- Visar stort tal: **"40 w/s"** med animerad progress-bar
+- Knapp "Stopp — lampan hackar" → `POST /api/ble-fade-test/stop`
+- Visar resultat: "Din lampa klarar ~40 w/s (25ms tickMs)"
+- Erbjuder knapp "Använd detta" som sätter tickMs via befintlig `/api/tick-ms`
+
+### Varför detta fungerar
+- Hela faden körs lokalt på Pi:n — ingen nätverkslatens per steg
+- Fire-and-forget är inget problem — vi mäter inte responstid, vi mäter visuellt resultat
+- Fade (inte strobe) gör det lätt att se när lampan "tappar steg" och börjar hoppa
 
