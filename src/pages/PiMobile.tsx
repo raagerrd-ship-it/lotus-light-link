@@ -770,9 +770,27 @@ export default function PiMobile() {
         </div>
       </div>
 
-      <div className="flex gap-4 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
-        <div className="flex items-center gap-1.5"><Bluetooth size={14} /><span>2 enheter</span></div>
-        <div className="flex items-center gap-1.5"><Music size={14} /><span>▶ Bohemian Rhapsody</span></div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Bluetooth size={14} />
+          <span>{liveBleCount != null ? `${liveBleCount} enhet${liveBleCount !== 1 ? 'er' : ''}` : '—'}</span>
+        </div>
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <Music size={14} className="shrink-0" />
+          <span className="truncate">{liveTrack ? `▶ ${liveTrack}` : 'Ingen låt'}</span>
+        </div>
+        {livePalette.length > 0 && (
+          <div className="flex gap-1 shrink-0">
+            {livePalette.map((c, i) => (
+              <div
+                key={i}
+                className="w-4 h-4 rounded-full border border-border/50"
+                style={{ backgroundColor: `rgb(${c[0]},${c[1]},${c[2]})` }}
+                title={`rgb(${c[0]},${c[1]},${c[2]})`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Live chart */}
