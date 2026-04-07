@@ -821,6 +821,105 @@ export default function PiMobile() {
         </div>
       </section>
 
+      {/* BLE Device */}
+      <section className="mb-8">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">BLE-enhet</h2>
+
+        {bleConnectedId ? (
+          <div className="bg-secondary/50 rounded-xl p-3 mb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bluetooth size={16} className="text-primary" />
+                <span className="text-sm font-medium">{getConnectedNames()[0] ?? bleConnectedId}</span>
+                <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">Ansluten</span>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch(`${piBase}/api/ble/forget`, { method: 'POST' });
+                    setBleConnectedId(null);
+                    setBleSavedId(null);
+                  } catch {}
+                }}
+                className="p-1.5 rounded-lg text-muted-foreground active:text-destructive"
+                title="Glöm enhet"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        ) : bleSavedId ? (
+          <div className="bg-secondary/50 rounded-xl p-3 mb-3">
+            <div className="flex items-center gap-2">
+              <Bluetooth size={16} className="text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Söker sparad enhet…</span>
+              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+            </div>
+          </div>
+        ) : null}
+
+        <button
+          onClick={async () => {
+            setBleScanning(true);
+            setBleScanResults([]);
+            try {
+              const r = await fetch(`${piBase}/api/ble/scan`, { method: 'POST', signal: AbortSignal.timeout(15000) });
+              const data = await r.json();
+              setBleScanResults(data.devices ?? []);
+            } catch {}
+            setBleScanning(false);
+          }}
+          disabled={bleScanning}
+          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {bleScanning ? (
+            <><Loader2 size={16} className="animate-spin" /> Söker…</>
+          ) : (
+            <><Search size={16} /> Sök efter enheter</>
+          )}
+        </button>
+
+        {bleScanResults.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {bleScanResults.map((d) => (
+              <button
+                key={d.id}
+                onClick={async () => {
+                  setBleConnecting(d.id);
+                  try {
+                    const r = await fetch(`${piBase}/api/ble/select`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ deviceId: d.id }),
+                    });
+                    const data = await r.json();
+                    if (data.ok) {
+                      setBleConnectedId(d.id);
+                      setBleSavedId(d.id);
+                      setBleScanResults([]);
+                    }
+                  } catch {}
+                  setBleConnecting(null);
+                }}
+                disabled={bleConnecting === d.id}
+                className={`w-full flex items-center justify-between p-3 rounded-xl text-sm transition-all active:scale-[0.98] ${
+                  d.id === bleConnectedId ? 'bg-primary/10 ring-1 ring-primary' : 'bg-secondary/50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Bluetooth size={14} />
+                  <span className="font-medium">{d.name}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span className="text-[10px]">{d.rssi} dBm</span>
+                  {bleConnecting === d.id && <Loader2 size={14} className="animate-spin" />}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Auto TV-mode toggle */}
       <section className="mb-8">
         <label className="flex items-center justify-between">
