@@ -1,12 +1,12 @@
 /**
  * Noble-based BLE driver for a SINGLE BLEDOM LED strip on Raspberry Pi.
- * Optimized for minimum latency: no Map, no Promise.allSettled, direct write.
- * 
- * Single-device architecture — run multiple instances for multiple lights.
+ * Supports scan → list → user-select → auto-reconnect flow.
+ * Persists chosen device ID for automatic reconnection on restart.
  */
 
 // @ts-ignore — noble types are approximate
 import noble from '@abandonware/noble';
+import { getItem, setItem } from './storage.js';
 
 const SERVICE_UUID = 'fff0';
 const CHAR_UUID = 'fff3';
@@ -20,13 +20,28 @@ export interface PiCharacteristic {
   deviceId?: string;
 }
 
+/** A discovered but not-yet-connected device */
+export interface DiscoveredDevice {
+  id: string;
+  name: string;
+  rssi: number;
+}
+
 // ── Single device state ──
 let device: {
   peripheral: any;
   characteristic: PiCharacteristic;
   mode: DeviceMode;
   name: string;
+  id: string;
 } | null = null;
+
+// ── Discovered devices from last scan ──
+let lastScanResults: DiscoveredDevice[] = [];
+let discoveredPeripherals = new Map<string, any>();
+
+// ── Saved device ID (persisted) ──
+let savedDeviceId: string | null = getItem('ble-device-id') ?? null;
 
 // Pre-allocated write buffer (single, reused every tick — zero alloc)
 const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
@@ -64,7 +79,7 @@ export function resetLastSent(): void {
   lastWriteTime = 0;
 }
 
-/** Ultra-fast single-device BLE write — no Map, no array, no Promise.allSettled */
+/** Ultra-fast single-device BLE write */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number): Promise<void> {
   if (!device) return;
 
@@ -79,34 +94,34 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
     bleStats.skipDeltaCount++;
     return;
   }
-  lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
-
-  // Write directly into pre-allocated buffer
-  let buf: Buffer;
-  if (device.mode === 'brightness') {
-    brightBuf[3] = cbr;
-    buf = brightBuf;
-  } else {
-    writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
-    buf = writeBuf;
-  }
 
   writeInFlight = true;
-  const t0 = performance.now();
-  try {
-    await device.characteristic.writeAsync(buf, true);
+  const now = performance.now();
 
-    const now = performance.now();
-    const lat = now - t0;
-    bleStats.writeLatMs = Math.round(lat * 10) / 10;
-    bleStats.writeLatAvgMs = Math.round((lat * 0.2 + bleStats.writeLatAvgMs * 0.8) * 10) / 10;
+  try {
+    if (device.mode === 'brightness') {
+      brightBuf[3] = cbr;
+      await device.characteristic.writeAsync(brightBuf, true);
+    } else {
+      writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
+      await device.characteristic.writeAsync(writeBuf, true);
+    }
+
+    lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
+    bleStats.sentCount++;
+
+    const elapsed = performance.now() - now;
+    bleStats.writeLatMs = Math.round(elapsed * 10) / 10;
+    bleStats.writeLatAvgMs = Math.round(
+      (bleStats.writeLatAvgMs * 0.9 + elapsed * 0.1) * 10
+    ) / 10;
+
     if (lastWriteTime > 0) {
       bleStats.effectiveIntervalMs = Math.round(now - lastWriteTime);
     }
     lastWriteTime = now;
-    bleStats.sentCount++;
   } catch {
-    // Fire-and-forget — don't block pipeline
+    // fire-and-forget
   } finally {
     writeInFlight = false;
   }
@@ -120,34 +135,144 @@ export function getConnectedNames(): string[] {
   return device ? [device.name] : [];
 }
 
+export function getConnectedDeviceId(): string | null {
+  return device?.id ?? null;
+}
+
+export function getSavedDeviceId(): string | null {
+  return savedDeviceId;
+}
+
+export function getLastScanResults(): DiscoveredDevice[] {
+  return lastScanResults;
+}
+
+export function isScanning(): boolean {
+  return scanning;
+}
+
 /**
- * Scan for and connect to the FIRST BLEDOM device found.
- * Single-device model — stops scanning after first match.
+ * Scan for all BLEDOM devices and return the list.
+ * Does NOT auto-connect — user picks from the list.
  */
 let scanning = false;
 
-export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
+export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
   if (scanning) {
-    console.log('[BLE] Scan already in progress, skipping');
-    return 0;
-  }
-  if (device) {
-    console.log('[BLE] Already connected, skipping scan');
-    return 0;
+    console.log('[BLE] Scan already in progress');
+    return lastScanResults;
   }
   scanning = true;
+  lastScanResults = [];
+  discoveredPeripherals.clear();
+
+  try {
+    return await new Promise((resolve) => {
+      const onDiscover = (peripheral: any) => {
+        const name = peripheral.advertisement?.localName ?? '';
+        if (!/^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(name)) return;
+        const id = peripheral.id;
+        if (discoveredPeripherals.has(id)) return;
+
+        discoveredPeripherals.set(id, peripheral);
+        const entry: DiscoveredDevice = { id, name, rssi: peripheral.rssi ?? -100 };
+        lastScanResults.push(entry);
+        console.log(`[BLE] Discovered: ${name} (${id}) RSSI: ${entry.rssi}`);
+      };
+
+      noble.on('discover', onDiscover);
+
+      const timer = setTimeout(() => {
+        noble.removeListener('discover', onDiscover);
+        noble.stopScanningAsync().catch(() => {});
+        console.log(`[BLE] Scan complete — found ${lastScanResults.length} device(s)`);
+        resolve(lastScanResults);
+      }, timeoutMs);
+
+      const startScan = () => {
+        noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
+      };
+
+      if (noble.state === 'poweredOn') {
+        startScan();
+      } else {
+        noble.once('stateChange', (state: string) => {
+          if (state === 'poweredOn') startScan();
+        });
+      }
+    });
+  } finally {
+    scanning = false;
+  }
+}
+
+/**
+ * Connect to a specific device by ID (from scan results).
+ * Saves the ID for auto-reconnect on restart.
+ */
+export async function selectDevice(deviceId: string): Promise<boolean> {
+  const peripheral = discoveredPeripherals.get(deviceId);
+  if (!peripheral) {
+    console.error(`[BLE] Device ${deviceId} not in scan results`);
+    return false;
+  }
+
+  // Disconnect current if any
+  if (device) {
+    try { await device.peripheral.disconnectAsync(); } catch {}
+    device = null;
+    resetLastSent();
+  }
+
+  try {
+    await connectPeripheral(peripheral);
+    savedDeviceId = deviceId;
+    setItem('ble-device-id', deviceId);
+    console.log(`[BLE] Saved device: ${deviceId}`);
+    return true;
+  } catch (e: any) {
+    console.error(`[BLE] Failed to connect to ${deviceId}: ${e.message}`);
+    return false;
+  }
+}
+
+/** Forget saved device and disconnect */
+export async function forgetDevice(): Promise<void> {
+  savedDeviceId = null;
+  setItem('ble-device-id', '');
+  if (device) {
+    try { await device.peripheral.disconnectAsync(); } catch {}
+    device = null;
+    resetLastSent();
+  }
+  console.log('[BLE] Device forgotten');
+}
+
+/**
+ * Auto-connect to saved device if available.
+ * Scans and connects only to the previously selected device.
+ */
+export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
+  if (!savedDeviceId) {
+    console.log('[BLE] No saved device — waiting for user selection');
+    return 0;
+  }
+  if (device) return 1;
+  if (scanning) return 0;
+
+  scanning = true;
+  console.log(`[BLE] Scanning for saved device: ${savedDeviceId}`);
 
   try {
     return await new Promise((resolve) => {
       let found: any = null;
 
       const onDiscover = (peripheral: any) => {
-        if (found) return; // only take the first
-        const name = peripheral.advertisement?.localName ?? '';
-        if (/^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(name)) {
-          console.log(`[BLE] Found: ${name} (${peripheral.id})`);
+        if (found) return;
+        if (peripheral.id === savedDeviceId) {
+          const name = peripheral.advertisement?.localName ?? peripheral.id;
+          console.log(`[BLE] Found saved device: ${name}`);
           found = peripheral;
-          // Stop scanning immediately — we only need one
           noble.stopScanningAsync().catch(() => {});
           noble.removeListener('discover', onDiscover);
           clearTimeout(timer);
@@ -161,7 +286,7 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
           await connectPeripheral(found);
           resolve(1);
         } catch (e: any) {
-          console.error(`[BLE] Connect failed: ${e.message}`);
+          console.error(`[BLE] Auto-connect failed: ${e.message}`);
           resolve(0);
         }
       };
@@ -172,7 +297,7 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
         noble.removeListener('discover', onDiscover);
         noble.stopScanningAsync().catch(() => {});
         if (!found) {
-          console.log('[BLE] Scan timeout — no device found');
+          console.log('[BLE] Saved device not found within timeout');
           resolve(0);
         }
       }, timeoutMs);
@@ -190,6 +315,11 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
   } finally {
     scanning = false;
   }
+}
+
+// Legacy scanAndConnect — now delegates to autoConnectSaved
+export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
+  return autoConnectSaved(timeoutMs);
 }
 
 async function connectPeripheral(peripheral: any): Promise<void> {
@@ -213,7 +343,7 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   // Set hardware brightness to max
   await char.writeAsync(brightMaxBuf, true);
 
-  device = { peripheral, characteristic: char, mode: 'rgb', name };
+  device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
 
   // Auto-reconnect on disconnect
   peripheral.once('disconnect', () => {
@@ -236,7 +366,7 @@ async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0):
     return;
   }
 
-  if (device) return; // already reconnected
+  if (device) return;
 
   const delay = baseDelay * Math.pow(2, attempt);
   console.log(`[BLE] ${name} — reconnect attempt ${attempt + 1}/${maxAttempts} in ${delay}ms`);
@@ -278,12 +408,12 @@ export async function disconnect(): Promise<void> {
 export const disconnectAll = disconnect;
 export function setExpectedDeviceCount(_n: number): void { /* no-op in single-device mode */ }
 
-/** Background reconnect loop — scans when disconnected */
+/** Background reconnect loop — tries to connect to saved device when disconnected */
 export function startReconnectLoop(intervalMs = 30000): NodeJS.Timeout {
   return setInterval(async () => {
-    if (!device) {
-      console.log('[BLE] No device connected, scanning...');
-      await scanAndConnect(10000);
+    if (!device && savedDeviceId) {
+      console.log('[BLE] No device connected, scanning for saved device...');
+      await autoConnectSaved(10000);
     }
   }, intervalMs);
 }
