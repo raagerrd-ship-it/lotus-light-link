@@ -247,6 +247,7 @@ export class PiLightEngine {
 
   setColor(rgb: [number, number, number]) { this.color = rgb; }
   setPalette(palette: [number, number, number][]) { this._palette = palette; this._paletteIndex = 0; }
+  getPalette(): [number, number, number][] { return this._palette; }
   private _palette: [number, number, number][] = [];
   private _paletteIndex = 0;
   private _paletteTickCounter = 0;
