@@ -32,6 +32,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         connected: getConnectedCount(),
         devices: getConnectedNames(),
         stats: bleStats,
+        savedDeviceId: getSavedDeviceId(),
+        connectedDeviceId: getConnectedDeviceId(),
+        scanning: isScanning(),
       },
       sonos,
       engine: {
@@ -41,6 +44,38 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         palette: engine.getPalette(),
       },
     });
+  });
+
+  // --- BLE Device Management ---
+  app.post('/api/ble/scan', async (_req, res) => {
+    if (isScanning()) {
+      return res.status(409).json({ error: 'Scan already in progress' });
+    }
+    const devices = await scanForDevices(10000);
+    res.json({ ok: true, devices });
+  });
+
+  app.get('/api/ble/devices', (_req, res) => {
+    res.json({
+      devices: getLastScanResults(),
+      savedDeviceId: getSavedDeviceId(),
+      connectedDeviceId: getConnectedDeviceId(),
+      scanning: isScanning(),
+    });
+  });
+
+  app.post('/api/ble/select', async (req, res) => {
+    const { deviceId } = req.body;
+    if (typeof deviceId !== 'string') {
+      return res.status(400).json({ error: 'Need deviceId' });
+    }
+    const ok = await selectDevice(deviceId);
+    res.json({ ok });
+  });
+
+  app.post('/api/ble/forget', async (_req, res) => {
+    await forgetDevice();
+    res.json({ ok: true });
   });
 
   // --- Calibration ---
