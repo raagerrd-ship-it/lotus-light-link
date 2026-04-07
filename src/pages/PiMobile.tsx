@@ -398,7 +398,7 @@ function ProfileSettingsView({
         <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
           <ArrowLeft size={20} />
         </button>
-        <span className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full">{activePreset}</span>
+        <span className="text-sm font-semibold bg-accent text-accent-foreground px-3 py-1 rounded-full">{activePreset}</span>
         <button
           onClick={onSave}
           className={`p-2 rounded-lg transition-all active:scale-95 ${
