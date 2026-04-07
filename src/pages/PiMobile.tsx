@@ -396,22 +396,17 @@ function ProfileSettingsView({
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
       <div className="flex items-center justify-between mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
-          <ArrowLeft size={20} /><span className="text-sm">Tillbaka</span>
+          <ArrowLeft size={20} />
         </button>
+        <span className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full">{activePreset}</span>
         <button
           onClick={onSave}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-95 ${
-            saved ? "bg-green-600 text-foreground" : "bg-primary text-primary-foreground"
+          className={`p-2 rounded-lg transition-all active:scale-95 ${
+            saved ? "text-green-500" : "text-primary"
           }`}
         >
-          {saved ? <Check size={16} /> : <Save size={16} />}
-          {saved ? "Sparat!" : "Spara"}
+          {saved ? <Check size={20} /> : <Save size={20} />}
         </button>
-      </div>
-
-      <div className="flex items-center gap-2 mb-6">
-        <h1 className="text-lg font-bold">Profil</h1>
-        <span className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full">{activePreset}</span>
       </div>
 
       <section className="space-y-5 mb-8">
