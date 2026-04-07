@@ -34,6 +34,7 @@ export interface SonosNowPlaying {
   mediaType: 'radio' | 'track' | null;
   volume: number | null;
   source: 'local';
+  isTvMode: boolean;
 }
 
 export function useSonosNowPlaying() {
@@ -124,18 +125,46 @@ export function useSonosNowPlaying() {
         return;
       }
 
-      // No trackName means TV/SPDIF input or idle — treat as PAUSED
+      // No trackName — check for TV-mode (PLAYING + no metadata)
       if (!s.trackName) {
-        const forcedState = 'PLAYBACK_STATE_PAUSED';
-        const prev = dataRef.current;
-        if (prev && prev.playbackState !== forcedState) {
+        const isPlaying = (s.playbackState ?? '').includes('PLAYING');
+        const autoTv = localStorage.getItem('auto-tv-mode') === 'true';
+        
+        if (autoTv && isPlaying) {
+          // TV-mode: keep PLAYING state, set isTvMode
+          const prev = dataRef.current;
           apply({
-            ...prev,
-            playbackState: forcedState,
-            volume: s.volume ?? prev.volume,
+            trackName: null,
+            artistName: null,
+            albumName: null,
+            albumArtUrl: null,
+            playbackState: s.playbackState ?? 'PLAYBACK_STATE_PLAYING',
+            durationMs: null,
+            positionMs: null,
             receivedAt: performance.now(),
             smoothedRtt: rtt,
+            nextTrackName: null,
+            nextArtistName: null,
+            nextAlbumArtUrl: null,
+            mediaType: null,
+            volume: s.volume ?? prev?.volume ?? null,
+            source: 'local',
+            isTvMode: true,
           });
+        } else {
+          // Original behavior: force PAUSED
+          const forcedState = 'PLAYBACK_STATE_PAUSED';
+          const prev = dataRef.current;
+          if (prev && (prev.playbackState !== forcedState || prev.isTvMode)) {
+            apply({
+              ...prev,
+              playbackState: forcedState,
+              volume: s.volume ?? prev.volume,
+              receivedAt: performance.now(),
+              smoothedRtt: rtt,
+              isTvMode: false,
+            });
+          }
         }
         return;
       }
@@ -165,6 +194,7 @@ export function useSonosNowPlaying() {
           mediaType: s.mediaType === 'radio' ? 'radio' : s.mediaType === 'track' ? 'track' : null,
           volume: s.volume ?? prev?.volume ?? null,
           source: 'local',
+          isTvMode: false,
         });
         return;
       }
@@ -191,6 +221,7 @@ export function useSonosNowPlaying() {
         mediaType: s.mediaType === 'radio' ? 'radio' : s.mediaType === 'track' ? 'track' : prev!.mediaType ?? null,
         volume: s.volume ?? prev!.volume ?? null,
         source: 'local',
+        isTvMode: false,
       });
     };
 
