@@ -60,6 +60,19 @@ export interface LightCalibration {
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
+  autoTvMode: boolean;
+}
+
+const AUTO_TV_MODE_KEY = 'auto-tv-mode';
+
+export function getAutoTvMode(): boolean {
+  try {
+    return localStorage.getItem(AUTO_TV_MODE_KEY) === 'true';
+  } catch { return false; }
+}
+
+export function setAutoTvMode(enabled: boolean): void {
+  localStorage.setItem(AUTO_TV_MODE_KEY, enabled ? 'true' : 'false');
 }
 
 export const DEFAULT_CALIBRATION: LightCalibration = {
@@ -74,6 +87,7 @@ export const DEFAULT_CALIBRATION: LightCalibration = {
   perceptualCurve: false,
   paletteMode: 'off', paletteRotationSpeed: 8,
   agcVolumeTable: {},
+  autoTvMode: false,
 };
 
 export function getCalibration(): LightCalibration {

@@ -30,11 +30,23 @@ export interface SonosState {
   volume: number | null;
   positionMs: number | null;
   durationMs: number | null;
+  isTvMode: boolean;
 }
 
 type Listener = (state: SonosState) => void;
 
 const listeners = new Set<Listener>();
+let autoTvModeEnabled = false;
+
+export function setAutoTvMode(enabled: boolean): void {
+  autoTvModeEnabled = enabled;
+  console.log(`[Sonos] Auto TV-mode: ${enabled ? 'ON' : 'OFF'}`);
+}
+
+export function getAutoTvMode(): boolean {
+  return autoTvModeEnabled;
+}
+
 let currentState: SonosState = {
   trackName: null,
   artistName: null,
@@ -43,6 +55,7 @@ let currentState: SonosState = {
   volume: null,
   positionMs: null,
   durationMs: null,
+  isTvMode: false,
 };
 
 export function getSonosState(): SonosState {
@@ -77,8 +90,20 @@ function parseStatus(s: any): void {
   }
 
   if (!s.trackName) {
-    if (currentState.playbackState !== 'PLAYBACK_STATE_PAUSED') {
-      apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED' });
+    const isPlaying = (s.playbackState ?? '').includes('PLAYING');
+    if (autoTvModeEnabled && isPlaying) {
+      // TV/SPDIF source: no metadata but playing → TV-mode
+      apply({
+        ...currentState,
+        playbackState: s.playbackState ?? 'PLAYBACK_STATE_PLAYING',
+        volume: s.volume ?? currentState.volume,
+        isTvMode: true,
+      });
+    } else {
+      // No auto-TV or not playing → treat as paused (original behavior)
+      if (currentState.playbackState !== 'PLAYBACK_STATE_PAUSED' || currentState.isTvMode) {
+        apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED', isTvMode: false });
+      }
     }
     return;
   }
@@ -91,6 +116,7 @@ function parseStatus(s: any): void {
     volume: s.volume ?? currentState.volume,
     positionMs: s.positionMillis ?? null,
     durationMs: s.durationMillis ?? null,
+    isTvMode: false,
   });
 }
 
