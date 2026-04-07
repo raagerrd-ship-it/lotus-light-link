@@ -210,6 +210,7 @@ export class PiLightEngine {
   private onsetSize = 0;
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
+  private onsetTarget = 0;  // shaped envelope target for rounded spikes
   private agc: AgcState;
   private cal: LightCalibration;
   private volumeTable: AgcVolumeTable;
