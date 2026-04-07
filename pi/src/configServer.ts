@@ -8,7 +8,7 @@ import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
-import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, type SonosPollerConfig } from './sonosPoller.js';
+import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
   const app = express();
@@ -124,6 +124,22 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       res.json({ ok: true, gamma });
     } else {
       res.status(400).json({ error: 'gamma must be 1.0-3.0' });
+    }
+  });
+
+  // --- Auto TV-mode ---
+  app.get('/api/auto-tv-mode', (_req, res) => {
+    res.json({ enabled: getAutoTvMode() });
+  });
+
+  app.put('/api/auto-tv-mode', (req, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled === 'boolean') {
+      setAutoTvMode(enabled);
+      setItem('auto-tv-mode', enabled ? 'true' : 'false');
+      res.json({ ok: true, enabled });
+    } else {
+      res.status(400).json({ error: 'Need enabled: boolean' });
     }
   });
 
