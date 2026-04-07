@@ -157,7 +157,7 @@ export class LightEngine {
     // Listen for calibration changes
     const reloadCal = () => {
       this.cal = getCalibration();
-      if (this.hiShelf) this.hiShelf.gain.value = this.cal.hiShelfGainDb;
+      if (this.hiShelf) this.hiShelf.gain.value = 6;
     };
     const onStorage = (e: StorageEvent) => { if (e.key === 'light-calibration') reloadCal(); };
     window.addEventListener('storage', onStorage);
@@ -192,7 +192,7 @@ export class LightEngine {
       const hiShelf = audioCtx.createBiquadFilter();
       hiShelf.type = 'highshelf';
       hiShelf.frequency.value = 2000;
-      hiShelf.gain.value = this.cal.hiShelfGainDb;
+      hiShelf.gain.value = 6;
       this.hiShelf = hiShelf;
 
       const analyser = audioCtx.createAnalyser();

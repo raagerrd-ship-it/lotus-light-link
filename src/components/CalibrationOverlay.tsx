@@ -380,7 +380,7 @@ export default function CalibrationOverlay({ onClose, onCalibrationChange, activ
     const neutral: LightCalibration = {
       ...DEFAULT_CALIBRATION,
       bassWeight: 0.5,
-      hiShelfGainDb: 0,
+      
       attackAlpha: 1.0,
       releaseAlpha: 1.0,
       dynamicDamping: 0,
