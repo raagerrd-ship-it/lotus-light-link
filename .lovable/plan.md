@@ -1,49 +1,34 @@
 
 
-## TV-läge med auto-detect toggle
-
-### Koncept
-En toggle-inställning **"Auto TV-läge"** som användaren kan slå på/av. När aktiverad detekterar systemet automatiskt TV/SPDIF-källa (Sonos PLAYING + inget trackName) och växlar till mikrofon-reaktiv belysning. När avaktiverad behålls nuvarande beteende (idle-färg vid saknad metadata).
-
-### Flödesschema
-```text
-Auto TV-läge: PÅ
-  Sonos PLAYING + trackName  →  Normal-profil (musik + palett)
-  Sonos PLAYING + !trackName →  TV-läge (mikrofon-reaktiv, idle-färg)
-  Sonos PAUSED / idle        →  Idle (fast idle-färg)
-
-Auto TV-läge: AV
-  Sonos PLAYING + !trackName →  Idle (nuvarande beteende, PAUSED)
-```
+## Hårdkoda Hi-shelf EQ till 6 dB
 
 ### Ändringar
 
-**1. `src/lib/engine/lightCalibration.ts`** — Ny setting
-- Lägg till `autoTvMode: boolean` i `LightCalibration` (default: `false`)
-- Separat localStorage-nyckel eller del av calibration-objektet
+**1. `src/pages/PiMobile.tsx`**
+- Ta bort `hiShelfGainDb` från `Cal`-typen och alla preset-objekt
+- Ta bort slider-blocket (rad ~375–383)
+- Ta bort `hiShelfGainDb` från save-payload och hydrate-logiken
+- Hårdkoda `hiShelfGainDb: 6` i save-anropet
 
-**2. `pi/src/sonosPoller.ts`** — `isTvMode` i SonosState
-- Nytt fält `isTvMode: boolean` (default `false`)
-- I `parseStatus`: om `!trackName` och playbackState innehåller PLAYING → `isTvMode = true`, behåll PLAYING istället för att tvinga PAUSED
-- Ny funktion `setAutoTvMode(enabled: boolean)` som styr om TV-detection är aktiv
+**2. `src/lib/engine/lightCalibration.ts`**
+- Behåll `hiShelfGainDb: 6` i `DEFAULT_CALIBRATION` (används av lightEngine)
+- Ingen ändring behövs — värdet är redan 6
 
-**3. `src/hooks/useSonosNowPlaying.ts`** — Samma detection i browser
-- Lägg till `isTvMode: boolean` i `SonosNowPlaying`
-- Läs `autoTvMode` från calibration; om aktiv och `!trackName` + PLAYING → `isTvMode = true`
+**3. `src/lib/engine/lightEngine.ts`**
+- Byt `this.cal.hiShelfGainDb` → konstant `6` för hi-shelf gain
+- Alternativt: behåll som är, den läser alltid 6 från default
 
-**4. `src/components/NowPlayingBar.tsx`** — TV-indikator
-- Om `isTvMode` → visa "📺 TV-läge" istället för låtinfo, dölj progress bar
+**4. `pi/src/piEngine.ts`**
+- Hårdkoda `setHiShelfGain(6)` istället för `setHiShelfGain(this.cal.hiShelfGainDb)`
+- Ta bort `hiShelfGainDb` från cal-typen om den inte längre skickas
 
-**5. `src/pages/Calibrate.tsx`** — Toggle i UI
-- Ny switch/toggle: "Auto TV-läge" med beskrivning "Aktivera mikrofon-reaktiv belysning vid TV/SPDIF-källa"
+**5. `pi/src/alsaMic.ts`**
+- Ta bort `setHiShelfGain()` export — sätt `hsGain = Math.pow(10, 6/20)` som fast konstant
+- Ta bort `hiShelfGainDb` variabel
 
-**6. `pi/src/index.ts`** — Engine-hantering
-- Vid `isTvMode` → `engine.setPlaying(true)`, hoppa över palette-extraktion
-- Vid övergång tillbaka → återställ Normal-profil automatiskt
+**6. `src/components/CalibrationOverlay.tsx`**
+- Ta bort `hiShelfGainDb: 0` override i test-kalibrering (rad ~383), låt default gälla
 
-**7. `pi/src/configServer.ts`** — API-endpoint
-- GET/PUT `/api/auto-tv-mode` för att synka toggle till Pi
-
-### Filer som ändras (7 st)
-`lightCalibration.ts`, `sonosPoller.ts`, `useSonosNowPlaying.ts`, `NowPlayingBar.tsx`, `Calibrate.tsx`, `pi/src/index.ts`, `pi/src/configServer.ts`
+### Sammanfattning
+6 filer ändras. Slutresultat: hi-shelf EQ är alltid 6 dB, ingen slider synlig, mindre kod att underhålla.
 
