@@ -724,6 +724,7 @@ export default function PiMobile() {
         setLiveTrack(track);
         setLiveBleCount(data.ble?.connected ?? null);
         setBleConnectedId(data.ble?.connectedDeviceId ?? null);
+        setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
         // Only update palette when track changes (or first load)
         if (track && track !== lastTrackRef.current) {
