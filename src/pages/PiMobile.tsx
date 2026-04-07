@@ -605,6 +605,7 @@ export default function PiMobile() {
   const [bleScanning, setBleScanning] = useState(false);
   const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number }[]>([]);
   const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
+  const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
   const [bleSavedId, setBleSavedId] = useState<string | null>(null);
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
