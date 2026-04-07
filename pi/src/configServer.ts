@@ -38,6 +38,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         running: true,
         tickMs: engine.getTickMs(),
         hz: Math.round(1000 / engine.getTickMs()),
+        palette: engine.getPalette(),
       },
     });
   });

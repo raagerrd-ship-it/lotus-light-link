@@ -599,6 +599,9 @@ export default function PiMobile() {
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [liveTrack, setLiveTrack] = useState<string | null>(null);
+  const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
+  const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Derive Pi base URL from current page (same host, port 3001)
@@ -700,6 +703,33 @@ export default function PiMobile() {
     load();
   }, []);
 
+  // Poll status every 5s to get live track, BLE count, palette
+  const lastTrackRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (view !== 'home') return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(3000) });
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        if (cancelled) return;
+        const track = data.sonos?.trackName ?? null;
+        setLiveTrack(track);
+        setLiveBleCount(data.ble?.connected ?? null);
+        // Only update palette when track changes (or first load)
+        if (track && track !== lastTrackRef.current) {
+          lastTrackRef.current = track;
+          const palette = data.engine?.palette ?? [];
+          setLivePalette(palette);
+        }
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [view, piBase]);
+
   if (view === "profile") {
     return (
       <ProfileSettingsView
@@ -740,9 +770,27 @@ export default function PiMobile() {
         </div>
       </div>
 
-      <div className="flex gap-4 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
-        <div className="flex items-center gap-1.5"><Bluetooth size={14} /><span>2 enheter</span></div>
-        <div className="flex items-center gap-1.5"><Music size={14} /><span>▶ Bohemian Rhapsody</span></div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Bluetooth size={14} />
+          <span>{liveBleCount != null ? `${liveBleCount} enhet${liveBleCount !== 1 ? 'er' : ''}` : '—'}</span>
+        </div>
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <Music size={14} className="shrink-0" />
+          <span className="truncate">{liveTrack ? `▶ ${liveTrack}` : 'Ingen låt'}</span>
+        </div>
+        {livePalette.length > 0 && (
+          <div className="flex gap-1 shrink-0">
+            {livePalette.map((c, i) => (
+              <div
+                key={i}
+                className="w-4 h-4 rounded-full border border-border/50"
+                style={{ backgroundColor: `rgb(${c[0]},${c[1]},${c[2]})` }}
+                title={`rgb(${c[0]},${c[1]},${c[2]})`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Live chart */}
