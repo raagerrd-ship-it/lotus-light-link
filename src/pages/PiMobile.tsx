@@ -831,7 +831,7 @@ export default function PiMobile() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Bluetooth size={16} className="text-primary" />
-                <span className="text-sm font-medium">{getConnectedNames()[0] ?? bleConnectedId}</span>
+                <span className="text-sm font-medium">{bleConnectedName ?? bleConnectedId}</span>
                 <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">Ansluten</span>
               </div>
               <button
