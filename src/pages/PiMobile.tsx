@@ -267,6 +267,117 @@ function SignalPreview({ cal }: { cal: typeof DEFAULT_CAL }) {
   );
 }
 
+/* ── BLE Fade Test ── */
+function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: number) => void }) {
+  const [running, setRunning] = useState(false);
+  const [currentWps, setCurrentWps] = useState(0);
+  const [result, setResult] = useState<number | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
+
+  const postJson = (path: string, body?: unknown) =>
+    fetch(`${piBase}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+
+  const startTest = async () => {
+    setResult(null);
+    setRunning(true);
+    setCurrentWps(0);
+    await postJson('/api/ble-fade-test');
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`${piBase}/api/ble-fade-test/status`);
+        const data = await r.json();
+        setCurrentWps(data.currentWps);
+        if (!data.running) {
+          clearInterval(pollRef.current);
+          setRunning(false);
+        }
+      } catch {}
+    }, 500);
+  };
+
+  const stopTest = async () => {
+    clearInterval(pollRef.current);
+    try {
+      const r = await postJson('/api/ble-fade-test/stop');
+      const data = await r.json();
+      setResult(data.lastWps);
+    } catch {}
+    setRunning(false);
+  };
+
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  const recommendedMs = result ? Math.round(1000 / result) : null;
+
+  return (
+    <div className="mt-6 p-4 rounded-xl bg-secondary/50 border border-border">
+      <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-2">
+        <Zap size={14} /> BLE Hastighetstest
+      </h3>
+      <p className="text-[10px] text-muted-foreground mb-3">
+        Lampan fadar rött snabbare och snabbare. Tryck stopp när den börjar hacka.
+      </p>
+
+      {running ? (
+        <div className="space-y-3">
+          <div className="text-center">
+            <span className="text-3xl font-bold font-mono text-primary">{currentWps}</span>
+            <span className="text-sm text-muted-foreground ml-1">w/s</span>
+          </div>
+          <div className="w-full bg-secondary rounded-full h-2">
+            <div
+              className="bg-primary h-2 rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(100, currentWps)}%` }}
+            />
+          </div>
+          <button
+            onClick={stopTest}
+            className="w-full py-3 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium active:scale-95 transition-transform"
+          >
+            ⏹ Stopp — lampan hackar
+          </button>
+        </div>
+      ) : result ? (
+        <div className="space-y-3">
+          <div className="text-center">
+            <div className="text-sm text-muted-foreground">Din lampa klarar ca</div>
+            <span className="text-3xl font-bold font-mono text-primary">{result}</span>
+            <span className="text-sm text-muted-foreground ml-1">w/s</span>
+            <div className="text-xs text-muted-foreground mt-1">
+              Rekommenderat: <span className="font-mono font-bold">{recommendedMs} ms</span> tick
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { if (result) onResult(result); }}
+              className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium active:scale-95 transition-transform"
+            >
+              <Check size={14} className="inline mr-1" /> Använd {recommendedMs} ms
+            </button>
+            <button
+              onClick={startTest}
+              className="px-4 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium active:scale-95 transition-transform"
+            >
+              Igen
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={startTest}
+          className="w-full py-3 rounded-lg bg-primary text-primary-foreground text-sm font-medium active:scale-95 transition-transform"
+        >
+          ⚡ Starta test
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* ── Settings View ── */
 function SettingsView({
   cal, setCal, activePreset, tickMs, setTickMs,
