@@ -91,6 +91,14 @@ function processFFT(): void {
     totalRms: BIN_COUNT > 0 ? Math.sqrt(totalSum / BIN_COUNT) : 0,
     flux,
   };
+
+  // Debug: log signal levels every ~2 seconds
+  debugTickCount++;
+  if (debugTickCount >= 20) {
+    console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${latestBands.flux.toFixed(6)}`);
+    debugTickCount = 0;
+    debugPeakRaw = 0;
+  }
 }
 
 export function getLatestBands(): BandResult {
