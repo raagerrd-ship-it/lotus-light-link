@@ -145,6 +145,8 @@ export function startMic(): void {
     for (let i = 0; i < samples; i++) {
       const s16 = buf.readInt16LE(i * 2);
       const raw = s16 / 32768;
+      const abs = Math.abs(raw);
+      if (abs > debugPeakRaw) debugPeakRaw = abs;
       ringBuf[ringPos] = applyHighShelfSample(raw);
       ringPos = (ringPos + 1) % FFT_SIZE;
       samplesReceived++;
