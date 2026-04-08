@@ -41,6 +41,10 @@ let samplesReceived = 0; // total samples since last FFT
 // Latest computed bands (polled by engine tick)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
+// Debug: periodic signal level logging
+let debugTickCount = 0;
+let debugPeakRaw = 0;  // peak absolute sample value since last log
+
 const hsGain = Math.pow(10, 6 / 20); // fixed 6dB for INMP441 @ ~1m
 const HS_ALPHA = 0.15; // crossover ~2kHz at 44.1k
 
