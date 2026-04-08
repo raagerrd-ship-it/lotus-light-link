@@ -67,9 +67,9 @@ function applyHighShelfSample(sample: number): number {
 }
 
 function processFFT(): void {
-  // Copy ring buffer in order into pre-allocated buffer
+  // Copy ring buffer in order, apply Blackman window to prevent spectral leakage
   for (let i = 0; i < FFT_SIZE; i++) {
-    const sample = ringBuf[(ringPos + i) % FFT_SIZE];
+    const sample = ringBuf[(ringPos + i) % FFT_SIZE] * blackmanWindow[i];
     orderedBuf[i] = sample;
     fftInput[i][0] = sample;
     fftInput[i][1] = 0;
