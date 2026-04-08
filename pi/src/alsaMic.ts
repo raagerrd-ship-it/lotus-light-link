@@ -41,6 +41,10 @@ let samplesReceived = 0; // total samples since last FFT
 // Latest computed bands (polled by engine tick)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
+// Debug: periodic signal level logging
+let debugTickCount = 0;
+let debugPeakRaw = 0;  // peak absolute sample value since last log
+
 const hsGain = Math.pow(10, 6 / 20); // fixed 6dB for INMP441 @ ~1m
 const HS_ALPHA = 0.15; // crossover ~2kHz at 44.1k
 
@@ -87,6 +91,14 @@ function processFFT(): void {
     totalRms: BIN_COUNT > 0 ? Math.sqrt(totalSum / BIN_COUNT) : 0,
     flux,
   };
+
+  // Debug: log signal levels every ~2 seconds
+  debugTickCount++;
+  if (debugTickCount >= 20) {
+    console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${latestBands.flux.toFixed(6)}`);
+    debugTickCount = 0;
+    debugPeakRaw = 0;
+  }
 }
 
 export function getLatestBands(): BandResult {
@@ -133,6 +145,8 @@ export function startMic(): void {
     for (let i = 0; i < samples; i++) {
       const s16 = buf.readInt16LE(i * 2);
       const raw = s16 / 32768;
+      const abs = Math.abs(raw);
+      if (abs > debugPeakRaw) debugPeakRaw = abs;
       ringBuf[ringPos] = applyHighShelfSample(raw);
       ringPos = (ringPos + 1) % FFT_SIZE;
       samplesReceived++;
