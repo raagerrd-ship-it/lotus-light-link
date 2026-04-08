@@ -19,6 +19,16 @@ const FFT_SIZE = 512;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 
+// Pre-computed Blackman window (matches browser AnalyserNode default)
+const blackmanWindow = new Float64Array(FFT_SIZE);
+{
+  const a0 = 0.42, a1 = 0.5, a2 = 0.08;
+  for (let i = 0; i < FFT_SIZE; i++) {
+    blackmanWindow[i] = a0 - a1 * Math.cos(2 * Math.PI * i / (FFT_SIZE - 1))
+                            + a2 * Math.cos(4 * Math.PI * i / (FFT_SIZE - 1));
+  }
+}
+
 // Frequency band cuts (same as browser engine)
 const LO_CUT = Math.floor(150 / BIN_WIDTH);
 const MID_CUT = Math.floor(2000 / BIN_WIDTH);
@@ -57,9 +67,9 @@ function applyHighShelfSample(sample: number): number {
 }
 
 function processFFT(): void {
-  // Copy ring buffer in order into pre-allocated buffer
+  // Copy ring buffer in order, apply Blackman window to prevent spectral leakage
   for (let i = 0; i < FFT_SIZE; i++) {
-    const sample = ringBuf[(ringPos + i) % FFT_SIZE];
+    const sample = ringBuf[(ringPos + i) % FFT_SIZE] * blackmanWindow[i];
     orderedBuf[i] = sample;
     fftInput[i][0] = sample;
     fftInput[i][1] = 0;
