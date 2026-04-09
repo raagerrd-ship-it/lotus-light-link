@@ -225,7 +225,6 @@ export class PiLightEngine {
 
 
   private _running = false;
-  private _immediate: NodeJS.Immediate | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
   private callbacks: TickCallback[] = [];
 
@@ -367,35 +366,28 @@ export class PiLightEngine {
     console.log(`[Engine] Started (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, hrtime loop)`);
   }
 
+  private _timer: NodeJS.Timeout | null = null;
+
   private startLoop(): void {
-    const tickNs = BigInt(this.tickMs) * 1_000_000n;
-    let nextTick = process.hrtime.bigint() + tickNs;
-
-    const loop = () => {
+    // Use setInterval instead of setImmediate busy-loop to avoid 100% CPU on Pi Zero
+    this._timer = setInterval(() => {
       if (!this._running) return;
-
-      const now = process.hrtime.bigint();
-      if (now >= nextTick) {
-        this.tick();
-        nextTick = now + tickNs;
-      }
-
-      this._immediate = setImmediate(loop);
-    };
-
-    this._immediate = setImmediate(loop);
+      this.tick();
+    }, this.tickMs);
   }
 
   stop(): void {
     this._running = false;
-    if (this._immediate) { clearImmediate(this._immediate); this._immediate = null; }
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
   }
 
   /** Restart tick timer only — preserves all smoothing/AGC state */
   restartTimer(): void {
-    this.stop();
+    this._running = false;
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     this._running = true;
     this.startLoop();
     this.saveTimer = setInterval(() => {

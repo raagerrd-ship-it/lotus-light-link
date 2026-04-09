@@ -60,13 +60,21 @@ async function main() {
 
   // 3. Start microphone
   console.log('[Boot] Starting ALSA microphone...');
-  startMic();
+  try {
+    startMic();
+  } catch (e: any) {
+    console.error('[Boot] Mic failed (continuing without):', e.message);
+  }
 
-  // 4. Scan for BLE devices
+  // 4. Scan for BLE devices (non-fatal)
   console.log('[Boot] Scanning for BLEDOM devices...');
-  const found = await scanAndConnect(15000);
-  console.log(`[Boot] Found ${found} BLE device(s)`);
-  setExpectedDeviceCount(found);
+  try {
+    const found = await scanAndConnect(15000);
+    console.log(`[Boot] Found ${found} BLE device(s)`);
+    setExpectedDeviceCount(found);
+  } catch (e: any) {
+    console.error('[Boot] BLE scan failed (continuing):', e.message);
+  }
 
   // Start background reconnect loop
   const reconnectTimer = startReconnectLoop(30000);
@@ -86,7 +94,11 @@ async function main() {
   } catch {}
 
   console.log('[Boot] Starting Sonos poller...');
-  await startSonosPoller(sonosConfig);
+  try {
+    await startSonosPoller(sonosConfig);
+  } catch (e: any) {
+    console.error('[Boot] Sonos poller failed (continuing):', e.message);
+  }
 
   // React to Sonos state changes
   let lastArtUrl: string | null = null;
