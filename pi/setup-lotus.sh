@@ -96,9 +96,9 @@ fi
 # ─── 6. Build Pi runtime ─────────────────────────────────
 echo "[6/9] Installing dependencies & building..."
 cd "$APP_DIR/pi"
-npm install --no-audit --no-fund 2>&1 | tail -1
-npm run build
-npm prune --production 2>/dev/null
+NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund 2>&1 | tail -1
+NODE_OPTIONS="--max-old-space-size=256" npm run build
+npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
 echo "  ✓ Build complete"
 
 # ─── 7. BLE permissions ──────────────────────────────────
@@ -116,6 +116,9 @@ echo "  ✓ Port: ${PORT}, CPU core: ${CORE}"
 
 # ─── 9. systemd services ─────────────────────────────────
 echo "[9/9] Installing systemd services..."
+
+# Ensure update script is executable
+chmod +x "$APP_DIR/pi/update-services.sh"
 
 # Main service
 cat > /etc/systemd/system/lotus-light.service << EOF

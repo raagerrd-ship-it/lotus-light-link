@@ -61,7 +61,7 @@ if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
   
   # Rebuild TypeScript
   sudo NODE_OPTIONS="--max-old-space-size=256" npm run build
-  sudo npm prune --production 2>/dev/null || true
+  sudo npm prune --omit=dev 2>/dev/null || sudo npm prune --production 2>/dev/null || true
   echo "$LOG_PREFIX Build complete ✓"
   
   # Restart service
