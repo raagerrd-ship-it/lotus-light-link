@@ -133,13 +133,12 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=BRIDGE_URL=http://localhost:3000/api/sonos
-Environment=CONFIG_PORT=3001
+Environment=CONFIG_PORT=${PORT}
 Environment=TICK_MS=30
 
 # Resource limits & CPU pinning
-# Core 0=Cast Away Web, Core 1=Lotus Light, Core 2=OS, Core 3=Sonos Proxy
 MemoryMax=128M
-AllowedCPUs=${CPU_CORE}
+AllowedCPUs=${CORE}
 CPUQuota=100%
 Nice=-5
 
