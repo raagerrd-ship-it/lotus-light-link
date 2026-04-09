@@ -115,14 +115,14 @@ chmod +x "$PI_DIR/uninstall-lotus.sh" 2>/dev/null || true
 
 # Passwordless sudo for setcap and systemctl (used by auto-updater)
 SUDOERS_FILE="/etc/sudoers.d/lotus-light"
-sudo tee "$SUDOERS_FILE" > /dev/null << SUDOEOF
-# Lotus Light Link — allow pi user to manage BLE caps and service without password
-${USER} ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_raw+eip *
-${USER} ALL=(root) NOPASSWD: /bin/systemctl restart ${SERVICE_NAME}
-${USER} ALL=(root) NOPASSWD: /bin/systemctl stop ${SERVICE_NAME}
-${USER} ALL=(root) NOPASSWD: /bin/systemctl start ${SERVICE_NAME}
+cat > "$SUDOERS_FILE" 2>/dev/null || sudo tee "$SUDOERS_FILE" > /dev/null << SUDOEOF
+# Lotus Light Link — allow target user to manage BLE caps and service without password
+${TARGET_USER} ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_raw+eip *
+${TARGET_USER} ALL=(root) NOPASSWD: /bin/systemctl restart ${SERVICE_NAME}
+${TARGET_USER} ALL=(root) NOPASSWD: /bin/systemctl stop ${SERVICE_NAME}
+${TARGET_USER} ALL=(root) NOPASSWD: /bin/systemctl start ${SERVICE_NAME}
 SUDOEOF
-sudo chmod 0440 "$SUDOERS_FILE"
+chmod 0440 "$SUDOERS_FILE" 2>/dev/null || sudo chmod 0440 "$SUDOERS_FILE"
 echo "  ✓ sudoers-regel skapad"
 
 # ─── 8. Validate core arg ────────────────────────────────
@@ -133,10 +133,11 @@ fi
 
 # ─── 9. User-level systemd services ─────────────────────
 echo "[8/8] Skapar systemd-tjänster..."
-mkdir -p "$HOME/.config/systemd/user"
+SYSTEMD_USER_DIR="$TARGET_HOME/.config/systemd/user"
+mkdir -p "$SYSTEMD_USER_DIR"
 
 # Main service
-cat > "$HOME/.config/systemd/user/${SERVICE_NAME}.service" << EOF
+cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}.service" << EOF
 [Unit]
 Description=Lotus Light Link — Audio-reactive BLE LED controller
 After=network.target bluetooth.target
@@ -163,18 +164,18 @@ WantedBy=default.target
 EOF
 
 # Auto-update service + timer
-cat > "$HOME/.config/systemd/user/${SERVICE_NAME}-update.service" << EOF
+cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.service" << EOF
 [Unit]
 Description=Lotus Light Link — Auto-update from GitHub
 
 [Service]
 Type=oneshot
 ExecStart=${PI_DIR}/update-services.sh
-Environment=HOME=$HOME
+Environment=HOME=$TARGET_HOME
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 EOF
 
-cat > "$HOME/.config/systemd/user/${SERVICE_NAME}-update.timer" << EOF
+cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.timer" << EOF
 [Unit]
 Description=Lotus Light Link — Auto-update timer (every 5 min)
 
@@ -188,7 +189,7 @@ WantedBy=timers.target
 EOF
 
 # Nightly restart for stability (05:00)
-cat > "$HOME/.config/systemd/user/${SERVICE_NAME}-restart.service" << EOF
+cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-restart.service" << EOF
 [Unit]
 Description=Restart Lotus Light Link
 
@@ -197,7 +198,7 @@ Type=oneshot
 ExecStart=/bin/systemctl --user restart ${SERVICE_NAME}
 EOF
 
-cat > "$HOME/.config/systemd/user/${SERVICE_NAME}-restart.timer" << EOF
+cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-restart.timer" << EOF
 [Unit]
 Description=Nightly restart of Lotus Light Link
 
@@ -210,17 +211,31 @@ WantedBy=timers.target
 EOF
 
 # Enable linger so user services survive logout
-loginctl enable-linger "$USER" 2>/dev/null || true
+loginctl enable-linger "$TARGET_USER" 2>/dev/null || true
 
-systemctl --user daemon-reload
-systemctl --user enable "$SERVICE_NAME"
-systemctl --user enable "${SERVICE_NAME}-update.timer"
-systemctl --user enable "${SERVICE_NAME}-restart.timer"
+# Helper: run systemctl --user as TARGET_USER (works both as root and as the user)
+run_user_systemctl() {
+  if [ "$EUID" -eq 0 ]; then
+    sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" systemctl --user "$@"
+  else
+    systemctl --user "$@"
+  fi
+}
+
+# Fix ownership if created as root
+if [ "$EUID" -eq 0 ]; then
+  chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/systemd" 2>/dev/null || true
+fi
+
+run_user_systemctl daemon-reload
+run_user_systemctl enable "$SERVICE_NAME"
+run_user_systemctl enable "${SERVICE_NAME}-update.timer"
+run_user_systemctl enable "${SERVICE_NAME}-restart.timer"
 
 # Start everything
-systemctl --user start "${SERVICE_NAME}-update.timer"
-systemctl --user start "${SERVICE_NAME}-restart.timer"
-systemctl --user start "$SERVICE_NAME"
+run_user_systemctl start "${SERVICE_NAME}-update.timer"
+run_user_systemctl start "${SERVICE_NAME}-restart.timer"
+run_user_systemctl start "$SERVICE_NAME"
 
 echo "  ✓ Tjänster skapade och startade"
 
