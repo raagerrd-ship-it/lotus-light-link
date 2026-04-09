@@ -289,12 +289,27 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     res.json({ ok: true, lastWps });
   });
 
+  // --- Serve web app static files (SPA) ---
+  const WEB_DIST = join(process.cwd(), '..', 'dist');
+  if (existsSync(join(WEB_DIST, 'index.html'))) {
+    console.log(`[Config] Serving web app from ${WEB_DIST}`);
+    app.use(express.static(WEB_DIST));
+    // SPA fallback — serve index.html for non-API routes
+    app.get('*', (_req, res) => {
+      if (_req.path.startsWith('/api/')) {
+        res.status(404).json({ error: 'Not found' });
+      } else {
+        res.sendFile(join(WEB_DIST, 'index.html'));
+      }
+    });
+  } else {
+    console.log(`[Config] No web dist found at ${WEB_DIST} — API only`);
+    app.get('/', (_req, res) => {
+      res.redirect('/api/status');
+    });
+  }
+
   app.listen(port, () => {
     console.log(`[Config] Server listening on :${port}`);
-  });
-
-  // Root route — redirect to status for dashboard "Open" button
-  app.get('/', (_req, res) => {
-    res.redirect('/api/status');
   });
 }
