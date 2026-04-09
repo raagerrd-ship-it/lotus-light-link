@@ -11,12 +11,18 @@ import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
+// Git info — resolved once at startup
+const SERVICE_VERSION = '1.0.0';
+let GIT_COMMIT = 'unknown';
+let GIT_COMMIT_SHORT = 'unknown';
+let GIT_BRANCH = 'unknown';
+try {
+  GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+  GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
+  GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+} catch { /* not a git repo or git not available */ }
+
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
-  // Read git commit hash once at startup
-  let commitHash = 'unknown';
-  try {
-    commitHash = execSync('git rev-parse --short HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8' }).trim();
-  } catch { /* not a git repo or git not available */ }
 
   const app = express();
   app.use(express.json());
@@ -43,6 +49,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         connectedDeviceId: getConnectedDeviceId(),
         scanning: isScanning(),
       },
+      commit: GIT_COMMIT_SHORT,
+      branch: GIT_BRANCH,
+      version: SERVICE_VERSION,
       sonos,
       engine: {
         running: true,
@@ -50,12 +59,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         hz: Math.round(1000 / engine.getTickMs()),
         palette: engine.getPalette(),
       },
+    });
   });
 
   // --- Version ---
   app.get('/api/version', (_req, res) => {
-    res.json({ commit: commitHash, service: 'lotus-light-link' });
-  });
+    res.json({
+      name: 'lotus-light-link',
+      version: SERVICE_VERSION,
+      commit: GIT_COMMIT,
+      commitShort: GIT_COMMIT_SHORT,
+      branch: GIT_BRANCH,
+    });
   });
 
   // --- BLE Device Management ---
