@@ -6,6 +6,23 @@ set -e
 
 SERVICE_NAME="lotus-light"
 
+# ─── Detect target user (support running as root via Pi Dashboard) ────
+if [ "$EUID" -eq 0 ]; then
+  TARGET_USER="${SUDO_USER:-pi}"
+  TARGET_HOME=$(eval echo "~$TARGET_USER")
+else
+  TARGET_USER="$USER"
+  TARGET_HOME="$HOME"
+fi
+
+run_user_systemctl() {
+  if [ "$EUID" -eq 0 ]; then
+    sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" systemctl --user "$@"
+  else
+    systemctl --user "$@"
+  fi
+}
+
 echo ""
 echo "========================================"
 echo "  Lotus Light Link Uninstaller"
@@ -14,12 +31,12 @@ echo ""
 
 # 1. Stop and disable user-level services
 echo "[1/3] Stoppar tjänster..."
-systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
-systemctl --user stop "${SERVICE_NAME}-update.timer" 2>/dev/null || true
-systemctl --user stop "${SERVICE_NAME}-restart.timer" 2>/dev/null || true
-systemctl --user disable "$SERVICE_NAME" 2>/dev/null || true
-systemctl --user disable "${SERVICE_NAME}-update.timer" 2>/dev/null || true
-systemctl --user disable "${SERVICE_NAME}-restart.timer" 2>/dev/null || true
+run_user_systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+run_user_systemctl stop "${SERVICE_NAME}-update.timer" 2>/dev/null || true
+run_user_systemctl stop "${SERVICE_NAME}-restart.timer" 2>/dev/null || true
+run_user_systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+run_user_systemctl disable "${SERVICE_NAME}-update.timer" 2>/dev/null || true
+run_user_systemctl disable "${SERVICE_NAME}-restart.timer" 2>/dev/null || true
 echo "  ✓ Tjänster stoppade"
 
 # 2. Remove service files
