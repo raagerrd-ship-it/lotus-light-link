@@ -94,6 +94,14 @@ else
   echo "  ✓ Hostname redan ${HOSTNAME_TARGET}.local"
 fi
 
+# Ensure /etc/hosts has an entry for the hostname (prevents sudo warnings)
+if ! grep -q "127.0.1.1.*${HOSTNAME_TARGET}" /etc/hosts 2>/dev/null; then
+  echo "127.0.1.1 ${HOSTNAME_TARGET}" | sudo tee -a /etc/hosts > /dev/null
+  echo "  ✓ /etc/hosts uppdaterad med ${HOSTNAME_TARGET}"
+else
+  echo "  ✓ /etc/hosts redan korrekt"
+fi
+
 # ─── 5. Install npm dependencies ─────────────────────────
 echo "[5/8] Installerar npm-beroenden..."
 cd "$PI_DIR"
