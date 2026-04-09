@@ -225,7 +225,6 @@ export class PiLightEngine {
 
 
   private _running = false;
-  private _immediate: NodeJS.Immediate | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
   private callbacks: TickCallback[] = [];
 
