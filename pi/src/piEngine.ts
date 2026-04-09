@@ -215,7 +215,7 @@ export class PiLightEngine {
   private cal: LightCalibration;
   private volumeTable: AgcVolumeTable;
   private lastBucket = 0;
-  private idleSent = false;
+  
 
   // Pre-computed tick-rate constants (avoid recomputing every tick)
   private _tickDecay = 0;        // onset boost decay per tick
@@ -329,14 +329,16 @@ export class PiLightEngine {
     this.playing = playing;
 
     if (!playing && wasPlaying) {
+      // Stop tick loop, send idle color once
+      this.stopLoop();
       const idle = loadIdleColor();
       const calibrated = applyColorCalibration(idle[0], idle[1], idle[2], this.cal);
       sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
-      this.idleSent = true;
-      console.log('[Engine] → idle mode');
+      console.log('[Engine] → idle mode (loop stopped)');
     } else if (playing && !wasPlaying) {
-      this.idleSent = false;
-      console.log('[Engine] → active mode');
+      // Start tick loop
+      this.startLoop();
+      console.log('[Engine] → active mode (loop started)');
     }
   }
 
@@ -346,6 +348,7 @@ export class PiLightEngine {
   }
 
 
+  /** Initialize engine — call once at boot. Loop only starts when setPlaying(true). */
   start(): void {
     if (this._running) return;
 
@@ -355,60 +358,48 @@ export class PiLightEngine {
     this.lastBucket = bucket;
     this._running = true;
 
-    this.startLoop();
-
+    // Don't start the tick loop here — setPlaying(true) will do that
+    // Only start the save timer
     this.saveTimer = setInterval(() => {
       const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
       this.cal = updated;
       saveCalibration(updated);
     }, 10_000);
 
-    console.log(`[Engine] Started (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, hrtime loop)`);
+    console.log(`[Engine] Initialized (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, waiting for playback)`);
   }
 
   private _timer: NodeJS.Timeout | null = null;
 
   private startLoop(): void {
-    // Use setInterval instead of setImmediate busy-loop to avoid 100% CPU on Pi Zero
+    if (this._timer) return; // already running
     this._timer = setInterval(() => {
-      if (!this._running) return;
       this.tick();
     }, this.tickMs);
   }
 
+  private stopLoop(): void {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+  }
+
   stop(): void {
     this._running = false;
-    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    this.stopLoop();
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
   }
 
   /** Restart tick timer only — preserves all smoothing/AGC state */
   restartTimer(): void {
-    this._running = false;
-    if (this._timer) { clearInterval(this._timer); this._timer = null; }
-    if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
-    this._running = true;
-    this.startLoop();
-    this.saveTimer = setInterval(() => {
-      const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
-      this.cal = updated;
-      saveCalibration(updated);
-    }, 10_000);
-    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz)`);
+    this.stopLoop();
+    if (this.playing) {
+      this.startLoop();
+    }
+    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${Math.round(1000 / this.tickMs)} Hz, ${this.playing ? 'active' : 'idle'})`);
   }
 
   private tick(): void {
-    if (!this.playing) {
-      if (!this.idleSent) {
-        const idle = loadIdleColor();
-        const calibrated = applyColorCalibration(idle[0], idle[1], idle[2], this.cal);
-        sendToBLE(calibrated[0], calibrated[1], calibrated[2], 100);
-        this.idleSent = true;
-      }
-      return;
-    }
-    this.idleSent = false;
+    
 
     const cal = this.cal;
     const bands = getLatestBands();
