@@ -86,7 +86,7 @@ if [ -d "$APP_DIR/.git" ]; then
   git fetch --all -q
   git reset --hard origin/main -q
   echo "  ✓ Updated to $(git rev-parse --short HEAD)"
-elif [ -d "$APP_DIR/pi/package.json" ]; then
+elif [ -f "$APP_DIR/pi/package.json" ]; then
   echo "  ✓ Project already in place (no git)"
 else
   echo "  Cloning repository..."
