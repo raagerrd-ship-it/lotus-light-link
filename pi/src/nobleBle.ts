@@ -53,6 +53,11 @@ let dimmingGamma = 1.8;
 export function setDimmingGamma(v: number) { dimmingGamma = Math.max(1.0, Math.min(3.0, v)); }
 export function getDimmingGamma(): number { return dimmingGamma; }
 
+function getAdapterState(): string | undefined {
+  const nobleWithState = noble as typeof noble & { state?: string; _state?: string };
+  return nobleWithState.state ?? nobleWithState._state;
+}
+
 function brightnessToScale(brightness: number): number {
   const norm = Math.max(0, Math.min(100, brightness)) / 100;
   return norm <= 0 ? 0 : Math.pow(norm, dimmingGamma);
@@ -193,7 +198,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
         noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
       };
 
-      if (noble.state === 'poweredOn') {
+      if (getAdapterState() === 'poweredOn') {
         startScan();
       } else {
         noble.once('stateChange', (state: string) => {
@@ -302,7 +307,7 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
         }
       }, timeoutMs);
 
-      if (noble.state === 'poweredOn') {
+      if (getAdapterState() === 'poweredOn') {
         noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
       } else {
         noble.once('stateChange', (state: string) => {
