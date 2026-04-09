@@ -50,7 +50,12 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         hz: Math.round(1000 / engine.getTickMs()),
         palette: engine.getPalette(),
       },
-    });
+  });
+
+  // --- Version ---
+  app.get('/api/version', (_req, res) => {
+    res.json({ commit: commitHash, service: 'lotus-light-link' });
+  });
   });
 
   // --- BLE Device Management ---
