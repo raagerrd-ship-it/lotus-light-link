@@ -3,6 +3,7 @@
  * Exposes calibration, color, preset, status endpoints.
  */
 
+import { execSync } from 'child_process';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning } from './nobleBle.js';
@@ -11,6 +12,12 @@ import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
+  // Read git commit hash once at startup
+  let commitHash = 'unknown';
+  try {
+    commitHash = execSync('git rev-parse --short HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8' }).trim();
+  } catch { /* not a git repo or git not available */ }
+
   const app = express();
   app.use(express.json());
 
@@ -43,7 +50,12 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         hz: Math.round(1000 / engine.getTickMs()),
         palette: engine.getPalette(),
       },
-    });
+  });
+
+  // --- Version ---
+  app.get('/api/version', (_req, res) => {
+    res.json({ commit: commitHash, service: 'lotus-light-link' });
+  });
   });
 
   // --- BLE Device Management ---
