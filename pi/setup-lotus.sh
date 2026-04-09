@@ -102,14 +102,20 @@ else
   echo "  ✓ /etc/hosts redan korrekt"
 fi
 
-# ─── 5. Install npm dependencies ─────────────────────────
-echo "[5/8] Installerar npm-beroenden..."
-cd "$PI_DIR"
+# ─── 5. Install npm dependencies & build web app ─────────
+echo "[5/8] Installerar npm-beroenden och bygger webbapp..."
+cd "$APP_DIR"
 export NODE_OPTIONS="--max-old-space-size=256"
+nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
+echo "  Bygger webbgränssnitt..."
+nice -n 15 taskset -c "$CORE" npx vite build 2>&1 | tail -3
+echo "  Webbapp klar ✓"
+
+cd "$PI_DIR"
 nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
 
 # ─── 6. Build Pi runtime ─────────────────────────────────
-echo "[6/8] Bygger..."
+echo "[6/8] Bygger Pi-backend..."
 nice -n 15 taskset -c "$CORE" npm run build
 nice -n 15 taskset -c "$CORE" npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
 echo "  Bygg klart ✓"

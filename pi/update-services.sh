@@ -49,19 +49,33 @@ echo "$LOG_PREFIX Update detected: ${LOCAL_HEAD:0:7} → ${REMOTE_HEAD:0:7}"
 
 PI_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- pi/ 2>/dev/null | head -1)
 SRC_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- src/lib/engine/ 2>/dev/null | head -1)
+WEB_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- src/ index.html vite.config.ts 2>/dev/null | head -1)
 
 git reset --hard "origin/$DEFAULT_BRANCH" -q
 echo "$LOG_PREFIX Pulled to $(git rev-parse --short HEAD)"
 
-if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
-  echo "$LOG_PREFIX pi/ or engine/ changed — rebuilding..."
-  cd "$PI_DIR"
+NEED_RESTART=false
 
+# Rebuild web app if frontend changed
+if [ -n "$WEB_CHANGED" ]; then
+  echo "$LOG_PREFIX Frontend changed — rebuilding web app..."
+  cd "$APP_DIR"
+  export NODE_OPTIONS="--max-old-space-size=256"
+  nice -n 15 npm install --no-audit --no-fund 2>&1 | tail -1
+  nice -n 15 npx vite build 2>&1 | tail -3
+  echo "$LOG_PREFIX Web app build complete ✓"
+  NEED_RESTART=true
+fi
+
+# Rebuild Pi backend if engine/pi changed
+if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
+  echo "$LOG_PREFIX pi/ or engine/ changed — rebuilding backend..."
+  cd "$PI_DIR"
   export NODE_OPTIONS="--max-old-space-size=256"
   nice -n 15 npm install --no-audit --no-fund 2>&1 | tail -1
   nice -n 15 npm run build
   npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
-  echo "$LOG_PREFIX Build complete ✓"
+  echo "$LOG_PREFIX Backend build complete ✓"
 
   # Re-apply BLE capabilities in case Node binary was updated by apt
   NODE_BIN=$(which node)
@@ -70,11 +84,14 @@ if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
       echo "$LOG_PREFIX BLE cap_net_raw re-applied to $NODE_BIN ✓" || \
       echo "$LOG_PREFIX WARNING: Failed to set BLE capabilities on $NODE_BIN"
   fi
+  NEED_RESTART=true
+fi
 
+if [ "$NEED_RESTART" = true ]; then
   systemctl --user restart "$SERVICE"
   echo "$LOG_PREFIX Service restarted ✓"
 else
-  echo "$LOG_PREFIX No pi/ or engine/ changes — no restart needed"
+  echo "$LOG_PREFIX No relevant changes — no restart needed"
 fi
 
 echo "$LOG_PREFIX Done"
