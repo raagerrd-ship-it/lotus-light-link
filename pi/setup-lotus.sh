@@ -13,6 +13,17 @@
 
 set -euo pipefail
 
+# ─── Parse arguments from Pi Dashboard ───────────────────
+PORT=3001
+CORE=1
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --port) PORT="$2"; shift 2 ;;
+    --core) CORE="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
 REPO_URL="${REPO_URL:-https://github.com/raagerrd-ship-it/lotus-light-link.git}"
 APP_DIR="/opt/lotus-light"
 HOSTNAME_TARGET="lotus"
