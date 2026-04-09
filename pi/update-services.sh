@@ -54,12 +54,10 @@ if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
   
   cd "$PI_DIR"
   
-  # Check if package.json changed → reinstall deps
-  DEPS_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- pi/package.json | head -1)
-  if [ -n "$DEPS_CHANGED" ]; then
-    echo "$LOG_PREFIX package.json changed — installing dependencies..."
-    npm install --no-audit --no-fund 2>&1 | tail -1
-  fi
+  # Always install before build: previous deploy prunes devDependencies,
+  # so TypeScript/build deps may be missing even when package.json is unchanged.
+  echo "$LOG_PREFIX Installing dependencies for build..."
+  npm install --no-audit --no-fund 2>&1 | tail -1
   
   # Rebuild TypeScript
   npm run build
