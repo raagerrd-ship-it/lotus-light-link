@@ -195,7 +195,7 @@ export type TickCallback = (data: TickData) => void;
 export class PiLightEngine {
   private color: [number, number, number] = [255, 80, 0];
   private volume: number | undefined;
-  private playing = true;
+  private playing = false;
   private tickMs: number;
 
   private smoothed = 0;
