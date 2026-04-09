@@ -49,6 +49,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         connectedDeviceId: getConnectedDeviceId(),
         scanning: isScanning(),
       },
+      commit: GIT_COMMIT_SHORT,
+      branch: GIT_BRANCH,
+      version: SERVICE_VERSION,
       sonos,
       engine: {
         running: true,
@@ -56,12 +59,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         hz: Math.round(1000 / engine.getTickMs()),
         palette: engine.getPalette(),
       },
+    });
   });
 
   // --- Version ---
   app.get('/api/version', (_req, res) => {
-    res.json({ commit: commitHash, service: 'lotus-light-link' });
-  });
+    res.json({
+      name: 'lotus-light-link',
+      version: SERVICE_VERSION,
+      commit: GIT_COMMIT,
+      commitShort: GIT_COMMIT_SHORT,
+      branch: GIT_BRANCH,
+    });
   });
 
   // --- BLE Device Management ---
