@@ -4,18 +4,50 @@
 
 set -e
 
-echo "Stoppar Lotus Light-tjänster..."
+SERVICE_NAME="lotus-light"
 
-sudo systemctl stop lotus-light 2>/dev/null || true
-sudo systemctl disable lotus-light 2>/dev/null || true
-sudo rm -f /etc/systemd/system/lotus-light.service
+echo ""
+echo "========================================"
+echo "  Lotus Light Link Uninstaller"
+echo "========================================"
+echo ""
 
-sudo systemctl stop lotus-update.timer 2>/dev/null || true
-sudo systemctl disable lotus-update.timer 2>/dev/null || true
-sudo rm -f /etc/systemd/system/lotus-update.timer
-sudo rm -f /etc/systemd/system/lotus-update.service
+# 1. Stop and disable user-level services
+echo "[1/3] Stoppar tjänster..."
+systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
+systemctl --user stop "${SERVICE_NAME}-update.timer" 2>/dev/null || true
+systemctl --user stop "${SERVICE_NAME}-restart.timer" 2>/dev/null || true
+systemctl --user disable "$SERVICE_NAME" 2>/dev/null || true
+systemctl --user disable "${SERVICE_NAME}-update.timer" 2>/dev/null || true
+systemctl --user disable "${SERVICE_NAME}-restart.timer" 2>/dev/null || true
+echo "  ✓ Tjänster stoppade"
 
-sudo systemctl daemon-reload
+# 2. Remove service files
+echo "[2/3] Tar bort systemd-filer..."
+rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}.service"
+rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-update.service"
+rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-update.timer"
+rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-restart.service"
+rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-restart.timer"
+systemctl --user daemon-reload
+echo "  ✓ Systemd-filer borttagna"
 
-echo "Tjänster borttagna ✓"
-echo "Avinstallation klar ✓"
+# Also clean up legacy system-level services if they exist
+if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+  echo "  Rensar gamla system-level tjänster..."
+  sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+  sudo rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  sudo rm -f "/etc/systemd/system/lotus-update.service"
+  sudo rm -f "/etc/systemd/system/lotus-update.timer"
+  sudo systemctl daemon-reload
+  echo "  ✓ Legacy tjänster borttagna"
+fi
+
+# 3. Summary (don't remove /opt/lotus-light — dashboard manages that)
+echo "[3/3] Klart"
+echo ""
+echo "========================================"
+echo "  Avinstallation klar!"
+echo "========================================"
+echo ""
