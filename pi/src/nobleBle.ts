@@ -330,6 +330,7 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
 
 async function connectPeripheral(peripheral: any): Promise<void> {
   const name = peripheral.advertisement?.localName ?? peripheral.id;
+  const connectTime = performance.now();
 
   await peripheral.connectAsync();
   console.log(`[BLE] Connected to ${name}`);
@@ -352,8 +353,10 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
 
   // Auto-reconnect on disconnect
-  peripheral.once('disconnect', () => {
-    console.log(`[BLE] ${name} disconnected — attempting reconnect`);
+  peripheral.once('disconnect', (reason: any) => {
+    const uptime = Math.round((performance.now() - connectTime) / 1000);
+    console.log(`[BLE] ${name} disconnected after ${uptime}s — reason: ${reason ?? 'unknown'}`);
+    console.log(`[BLE] Stats at disconnect: sent=${bleStats.sentCount}, skipBusy=${bleStats.skipBusyCount}, skipDelta=${bleStats.skipDeltaCount}, avgLat=${bleStats.writeLatAvgMs}ms`);
     device = null;
     resetLastSent();
     reconnectWithBackoff(peripheral, name);
