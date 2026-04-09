@@ -290,4 +290,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
   app.listen(port, () => {
     console.log(`[Config] Server listening on :${port}`);
   });
+
+  // Root route — redirect to status for dashboard "Open" button
+  app.get('/', (_req, res) => {
+    res.redirect('/api/status');
+  });
 }
