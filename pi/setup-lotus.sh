@@ -102,11 +102,24 @@ nice -n 15 npm run build
 npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
 echo "  Bygg klart ✓"
 
-# ─── 7. BLE permissions ──────────────────────────────────
-echo "[7/8] Sätter BLE-behörigheter..."
-sudo setcap cap_net_raw+eip "$(readlink -f "$(which node)")" 2>/dev/null || true
+# ─── 7. BLE permissions & sudoers ─────────────────────────
+echo "[7/8] Sätter BLE-behörigheter och sudoers..."
+NODE_BIN=$(readlink -f "$(which node)")
+sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
 chmod +x "$PI_DIR/update-services.sh" 2>/dev/null || true
 chmod +x "$PI_DIR/uninstall-lotus.sh" 2>/dev/null || true
+
+# Passwordless sudo for setcap and systemctl (used by auto-updater)
+SUDOERS_FILE="/etc/sudoers.d/lotus-light"
+sudo tee "$SUDOERS_FILE" > /dev/null << SUDOEOF
+# Lotus Light Link — allow pi user to manage BLE caps and service without password
+${USER} ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_raw+eip *
+${USER} ALL=(root) NOPASSWD: /bin/systemctl restart ${SERVICE_NAME}
+${USER} ALL=(root) NOPASSWD: /bin/systemctl stop ${SERVICE_NAME}
+${USER} ALL=(root) NOPASSWD: /bin/systemctl start ${SERVICE_NAME}
+SUDOEOF
+sudo chmod 0440 "$SUDOERS_FILE"
+echo "  ✓ sudoers-regel skapad"
 
 # ─── 8. Validate core arg ────────────────────────────────
 if ! [[ "$CORE" =~ ^[0-3]$ ]]; then
