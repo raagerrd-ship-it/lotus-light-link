@@ -94,7 +94,11 @@ async function main() {
   } catch {}
 
   console.log('[Boot] Starting Sonos poller...');
-  await startSonosPoller(sonosConfig);
+  try {
+    await startSonosPoller(sonosConfig);
+  } catch (e: any) {
+    console.error('[Boot] Sonos poller failed (continuing):', e.message);
+  }
 
   // React to Sonos state changes
   let lastArtUrl: string | null = null;
