@@ -30,11 +30,15 @@ echo ""
 echo "  Port: $PORT"
 echo "  CPU:  Kärna $CORE (av $TOTAL_CPUS)"
 
-# ─── Refuse to run as root ───────────────────────────────
+# ─── Detect target user (support running as root via Pi Dashboard) ────
 if [ "$EUID" -eq 0 ]; then
-  echo "❌ Kör inte detta script som root!"
-  echo "   Använd: ./setup-lotus.sh"
-  exit 1
+  # Running as root — determine the real user
+  TARGET_USER="${SUDO_USER:-pi}"
+  TARGET_HOME=$(eval echo "~$TARGET_USER")
+  echo "  Kör som root → installerar för användare: $TARGET_USER"
+else
+  TARGET_USER="$USER"
+  TARGET_HOME="$HOME"
 fi
 
 # ─── 1. System dependencies ──────────────────────────────
