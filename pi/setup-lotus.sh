@@ -244,7 +244,23 @@ run_user_systemctl start "${SERVICE_NAME}-update.timer"
 run_user_systemctl start "${SERVICE_NAME}-restart.timer"
 run_user_systemctl start "$SERVICE_NAME"
 
-echo "  ✓ Tjänster skapade och startade"
+# Verify the service actually started
+sleep 2
+if run_user_systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+  echo "  ✓ Tjänster skapade och startade"
+else
+  echo "  ⚠ Tjänsten startade men dog — diagnostik:"
+  echo ""
+  if [ "$EUID" -eq 0 ]; then
+    sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
+      journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
+  else
+    journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
+  fi
+  echo ""
+  echo "  Manuell felsökning:"
+  echo "    cd ${PI_DIR} && node --max-old-space-size=128 dist/index.js"
+fi
 
 # ─── Done ─────────────────────────────────────────────────
 IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
