@@ -24,7 +24,7 @@ fi
 cd "$APP_DIR"
 
 # Fetch latest from remote
-git fetch --all -q 2>/dev/null || {
+sudo git fetch --all -q 2>/dev/null || {
   echo "$LOG_PREFIX git fetch failed (network?)"
   exit 0
 }
@@ -45,7 +45,7 @@ PI_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- pi/ | head -1)
 SRC_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- src/lib/engine/ | head -1)
 
 # Pull changes
-git reset --hard origin/main -q 2>/dev/null || git reset --hard origin/master -q
+sudo git reset --hard origin/main -q 2>/dev/null || sudo git reset --hard origin/master -q
 echo "$LOG_PREFIX Pulled to $(git rev-parse --short HEAD)"
 
 # Check if pi runtime needs rebuild
@@ -57,15 +57,15 @@ if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
   # Always install before build: previous deploy prunes devDependencies,
   # so TypeScript/build deps may be missing even when package.json is unchanged.
   echo "$LOG_PREFIX Installing dependencies for build..."
-  npm install --no-audit --no-fund 2>&1 | tail -1
+  sudo NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund 2>&1 | tail -1
   
   # Rebuild TypeScript
-  npm run build
-  npm prune --production 2>/dev/null || true
+  sudo NODE_OPTIONS="--max-old-space-size=256" npm run build
+  sudo npm prune --production 2>/dev/null || true
   echo "$LOG_PREFIX Build complete ✓"
   
   # Restart service
-  systemctl restart "$SERVICE"
+  sudo systemctl restart "$SERVICE"
   echo "$LOG_PREFIX Service restarted ✓"
 else
   echo "$LOG_PREFIX No pi/ or engine/ changes — no restart needed"
