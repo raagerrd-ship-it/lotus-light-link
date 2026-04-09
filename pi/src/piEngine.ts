@@ -399,7 +399,7 @@ export class PiLightEngine {
   }
 
   private tick(): void {
-    this.idleSent = false;
+    
 
     const cal = this.cal;
     const bands = getLatestBands();
