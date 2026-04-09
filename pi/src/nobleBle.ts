@@ -356,31 +356,41 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   console.log(`[BLE] ${name} ready (hw brightness max, single-device mode)`);
 }
 
-/** Reconnect with exponential backoff */
+/** Reconnect with exponential backoff, then fall back to fresh scan */
 async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0): Promise<void> {
-  const maxAttempts = 5;
-  const baseDelay = 2000;
+  const maxDirectAttempts = 3;
+  const baseDelay = 1000;
 
-  if (attempt >= maxAttempts) {
-    console.log(`[BLE] ${name} — gave up after ${maxAttempts} attempts, will retry on next scan cycle`);
-    return;
+  if (device) return;
+
+  // Phase 1: Try direct reconnect to same peripheral (fast)
+  if (attempt < maxDirectAttempts) {
+    const delay = baseDelay * Math.pow(2, attempt);
+    console.log(`[BLE] ${name} — direct reconnect ${attempt + 1}/${maxDirectAttempts} in ${delay}ms`);
+    await new Promise(r => setTimeout(r, delay));
+    if (device) return;
+
+    try {
+      await connectPeripheral(peripheral);
+      console.log(`[BLE] ${name} — reconnected successfully (direct)`);
+      return;
+    } catch (e: any) {
+      console.error(`[BLE] ${name} — direct reconnect ${attempt + 1} failed: ${e.message}`);
+      return reconnectWithBackoff(peripheral, name, attempt + 1);
+    }
   }
 
-  if (device) return;
-
-  const delay = baseDelay * Math.pow(2, attempt);
-  console.log(`[BLE] ${name} — reconnect attempt ${attempt + 1}/${maxAttempts} in ${delay}ms`);
-
-  await new Promise(r => setTimeout(r, delay));
-
-  if (device) return;
-
+  // Phase 2: Direct attempts exhausted — do a fresh BLE scan
+  console.log(`[BLE] ${name} — direct reconnect exhausted, trying fresh scan...`);
   try {
-    await connectPeripheral(peripheral);
-    console.log(`[BLE] ${name} — reconnected successfully`);
+    const found = await autoConnectSaved(15000);
+    if (found > 0) {
+      console.log(`[BLE] ${name} — reconnected via fresh scan`);
+    } else {
+      console.log(`[BLE] ${name} — fresh scan found nothing, will retry on next loop`);
+    }
   } catch (e: any) {
-    console.error(`[BLE] ${name} — reconnect attempt ${attempt + 1} failed: ${e.message}`);
-    reconnectWithBackoff(peripheral, name, attempt + 1);
+    console.error(`[BLE] ${name} — fresh scan failed: ${e.message}`);
   }
 }
 
@@ -409,7 +419,7 @@ export const disconnectAll = disconnect;
 export function setExpectedDeviceCount(_n: number): void { /* no-op in single-device mode */ }
 
 /** Background reconnect loop — tries to connect to saved device when disconnected */
-export function startReconnectLoop(intervalMs = 30000): NodeJS.Timeout {
+export function startReconnectLoop(intervalMs = 15000): NodeJS.Timeout {
   return setInterval(async () => {
     if (!device && savedDeviceId) {
       console.log('[BLE] No device connected, scanning for saved device...');
