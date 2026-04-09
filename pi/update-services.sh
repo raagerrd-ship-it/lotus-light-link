@@ -1,6 +1,6 @@
 #!/bin/bash
 # update-services.sh — Auto-update Lotus Light Link from GitHub
-# Called by systemd timer every 5 minutes, or manually.
+# Called by user-level systemd timer every 5 minutes, or manually.
 
 set -euo pipefail
 
@@ -46,7 +46,7 @@ if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
   npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
   echo "$LOG_PREFIX Build complete ✓"
 
-  sudo systemctl restart "$SERVICE"
+  systemctl --user restart "$SERVICE"
   echo "$LOG_PREFIX Service restarted ✓"
 else
   echo "$LOG_PREFIX No pi/ or engine/ changes — no restart needed"
