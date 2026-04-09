@@ -12,6 +12,12 @@ import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
+  // Read git commit hash once at startup
+  let commitHash = 'unknown';
+  try {
+    commitHash = execSync('git rev-parse --short HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8' }).trim();
+  } catch { /* not a git repo or git not available */ }
+
   const app = express();
   app.use(express.json());
 
