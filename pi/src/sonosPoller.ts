@@ -165,8 +165,14 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     }
   }
 
-  // Fallback poll
+  // Initial status fetch — ensures correct state at boot (not just on changes)
   const statusUrl = `${baseUrl}${statusPath}`;
+  try {
+    const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
+    if (res.ok) parseStatus(await res.json());
+  } catch {}
+
+  // Fallback poll
   pollTimer = setInterval(async () => {
     try {
       const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
