@@ -154,18 +154,17 @@ Wants=bluetooth.target
 [Service]
 Type=simple
 WorkingDirectory=${PI_DIR}
-ExecStart=$(which node) --max-old-space-size=128 dist/index.js
+ExecStart=${NODE_BIN} --max-old-space-size=128 dist/index.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
+Environment=HOME=${TARGET_HOME}
 Environment=CONFIG_PORT=${PORT}
 Environment=TICK_MS=30
 
-# Resource limits & CPU pinning
-MemoryMax=128M
-AllowedCPUs=${CORE}
-CPUQuota=100%
-Nice=-5
+# User-services on Raspberry Pi are sensitive to privileged cgroup/nice settings.
+# Keep only safe per-process affinity here so the service does not fail at spawn.
+CPUAffinity=${CORE}
 
 [Install]
 WantedBy=default.target
