@@ -16,24 +16,41 @@ fi
 
 cd "$APP_DIR"
 
-git fetch --all -q 2>/dev/null || {
+# Detect the default branch dynamically
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+if [ -z "$DEFAULT_BRANCH" ]; then
+  # Fallback: try main, then master
+  if git rev-parse --verify origin/main &>/dev/null; then
+    DEFAULT_BRANCH="main"
+  else
+    DEFAULT_BRANCH="master"
+  fi
+fi
+
+git fetch origin "$DEFAULT_BRANCH" -q 2>/dev/null || {
   echo "$LOG_PREFIX git fetch failed (network?)"
   exit 0
 }
 
 LOCAL_HEAD=$(git rev-parse HEAD)
-REMOTE_HEAD=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
+REMOTE_HEAD=$(git rev-parse "origin/$DEFAULT_BRANCH" 2>/dev/null)
+
+if [ -z "$REMOTE_HEAD" ]; then
+  echo "$LOG_PREFIX Could not resolve origin/$DEFAULT_BRANCH"
+  exit 0
+fi
 
 if [ "$LOCAL_HEAD" = "$REMOTE_HEAD" ]; then
+  echo "$LOG_PREFIX Up to date (${LOCAL_HEAD:0:7} on $DEFAULT_BRANCH)"
   exit 0
 fi
 
 echo "$LOG_PREFIX Update detected: ${LOCAL_HEAD:0:7} → ${REMOTE_HEAD:0:7}"
 
-PI_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- pi/ | head -1)
-SRC_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- src/lib/engine/ | head -1)
+PI_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- pi/ 2>/dev/null | head -1)
+SRC_CHANGED=$(git diff --name-only "$LOCAL_HEAD" "$REMOTE_HEAD" -- src/lib/engine/ 2>/dev/null | head -1)
 
-git reset --hard origin/main -q 2>/dev/null || git reset --hard origin/master -q
+git reset --hard "origin/$DEFAULT_BRANCH" -q
 echo "$LOG_PREFIX Pulled to $(git rev-parse --short HEAD)"
 
 if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
