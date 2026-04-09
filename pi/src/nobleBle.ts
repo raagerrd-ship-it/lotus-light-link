@@ -419,7 +419,7 @@ export const disconnectAll = disconnect;
 export function setExpectedDeviceCount(_n: number): void { /* no-op in single-device mode */ }
 
 /** Background reconnect loop — tries to connect to saved device when disconnected */
-export function startReconnectLoop(intervalMs = 30000): NodeJS.Timeout {
+export function startReconnectLoop(intervalMs = 15000): NodeJS.Timeout {
   return setInterval(async () => {
     if (!device && savedDeviceId) {
       console.log('[BLE] No device connected, scanning for saved device...');
