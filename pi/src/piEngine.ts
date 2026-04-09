@@ -215,7 +215,7 @@ export class PiLightEngine {
   private cal: LightCalibration;
   private volumeTable: AgcVolumeTable;
   private lastBucket = 0;
-  private idleSent = false;
+  
 
   // Pre-computed tick-rate constants (avoid recomputing every tick)
   private _tickDecay = 0;        // onset boost decay per tick
