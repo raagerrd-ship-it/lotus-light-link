@@ -44,8 +44,18 @@ if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
   echo "  ✓ Legacy tjänster borttagna"
 fi
 
-# 3. Summary (don't remove /opt/lotus-light — dashboard manages that)
-echo "[3/3] Klart"
+# 3. Remove sudoers rule
+echo "[3/4] Tar bort sudoers-regel..."
+SUDOERS_FILE="/etc/sudoers.d/lotus-light"
+if [ -f "$SUDOERS_FILE" ]; then
+  sudo rm -f "$SUDOERS_FILE"
+  echo "  ✓ Sudoers-regel borttagen"
+else
+  echo "  ✓ Ingen sudoers-regel att ta bort"
+fi
+
+# 4. Summary (don't remove /opt/lotus-light — dashboard manages that)
+echo "[4/4] Klart"
 echo ""
 echo "========================================"
 echo "  Avinstallation klar!"
