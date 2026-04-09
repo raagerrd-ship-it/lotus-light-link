@@ -27,6 +27,7 @@ done
 REPO_URL="${REPO_URL:-https://github.com/raagerrd-ship-it/lotus-light-link.git}"
 APP_DIR="/opt/lotus-light"
 HOSTNAME_TARGET="lotus"
+RUN_USER="${SUDO_USER:-pi}"
 
 echo "╔═══════════════════════════════════════════════╗"
 echo "║   Lotus Light Link — Pi Setup                 ║"
@@ -93,12 +94,16 @@ else
   echo "  ✓ Cloned to $APP_DIR"
 fi
 
+# Set ownership to pi user (avoids needing sudo in update script)
+chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
+echo "  ✓ Ownership set to $RUN_USER"
+
 # ─── 6. Build Pi runtime ─────────────────────────────────
 echo "[6/9] Installing dependencies & building..."
 cd "$APP_DIR/pi"
-NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund 2>&1 | tail -1
-NODE_OPTIONS="--max-old-space-size=256" npm run build
-npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
+sudo -u "$RUN_USER" NODE_OPTIONS="--max-old-space-size=256" npm install --no-audit --no-fund 2>&1 | tail -1
+sudo -u "$RUN_USER" NODE_OPTIONS="--max-old-space-size=256" npm run build
+sudo -u "$RUN_USER" npm prune --omit=dev 2>/dev/null || sudo -u "$RUN_USER" npm prune --production 2>/dev/null || true
 echo "  ✓ Build complete"
 
 # ─── 7. BLE permissions ──────────────────────────────────
@@ -129,7 +134,7 @@ Wants=bluetooth.target
 
 [Service]
 Type=simple
-User=root
+User=${RUN_USER}
 WorkingDirectory=/opt/lotus-light/pi
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
