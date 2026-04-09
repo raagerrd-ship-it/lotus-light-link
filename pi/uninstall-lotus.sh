@@ -41,12 +41,12 @@ echo "  ✓ Tjänster stoppade"
 
 # 2. Remove service files
 echo "[2/3] Tar bort systemd-filer..."
-rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}.service"
-rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-update.service"
-rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-update.timer"
-rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-restart.service"
-rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}-restart.timer"
-systemctl --user daemon-reload
+rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}.service"
+rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-update.service"
+rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-update.timer"
+rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-restart.service"
+rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-restart.timer"
+run_user_systemctl daemon-reload
 echo "  ✓ Systemd-filer borttagna"
 
 # Also clean up legacy system-level services if they exist
