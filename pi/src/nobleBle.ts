@@ -330,6 +330,7 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
 
 async function connectPeripheral(peripheral: any): Promise<void> {
   const name = peripheral.advertisement?.localName ?? peripheral.id;
+  const connectTime = performance.now();
 
   await peripheral.connectAsync();
   console.log(`[BLE] Connected to ${name}`);
