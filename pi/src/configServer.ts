@@ -3,6 +3,7 @@
  * Exposes calibration, color, preset, status endpoints.
  */
 
+import { execSync } from 'child_process';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning } from './nobleBle.js';
