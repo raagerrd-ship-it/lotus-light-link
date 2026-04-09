@@ -195,7 +195,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       }, timeoutMs);
 
       const startScan = () => {
-        noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
+        noble.startScanningAsync([], false).catch(() => {});
       };
 
       if (getAdapterState() === 'poweredOn') {
@@ -308,11 +308,11 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
       }, timeoutMs);
 
       if (getAdapterState() === 'poweredOn') {
-        noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
+        noble.startScanningAsync([], false).catch(() => {});
       } else {
         noble.once('stateChange', (state: string) => {
           if (state === 'poweredOn') {
-            noble.startScanningAsync([SERVICE_UUID], false).catch(() => {});
+            noble.startScanningAsync([], false).catch(() => {});
           }
         });
       }
