@@ -46,6 +46,14 @@ if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
   npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
   echo "$LOG_PREFIX Build complete ✓"
 
+  # Re-apply BLE capabilities in case Node binary was updated by apt
+  NODE_BIN=$(which node)
+  if [ -n "$NODE_BIN" ]; then
+    sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null && \
+      echo "$LOG_PREFIX BLE cap_net_raw re-applied to $NODE_BIN ✓" || \
+      echo "$LOG_PREFIX WARNING: Failed to set BLE capabilities on $NODE_BIN"
+  fi
+
   systemctl --user restart "$SERVICE"
   echo "$LOG_PREFIX Service restarted ✓"
 else
