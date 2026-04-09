@@ -11,12 +11,18 @@ import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
+// Git info — resolved once at startup
+const SERVICE_VERSION = '1.0.0';
+let GIT_COMMIT = 'unknown';
+let GIT_COMMIT_SHORT = 'unknown';
+let GIT_BRANCH = 'unknown';
+try {
+  GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+  GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
+  GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+} catch { /* not a git repo or git not available */ }
+
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
-  // Read git commit hash once at startup
-  let commitHash = 'unknown';
-  try {
-    commitHash = execSync('git rev-parse --short HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8' }).trim();
-  } catch { /* not a git repo or git not available */ }
 
   const app = express();
   app.use(express.json());
