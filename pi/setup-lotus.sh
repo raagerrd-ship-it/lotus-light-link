@@ -106,12 +106,12 @@ fi
 echo "[5/8] Installerar npm-beroenden..."
 cd "$PI_DIR"
 export NODE_OPTIONS="--max-old-space-size=256"
-nice -n 15 npm install --no-audit --no-fund 2>&1 | tail -3
+nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
 
 # ─── 6. Build Pi runtime ─────────────────────────────────
 echo "[6/8] Bygger..."
-nice -n 15 npm run build
-npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
+nice -n 15 taskset -c "$CORE" npm run build
+nice -n 15 taskset -c "$CORE" npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
 echo "  Bygg klart ✓"
 
 # ─── 7. BLE permissions & sudoers ─────────────────────────
