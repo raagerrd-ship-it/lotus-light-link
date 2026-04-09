@@ -293,6 +293,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
   const WEB_DIST = join(process.cwd(), '..', 'dist');
   if (existsSync(join(WEB_DIST, 'index.html'))) {
     console.log(`[Config] Serving web app from ${WEB_DIST}`);
+    // Redirect root to Pi mobile control panel
+    app.get('/', (_req, res) => res.redirect('/pi-mobile'));
     app.use(express.static(WEB_DIST));
     // SPA fallback — serve index.html for non-API routes
     app.get('*', (_req, res) => {
