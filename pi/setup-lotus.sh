@@ -54,8 +54,8 @@ if [ -n "$TOTAL_RAM" ]; then
   fi
 fi
 
-sudo apt-get update -qq
-sudo apt-get install -y -qq \
+taskset -c "$CORE" sudo apt-get update -qq
+taskset -c "$CORE" sudo apt-get install -y -qq \
   bluez libbluetooth-dev \
   libasound2-dev alsa-utils \
   curl
@@ -64,8 +64,8 @@ sudo apt-get install -y -qq \
 echo "[2/8] Kontrollerar Node.js..."
 if ! command -v node &>/dev/null || [[ $(node -v | cut -d. -f1 | tr -d v) -lt 20 ]]; then
   echo "  Installerar Node.js 20..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  sudo apt-get install -y -qq nodejs
+  curl -fsSL https://deb.nodesource.com/setup_20.x | taskset -c "$CORE" sudo -E bash -
+  taskset -c "$CORE" sudo apt-get install -y -qq nodejs
 else
   echo "  ✓ Node.js $(node -v) ($(uname -m))"
 fi
