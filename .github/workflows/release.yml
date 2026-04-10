@@ -36,8 +36,8 @@ jobs:
 
       # Package everything needed for Pi deployment
       - run: |
-          chmod +x pi/start-lotus.sh pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh
-          tar czf dist.tar.gz dist/ pi/dist/ pi/node_modules/ pi/package.json pi/start-lotus.sh pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh
+          chmod +x pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh
+          tar czf dist.tar.gz dist/ pi/dist/ pi/node_modules/ pi/package.json pi/start-lotus.js pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh
 
       - uses: softprops/action-gh-release@v2
         with:
