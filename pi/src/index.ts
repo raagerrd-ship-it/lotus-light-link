@@ -15,7 +15,7 @@ import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
 import { startMic, stopMic, setAlsaDevice } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount } from './nobleBle.js';
+import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
