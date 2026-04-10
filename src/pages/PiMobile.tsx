@@ -609,6 +609,8 @@ export default function PiMobile() {
   const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
   const [bleSavedId, setBleSavedId] = useState<string | null>(null);
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
+  const [blePreview, setBlePreview] = useState(false);
+  const [blePreviewSec, setBlePreviewSec] = useState(0);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Derive Pi base URL from current page (same host, port 3001)
