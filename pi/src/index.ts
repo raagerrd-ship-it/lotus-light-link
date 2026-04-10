@@ -24,7 +24,7 @@ import { extractPalette } from './colorExtract.js';
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://localhost:3000/api/sonos';
-const CONFIG_PORT = Number(process.env.CONFIG_PORT ?? 3001);
+const CONFIG_PORT = Number(process.env.BACKEND_PORT ?? process.env.CONFIG_PORT ?? 3002);
 const TICK_MS = Number(process.env.TICK_MS ?? 30);
 const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
