@@ -487,10 +487,11 @@ export class PiLightEngine {
       let pct = energyNorm * 100;
       if (pct < floor) pct = floor;
 
-      // Perceptual curve (precomputed gamma)
+      // Perceptual curve (use BLE brightness LUT gamma value — no Math.pow)
       if (cal.perceptualCurve && pct > floor && pct < 100) {
         const norm = (pct - floor) / (100 - floor);
-        pct = floor + Math.pow(norm, tc.dimmingGamma) * (100 - floor);
+        // Fast exp-log pow: exp(gamma * ln(norm))
+        pct = floor + (norm > 0.0001 ? Math.exp(tc.dimmingGamma * Math.log(norm)) : 0) * (100 - floor);
       }
 
       // Extra smoothing (precomputed alpha)
