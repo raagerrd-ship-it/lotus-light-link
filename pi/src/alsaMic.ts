@@ -36,6 +36,13 @@ const blackmanWindow = new Float64Array(FFT_SIZE);
 const LO_CUT = Math.floor(150 / BIN_WIDTH);
 const MID_CUT = Math.floor(2000 / BIN_WIDTH);
 
+// Precomputed constants (avoid recomputing every FFT frame)
+const INV_N2 = 1 / (FFT_SIZE * FFT_SIZE);
+const LO_COUNT = LO_CUT;
+const MID_COUNT = MID_CUT - LO_CUT;
+const HI_COUNT = BIN_COUNT - MID_CUT;
+const MID_HI_COUNT = MID_COUNT + HI_COUNT;
+
 // Spectral flux state
 let prevPower: Float64Array = new Float64Array(BIN_COUNT);
 
@@ -172,11 +179,9 @@ export function startMic(): void {
     }
 
     // Trigger FFT every 128 samples (~2.9ms) with 75% overlap on 512-point window.
-    // Higher CPU cost but ~3ms lower latency than 256-sample threshold.
     if (samplesReceived >= 128) {
       processFFT();
       samplesReceived = 0;
-    }
     }
   });
 
