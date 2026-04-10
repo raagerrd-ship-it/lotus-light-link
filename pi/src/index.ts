@@ -53,7 +53,7 @@ async function main() {
   console.log(`  Tick: ${effectiveTickMs}ms (${Math.round(1000 / effectiveTickMs)} Hz)${savedTickMs ? ' (saved)' : ''}`);
   console.log(`  Bridge: ${BRIDGE_URL}`);
   console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
-  console.log(`  Config: :${CONFIG_PORT}`);
+  console.log(`  Config API: :${CONFIG_PORT} (backend)`);
   
 
   console.log('');
