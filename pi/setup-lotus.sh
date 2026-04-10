@@ -148,12 +148,13 @@ fi
 # ─── 9. User-level systemd services ─────────────────────
 echo "[8/8] Skapar systemd-tjänster..."
 SYSTEMD_USER_DIR="$TARGET_HOME/.config/systemd/user"
+BACKEND_PORT=3050
 mkdir -p "$SYSTEMD_USER_DIR"
 
-# Single service (engine + web UI in one process)
+# Backend service (engine: ALSA + BLE + API)
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=Lotus Light Link — Audio-reactive BLE LED controller
+Description=Lotus Light Link — Audio-reactive BLE LED controller (backend)
 After=network.target bluetooth.target
 Wants=bluetooth.target
 
@@ -165,7 +166,7 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=HOME=${TARGET_HOME}
-Environment=PORT=${PORT}
+Environment=BACKEND_PORT=${BACKEND_PORT}
 Environment=TICK_MS=30
 
 CPUAffinity=${CORE}
@@ -174,8 +175,27 @@ CPUAffinity=${CORE}
 WantedBy=default.target
 EOF
 
-# Remove legacy web service if it exists
-rm -f "$SYSTEMD_USER_DIR/${SERVICE_NAME}-web.service" 2>/dev/null || true
+# Frontend service (web UI + API proxy)
+cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-web.service" << EOF
+[Unit]
+Description=Lotus Light Link — Web UI frontend
+After=${SERVICE_NAME}.service
+BindsTo=${SERVICE_NAME}.service
+
+[Service]
+Type=simple
+WorkingDirectory=${PI_DIR}
+ExecStart=${NODE_BIN} --max-old-space-size=64 dist/frontend.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=HOME=${TARGET_HOME}
+Environment=CONFIG_PORT=${PORT}
+Environment=BACKEND_PORT=${BACKEND_PORT}
+
+[Install]
+WantedBy=default.target
+EOF
 
 # Auto-update service + timer
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.service" << EOF
@@ -210,6 +230,7 @@ Description=Restart Lotus Light Link
 [Service]
 Type=oneshot
 ExecStart=/bin/systemctl --user restart ${SERVICE_NAME}
+ExecStartPost=/bin/systemctl --user restart ${SERVICE_NAME}-web
 EOF
 
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-restart.timer" << EOF
@@ -243,8 +264,7 @@ fi
 
 run_user_systemctl daemon-reload
 run_user_systemctl enable "$SERVICE_NAME"
-run_user_systemctl stop "${SERVICE_NAME}-web" 2>/dev/null || true
-run_user_systemctl disable "${SERVICE_NAME}-web" 2>/dev/null || true
+run_user_systemctl enable "${SERVICE_NAME}-web"
 run_user_systemctl enable "${SERVICE_NAME}-update.timer"
 run_user_systemctl enable "${SERVICE_NAME}-restart.timer"
 
@@ -252,26 +272,31 @@ run_user_systemctl enable "${SERVICE_NAME}-restart.timer"
 run_user_systemctl start "${SERVICE_NAME}-update.timer"
 run_user_systemctl start "${SERVICE_NAME}-restart.timer"
 run_user_systemctl start "$SERVICE_NAME"
+run_user_systemctl start "${SERVICE_NAME}-web"
 
-# Verify the service started
+# Verify the services actually started
 sleep 2
-SERVICE_OK=false
-run_user_systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null && SERVICE_OK=true
+BACKEND_OK=false
+FRONTEND_OK=false
+run_user_systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null && BACKEND_OK=true
+run_user_systemctl is-active --quiet "${SERVICE_NAME}-web" 2>/dev/null && FRONTEND_OK=true
 
-if [ "$SERVICE_OK" = true ]; then
-  echo "  ✓ Tjänsten startade"
+if [ "$BACKEND_OK" = true ] && [ "$FRONTEND_OK" = true ]; then
+  echo "  ✓ Båda tjänsterna startade"
 else
-  echo "  ⚠ Tjänsten startade inte"
+  [ "$BACKEND_OK" = false ] && echo "  ⚠ Backend-tjänsten startade inte"
+  [ "$FRONTEND_OK" = false ] && echo "  ⚠ Frontend-tjänsten startade inte"
   echo ""
   if [ "$EUID" -eq 0 ]; then
     sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
-      journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
+      journalctl --user -u "$SERVICE_NAME" -u "${SERVICE_NAME}-web" --no-pager -n 20 2>/dev/null || true
   else
-    journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
+    journalctl --user -u "$SERVICE_NAME" -u "${SERVICE_NAME}-web" --no-pager -n 20 2>/dev/null || true
   fi
   echo ""
   echo "  Manuell felsökning:"
-  echo "    cd ${PI_DIR} && PORT=${PORT} node --max-old-space-size=128 dist/index.js"
+  echo "    Backend:  cd ${PI_DIR} && BACKEND_PORT=${BACKEND_PORT} node --max-old-space-size=128 dist/index.js"
+  echo "    Frontend: cd ${PI_DIR} && CONFIG_PORT=${PORT} BACKEND_PORT=${BACKEND_PORT} node dist/frontend.js"
 fi
 
 # ─── Done ─────────────────────────────────────────────────
