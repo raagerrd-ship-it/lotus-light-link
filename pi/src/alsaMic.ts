@@ -96,12 +96,10 @@ function processFFT(): void {
     prevPower[i] = power;
   }
 
-  latestBands = {
-    bassRms: loCount > 0 ? Math.sqrt(loSum / loCount) : 0,
-    midHiRms: Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount)),
-    totalRms: BIN_COUNT > 0 ? Math.sqrt(totalSum / BIN_COUNT) : 0,
-    flux,
-  };
+  latestBands.bassRms = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
+  latestBands.midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
+  latestBands.totalRms = BIN_COUNT > 0 ? Math.sqrt(totalSum / BIN_COUNT) : 0;
+  latestBands.flux = flux;
 
   // Debug: log signal levels every ~2 seconds
   debugTickCount++;
