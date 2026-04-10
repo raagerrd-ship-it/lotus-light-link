@@ -101,6 +101,11 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const cbr = Math.round(scale * 0xff);
 
   if (writeInFlight) { bleStats.skipBusyCount++; return; }
+  const now = performance.now();
+  if (minWriteIntervalMs > 0 && lastWriteTime > 0 && (now - lastWriteTime) < minWriteIntervalMs) {
+    bleStats.skipThrottleCount++;
+    return;
+  }
   if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
     return;
