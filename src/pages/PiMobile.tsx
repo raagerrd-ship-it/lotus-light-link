@@ -485,7 +485,6 @@ function GlobalSettingsView({
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
   dimmingGamma, setDimmingGamma,
   idleColor, setIdleColor,
-  bleMinInterval, setBleMinInterval,
   piBase,
   onBack, onSave, saved,
 }: {
@@ -494,7 +493,6 @@ function GlobalSettingsView({
   alsaDevice: string; setAlsaDevice: (v: string) => void;
   dimmingGamma: number; setDimmingGamma: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
-  bleMinInterval: number; setBleMinInterval: (v: number) => void;
   piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
@@ -540,17 +538,6 @@ function GlobalSettingsView({
 
         {/* BLE Fade Test */}
         <BleFadeTest piBase={piBase} onResult={(wps) => { const ms = Math.round(1000 / wps); setTickMs(ms); }} />
-
-        <div className="flex justify-between text-sm mb-1 mt-5">
-          <span>BLE min intervall</span>
-          <span className="text-muted-foreground font-mono text-xs">{bleMinInterval} ms</span>
-        </div>
-        <input
-          type="range" min={0} max={200} step={5} value={bleMinInterval}
-          onChange={(e) => setBleMinInterval(parseInt(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-        />
-        <p className="text-[10px] text-muted-foreground mt-0.5">Minsta tid mellan BLE-skrivningar. 0 = ingen throttle. Öka om lampan tappar anslutning.</p>
       </section>
 
       <section className="mb-8">
@@ -611,7 +598,7 @@ export default function PiMobile() {
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
-  const [bleMinInterval, setBleMinInterval] = useState(80);
+  
   const [saved, setSaved] = useState(false);
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
@@ -666,7 +653,7 @@ export default function PiMobile() {
         // Auto TV-mode
         putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
         // BLE min write interval
-        putJson('/api/ble/min-interval', { ms: bleMinInterval }),
+        
       ]);
       setSaved(true);
       clearTimeout(savedTimer.current);
@@ -721,7 +708,7 @@ export default function PiMobile() {
       if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
       if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
-      if (statusRes?.ble?.minWriteIntervalMs != null) setBleMinInterval(statusRes.ble.minWriteIntervalMs);
+      
     };
     load();
   }, []);
@@ -773,7 +760,7 @@ export default function PiMobile() {
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
         idleColor={idleColor} setIdleColor={setIdleColor}
-        bleMinInterval={bleMinInterval} setBleMinInterval={setBleMinInterval}
+        
         piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
