@@ -2,6 +2,9 @@
  * ALSA microphone input via node-record-lpcm16 → FFT → BandResult.
  * Replaces Web Audio API AnalyserNode on Raspberry Pi.
  * Uses custom zero-alloc radix-2 FFT (no fft-js dependency).
+ * 
+ * Event-driven: fires onFFTReady callback immediately after each FFT frame,
+ * enabling the engine to process with zero additional latency.
  */
 
 import record from 'node-record-lpcm16';
@@ -19,7 +22,7 @@ const FFT_SIZE = FFT_N; // 512
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 
-// Pre-computed Blackman window (matches browser AnalyserNode default)
+// Pre-computed Blackman window
 const blackmanWindow = new Float64Array(FFT_SIZE);
 {
   const a0 = 0.42, a1 = 0.5, a2 = 0.08;
@@ -29,35 +32,44 @@ const blackmanWindow = new Float64Array(FFT_SIZE);
   }
 }
 
-// Frequency band cuts (same as browser engine)
+// Frequency band cuts
 const LO_CUT = Math.floor(150 / BIN_WIDTH);
 const MID_CUT = Math.floor(2000 / BIN_WIDTH);
 
 // Spectral flux state
 let prevPower: Float64Array = new Float64Array(BIN_COUNT);
 
-// High-shelf filter state (simple 1-pole)
+// High-shelf filter state
 let hsState = 0;
 
 // Ring buffer for incoming PCM samples
 const ringBuf = new Float32Array(FFT_SIZE);
 let ringPos = 0;
 
-// Windowed sample buffer (input to FFT — Float64Array for precision)
+// Windowed sample buffer (input to FFT)
 const windowedBuf = new Float64Array(FFT_SIZE);
-let samplesReceived = 0; // total samples since last FFT
+let samplesReceived = 0;
 
-// Latest computed bands (polled by engine tick)
+// Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
-// Debug: periodic signal level logging
+// Debug
 let debugTickCount = 0;
-let debugPeakRaw = 0;  // peak absolute sample value since last log
+let debugPeakRaw = 0;
 
-const hsGain = Math.pow(10, 6 / 20); // fixed 6dB for INMP441 @ ~1m
-const HS_ALPHA = 0.15; // crossover ~2kHz at 44.1k
+const hsGain = Math.pow(10, 6 / 20);
+const HS_ALPHA = 0.15;
 
-/** Apply high-shelf to a single sample (called on incoming PCM, once per sample) */
+// ── Event-driven FFT callback ──
+type FFTReadyCallback = (bands: BandResult) => void;
+let _onFFTReady: FFTReadyCallback | null = null;
+
+/** Register callback fired immediately after each FFT frame completes.
+ *  The engine uses this to process with zero timer latency. */
+export function onFFTReady(cb: FFTReadyCallback | null): void {
+  _onFFTReady = cb;
+}
+
 function applyHighShelfSample(sample: number): number {
   hsState += HS_ALPHA * (sample - hsState);
   const lo = hsState;
@@ -71,11 +83,10 @@ function processFFT(): void {
     windowedBuf[i] = ringBuf[(ringPos + i) % FFT_SIZE] * blackmanWindow[i];
   }
 
-  // Zero-alloc in-place FFT — returns references to internal Float64Arrays
   const [fftRe, fftIm] = fft512(windowedBuf);
 
-  // Compute power spectrum and band sums in a single pass (no intermediate magnitude array)
-  const invN2 = 1 / (FFT_SIZE * FFT_SIZE); // precompute 1/N² for power normalization
+  // Power spectrum + band sums in single pass
+  const invN2 = 1 / (FFT_SIZE * FFT_SIZE);
   let loSum = 0, midSum = 0, hiSum = 0;
   let loCount = 0, midCount = 0, hiCount = 0;
   let totalSum = 0;
@@ -99,13 +110,16 @@ function processFFT(): void {
   latestBands.totalRms = BIN_COUNT > 0 ? Math.sqrt(totalSum / BIN_COUNT) : 0;
   latestBands.flux = flux;
 
-  // Debug: log signal levels every ~2 seconds
+  // Debug logging every ~2 seconds
   debugTickCount++;
   if (debugTickCount >= 20) {
     console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${latestBands.flux.toFixed(6)}`);
     debugTickCount = 0;
     debugPeakRaw = 0;
   }
+
+  // Fire event immediately — engine can process with zero latency
+  if (_onFFTReady) _onFFTReady(latestBands);
 }
 
 export function getLatestBands(): BandResult {
@@ -123,7 +137,6 @@ export function getAlsaDevice(): string {
   return currentDevice;
 }
 
-/** Restart mic with a new ALSA device. Stops current recording and starts with the new device. */
 export function setAlsaDevice(device: string): void {
   if (device === currentDevice && recorder) return;
   currentDevice = device;
@@ -147,19 +160,17 @@ export function startMic(): void {
   const stream = recorder.stream();
 
   stream.on('data', (buf: Buffer) => {
-    // 16-bit signed LE PCM → float, high-shelf filtered, into ring buffer
     const samples = buf.length / 2;
     for (let i = 0; i < samples; i++) {
       const s16 = buf.readInt16LE(i * 2);
       const raw = s16 / 32768;
-      const abs = Math.abs(raw);
+      const abs = raw < 0 ? -raw : raw; // branchless abs (avoid Math.abs call)
       if (abs > debugPeakRaw) debugPeakRaw = abs;
       ringBuf[ringPos] = applyHighShelfSample(raw);
       ringPos = (ringPos + 1) % FFT_SIZE;
       samplesReceived++;
     }
 
-    // Only process FFT when we have at least half a window of new data
     if (samplesReceived >= FFT_SIZE / 2) {
       processFFT();
       samplesReceived = 0;
@@ -177,7 +188,6 @@ export function stopMic(): void {
   if (recorder) {
     recorder.stop();
     recorder = null;
-    // Reset filter and buffer state to prevent glitches on restart
     hsState = 0;
     samplesReceived = 0;
     ringPos = 0;

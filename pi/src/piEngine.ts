@@ -1,11 +1,19 @@
 /**
  * PiLightEngine — headless audio→light pipeline for Raspberry Pi.
- * Reimplements LightEngine using ALSA mic + noble BLE.
- * Optimized for dedicated CPU core: zero-allocation hot path,
- * precomputed tick constants, no Math.pow in tick loop.
+ * 
+ * EVENT-DRIVEN ARCHITECTURE:
+ * Instead of a timer polling latestBands, the ALSA mic fires onFFTReady
+ * which triggers the engine immediately (if tickMs has elapsed).
+ * This eliminates up to tickMs of latency from the mic→BLE path.
+ * 
+ * Pipeline: Mic PCM → FFT → [event] → Engine tick → BLE write
+ * Latency: ~5.8ms (audio buffer) + <1ms (processing) + ~25ms (BLE) ≈ 31ms
+ * 
+ * The tickMs setting controls minimum interval between ticks,
+ * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 
@@ -394,38 +402,72 @@ export class PiLightEngine {
     this.lastBucket = bucket;
     this._running = true;
 
+    // Register for FFT-driven ticks (event-driven, not polling)
+    onFFTReady((bands) => this.onFFTFrame(bands));
+
     this.saveTimer = setInterval(() => {
       const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
       this.cal = updated;
       saveCalibration(updated);
     }, 10_000);
 
-    console.log(`[Engine] Initialized (${this.tickMs}ms tick = ${(1000 / this.tickMs + 0.5) | 0} Hz, waiting for playback)`);
+    console.log(`[Engine] Initialized (${this.tickMs}ms min interval = ${(1000 / this.tickMs + 0.5) | 0} Hz max, event-driven, waiting for playback)`);
   }
 
-  private _timer: NodeJS.Timeout | null = null;
+  // ── Event-driven tick scheduling ──
+  // FFT fires ~86 times/sec (44100/512). We only process if tickMs has elapsed.
+  private _lastTickTime = 0;
+  private _pendingTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _loopActive = false;
+
+  /** Called by ALSA FFT callback — runs in the audio data handler context */
+  private onFFTFrame(_bands: BandResult): void {
+    if (!this._loopActive) return;
+
+    const now = performance.now();
+    const elapsed = now - this._lastTickTime;
+
+    if (elapsed >= this.tickMs) {
+      // Enough time passed — process immediately (zero latency)
+      this._lastTickTime = now;
+      if (this._pendingTimeout) { clearTimeout(this._pendingTimeout); this._pendingTimeout = null; }
+      this.tickInner();
+    } else if (!this._pendingTimeout) {
+      // FFT arrived too early — schedule for remaining time
+      const remaining = this.tickMs - elapsed;
+      this._pendingTimeout = setTimeout(() => {
+        this._pendingTimeout = null;
+        this._lastTickTime = performance.now();
+        this.tickInner();
+      }, remaining);
+    }
+    // If _pendingTimeout already set, skip (tick is already scheduled)
+  }
 
   private startLoop(): void {
-    if (this._timer) return;
-    this._timer = setInterval(() => { this.tickInner(); }, this.tickMs);
+    if (this._loopActive) return;
+    this._loopActive = true;
+    this._lastTickTime = performance.now();
   }
 
   private stopLoop(): void {
-    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    this._loopActive = false;
+    if (this._pendingTimeout) { clearTimeout(this._pendingTimeout); this._pendingTimeout = null; }
   }
 
   stop(): void {
     this._running = false;
     this.stopLoop();
+    onFFTReady(null); // unregister callback
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
   }
 
-  /** Restart tick timer only — preserves all smoothing/AGC state */
+  /** Restart tick scheduling — preserves all smoothing/AGC state */
   restartTimer(): void {
     this.stopLoop();
     if (this.playing) this.startLoop();
-    console.log(`[Engine] Timer restarted (${this.tickMs}ms tick = ${(1000 / this.tickMs + 0.5) | 0} Hz, ${this.playing ? 'active' : 'idle'})`);
+    console.log(`[Engine] Timer restarted (${this.tickMs}ms min interval = ${(1000 / this.tickMs + 0.5) | 0} Hz max, ${this.playing ? 'active' : 'idle'})`);
   }
 
   /** Guard against NaN/Infinity corrupting smoothing state */
