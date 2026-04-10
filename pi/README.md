@@ -1,23 +1,27 @@
 # Lotus Light Link — Pi Headless Runtime
 
 Headless audio-reactive LED controller for Raspberry Pi Zero 2 W.
-Same engine as the web app, but using ALSA microphone + noble BLE instead of Web Audio/Web Bluetooth.
+Event-driven engine using ALSA microphone + noble BLE + custom zero-alloc FFT.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│  Pi #1: lotus.local                     │
-│                                         │
-│  INMP441 mic → ALSA → FFT → AGC        │
-│       ↓                                 │
-│  PiLightEngine (30ms tick / 33 Hz)      │
-│       ↓                                 │
-│  noble → BLE GATT → BLEDOM LED strips   │
-│                                         │
-│  Sonos SSE ← Sonos Gateway :3000        │
-│  Config API → :3001                     │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Pi Zero 2 W: lotus.local (dedicated CPU core)   │
+│                                                  │
+│  INMP441 mic → ALSA PCM → high-shelf EQ          │
+│       ↓ (128 samples / 2.9ms)                    │
+│  Ring buffer → Blackman window → radix-2 FFT     │
+│       ↓ [event-driven callback]                  │
+│  PiLightEngine (20ms min interval / 50 Hz max)   │
+│       ↓ (fire-and-forget, non-blocking)          │
+│  noble → BLE GATT write-without-response         │
+│       ↓ (7.5ms connection interval)              │
+│  BLEDOM LED strip                                │
+│                                                  │
+│  Sonos SSE ← Sonos Gateway :3000                 │
+│  Config API → :3050                              │
+└──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -269,18 +273,58 @@ cd /opt/lotus-light && git remote -v
 | File | Description |
 |---|---|
 | `src/index.ts` | Main entry — boots all subsystems |
-| `src/alsaMic.ts` | ALSA mic → ring buffer → FFT bands |
+| `src/alsaMic.ts` | ALSA mic → ring buffer → FFT bands (event-driven) |
+| `src/fftRadix2.ts` | Custom zero-alloc radix-2 Cooley-Tukey FFT (512-point) |
 | `src/nobleBle.ts` | noble BLE driver for BLEDOM protocol |
 | `src/sonosPoller.ts` | Configurable SSE + poll for Sonos state |
 | `src/piEngine.ts` | Headless LightEngine (AGC, smoothing, brightness) |
-| `src/configServer.ts` | Express :3001 — REST API for config |
+| `src/configServer.ts` | Express :3050 — REST API for config |
 | `src/storage.ts` | File-based localStorage (~/.lotus-light/) |
 | `setup-lotus.sh` | Full install script (deps, I²S, systemd) |
 | `update-services.sh` | Auto-update script (GitHub → build → restart) |
 
-## Performance Target
+## Latency Budget
 
-- **Tick interval**: 30ms (33 Hz) — 60% finer temporal resolution than browser baseline (40ms)
-- **ALSA buffer**: ~1.5ms (vs Web Audio ~10-20ms)
-- **BLE write**: ~25ms per GATT write (hardware limit)
-- **Total pipeline**: <5ms (FFT + AGC + smoothing + BLE call)
+End-to-end latency from sound hitting the microphone to LED color change:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Stage                 │ Latency  │ Notes                      │
+├────────────────────────┼──────────┼────────────────────────────┤
+│  ALSA capture buffer   │  ~2.9ms  │ 128 samples @ 44.1kHz     │
+│  High-shelf EQ         │  <0.1ms  │ 1-pole IIR, per-sample    │
+│  Blackman window + FFT │  <0.5ms  │ Zero-alloc radix-2, N=512 │
+│  Engine tick           │  <0.3ms  │ AGC + smoothing + onset    │
+│  BLE write             │ ~10ms    │ Write-without-response,    │
+│                        │          │ 7.5ms connection interval  │
+├────────────────────────┼──────────┼────────────────────────────┤
+│  TOTAL                 │ ~14ms    │ Sound → light              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Optimizations
+
+| Optimization | Impact |
+|---|---|
+| **Event-driven ticks** | FFT completion triggers engine immediately (no timer polling delay) |
+| **Custom FFT** | Zero-alloc radix-2 with precomputed twiddle factors + bit-reversal table |
+| **75% FFT overlap** | Trigger every 128 samples instead of 256 (~3ms faster response) |
+| **Precomputed tick constants** | All `Math.pow` calls computed once on tickMs/calibration change |
+| **BLE brightness LUT** | 101-entry lookup table replaces `Math.pow` per tick |
+| **7.5ms connection interval** | Negotiated via HCI after connect (default is ~30ms) |
+| **Write-without-response** | Fire-and-forget GATT writes, non-reentrant guard prevents queueing |
+| **Bitwise rounding** | `(x + 0.5) \| 0` replaces `Math.round` in hot path |
+| **Zero allocation** | Static objects, pre-allocated Float64Arrays, no GC pauses |
+| **CPU pinning** | Dedicated core (Core 1) with Nice=-5 priority |
+
+### Tick Rate
+
+The `tickMs` setting (default 20ms / 50 Hz) controls the **minimum interval** between engine ticks, not a polling rate. The engine processes immediately when FFT data arrives, provided enough time has elapsed:
+
+```
+FFT fires (~345 Hz) → Has tickMs elapsed? → YES → process immediately
+                                           → NO  → schedule for remaining time
+```
+
+Adjustable via API: `curl -X PUT http://lotus.local:3050/api/tick-ms -d '{"tickMs":20}'`
+Range: 20–200ms (50 Hz – 5 Hz)
