@@ -382,12 +382,15 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   await char.writeAsync(brightMaxBuf, true);
 
   device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
+  lastWriteTime = performance.now(); // count the brightMax write
+  startKeepAlive();
 
   // Auto-reconnect on disconnect
   peripheral.once('disconnect', (reason: any) => {
     const uptime = Math.round((performance.now() - connectTime) / 1000);
     console.log(`[BLE] ${name} disconnected after ${uptime}s — reason: ${reason ?? 'unknown'}`);
     console.log(`[BLE] Stats at disconnect: sent=${bleStats.sentCount}, skipBusy=${bleStats.skipBusyCount}, skipDelta=${bleStats.skipDeltaCount}, avgLat=${bleStats.writeLatAvgMs}ms`);
+    stopKeepAlive();
     device = null;
     resetLastSent();
     reconnectWithBackoff(peripheral, name);
