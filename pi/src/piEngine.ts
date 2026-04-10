@@ -1,11 +1,19 @@
 /**
  * PiLightEngine — headless audio→light pipeline for Raspberry Pi.
- * Reimplements LightEngine using ALSA mic + noble BLE.
- * Optimized for dedicated CPU core: zero-allocation hot path,
- * precomputed tick constants, no Math.pow in tick loop.
+ * 
+ * EVENT-DRIVEN ARCHITECTURE:
+ * Instead of a timer polling latestBands, the ALSA mic fires onFFTReady
+ * which triggers the engine immediately (if tickMs has elapsed).
+ * This eliminates up to tickMs of latency from the mic→BLE path.
+ * 
+ * Pipeline: Mic PCM → FFT → [event] → Engine tick → BLE write
+ * Latency: ~5.8ms (audio buffer) + <1ms (processing) + ~25ms (BLE) ≈ 31ms
+ * 
+ * The tickMs setting controls minimum interval between ticks,
+ * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 
