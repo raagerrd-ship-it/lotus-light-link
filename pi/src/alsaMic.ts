@@ -37,6 +37,9 @@ const MID_CUT = Math.floor(2000 / BIN_WIDTH);
 // Spectral flux state
 let prevPower: Float64Array = new Float64Array(BIN_COUNT);
 
+// Pre-allocated magnitude buffer (avoids fftUtil.fftMag allocation each frame)
+const magnitudeBuf = new Float64Array(BIN_COUNT);
+
 // High-shelf filter state (simple 1-pole)
 let hsState = 0;
 
