@@ -50,7 +50,6 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         savedDeviceId: getSavedDeviceId(),
         connectedDeviceId: getConnectedDeviceId(),
         scanning: isScanning(),
-        minWriteIntervalMs: getMinWriteInterval(),
       },
       commit: GIT_COMMIT_SHORT,
       branch: GIT_BRANCH,
@@ -162,17 +161,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     }
   });
 
-  // --- BLE min write interval ---
-  app.put('/api/ble/min-interval', (req, res) => {
-    const { ms } = req.body;
-    if (typeof ms === 'number' && ms >= 0 && ms <= 500) {
-      setMinWriteInterval(ms);
-      setItem('ble-min-write-interval', String(ms));
-      res.json({ ok: true, minWriteIntervalMs: getMinWriteInterval() });
-    } else {
-      res.status(400).json({ error: 'ms must be 0-500' });
-    }
-  });
+
 
   // --- Microphone device ---
   app.get('/api/mic-device', (_req, res) => {
