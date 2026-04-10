@@ -92,29 +92,28 @@ function processFFT(): void {
 
   const [fftRe, fftIm] = fft512(windowedBuf);
 
-  // Power spectrum + band sums in single pass
-  const invN2 = 1 / (FFT_SIZE * FFT_SIZE);
+  // Power spectrum + band sums in single pass (precomputed constants, no counters)
   let loSum = 0, midSum = 0, hiSum = 0;
-  let loCount = 0, midCount = 0, hiCount = 0;
   let totalSum = 0;
   let flux = 0;
 
   for (let i = 0; i < BIN_COUNT; i++) {
     const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * invN2;
+    const power = (r * r + m * m) * INV_N2;
     totalSum += power;
-    if (i < LO_CUT) { loSum += power; loCount++; }
-    else if (i < MID_CUT) { midSum += power; midCount++; }
-    else { hiSum += power; hiCount++; }
+    if (i < LO_CUT) loSum += power;
+    else if (i < MID_CUT) midSum += power;
+    else hiSum += power;
 
     const diff = power - prevPower[i];
     if (diff > 0) flux += diff;
     prevPower[i] = power;
   }
 
-  latestBands.bassRms = loCount > 0 ? Math.sqrt(loSum / loCount) : 0;
-  latestBands.midHiRms = Math.sqrt((midSum + hiSum) / Math.max(1, midCount + hiCount));
-  latestBands.totalRms = BIN_COUNT > 0 ? Math.sqrt(totalSum / BIN_COUNT) : 0;
+  latestBands.bassRms = Math.sqrt(loSum / LO_COUNT);
+  latestBands.midHiRms = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
+  latestBands.totalRms = Math.sqrt(totalSum / BIN_COUNT);
+  latestBands.flux = flux;
   latestBands.flux = flux;
 
   // Debug logging every ~2 seconds
