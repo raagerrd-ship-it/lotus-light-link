@@ -93,9 +93,10 @@ function startKeepAlive(): void {
     const elapsed = performance.now() - lastWriteTime;
     if (lastWriteTime > 0 && elapsed < KEEPALIVE_MS * 0.8) return; // recent write, skip
     // Re-send last known color to keep connection alive
+    // Use write WITH response to force a real BLE round-trip (prevents supervision timeout)
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     try {
-      await device.characteristic.writeAsync(buf, true);
+      await device.characteristic.writeAsync(buf, false);
       lastWriteTime = performance.now();
       if (keepAliveFailCount > 0) {
         console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
