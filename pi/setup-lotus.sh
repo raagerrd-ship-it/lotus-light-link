@@ -148,7 +148,7 @@ fi
 # ─── 9. User-level systemd services ─────────────────────
 echo "[8/8] Skapar systemd-tjänster..."
 SYSTEMD_USER_DIR="$TARGET_HOME/.config/systemd/user"
-BACKEND_PORT=$((PORT + 1))
+BACKEND_PORT=3050
 mkdir -p "$SYSTEMD_USER_DIR"
 
 # Backend service (engine: ALSA + BLE + API)
