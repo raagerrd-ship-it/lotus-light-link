@@ -585,6 +585,22 @@ function GlobalSettingsView({
           </div>
         </div>
       </section>
+
+      {/* Auto TV-mode */}
+      <section className="mb-8">
+        <label className="flex items-center justify-between">
+          <div>
+            <div className="text-sm">📺 Auto TV-läge</div>
+            <p className="text-[10px] text-muted-foreground">Mikrofon-reaktivt ljus när Sonos spelar från TV/SPDIF</p>
+          </div>
+          <button
+            onClick={() => setAutoTvMode(!autoTvMode)}
+            className={`w-12 h-7 rounded-full transition-colors relative ${autoTvMode ? 'bg-green-500' : 'bg-secondary border border-border'}`}
+          >
+            <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${autoTvMode ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
+          </button>
+        </label>
+      </section>
     </div>
   );
 }
@@ -764,7 +780,7 @@ export default function PiMobile() {
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
         idleColor={idleColor} setIdleColor={setIdleColor}
-        
+        autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
         piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
