@@ -418,56 +418,54 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   lastWriteTime = performance.now();
   startKeepAlive();
 
-  // Auto-reconnect on disconnect
+  // Auto-reconnect on disconnect (only if demand is active)
   peripheral.once('disconnect', (reason: any) => {
     const uptime = Math.round((performance.now() - connectTime) / 1000);
-    console.log(`[BLE] ${name} disconnected after ${uptime}s — reason: ${reason ?? 'unknown'}`);
-    console.log(`[BLE] Stats at disconnect: sent=${bleStats.sentCount}, skipBusy=${bleStats.skipBusyCount}, skipDelta=${bleStats.skipDeltaCount}, avgLat=${bleStats.writeLatAvgMs}ms`);
+    // Quiet log: single line, no stats dump for short-lived connections
+    if (uptime < 10) {
+      console.log(`[BLE] ${name} dropped after ${uptime}s (reason ${reason ?? '?'})`);
+    } else {
+      console.log(`[BLE] ${name} disconnected after ${uptime}s — reason: ${reason ?? 'unknown'}, sent=${bleStats.sentCount}, avgLat=${bleStats.writeLatAvgMs}ms`);
+    }
     stopKeepAlive();
     device = null;
     resetLastSent();
-    reconnectWithBackoff(peripheral, name);
+    if (_demandConnect) {
+      reconnectWithBackoff(peripheral, name);
+    }
   });
 
-  console.log(`[BLE] ${name} ready (hw brightness max, single-device mode)`);
+  console.log(`[BLE] ${name} ready`);
 }
 
 /** Reconnect with exponential backoff, then fall back to fresh scan */
 async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0): Promise<void> {
   const maxDirectAttempts = 3;
-  const baseDelay = 1000;
+  const baseDelay = 300; // fast first retry
 
-  if (device) return;
+  if (device || !_demandConnect) return;
 
-  // Phase 1: Try direct reconnect to same peripheral (fast)
   if (attempt < maxDirectAttempts) {
     const delay = baseDelay * Math.pow(2, attempt);
-    console.log(`[BLE] ${name} — direct reconnect ${attempt + 1}/${maxDirectAttempts} in ${delay}ms`);
     await new Promise(r => setTimeout(r, delay));
-    if (device) return;
+    if (device || !_demandConnect) return;
 
     try {
       await connectPeripheral(peripheral);
-      console.log(`[BLE] ${name} — reconnected successfully (direct)`);
       return;
     } catch (e: any) {
-      console.error(`[BLE] ${name} — direct reconnect ${attempt + 1} failed: ${e.message}`);
+      if (attempt === maxDirectAttempts - 1) {
+        console.warn(`[BLE] ${name} — direct reconnect exhausted`);
+      }
       return reconnectWithBackoff(peripheral, name, attempt + 1);
     }
   }
 
-  // Phase 2: Direct attempts exhausted — do a fresh BLE scan
-  console.log(`[BLE] ${name} — direct reconnect exhausted, trying fresh scan...`);
+  // Phase 2: fresh scan
+  if (!_demandConnect) return;
   try {
-    const found = await autoConnectSaved(15000);
-    if (found > 0) {
-      console.log(`[BLE] ${name} — reconnected via fresh scan`);
-    } else {
-      console.log(`[BLE] ${name} — fresh scan found nothing, will retry on next loop`);
-    }
-  } catch (e: any) {
-    console.error(`[BLE] ${name} — fresh scan failed: ${e.message}`);
-  }
+    await autoConnectSaved(10000);
+  } catch {}
 }
 
 /** Raw color write — bypasses dedup and brightness scaling. For test tools only. */
@@ -487,7 +485,7 @@ export async function disconnect(): Promise<void> {
     try { await device.peripheral.disconnectAsync(); } catch {}
     device = null;
     resetLastSent();
-    console.log('[BLE] Device disconnected');
+    console.log('[BLE] Disconnected');
   }
 }
 
@@ -495,11 +493,38 @@ export async function disconnect(): Promise<void> {
 export const disconnectAll = disconnect;
 export function setExpectedDeviceCount(_n: number): void { /* no-op in single-device mode */ }
 
-/** Background reconnect loop — tries to connect to saved device when disconnected */
+// ── Demand-based connection management ──
+// When demand is true, we actively maintain a connection.
+// When false, we let disconnects happen without reconnecting.
+let _demandConnect = false;
+
+/** Signal that BLE is needed (e.g. music started playing).
+ *  Triggers connect if not already connected. */
+export async function requestConnect(): Promise<void> {
+  if (_demandConnect && device) return; // already connected + demanded
+  _demandConnect = true;
+  if (!device && savedDeviceId) {
+    console.log('[BLE] Demand ON — connecting...');
+    await autoConnectSaved(10000);
+  }
+}
+
+/** Signal that BLE is no longer needed (e.g. music stopped).
+ *  Keeps current connection but stops reconnecting on disconnect. */
+export function releaseDemand(): void {
+  if (!_demandConnect) return;
+  _demandConnect = false;
+  console.log('[BLE] Demand OFF — will not reconnect on next disconnect');
+}
+
+export function isDemandActive(): boolean {
+  return _demandConnect;
+}
+
+/** Background reconnect loop — only reconnects when demand is active */
 export function startReconnectLoop(intervalMs = 15000): NodeJS.Timeout {
   return setInterval(async () => {
-    if (!device && savedDeviceId) {
-      console.log('[BLE] No device connected, scanning for saved device...');
+    if (!device && savedDeviceId && _demandConnect) {
       await autoConnectSaved(10000);
     }
   }, intervalMs);

@@ -15,7 +15,7 @@ import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
 import { startMic, stopMic, setAlsaDevice } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount } from './nobleBle.js';
+import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
@@ -72,18 +72,9 @@ async function main() {
     console.error('[Boot] Mic failed (continuing without):', e.message);
   }
 
-  // 5. Scan for BLE devices (non-fatal, can hang on GATT discovery)
-  console.log('[Boot] Scanning for BLEDOM devices...');
-  try {
-    const found = await scanAndConnect(15000);
-    console.log(`[Boot] Found ${found} BLE device(s)`);
-    setExpectedDeviceCount(found);
-  } catch (e: any) {
-    console.error('[Boot] BLE scan failed (continuing):', e.message);
-  }
-
-  // Start background reconnect loop
-  const reconnectTimer = startReconnectLoop(30000);
+  // 5. BLE — don't connect at boot, wait for Sonos to signal playback
+  console.log('[Boot] BLE ready (will connect on demand when music plays)');
+  const reconnectTimer = startReconnectLoop(15000);
 
   // 4. Start Sonos poller (configurable gateway)
   // Load saved config or use env vars
@@ -111,9 +102,16 @@ async function main() {
   let wasTvMode = false;
   onSonosChange((state) => {
     const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
+    const needsBle = isPlaying || state.isTvMode;
+    
+    // Demand-based BLE: connect when needed, stop reconnecting when idle
+    if (needsBle) {
+      requestConnect();
+    } else {
+      releaseDemand();
+    }
     
     if (state.isTvMode) {
-      // TV-mode: keep engine running with mic-reactive lighting, skip palette
       engine.setPlaying(true);
       if (!wasTvMode) {
         console.log('[Engine] → TV-läge (mikrofon-reaktiv)');

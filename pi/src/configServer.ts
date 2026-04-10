@@ -6,7 +6,7 @@
 import { execSync } from 'child_process';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
@@ -48,6 +48,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         savedDeviceId: getSavedDeviceId(),
         connectedDeviceId: getConnectedDeviceId(),
         scanning: isScanning(),
+        demand: isDemandActive(),
       },
       commit: GIT_COMMIT_SHORT,
       branch: GIT_BRANCH,
