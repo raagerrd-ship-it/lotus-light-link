@@ -1,12 +1,10 @@
 /**
  * Onset detection via spectral-flux peak-picking.
  *
- * Instead of a smoothed continuous transient signal, this gives discrete
- * binary onset events (yes/no per tick) by comparing flux against an
- * adaptive median-based threshold and requiring a local maximum.
- *
  * CPU cost: sorting ~7 numbers + 2 comparisons per tick — negligible.
  */
+
+import type { TickConstants } from "./tickConstants";
 
 const TARGET_LOOKBACK_MS = 175;
 const DEFAULT_MULTIPLIER = 1.5;
@@ -67,38 +65,50 @@ function median(arr: number[]): number {
   return (n & 1) ? _medianScratch[mid] : (_medianScratch[mid - 1] + _medianScratch[mid]) * 0.5;
 }
 
-/**
- * Process a new flux value. Returns true if an onset was detected.
- * Shaped envelope: fast 2-tick rise to rounded peak, smooth exponential fade.
- */
+/** Original detectOnset — kept for standalone/test use. */
 export function detectOnset(state: OnsetState, flux: number, tickMs: number): boolean {
-  // Write to circular buffer
   state.buffer[state.pos] = flux;
   state.pos = (state.pos + 1) % state.size;
 
-  // Adaptive threshold: median * multiplier + offset
   const threshold = median(state.buffer) * DEFAULT_MULTIPLIER + DEFAULT_OFFSET;
-
-  // Onset = above threshold AND local maximum (>= previous frame)
   const isOnset = flux > threshold && flux >= state.prevFlux;
   state.prevFlux = flux;
 
-  // Decay constant: ~90% decay per second
   const DECAY_PER_SEC = 0.10;
   const tickDecay = Math.pow(DECAY_PER_SEC, tickMs / 1000);
 
-  // On onset, set target high — boost chases target with fast rise
   if (isOnset) state.target = 0.22;
 
-  // Fast rise (~2 ticks to peak), smooth decay
   const riseAlpha = 1 - Math.pow(0.15, tickMs / 125);
   if (state.boost < state.target) {
     state.boost += riseAlpha * (state.target - state.boost);
   } else {
     state.boost *= tickDecay;
   }
-  // Decay target for rounded peak shape
   state.target *= tickDecay;
+
+  if (state.boost < 0.001) { state.boost = 0; state.target = 0; }
+
+  return isOnset;
+}
+
+/** Fast version using precomputed decay/rise constants — zero Math.pow. */
+export function detectOnsetFast(state: OnsetState, flux: number, tc: TickConstants): boolean {
+  state.buffer[state.pos] = flux;
+  state.pos = (state.pos + 1) % state.size;
+
+  const threshold = median(state.buffer) * DEFAULT_MULTIPLIER + DEFAULT_OFFSET;
+  const isOnset = flux > threshold && flux >= state.prevFlux;
+  state.prevFlux = flux;
+
+  if (isOnset) state.target = 0.22;
+
+  if (state.boost < state.target) {
+    state.boost += tc.onsetRiseAlpha * (state.target - state.boost);
+  } else {
+    state.boost *= tc.onsetDecay;
+  }
+  state.target *= tc.onsetDecay;
 
   if (state.boost < 0.001) { state.boost = 0; state.target = 0; }
 

@@ -12,7 +12,7 @@ import { applyColorCalibration } from "./lightCalibration";
 import { sendToBLE } from "./bledom";
 import { sendIdleIfNeeded } from "./idleManager";
 import { resizeOnsetBuffer } from "./onsetDetector";
-import { createEngineState, type EngineState, type TickCallback } from "./lightEngineState";
+import { createEngineState, refreshTickConstants, type EngineState, type TickCallback } from "./lightEngineState";
 import { resetSmoothing as resetSmoothingFn, emitTick } from "./lightEngineTickPipeline";
 import { startEngine, stopEngine, destroyEngine } from "./lightEngineLifecycle";
 
@@ -35,7 +35,13 @@ export class LightEngine {
   setColor(rgb: [number, number, number]) { this.s.color = rgb; }
   setPalette(colors: [number, number, number][]) { this.s.palette = colors; }
   setVolume(vol: number | undefined) { this.s.volume = vol; }
-  setTickMs(ms: number) { this.s.tickMs = ms; resizeOnsetBuffer(this.s.onset, ms); this.s.worker?.postMessage(ms); }
+
+  setTickMs(ms: number) {
+    this.s.tickMs = ms;
+    resizeOnsetBuffer(this.s.onset, ms);
+    refreshTickConstants(this.s);
+    this.s.worker?.postMessage(ms);
+  }
 
   setPlaying(playing: boolean) {
     this.s.playing = playing;

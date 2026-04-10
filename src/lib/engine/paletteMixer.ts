@@ -36,9 +36,7 @@ function emitResult(color: [number, number, number], state: PaletteState): Palet
 }
 
 /**
- * Advance palette and return the current color.
- * Returns null if palette mode is off or palette has < 2 colors.
- * MUTATES state in-place (zero-alloc).
+ * Original advancePalette — kept for standalone/test use.
  */
 export function advancePalette(
   palette: [number, number, number][],
@@ -50,13 +48,39 @@ export function advancePalette(
   tickMs: number,
 ): PaletteResult | null {
   if (mode === 'off' || palette.length < 2) return null;
+  const speed = Math.max(1, Math.round((cal.paletteRotationSpeed ?? 8) * (125 / tickMs)));
+  return advancePaletteCore(palette, state, mode, speed, smoothedBass, rawEnergy);
+}
 
+/**
+ * Fast version using precomputed timed speed — zero Math.round/division.
+ */
+export function advancePaletteFast(
+  palette: [number, number, number][],
+  state: PaletteState,
+  mode: PaletteMode,
+  preTimedSpeed: number,
+  smoothedBass: number,
+  rawEnergy: number,
+): PaletteResult | null {
+  if (mode === 'off' || palette.length < 2) return null;
+  return advancePaletteCore(palette, state, mode, preTimedSpeed, smoothedBass, rawEnergy);
+}
+
+/** Shared core logic */
+function advancePaletteCore(
+  palette: [number, number, number][],
+  state: PaletteState,
+  mode: PaletteMode,
+  timedSpeed: number,
+  smoothedBass: number,
+  rawEnergy: number,
+): PaletteResult | null {
   const pLen = palette.length;
 
   if (mode === 'timed') {
     state.tickCounter++;
-    const speed = Math.max(1, Math.round((cal.paletteRotationSpeed ?? 8) * (125 / tickMs)));
-    if (state.tickCounter >= speed) {
+    if (state.tickCounter >= timedSpeed) {
       state.tickCounter = 0;
       state.index = (state.index + 1) % pLen;
     }
@@ -86,10 +110,9 @@ export function advancePalette(
     const t = pos - lo;
     const cLo = palette[lo];
     const cHi = palette[hi];
-    // Reuse _blendColor array
-    _blendColor[0] = Math.round(cLo[0] + (cHi[0] - cLo[0]) * t);
-    _blendColor[1] = Math.round(cLo[1] + (cHi[1] - cLo[1]) * t);
-    _blendColor[2] = Math.round(cLo[2] + (cHi[2] - cLo[2]) * t);
+    _blendColor[0] = (cLo[0] + (cHi[0] - cLo[0]) * t + 0.5) | 0;
+    _blendColor[1] = (cLo[1] + (cHi[1] - cLo[1]) * t + 0.5) | 0;
+    _blendColor[2] = (cLo[2] + (cHi[2] - cLo[2]) * t + 0.5) | 0;
     state.index = lo;
     return emitResult(_blendColor, state);
   }

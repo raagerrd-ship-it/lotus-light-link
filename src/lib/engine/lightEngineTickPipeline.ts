@@ -1,17 +1,18 @@
 /**
  * LightEngine — tick pipeline (pure computation + BLE output).
- * Zero-allocation hot path: reuses objects, minimises timing overhead.
+ * Zero-allocation hot path: reuses objects, uses precomputed constants.
+ * All Math.pow calls are eliminated — values cached in TickConstants.
  */
 
 import { sendToBLE } from "./bledom";
-import { applyColorCalibration } from "./lightCalibration";
+import { applyColorCalibrationFast } from "./lightCalibration";
 import { computeBands, resetFluxState } from "./audioAnalysis";
-import { updateRunningMax, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, createAgcState } from "./agc";
-import { smooth, computeBrightnessPct, extraSmooth } from "./brightnessEngine";
-import { advancePalette } from "./paletteMixer";
+import { updateRunningMaxFast, volumeToBucket, updateVolumeTable, getFloorForVolume, normalizeBand, createAgcState } from "./agc";
+import { smoothFast, computeBrightnessPctFast, extraSmoothFast } from "./brightnessEngine";
+import { advancePaletteFast } from "./paletteMixer";
 import { sendIdleIfNeeded } from "./idleManager";
-import { createOnsetState, detectOnset, getOnsetBoost, resizeOnsetBuffer } from "./onsetDetector";
-import { sanitizeState, type EngineState, type TickData, type TickCallback } from "./lightEngineState";
+import { createOnsetState, detectOnsetFast, getOnsetBoost, resizeOnsetBuffer } from "./onsetDetector";
+import { sanitizeState, refreshTickConstants, type EngineState, type TickData, type TickCallback } from "./lightEngineState";
 
 // Reusable TickData object — mutated in place every tick (zero-alloc)
 const _tickData: TickData = {
@@ -58,6 +59,7 @@ export function resetSmoothing(s: EngineState): void {
   const floor = getFloorForVolume(s.volumeTable, bucket);
   s.agc = createAgcState(floor);
   s.lastBucket = bucket;
+  refreshTickConstants(s);
 }
 
 /** Resize onset buffer when tick rate changes. */
@@ -84,13 +86,14 @@ function tickInner(s: EngineState): void {
   const tickStart = performance.now();
   const cal = s.cal;
   const agc = s.agc;
-  const tickMs = s.tickMs;
+  const tc = s.tc;
 
   // ── FFT ──
   const bands = computeBands(an, s.freqBuf);
 
-  // ── Smoothing ──
-  s.smoothed = smooth(s.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, tickMs);
+  // ── Smoothing (precomputed alphas — no Math.pow) ──
+  const atkAlpha = bands.totalRms > s.smoothed ? tc.attackAlpha : tc.releaseAlpha;
+  s.smoothed = s.smoothed + atkAlpha * (bands.totalRms - s.smoothed);
 
   // ── Volume bucket & AGC update ──
   const bucket = volumeToBucket(s.volume);
@@ -99,7 +102,7 @@ function tickInner(s: EngineState): void {
     if (floor > agc.max) agc.max = floor;
     s.lastBucket = bucket;
   }
-  updateRunningMax(agc, s.smoothed, bands.bassRms, bands.midHiRms, tickMs);
+  updateRunningMaxFast(agc, s.smoothed, bands.bassRms, bands.midHiRms, tc);
   updateVolumeTable(s.volumeTable, bucket, s.smoothed);
 
   // Normalize bands
@@ -107,35 +110,36 @@ function tickInner(s: EngineState): void {
   const rawMidHiNorm = normalizeBand(bands.midHiRms, agc, 'midHi');
   const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
-  // ── Per-band smoothing ──
-  s.smoothedBass = smooth(s.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, tickMs);
-  s.smoothedMidHi = smooth(s.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, tickMs);
+  // ── Per-band smoothing (inlined — no function call overhead) ──
+  const bassAlpha = rawBassNorm > s.smoothedBass ? tc.attackAlpha : tc.releaseAlpha;
+  s.smoothedBass = s.smoothedBass + bassAlpha * (rawBassNorm - s.smoothedBass);
+  const midHiAlpha = rawMidHiNorm > s.smoothedMidHi ? tc.attackAlpha : tc.releaseAlpha;
+  s.smoothedMidHi = s.smoothedMidHi + midHiAlpha * (rawMidHiNorm - s.smoothedMidHi);
 
-  // ── Onset detection ──
-  detectOnset(s.onset, bands.flux, tickMs);
+  // ── Onset detection (precomputed constants) ──
+  detectOnsetFast(s.onset, bands.flux, tc);
   const fluxBoost = (cal.transientBoost !== false) ? getOnsetBoost(s.onset) : 0;
 
-  // ── Brightness ──
-  let { pct, newCenter } = computeBrightnessPct(
+  // ── Brightness (precomputed centerAlpha) ──
+  let { pct, newCenter } = computeBrightnessPctFast(
     s.smoothedBass, s.smoothedMidHi,
-    100, s.dynamicCenter, cal,
-    fluxBoost, tickMs,
+    100, s.dynamicCenter, cal, fluxBoost, tc,
   );
   s.dynamicCenter = newCenter;
 
-  // ── Extra smoothing ──
+  // ── Extra smoothing (precomputed alpha) ──
   const sm = cal.smoothing ?? 0;
   if (sm > 0) {
-    s.extraSmoothPct = extraSmooth(s.extraSmoothPct, pct, sm, tickMs);
+    s.extraSmoothPct = s.extraSmoothPct + (1 - tc.extraSmoothAlpha) * (pct - s.extraSmoothPct);
     pct = s.extraSmoothPct;
   }
   pct = (pct + 0.5) | 0; // fast round
 
-  // ── Palette mode ──
+  // ── Palette mode (precomputed speed) ──
   const pm = cal.paletteMode ?? 'off';
-  const paletteResult = advancePalette(
-    s.palette, s.paletteState, pm, cal,
-    s.smoothedBass, rawEnergy, tickMs,
+  const paletteResult = advancePaletteFast(
+    s.palette, s.paletteState, pm, tc.paletteTimedSpeed,
+    s.smoothedBass, rawEnergy,
   );
   if (paletteResult) {
     s.color = paletteResult.color;
@@ -144,7 +148,7 @@ function tickInner(s: EngineState): void {
 
   // ── Resolve colors ──
   const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
-  const finalColor = applyColorCalibration(s.color[0], s.color[1], s.color[2], cal);
+  const finalColor = applyColorCalibrationFast(s.color[0], s.color[1], s.color[2], cal, tc.gammaIsUnity);
   const bleSentR = finalColor[0], bleSentG = finalColor[1], bleSentB = finalColor[2];
   s.lastBaseColor[0] = bleSentR;
   s.lastBaseColor[1] = bleSentG;
@@ -171,7 +175,7 @@ function tickInner(s: EngineState): void {
   td.isPlaying = s.playing;
   td.paletteIndex = s.paletteState.index;
   td.timings.totalTickMs = tickEnd - tickStart;
-  td.timings.rmsMs = 0; // collapsed into total — minimal overhead
+  td.timings.rmsMs = 0;
   td.timings.smoothMs = 0;
   td.timings.bleCallMs = 0;
 

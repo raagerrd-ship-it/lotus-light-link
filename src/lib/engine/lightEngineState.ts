@@ -9,6 +9,7 @@ import { createAgcState, type AgcState, type AgcVolumeTable } from "./agc";
 import { createPaletteState, type PaletteState } from "./paletteMixer";
 import { createIdleState, type IdleState } from "./idleManager";
 import { createOnsetState, type OnsetState } from "./onsetDetector";
+import { computeTickConstants, type TickConstants } from "./tickConstants";
 
 export const DEFAULT_TICK_MS = 125;
 
@@ -65,6 +66,9 @@ export interface EngineState {
   // Idle
   idle: IdleState;
 
+  // Precomputed tick constants (recomputed on tickMs / cal change)
+  tc: TickConstants;
+
   // Misc
   lastBaseColor: [number, number, number];
   lastTickData: TickData | null;
@@ -83,6 +87,7 @@ export interface EngineState {
 /** Create a fresh engine state with sensible defaults. */
 export function createEngineState(): EngineState {
   const cal = getCalibration();
+  const tickMs = DEFAULT_TICK_MS;
   return {
     color: [255, 80, 0],
     palette: [],
@@ -90,7 +95,7 @@ export function createEngineState(): EngineState {
     volume: undefined,
     playing: true,
     chars: new Set(),
-    tickMs: DEFAULT_TICK_MS,
+    tickMs,
 
     analyser: null,
     freqBuf: null,
@@ -110,6 +115,8 @@ export function createEngineState(): EngineState {
     onset: createOnsetState(),
     idle: createIdleState(),
 
+    tc: computeTickConstants(tickMs, cal),
+
     lastBaseColor: [0, 0, 0],
     lastTickData: null,
 
@@ -122,6 +129,11 @@ export function createEngineState(): EngineState {
     idleCleanup: null,
     calCleanup: null,
   };
+}
+
+/** Recompute cached tick constants (call after tickMs or cal change). */
+export function refreshTickConstants(s: EngineState): void {
+  s.tc = computeTickConstants(s.tickMs, s.cal);
 }
 
 /** Guard against NaN/Infinity corrupting smoothing state. */
@@ -154,4 +166,5 @@ export function resetEngineState(s: EngineState): void {
   s.lastBucket = 0;
   s.idle = createIdleState();
   s.lastTickData = null;
+  s.tc = computeTickConstants(s.tickMs, s.cal);
 }
