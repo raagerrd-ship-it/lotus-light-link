@@ -61,7 +61,10 @@ async function main() {
   // 2. Create engine
   const engine = new PiLightEngine(effectiveTickMs);
 
-  // 3. Start microphone
+  // 3. Start config server EARLY (so API is available during BLE/Sonos init)
+  startConfigServer(engine, CONFIG_PORT);
+
+  // 4. Start microphone
   console.log('[Boot] Starting ALSA microphone...');
   try {
     startMic();
@@ -69,7 +72,7 @@ async function main() {
     console.error('[Boot] Mic failed (continuing without):', e.message);
   }
 
-  // 4. Scan for BLE devices (non-fatal)
+  // 5. Scan for BLE devices (non-fatal, can hang on GATT discovery)
   console.log('[Boot] Scanning for BLEDOM devices...');
   try {
     const found = await scanAndConnect(15000);
@@ -139,11 +142,8 @@ async function main() {
     }
   });
 
-  // 5. Start engine
+  // 6. Start engine
   engine.start();
-
-  // 6. Start config server
-  startConfigServer(engine, CONFIG_PORT);
 
   // 7. Stats logging
   const statsTimer = setInterval(() => {
