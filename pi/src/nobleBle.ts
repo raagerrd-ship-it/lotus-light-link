@@ -449,6 +449,7 @@ export async function sendRawColor(r: number, g: number, b: number): Promise<voi
 
 /** Disconnect and clean up */
 export async function disconnect(): Promise<void> {
+  stopKeepAlive();
   if (device) {
     try { await device.peripheral.disconnectAsync(); } catch {}
     device = null;
