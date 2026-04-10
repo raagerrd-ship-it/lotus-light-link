@@ -1,12 +1,11 @@
 /**
  * ALSA microphone input via node-record-lpcm16 → FFT → BandResult.
  * Replaces Web Audio API AnalyserNode on Raspberry Pi.
+ * Uses custom zero-alloc radix-2 FFT (no fft-js dependency).
  */
 
 import record from 'node-record-lpcm16';
-// @ts-ignore — fft-js has no types
-import fftJs from 'fft-js';
-const { fft } = fftJs;
+import { fft512, FFT_N } from './fftRadix2.js';
 
 export interface BandResult {
   bassRms: number;
@@ -16,7 +15,7 @@ export interface BandResult {
 }
 
 const SAMPLE_RATE = 44100;
-const FFT_SIZE = 512;
+const FFT_SIZE = FFT_N; // 512
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 
@@ -37,9 +36,6 @@ const MID_CUT = Math.floor(2000 / BIN_WIDTH);
 // Spectral flux state
 let prevPower: Float64Array = new Float64Array(BIN_COUNT);
 
-// Pre-allocated magnitude buffer (avoids fftUtil.fftMag allocation each frame)
-const magnitudeBuf = new Float64Array(BIN_COUNT);
-
 // High-shelf filter state (simple 1-pole)
 let hsState = 0;
 
@@ -47,9 +43,8 @@ let hsState = 0;
 const ringBuf = new Float32Array(FFT_SIZE);
 let ringPos = 0;
 
-// Pre-allocated FFT working buffers (zero-alloc hot path)
-const orderedBuf = new Float32Array(FFT_SIZE);
-const fftInput: number[][] = Array.from({ length: FFT_SIZE }, () => [0, 0]);
+// Windowed sample buffer (input to FFT — Float64Array for precision)
+const windowedBuf = new Float64Array(FFT_SIZE);
 let samplesReceived = 0; // total samples since last FFT
 
 // Latest computed bands (polled by engine tick)
@@ -71,29 +66,24 @@ function applyHighShelfSample(sample: number): number {
 }
 
 function processFFT(): void {
-  // Copy ring buffer in order, apply Blackman window to prevent spectral leakage
+  // Copy ring buffer in order, apply Blackman window
   for (let i = 0; i < FFT_SIZE; i++) {
-    const sample = ringBuf[(ringPos + i) % FFT_SIZE] * blackmanWindow[i];
-    orderedBuf[i] = sample;
-    fftInput[i][0] = sample;
-    fftInput[i][1] = 0;
+    windowedBuf[i] = ringBuf[(ringPos + i) % FFT_SIZE] * blackmanWindow[i];
   }
 
-  const spectrum = fft(fftInput);
+  // Zero-alloc in-place FFT — returns references to internal Float64Arrays
+  const [fftRe, fftIm] = fft512(windowedBuf);
 
-  // Compute magnitudes inline — zero allocation (replaces fftUtil.fftMag)
-  for (let i = 0; i < BIN_COUNT; i++) {
-    const re = spectrum[i][0], im = spectrum[i][1];
-    magnitudeBuf[i] = Math.sqrt(re * re + im * im);
-  }
-
+  // Compute power spectrum and band sums in a single pass (no intermediate magnitude array)
+  const invN2 = 1 / (FFT_SIZE * FFT_SIZE); // precompute 1/N² for power normalization
   let loSum = 0, midSum = 0, hiSum = 0;
   let loCount = 0, midCount = 0, hiCount = 0;
   let totalSum = 0;
   let flux = 0;
 
   for (let i = 0; i < BIN_COUNT; i++) {
-    const power = (magnitudeBuf[i] / FFT_SIZE) ** 2;
+    const r = fftRe[i], m = fftIm[i];
+    const power = (r * r + m * m) * invN2;
     totalSum += power;
     if (i < LO_CUT) { loSum += power; loCount++; }
     else if (i < MID_CUT) { midSum += power; midCount++; }
