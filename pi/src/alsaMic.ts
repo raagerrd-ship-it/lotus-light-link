@@ -6,7 +6,7 @@
 import record from 'node-record-lpcm16';
 // @ts-ignore — fft-js has no types
 import fftJs from 'fft-js';
-const { fft, util: fftUtil } = fftJs;
+const { fft } = fftJs;
 
 export interface BandResult {
   bassRms: number;

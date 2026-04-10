@@ -50,9 +50,21 @@ const brightMaxBuf = Buffer.from([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 0x00
 
 // Dimming gamma
 let dimmingGamma = 1.8;
-export function setDimmingGamma(v: number) { dimmingGamma = Math.max(1.0, Math.min(3.0, v)); }
+export function setDimmingGamma(v: number) {
+  dimmingGamma = Math.max(1.0, Math.min(3.0, v));
+  rebuildBrightnessLut();
+}
 export function getDimmingGamma(): number { return dimmingGamma; }
 
+// Pre-computed brightness LUT (101 entries for 0–100%) — eliminates Math.pow per tick
+const brightnessLut = new Float64Array(101);
+function rebuildBrightnessLut(): void {
+  for (let i = 0; i <= 100; i++) {
+    const norm = i / 100;
+    brightnessLut[i] = norm <= 0 ? 0 : Math.pow(norm, dimmingGamma);
+  }
+}
+rebuildBrightnessLut();
 
 function getAdapterState(): string | undefined {
   const nobleWithState = noble as typeof noble & { state?: string; _state?: string };
@@ -60,8 +72,8 @@ function getAdapterState(): string | undefined {
 }
 
 function brightnessToScale(brightness: number): number {
-  const norm = Math.max(0, Math.min(100, brightness)) / 100;
-  return norm <= 0 ? 0 : Math.pow(norm, dimmingGamma);
+  const idx = brightness < 0 ? 0 : brightness > 100 ? 100 : (brightness + 0.5) | 0;
+  return brightnessLut[idx];
 }
 
 // Dedup + non-reentrant guard
