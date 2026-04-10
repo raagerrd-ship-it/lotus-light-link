@@ -29,7 +29,7 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 125;
+const TICK_MS = 125; // default tick rate (ms)
 
 async function main() {
   // 1. Restore persisted global settings (before banner so we can show effective values)
