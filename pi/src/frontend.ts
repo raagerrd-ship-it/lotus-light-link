@@ -11,7 +11,7 @@ import { existsSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
 
 const PORT = Number(process.env.CONFIG_PORT ?? 3001);
-const BACKEND_PORT = Number(process.env.BACKEND_PORT ?? 3002);
+const BACKEND_PORT = Number(process.env.BACKEND_PORT ?? 3050);
 const WEB_DIST = join(process.cwd(), '..', 'dist');
 
 const MIME_TYPES: Record<string, string> = {
