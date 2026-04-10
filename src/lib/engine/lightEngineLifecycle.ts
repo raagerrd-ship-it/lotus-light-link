@@ -6,7 +6,7 @@
 import { getCalibration, saveCalibration, getActiveDeviceName } from "./lightCalibration";
 import { volumeToBucket, getFloorForVolume, createAgcState } from "./agc";
 import { listenIdleColorChanges } from "./idleManager";
-import { resetEngineState, type EngineState } from "./lightEngineState";
+import { resetEngineState, refreshTickConstants, type EngineState } from "./lightEngineState";
 import { runTick } from "./lightEngineTickPipeline";
 
 /** Initialize mic, audio pipeline, and start the tick loop.
