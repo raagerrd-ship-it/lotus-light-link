@@ -148,12 +148,13 @@ fi
 # ─── 9. User-level systemd services ─────────────────────
 echo "[8/8] Skapar systemd-tjänster..."
 SYSTEMD_USER_DIR="$TARGET_HOME/.config/systemd/user"
+BACKEND_PORT=$((PORT + 1))
 mkdir -p "$SYSTEMD_USER_DIR"
 
-# Main service
+# Backend service (engine: ALSA + BLE + API)
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=Lotus Light Link — Audio-reactive BLE LED controller
+Description=Lotus Light Link — Audio-reactive BLE LED controller (backend)
 After=network.target bluetooth.target
 Wants=bluetooth.target
 
@@ -165,12 +166,32 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=HOME=${TARGET_HOME}
-Environment=CONFIG_PORT=${PORT}
+Environment=BACKEND_PORT=${BACKEND_PORT}
 Environment=TICK_MS=30
 
-# User-services on Raspberry Pi are sensitive to privileged cgroup/nice settings.
-# Keep only safe per-process affinity here so the service does not fail at spawn.
 CPUAffinity=${CORE}
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Frontend service (web UI + API proxy)
+cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-web.service" << EOF
+[Unit]
+Description=Lotus Light Link — Web UI frontend
+After=${SERVICE_NAME}.service
+BindsTo=${SERVICE_NAME}.service
+
+[Service]
+Type=simple
+WorkingDirectory=${PI_DIR}
+ExecStart=${NODE_BIN} --max-old-space-size=64 dist/frontend.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=HOME=${TARGET_HOME}
+Environment=CONFIG_PORT=${PORT}
+Environment=BACKEND_PORT=${BACKEND_PORT}
 
 [Install]
 WantedBy=default.target
