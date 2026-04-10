@@ -1,6 +1,6 @@
 /**
  * Palette rotation logic — extracted from LightEngine for maintainability.
- * Pure functions, no side effects.
+ * Zero-allocation: mutates state in-place, reuses result objects.
  */
 
 import type { LightCalibration } from "./lightCalibration";
@@ -22,9 +22,23 @@ export interface PaletteResult {
   state: PaletteState;
 }
 
+// Reusable result object — mutated in place
+const _result: PaletteResult = {
+  color: [0, 0, 0],
+  state: { index: 0, tickCounter: 0, bassWasHigh: false },
+};
+
+/** Copy state into reusable result and return it */
+function emitResult(color: [number, number, number], state: PaletteState): PaletteResult {
+  _result.color = color;
+  _result.state = state;
+  return _result;
+}
+
 /**
  * Advance palette and return the current color.
  * Returns null if palette mode is off or palette has < 2 colors.
+ * MUTATES state in-place (zero-alloc).
  */
 export function advancePalette(
   palette: [number, number, number][],
@@ -38,49 +52,50 @@ export function advancePalette(
   if (mode === 'off' || palette.length < 2) return null;
 
   const pLen = palette.length;
-  const s = { ...state };
 
   if (mode === 'timed') {
-    s.tickCounter++;
+    state.tickCounter++;
     const speed = Math.max(1, Math.round((cal.paletteRotationSpeed ?? 8) * (125 / tickMs)));
-    if (s.tickCounter >= speed) {
-      s.tickCounter = 0;
-      s.index = (s.index + 1) % pLen;
+    if (state.tickCounter >= speed) {
+      state.tickCounter = 0;
+      state.index = (state.index + 1) % pLen;
     }
-    return { color: palette[s.index], state: s };
+    return emitResult(palette[state.index], state);
   }
 
   if (mode === 'bass') {
     const isHigh = smoothedBass > 0.45;
-    if (isHigh && !s.bassWasHigh) {
-      s.index = (s.index + 1) % pLen;
+    if (isHigh && !state.bassWasHigh) {
+      state.index = (state.index + 1) % pLen;
     }
-    s.bassWasHigh = isHigh;
-    return { color: palette[s.index], state: s };
+    state.bassWasHigh = isHigh;
+    return emitResult(palette[state.index], state);
   }
 
   if (mode === 'energy') {
-    const idx = Math.min(pLen - 1, Math.floor(rawEnergy * pLen));
-    s.index = idx;
-    return { color: palette[idx], state: s };
+    const idx = Math.min(pLen - 1, (rawEnergy * pLen) | 0);
+    state.index = idx;
+    return emitResult(palette[idx], state);
   }
 
   if (mode === 'blend') {
     const clampedEnergy = Math.min(1, Math.max(0, rawEnergy));
     const pos = clampedEnergy * (pLen - 1);
-    const lo = Math.floor(pos);
+    const lo = pos | 0;
     const hi = Math.min(pLen - 1, lo + 1);
     const t = pos - lo;
     const cLo = palette[lo];
     const cHi = palette[hi];
-    const color: [number, number, number] = [
-      Math.round(cLo[0] + (cHi[0] - cLo[0]) * t),
-      Math.round(cLo[1] + (cHi[1] - cLo[1]) * t),
-      Math.round(cLo[2] + (cHi[2] - cLo[2]) * t),
-    ];
-    s.index = lo;
-    return { color, state: s };
+    // Reuse _blendColor array
+    _blendColor[0] = Math.round(cLo[0] + (cHi[0] - cLo[0]) * t);
+    _blendColor[1] = Math.round(cLo[1] + (cHi[1] - cLo[1]) * t);
+    _blendColor[2] = Math.round(cLo[2] + (cHi[2] - cLo[2]) * t);
+    state.index = lo;
+    return emitResult(_blendColor, state);
   }
 
   return null;
 }
+
+// Reusable blend color tuple
+const _blendColor: [number, number, number] = [0, 0, 0];

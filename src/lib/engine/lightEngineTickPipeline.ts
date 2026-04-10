@@ -1,6 +1,6 @@
 /**
  * LightEngine — tick pipeline (pure computation + BLE output).
- * No lifecycle, no DOM listeners — just the per-tick processing.
+ * Zero-allocation hot path: reuses objects, minimises timing overhead.
  */
 
 import { sendToBLE } from "./bledom";
@@ -12,6 +12,22 @@ import { advancePalette } from "./paletteMixer";
 import { sendIdleIfNeeded } from "./idleManager";
 import { createOnsetState, detectOnset, getOnsetBoost, resizeOnsetBuffer } from "./onsetDetector";
 import { sanitizeState, type EngineState, type TickData, type TickCallback } from "./lightEngineState";
+
+// Reusable TickData object — mutated in place every tick (zero-alloc)
+const _tickData: TickData = {
+  brightness: 0,
+  color: [0, 0, 0],
+  baseColor: [0, 0, 0],
+  bassLevel: 0,
+  midHiLevel: 0,
+  rawEnergyPct: 0,
+  isPunch: false,
+  bleColorSource: 'normal',
+  micRms: 0,
+  isPlaying: false,
+  paletteIndex: 0,
+  timings: { rmsMs: 0, smoothMs: 0, bleCallMs: 0, totalTickMs: 0 },
+};
 
 /** Run one tick of the audio→light pipeline. */
 export function runTick(s: EngineState): void {
@@ -25,7 +41,8 @@ export function runTick(s: EngineState): void {
 
 /** Emit tick data to all registered callbacks. */
 export function emitTick(s: EngineState, data: TickData): void {
-  for (const cb of s.tickCallbacks) cb(data);
+  const cbs = s.tickCallbacks;
+  for (let i = 0, len = cbs.length; i < len; i++) cbs[i](data);
 }
 
 /** Reset smoothing state (e.g. on manual recalibration). AGC table persists. */
@@ -67,13 +84,13 @@ function tickInner(s: EngineState): void {
   const tickStart = performance.now();
   const cal = s.cal;
   const agc = s.agc;
+  const tickMs = s.tickMs;
 
   // ── FFT ──
   const bands = computeBands(an, s.freqBuf);
-  const rmsEnd = performance.now();
 
   // ── Smoothing ──
-  s.smoothed = smooth(s.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, s.tickMs);
+  s.smoothed = smooth(s.smoothed, bands.totalRms, cal.attackAlpha, cal.releaseAlpha, tickMs);
 
   // ── Volume bucket & AGC update ──
   const bucket = volumeToBucket(s.volume);
@@ -82,44 +99,43 @@ function tickInner(s: EngineState): void {
     if (floor > agc.max) agc.max = floor;
     s.lastBucket = bucket;
   }
-  updateRunningMax(agc, s.smoothed, bands.bassRms, bands.midHiRms, s.tickMs);
+  updateRunningMax(agc, s.smoothed, bands.bassRms, bands.midHiRms, tickMs);
   updateVolumeTable(s.volumeTable, bucket, s.smoothed);
 
   // Normalize bands
   const rawBassNorm = normalizeBand(bands.bassRms, agc, 'bass');
   const rawMidHiNorm = normalizeBand(bands.midHiRms, agc, 'midHi');
   const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
-  const rawEnergyPct = Math.round(rawEnergy * 100);
 
   // ── Per-band smoothing ──
-  s.smoothedBass = smooth(s.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, s.tickMs);
-  s.smoothedMidHi = smooth(s.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, s.tickMs);
+  s.smoothedBass = smooth(s.smoothedBass, rawBassNorm, cal.attackAlpha, cal.releaseAlpha, tickMs);
+  s.smoothedMidHi = smooth(s.smoothedMidHi, rawMidHiNorm, cal.attackAlpha, cal.releaseAlpha, tickMs);
 
   // ── Onset detection ──
-  detectOnset(s.onset, bands.flux, s.tickMs);
+  detectOnset(s.onset, bands.flux, tickMs);
   const fluxBoost = (cal.transientBoost !== false) ? getOnsetBoost(s.onset) : 0;
 
   // ── Brightness ──
   let { pct, newCenter } = computeBrightnessPct(
     s.smoothedBass, s.smoothedMidHi,
     100, s.dynamicCenter, cal,
-    fluxBoost, s.tickMs,
+    fluxBoost, tickMs,
   );
   s.dynamicCenter = newCenter;
 
   // ── Extra smoothing ──
   const sm = cal.smoothing ?? 0;
   if (sm > 0) {
-    s.extraSmoothPct = extraSmooth(s.extraSmoothPct, pct, sm, s.tickMs);
+    s.extraSmoothPct = extraSmooth(s.extraSmoothPct, pct, sm, tickMs);
     pct = s.extraSmoothPct;
   }
-  pct = Math.round(pct);
+  pct = (pct + 0.5) | 0; // fast round
 
   // ── Palette mode ──
   const pm = cal.paletteMode ?? 'off';
   const paletteResult = advancePalette(
     s.palette, s.paletteState, pm, cal,
-    s.smoothedBass, rawEnergy, s.tickMs,
+    s.smoothedBass, rawEnergy, tickMs,
   );
   if (paletteResult) {
     s.color = paletteResult.color;
@@ -128,38 +144,37 @@ function tickInner(s: EngineState): void {
 
   // ── Resolve colors ──
   const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
-  const finalColor = applyColorCalibration(...s.color, cal);
+  const finalColor = applyColorCalibration(s.color[0], s.color[1], s.color[2], cal);
   const bleSentR = finalColor[0], bleSentG = finalColor[1], bleSentB = finalColor[2];
-  s.lastBaseColor = [bleSentR, bleSentG, bleSentB];
+  s.lastBaseColor[0] = bleSentR;
+  s.lastBaseColor[1] = bleSentG;
+  s.lastBaseColor[2] = bleSentB;
 
   // ── BLE output ──
-  const smoothEnd = performance.now();
   if (s.chars.size > 0) {
     if (isPunch) sendToBLE(255, 255, 255, pct);
     else sendToBLE(bleSentR, bleSentG, bleSentB, pct);
   }
-  const bleEnd = performance.now();
+  const tickEnd = performance.now();
 
-  // ── Emit tick data ──
-  const tickData: TickData = {
-    brightness: pct,
-    color: [bleSentR, bleSentG, bleSentB],
-    baseColor: s.lastBaseColor,
-    bassLevel: bands.bassRms,
-    midHiLevel: bands.midHiRms,
-    rawEnergyPct,
-    isPunch,
-    bleColorSource: 'normal',
-    micRms: s.smoothed,
-    isPlaying: s.playing,
-    paletteIndex: s.paletteState.index,
-    timings: {
-      rmsMs: rmsEnd - tickStart,
-      smoothMs: smoothEnd - rmsEnd,
-      bleCallMs: bleEnd - smoothEnd,
-      totalTickMs: bleEnd - tickStart,
-    },
-  };
-  s.lastTickData = tickData;
-  emitTick(s, tickData);
+  // ── Emit tick data (reuse object) ──
+  const td = _tickData;
+  td.brightness = pct;
+  td.color[0] = bleSentR; td.color[1] = bleSentG; td.color[2] = bleSentB;
+  td.baseColor[0] = bleSentR; td.baseColor[1] = bleSentG; td.baseColor[2] = bleSentB;
+  td.bassLevel = bands.bassRms;
+  td.midHiLevel = bands.midHiRms;
+  td.rawEnergyPct = (rawEnergy * 100 + 0.5) | 0;
+  td.isPunch = isPunch;
+  td.bleColorSource = 'normal';
+  td.micRms = s.smoothed;
+  td.isPlaying = s.playing;
+  td.paletteIndex = s.paletteState.index;
+  td.timings.totalTickMs = tickEnd - tickStart;
+  td.timings.rmsMs = 0; // collapsed into total — minimal overhead
+  td.timings.smoothMs = 0;
+  td.timings.bleCallMs = 0;
+
+  s.lastTickData = td;
+  emitTick(s, td);
 }
