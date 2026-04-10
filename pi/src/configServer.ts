@@ -8,7 +8,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning, getMinWriteInterval, setMinWriteInterval } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
@@ -50,6 +50,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         savedDeviceId: getSavedDeviceId(),
         connectedDeviceId: getConnectedDeviceId(),
         scanning: isScanning(),
+        minWriteIntervalMs: getMinWriteInterval(),
       },
       commit: GIT_COMMIT_SHORT,
       branch: GIT_BRANCH,
@@ -158,6 +159,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       res.json({ ok: true, tickMs });
     } else {
       res.status(400).json({ error: 'tickMs must be 20-200' });
+    }
+  });
+
+  // --- BLE min write interval ---
+  app.put('/api/ble/min-interval', (req, res) => {
+    const { ms } = req.body;
+    if (typeof ms === 'number' && ms >= 0 && ms <= 500) {
+      setMinWriteInterval(ms);
+      setItem('ble-min-write-interval', String(ms));
+      res.json({ ok: true, minWriteIntervalMs: getMinWriteInterval() });
+    } else {
+      res.status(400).json({ error: 'ms must be 0-500' });
     }
   });
 
