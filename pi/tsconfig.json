@@ -11,10 +11,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": true,
-    "sourceMap": true,
-    "paths": {
-      "@engine/*": ["../src/lib/engine/*"]
-    }
+    "sourceMap": true
   },
   "include": ["src/**/*"]
 }
