@@ -551,6 +551,7 @@ function GlobalSettingsView({
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
         <p className="text-[10px] text-muted-foreground mt-0.5">Minsta tid mellan BLE-skrivningar. 0 = ingen throttle. Öka om lampan tappar anslutning.</p>
+      </section>
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
