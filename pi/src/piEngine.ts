@@ -485,7 +485,7 @@ export class PiLightEngine {
     try {
       const cal = this.cal;
       const tc = this.tc;
-      const bands = latestBands;
+      const bands = getLatestBands();
 
       // ── Smoothing (precomputed alphas) ──
       const atkAlpha = bands.totalRms > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
