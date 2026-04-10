@@ -354,13 +354,18 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
 async function connectPeripheral(peripheral: any): Promise<void> {
   const name = peripheral.advertisement?.localName ?? peripheral.id;
   const connectTime = performance.now();
+  const GATT_TIMEOUT_MS = 10000;
 
   await peripheral.connectAsync();
   console.log(`[BLE] Connected to ${name}`);
 
-  const { characteristics } = await peripheral.discoverSomeServicesAndCharacteristicsAsync(
-    [SERVICE_UUID], [CHAR_UUID]
-  );
+  // GATT discovery with timeout — can hang indefinitely on Pi Zero
+  const { characteristics } = await Promise.race([
+    peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`GATT discovery timed out after ${GATT_TIMEOUT_MS}ms`)), GATT_TIMEOUT_MS)
+    ),
+  ]);
 
   if (!characteristics?.length) {
     throw new Error(`No characteristic found on ${name}`);
