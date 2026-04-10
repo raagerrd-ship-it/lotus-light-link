@@ -84,6 +84,27 @@ export const bleStats = {
   effectiveIntervalMs: 0,
 };
 
+// Keep-alive interval (prevents BLE supervision timeout when idle)
+const KEEPALIVE_MS = 2000;
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+
+function startKeepAlive(): void {
+  stopKeepAlive();
+  keepAliveTimer = setInterval(() => {
+    if (!device) return;
+    const elapsed = performance.now() - lastWriteTime;
+    if (lastWriteTime > 0 && elapsed < KEEPALIVE_MS) return; // recent write, skip
+    // Re-send last known color to keep connection alive
+    const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
+    device.characteristic.writeAsync(buf, true).catch(() => {});
+    lastWriteTime = performance.now();
+  }, KEEPALIVE_MS);
+}
+
+function stopKeepAlive(): void {
+  if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
+}
+
 export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
   writeInFlight = false;
@@ -361,12 +382,15 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   await char.writeAsync(brightMaxBuf, true);
 
   device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
+  lastWriteTime = performance.now(); // count the brightMax write
+  startKeepAlive();
 
   // Auto-reconnect on disconnect
   peripheral.once('disconnect', (reason: any) => {
     const uptime = Math.round((performance.now() - connectTime) / 1000);
     console.log(`[BLE] ${name} disconnected after ${uptime}s — reason: ${reason ?? 'unknown'}`);
     console.log(`[BLE] Stats at disconnect: sent=${bleStats.sentCount}, skipBusy=${bleStats.skipBusyCount}, skipDelta=${bleStats.skipDeltaCount}, avgLat=${bleStats.writeLatAvgMs}ms`);
+    stopKeepAlive();
     device = null;
     resetLastSent();
     reconnectWithBackoff(peripheral, name);
@@ -425,6 +449,7 @@ export async function sendRawColor(r: number, g: number, b: number): Promise<voi
 
 /** Disconnect and clean up */
 export async function disconnect(): Promise<void> {
+  stopKeepAlive();
   if (device) {
     try { await device.peripheral.disconnectAsync(); } catch {}
     device = null;
