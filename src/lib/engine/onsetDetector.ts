@@ -49,12 +49,22 @@ export function resizeOnsetBuffer(state: OnsetState, tickMs: number): void {
   }
 }
 
+// Reusable scratch buffer for median (zero-alloc after first call)
+let _medianScratch: number[] = [];
+
 function median(arr: number[]): number {
-  const sorted = arr.slice().sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
+  const n = arr.length;
+  if (_medianScratch.length < n) _medianScratch = new Array(n);
+  for (let i = 0; i < n; i++) _medianScratch[i] = arr[i];
+  // Insertion sort (N≤7, fastest for tiny arrays)
+  for (let i = 1; i < n; i++) {
+    const v = _medianScratch[i];
+    let j = i - 1;
+    while (j >= 0 && _medianScratch[j] > v) { _medianScratch[j + 1] = _medianScratch[j]; j--; }
+    _medianScratch[j + 1] = v;
+  }
+  const mid = n >> 1;
+  return (n & 1) ? _medianScratch[mid] : (_medianScratch[mid - 1] + _medianScratch[mid]) * 0.5;
 }
 
 /**
