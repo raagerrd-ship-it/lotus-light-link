@@ -485,6 +485,7 @@ function GlobalSettingsView({
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
   dimmingGamma, setDimmingGamma,
   idleColor, setIdleColor,
+  bleMinInterval, setBleMinInterval,
   piBase,
   onBack, onSave, saved,
 }: {
@@ -493,6 +494,7 @@ function GlobalSettingsView({
   alsaDevice: string; setAlsaDevice: (v: string) => void;
   dimmingGamma: number; setDimmingGamma: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
+  bleMinInterval: number; setBleMinInterval: (v: number) => void;
   piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean;
 }) {
