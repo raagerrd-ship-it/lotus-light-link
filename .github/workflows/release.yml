@@ -24,11 +24,11 @@ jobs:
           node-version: 20
 
       # Build web app (vite)
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npx vite build
 
       # Build Pi backend (TypeScript)
-      - run: cd pi && npm ci
+      - run: cd pi && npm install --no-audit --no-fund
       - run: cd pi && npx tsc
 
       # Production-only deps for Pi (included in tarball)
