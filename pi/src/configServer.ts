@@ -98,7 +98,27 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       return res.status(400).json({ error: 'Need deviceId' });
     }
     const ok = await selectDevice(deviceId);
-    res.json({ ok });
+    if (!ok) return res.json({ ok: false });
+
+    // Preview: send idle color for 10s via engine tick, then disconnect
+    const idleRaw = getItem('idle-color');
+    const idle = idleRaw ? JSON.parse(idleRaw) : [255, 60, 0];
+    sendRawColor(idle[0], idle[1], idle[2]);
+
+    // Keep sending idle color every 500ms for 10s to prevent disconnect
+    let previewCount = 0;
+    const previewTimer = setInterval(() => {
+      previewCount++;
+      sendRawColor(idle[0], idle[1], idle[2]);
+      if (previewCount >= 20) { // 10s
+        clearInterval(previewTimer);
+        // Disconnect after preview — demand-based connect will reconnect when music plays
+        import('./nobleBle.js').then(m => m.disconnect());
+        console.log('[BLE] Preview done, disconnected (saved for later)');
+      }
+    }, 500);
+
+    res.json({ ok: true, previewSeconds: 10 });
   });
 
   app.post('/api/ble/forget', async (_req, res) => {
