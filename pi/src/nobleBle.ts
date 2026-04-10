@@ -53,6 +53,11 @@ let dimmingGamma = 1.8;
 export function setDimmingGamma(v: number) { dimmingGamma = Math.max(1.0, Math.min(3.0, v)); }
 export function getDimmingGamma(): number { return dimmingGamma; }
 
+// Min write interval throttle (prevents Noble stack overload on Pi)
+let minWriteIntervalMs = 80;
+export function setMinWriteInterval(ms: number) { minWriteIntervalMs = Math.max(0, Math.min(500, ms)); }
+export function getMinWriteInterval(): number { return minWriteIntervalMs; }
+
 function getAdapterState(): string | undefined {
   const nobleWithState = noble as typeof noble & { state?: string; _state?: string };
   return nobleWithState.state ?? nobleWithState._state;
