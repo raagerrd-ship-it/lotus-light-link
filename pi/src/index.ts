@@ -57,6 +57,8 @@ async function main() {
   console.log(`  Bridge: ${BRIDGE_URL}`);
   console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
   console.log(`  Config: :${CONFIG_PORT}`);
+  console.log(`  BLE min interval: ${getMinWriteInterval()}ms${savedBleInterval ? ' (saved)' : ' (default)'}`);
+
   console.log('');
 
   // 2. Create engine
