@@ -53,10 +53,6 @@ let dimmingGamma = 1.8;
 export function setDimmingGamma(v: number) { dimmingGamma = Math.max(1.0, Math.min(3.0, v)); }
 export function getDimmingGamma(): number { return dimmingGamma; }
 
-// Min write interval throttle (prevents Noble stack overload on Pi)
-let minWriteIntervalMs = 80;
-export function setMinWriteInterval(ms: number) { minWriteIntervalMs = Math.max(0, Math.min(500, ms)); }
-export function getMinWriteInterval(): number { return minWriteIntervalMs; }
 
 function getAdapterState(): string | undefined {
   const nobleWithState = noble as typeof noble & { state?: string; _state?: string };
@@ -78,7 +74,7 @@ export const bleStats = {
   sentCount: 0,
   skipDeltaCount: 0,
   skipBusyCount: 0,
-  skipThrottleCount: 0,
+  
   writeLatMs: 0,
   writeLatAvgMs: 0,
   effectiveIntervalMs: 0,
@@ -122,11 +118,6 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const cbr = Math.round(scale * 0xff);
 
   if (writeInFlight) { bleStats.skipBusyCount++; return; }
-  const now = performance.now();
-  if (minWriteIntervalMs > 0 && lastWriteTime > 0 && (now - lastWriteTime) < minWriteIntervalMs) {
-    bleStats.skipThrottleCount++;
-    return;
-  }
   if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
     return;
