@@ -125,21 +125,25 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   };
 }
 
-// --- Dynamics (no change — already zero-alloc) ---
+// --- Dynamics (zero-alloc, no Math.pow/Math.sign) ---
 function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
   let result = energyNorm;
   if (dynamicDamping > 0) {
-    const amount = Math.min(1, dynamicDamping / 2);
+    const amount = dynamicDamping < 2 ? dynamicDamping * 0.5 : 1;
     const exponent = 1 / (1 + amount * 4);
     const range = result >= center ? (1 - center) || 0.5 : center || 0.5;
     const normalized = (result - center) / range;
-    const expanded = Math.sign(normalized) * Math.pow(Math.abs(normalized), exponent);
+    // Fast pow approximation: exp(exponent * ln(|x|)) via Math.exp/Math.log
+    const absN = normalized < 0 ? -normalized : normalized;
+    const powered = absN > 0.0001 ? Math.exp(exponent * Math.log(absN)) : 0;
+    const expanded = normalized < 0 ? -powered : powered;
     const gain = 1 + amount * 0.5;
     result = center + expanded * range * gain;
     const ceiling = 1 + amount * 0.4;
     if (result > ceiling) result = ceiling + (result - ceiling) * 0.2;
   } else if (dynamicDamping < 0) {
-    const amount = Math.min(1, Math.abs(dynamicDamping) / 3);
+    const absDamp = -dynamicDamping;
+    const amount = absDamp < 3 ? absDamp / 3 : 1;
     const compression = 1 / (1 + amount * 4);
     result = center + (result - center) * compression;
   }
@@ -483,10 +487,11 @@ export class PiLightEngine {
       let pct = energyNorm * 100;
       if (pct < floor) pct = floor;
 
-      // Perceptual curve (precomputed gamma)
+      // Perceptual curve (use BLE brightness LUT gamma value — no Math.pow)
       if (cal.perceptualCurve && pct > floor && pct < 100) {
         const norm = (pct - floor) / (100 - floor);
-        pct = floor + Math.pow(norm, tc.dimmingGamma) * (100 - floor);
+        // Fast exp-log pow: exp(gamma * ln(norm))
+        pct = floor + (norm > 0.0001 ? Math.exp(tc.dimmingGamma * Math.log(norm)) : 0) * (100 - floor);
       }
 
       // Extra smoothing (precomputed alpha)
