@@ -78,6 +78,7 @@ export const bleStats = {
   sentCount: 0,
   skipDeltaCount: 0,
   skipBusyCount: 0,
+  skipThrottleCount: 0,
   writeLatMs: 0,
   writeLatAvgMs: 0,
   effectiveIntervalMs: 0,
