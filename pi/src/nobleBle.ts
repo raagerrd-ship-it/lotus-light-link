@@ -387,7 +387,7 @@ async function connectPeripheral(peripheral: any): Promise<void> {
       peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
       'Combined GATT discovery'
     );
-    characteristics = result.characteristics ?? [];
+    characteristics = (result as any).characteristics ?? [];
   }
 
   if (!characteristics?.length) {
