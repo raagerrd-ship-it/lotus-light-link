@@ -426,6 +426,24 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   // Set hardware brightness to max
   await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
 
+  // Request minimum connection interval (7.5ms = 6 units of 1.25ms)
+  // This reduces BLE latency from ~30ms default to ~10ms per write.
+  // BLEDOM controllers are always powered, so higher power draw is irrelevant.
+  try {
+    const hci = (noble as any)._bindings?._hci;
+    const handle = peripheral._handle ?? peripheral.handle;
+    if (hci && handle != null && typeof hci.writeLeConnectionUpdate === 'function') {
+      // params: handle, minInterval, maxInterval, latency, supervisionTimeout (in 1.25ms/10ms units)
+      // 6 = 7.5ms, 8 = 10ms, 0 = no slave latency, 200 = 2000ms supervision timeout
+      hci.writeLeConnectionUpdate(handle, 6, 8, 0, 200);
+      console.log(`[BLE] Requested connection interval 7.5–10ms for ${name}`);
+    } else {
+      console.log(`[BLE] Connection interval update not available (HCI access limited)`);
+    }
+  } catch (e: any) {
+    console.warn(`[BLE] Failed to set connection interval: ${e.message}`);
+  }
+
   device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
   lastWriteTime = performance.now();
   startKeepAlive();
