@@ -80,7 +80,12 @@ function processFFT(): void {
   }
 
   const spectrum = fft(fftInput);
-  const magnitudes = fftUtil.fftMag(spectrum);
+
+  // Compute magnitudes inline — zero allocation (replaces fftUtil.fftMag)
+  for (let i = 0; i < BIN_COUNT; i++) {
+    const re = spectrum[i][0], im = spectrum[i][1];
+    magnitudeBuf[i] = Math.sqrt(re * re + im * im);
+  }
 
   let loSum = 0, midSum = 0, hiSum = 0;
   let loCount = 0, midCount = 0, hiCount = 0;
@@ -88,7 +93,7 @@ function processFFT(): void {
   let flux = 0;
 
   for (let i = 0; i < BIN_COUNT; i++) {
-    const power = (magnitudes[i] / FFT_SIZE) ** 2;
+    const power = (magnitudeBuf[i] / FFT_SIZE) ** 2;
     totalSum += power;
     if (i < LO_CUT) { loSum += power; loCount++; }
     else if (i < MID_CUT) { midSum += power; midCount++; }
