@@ -96,7 +96,6 @@ export function getCalibration(): LightCalibration {
     if (!stored) return { ...DEFAULT_CALIBRATION };
     const parsed = JSON.parse(stored);
 
-    // Migrate old agcMax/agcMin/agcVolume → agcVolumeTable
     if (!parsed.agcVolumeTable && (parsed.agcMax != null || parsed.agcVolume != null)) {
       parsed.agcVolumeTable = migrateToVolumeTable(
         parsed.agcMax ?? 0.01,
@@ -105,11 +104,9 @@ export function getCalibration(): LightCalibration {
       delete parsed.agcMax;
       delete parsed.agcMin;
       delete parsed.agcVolume;
-      // Save migrated version
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
     }
 
-    // Migrate old paletteRotation boolean → paletteMode
     if (parsed.paletteRotation != null && !parsed.paletteMode) {
       parsed.paletteMode = parsed.paletteRotation ? 'timed' : 'off';
       delete parsed.paletteRotation;
@@ -122,7 +119,6 @@ export function getCalibration(): LightCalibration {
   }
 }
 
-/** Optional cloud save hook — set externally to enable cloud persistence */
 let _cloudSaveHook: ((deviceName: string, patch: Record<string, unknown>, createNew: boolean) => void) | null = null;
 
 export function setCloudSaveHook(hook: typeof _cloudSaveHook): void {
@@ -147,6 +143,7 @@ export function getActiveDeviceName(): string | null {
   return localStorage.getItem(DEVICE_STORAGE_KEY) || null;
 }
 
+/** Original applyColorCalibration — works for any gamma values. */
 export function applyColorCalibration(
   r: number, g: number, b: number,
   cal?: LightCalibration,
@@ -162,6 +159,33 @@ export function applyColorCalibration(
     apply(g, c.gammaG, c.offsetG),
     apply(b, c.gammaB, c.offsetB),
   ];
+}
+
+// Reusable color tuple for fast path
+const _fastColor: [number, number, number] = [0, 0, 0];
+
+/** Fast version — skips Math.pow when all gammas are 1.0. */
+export function applyColorCalibrationFast(
+  r: number, g: number, b: number,
+  cal: LightCalibration,
+  gammaIsUnity: boolean,
+): [number, number, number] {
+  if (gammaIsUnity) {
+    // Unity gamma: val/255 * 255 + offset = val + offset — skip Math.pow entirely
+    _fastColor[0] = Math.max(0, Math.min(255, (r + cal.offsetR + 0.5) | 0));
+    _fastColor[1] = Math.max(0, Math.min(255, (g + cal.offsetG + 0.5) | 0));
+    _fastColor[2] = Math.max(0, Math.min(255, (b + cal.offsetB + 0.5) | 0));
+  } else {
+    const applyF = (val: number, gamma: number, offset: number) => {
+      const normalized = Math.max(0, Math.min(1, val / 255));
+      const corrected = Math.pow(normalized, gamma) * 255 + offset;
+      return Math.max(0, Math.min(255, (corrected + 0.5) | 0));
+    };
+    _fastColor[0] = applyF(r, cal.gammaR, cal.offsetR);
+    _fastColor[1] = applyF(g, cal.gammaG, cal.offsetG);
+    _fastColor[2] = applyF(b, cal.gammaB, cal.offsetB);
+  }
+  return _fastColor;
 }
 
 /* ── Presets ── */

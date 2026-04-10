@@ -1,14 +1,14 @@
 // Automatic Gain Control — volume→max lookup table, no learn/lock phases
 
+import type { TickConstants } from "./tickConstants";
+
 export const AGC_FLOOR = 0.002;
 
 // Per-second decay rates (tick-rate independent).
-// Converted to per-tick in updateRunningMax via Math.pow(rate, tickMs/1000).
-// Reference: at 125ms tick (8 Hz), these produce the original per-tick constants.
-const AGC_MAX_DECAY_PER_SEC = 0.99840;       // was 0.9998^8
-const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410; // was 0.998^8
-const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;   // was 0.99^8
-const QUIET_THRESHOLD_RATIO = 0.10;     // signal < 10% of max = "quiet"
+const AGC_MAX_DECAY_PER_SEC = 0.99840;
+const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410;
+const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;
+const QUIET_THRESHOLD_RATIO = 0.10;
 /** Time-based quiet thresholds (ms) — converted to ticks dynamically */
 export const QUIET_MS_MEDIUM = 2000;
 export const QUIET_MS_FAST = 5000;
@@ -64,7 +64,6 @@ export function updateVolumeTable(table: AgcVolumeTable, bucket: number, value: 
 export function getFloorForVolume(table: AgcVolumeTable, bucket: number): number {
   if (table[bucket] != null) return table[bucket];
 
-  // Find nearest known bucket and scale by volume ratio
   let nearestBucket: number | null = null;
   let nearestDist = Infinity;
   for (const key of Object.keys(table)) {
@@ -83,7 +82,7 @@ export function getFloorForVolume(table: AgcVolumeTable, bucket: number): number
   return Math.max(AGC_FLOOR, table[nearestBucket] * (currentVol / nearestVol));
 }
 
-/** Update running max for global + band values. Grows on new peaks, decays faster during quiet periods. */
+/** Original updateRunningMax — kept for standalone/test use. */
 export function updateRunningMax(
   state: AgcState,
   smoothed: number,
@@ -91,16 +90,10 @@ export function updateRunningMax(
   midHiRms: number,
   tickMs: number = 125,
 ): void {
-  // Track quiet periods for accelerated decay
   const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
-  if (isQuiet) {
-    state.quietTicks++;
-  } else {
-    state.quietTicks = 0;
-  }
+  if (isQuiet) state.quietTicks++;
+  else state.quietTicks = 0;
 
-  // Pick decay rate based on how long it's been quiet
-  // Convert per-second rate to per-tick: rate_per_tick = rate_per_sec ^ (tickMs / 1000)
   const { medium, fast } = quietTickThresholds(tickMs);
   const decayPerSec = state.quietTicks >= fast
     ? AGC_QUIET_DECAY_FAST_PER_SEC
@@ -109,7 +102,32 @@ export function updateRunningMax(
       : AGC_MAX_DECAY_PER_SEC;
   const decay = Math.pow(decayPerSec, tickMs / 1000);
 
-  // Grow on new peaks, decay otherwise
+  applyDecay(state, smoothed, bassRms, midHiRms, decay);
+}
+
+/** Fast version using precomputed decay rates — zero Math.pow. */
+export function updateRunningMaxFast(
+  state: AgcState,
+  smoothed: number,
+  bassRms: number,
+  midHiRms: number,
+  tc: TickConstants,
+): void {
+  const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
+  if (isQuiet) state.quietTicks++;
+  else state.quietTicks = 0;
+
+  const decay = state.quietTicks >= tc.quietFastTicks
+    ? tc.agcDecayFast
+    : state.quietTicks >= tc.quietMediumTicks
+      ? tc.agcDecayMedium
+      : tc.agcDecayNormal;
+
+  applyDecay(state, smoothed, bassRms, midHiRms, decay);
+}
+
+/** Shared decay logic */
+function applyDecay(state: AgcState, smoothed: number, bassRms: number, midHiRms: number, decay: number): void {
   if (smoothed > state.max) state.max = smoothed;
   else state.max = Math.max(AGC_FLOOR, state.max * decay);
 
