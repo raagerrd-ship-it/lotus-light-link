@@ -18,6 +18,7 @@ export async function startEngine(s: EngineState): Promise<void> {
   // Listen for calibration changes
   const reloadCal = () => {
     s.cal = getCalibration();
+    refreshTickConstants(s);
     if (s.hiShelf) s.hiShelf.gain.value = 6;
   };
   const onStorage = (e: StorageEvent) => { if (e.key === 'light-calibration') reloadCal(); };
