@@ -171,9 +171,12 @@ export function startMic(): void {
       samplesReceived++;
     }
 
-    if (samplesReceived >= FFT_SIZE / 2) {
+    // Trigger FFT every 128 samples (~2.9ms) with 75% overlap on 512-point window.
+    // Higher CPU cost but ~3ms lower latency than 256-sample threshold.
+    if (samplesReceived >= 128) {
       processFFT();
       samplesReceived = 0;
+    }
     }
   });
 
