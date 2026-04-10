@@ -137,10 +137,10 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   if (!device) return;
 
   const scale = brightnessToScale(brightness);
-  const cr = Math.round(r * scale);
-  const cg = Math.round(g * scale);
-  const cb = Math.round(b * scale);
-  const cbr = Math.round(scale * 0xff);
+  const cr = (r * scale + 0.5) | 0;
+  const cg = (g * scale + 0.5) | 0;
+  const cb = (b * scale + 0.5) | 0;
+  const cbr = (scale * 0xff + 0.5) | 0;
 
   if (writeInFlight) { bleStats.skipBusyCount++; return; }
   if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {

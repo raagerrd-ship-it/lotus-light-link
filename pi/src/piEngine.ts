@@ -480,8 +480,8 @@ export class PiLightEngine {
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
 
-  /** Hot path — zero-allocation, precomputed constants, no Math.pow */
-  private tickInner(): void {
+  /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
+  tickInner(): void {
     try {
       const cal = this.cal;
       const tc = this.tc;
