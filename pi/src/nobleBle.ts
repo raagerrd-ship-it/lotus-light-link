@@ -84,6 +84,27 @@ export const bleStats = {
   effectiveIntervalMs: 0,
 };
 
+// Keep-alive interval (prevents BLE supervision timeout when idle)
+const KEEPALIVE_MS = 2000;
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+
+function startKeepAlive(): void {
+  stopKeepAlive();
+  keepAliveTimer = setInterval(() => {
+    if (!device) return;
+    const elapsed = performance.now() - lastWriteTime;
+    if (lastWriteTime > 0 && elapsed < KEEPALIVE_MS) return; // recent write, skip
+    // Re-send last known color to keep connection alive
+    const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
+    device.characteristic.writeAsync(buf, true).catch(() => {});
+    lastWriteTime = performance.now();
+  }, KEEPALIVE_MS);
+}
+
+function stopKeepAlive(): void {
+  if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
+}
+
 export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
   writeInFlight = false;
