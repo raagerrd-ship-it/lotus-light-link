@@ -22,10 +22,10 @@ import { startConfigServer } from './configServer.js';
 import { getItem, setItem } from './storage.js';
 import { extractPalette } from './colorExtract.js';
 
-// --- Config ---
+// PORT is set by Pi Dashboard for release-based installs
+// BACKEND_PORT is the legacy separate-backend port (ignored when using PORT)
+const CONFIG_PORT = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? process.env.CONFIG_PORT ?? 3050);
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://localhost:3000/api/sonos';
-const CONFIG_PORT = Number(process.env.BACKEND_PORT ?? 3050);
-const TICK_MS = Number(process.env.TICK_MS ?? 30);
 const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
