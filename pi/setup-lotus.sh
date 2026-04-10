@@ -230,6 +230,7 @@ Description=Restart Lotus Light Link
 [Service]
 Type=oneshot
 ExecStart=/bin/systemctl --user restart ${SERVICE_NAME}
+ExecStartPost=/bin/systemctl --user restart ${SERVICE_NAME}-web
 EOF
 
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-restart.timer" << EOF
@@ -263,6 +264,7 @@ fi
 
 run_user_systemctl daemon-reload
 run_user_systemctl enable "$SERVICE_NAME"
+run_user_systemctl enable "${SERVICE_NAME}-web"
 run_user_systemctl enable "${SERVICE_NAME}-update.timer"
 run_user_systemctl enable "${SERVICE_NAME}-restart.timer"
 
@@ -270,23 +272,31 @@ run_user_systemctl enable "${SERVICE_NAME}-restart.timer"
 run_user_systemctl start "${SERVICE_NAME}-update.timer"
 run_user_systemctl start "${SERVICE_NAME}-restart.timer"
 run_user_systemctl start "$SERVICE_NAME"
+run_user_systemctl start "${SERVICE_NAME}-web"
 
-# Verify the service actually started
+# Verify the services actually started
 sleep 2
-if run_user_systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-  echo "  ✓ Tjänster skapade och startade"
+BACKEND_OK=false
+FRONTEND_OK=false
+run_user_systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null && BACKEND_OK=true
+run_user_systemctl is-active --quiet "${SERVICE_NAME}-web" 2>/dev/null && FRONTEND_OK=true
+
+if [ "$BACKEND_OK" = true ] && [ "$FRONTEND_OK" = true ]; then
+  echo "  ✓ Båda tjänsterna startade"
 else
-  echo "  ⚠ Tjänsten startade men dog — diagnostik:"
+  [ "$BACKEND_OK" = false ] && echo "  ⚠ Backend-tjänsten startade inte"
+  [ "$FRONTEND_OK" = false ] && echo "  ⚠ Frontend-tjänsten startade inte"
   echo ""
   if [ "$EUID" -eq 0 ]; then
     sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
-      journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
+      journalctl --user -u "$SERVICE_NAME" -u "${SERVICE_NAME}-web" --no-pager -n 20 2>/dev/null || true
   else
-    journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
+    journalctl --user -u "$SERVICE_NAME" -u "${SERVICE_NAME}-web" --no-pager -n 20 2>/dev/null || true
   fi
   echo ""
   echo "  Manuell felsökning:"
-  echo "    cd ${PI_DIR} && node --max-old-space-size=128 dist/index.js"
+  echo "    Backend:  cd ${PI_DIR} && BACKEND_PORT=${BACKEND_PORT} node --max-old-space-size=128 dist/index.js"
+  echo "    Frontend: cd ${PI_DIR} && CONFIG_PORT=${PORT} BACKEND_PORT=${BACKEND_PORT} node dist/frontend.js"
 fi
 
 # ─── Done ─────────────────────────────────────────────────
