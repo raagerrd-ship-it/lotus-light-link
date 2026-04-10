@@ -540,7 +540,17 @@ function GlobalSettingsView({
 
         {/* BLE Fade Test */}
         <BleFadeTest piBase={piBase} onResult={(wps) => { const ms = Math.round(1000 / wps); setTickMs(ms); }} />
-      </section>
+
+        <div className="flex justify-between text-sm mb-1 mt-5">
+          <span>BLE min intervall</span>
+          <span className="text-muted-foreground font-mono text-xs">{bleMinInterval} ms</span>
+        </div>
+        <input
+          type="range" min={0} max={200} step={5} value={bleMinInterval}
+          onChange={(e) => setBleMinInterval(parseInt(e.target.value))}
+          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+        />
+        <p className="text-[10px] text-muted-foreground mt-0.5">Minsta tid mellan BLE-skrivningar. 0 = ingen throttle. Öka om lampan tappar anslutning.</p>
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -600,6 +610,7 @@ export default function PiMobile() {
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
+  const [bleMinInterval, setBleMinInterval] = useState(80);
   const [saved, setSaved] = useState(false);
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
