@@ -148,13 +148,12 @@ fi
 # ─── 9. User-level systemd services ─────────────────────
 echo "[8/8] Skapar systemd-tjänster..."
 SYSTEMD_USER_DIR="$TARGET_HOME/.config/systemd/user"
-BACKEND_PORT=3050
 mkdir -p "$SYSTEMD_USER_DIR"
 
-# Backend service (engine: ALSA + BLE + API)
+# Single service (engine + web UI in one process)
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=Lotus Light Link — Audio-reactive BLE LED controller (backend)
+Description=Lotus Light Link — Audio-reactive BLE LED controller
 After=network.target bluetooth.target
 Wants=bluetooth.target
 
@@ -166,7 +165,7 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=HOME=${TARGET_HOME}
-Environment=BACKEND_PORT=${BACKEND_PORT}
+Environment=PORT=${PORT}
 Environment=TICK_MS=30
 
 CPUAffinity=${CORE}
@@ -175,27 +174,8 @@ CPUAffinity=${CORE}
 WantedBy=default.target
 EOF
 
-# Frontend service (web UI + API proxy)
-cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-web.service" << EOF
-[Unit]
-Description=Lotus Light Link — Web UI frontend
-After=${SERVICE_NAME}.service
-BindsTo=${SERVICE_NAME}.service
-
-[Service]
-Type=simple
-WorkingDirectory=${PI_DIR}
-ExecStart=${NODE_BIN} --max-old-space-size=64 dist/frontend.js
-Restart=always
-RestartSec=3
-Environment=NODE_ENV=production
-Environment=HOME=${TARGET_HOME}
-Environment=CONFIG_PORT=${PORT}
-Environment=BACKEND_PORT=${BACKEND_PORT}
-
-[Install]
-WantedBy=default.target
-EOF
+# Remove legacy web service if it exists
+rm -f "$SYSTEMD_USER_DIR/${SERVICE_NAME}-web.service" 2>/dev/null || true
 
 # Auto-update service + timer
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.service" << EOF
