@@ -91,33 +91,48 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // --- Static files ---
+  // --- Only allow /pi-mobile route (block desktop UI) ---
   if (indexHtml) {
-    // Try to serve the file directly
     const safePath = url.split('?')[0].split('#')[0];
-    const filePath = join(WEB_DIST, safePath);
 
-    // Prevent directory traversal
-    if (filePath.startsWith(WEB_DIST) && existsSync(filePath)) {
-      try {
-        const stat = statSync(filePath);
-        if (stat.isFile()) {
-          const ext = extname(filePath);
-          const mime = MIME_TYPES[ext] ?? 'application/octet-stream';
-          const content = readFileSync(filePath);
-          res.writeHead(200, {
-            'Content-Type': mime,
-            'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
-          });
-          res.end(content);
-          return;
-        }
-      } catch {}
+    // Allow static assets (JS, CSS, images, fonts, manifest, sw)
+    const isAsset = safePath.startsWith('/assets/') ||
+      safePath.startsWith('/manifest') ||
+      safePath.startsWith('/sw.') ||
+      safePath.startsWith('/tick-worker') ||
+      safePath.startsWith('/favicon') ||
+      /\.(js|css|png|jpg|svg|ico|woff|woff2|webp|json|webmanifest)$/.test(safePath);
+
+    if (isAsset) {
+      const filePath = join(WEB_DIST, safePath);
+      if (filePath.startsWith(WEB_DIST) && existsSync(filePath)) {
+        try {
+          const stat = statSync(filePath);
+          if (stat.isFile()) {
+            const ext = extname(filePath);
+            const mime = MIME_TYPES[ext] ?? 'application/octet-stream';
+            const content = readFileSync(filePath);
+            res.writeHead(200, {
+              'Content-Type': mime,
+              'Cache-Control': 'public, max-age=31536000, immutable',
+            });
+            res.end(content);
+            return;
+          }
+        } catch {}
+      }
     }
 
-    // SPA fallback — serve index.html
-    res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
-    res.end(indexHtml);
+    // Allow /pi-mobile (SPA route)
+    if (safePath === '/pi-mobile' || safePath.startsWith('/pi-mobile/')) {
+      res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
+      res.end(indexHtml);
+      return;
+    }
+
+    // Block all other routes
+    res.writeHead(302, { Location: '/pi-mobile' });
+    res.end();
     return;
   }
 
