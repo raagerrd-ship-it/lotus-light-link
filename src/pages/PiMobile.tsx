@@ -855,15 +855,27 @@ export default function PiMobile() {
               </button>
             </div>
           </div>
-        ) : bleSavedId ? (
+        ) : bleSavedId && !blePreview ? (
           <div className="bg-secondary/50 rounded-xl p-3 mb-3">
             <div className="flex items-center gap-2">
               <Bluetooth size={16} className="text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Söker sparad enhet…</span>
-              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Sparad: {bleSavedId.substring(0, 8)}…</span>
             </div>
           </div>
         ) : null}
+
+        {/* Preview state after selecting a device */}
+        {blePreview && (
+          <div className="bg-primary/10 rounded-xl p-4 mb-3 border border-primary/30">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: `rgb(${idleColor[0]},${idleColor[1]},${idleColor[2]})` }} />
+              <span className="text-sm font-medium">Förhandsgranskar…</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Lampan visar idle-färgen i {blePreviewSec}s. Enheten sparas automatiskt.
+            </p>
+          </div>
+        )}
 
         <button
           onClick={async () => {
@@ -901,9 +913,21 @@ export default function PiMobile() {
                     });
                     const data = await r.json();
                     if (data.ok) {
-                      setBleConnectedId(d.id);
                       setBleSavedId(d.id);
                       setBleScanResults([]);
+                      // Start preview countdown
+                      setBlePreview(true);
+                      setBlePreviewSec(10);
+                      const countdown = setInterval(() => {
+                        setBlePreviewSec(prev => {
+                          if (prev <= 1) {
+                            clearInterval(countdown);
+                            setBlePreview(false);
+                            return 0;
+                          }
+                          return prev - 1;
+                        });
+                      }, 1000);
                     }
                   } catch {}
                   setBleConnecting(null);
