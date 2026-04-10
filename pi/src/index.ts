@@ -102,9 +102,16 @@ async function main() {
   let wasTvMode = false;
   onSonosChange((state) => {
     const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
+    const needsBle = isPlaying || state.isTvMode;
+    
+    // Demand-based BLE: connect when needed, stop reconnecting when idle
+    if (needsBle) {
+      requestConnect();
+    } else {
+      releaseDemand();
+    }
     
     if (state.isTvMode) {
-      // TV-mode: keep engine running with mic-reactive lighting, skip palette
       engine.setPlaying(true);
       if (!wasTvMode) {
         console.log('[Engine] → TV-läge (mikrofon-reaktiv)');
