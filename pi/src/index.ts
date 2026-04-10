@@ -142,11 +142,8 @@ async function main() {
     }
   });
 
-  // 5. Start engine
+  // 6. Start engine
   engine.start();
-
-  // 6. Start config server
-  startConfigServer(engine, CONFIG_PORT);
 
   // 7. Stats logging
   const statsTimer = setInterval(() => {
