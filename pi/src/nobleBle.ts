@@ -112,7 +112,6 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   }
 
   writeInFlight = true;
-  const now = performance.now();
 
   try {
     if (device.mode === 'brightness') {
