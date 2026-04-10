@@ -5,7 +5,7 @@ import PiMobile from "./pages/PiMobile.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const App = () => (
-  <BrowserRouter>
+  <BrowserRouter basename="/">
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/calibrate" element={<Calibrate />} />
