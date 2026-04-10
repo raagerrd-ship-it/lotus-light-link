@@ -24,7 +24,7 @@ import { extractPalette } from './colorExtract.js';
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://localhost:3000/api/sonos';
-const CONFIG_PORT = Number(process.env.CONFIG_PORT ?? 3001);
+const CONFIG_PORT = Number(process.env.BACKEND_PORT ?? process.env.CONFIG_PORT ?? 3002);
 const TICK_MS = Number(process.env.TICK_MS ?? 30);
 const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
@@ -53,7 +53,7 @@ async function main() {
   console.log(`  Tick: ${effectiveTickMs}ms (${Math.round(1000 / effectiveTickMs)} Hz)${savedTickMs ? ' (saved)' : ''}`);
   console.log(`  Bridge: ${BRIDGE_URL}`);
   console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
-  console.log(`  Config: :${CONFIG_PORT}`);
+  console.log(`  Config API: :${CONFIG_PORT} (backend)`);
   
 
   console.log('');
