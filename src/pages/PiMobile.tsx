@@ -770,6 +770,7 @@ export default function PiMobile() {
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
         idleColor={idleColor} setIdleColor={setIdleColor}
+        bleMinInterval={bleMinInterval} setBleMinInterval={setBleMinInterval}
         piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved}
       />
