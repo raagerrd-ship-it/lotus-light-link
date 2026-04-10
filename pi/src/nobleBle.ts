@@ -81,19 +81,32 @@ export const bleStats = {
 };
 
 // Keep-alive interval (prevents BLE supervision timeout when idle)
-const KEEPALIVE_MS = 2000;
+const KEEPALIVE_MS = 1000;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+let keepAliveFailCount = 0;
 
 function startKeepAlive(): void {
   stopKeepAlive();
-  keepAliveTimer = setInterval(() => {
+  keepAliveFailCount = 0;
+  keepAliveTimer = setInterval(async () => {
     if (!device) return;
     const elapsed = performance.now() - lastWriteTime;
-    if (lastWriteTime > 0 && elapsed < KEEPALIVE_MS) return; // recent write, skip
+    if (lastWriteTime > 0 && elapsed < KEEPALIVE_MS * 0.8) return; // recent write, skip
     // Re-send last known color to keep connection alive
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
-    device.characteristic.writeAsync(buf, true).catch(() => {});
-    lastWriteTime = performance.now();
+    try {
+      await device.characteristic.writeAsync(buf, true);
+      lastWriteTime = performance.now();
+      if (keepAliveFailCount > 0) {
+        console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
+        keepAliveFailCount = 0;
+      }
+    } catch (e: any) {
+      keepAliveFailCount++;
+      if (keepAliveFailCount <= 3 || keepAliveFailCount % 10 === 0) {
+        console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e.message ?? e}`);
+      }
+    }
   }, KEEPALIVE_MS);
 }
 
