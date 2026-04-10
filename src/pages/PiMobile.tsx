@@ -593,7 +593,7 @@ export default function PiMobile() {
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
-  const [tickMs, setTickMs] = useState(33);
+  const [tickMs, setTickMs] = useState(20);
   const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
@@ -615,8 +615,8 @@ export default function PiMobile() {
 
   // Derive Pi base URL from current page (same host, port 3001)
   const piBase = typeof window !== 'undefined'
-    ? `http://${window.location.hostname}:3001`
-    : 'http://localhost:3001';
+    ? `http://${window.location.hostname}:3050`
+    : 'http://localhost:3050';
 
   const putJson = (path: string, body: unknown) =>
     fetch(`${piBase}${path}`, {
@@ -809,10 +809,7 @@ export default function PiMobile() {
         )}
       </div>
 
-      {/* Live chart */}
-      <div className="mb-6">
-        <SignalPreview cal={cal} height={180} showLegend={false} />
-      </div>
+
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
@@ -953,21 +950,6 @@ export default function PiMobile() {
         )}
       </section>
 
-      {/* Auto TV-mode toggle */}
-      <section className="mb-8">
-        <label className="flex items-center justify-between">
-          <div>
-            <div className="text-sm">📺 Auto TV-läge</div>
-            <p className="text-[10px] text-muted-foreground">Tvingar idle när Sonos spelar från TV/SPDIF</p>
-          </div>
-          <button
-            onClick={() => setAutoTvMode(!autoTvMode)}
-            className={`w-12 h-7 rounded-full transition-colors relative ${autoTvMode ? 'bg-green-500' : 'bg-secondary border border-border'}`}
-          >
-            <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${autoTvMode ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
-          </button>
-        </label>
-      </section>
     </div>
   );
 }
