@@ -89,7 +89,8 @@ fi
 
 if [ "$NEED_RESTART" = true ]; then
   systemctl --user restart "$SERVICE"
-  echo "$LOG_PREFIX Service restarted ✓"
+  systemctl --user restart "${SERVICE}-web"
+  echo "$LOG_PREFIX Services restarted ✓"
 else
   echo "$LOG_PREFIX No relevant changes — no restart needed"
 fi

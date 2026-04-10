@@ -1,12 +1,9 @@
 /**
- * Config server — Express on configurable port.
- * Serves both the API (/api/*) and the web UI (static files from vite build).
- * When running via Pi Dashboard, PORT env var sets the user-facing port.
+ * Config server — Express API for mobile configuration.
+ * API-only — the web UI is served by a separate frontend process.
  */
 
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, statSync } from 'fs';
-import { join, extname } from 'path';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
@@ -303,77 +300,10 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     res.json({ ok: true, lastWps });
   });
 
-  // --- Static file serving (web UI) ---
-  const WEB_DIST = join(process.cwd(), '..', 'dist');
-  const MIME_TYPES: Record<string, string> = {
-    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
-    '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
-    '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff': 'font/woff',
-    '.woff2': 'font/woff2', '.webp': 'image/webp', '.webmanifest': 'application/manifest+json',
-  };
-
-  const indexHtml = existsSync(join(WEB_DIST, 'index.html'))
-    ? readFileSync(join(WEB_DIST, 'index.html'))
-    : null;
-
-  if (indexHtml) {
-    console.log(`[Config] Serving web UI from ${WEB_DIST}`);
-
-    // Redirect root to /pi-mobile
-    app.get('/', (_req, res) => res.redirect('/pi-mobile'));
-
-    // Static assets
-    app.get('/assets/*', (req, res, next) => {
-      const filePath = join(WEB_DIST, req.path);
-      if (filePath.startsWith(WEB_DIST) && existsSync(filePath)) {
-        try {
-          const stat = statSync(filePath);
-          if (stat.isFile()) {
-            const ext = extname(filePath);
-            const mime = MIME_TYPES[ext] ?? 'application/octet-stream';
-            res.setHeader('Content-Type', mime);
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-            res.end(readFileSync(filePath));
-            return;
-          }
-        } catch {}
-      }
-      next();
-    });
-
-    // Other static files (manifest, sw, favicon, etc.)
-    app.get(/^\/(manifest|sw\.|tick-worker|favicon)/, (req, res, next) => {
-      const filePath = join(WEB_DIST, req.path);
-      if (filePath.startsWith(WEB_DIST) && existsSync(filePath)) {
-        try {
-          if (statSync(filePath).isFile()) {
-            const ext = extname(filePath);
-            res.setHeader('Content-Type', MIME_TYPES[ext] ?? 'application/octet-stream');
-            res.end(readFileSync(filePath));
-            return;
-          }
-        } catch {}
-      }
-      next();
-    });
-
-    // SPA fallback for /pi-mobile
-    app.get('/pi-mobile*', (_req, res) => {
-      res.setHeader('Content-Type', 'text/html');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.end(indexHtml);
-    });
-
-    // Block other routes → redirect to /pi-mobile
-    app.get('*', (req, res) => {
-      if (!req.path.startsWith('/api/')) {
-        res.redirect('/pi-mobile');
-      }
-    });
-  } else {
-    console.log(`[Config] No web dist at ${WEB_DIST} — API-only mode`);
-    app.get('/', (_req, res) => res.redirect('/api/status'));
-  }
+  // API-only mode — frontend is served by a separate process
+  app.get('/', (_req, res) => {
+    res.redirect('/api/status');
+  });
 
   app.listen(port, () => {
     console.log(`[Config] Server listening on :${port}`);
