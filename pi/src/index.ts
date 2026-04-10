@@ -15,7 +15,7 @@ import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
 import { startMic, stopMic, setAlsaDevice } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount } from './nobleBle.js';
+import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount, setMinWriteInterval, getMinWriteInterval } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
@@ -42,6 +42,10 @@ async function main() {
   // Restore auto TV-mode setting
   const savedAutoTv = getItem('auto-tv-mode');
   if (savedAutoTv === 'true') setSonosAutoTvMode(true);
+
+  // Restore BLE min write interval
+  const savedBleInterval = getItem('ble-min-write-interval');
+  if (savedBleInterval) { const ms = Number(savedBleInterval); if (ms >= 0 && ms <= 500) setMinWriteInterval(ms); }
 
   const savedTickMs = getItem('tick-ms');
   const effectiveTickMs = savedTickMs ? Math.max(20, Math.min(200, Number(savedTickMs))) : TICK_MS;
