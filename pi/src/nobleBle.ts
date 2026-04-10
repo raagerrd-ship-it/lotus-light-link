@@ -354,18 +354,41 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
 async function connectPeripheral(peripheral: any): Promise<void> {
   const name = peripheral.advertisement?.localName ?? peripheral.id;
   const connectTime = performance.now();
-  const GATT_TIMEOUT_MS = 10000;
+  const STEP_TIMEOUT_MS = 8000;
 
-  await peripheral.connectAsync();
+  const withTimeout = <T>(promise: Promise<T>, label: string): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after ${STEP_TIMEOUT_MS}ms`)), STEP_TIMEOUT_MS)
+      ),
+    ]);
+
+  await withTimeout(peripheral.connectAsync(), 'BLE connect');
   console.log(`[BLE] Connected to ${name}`);
 
-  // GATT discovery with timeout — can hang indefinitely on Pi Zero
-  const { characteristics } = await Promise.race([
-    peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`GATT discovery timed out after ${GATT_TIMEOUT_MS}ms`)), GATT_TIMEOUT_MS)
-    ),
-  ]);
+  // Two-step discovery (more reliable than discoverSomeServicesAndCharacteristics — see noble#545)
+  let characteristics: any[] = [];
+  try {
+    const services: any[] = await withTimeout(
+      peripheral.discoverServicesAsync([SERVICE_UUID]),
+      'Service discovery'
+    );
+    if (services?.length) {
+      characteristics = await withTimeout(
+        services[0].discoverCharacteristicsAsync([CHAR_UUID]),
+        'Characteristic discovery'
+      );
+    }
+  } catch (e: any) {
+    // Fallback: try combined discovery
+    console.warn(`[BLE] Two-step discovery failed (${e.message}), trying combined...`);
+    const result = await withTimeout(
+      peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
+      'Combined GATT discovery'
+    );
+    characteristics = result.characteristics ?? [];
+  }
 
   if (!characteristics?.length) {
     throw new Error(`No characteristic found on ${name}`);
@@ -376,10 +399,10 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   char.deviceId = peripheral.id;
 
   // Set hardware brightness to max
-  await char.writeAsync(brightMaxBuf, true);
+  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
 
   device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
-  lastWriteTime = performance.now(); // count the brightMax write
+  lastWriteTime = performance.now();
   startKeepAlive();
 
   // Auto-reconnect on disconnect
