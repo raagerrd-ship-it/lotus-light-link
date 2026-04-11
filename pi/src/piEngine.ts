@@ -391,13 +391,12 @@ export class PiLightEngine {
     this.playing = playing;
 
     if (!playing && wasPlaying) {
-      this.stopLoop();
+      // Keep loop running (CPU is negligible) but add idle heartbeat
       this.startIdleHeartbeat();
-      console.log('[Engine] → idle mode (heartbeat every 2s)');
+      console.log('[Engine] → idle mode (loop + heartbeat every 2s)');
     } else if (playing && !wasPlaying) {
       this.stopIdleHeartbeat();
-      this.startLoop();
-      console.log('[Engine] → active mode (loop started)');
+      console.log('[Engine] → active mode');
     }
   }
 
