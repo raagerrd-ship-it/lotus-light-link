@@ -128,6 +128,7 @@ interface TickConstants {
 function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
+  const fastEnvelopeReleaseAlpha = 1 - Math.exp(-tickMs / 160);
 
   const sm = cal.smoothing ?? 0;
   let extraSmoothAlpha = 0;
@@ -139,7 +140,12 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
-    bandReleaseAlpha: 1 - Math.pow(1 - Math.min(1, cal.releaseAlpha * 4), ratio),
+    // Output envelope must decay much faster than the global RMS smoother,
+    // otherwise the diagnostics show raw bands moving while brightness stays "stuck".
+    bandReleaseAlpha: Math.max(
+      1 - Math.pow(1 - Math.min(1, cal.releaseAlpha * 20), ratio),
+      fastEnvelopeReleaseAlpha,
+    ),
     onsetDecay: Math.pow(0.10, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.15, ratio),
     agcDecayNormal: Math.pow(AGC_MAX_DECAY_PER_SEC, secRatio),
@@ -586,7 +592,10 @@ export class PiLightEngine {
       const sm = cal.smoothing ?? 0;
       if (sm > 0) {
         const pctPre = energyNorm * 100;
-        this.extraSmoothPct += (1 - tc.extraSmoothAlpha) * (pctPre - this.extraSmoothPct);
+        const extraSmoothStep = pctPre > this.extraSmoothPct
+          ? (1 - tc.extraSmoothAlpha)
+          : Math.max(1 - tc.extraSmoothAlpha, tc.bandReleaseAlpha);
+        this.extraSmoothPct += extraSmoothStep * (pctPre - this.extraSmoothPct);
         energyNorm = this.extraSmoothPct / 100;
         if (energyNorm > 1) energyNorm = 1;
         if (energyNorm < 0) energyNorm = 0;
