@@ -725,8 +725,6 @@ function GlobalSettingsView({
         </label>
       </section>
 
-      {/* Software Update */}
-      <SoftwareUpdateSection piBase={piBase} />
     </div>
   );
 }
