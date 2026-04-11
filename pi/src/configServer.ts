@@ -367,6 +367,40 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     res.json({ running: updateRunning, log: updateLog });
   });
 
+  // --- Diagnostics ---
+  app.get('/api/diagnostics', (_req, res) => {
+    const diag = engine.getDiagnostics();
+    const cal = engine.getCalibration();
+    res.json({
+      pipeline: diag,
+      ble: bleStats,
+      calibration: {
+        dimmingGamma: getDimmingGamma(),
+        releaseAlpha: cal.releaseAlpha,
+        dynamicDamping: cal.dynamicDamping,
+        smoothing: cal.smoothing,
+        brightnessFloor: cal.brightnessFloor,
+        perceptualCurve: cal.perceptualCurve,
+        transientBoost: cal.transientBoost,
+      },
+      ranges: {
+        rawRms:        { ok: [0.01, 0.5],  warn: '0 = ingen signal' },
+        bassRms:       { ok: [0.01, 0.3],  warn: '0 = ingen bas' },
+        midHiRms:      { ok: [0.01, 0.2],  warn: '0 = inget diskant' },
+        agcMax:        { ok: [0.02, 1.0],  warn: '<0.02 = tyst rum' },
+        agcQuietTicks: { ok: [0, 50],      warn: '>50 = tyst länge' },
+        energyNorm:    { ok: [0.2, 0.8],   warn: '<0.1 = för tyst, >0.95 = clipping' },
+        dynamicCenter: { ok: [0.3, 0.7],   warn: 'fast vid 0 eller 1 = problem' },
+        onsetBoost:    { ok: [0, 0.22],    warn: '>0.22 bör ej hända' },
+        brightnessPct: { ok: [30, 100],    warn: '<20 = svagt ljus' },
+        bleScaleRaw:   { ok: [0.1, 1.0],   warn: '<0.05 = näst osynligt' },
+        bleWriteLatMs: { ok: [0, 15],      warn: '>20 = för långsam BLE' },
+        bleSkipBusy:   { ok: [0, 50],      warn: '>200 = BLE halkar efter' },
+        lastTickUs:    { ok: [0, 500],     warn: '>1000 = motorn är överbelastad' },
+      },
+    });
+  });
+
   // API-only mode — frontend is served by a separate process
   app.get('/', (_req, res) => {
     res.redirect('/api/status');
