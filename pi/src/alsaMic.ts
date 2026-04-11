@@ -60,8 +60,9 @@ let samplesReceived = 0;
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
-// Debug — log every ~2 seconds at current FFT rate (44100/128 ≈ 345 frames/sec)
-const DEBUG_INTERVAL = 690;
+// Debug — only active when DEBUG=true env var is set
+const DEBUG_ENABLED = process.env.DEBUG === 'true';
+const DEBUG_INTERVAL = 690; // ~2 seconds at 44100/128 ≈ 345 frames/sec
 let debugTickCount = 0;
 let debugPeakRaw = 0;
 
@@ -116,12 +117,14 @@ function processFFT(): void {
   latestBands.totalRms = Math.sqrt(totalSum / BIN_COUNT);
   latestBands.flux = flux;
 
-  // Debug logging every ~2 seconds
-  debugTickCount++;
-  if (debugTickCount >= DEBUG_INTERVAL) {
-    console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
-    debugTickCount = 0;
-    debugPeakRaw = 0;
+  // Debug logging every ~2 seconds (only when DEBUG=true)
+  if (DEBUG_ENABLED) {
+    debugTickCount++;
+    if (debugTickCount >= DEBUG_INTERVAL) {
+      console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
+      debugTickCount = 0;
+      debugPeakRaw = 0;
+    }
   }
 
   // Fire event immediately — engine can process with zero latency
@@ -170,8 +173,10 @@ export function startMic(): void {
     for (let i = 0; i < samples; i++) {
       const s16 = buf.readInt16LE(i * 2);
       const raw = s16 / 32768;
-      const abs = raw < 0 ? -raw : raw; // branchless abs (avoid Math.abs call)
-      if (abs > debugPeakRaw) debugPeakRaw = abs;
+      if (DEBUG_ENABLED) {
+        const abs = raw < 0 ? -raw : raw;
+        if (abs > debugPeakRaw) debugPeakRaw = abs;
+      }
       ringBuf[ringPos] = applyHighShelfSample(raw);
       ringPos = (ringPos + 1) % FFT_SIZE;
       samplesReceived++;
