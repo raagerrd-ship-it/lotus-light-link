@@ -845,6 +845,21 @@ export default function PiMobile() {
       </div>
 
 
+      {/* Version / Status */}
+      <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-1">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
+            <span>Frontend</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
+            <span>Motor {engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz` : 'Stoppad') : '…'}</span>
+          </div>
+          {piVersion && <span className="font-mono">{piVersion.commitShort}@{piVersion.branch}</span>}
+        </div>
+      </div>
+
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
@@ -992,33 +1007,6 @@ export default function PiMobile() {
             ))}
           </div>
         )}
-      </section>
-      {/* Version / Status */}
-      <section className="mt-4 mb-8 text-[10px] text-muted-foreground">
-        <div className="bg-secondary/50 rounded-xl p-3 space-y-2">
-          {/* Frontend / Config server */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
-              <span className="font-medium">Frontend</span>
-            </div>
-            <span>{piOnline === true ? 'Online' : piOnline === false ? 'Offline' : '…'}</span>
-          </div>
-          {/* Engine :3050 */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${engineStatus?.running ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
-              <span className="font-medium">Motor :3050</span>
-            </div>
-            <span>{engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz (${engineStatus.tickMs} ms)` : 'Stoppad') : '…'}</span>
-          </div>
-          {/* Version */}
-          {piVersion && (
-            <div className="text-center font-mono pt-1 border-t border-border/50">
-              v{piVersion.version} · {piVersion.commitShort} · {piVersion.branch}
-            </div>
-          )}
-        </div>
       </section>
 
     </div>
