@@ -413,12 +413,16 @@ export class PiLightEngine {
 
     // Register for FFT-driven ticks (event-driven, not polling)
     onFFTReady((bands) => this.onFFTFrame(bands));
+    // Always start the loop — CPU is negligible
+    this.startLoop();
+    // Start in idle heartbeat until Sonos says playing
+    this.startIdleHeartbeat();
 
     this.saveTimer = setInterval(() => {
       saveCalibration(this.cal);
     }, 10_000);
 
-    console.log(`[Engine] Initialized (${this.tickMs}ms min interval = ${(1000 / this.tickMs + 0.5) | 0} Hz max, event-driven, waiting for playback)`);
+    console.log(`[Engine] Initialized (${this.tickMs}ms, loop always active, idle heartbeat until playback)`);
   }
 
   // ── Event-driven tick scheduling ──
