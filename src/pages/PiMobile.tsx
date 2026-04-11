@@ -508,6 +508,44 @@ function ProfileSettingsView({
 }
 
 
+/* ── Auto-gain toggle component ── */
+function AutoGainToggle({ piBase }: { piBase: string }) {
+  const [enabled, setEnabled] = useState(true);
+  const [multiplier, setMultiplier] = useState(1);
+
+  useEffect(() => {
+    fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) })
+      .then(r => r.json())
+      .then(d => { setEnabled(d.enabled); setMultiplier(d.multiplier); })
+      .catch(() => {});
+  }, [piBase]);
+
+  const toggle = () => {
+    const next = !enabled;
+    setEnabled(next);
+    fetch(`${piBase}/api/auto-gain`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    }).then(r => r.json()).then(d => setMultiplier(d.multiplier)).catch(() => {});
+  };
+
+  return (
+    <label className="flex items-center justify-between mt-4">
+      <div>
+        <div className="text-sm">Auto-gain (Sonos vol)</div>
+        <p className="text-[10px] text-muted-foreground">Justerar mic-gain efter Sonos-volym ({multiplier.toFixed(1)}×)</p>
+      </div>
+      <button
+        onClick={toggle}
+        className={`w-12 h-7 rounded-full transition-colors relative ${enabled ? 'bg-green-500' : 'bg-secondary border border-border'}`}
+      >
+        <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${enabled ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
+      </button>
+    </label>
+  );
+}
+
 /* ── Global Settings View (motor, mic, sonos, BLE test) ── */
 function GlobalSettingsView({
   tickMs, setTickMs,
