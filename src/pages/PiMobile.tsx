@@ -594,6 +594,9 @@ function GlobalSettingsView({
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
         <p className="text-[10px] text-muted-foreground mt-0.5">Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.</p>
+
+        {/* Auto-gain toggle */}
+        <AutoGainToggle piBase={piBase} />
       </section>
 
       <section className="mb-8">
@@ -726,10 +729,15 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
   const bleWriteLatMs = ble?.writeLatAvgMs ?? 0;
   const bleSkipBusy = ble?.skipBusyCount ?? 0;
 
+  // Auto-gain info from micGain
+  const autoGainMultiplier = (data as any).micGain?.autoMultiplier ?? 1;
+  const autoGainEnabled = (data as any).micGain?.autoGainEnabled ?? true;
+
   // Visual pipeline stages (in signal flow order, all 0-1 range for bars)
   const pipelineStages = [
     { label: 'Rå Bas',      value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRms' },
     { label: 'Rå Disk',     value: pipeline.midHiRms ?? 0, max: 0.2, key: 'midHiRms' },
+    { label: 'Auto-gain',   value: autoGainMultiplier / 8, max: 1, key: 'autoGain', displayVal: `${autoGainMultiplier.toFixed(1)}× ${autoGainEnabled ? '' : '(av)'}` },
     { label: 'AGC Bas-tak', value: pipeline.bassMax ?? 0, max: 1, key: 'bassMax' },
     { label: 'AGC Disk-tak',value: pipeline.midHiMax ?? 0, max: 1, key: 'midHiMax' },
     { label: 'Bas (norm)',  value: pipeline.bassNorm ?? 0, max: 1, key: 'bassNorm' },
