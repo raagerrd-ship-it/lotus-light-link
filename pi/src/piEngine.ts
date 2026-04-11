@@ -461,8 +461,6 @@ export class PiLightEngine {
   /** Guard against NaN/Infinity corrupting smoothing state */
   private sanitizeState(): void {
     if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
-    if (!Number.isFinite(this.smoothedBass)) this.smoothedBass = 0;
-    if (!Number.isFinite(this.smoothedMidHi)) this.smoothedMidHi = 0;
     if (!Number.isFinite(this.dynamicCenter)) this.dynamicCenter = 0.5;
     if (!Number.isFinite(this.extraSmoothPct)) this.extraSmoothPct = 0;
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
