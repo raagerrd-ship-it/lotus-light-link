@@ -18,7 +18,7 @@ done
 
 APP_DIR="/opt/lotus-light"
 PI_DIR="$APP_DIR/pi"
-HOSTNAME_TARGET="lotus"
+
 SERVICE_NAME="lotus-light"
 TOTAL_CPUS=$(nproc 2>/dev/null || echo 4)
 
@@ -85,23 +85,9 @@ else
   echo "  ✓ I²S overlay redan konfigurerad"
 fi
 
-# ─── 4. Hostname ─────────────────────────────────────────
-echo "[4/8] Kontrollerar hostname..."
-CURRENT_HOSTNAME=$(hostname)
-if [ "$CURRENT_HOSTNAME" != "$HOSTNAME_TARGET" ]; then
-  sudo hostnamectl set-hostname "$HOSTNAME_TARGET"
-  echo "  Hostname satt till ${HOSTNAME_TARGET}.local ✓"
-else
-  echo "  ✓ Hostname redan ${HOSTNAME_TARGET}.local"
-fi
-
-# Ensure /etc/hosts has an entry for the hostname (prevents sudo warnings)
-if ! grep -q "127.0.1.1.*${HOSTNAME_TARGET}" /etc/hosts 2>/dev/null; then
-  echo "127.0.1.1 ${HOSTNAME_TARGET}" | sudo tee -a /etc/hosts > /dev/null
-  echo "  ✓ /etc/hosts uppdaterad med ${HOSTNAME_TARGET}"
-else
-  echo "  ✓ /etc/hosts redan korrekt"
-fi
+# ─── 4. Hostname (informational only) ────────────────────
+echo "[4/8] Hostname: $(hostname).local"
+echo "  Tjänsten använder 127.0.0.1 internt — inget behov av /etc/hosts-ändring"
 
 # ─── 5. Install npm dependencies & build web app ─────────
 echo "[5/8] Förbereder webbapp..."
