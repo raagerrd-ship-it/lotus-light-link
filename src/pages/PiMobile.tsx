@@ -913,8 +913,13 @@ export default function PiMobile() {
             try {
               const r = await fetch(`${piBase}/api/ble/scan`, { method: 'POST', signal: AbortSignal.timeout(15000) });
               const data = await r.json();
+              if (data.error) {
+                console.warn('[BLE scan]', data.error);
+              }
               setBleScanResults(data.devices ?? []);
-            } catch {}
+            } catch (e) {
+              console.error('[BLE scan] failed:', e);
+            }
             setBleScanning(false);
           }}
           disabled={bleScanning}
