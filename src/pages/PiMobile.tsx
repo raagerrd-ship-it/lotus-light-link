@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2 } from "lucide-react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Download, RefreshCw } from "lucide-react";
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
@@ -610,6 +610,9 @@ function GlobalSettingsView({
           </button>
         </label>
       </section>
+
+      {/* Software Update */}
+      <SoftwareUpdateSection piBase={piBase} />
     </div>
   );
 }
