@@ -559,6 +559,10 @@ export class PiLightEngine {
       // ── 3. Bas/Disk mix ──
       let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
+      // ── 4. Release smoothing (Mjukhet) ──
+      const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
+      this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
+      energyNorm = this.smoothed;
 
       const preDynamics = energyNorm;
 
