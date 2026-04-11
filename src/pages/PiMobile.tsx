@@ -740,7 +740,7 @@ function GlobalSettingsView({
           <span className="text-muted-foreground font-mono text-xs">{tickMs} ms</span>
         </div>
         <input
-          type="range" min={20} max={50} step={1} value={tickMs}
+          type="range" min={10} max={50} step={1} value={tickMs}
           onChange={(e) => setTickMs(parseInt(e.target.value))}
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
@@ -1057,7 +1057,7 @@ export default function PiMobile() {
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
-  const [tickMs, setTickMs] = useState(20);
+  const [tickMs, setTickMs] = useState(10);
   const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
