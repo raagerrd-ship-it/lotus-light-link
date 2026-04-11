@@ -71,15 +71,16 @@ for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
-# Re-apply BLE capabilities
-NODE_BIN=$(which node)
+# Re-apply BLE capabilities (use readlink to resolve symlinks)
+NODE_BIN=$(readlink -f "$(which node)")
 if [ -n "$NODE_BIN" ]; then
   sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
 fi
 
-# Rebuild native modules for current architecture
-echo "$LOG_PREFIX Rebuilding native modules for $(uname -m)..."
+# Rebuild native modules for current Node version + architecture
+echo "$LOG_PREFIX Rebuilding native modules for Node $(node -v) on $(uname -m)..."
 cd "$PI_DIR" && npm rebuild 2>&1 | tail -5
+echo "$LOG_PREFIX Native modules rebuilt ✓"
 
 # Restart service
 systemctl --user restart "$SERVICE"
