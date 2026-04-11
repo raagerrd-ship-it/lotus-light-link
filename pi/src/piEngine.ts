@@ -389,20 +389,14 @@ export class PiLightEngine {
   /** Initialize engine — call once at boot. Loop only starts when setPlaying(true). */
   start(): void {
     if (this._running) return;
-
-    const bucket = volumeToBucket(this.volume);
-    const floor = getFloorForVolume(this.volumeTable, bucket);
-    this.agc = createAgcState(floor);
-    this.lastBucket = bucket;
+    this.agc = createAgcState();
     this._running = true;
 
     // Register for FFT-driven ticks (event-driven, not polling)
     onFFTReady((bands) => this.onFFTFrame(bands));
 
     this.saveTimer = setInterval(() => {
-      const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
-      this.cal = updated;
-      saveCalibration(updated);
+      saveCalibration(this.cal);
     }, 10_000);
 
     console.log(`[Engine] Initialized (${this.tickMs}ms min interval = ${(1000 / this.tickMs + 0.5) | 0} Hz max, event-driven, waiting for playback)`);
