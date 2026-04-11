@@ -20,7 +20,7 @@ import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setS
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
 import { getItem, setItem } from './storage.js';
-import { extractPalette } from './colorExtract.js';
+// Palette now comes from Sonos Gateway response (no cloud call needed)
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://172.0.0.1:3003/api/sonos';
@@ -132,16 +132,13 @@ async function main() {
       setAutoGainFromVolume(state.volume);
     }
 
-    // Extract palette from album art on track change (skip in TV-mode)
-    if (!state.isTvMode && state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {
+    // Use palette from Sonos Gateway response
+    if (!state.isTvMode && state.palette && state.palette.length > 0 &&
+        state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {
       lastArtUrl = state.albumArtUrl;
-      extractPalette(state.albumArtUrl, 4).then((palette) => {
-        if (palette.length > 0) {
-          engine.setColor(palette[0]);
-          engine.setPalette(palette);
-          console.log(`[Color] Palette from art: ${palette.map(c => `rgb(${c})`).join(', ')}`);
-        }
-      }).catch(() => {});
+      engine.setColor(state.palette[0]);
+      engine.setPalette(state.palette);
+      console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
     }
   });
 
