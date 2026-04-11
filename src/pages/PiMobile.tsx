@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2 } from "lucide-react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Download, RefreshCw } from "lucide-react";
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
@@ -488,6 +488,120 @@ function ProfileSettingsView({
   );
 }
 
+/* ── Software Update Section ── */
+function SoftwareUpdateSection({ piBase }: { piBase: string }) {
+  const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [checkResult, setCheckResult] = useState<{ upToDate: boolean; currentCommit: string; latestCommit: string; currentVersion: string; releaseName: string } | null>(null);
+  const [updateLog, setUpdateLog] = useState('');
+  const [updateDone, setUpdateDone] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
+
+  const checkForUpdate = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    setUpdateDone(false);
+    try {
+      const r = await fetch(`${piBase}/api/update/check`, { signal: AbortSignal.timeout(10000) });
+      const data = await r.json();
+      setCheckResult(data);
+    } catch { setCheckResult(null); }
+    setChecking(false);
+  };
+
+  const runUpdate = async () => {
+    setUpdating(true);
+    setUpdateLog('');
+    setUpdateDone(false);
+    try {
+      await fetch(`${piBase}/api/update/run`, { method: 'POST' });
+      // Poll status
+      pollRef.current = setInterval(async () => {
+        try {
+          const r = await fetch(`${piBase}/api/update/status`);
+          const data = await r.json();
+          setUpdateLog(data.log || '');
+          if (!data.running && data.log) {
+            clearInterval(pollRef.current);
+            setUpdating(false);
+            setUpdateDone(true);
+          }
+        } catch {}
+      }, 1000);
+    } catch { setUpdating(false); }
+  };
+
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+        <Download size={14} /> Programuppdatering
+      </h2>
+
+      {!checkResult && !updating && !updateDone && (
+        <button
+          onClick={checkForUpdate}
+          disabled={checking}
+          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {checking ? <><Loader2 size={16} className="animate-spin" /> Kontrollerar…</> : <><RefreshCw size={16} /> Sök efter uppdateringar</>}
+        </button>
+      )}
+
+      {checkResult && !updating && !updateDone && (
+        <div className="bg-secondary/50 rounded-xl p-4 space-y-3">
+          {checkResult.upToDate ? (
+            <div className="text-center">
+              <div className="text-sm font-medium text-green-400">✓ Senaste versionen</div>
+              <div className="text-[10px] text-muted-foreground font-mono mt-1">v{checkResult.currentVersion} ({checkResult.currentCommit})</div>
+            </div>
+          ) : (
+            <>
+              <div className="text-center">
+                <div className="text-sm font-medium text-primary">Uppdatering tillgänglig</div>
+                <div className="text-[10px] text-muted-foreground font-mono mt-1">
+                  {checkResult.currentCommit} → {checkResult.latestCommit}
+                </div>
+                {checkResult.releaseName && (
+                  <div className="text-xs text-muted-foreground mt-0.5">{checkResult.releaseName}</div>
+                )}
+              </div>
+              <button
+                onClick={runUpdate}
+                className="w-full py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <Download size={16} /> Installera uppdatering
+              </button>
+            </>
+          )}
+          <button onClick={() => setCheckResult(null)} className="w-full text-[10px] text-muted-foreground">Stäng</button>
+        </div>
+      )}
+
+      {updating && (
+        <div className="bg-secondary/50 rounded-xl p-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Loader2 size={16} className="animate-spin text-primary" /> Uppdaterar…
+          </div>
+          <p className="text-[10px] text-muted-foreground">Laddar ner och installerar. Tjänsten startas om automatiskt.</p>
+        </div>
+      )}
+
+      {updateDone && (
+        <div className="bg-secondary/50 rounded-xl p-4 space-y-2">
+          <div className="text-sm font-medium text-green-400">✓ Uppdatering klar</div>
+          <p className="text-[10px] text-muted-foreground">Tjänsten har startats om med ny version.</p>
+          {updateLog && (
+            <pre className="text-[9px] text-muted-foreground bg-background/50 rounded-lg p-2 overflow-x-auto max-h-32 whitespace-pre-wrap">{updateLog}</pre>
+          )}
+          <button onClick={() => { setUpdateDone(false); setCheckResult(null); }} className="w-full text-[10px] text-muted-foreground">Stäng</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ── Global Settings View (motor, mic, sonos, BLE test) ── */
 function GlobalSettingsView({
   tickMs, setTickMs,
@@ -610,6 +724,9 @@ function GlobalSettingsView({
           </button>
         </label>
       </section>
+
+      {/* Software Update */}
+      <SoftwareUpdateSection piBase={piBase} />
     </div>
   );
 }

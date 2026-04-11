@@ -316,6 +316,56 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     res.json({ ok: true, lastWps });
   });
 
+  // --- Software Update ---
+  let updateRunning = false;
+  let updateLog = '';
+
+  app.get('/api/update/check', async (_req, res) => {
+    try {
+      const { readFileSync } = await import('fs');
+      let currentCommit = '';
+      try {
+        const vf = JSON.parse(readFileSync('/opt/lotus-light/VERSION.json', 'utf8'));
+        currentCommit = vf.commit ?? '';
+      } catch {}
+
+      const r = await fetch('https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/tags/latest', { signal: AbortSignal.timeout(5000) });
+      if (!r.ok) return res.json({ error: 'GitHub API error' });
+      const data = await r.json();
+      const latestCommit = data.target_commitish ?? '';
+      const upToDate = currentCommit === latestCommit;
+
+      res.json({
+        upToDate,
+        currentCommit: currentCommit.substring(0, 7),
+        latestCommit: latestCommit.substring(0, 7),
+        releaseName: data.name ?? '',
+        currentVersion: SERVICE_VERSION,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/update/run', async (_req, res) => {
+    if (updateRunning) return res.status(409).json({ error: 'Update already running' });
+    updateRunning = true;
+    updateLog = '';
+    res.json({ ok: true, message: 'Update started' });
+
+    // Run update script in background
+    const { exec } = await import('child_process');
+    exec('bash /opt/lotus-light/pi/update-services.sh 2>&1', { timeout: 120000 }, (err, stdout, stderr) => {
+      updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
+      updateRunning = false;
+      console.log('[Update]', updateLog);
+    });
+  });
+
+  app.get('/api/update/status', (_req, res) => {
+    res.json({ running: updateRunning, log: updateLog });
+  });
+
   // API-only mode — frontend is served by a separate process
   app.get('/', (_req, res) => {
     res.redirect('/api/status');

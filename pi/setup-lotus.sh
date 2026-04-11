@@ -205,30 +205,6 @@ CPUAffinity=${CORE}
 WantedBy=default.target
 EOF
 
-# Auto-update service + timer
-cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.service" << EOF
-[Unit]
-Description=Lotus Light Link — Auto-update from GitHub
-
-[Service]
-Type=oneshot
-ExecStart=${PI_DIR}/update-services.sh
-Environment=HOME=$TARGET_HOME
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
-EOF
-
-cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.timer" << EOF
-[Unit]
-Description=Lotus Light Link — Auto-update timer (every 5 min)
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
 
 # Nightly restart for stability (05:00)
 cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-restart.service" << EOF
@@ -271,15 +247,19 @@ fi
 
 run_user_systemctl daemon-reload
 run_user_systemctl enable "$SERVICE_NAME"
-run_user_systemctl enable "${SERVICE_NAME}-update.timer"
 run_user_systemctl enable "${SERVICE_NAME}-restart.timer"
+
+# Clean up old auto-update timer if present
+run_user_systemctl stop "${SERVICE_NAME}-update.timer" 2>/dev/null || true
+run_user_systemctl disable "${SERVICE_NAME}-update.timer" 2>/dev/null || true
+rm -f "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.service" 2>/dev/null
+rm -f "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.timer" 2>/dev/null
 
 # Stop old web service if running
 run_user_systemctl stop "${SERVICE_NAME}-web" 2>/dev/null || true
 run_user_systemctl disable "${SERVICE_NAME}-web" 2>/dev/null || true
 
 # Start everything
-run_user_systemctl start "${SERVICE_NAME}-update.timer"
 run_user_systemctl start "${SERVICE_NAME}-restart.timer"
 run_user_systemctl restart "$SERVICE_NAME"
 
@@ -312,9 +292,8 @@ echo ""
 echo "  Port: ${PORT}, CPU core: ${CORE}"
 echo "  Config: http://${IP_ADDR:-lotus.local}:${PORT}"
 echo ""
-echo "  Schema:"
-echo "    Var 5:e min  Auto-update (git pull + restart om ändringar)"
-echo "    05:00        Nattlig omstart"
+  echo "  Schema:"
+  echo "    05:00  Nattlig omstart"
 echo ""
 echo "  Kommandon:"
 echo "    Status:  systemctl --user status ${SERVICE_NAME}"
