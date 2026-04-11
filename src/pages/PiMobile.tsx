@@ -14,13 +14,13 @@ const PALETTE_MODES: { value: PaletteMode; label: string }[] = [
   { value: 'blend', label: 'Blend' },
 ];
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean; agcEnabled: boolean; bandSmoothingEnabled: boolean; dynamicsEnabled: boolean; smoothingEnabled: boolean };
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean; agcEnabled: boolean; dynamicsEnabled: boolean; smoothingEnabled: boolean };
 
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true, agcEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -459,10 +459,9 @@ function ProfileSettingsView({
         {/* Toggles */}
         <div className="space-y-3">
           {([
-            { key: 'agcEnabled' as const, label: 'AGC', desc: 'Auto Gain Control — normaliserar insignalen' },
-            { key: 'bandSmoothingEnabled' as const, label: 'Band-smoothing', desc: 'Mjukar upp bas/disk separat' },
+            { key: 'agcEnabled' as const, label: 'AGC', desc: 'Enkel peak-normalisering av insignalen' },
             { key: 'dynamicsEnabled' as const, label: 'Dynamik', desc: 'Expanderar/komprimerar signalen' },
-            { key: 'smoothingEnabled' as const, label: 'Extra smoothing', desc: 'Ytterligare utjämning (Mjukhet-slider)' },
+            { key: 'smoothingEnabled' as const, label: 'Mjukhet', desc: 'Utjämning/fade av signalen (Mjukhet-slider)' },
           ]).map(({ key, label, desc }) => (
             <label key={key} className="flex items-center justify-between">
               <div>
@@ -771,13 +770,12 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
   const autoGainMultiplier = (data as any).micGain?.autoMultiplier ?? 1;
   const autoGainEnabled = (data as any).micGain?.autoGainEnabled ?? true;
 
-  // Visual pipeline stages (in signal flow order, all 0-1 range for bars)
+  // Visual pipeline stages (simplified signal flow)
   const pipelineStages = [
     { label: 'Rå Bas',      value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRms' },
     { label: 'Rå Disk',     value: pipeline.midHiRms ?? 0, max: 0.2, key: 'midHiRms' },
     { label: 'Auto-gain',   value: autoGainMultiplier / 8, max: 1, key: 'autoGain', displayVal: `${autoGainMultiplier.toFixed(1)}× ${autoGainEnabled ? '' : '(av)'}` },
-    { label: 'AGC Bas-tak', value: pipeline.bassMax ?? 0, max: 1, key: 'bassMax' },
-    { label: 'AGC Disk-tak',value: pipeline.midHiMax ?? 0, max: 1, key: 'midHiMax' },
+    { label: 'Peak AGC',    value: pipeline.peakMax ?? 0, max: 1, key: 'peakMax' },
     { label: 'Bas (norm)',  value: pipeline.bassNorm ?? 0, max: 1, key: 'bassNorm' },
     { label: 'Disk (norm)', value: pipeline.midHiNorm ?? 0, max: 1, key: 'midHiNorm' },
     { label: 'Pre-dyn',     value: pipeline.preDynamics ?? 0, max: 1, key: 'preDynamics' },
@@ -963,7 +961,7 @@ export default function PiMobile() {
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
           agcEnabled: cal.agcEnabled,
-          bandSmoothingEnabled: cal.bandSmoothingEnabled,
+          
           dynamicsEnabled: cal.dynamicsEnabled,
           smoothingEnabled: cal.smoothingEnabled,
           hiShelfGainDb: 6,
@@ -1029,7 +1027,7 @@ export default function PiMobile() {
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
           agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
-          bandSmoothingEnabled: c.bandSmoothingEnabled ?? DEFAULT_CAL.bandSmoothingEnabled,
+          
           dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
           smoothingEnabled: c.smoothingEnabled ?? DEFAULT_CAL.smoothingEnabled,
         });

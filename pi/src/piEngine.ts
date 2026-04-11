@@ -19,92 +19,38 @@ import { getItem, setItem } from './storage.js';
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
-// --- AGC ---
+// --- Simple Peak AGC ---
 const AGC_FLOOR = 0.0001;
-const AGC_MAX_DECAY_PER_SEC = 0.99840;
-const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410;
-const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;
-const QUIET_THRESHOLD_RATIO = 0.10;
-const QUIET_MS_MEDIUM = 2000;
-const QUIET_MS_FAST = 5000;
-const BUCKET_SIZE = 5;
+const AGC_DECAY_PER_SEC = 0.995;      // slow decay for peak tracker
+const AGC_FAST_DECAY_PER_SEC = 0.95;  // faster decay after prolonged silence
+const QUIET_THRESHOLD = 0.10;
+const QUIET_MS_FAST = 4000;
 
 interface AgcState {
-  max: number; min: number;
-  bassMax: number; bassMin: number;
-  midHiMax: number; midHiMin: number;
+  peakMax: number;       // single running max across all bands
   quietTicks: number;
-  bassQuietTicks: number;
-  midHiQuietTicks: number;
 }
 
-type AgcVolumeTable = Record<number, number>;
-
-function createAgcState(initialMax = 0.01): AgcState {
-  return {
-    max: Math.max(initialMax, 0.01),
-    min: 0,
-    bassMax: 0.01,
-    bassMin: 0,
-    midHiMax: 0.01,
-    midHiMin: 0,
-    quietTicks: 0,
-    bassQuietTicks: 0,
-    midHiQuietTicks: 0,
-  };
+function createAgcState(): AgcState {
+  return { peakMax: 0.01, quietTicks: 0 };
 }
 
-function volumeToBucket(volume: number | undefined): number {
-  if (volume == null || volume <= 0) return 0;
-  return (Math.min(100, volume) / BUCKET_SIZE) | 0;
-}
-
-function updateVolumeTable(table: AgcVolumeTable, bucket: number, value: number): void {
-  if (value > (table[bucket] ?? 0)) table[bucket] = value;
-}
-
-function getFloorForVolume(table: AgcVolumeTable, bucket: number): number {
-  if (table[bucket] != null) return table[bucket];
-  let nearestBucket: number | null = null, nearestDist = Infinity;
-  const keys = Object.keys(table);
-  for (let i = 0, len = keys.length; i < len; i++) {
-    const b = Number(keys[i]), dist = Math.abs(b - bucket);
-    if (dist < nearestDist) { nearestDist = dist; nearestBucket = b; }
+function updatePeakAgc(state: AgcState, totalRms: number, bassRms: number, midHiRms: number, tc: TickConstants): void {
+  // Track highest of all bands
+  const peak = Math.max(totalRms, bassRms, midHiRms);
+  if (peak > state.peakMax) {
+    state.peakMax = peak;
+    state.quietTicks = 0;
+  } else {
+    const isQuiet = totalRms < state.peakMax * QUIET_THRESHOLD;
+    if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
+    const decay = state.quietTicks >= tc.quietFastTicks ? tc.agcDecayFast : tc.agcDecayNormal;
+    state.peakMax = Math.max(AGC_FLOOR, state.peakMax * decay);
   }
-  if (nearestBucket == null) return 0.01;
-  const nearestVol = (nearestBucket * BUCKET_SIZE) || 1;
-  const currentVol = (bucket * BUCKET_SIZE) || 1;
-  return Math.max(AGC_FLOOR, table[nearestBucket] * (currentVol / nearestVol));
 }
 
-/** AGC update using precomputed decay constants — no Math.pow */
-function updateRunningMaxFast(state: AgcState, smoothed: number, bassRms: number, midHiRms: number, tc: TickConstants): void {
-  const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
-  if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
-  const decay = state.quietTicks >= tc.quietFastTicks ? tc.agcDecayFast
-    : state.quietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
-  const bassQuiet = bassRms < state.bassMax * QUIET_THRESHOLD_RATIO;
-  if (bassQuiet) state.bassQuietTicks++; else state.bassQuietTicks = 0;
-  const bassDecay = state.bassQuietTicks >= tc.quietFastTicks ? tc.agcDecayFast
-    : state.bassQuietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
-  const midHiQuiet = midHiRms < state.midHiMax * QUIET_THRESHOLD_RATIO;
-  if (midHiQuiet) state.midHiQuietTicks++; else state.midHiQuietTicks = 0;
-  const midHiDecay = state.midHiQuietTicks >= tc.quietFastTicks ? tc.agcDecayFast
-    : state.midHiQuietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
-  if (smoothed > state.max) state.max = smoothed; else state.max = Math.max(AGC_FLOOR, state.max * decay);
-  if (bassRms > state.bassMax) state.bassMax = bassRms; else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * bassDecay);
-  if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
-  else state.bassMin = state.bassMin + (bassRms - state.bassMin) * 0.0005; // slow upward drift
-  if (midHiRms > state.midHiMax) state.midHiMax = midHiRms; else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * midHiDecay);
-  if (midHiRms < state.midHiMin || state.midHiMin === 0) state.midHiMin = midHiRms;
-  else state.midHiMin = state.midHiMin + (midHiRms - state.midHiMin) * 0.0005; // slow upward drift
-}
-
-function normalizeBand(value: number, state: AgcState, band: 'bass' | 'midHi'): number {
-  const max = band === 'bass' ? state.bassMax : state.midHiMax;
-  const min = band === 'bass' ? state.bassMin : state.midHiMin;
-  const range = Math.max(AGC_FLOOR, max - min);
-  const n = (value - min) / range;
+function normalizeSimple(value: number, peakMax: number): number {
+  const n = value / peakMax;
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
@@ -112,13 +58,10 @@ function normalizeBand(value: number, state: AgcState, band: 'bass' | 'midHi'): 
 interface TickConstants {
   attackAlpha: number;
   releaseAlpha: number;
-  bandReleaseAlpha: number;
   onsetDecay: number;
   onsetRiseAlpha: number;
   agcDecayNormal: number;
-  agcDecayMedium: number;
   agcDecayFast: number;
-  quietMediumTicks: number;
   quietFastTicks: number;
   centerAlpha: number;
   extraSmoothAlpha: number;
@@ -130,33 +73,22 @@ interface TickConstants {
 function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
-  const fastEnvelopeReleaseAlpha = 1 - Math.exp(-tickMs / 160);
 
   const sm = cal.smoothing ?? 0;
   let extraSmoothAlpha = 0;
   if (sm > 0) {
-    // Quadratic scaling: smoothing 1→~0.0001, 50→~0.25, 100→~1.0
-    // This ensures low values (1-10) have negligible effect
-    const normalized = (sm / 100) * (sm / 100); // 0..1 quadratic
-    const alphaRef = Math.exp(-normalized * 4); // at normalized=1 → ~0.018 (heavy), at 0.01 → ~0.96 (light)
+    const normalized = (sm / 100) * (sm / 100);
+    const alphaRef = Math.exp(-normalized * 4);
     extraSmoothAlpha = Math.pow(alphaRef, ratio);
   }
 
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
-    // Output envelope must decay much faster than the global RMS smoother,
-    // otherwise the diagnostics show raw bands moving while brightness stays "stuck".
-    bandReleaseAlpha: Math.max(
-      1 - Math.pow(1 - Math.min(1, cal.releaseAlpha * 20), ratio),
-      fastEnvelopeReleaseAlpha,
-    ),
     onsetDecay: Math.pow(0.10, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.15, ratio),
-    agcDecayNormal: Math.pow(AGC_MAX_DECAY_PER_SEC, secRatio),
-    agcDecayMedium: Math.pow(AGC_QUIET_DECAY_MEDIUM_PER_SEC, secRatio),
-    agcDecayFast: Math.pow(AGC_QUIET_DECAY_FAST_PER_SEC, secRatio),
-    quietMediumTicks: (QUIET_MS_MEDIUM / tickMs + 0.5) | 0,
+    agcDecayNormal: Math.pow(AGC_DECAY_PER_SEC, secRatio),
+    agcDecayFast: Math.pow(AGC_FAST_DECAY_PER_SEC, secRatio),
     quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
     extraSmoothAlpha,
@@ -205,12 +137,10 @@ interface LightCalibration {
   transientBoost: boolean;
   perceptualCurve: boolean;
   agcEnabled: boolean;
-  bandSmoothingEnabled: boolean;
   dynamicsEnabled: boolean;
   smoothingEnabled: boolean;
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
-  agcVolumeTable: AgcVolumeTable;
   [key: string]: any;
 }
 
@@ -224,11 +154,9 @@ const DEFAULT_CAL: LightCalibration = {
   transientBoost: true,
   perceptualCurve: false,
   agcEnabled: true,
-  bandSmoothingEnabled: true,
   dynamicsEnabled: true,
   smoothingEnabled: true,
   paletteMode: 'off', paletteRotationSpeed: 8,
-  agcVolumeTable: {},
 };
 
 function loadCalibration(): LightCalibration {
@@ -274,13 +202,10 @@ export interface DiagSnapshot {
   rawRms: number;
   bassRms: number;
   midHiRms: number;
-  agcMax: number;
+  peakMax: number;       // simple AGC peak tracker
   agcQuietTicks: number;
-  // NEW: intermediate pipeline values for debugging
   bassNorm: number;      // after AGC normalization (0-1)
   midHiNorm: number;     // after AGC normalization (0-1)
-  bassMax: number;       // AGC bass tracker
-  midHiMax: number;      // AGC midHi tracker
   preDynamics: number;   // energyNorm BEFORE dynamics expansion
   energyNorm: number;    // after dynamics
   dynamicCenter: number;
@@ -294,8 +219,8 @@ export interface DiagSnapshot {
 
 const _diag: DiagSnapshot = {
   rawRms: 0, bassRms: 0, midHiRms: 0,
-  agcMax: 0, agcQuietTicks: 0,
-  bassNorm: 0, midHiNorm: 0, bassMax: 0, midHiMax: 0,
+  peakMax: 0, agcQuietTicks: 0,
+  bassNorm: 0, midHiNorm: 0,
   preDynamics: 0, energyNorm: 0, dynamicCenter: 0, onsetBoost: 0,
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
@@ -334,8 +259,6 @@ export class PiLightEngine {
   private tickMs: number;
 
   private smoothed = 0;
-  private smoothedBass = 0;
-  private smoothedMidHi = 0;
   private dynamicCenter = 0.5;
   private extraSmoothPct = 0;
 
@@ -350,8 +273,6 @@ export class PiLightEngine {
 
   private agc: AgcState;
   private cal: LightCalibration;
-  private volumeTable: AgcVolumeTable;
-  private lastBucket = 0;
 
   // Precomputed tick constants — refreshed only when tickMs or cal changes
   private tc!: TickConstants;
@@ -369,8 +290,7 @@ export class PiLightEngine {
   constructor(tickMs = 30) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
-    this.volumeTable = { ...this.cal.agcVolumeTable };
-    this.agc = createAgcState(0.01);
+    this.agc = createAgcState();
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
@@ -469,20 +389,14 @@ export class PiLightEngine {
   /** Initialize engine — call once at boot. Loop only starts when setPlaying(true). */
   start(): void {
     if (this._running) return;
-
-    const bucket = volumeToBucket(this.volume);
-    const floor = getFloorForVolume(this.volumeTable, bucket);
-    this.agc = createAgcState(floor);
-    this.lastBucket = bucket;
+    this.agc = createAgcState();
     this._running = true;
 
     // Register for FFT-driven ticks (event-driven, not polling)
     onFFTReady((bands) => this.onFFTFrame(bands));
 
     this.saveTimer = setInterval(() => {
-      const updated = { ...this.cal, agcVolumeTable: { ...this.volumeTable } };
-      this.cal = updated;
-      saveCalibration(updated);
+      saveCalibration(this.cal);
     }, 10_000);
 
     console.log(`[Engine] Initialized (${this.tickMs}ms min interval = ${(1000 / this.tickMs + 0.5) | 0} Hz max, event-driven, waiting for playback)`);
@@ -547,8 +461,6 @@ export class PiLightEngine {
   /** Guard against NaN/Infinity corrupting smoothing state */
   private sanitizeState(): void {
     if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
-    if (!Number.isFinite(this.smoothedBass)) this.smoothedBass = 0;
-    if (!Number.isFinite(this.smoothedMidHi)) this.smoothedMidHi = 0;
     if (!Number.isFinite(this.dynamicCenter)) this.dynamicCenter = 0.5;
     if (!Number.isFinite(this.extraSmoothPct)) this.extraSmoothPct = 0;
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
@@ -565,60 +477,36 @@ export class PiLightEngine {
       const tc = this.tc;
       const bands = getLatestBands();
 
-      // ── Smoothing (precomputed alphas) ──
-      const atkAlpha = bands.totalRms > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
-      this.smoothed += atkAlpha * (bands.totalRms - this.smoothed);
-
-      // ── Volume bucket & AGC ──
-      const bucket = volumeToBucket(this.volume);
-      if (bucket !== this.lastBucket) {
-        const floor = getFloorForVolume(this.volumeTable, bucket);
-        if (floor > this.agc.max) this.agc.max = floor;
-        this.lastBucket = bucket;
-      }
-      updateRunningMaxFast(this.agc, this.smoothed, bands.bassRms, bands.midHiRms, tc);
-      updateVolumeTable(this.volumeTable, bucket, this.smoothed);
-
-      // ── Normalize bands ──
-      const rawBassNorm = cal.agcEnabled !== false ? normalizeBand(bands.bassRms, this.agc, 'bass') : Math.min(1, bands.bassRms * 5);
-      const rawMidHiNorm = cal.agcEnabled !== false ? normalizeBand(bands.midHiRms, this.agc, 'midHi') : Math.min(1, bands.midHiRms * 5);
-      const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
-
-      // ── Per-band smoothing (precomputed alphas) ──
-      if (cal.bandSmoothingEnabled !== false) {
-        const bassAlpha = rawBassNorm > this.smoothedBass ? tc.attackAlpha : tc.bandReleaseAlpha;
-        this.smoothedBass += bassAlpha * (rawBassNorm - this.smoothedBass);
-        const midHiAlpha = rawMidHiNorm > this.smoothedMidHi ? tc.attackAlpha : tc.bandReleaseAlpha;
-        this.smoothedMidHi += midHiAlpha * (rawMidHiNorm - this.smoothedMidHi);
-      } else {
-        this.smoothedBass = rawBassNorm;
-        this.smoothedMidHi = rawMidHiNorm;
+      // ── 1. Simple peak AGC ──
+      if (cal.agcEnabled !== false) {
+        updatePeakAgc(this.agc, bands.totalRms, bands.bassRms, bands.midHiRms, tc);
       }
 
-      // ── Onset detection (precomputed constants) ──
-      this.processOnset(bands.flux);
-      const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
+      // ── 2. Normalize via peak ──
+      const peakMax = this.agc.peakMax;
+      const bassNorm = cal.agcEnabled !== false ? normalizeSimple(bands.bassRms, peakMax) : Math.min(1, bands.bassRms * 5);
+      const midHiNorm = cal.agcEnabled !== false ? normalizeSimple(bands.midHiRms, peakMax) : Math.min(1, bands.midHiRms * 5);
+      const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
 
-      // ── Brightness ──
-      let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
-      energyNorm = energyNorm + fluxBoost;
-      if (energyNorm > 1) energyNorm = 1;
+      // ── 3. Bas/Disk mix ──
+      let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
+      // ── 4. Smoothing / fade (Mjukhet) ──
       const sm = (cal.smoothingEnabled !== false) ? (cal.smoothing ?? 0) : 0;
-      if (sm > 0 && cal.smoothingEnabled !== false) {
+      if (sm > 0) {
         const pctPre = energyNorm * 100;
-        const extraSmoothStep = pctPre > this.extraSmoothPct
+        const step = pctPre > this.extraSmoothPct
           ? (1 - tc.extraSmoothAlpha)
-          : Math.max(1 - tc.extraSmoothAlpha, tc.bandReleaseAlpha);
-        this.extraSmoothPct += extraSmoothStep * (pctPre - this.extraSmoothPct);
+          : Math.max(1 - tc.extraSmoothAlpha, tc.releaseAlpha);
+        this.extraSmoothPct += step * (pctPre - this.extraSmoothPct);
         energyNorm = this.extraSmoothPct / 100;
         if (energyNorm > 1) energyNorm = 1;
         if (energyNorm < 0) energyNorm = 0;
       }
 
-      const preDynamics = energyNorm; // capture before expansion
+      const preDynamics = energyNorm;
 
-      // Adaptive dynamic center — tracks the signal's midpoint for symmetric expansion
+      // ── 5. Dynamics expansion ──
       if (cal.dynamicsEnabled !== false) {
         this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
         if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
@@ -626,11 +514,17 @@ export class PiLightEngine {
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
 
+      // ── 6. Transient boost ──
+      this.processOnset(bands.flux);
+      const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
+      energyNorm = energyNorm + fluxBoost;
+      if (energyNorm > 1) energyNorm = 1;
+
+      // ── 7. Floor + Perceptual curve ──
       const floor = cal.brightnessFloor ?? 0;
       let pct = energyNorm * 100;
       if (pct < floor) pct = floor;
 
-      // Perceptual curve (use BLE brightness LUT gamma value — no Math.pow)
       if (cal.perceptualCurve && pct > floor && pct < 100) {
         const norm = (pct - floor) / (100 - floor);
         pct = floor + (norm > 0.0001 ? Math.exp(tc.dimmingGamma * Math.log(norm)) : 0) * (100 - floor);
@@ -641,7 +535,7 @@ export class PiLightEngine {
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
 
-      // ── Palette mode (precomputed speed) ──
+      // ── Palette mode ──
       const pm = cal.paletteMode ?? 'off';
       if (pm !== 'off' && this._palette.length > 1) {
         const pLen = this._palette.length;
@@ -655,7 +549,7 @@ export class PiLightEngine {
           this.color = this._palette[this._paletteIndex];
 
         } else if (pm === 'bass') {
-          const isHigh = this.smoothedBass > 0.45;
+          const isHigh = bassNorm > 0.45;
           if (isHigh && !this._bassWasHigh) {
             this._paletteIndex = (this._paletteIndex + 1) % pLen;
           }
@@ -680,7 +574,7 @@ export class PiLightEngine {
         }
       }
 
-      // ── Color calibration (fast path skips gamma when unity) ──
+      // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
 
@@ -688,16 +582,14 @@ export class PiLightEngine {
       if (isPunch) sendToBLE(255, 255, 255, pct);
       else sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], pct);
 
-      // ── Diagnostics snapshot (zero-alloc, fire-and-forget) ──
+      // ── Diagnostics ──
       _diag.rawRms = bands.totalRms;
       _diag.bassRms = bands.bassRms;
       _diag.midHiRms = bands.midHiRms;
-      _diag.agcMax = this.agc.max;
+      _diag.peakMax = this.agc.peakMax;
       _diag.agcQuietTicks = this.agc.quietTicks;
-      _diag.bassNorm = rawBassNorm;
-      _diag.midHiNorm = rawMidHiNorm;
-      _diag.bassMax = this.agc.bassMax;
-      _diag.midHiMax = this.agc.midHiMax;
+      _diag.bassNorm = bassNorm;
+      _diag.midHiNorm = midHiNorm;
       _diag.preDynamics = preDynamics;
       _diag.energyNorm = energyNorm;
       _diag.dynamicCenter = this.dynamicCenter;
@@ -710,7 +602,7 @@ export class PiLightEngine {
       _diag.tickCount++;
       _diag.lastTickUs = ((performance.now() - _tickStart) * 1000 + 0.5) | 0;
 
-      // ── Emit (reuse static TickData) ──
+      // ── Emit ──
       const td = _tickData;
       td.brightness = pct;
       td.color[0] = _finalColor[0]; td.color[1] = _finalColor[1]; td.color[2] = _finalColor[2];
