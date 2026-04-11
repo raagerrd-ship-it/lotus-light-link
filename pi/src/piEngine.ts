@@ -259,8 +259,6 @@ export class PiLightEngine {
   private tickMs: number;
 
   private smoothed = 0;
-  private smoothedBass = 0;
-  private smoothedMidHi = 0;
   private dynamicCenter = 0.5;
   private extraSmoothPct = 0;
 
@@ -275,8 +273,6 @@ export class PiLightEngine {
 
   private agc: AgcState;
   private cal: LightCalibration;
-  private volumeTable: AgcVolumeTable;
-  private lastBucket = 0;
 
   // Precomputed tick constants — refreshed only when tickMs or cal changes
   private tc!: TickConstants;
@@ -294,8 +290,7 @@ export class PiLightEngine {
   constructor(tickMs = 30) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
-    this.volumeTable = { ...this.cal.agcVolumeTable };
-    this.agc = createAgcState(0.01);
+    this.agc = createAgcState();
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
