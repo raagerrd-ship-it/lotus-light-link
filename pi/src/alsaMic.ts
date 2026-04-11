@@ -168,7 +168,8 @@ let calPoint1: GainCalPoint | null = null;  // low volume point
 let calPoint2: GainCalPoint | null = null;  // high volume point
 const AUTO_GAIN_MAX = 12.0;
 const AUTO_GAIN_MIN = 0.3;
-let autoGainEnabled = true;
+// Auto-gain only activates when calibration points exist
+let autoGainEnabled = false;
 
 export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
 export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainCalPoint | null } {
@@ -185,8 +186,8 @@ export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | nul
 
 function interpolateGain(sonosVolume: number): number {
   if (!calPoint1 || !calPoint2) {
-    // Fallback: simple ratio with reference vol 40
-    return Math.min(AUTO_GAIN_MAX, Math.max(AUTO_GAIN_MIN, 40 / sonosVolume));
+    // No calibration → no auto-gain adjustment
+    return 1.0;
   }
   // Log-linear interpolation between the two calibrated points
   const v1 = calPoint1.vol, g1 = calPoint1.gain;
@@ -199,7 +200,7 @@ function interpolateGain(sonosVolume: number): number {
 }
 
 export function setAutoGainFromVolume(sonosVolume: number): void {
-  if (!autoGainEnabled) return;
+  if (!autoGainEnabled || !calPoint1 || !calPoint2) return;
   if (sonosVolume <= 0) { micGainAuto = AUTO_GAIN_MAX; updateEffectiveGain(); return; }
   micGainAuto = interpolateGain(sonosVolume);
   updateEffectiveGain();
