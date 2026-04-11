@@ -127,7 +127,10 @@ async function main() {
       }
     }
     
-    if (state.volume != null) engine.setVolume(state.volume);
+    if (state.volume != null) {
+      engine.setVolume(state.volume);
+      setAutoGainFromVolume(state.volume);
+    }
 
     // Extract palette from album art on track change (skip in TV-mode)
     if (!state.isTvMode && state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {
