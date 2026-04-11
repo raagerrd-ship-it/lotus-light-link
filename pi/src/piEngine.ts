@@ -133,7 +133,10 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   const sm = cal.smoothing ?? 0;
   let extraSmoothAlpha = 0;
   if (sm > 0) {
-    const alphaRef = Math.exp(-sm * 0.04);
+    // Quadratic scaling: smoothing 1→~0.0001, 50→~0.25, 100→~1.0
+    // This ensures low values (1-10) have negligible effect
+    const normalized = (sm / 100) * (sm / 100); // 0..1 quadratic
+    const alphaRef = Math.exp(-normalized * 4); // at normalized=1 → ~0.018 (heavy), at 0.01 → ~0.96 (light)
     extraSmoothAlpha = Math.pow(alphaRef, ratio);
   }
 
