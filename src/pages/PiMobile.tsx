@@ -134,9 +134,18 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
     }
 
     // Floor
-    val = Math.max(val, cal.brightnessFloor / 100);
+    const floor = cal.brightnessFloor / 100;
+    val = Math.max(val, floor);
+
+    // Perceptual curve (mirrors piEngine.ts)
+    if (cal.perceptualCurve && val > floor && val < 1) {
+      const gamma = 1.8; // matches default dimmingGamma
+      const norm = (val - floor) / (1 - floor);
+      val = floor + Math.pow(Math.max(0, norm), gamma) * (1 - floor);
+    }
+
     val = Math.max(0, val);
-    prev = Math.max(0, Math.min(1, val)); // envelope stays 0–1
+    prev = Math.max(0, Math.min(1, val));
     out.push(val);
   }
   return out;
