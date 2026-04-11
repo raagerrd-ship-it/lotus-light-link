@@ -143,7 +143,7 @@ let recorder: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
 // Software mic gain — multiplier applied to raw PCM samples before processing
-let micGainBase = 1.0;   // User-set base gain
+let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
 let micGainAuto = 1.0;   // Auto-gain multiplier from Sonos volume
 let micGain = 1.0;       // Effective = base * auto
 
