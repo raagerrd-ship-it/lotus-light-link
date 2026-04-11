@@ -266,6 +266,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   pendingCount = 0;
   lastPositionMs = null;
   lastPositionTime = 0;
+  bootPhase = true;
 
   // SSE connection (unless disabled)
   if (!disableSSE) {
