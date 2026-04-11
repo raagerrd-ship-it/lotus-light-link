@@ -442,7 +442,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         dimmingGamma: getDimmingGamma(),
         releaseAlpha: cal.releaseAlpha,
         dynamicDamping: cal.dynamicDamping,
-        smoothing: cal.smoothing,
+        
         brightnessFloor: cal.brightnessFloor,
         perceptualCurve: cal.perceptualCurve,
         transientBoost: cal.transientBoost,
