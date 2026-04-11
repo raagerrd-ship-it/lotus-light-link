@@ -4,6 +4,7 @@
  */
 
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
@@ -11,21 +12,31 @@ import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
-// Git info — resolved once at startup
+// Version info — resolved once at startup
 let SERVICE_VERSION = '1.0.0';
 let GIT_COMMIT = 'unknown';
 let GIT_COMMIT_SHORT = 'unknown';
 let GIT_BRANCH = 'unknown';
+
+// 1. Try VERSION.json (from release tarball — no git needed)
 try {
-  GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-  GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
-  GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-  // Try to get version from latest git tag (e.g. v1.2.0 → 1.2.0)
+  const vf = JSON.parse(readFileSync('/opt/lotus-light/VERSION.json', 'utf8'));
+  SERVICE_VERSION = vf.version ?? SERVICE_VERSION;
+  GIT_COMMIT = vf.commit ?? GIT_COMMIT;
+  GIT_COMMIT_SHORT = vf.commitShort ?? GIT_COMMIT_SHORT;
+  GIT_BRANCH = vf.branch ?? GIT_BRANCH;
+} catch {
+  // 2. Fallback: read from git (dev / git-clone installs)
   try {
-    const tag = execSync('git describe --tags --abbrev=0 2>/dev/null', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-    if (tag) SERVICE_VERSION = tag.replace(/^v/, '');
-  } catch { /* no tags */ }
-} catch { /* not a git repo or git not available */ }
+    GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+    GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
+    GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+    try {
+      const tag = execSync('git describe --tags --abbrev=0 2>/dev/null', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+      if (tag) SERVICE_VERSION = tag.replace(/^v/, '');
+    } catch { /* no tags */ }
+  } catch { /* not a git repo */ }
+}
 
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
 
