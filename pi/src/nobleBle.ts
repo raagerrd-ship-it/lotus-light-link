@@ -288,7 +288,7 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
     savedDeviceId = deviceId;
     savedDeviceName = peripheral.advertisement?.localName ?? deviceId;
     setItem('ble-device-id', deviceId);
-    setItem('ble-device-name', savedDeviceName);
+    setItem('ble-device-name', savedDeviceName!);
     console.log(`[BLE] Saved device: ${savedDeviceName} (${deviceId})`);
     return true;
   } catch (e: any) {
