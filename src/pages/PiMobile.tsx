@@ -570,7 +570,7 @@ function GlobalSettingsView({
           <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
         </div>
         <input
-          type="range" min={0.5} max={20} step={0.5} value={micGain}
+          type="range" min={1} max={50} step={1} value={micGain}
           onChange={(e) => setMicGain(parseFloat(e.target.value))}
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
