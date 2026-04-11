@@ -640,6 +640,7 @@ export default function PiMobile() {
   const [blePreviewSec, setBlePreviewSec] = useState(0);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
+  const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Derive Pi base URL from current page (frontend proxies /api/* → engine)
@@ -758,6 +759,7 @@ export default function PiMobile() {
         if (cancelled) return;
         setPiOnline(true);
         setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
+        if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
         const track = data.sonos?.trackName ?? null;
         setLiveTrack(track);
         setLiveBleCount(data.ble?.connected ?? null);
@@ -992,16 +994,31 @@ export default function PiMobile() {
         )}
       </section>
       {/* Version / Status */}
-      <section className="mt-4 mb-8 text-center text-[10px] text-muted-foreground space-y-1">
-        <div className="flex items-center justify-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
-          <span>{piOnline === true ? 'Pi online' : piOnline === false ? 'Pi offline' : 'Ansluter…'}</span>
-        </div>
-        {piVersion && (
-          <div className="font-mono">
-            v{piVersion.version} · {piVersion.commitShort} · {piVersion.branch}
+      <section className="mt-4 mb-8 text-[10px] text-muted-foreground">
+        <div className="bg-secondary/50 rounded-xl p-3 space-y-2">
+          {/* Frontend / Config server */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
+              <span className="font-medium">Frontend</span>
+            </div>
+            <span>{piOnline === true ? 'Online' : piOnline === false ? 'Offline' : '…'}</span>
           </div>
-        )}
+          {/* Engine :3050 */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${engineStatus?.running ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
+              <span className="font-medium">Motor :3050</span>
+            </div>
+            <span>{engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz (${engineStatus.tickMs} ms)` : 'Stoppad') : '…'}</span>
+          </div>
+          {/* Version */}
+          {piVersion && (
+            <div className="text-center font-mono pt-1 border-t border-border/50">
+              v{piVersion.version} · {piVersion.commitShort} · {piVersion.branch}
+            </div>
+          )}
+        </div>
       </section>
 
     </div>
