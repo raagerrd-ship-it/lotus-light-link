@@ -494,6 +494,7 @@ function GlobalSettingsView({
   tickMs, setTickMs,
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
   dimmingGamma, setDimmingGamma,
+  micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   piBase,
@@ -503,6 +504,7 @@ function GlobalSettingsView({
   sonosUrl: string; setSonosUrl: (v: string) => void;
   alsaDevice: string; setAlsaDevice: (v: string) => void;
   dimmingGamma: number; setDimmingGamma: (v: number) => void;
+  micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   piBase: string;
@@ -561,7 +563,18 @@ function GlobalSettingsView({
           placeholder="plughw:0,0"
           className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm font-mono border border-border focus:outline-none focus:ring-1 focus:ring-ring"
         />
-        <p className="text-[10px] text-muted-foreground mt-1">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0. Ändring kräver mic-omstart.</p>
+        <p className="text-[10px] text-muted-foreground mt-1">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0.</p>
+
+        <div className="flex justify-between text-sm mb-1 mt-5">
+          <span>Mic Gain</span>
+          <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
+        </div>
+        <input
+          type="range" min={0.5} max={20} step={0.5} value={micGain}
+          onChange={(e) => setMicGain(parseFloat(e.target.value))}
+          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+        />
+        <p className="text-[10px] text-muted-foreground mt-0.5">Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.</p>
       </section>
 
       <section className="mb-8">
