@@ -1016,10 +1016,10 @@ export default function PiMobile() {
               <Download size={20} className="text-muted-foreground" />
             )}
           </button>
-          <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent" title="Profilinställningar">
+          <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Profilinställningar" disabled={!piOnline}>
             <Lightbulb size={20} className="text-muted-foreground" />
           </button>
-          <button onClick={() => setView("global")} className="p-2 rounded-lg active:bg-accent" title="Globala inställningar">
+          <button onClick={() => setView("global")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Globala inställningar" disabled={!piOnline}>
             <Settings size={20} className="text-muted-foreground" />
           </button>
         </div>
