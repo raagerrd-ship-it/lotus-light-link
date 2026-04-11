@@ -331,6 +331,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     fadeRunning = true;
     fadeAbort = false;
     fadeCurrentWps = 0;
+    engine.suspend(); // Pause engine so mic doesn't interfere
     res.json({ ok: true, message: 'Fade test started' });
 
     // Run fade sequence in background
@@ -363,6 +364,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     }
 
     fadeRunning = false;
+    engine.resume(); // Resume engine after test
   });
 
   app.get('/api/ble-fade-test/status', (_req, res) => {
@@ -374,6 +376,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     fadeAbort = true;
     // Turn off after stop
     sendRawColor(0, 0, 0);
+    fadeRunning = false;
+    engine.resume(); // Resume engine on manual stop
     res.json({ ok: true, lastWps });
   });
 
