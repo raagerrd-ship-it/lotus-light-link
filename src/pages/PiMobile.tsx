@@ -707,9 +707,72 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
   const bleWriteLatMs = ble?.writeLatAvgMs ?? 0;
   const bleSkipBusy = ble?.skipBusyCount ?? 0;
 
+  // Visual pipeline stages (in signal flow order, all 0-1 range for bars)
+  const pipelineStages = [
+    { label: 'Rå Bas',      value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRms' },
+    { label: 'Rå Disk',     value: pipeline.midHiRms ?? 0, max: 0.2, key: 'midHiRms' },
+    { label: 'AGC Bas-tak', value: pipeline.bassMax ?? 0, max: 0.3, key: 'bassMax' },
+    { label: 'AGC Disk-tak',value: pipeline.midHiMax ?? 0, max: 0.2, key: 'midHiMax' },
+    { label: 'Bas (norm)',   value: pipeline.bassNorm ?? 0, max: 1, key: 'bassNorm' },
+    { label: 'Disk (norm)',  value: pipeline.midHiNorm ?? 0, max: 1, key: 'midHiNorm' },
+    { label: 'Pre-dyn',     value: pipeline.preDynamics ?? 0, max: 1, key: 'preDynamics' },
+    { label: 'Dyn Center',  value: pipeline.dynamicCenter ?? 0, max: 1, key: 'dynamicCenter' },
+    { label: 'Post-dyn',    value: pipeline.energyNorm ?? 0, max: 1.5, key: 'energyNorm' },
+    { label: 'Ljusstyrka',  value: (pipeline.brightnessPct ?? 0) / 100, max: 1, key: 'brightnessPct' },
+  ];
+
+  // Determine which stage is the bottleneck (first one consistently >90% of max)
+  const bottleneckIdx = pipelineStages.findIndex(s => {
+    const pct = s.value / s.max;
+    return pct > 0.9 && s.key !== 'dynamicCenter' && s.key !== 'brightnessPct';
+  });
+
   return (
-    <div className="space-y-3">
-      {/* Pipeline */}
+    <div className="space-y-4">
+      {/* Visual Pipeline Flow */}
+      <div>
+        <p className="text-[10px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">Signalflöde</p>
+        <div className="space-y-1">
+          {pipelineStages.map((stage, i) => {
+            const pct = Math.min(1, stage.value / stage.max);
+            const isHot = pct > 0.9 && stage.key !== 'dynamicCenter';
+            const isBottleneck = i === bottleneckIdx;
+            const barColor = isBottleneck ? 'bg-red-500' : isHot ? 'bg-yellow-500' : 'bg-emerald-500';
+            const displayVal = stage.key === 'brightnessPct' ? `${(stage.value * 100).toFixed(0)}%` : stage.value.toFixed(4);
+            const isDynCenter = stage.key === 'dynamicCenter';
+
+            return (
+              <div key={stage.key} className="flex items-center gap-1.5">
+                <span className={`text-[9px] font-mono w-[72px] shrink-0 ${isBottleneck ? 'text-red-400 font-bold' : 'text-muted-foreground'}`}>
+                  {stage.label}
+                </span>
+                <div className="flex-1 h-3 bg-secondary/60 rounded-sm overflow-hidden relative">
+                  <div
+                    className={`h-full rounded-sm transition-all duration-300 ${barColor}`}
+                    style={{ width: `${pct * 100}%`, opacity: 0.85 }}
+                  />
+                  {isDynCenter && (
+                    <div className="absolute top-0 h-full w-px bg-white/60" style={{ left: `${pct * 100}%` }} />
+                  )}
+                </div>
+                <span className={`text-[9px] font-mono w-[46px] text-right shrink-0 ${isBottleneck ? 'text-red-400 font-bold' : 'text-foreground/70'}`}>
+                  {displayVal}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {bottleneckIdx >= 0 && (
+          <p className="text-[9px] text-red-400 mt-1.5 font-mono">
+            ⚠ Flaskhals: {pipelineStages[bottleneckIdx].label} ({(pipelineStages[bottleneckIdx].value / pipelineStages[bottleneckIdx].max * 100).toFixed(0)}% av max)
+          </p>
+        )}
+      </div>
+
+      {/* Separator */}
+      <div className="border-t border-border/30" />
+
+      {/* Detailed table */}
       <div className="overflow-x-auto">
         <table className="w-full text-[10px] font-mono">
           <thead>
