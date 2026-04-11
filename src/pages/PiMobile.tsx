@@ -843,8 +843,8 @@ export default function PiMobile() {
         ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
         // Auto TV-mode
         putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
-        // BLE min write interval
-        
+        // Mic gain
+        putJson('/api/mic-gain', { gain: micGain }),
       ]);
       setSaved(true);
       clearTimeout(savedTimer.current);
