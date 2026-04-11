@@ -20,9 +20,27 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for git describe
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      # Determine version: bump patch from latest tag, or start at v1.0.0
+      - name: Determine version
+        id: version
+        run: |
+          LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # Bump patch: v1.2.3 → v1.2.4
+          MAJOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f1)
+          MINOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f2)
+          PATCH=$(echo "$LATEST" | sed 's/v//' | cut -d. -f3)
+          PATCH=$((PATCH + 1))
+          VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+          echo "📦 Release: $VERSION (previous: $LATEST)"
 
       # Build web app (vite)
       - run: npm install --no-audit --no-fund
@@ -40,9 +58,20 @@ jobs:
           chmod +x pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh
           tar czf dist.tar.gz dist/ pi/dist/ pi/node_modules/ pi/package.json pi/start-lotus.js pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh
 
+      # Create versioned release + update "latest" pointer
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: dist.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
+          name: Latest (${{ steps.version.outputs.tag }})
           files: dist.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
