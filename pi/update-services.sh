@@ -77,6 +77,10 @@ if [ -n "$NODE_BIN" ]; then
   sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
 fi
 
+# Rebuild native modules for current architecture
+echo "$LOG_PREFIX Rebuilding native modules for $(uname -m)..."
+cd "$PI_DIR" && npm rebuild 2>&1 | tail -5
+
 # Restart service
 systemctl --user restart "$SERVICE"
 
