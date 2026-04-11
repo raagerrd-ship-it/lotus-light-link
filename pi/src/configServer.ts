@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
-import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier } from './alsaMic.js';
+import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
@@ -219,9 +219,23 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     } else {
       res.status(400).json({ error: 'gain must be 0.1-50' });
     }
-  });
+   });
+ 
+   // --- Auto-gain toggle ---
+   app.get('/api/auto-gain', (_req, res) => {
+     res.json({ enabled: isAutoGainEnabled(), multiplier: getAutoGainMultiplier(), effective: getEffectiveGain() });
+   });
+   app.put('/api/auto-gain', (req, res) => {
+     const { enabled } = req.body;
+     if (typeof enabled === 'boolean') {
+       if (enabled) enableAutoGain(); else disableAutoGain();
+       res.json({ ok: true, enabled: isAutoGainEnabled(), multiplier: getAutoGainMultiplier(), effective: getEffectiveGain() });
+     } else {
+       res.status(400).json({ error: 'enabled must be boolean' });
+     }
+   });
 
-  // --- Dimming gamma ---
+   // --- Dimming gamma ---
   app.get('/api/dimming-gamma', (_req, res) => {
     res.json({ gamma: getDimmingGamma() });
   });
@@ -401,6 +415,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       },
       micGain: {
         base: getMicGain(),
+        autoGainEnabled: isAutoGainEnabled(),
         autoMultiplier: getAutoGainMultiplier(),
         effective: getEffectiveGain(),
       },

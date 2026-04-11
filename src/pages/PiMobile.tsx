@@ -508,6 +508,44 @@ function ProfileSettingsView({
 }
 
 
+/* ── Auto-gain toggle component ── */
+function AutoGainToggle({ piBase }: { piBase: string }) {
+  const [enabled, setEnabled] = useState(true);
+  const [multiplier, setMultiplier] = useState(1);
+
+  useEffect(() => {
+    fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) })
+      .then(r => r.json())
+      .then(d => { setEnabled(d.enabled); setMultiplier(d.multiplier); })
+      .catch(() => {});
+  }, [piBase]);
+
+  const toggle = () => {
+    const next = !enabled;
+    setEnabled(next);
+    fetch(`${piBase}/api/auto-gain`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    }).then(r => r.json()).then(d => setMultiplier(d.multiplier)).catch(() => {});
+  };
+
+  return (
+    <label className="flex items-center justify-between mt-4">
+      <div>
+        <div className="text-sm">Auto-gain (Sonos vol)</div>
+        <p className="text-[10px] text-muted-foreground">Justerar mic-gain efter Sonos-volym ({multiplier.toFixed(1)}×)</p>
+      </div>
+      <button
+        onClick={toggle}
+        className={`w-12 h-7 rounded-full transition-colors relative ${enabled ? 'bg-green-500' : 'bg-secondary border border-border'}`}
+      >
+        <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${enabled ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
+      </button>
+    </label>
+  );
+}
+
 /* ── Global Settings View (motor, mic, sonos, BLE test) ── */
 function GlobalSettingsView({
   tickMs, setTickMs,
@@ -594,6 +632,9 @@ function GlobalSettingsView({
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
         <p className="text-[10px] text-muted-foreground mt-0.5">Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.</p>
+
+        {/* Auto-gain toggle */}
+        <AutoGainToggle piBase={piBase} />
       </section>
 
       <section className="mb-8">
@@ -726,10 +767,15 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
   const bleWriteLatMs = ble?.writeLatAvgMs ?? 0;
   const bleSkipBusy = ble?.skipBusyCount ?? 0;
 
+  // Auto-gain info from micGain
+  const autoGainMultiplier = (data as any).micGain?.autoMultiplier ?? 1;
+  const autoGainEnabled = (data as any).micGain?.autoGainEnabled ?? true;
+
   // Visual pipeline stages (in signal flow order, all 0-1 range for bars)
   const pipelineStages = [
     { label: 'Rå Bas',      value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRms' },
     { label: 'Rå Disk',     value: pipeline.midHiRms ?? 0, max: 0.2, key: 'midHiRms' },
+    { label: 'Auto-gain',   value: autoGainMultiplier / 8, max: 1, key: 'autoGain', displayVal: `${autoGainMultiplier.toFixed(1)}× ${autoGainEnabled ? '' : '(av)'}` },
     { label: 'AGC Bas-tak', value: pipeline.bassMax ?? 0, max: 1, key: 'bassMax' },
     { label: 'AGC Disk-tak',value: pipeline.midHiMax ?? 0, max: 1, key: 'midHiMax' },
     { label: 'Bas (norm)',  value: pipeline.bassNorm ?? 0, max: 1, key: 'bassNorm' },
@@ -757,7 +803,7 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
             const isHot = pct > 0.9 && stage.key !== 'dynamicCenter';
             const isBottleneck = i === bottleneckIdx;
             const barColor = isBottleneck ? 'bg-red-500' : isHot ? 'bg-yellow-500' : 'bg-emerald-500';
-            const displayVal = stage.key === 'brightnessPct' ? `${(stage.value * 100).toFixed(0)}%` : stage.value.toFixed(4);
+            const displayVal = (stage as any).displayVal ?? (stage.key === 'brightnessPct' ? `${(stage.value * 100).toFixed(0)}%` : stage.value.toFixed(4));
             const isDynCenter = stage.key === 'dynamicCenter';
 
             return (
