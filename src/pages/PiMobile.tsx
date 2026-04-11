@@ -910,6 +910,7 @@ export default function PiMobile() {
                     setBleConnectedId(null);
                     setBleConnectedName(null);
                     setBleSavedId(null);
+                    setBleSavedName(null);
                   } catch {}
                 }}
                 className="p-1.5 rounded-lg text-muted-foreground active:text-destructive"
