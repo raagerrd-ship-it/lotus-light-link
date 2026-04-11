@@ -991,6 +991,18 @@ export default function PiMobile() {
           </div>
         )}
       </section>
+      {/* Version / Status */}
+      <section className="mt-4 mb-8 text-center text-[10px] text-muted-foreground space-y-1">
+        <div className="flex items-center justify-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
+          <span>{piOnline === true ? 'Pi online' : piOnline === false ? 'Pi offline' : 'Ansluter…'}</span>
+        </div>
+        {piVersion && (
+          <div className="font-mono">
+            v{piVersion.version} · {piVersion.commitShort} · {piVersion.branch}
+          </div>
+        )}
+      </section>
 
     </div>
   );
