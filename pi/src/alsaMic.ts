@@ -143,12 +143,41 @@ let recorder: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
 // Software mic gain — multiplier applied to raw PCM samples before processing
-let micGain = 1.0;
+let micGainBase = 1.0;   // User-set base gain
+let micGainAuto = 1.0;   // Auto-gain multiplier from Sonos volume
+let micGain = 1.0;       // Effective = base * auto
 
-export function getMicGain(): number { return micGain; }
+function updateEffectiveGain(): void {
+  micGain = micGainBase * micGainAuto;
+}
+
+export function getMicGain(): number { return micGainBase; }
+export function getEffectiveGain(): number { return micGain; }
+export function getAutoGainMultiplier(): number { return micGainAuto; }
+
 export function setMicGain(gain: number): void {
-  micGain = Math.max(0.1, Math.min(50, gain));
-  console.log(`[ALSA] Mic gain set to ${micGain.toFixed(1)}x`);
+  micGainBase = Math.max(0.1, Math.min(50, gain));
+  updateEffectiveGain();
+  console.log(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x)`);
+}
+
+/** Auto-gain: adjusts multiplier based on Sonos volume.
+ *  Reference volume (refVol) = volume where multiplier is 1.0.
+ *  At lower volumes, gain increases proportionally. */
+const AUTO_GAIN_REF_VOL = 40;  // At volume 40, auto multiplier = 1.0
+const AUTO_GAIN_MAX = 8.0;     // Cap auto multiplier
+
+export function setAutoGainFromVolume(sonosVolume: number): void {
+  if (sonosVolume <= 0) { micGainAuto = AUTO_GAIN_MAX; updateEffectiveGain(); return; }
+  micGainAuto = Math.min(AUTO_GAIN_MAX, Math.max(0.5, AUTO_GAIN_REF_VOL / sonosVolume));
+  updateEffectiveGain();
+  console.log(`[ALSA] Auto-gain: vol=${sonosVolume} → multiplier=${micGainAuto.toFixed(1)}x (effective: ${micGain.toFixed(1)}x)`);
+}
+
+export function disableAutoGain(): void {
+  micGainAuto = 1.0;
+  updateEffectiveGain();
+  console.log(`[ALSA] Auto-gain disabled (effective: ${micGain.toFixed(1)}x)`);
 }
 
 export function getAlsaDevice(): string {
