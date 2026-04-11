@@ -235,7 +235,13 @@ export interface DiagSnapshot {
   midHiRms: number;
   agcMax: number;
   agcQuietTicks: number;
-  energyNorm: number;
+  // NEW: intermediate pipeline values for debugging
+  bassNorm: number;      // after AGC normalization (0-1)
+  midHiNorm: number;     // after AGC normalization (0-1)
+  bassMax: number;       // AGC bass tracker
+  midHiMax: number;      // AGC midHi tracker
+  preDynamics: number;   // energyNorm BEFORE dynamics expansion
+  energyNorm: number;    // after dynamics
   dynamicCenter: number;
   onsetBoost: number;
   brightnessPct: number;
@@ -248,7 +254,8 @@ export interface DiagSnapshot {
 const _diag: DiagSnapshot = {
   rawRms: 0, bassRms: 0, midHiRms: 0,
   agcMax: 0, agcQuietTicks: 0,
-  energyNorm: 0, dynamicCenter: 0, onsetBoost: 0,
+  bassNorm: 0, midHiNorm: 0, bassMax: 0, midHiMax: 0,
+  preDynamics: 0, energyNorm: 0, dynamicCenter: 0, onsetBoost: 0,
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
   tickCount: 0, lastTickUs: 0,
@@ -551,9 +558,10 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
+      const preDynamics = energyNorm; // capture before expansion
+
       // Adaptive dynamic center — tracks the signal's midpoint for symmetric expansion
       this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
-      // Clamp center to reasonable range to prevent drift
       if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
       if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
       energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
@@ -634,6 +642,11 @@ export class PiLightEngine {
       _diag.midHiRms = bands.midHiRms;
       _diag.agcMax = this.agc.max;
       _diag.agcQuietTicks = this.agc.quietTicks;
+      _diag.bassNorm = rawBassNorm;
+      _diag.midHiNorm = rawMidHiNorm;
+      _diag.bassMax = this.agc.bassMax;
+      _diag.midHiMax = this.agc.midHiMax;
+      _diag.preDynamics = preDynamics;
       _diag.energyNorm = energyNorm;
       _diag.dynamicCenter = this.dynamicCenter;
       _diag.onsetBoost = this.onsetBoost;
