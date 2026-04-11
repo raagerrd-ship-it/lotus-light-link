@@ -399,6 +399,11 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         perceptualCurve: cal.perceptualCurve,
         transientBoost: cal.transientBoost,
       },
+      micGain: {
+        base: getMicGain(),
+        autoMultiplier: getAutoGainMultiplier(),
+        effective: getEffectiveGain(),
+      },
       ranges: {
         rawRms:        { ok: [0.01, 0.5],  warn: '0 = ingen signal' },
         bassRms:       { ok: [0.01, 0.3],  warn: '0 = ingen bas' },
