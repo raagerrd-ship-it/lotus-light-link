@@ -228,6 +228,32 @@ function applyColorCalibrationFast(r: number, g: number, b: number, cal: LightCa
 const _finalColor: [number, number, number] = [0, 0, 0];
 const _blendColor: [number, number, number] = [0, 0, 0];
 
+// ── Diagnostics snapshot — mutated in-place every tick, zero-alloc ──
+export interface DiagSnapshot {
+  rawRms: number;
+  bassRms: number;
+  midHiRms: number;
+  agcMax: number;
+  agcQuietTicks: number;
+  energyNorm: number;
+  dynamicCenter: number;
+  onsetBoost: number;
+  brightnessPct: number;
+  bleScaleRaw: number;
+  finalR: number; finalG: number; finalB: number;
+  tickCount: number;
+  lastTickUs: number;
+}
+
+const _diag: DiagSnapshot = {
+  rawRms: 0, bassRms: 0, midHiRms: 0,
+  agcMax: 0, agcQuietTicks: 0,
+  energyNorm: 0, dynamicCenter: 0, onsetBoost: 0,
+  brightnessPct: 0, bleScaleRaw: 0,
+  finalR: 0, finalG: 0, finalB: 0,
+  tickCount: 0, lastTickUs: 0,
+};
+
 // Reusable TickData — mutated in place
 const _tickData: TickData = {
   brightness: 0,
@@ -480,8 +506,12 @@ export class PiLightEngine {
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
 
+  getDiagnostics(): DiagSnapshot { return _diag; }
+  getCalibration(): LightCalibration { return this.cal; }
+
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
+    const _tickStart = performance.now();
     try {
       const cal = this.cal;
       const tc = this.tc;
@@ -594,6 +624,23 @@ export class PiLightEngine {
       // ── BLE output ──
       if (isPunch) sendToBLE(255, 255, 255, pct);
       else sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], pct);
+
+      // ── Diagnostics snapshot (zero-alloc, fire-and-forget) ──
+      _diag.rawRms = bands.totalRms;
+      _diag.bassRms = bands.bassRms;
+      _diag.midHiRms = bands.midHiRms;
+      _diag.agcMax = this.agc.max;
+      _diag.agcQuietTicks = this.agc.quietTicks;
+      _diag.energyNorm = energyNorm;
+      _diag.dynamicCenter = this.dynamicCenter;
+      _diag.onsetBoost = this.onsetBoost;
+      _diag.brightnessPct = pct;
+      _diag.bleScaleRaw = pct / 100;
+      _diag.finalR = isPunch ? 255 : _finalColor[0];
+      _diag.finalG = isPunch ? 255 : _finalColor[1];
+      _diag.finalB = isPunch ? 255 : _finalColor[2];
+      _diag.tickCount++;
+      _diag.lastTickUs = ((performance.now() - _tickStart) * 1000 + 0.5) | 0;
 
       // ── Emit (reuse static TickData) ──
       const td = _tickData;
