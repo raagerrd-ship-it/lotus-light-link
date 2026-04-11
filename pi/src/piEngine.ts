@@ -580,8 +580,8 @@ export class PiLightEngine {
       updateVolumeTable(this.volumeTable, bucket, this.smoothed);
 
       // ── Normalize bands ──
-      const rawBassNorm = cal.agcEnabled !== false ? normalizeBand(bands.bassRms, this.agc, 'bass') : Math.min(1, bands.bassRms * 20);
-      const rawMidHiNorm = cal.agcEnabled !== false ? normalizeBand(bands.midHiRms, this.agc, 'midHi') : Math.min(1, bands.midHiRms * 20);
+      const rawBassNorm = cal.agcEnabled !== false ? normalizeBand(bands.bassRms, this.agc, 'bass') : Math.min(1, bands.bassRms * 5);
+      const rawMidHiNorm = cal.agcEnabled !== false ? normalizeBand(bands.midHiRms, this.agc, 'midHi') : Math.min(1, bands.midHiRms * 5);
       const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
       // ── Per-band smoothing (precomputed alphas) ──
