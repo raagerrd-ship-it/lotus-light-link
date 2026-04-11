@@ -286,22 +286,11 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     }
   }
 
-  // Initial status fetch
+  // Initial status fetch — bootPhase flag ensures immediate apply
   const statusUrl = `${baseUrl}${statusPath}`;
   try {
     const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-    if (res.ok) {
-      const data = await res.json();
-      lastResponseTime = Date.now();
-      // First fetch: apply directly without confirmation (boot state)
-      const savedState = currentState.playbackState;
-      parseStatus(data);
-      // Force-apply on first fetch (skip confirmation for boot)
-      if (currentState.playbackState !== savedState) {
-        pendingState = null;
-        pendingCount = 0;
-      }
-    }
+    if (res.ok) parseStatus(await res.json());
   } catch {}
 
   // Fallback poll
