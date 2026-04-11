@@ -415,6 +415,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       },
       micGain: {
         base: getMicGain(),
+        autoGainEnabled: isAutoGainEnabled(),
         autoMultiplier: getAutoGainMultiplier(),
         effective: getEffectiveGain(),
       },
