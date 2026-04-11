@@ -769,7 +769,7 @@ export default function PiMobile() {
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
-  
+  const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
