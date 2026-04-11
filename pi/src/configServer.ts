@@ -12,7 +12,7 @@ import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
 // Git info — resolved once at startup
-const SERVICE_VERSION = '1.0.0';
+let SERVICE_VERSION = '1.0.0';
 let GIT_COMMIT = 'unknown';
 let GIT_COMMIT_SHORT = 'unknown';
 let GIT_BRANCH = 'unknown';
@@ -20,6 +20,11 @@ try {
   GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
   GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
   GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+  // Try to get version from latest git tag (e.g. v1.2.0 → 1.2.0)
+  try {
+    const tag = execSync('git describe --tags --abbrev=0 2>/dev/null', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+    if (tag) SERVICE_VERSION = tag.replace(/^v/, '');
+  } catch { /* no tags */ }
 } catch { /* not a git repo or git not available */ }
 
 export function startConfigServer(engine: PiLightEngine, port = 3001): void {
