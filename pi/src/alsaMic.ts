@@ -60,7 +60,8 @@ let samplesReceived = 0;
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
-// Debug
+// Debug — log every ~2 seconds at current FFT rate (44100/128 ≈ 345 frames/sec)
+const DEBUG_INTERVAL = 690;
 let debugTickCount = 0;
 let debugPeakRaw = 0;
 
@@ -114,12 +115,11 @@ function processFFT(): void {
   latestBands.midHiRms = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
   latestBands.totalRms = Math.sqrt(totalSum / BIN_COUNT);
   latestBands.flux = flux;
-  latestBands.flux = flux;
 
   // Debug logging every ~2 seconds
   debugTickCount++;
-  if (debugTickCount >= 20) {
-    console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${latestBands.flux.toFixed(6)}`);
+  if (debugTickCount >= DEBUG_INTERVAL) {
+    console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
     debugTickCount = 0;
     debugPeakRaw = 0;
   }
