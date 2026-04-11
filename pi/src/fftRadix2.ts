@@ -1,5 +1,5 @@
 /**
- * Zero-allocation radix-2 Cooley-Tukey FFT for N=512.
+ * Zero-allocation radix-2 Cooley-Tukey FFT for N=1024.
  * All buffers pre-allocated at module load. No GC pressure on hot path.
  * Twiddle factors precomputed once. Bit-reversal table precomputed once.
  * 
@@ -9,8 +9,8 @@
  * - Precomputed sin/cos tables (no Math.sin/cos in hot path)
  */
 
-const N = 512;
-const LOG2N = 9; // log2(512)
+const N = 1024;
+const LOG2N = 10; // log2(1024)
 
 // ── Bit-reversal permutation table (precomputed once) ──
 const bitRev = new Uint16Array(N);
@@ -26,8 +26,6 @@ const bitRev = new Uint16Array(N);
 }
 
 // ── Precomputed twiddle factors (cos + sin for each stage) ──
-// For stage s (half-length m), twiddle[k] = e^{-2πi·k/(2m)}
-// Total entries: N/2 (one per unique twiddle across all stages)
 const twiddleRe = new Float64Array(N / 2);
 const twiddleIm = new Float64Array(N / 2);
 {
@@ -47,7 +45,7 @@ const im = new Float64Array(N);
  * After call, results are in the module-level `re` and `im` arrays.
  * Returns [re, im] references (NOT copies — do not hold across calls).
  */
-export function fft512(input: Float32Array | Float64Array): [Float64Array, Float64Array] {
+export function fft1024(input: Float32Array | Float64Array): [Float64Array, Float64Array] {
   // Bit-reversal copy from input → re, zero im
   for (let i = 0; i < N; i++) {
     re[bitRev[i]] = input[i];
@@ -56,9 +54,9 @@ export function fft512(input: Float32Array | Float64Array): [Float64Array, Float
 
   // Cooley-Tukey butterfly (iterative, in-place)
   for (let s = 1; s <= LOG2N; s++) {
-    const m = 1 << s;         // butterfly group size
-    const half = m >> 1;      // half group
-    const step = N >> s;      // twiddle step = N / m
+    const m = 1 << s;
+    const half = m >> 1;
+    const step = N >> s;
 
     for (let k = 0; k < N; k += m) {
       let twIdx = 0;
@@ -70,12 +68,10 @@ export function fft512(input: Float32Array | Float64Array): [Float64Array, Float
         const tIm = twiddleIm[twIdx];
         twIdx += step;
 
-        // Complex multiply: t = twiddle * X[odd]
         const oRe = re[oddIdx], oIm = im[oddIdx];
         const prodRe = oRe * tRe - oIm * tIm;
         const prodIm = oRe * tIm + oIm * tRe;
 
-        // Butterfly
         re[oddIdx] = re[evenIdx] - prodRe;
         im[oddIdx] = im[evenIdx] - prodIm;
         re[evenIdx] += prodRe;
@@ -87,5 +83,5 @@ export function fft512(input: Float32Array | Float64Array): [Float64Array, Float
   return [re, im];
 }
 
-/** Get the FFT size (always 512) */
+/** Get the FFT size */
 export const FFT_N = N;
