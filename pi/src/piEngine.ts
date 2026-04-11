@@ -94,8 +94,10 @@ function updateRunningMaxFast(state: AgcState, smoothed: number, bassRms: number
   if (smoothed > state.max) state.max = smoothed; else state.max = Math.max(AGC_FLOOR, state.max * decay);
   if (bassRms > state.bassMax) state.bassMax = bassRms; else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * bassDecay);
   if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
+  else state.bassMin = state.bassMin + (bassRms - state.bassMin) * 0.0005; // slow upward drift
   if (midHiRms > state.midHiMax) state.midHiMax = midHiRms; else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * midHiDecay);
   if (midHiRms < state.midHiMin || state.midHiMin === 0) state.midHiMin = midHiRms;
+  else state.midHiMin = state.midHiMin + (midHiRms - state.midHiMin) * 0.0005; // slow upward drift
 }
 
 function normalizeBand(value: number, state: AgcState, band: 'bass' | 'midHi'): number {
