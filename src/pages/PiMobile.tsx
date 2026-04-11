@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity } from "lucide-react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity, Download } from "lucide-react";
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
@@ -769,7 +769,7 @@ export default function PiMobile() {
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
-  
+  const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
@@ -958,6 +958,47 @@ export default function PiMobile() {
           <span className="text-sm font-semibold">BLE Light</span>
         </div>
         <div className="flex gap-1">
+          <button
+            onClick={async () => {
+              if (updateStatus === 'running') return;
+              setUpdateStatus('checking');
+              try {
+                const r = await fetch(`${piBase}/api/update/check`, { signal: AbortSignal.timeout(8000) });
+                const data = await r.json();
+                if (data.error) { setUpdateStatus('error'); return; }
+                if (data.upToDate) { setUpdateStatus('uptodate'); setTimeout(() => setUpdateStatus(null), 3000); return; }
+                // Update available — run it
+                setUpdateStatus('running');
+                await fetch(`${piBase}/api/update/run`, { method: 'POST' });
+                // Poll status
+                const poll = setInterval(async () => {
+                  try {
+                    const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
+                    const sd = await s.json();
+                    if (!sd.running) {
+                      clearInterval(poll);
+                      setUpdateStatus('done');
+                      setTimeout(() => setUpdateStatus(null), 5000);
+                    }
+                  } catch { clearInterval(poll); setUpdateStatus('error'); }
+                }, 2000);
+              } catch { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); }
+            }}
+            className="p-2 rounded-lg active:bg-accent"
+            title={updateStatus === 'running' ? 'Uppdaterar…' : 'Sök efter uppdatering'}
+          >
+            {updateStatus === 'checking' || updateStatus === 'running' ? (
+              <Loader2 size={20} className="text-primary animate-spin" />
+            ) : updateStatus === 'uptodate' ? (
+              <Check size={20} className="text-green-500" />
+            ) : updateStatus === 'done' ? (
+              <Check size={20} className="text-primary" />
+            ) : updateStatus === 'error' ? (
+              <X size={20} className="text-destructive" />
+            ) : (
+              <Download size={20} className="text-muted-foreground" />
+            )}
+          </button>
           <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent" title="Profilinställningar">
             <Lightbulb size={20} className="text-muted-foreground" />
           </button>
