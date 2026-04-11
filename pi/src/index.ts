@@ -14,7 +14,7 @@ import { installLocalStorageShim } from './storage.js';
 // Install shims before any engine imports
 installLocalStorageShim();
 
-import { startMic, stopMic, setAlsaDevice, setMicGain } from './alsaMic.js';
+import { startMic, stopMic, setAlsaDevice, setMicGain, setAutoGainFromVolume } from './alsaMic.js';
 import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
@@ -127,7 +127,10 @@ async function main() {
       }
     }
     
-    if (state.volume != null) engine.setVolume(state.volume);
+    if (state.volume != null) {
+      engine.setVolume(state.volume);
+      setAutoGainFromVolume(state.volume);
+    }
 
     // Extract palette from album art on track change (skip in TV-mode)
     if (!state.isTvMode && state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {

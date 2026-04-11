@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
-import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain } from './alsaMic.js';
+import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
@@ -399,11 +399,16 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         perceptualCurve: cal.perceptualCurve,
         transientBoost: cal.transientBoost,
       },
+      micGain: {
+        base: getMicGain(),
+        autoMultiplier: getAutoGainMultiplier(),
+        effective: getEffectiveGain(),
+      },
       ranges: {
         rawRms:        { ok: [0.01, 0.5],  warn: '0 = ingen signal' },
         bassRms:       { ok: [0.01, 0.3],  warn: '0 = ingen bas' },
         midHiRms:      { ok: [0.01, 0.2],  warn: '0 = inget diskant' },
-        agcMax:        { ok: [0.02, 1.0],  warn: '<0.02 = tyst rum' },
+        agcMax:        { ok: [0.005, 1.0], warn: '<0.005 = tyst rum' },
         agcQuietTicks: { ok: [0, 50],      warn: '>50 = tyst länge' },
         energyNorm:    { ok: [0.2, 0.8],   warn: '<0.1 = för tyst, >0.95 = clipping' },
         dynamicCenter: { ok: [0.3, 0.7],   warn: 'fast vid 0 eller 1 = problem' },
