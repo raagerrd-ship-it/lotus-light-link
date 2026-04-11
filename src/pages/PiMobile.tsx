@@ -494,6 +494,7 @@ function GlobalSettingsView({
   tickMs, setTickMs,
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
   dimmingGamma, setDimmingGamma,
+  micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   piBase,
@@ -503,6 +504,7 @@ function GlobalSettingsView({
   sonosUrl: string; setSonosUrl: (v: string) => void;
   alsaDevice: string; setAlsaDevice: (v: string) => void;
   dimmingGamma: number; setDimmingGamma: (v: number) => void;
+  micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   piBase: string;
@@ -561,7 +563,18 @@ function GlobalSettingsView({
           placeholder="plughw:0,0"
           className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm font-mono border border-border focus:outline-none focus:ring-1 focus:ring-ring"
         />
-        <p className="text-[10px] text-muted-foreground mt-1">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0. Ändring kräver mic-omstart.</p>
+        <p className="text-[10px] text-muted-foreground mt-1">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0.</p>
+
+        <div className="flex justify-between text-sm mb-1 mt-5">
+          <span>Mic Gain</span>
+          <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
+        </div>
+        <input
+          type="range" min={0.5} max={20} step={0.5} value={micGain}
+          onChange={(e) => setMicGain(parseFloat(e.target.value))}
+          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+        />
+        <p className="text-[10px] text-muted-foreground mt-0.5">Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.</p>
       </section>
 
       <section className="mb-8">
@@ -768,6 +781,7 @@ export default function PiMobile() {
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
+  const [micGain, setMicGain] = useState(1.0);
   const [showDiag, setShowDiag] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
@@ -829,8 +843,8 @@ export default function PiMobile() {
         ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
         // Auto TV-mode
         putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
-        // BLE min write interval
-        
+        // Mic gain
+        putJson('/api/mic-gain', { gain: micGain }),
       ]);
       setSaved(true);
       clearTimeout(savedTimer.current);
@@ -848,7 +862,7 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes] = await Promise.all([
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes] = await Promise.all([
         safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
@@ -856,6 +870,7 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/idle-color`),
         safeFetch(`${piBase}/api/sonos-gateway`),
         safeFetch(`${piBase}/api/auto-tv-mode`),
+        safeFetch(`${piBase}/api/mic-gain`),
       ]);
 
       // calRes is the flat stored calibration object (or {} if empty)
@@ -886,7 +901,8 @@ export default function PiMobile() {
       if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
       else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
-      
+      if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
+
     };
     load();
   }, []);
@@ -942,6 +958,7 @@ export default function PiMobile() {
         sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
+        micGain={micGain} setMicGain={setMicGain}
         idleColor={idleColor} setIdleColor={setIdleColor}
         autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
         piBase={piBase}

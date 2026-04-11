@@ -14,7 +14,7 @@ import { installLocalStorageShim } from './storage.js';
 // Install shims before any engine imports
 installLocalStorageShim();
 
-import { startMic, stopMic, setAlsaDevice } from './alsaMic.js';
+import { startMic, stopMic, setAlsaDevice, setMicGain } from './alsaMic.js';
 import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 import { PiLightEngine } from './piEngine.js';
@@ -43,6 +43,8 @@ async function main() {
   const savedAutoTv = getItem('auto-tv-mode');
   if (savedAutoTv === 'true') setSonosAutoTvMode(true);
 
+  const savedMicGain = getItem('mic-gain');
+  if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
 
   const savedTickMs = getItem('tick-ms');
   const effectiveTickMs = savedTickMs ? Math.max(20, Math.min(200, Number(savedTickMs))) : TICK_MS;

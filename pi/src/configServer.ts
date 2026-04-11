@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
-import { getAlsaDevice, setAlsaDevice } from './alsaMic.js';
+import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
@@ -202,6 +202,22 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       res.json({ ok: true, device });
     } else {
       res.status(400).json({ error: 'Need device string (e.g. "plughw:0,0")' });
+    }
+  });
+
+  // --- Mic gain (software) ---
+  app.get('/api/mic-gain', (_req, res) => {
+    res.json({ gain: getMicGain() });
+  });
+
+  app.put('/api/mic-gain', (req, res) => {
+    const { gain } = req.body;
+    if (typeof gain === 'number' && gain >= 0.1 && gain <= 50) {
+      setMicGain(gain);
+      setItem('mic-gain', String(gain));
+      res.json({ ok: true, gain });
+    } else {
+      res.status(400).json({ error: 'gain must be 0.1-50' });
     }
   });
 
