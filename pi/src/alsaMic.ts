@@ -65,6 +65,7 @@ let debugTickCount = 0;
 let debugPeakRaw = 0;
 
 const hsGain = Math.pow(10, 9 / 20);  // +9dB hi-shelf for INMP441 at ~1m distance
+const HS_ALPHA = 0.15;
 
 // ── Event-driven FFT callback ──
 type FFTReadyCallback = (bands: BandResult) => void;
