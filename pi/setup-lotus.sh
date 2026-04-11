@@ -146,6 +146,12 @@ else
   echo "  Bygg klart ✓"
 fi
 
+# Rebuild native modules for current architecture (e.g. bluetooth-hci-socket)
+echo "  Bygger om native-moduler för $(uname -m)..."
+cd "$PI_DIR"
+nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
+echo "  Native-moduler klara ✓"
+
 # ─── 7. BLE permissions & sudoers ─────────────────────────
 echo "[7/8] Sätter BLE-behörigheter och sudoers..."
 NODE_BIN=$(readlink -f "$(which node)")
