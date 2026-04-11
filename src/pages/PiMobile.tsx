@@ -25,12 +25,11 @@ const PRESET_CALS: Record<string, Cal> = {
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
 
-/** Convert Softness 0-100 → releaseAlpha + smoothing (mirrors CalibrationOverlay) */
+/** Convert Softness 0-100 → releaseAlpha only (no extra smoothing filter) */
 function softnessToParams(s: number) {
   const t = s / 100;
   const releaseAlpha = 1.0 - 0.995 * Math.pow(t, 0.7);
-  const smoothing = Math.round(t * 80);
-  return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing };
+  return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing: 0 };
 }
 
 type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold';
