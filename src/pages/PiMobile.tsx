@@ -649,8 +649,8 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
     const stepNum = calStep;
     const stepLabel = stepNum === 1 ? 'Låg volym' : 'Hög volym';
     const stepDesc = stepNum === 1
-      ? 'Ställ Sonos på låg volym (t.ex. 10–20). Justera gain tills output är ~40–60%.'
-      : 'Ställ Sonos på hög volym (t.ex. 35–50). Justera gain tills output är ~40–60%.';
+      ? 'Spela en låt med höga partier på låg volym (t.ex. 10–20). Justera gain tills output når nära 100% på de starkaste partierna.'
+      : 'Samma låt/parti på hög volym (t.ex. 35–50). Justera gain tills output når nära 100% igen.';
 
     // Color the bar based on level
     const barColor = outputPct > 90 ? 'bg-red-500' : outputPct > 60 ? 'bg-yellow-500' : outputPct > 20 ? 'bg-green-500' : 'bg-muted-foreground';
