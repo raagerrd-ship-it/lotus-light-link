@@ -103,13 +103,28 @@ else
 fi
 
 # ─── 5. Install npm dependencies & build web app ─────────
-echo "[5/8] Installerar npm-beroenden och bygger webbapp..."
-cd "$APP_DIR"
-export NODE_OPTIONS="--max-old-space-size=256"
-nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
-echo "  Bygger webbgränssnitt..."
-nice -n 15 taskset -c "$CORE" npx vite build 2>&1 | tail -3
-echo "  Webbapp klar ✓"
+echo "[5/8] Förbereder webbapp..."
+WEB_DIST_DIR="$APP_DIR/dist"
+WEB_DIST_READY=false
+if [ -f "$WEB_DIST_DIR/index.html" ] && [ -d "$WEB_DIST_DIR/assets" ]; then
+  WEB_DIST_READY=true
+fi
+
+if [ "$WEB_DIST_READY" = true ]; then
+  echo "  Förbyggd webbapp hittad i dist/ — hoppar över root npm install/build ✓"
+elif [ -f "$APP_DIR/package.json" ]; then
+  cd "$APP_DIR"
+  export NODE_OPTIONS="--max-old-space-size=256"
+  echo "  Installerar root-beroenden..."
+  nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund
+  echo "  Bygger webbgränssnitt..."
+  nice -n 15 taskset -c "$CORE" npx vite build
+  echo "  Webbapp klar ✓"
+else
+  echo "  ✗ Ingen förbyggd webbapp hittad och package.json saknas i root"
+  echo "    Förväntade antingen $WEB_DIST_DIR/index.html eller $APP_DIR/package.json"
+  exit 1
+fi
 
 cd "$PI_DIR"
 nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
