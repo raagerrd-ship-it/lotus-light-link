@@ -13,6 +13,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
 const BACKEND_PORT = process.env.BACKEND_PORT ?? '3050';
 
+// Kill any leftover process on the backend port to prevent EADDRINUSE
+try {
+  const { execSync } = await import('child_process');
+  const pid = execSync(`lsof -ti tcp:${BACKEND_PORT} 2>/dev/null`, { encoding: 'utf8' }).trim();
+  if (pid) {
+    console.log(`[Wrapper] Killing leftover process on :${BACKEND_PORT} (PID ${pid})`);
+    pid.split('\n').forEach(p => { try { process.kill(Number(p), 'SIGKILL'); } catch {} });
+    await new Promise(r => setTimeout(r, 500));
+  }
+} catch {}
+
+
 // Pass PORT → CONFIG_PORT for frontend
 process.env.BACKEND_PORT = BACKEND_PORT;
 process.env.CONFIG_PORT = process.env.PORT ?? process.env.CONFIG_PORT ?? '3001';
