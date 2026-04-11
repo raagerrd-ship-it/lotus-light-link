@@ -56,26 +56,43 @@ echo "$LOG_PREFIX Pulled to $(git rev-parse --short HEAD)"
 
 NEED_RESTART=false
 
+# Check if pre-built dist exists (release tarball)
+WEB_DIST_READY=false
+if [ -f "$APP_DIR/dist/index.html" ] && [ -d "$APP_DIR/dist/assets" ]; then
+  WEB_DIST_READY=true
+fi
+
 # Rebuild web app if frontend changed
 if [ -n "$WEB_CHANGED" ]; then
-  echo "$LOG_PREFIX Frontend changed — rebuilding web app..."
-  cd "$APP_DIR"
-  export NODE_OPTIONS="--max-old-space-size=256"
-  nice -n 15 npm install --no-audit --no-fund 2>&1 | tail -1
-  nice -n 15 npx vite build 2>&1 | tail -3
-  echo "$LOG_PREFIX Web app build complete ✓"
+  if [ "$WEB_DIST_READY" = true ]; then
+    echo "$LOG_PREFIX Frontend changed — pre-built dist/ found, skipping build ✓"
+  elif [ -f "$APP_DIR/package.json" ]; then
+    echo "$LOG_PREFIX Frontend changed — rebuilding web app..."
+    cd "$APP_DIR"
+    export NODE_OPTIONS="--max-old-space-size=256"
+    nice -n 15 npm install --no-audit --no-fund 2>&1 | tail -1
+    nice -n 15 npx vite build 2>&1 | tail -3
+    echo "$LOG_PREFIX Web app build complete ✓"
+  else
+    echo "$LOG_PREFIX Frontend changed but no dist/ or package.json — cannot build"
+  fi
   NEED_RESTART=true
 fi
 
 # Rebuild Pi backend if engine/pi changed
 if [ -n "$PI_CHANGED" ] || [ -n "$SRC_CHANGED" ]; then
-  echo "$LOG_PREFIX pi/ or engine/ changed — rebuilding backend..."
-  cd "$PI_DIR"
-  export NODE_OPTIONS="--max-old-space-size=256"
-  nice -n 15 npm install --no-audit --no-fund 2>&1 | tail -1
-  nice -n 15 npm run build
-  npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
-  echo "$LOG_PREFIX Backend build complete ✓"
+  # Check if pre-built pi/dist exists (release tarball)
+  if [ -f "$PI_DIR/dist/index.js" ] && [ -f "$PI_DIR/node_modules/.package-lock.json" ]; then
+    echo "$LOG_PREFIX pi/ changed — pre-built pi/dist/ found, skipping build ✓"
+  else
+    echo "$LOG_PREFIX pi/ or engine/ changed — rebuilding backend..."
+    cd "$PI_DIR"
+    export NODE_OPTIONS="--max-old-space-size=256"
+    nice -n 15 npm install --no-audit --no-fund 2>&1 | tail -1
+    nice -n 15 npm run build
+    npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
+    echo "$LOG_PREFIX Backend build complete ✓"
+  fi
 
   # Re-apply BLE capabilities in case Node binary was updated by apt
   NODE_BIN=$(which node)
