@@ -81,12 +81,16 @@ function brightnessToScale(brightness: number): number {
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
 let writeInFlight = false;
 let lastWriteTime = 0;
+let writeFailCount = 0;
+const WRITE_FAIL_THRESHOLD = 5; // trigger proactive reconnect after N consecutive failures
+const WRITE_TIMEOUT_MS = 500;   // prevent writeInFlight from getting stuck
 
 // Stats
 export const bleStats = {
   sentCount: 0,
   skipDeltaCount: 0,
   skipBusyCount: 0,
+  writeFailCount: 0,
   
   writeLatMs: 0,
   writeLatAvgMs: 0,
