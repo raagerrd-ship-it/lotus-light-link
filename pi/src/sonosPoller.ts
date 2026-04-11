@@ -125,6 +125,18 @@ function confirmedApply(next: SonosState): void {
   const candidateState = next.playbackState;
   const currentPlayback = currentState.playbackState;
 
+  // Boot phase: first real status → apply immediately (no waiting for confirmation)
+  if (bootPhase) {
+    bootPhase = false;
+    pendingState = null;
+    pendingCount = 0;
+    if (candidateState !== currentPlayback) {
+      console.log(`[Sonos] Boot: ${currentPlayback} → ${candidateState} (immediate)`);
+    }
+    apply(next);
+    return;
+  }
+
   // Same direction as current → apply immediately (no flip)
   if (candidateState === currentPlayback) {
     pendingState = null;
