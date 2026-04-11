@@ -58,13 +58,10 @@ function normalizeSimple(value: number, peakMax: number): number {
 interface TickConstants {
   attackAlpha: number;
   releaseAlpha: number;
-  bandReleaseAlpha: number;
   onsetDecay: number;
   onsetRiseAlpha: number;
   agcDecayNormal: number;
-  agcDecayMedium: number;
   agcDecayFast: number;
-  quietMediumTicks: number;
   quietFastTicks: number;
   centerAlpha: number;
   extraSmoothAlpha: number;
@@ -76,33 +73,22 @@ interface TickConstants {
 function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
-  const fastEnvelopeReleaseAlpha = 1 - Math.exp(-tickMs / 160);
 
   const sm = cal.smoothing ?? 0;
   let extraSmoothAlpha = 0;
   if (sm > 0) {
-    // Quadratic scaling: smoothing 1→~0.0001, 50→~0.25, 100→~1.0
-    // This ensures low values (1-10) have negligible effect
-    const normalized = (sm / 100) * (sm / 100); // 0..1 quadratic
-    const alphaRef = Math.exp(-normalized * 4); // at normalized=1 → ~0.018 (heavy), at 0.01 → ~0.96 (light)
+    const normalized = (sm / 100) * (sm / 100);
+    const alphaRef = Math.exp(-normalized * 4);
     extraSmoothAlpha = Math.pow(alphaRef, ratio);
   }
 
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
-    // Output envelope must decay much faster than the global RMS smoother,
-    // otherwise the diagnostics show raw bands moving while brightness stays "stuck".
-    bandReleaseAlpha: Math.max(
-      1 - Math.pow(1 - Math.min(1, cal.releaseAlpha * 20), ratio),
-      fastEnvelopeReleaseAlpha,
-    ),
     onsetDecay: Math.pow(0.10, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.15, ratio),
-    agcDecayNormal: Math.pow(AGC_MAX_DECAY_PER_SEC, secRatio),
-    agcDecayMedium: Math.pow(AGC_QUIET_DECAY_MEDIUM_PER_SEC, secRatio),
-    agcDecayFast: Math.pow(AGC_QUIET_DECAY_FAST_PER_SEC, secRatio),
-    quietMediumTicks: (QUIET_MS_MEDIUM / tickMs + 0.5) | 0,
+    agcDecayNormal: Math.pow(AGC_DECAY_PER_SEC, secRatio),
+    agcDecayFast: Math.pow(AGC_FAST_DECAY_PER_SEC, secRatio),
     quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
     extraSmoothAlpha,
