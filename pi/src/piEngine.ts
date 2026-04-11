@@ -558,9 +558,10 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
+      const preDynamics = energyNorm; // capture before expansion
+
       // Adaptive dynamic center — tracks the signal's midpoint for symmetric expansion
       this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
-      // Clamp center to reasonable range to prevent drift
       if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
       if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
       energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
@@ -641,6 +642,11 @@ export class PiLightEngine {
       _diag.midHiRms = bands.midHiRms;
       _diag.agcMax = this.agc.max;
       _diag.agcQuietTicks = this.agc.quietTicks;
+      _diag.bassNorm = rawBassNorm;
+      _diag.midHiNorm = rawMidHiNorm;
+      _diag.bassMax = this.agc.bassMax;
+      _diag.midHiMax = this.agc.midHiMax;
+      _diag.preDynamics = preDynamics;
       _diag.energyNorm = energyNorm;
       _diag.dynamicCenter = this.dynamicCenter;
       _diag.onsetBoost = this.onsetBoost;
