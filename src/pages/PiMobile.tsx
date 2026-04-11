@@ -962,7 +962,7 @@ export default function PiMobile() {
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
           agcEnabled: cal.agcEnabled,
-          bandSmoothingEnabled: cal.bandSmoothingEnabled,
+          
           dynamicsEnabled: cal.dynamicsEnabled,
           smoothingEnabled: cal.smoothingEnabled,
           hiShelfGainDb: 6,
@@ -1028,7 +1028,7 @@ export default function PiMobile() {
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
           agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
-          bandSmoothingEnabled: c.bandSmoothingEnabled ?? DEFAULT_CAL.bandSmoothingEnabled,
+          
           dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
           smoothingEnabled: c.smoothingEnabled ?? DEFAULT_CAL.smoothingEnabled,
         });
