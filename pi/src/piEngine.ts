@@ -125,7 +125,7 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     agcDecayFast: Math.pow(AGC_QUIET_DECAY_FAST_PER_SEC, secRatio),
     quietMediumTicks: (QUIET_MS_MEDIUM / tickMs + 0.5) | 0,
     quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
-    centerAlpha: 1 - Math.pow(1 - 0.008, ratio),
+    centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
     extraSmoothAlpha,
     paletteTimedSpeed: Math.max(1, ((cal.paletteRotationSpeed ?? 8) * (125 / tickMs) + 0.5) | 0),
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,

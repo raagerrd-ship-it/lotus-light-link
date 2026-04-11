@@ -106,7 +106,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
     let val = prev + alpha * (r - prev);
 
     // Real dynamics processing with adaptive center
-    dynamicCenter += (val - dynamicCenter) * 0.008;
+    dynamicCenter += (val - dynamicCenter) * 0.002;
     val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
 
     // Smoothing
