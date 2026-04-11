@@ -5,8 +5,8 @@ import NotFound from "./pages/NotFound.tsx";
 const App = () => (
   <BrowserRouter basename="/">
     <Routes>
-      <Route path="/" element={<Navigate to="/pi-mobile" replace />} />
-      <Route path="/pi-mobile" element={<PiMobile />} />
+      <Route path="/" element={<PiMobile />} />
+      <Route path="/pi-mobile" element={<Navigate to="/" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>
