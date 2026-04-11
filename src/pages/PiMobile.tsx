@@ -756,19 +756,22 @@ export default function PiMobile() {
         if (!r.ok || cancelled) return;
         const data = await r.json();
         if (cancelled) return;
+        setPiOnline(true);
+        setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
         const track = data.sonos?.trackName ?? null;
         setLiveTrack(track);
         setLiveBleCount(data.ble?.connected ?? null);
         setBleConnectedId(data.ble?.connectedDeviceId ?? null);
         setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
-        // Only update palette when track changes (or first load)
         if (track && track !== lastTrackRef.current) {
           lastTrackRef.current = track;
           const palette = data.engine?.palette ?? [];
           setLivePalette(palette);
         }
-      } catch {}
+      } catch {
+        if (!cancelled) setPiOnline(false);
+      }
     };
     poll();
     const id = setInterval(poll, 5000);
