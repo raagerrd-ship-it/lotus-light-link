@@ -205,6 +205,22 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     }
   });
 
+  // --- Mic gain (software) ---
+  app.get('/api/mic-gain', (_req, res) => {
+    res.json({ gain: getMicGain() });
+  });
+
+  app.put('/api/mic-gain', (req, res) => {
+    const { gain } = req.body;
+    if (typeof gain === 'number' && gain >= 0.1 && gain <= 50) {
+      setMicGain(gain);
+      setItem('mic-gain', String(gain));
+      res.json({ ok: true, gain });
+    } else {
+      res.status(400).json({ error: 'gain must be 0.1-50' });
+    }
+  });
+
   // --- Dimming gamma ---
   app.get('/api/dimming-gamma', (_req, res) => {
     res.json({ gamma: getDimmingGamma() });
