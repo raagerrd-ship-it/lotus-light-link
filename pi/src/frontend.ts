@@ -8,11 +8,13 @@
 
 import { createServer, request as httpRequest } from 'http';
 import { existsSync, readFileSync, statSync } from 'fs';
-import { join, extname } from 'path';
+import { dirname, extname, join } from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CONFIG_PORT ?? 3001);
 const BACKEND_PORT = Number(process.env.BACKEND_PORT ?? 3050);
-const WEB_DIST = join(process.cwd(), '..', 'dist');
+const WEB_DIST = join(__dirname, '..', '..', 'dist');
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html',
