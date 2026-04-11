@@ -84,6 +84,7 @@ let pendingCount = 0;                      // consecutive polls matching candida
 let lastResponseTime = 0;                  // timestamp of last successful parse
 let lastPositionMs: number | null = null;  // for position-based inference
 let lastPositionTime = 0;                  // when we recorded lastPositionMs
+let bootPhase = true;                      // bypass confirmation on first response
 
 function isPlaying(state: string): boolean {
   return state.includes('PLAYING');
@@ -123,6 +124,18 @@ function apply(next: SonosState): void {
 function confirmedApply(next: SonosState): void {
   const candidateState = next.playbackState;
   const currentPlayback = currentState.playbackState;
+
+  // Boot phase: first real status → apply immediately (no waiting for confirmation)
+  if (bootPhase) {
+    bootPhase = false;
+    pendingState = null;
+    pendingCount = 0;
+    if (candidateState !== currentPlayback) {
+      console.log(`[Sonos] Boot: ${currentPlayback} → ${candidateState} (immediate)`);
+    }
+    apply(next);
+    return;
+  }
 
   // Same direction as current → apply immediately (no flip)
   if (candidateState === currentPlayback) {
@@ -253,6 +266,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   pendingCount = 0;
   lastPositionMs = null;
   lastPositionTime = 0;
+  bootPhase = true;
 
   // SSE connection (unless disabled)
   if (!disableSSE) {
@@ -272,22 +286,11 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     }
   }
 
-  // Initial status fetch
+  // Initial status fetch — bootPhase flag ensures immediate apply
   const statusUrl = `${baseUrl}${statusPath}`;
   try {
     const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-    if (res.ok) {
-      const data = await res.json();
-      lastResponseTime = Date.now();
-      // First fetch: apply directly without confirmation (boot state)
-      const savedState = currentState.playbackState;
-      parseStatus(data);
-      // Force-apply on first fetch (skip confirmation for boot)
-      if (currentState.playbackState !== savedState) {
-        pendingState = null;
-        pendingCount = 0;
-      }
-    }
+    if (res.ok) parseStatus(await res.json());
   } catch {}
 
   // Fallback poll
