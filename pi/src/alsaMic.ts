@@ -18,7 +18,7 @@ export interface BandResult {
 }
 
 const SAMPLE_RATE = 44100;
-const FFT_SIZE = FFT_N; // 512
+const FFT_SIZE = FFT_N; // 1024
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 
