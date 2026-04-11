@@ -418,7 +418,8 @@ export async function scanAndConnect(timeoutMs = 15000): Promise<number> {
   return autoConnectSaved(timeoutMs);
 }
 
-async function connectPeripheral(peripheral: any): Promise<void> {
+async function connectPeripheral(peripheral: any, _retryCount = 0): Promise<void> {
+  const MAX_DISCOVERY_RETRIES = 3;
   const name = peripheral.advertisement?.localName ?? peripheral.id;
   const connectTime = performance.now();
   const STEP_TIMEOUT_MS = 8000;
@@ -458,7 +459,15 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   }
 
   if (!characteristics?.length) {
-    throw new Error(`No characteristic found on ${name}`);
+    // Retry: disconnect, short backoff, reconnect + rediscover
+    try { await peripheral.disconnectAsync(); } catch {}
+    if (_retryCount < MAX_DISCOVERY_RETRIES) {
+      const delay = 500 * (_retryCount + 1);
+      console.warn(`[BLE] No characteristic on ${name} — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
+      return connectPeripheral(peripheral, _retryCount + 1);
+    }
+    throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
   }
 
   const char = characteristics[0] as PiCharacteristic;
