@@ -77,8 +77,19 @@ if [ -n "$NODE_BIN" ]; then
   sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
 fi
 
-# Skip npm rebuild — pre-built node_modules are included in the release tarball.
-# Native modules (noble/bluetooth_hci_socket) are compiled during CI for the target arch.
+# Rebuild native modules ONLY if architecture or Node major version differs
+BUILD_ARCH=$(python3 -c "import json; print(json.load(open('$APP_DIR/VERSION.json')).get('arch',''))" 2>/dev/null || echo "")
+BUILD_NODE=$(python3 -c "import json; v=json.load(open('$APP_DIR/VERSION.json')).get('nodeVersion',''); print(v.split('.')[0])" 2>/dev/null || echo "")
+PI_ARCH=$(uname -m)
+PI_NODE=$(node -v | cut -d. -f1)
+
+if [ "$BUILD_ARCH" != "$PI_ARCH" ] || [ "$BUILD_NODE" != "$PI_NODE" ]; then
+  echo "$LOG_PREFIX Native modules mismatch (build: $BUILD_ARCH/$BUILD_NODE, pi: $PI_ARCH/$PI_NODE) — rebuilding..."
+  cd "$PI_DIR" && npm rebuild 2>&1 | tail -5
+  echo "$LOG_PREFIX Native modules rebuilt ✓"
+else
+  echo "$LOG_PREFIX Native modules OK (arch=$PI_ARCH, node=$PI_NODE) — skipping rebuild ✓"
+fi
 
 # Restart service
 systemctl --user restart "$SERVICE"
