@@ -736,6 +736,7 @@ export default function PiMobile() {
       if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
       if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
       if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
+      else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
       
     };
