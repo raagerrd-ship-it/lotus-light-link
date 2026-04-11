@@ -806,8 +806,8 @@ export default function PiMobile() {
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center gap-1.5 shrink-0">
-          <Bluetooth size={14} />
-          <span>{liveBleCount != null ? `${liveBleCount} enhet${liveBleCount !== 1 ? 'er' : ''}` : '—'}</span>
+          <Bluetooth size={14} className={bleConnectedId ? 'text-primary' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
+          <span>{bleConnectedId ? '1 aktiv' : bleSavedId ? 'Vilar' : 'Ej kopplad'}</span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <Music size={14} className="shrink-0" />
@@ -849,19 +849,25 @@ export default function PiMobile() {
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">BLE-enhet</h2>
 
-        {bleConnectedId ? (
+        {/* Saved/paired device card */}
+        {(bleSavedId || bleConnectedId) && !blePreview ? (
           <div className="bg-secondary/50 rounded-xl p-3 mb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Bluetooth size={16} className="text-primary" />
-                <span className="text-sm font-medium">{bleConnectedName ?? bleConnectedId}</span>
-                <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">Ansluten</span>
+                <Bluetooth size={16} className={bleConnectedId ? "text-primary" : "text-muted-foreground"} />
+                <span className="text-sm font-medium">{bleConnectedName ?? bleSavedId?.substring(0, 12) ?? '—'}</span>
+                {bleConnectedId ? (
+                  <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">Aktiv</span>
+                ) : (
+                  <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">Vilar</span>
+                )}
               </div>
               <button
                 onClick={async () => {
                   try {
                     await fetch(`${piBase}/api/ble/forget`, { method: 'POST' });
                     setBleConnectedId(null);
+                    setBleConnectedName(null);
                     setBleSavedId(null);
                   } catch {}
                 }}
@@ -871,13 +877,9 @@ export default function PiMobile() {
                 <X size={16} />
               </button>
             </div>
-          </div>
-        ) : bleSavedId && !blePreview ? (
-          <div className="bg-secondary/50 rounded-xl p-3 mb-3">
-            <div className="flex items-center gap-2">
-              <Bluetooth size={16} className="text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Sparad: {bleSavedId.substring(0, 8)}…</span>
-            </div>
+            {!bleConnectedId && (
+              <p className="text-[10px] text-muted-foreground mt-1.5 ml-6">Ansluter automatiskt när musik spelas</p>
+            )}
           </div>
         ) : null}
 
@@ -894,6 +896,7 @@ export default function PiMobile() {
           </div>
         )}
 
+        {/* Scan button — always visible so user can re-scan or find first device */}
         <button
           onClick={async () => {
             setBleScanning(true);
@@ -911,7 +914,7 @@ export default function PiMobile() {
           {bleScanning ? (
             <><Loader2 size={16} className="animate-spin" /> Söker…</>
           ) : (
-            <><Search size={16} /> Sök efter enheter</>
+            <><Search size={16} /> {bleSavedId ? 'Byt enhet' : 'Sök efter enheter'}</>
           )}
         </button>
 
@@ -931,8 +934,8 @@ export default function PiMobile() {
                     const data = await r.json();
                     if (data.ok) {
                       setBleSavedId(d.id);
+                      setBleConnectedName(d.name);
                       setBleScanResults([]);
-                      // Start preview countdown
                       setBlePreview(true);
                       setBlePreviewSec(10);
                       const countdown = setInterval(() => {
@@ -951,12 +954,13 @@ export default function PiMobile() {
                 }}
                 disabled={bleConnecting === d.id}
                 className={`w-full flex items-center justify-between p-3 rounded-xl text-sm transition-all active:scale-[0.98] ${
-                  d.id === bleConnectedId ? 'bg-primary/10 ring-1 ring-primary' : 'bg-secondary/50'
+                  d.id === bleSavedId ? 'bg-primary/10 ring-1 ring-primary' : 'bg-secondary/50'
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <Bluetooth size={14} />
                   <span className="font-medium">{d.name}</span>
+                  {d.id === bleSavedId && <span className="text-[10px] text-primary">(nuvarande)</span>}
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <span className="text-[10px]">{d.rssi} dBm</span>
