@@ -849,7 +849,7 @@ export default function PiMobile() {
 
       {/* Version / Status */}
       <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-1">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
             <span>Frontend</span>
@@ -858,7 +858,12 @@ export default function PiMobile() {
             <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
             <span>Motor {engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz` : 'Stoppad') : '…'}</span>
           </div>
-          {piVersion && <span className="font-mono">{piVersion.commitShort}@{piVersion.branch}</span>}
+          {piVersion && (
+            <div className="flex flex-col items-end font-mono leading-tight text-right">
+              <span>v{piVersion.version}</span>
+              <span>{piVersion.commitShort}@{piVersion.branch}</span>
+            </div>
+          )}
         </div>
       </div>
 
