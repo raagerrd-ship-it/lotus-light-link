@@ -770,13 +770,12 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
   const autoGainMultiplier = (data as any).micGain?.autoMultiplier ?? 1;
   const autoGainEnabled = (data as any).micGain?.autoGainEnabled ?? true;
 
-  // Visual pipeline stages (in signal flow order, all 0-1 range for bars)
+  // Visual pipeline stages (simplified signal flow)
   const pipelineStages = [
     { label: 'Rå Bas',      value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRms' },
     { label: 'Rå Disk',     value: pipeline.midHiRms ?? 0, max: 0.2, key: 'midHiRms' },
     { label: 'Auto-gain',   value: autoGainMultiplier / 8, max: 1, key: 'autoGain', displayVal: `${autoGainMultiplier.toFixed(1)}× ${autoGainEnabled ? '' : '(av)'}` },
-    { label: 'AGC Bas-tak', value: pipeline.bassMax ?? 0, max: 1, key: 'bassMax' },
-    { label: 'AGC Disk-tak',value: pipeline.midHiMax ?? 0, max: 1, key: 'midHiMax' },
+    { label: 'Peak AGC',    value: pipeline.peakMax ?? 0, max: 1, key: 'peakMax' },
     { label: 'Bas (norm)',  value: pipeline.bassNorm ?? 0, max: 1, key: 'bassNorm' },
     { label: 'Disk (norm)', value: pipeline.midHiNorm ?? 0, max: 1, key: 'midHiNorm' },
     { label: 'Pre-dyn',     value: pipeline.preDynamics ?? 0, max: 1, key: 'preDynamics' },
