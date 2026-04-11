@@ -40,8 +40,9 @@ let device: {
 let lastScanResults: DiscoveredDevice[] = [];
 let discoveredPeripherals = new Map<string, any>();
 
-// ── Saved device ID (persisted) ──
+// ── Saved device ID + name (persisted) ──
 let savedDeviceId: string | null = getItem('ble-device-id') ?? null;
+let savedDeviceName: string | null = getItem('ble-device-name') ?? null;
 
 // Pre-allocated write buffer (single, reused every tick — zero alloc)
 const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
@@ -196,6 +197,10 @@ export function getSavedDeviceId(): string | null {
   return savedDeviceId;
 }
 
+export function getSavedDeviceName(): string | null {
+  return savedDeviceName;
+}
+
 export function getLastScanResults(): DiscoveredDevice[] {
   return lastScanResults;
 }
@@ -281,8 +286,10 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
   try {
     await connectPeripheral(peripheral);
     savedDeviceId = deviceId;
+    savedDeviceName = peripheral.advertisement?.localName ?? deviceId;
     setItem('ble-device-id', deviceId);
-    console.log(`[BLE] Saved device: ${deviceId}`);
+    setItem('ble-device-name', savedDeviceName);
+    console.log(`[BLE] Saved device: ${savedDeviceName} (${deviceId})`);
     return true;
   } catch (e: any) {
     console.error(`[BLE] Failed to connect to ${deviceId}: ${e.message}`);
@@ -293,7 +300,9 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
 /** Forget saved device and disconnect */
 export async function forgetDevice(): Promise<void> {
   savedDeviceId = null;
+  savedDeviceName = null;
   setItem('ble-device-id', '');
+  setItem('ble-device-name', '');
   if (device) {
     try { await device.peripheral.disconnectAsync(); } catch {}
     device = null;
