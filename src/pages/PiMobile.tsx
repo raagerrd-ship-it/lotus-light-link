@@ -765,7 +765,7 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
             const isHot = pct > 0.9 && stage.key !== 'dynamicCenter';
             const isBottleneck = i === bottleneckIdx;
             const barColor = isBottleneck ? 'bg-red-500' : isHot ? 'bg-yellow-500' : 'bg-emerald-500';
-            const displayVal = stage.key === 'brightnessPct' ? `${(stage.value * 100).toFixed(0)}%` : stage.value.toFixed(4);
+            const displayVal = (stage as any).displayVal ?? (stage.key === 'brightnessPct' ? `${(stage.value * 100).toFixed(0)}%` : stage.value.toFixed(4));
             const isDynCenter = stage.key === 'dynamicCenter';
 
             return (
