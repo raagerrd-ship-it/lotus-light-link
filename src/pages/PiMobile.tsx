@@ -781,6 +781,7 @@ export default function PiMobile() {
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
+  const [micGain, setMicGain] = useState(1.0);
   const [showDiag, setShowDiag] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
@@ -955,6 +956,7 @@ export default function PiMobile() {
         sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
         alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
         dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
+        micGain={micGain} setMicGain={setMicGain}
         idleColor={idleColor} setIdleColor={setIdleColor}
         autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
         piBase={piBase}
