@@ -862,7 +862,7 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes] = await Promise.all([
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes] = await Promise.all([
         safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
@@ -870,6 +870,7 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/idle-color`),
         safeFetch(`${piBase}/api/sonos-gateway`),
         safeFetch(`${piBase}/api/auto-tv-mode`),
+        safeFetch(`${piBase}/api/mic-gain`),
       ]);
 
       // calRes is the flat stored calibration object (or {} if empty)
@@ -900,7 +901,8 @@ export default function PiMobile() {
       if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
       else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
-      
+      if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
+
     };
     load();
   }, []);
