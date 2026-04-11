@@ -77,10 +77,8 @@ if [ -n "$NODE_BIN" ]; then
   sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
 fi
 
-# Rebuild native modules for current Node version + architecture
-echo "$LOG_PREFIX Rebuilding native modules for Node $(node -v) on $(uname -m)..."
-cd "$PI_DIR" && npm rebuild 2>&1 | tail -5
-echo "$LOG_PREFIX Native modules rebuilt ✓"
+# Skip npm rebuild — pre-built node_modules are included in the release tarball.
+# Native modules (noble/bluetooth_hci_socket) are compiled during CI for the target arch.
 
 # Restart service
 systemctl --user restart "$SERVICE"
