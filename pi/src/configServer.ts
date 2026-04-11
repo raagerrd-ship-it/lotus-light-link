@@ -235,6 +235,36 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
      }
    });
 
+   // --- Gain calibration (two-point) ---
+   // Load saved calibration at startup
+   try {
+     const saved = getItem('gain-cal-points');
+     if (saved) {
+       const { point1, point2 } = JSON.parse(saved);
+       setGainCalPoints(point1 ?? null, point2 ?? null);
+     }
+   } catch {}
+
+   app.get('/api/gain-calibration', (_req, res) => {
+     const { point1, point2 } = getGainCalPoints();
+     res.json({ point1, point2 });
+   });
+
+   app.put('/api/gain-calibration', (req, res) => {
+     const { point1, point2 } = req.body;
+     setGainCalPoints(point1 ?? null, point2 ?? null);
+     setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
+     // Auto-enable auto-gain when calibration is set
+     if (point1 && point2) enableAutoGain();
+     res.json({ ok: true, ...getGainCalPoints() });
+   });
+
+   app.delete('/api/gain-calibration', (_req, res) => {
+     setGainCalPoints(null, null);
+     setItem('gain-cal-points', JSON.stringify({ point1: null, point2: null }));
+     res.json({ ok: true });
+   });
+
    // --- Dimming gamma ---
   app.get('/api/dimming-gamma', (_req, res) => {
     res.json({ gamma: getDimmingGamma() });
