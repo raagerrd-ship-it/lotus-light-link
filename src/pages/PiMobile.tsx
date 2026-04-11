@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity } from "lucide-react";
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
@@ -617,6 +617,147 @@ function GlobalSettingsView({
 }
 
 /* ── Main Component ── */
+// ── Diagnostics panel component ──
+type DiagRange = { ok: [number, number]; warn: string };
+type DiagData = {
+  pipeline: Record<string, number>;
+  ble: Record<string, number>;
+  calibration: Record<string, unknown>;
+  ranges: Record<string, DiagRange>;
+} | null;
+
+function diagStatus(value: number, range: DiagRange): 'green' | 'yellow' | 'red' {
+  const [lo, hi] = range.ok;
+  if (value >= lo && value <= hi) return 'green';
+  const span = (hi - lo) || 1;
+  const margin = span * 0.2;
+  if (value >= lo - margin && value <= hi + margin) return 'yellow';
+  return 'red';
+}
+
+const DIAG_STATUS_COLORS = {
+  green: 'bg-green-500',
+  yellow: 'bg-yellow-500',
+  red: 'bg-red-500',
+};
+
+const DIAG_LABELS: Record<string, string> = {
+  rawRms: 'Rå RMS',
+  bassRms: 'Bas RMS',
+  midHiRms: 'Disk RMS',
+  agcMax: 'AGC Max',
+  agcQuietTicks: 'AGC Tyst',
+  energyNorm: 'Energi (norm)',
+  dynamicCenter: 'Dyn. Center',
+  onsetBoost: 'Onset Boost',
+  brightnessPct: 'Ljusstyrka %',
+  bleScaleRaw: 'BLE Skala',
+  lastTickUs: 'Tick μs',
+  tickCount: 'Tick #',
+  finalR: 'R', finalG: 'G', finalB: 'B',
+};
+
+function DiagnosticsPanel({ piBase }: { piBase: string }) {
+  const [data, setData] = useState<DiagData>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/diagnostics`, { signal: AbortSignal.timeout(2000) });
+        if (!r.ok || cancelled) return;
+        const d = await r.json();
+        if (!cancelled) { setData(d); setError(false); }
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 500);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [piBase]);
+
+  if (error) return <p className="text-xs text-muted-foreground">Kan ej nå diagnostik-API</p>;
+  if (!data) return <p className="text-xs text-muted-foreground animate-pulse">Laddar diagnostik…</p>;
+
+  const { pipeline, ble, calibration, ranges } = data;
+
+  // Pipeline metrics with ranges
+  const pipelineKeys = Object.keys(ranges).filter(k => k in pipeline);
+  // BLE stats
+  const bleWriteLatMs = ble?.writeLatAvgMs ?? 0;
+  const bleSkipBusy = ble?.skipBusyCount ?? 0;
+
+  return (
+    <div className="space-y-3">
+      {/* Pipeline */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-[10px] font-mono">
+          <thead>
+            <tr className="text-muted-foreground">
+              <th className="text-left py-1">Mätvärde</th>
+              <th className="text-right py-1">Värde</th>
+              <th className="text-right py-1">OK-range</th>
+              <th className="w-5" />
+            </tr>
+          </thead>
+          <tbody>
+            {pipelineKeys.map(key => {
+              const val = pipeline[key] ?? 0;
+              const range = ranges[key];
+              const status = diagStatus(val, range);
+              const display = val < 1 ? val.toFixed(4) : val < 100 ? val.toFixed(1) : String(val);
+              return (
+                <tr key={key} className="border-t border-border/30">
+                  <td className="py-1 text-muted-foreground">{DIAG_LABELS[key] ?? key}</td>
+                  <td className="text-right font-semibold">{display}</td>
+                  <td className="text-right text-muted-foreground">{range.ok[0]}–{range.ok[1]}</td>
+                  <td className="text-center"><div className={`w-2 h-2 rounded-full inline-block ${DIAG_STATUS_COLORS[status]}`} title={range.warn} /></td>
+                </tr>
+              );
+            })}
+            {/* BLE metrics from bleStats */}
+            <tr className="border-t border-border/30">
+              <td className="py-1 text-muted-foreground">BLE Latens ms</td>
+              <td className="text-right font-semibold">{bleWriteLatMs.toFixed(1)}</td>
+              <td className="text-right text-muted-foreground">0–15</td>
+              <td className="text-center"><div className={`w-2 h-2 rounded-full inline-block ${DIAG_STATUS_COLORS[diagStatus(bleWriteLatMs, ranges.bleWriteLatMs ?? { ok: [0, 15], warn: '' })]}`} /></td>
+            </tr>
+            <tr className="border-t border-border/30">
+              <td className="py-1 text-muted-foreground">BLE Skip Busy</td>
+              <td className="text-right font-semibold">{bleSkipBusy}</td>
+              <td className="text-right text-muted-foreground">0–50</td>
+              <td className="text-center"><div className={`w-2 h-2 rounded-full inline-block ${DIAG_STATUS_COLORS[diagStatus(bleSkipBusy, ranges.bleSkipBusy ?? { ok: [0, 50], warn: '' })]}`} /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Color preview */}
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-full border border-border/50" style={{ backgroundColor: `rgb(${pipeline.finalR ?? 0},${pipeline.finalG ?? 0},${pipeline.finalB ?? 0})` }} />
+        <span className="text-[10px] text-muted-foreground font-mono">
+          rgb({pipeline.finalR},{pipeline.finalG},{pipeline.finalB}) @ {pipeline.brightnessPct}%
+        </span>
+      </div>
+
+      {/* Calibration snapshot */}
+      <details className="text-[10px]">
+        <summary className="text-muted-foreground cursor-pointer">Kalibrering</summary>
+        <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-muted-foreground">
+          {Object.entries(calibration).map(([k, v]) => (
+            <div key={k} className="flex justify-between">
+              <span>{k}</span>
+              <span className="font-semibold text-foreground">{typeof v === 'boolean' ? (v ? 'Ja' : 'Nej') : String(v)}</span>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 export default function PiMobile() {
   const [view, setView] = useState<"home" | "profile" | "global">("home");
   const [activePreset, setActivePreset] = useState<string>("Normal");
@@ -627,6 +768,7 @@ export default function PiMobile() {
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
+  const [showDiag, setShowDiag] = useState(false);
   
   const [saved, setSaved] = useState(false);
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
@@ -938,7 +1080,7 @@ export default function PiMobile() {
           </div>
         )}
 
-        {/* Scan button — always visible so user can re-scan or find first device */}
+        {/* Scan button */}
         <button
           onClick={async () => {
             setBleScanning(true);
@@ -1015,6 +1157,22 @@ export default function PiMobile() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* Diagnostics toggle + panel */}
+      <section className="mb-8">
+        <button
+          onClick={() => setShowDiag(d => !d)}
+          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <Activity size={16} />
+          {showDiag ? 'Dölj diagnostik' : 'Visa diagnostik'}
+        </button>
+        {showDiag && (
+          <div className="mt-3 bg-secondary/50 rounded-xl p-3">
+            <DiagnosticsPanel piBase={piBase} />
           </div>
         )}
       </section>
