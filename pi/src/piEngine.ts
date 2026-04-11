@@ -110,6 +110,7 @@ function normalizeBand(value: number, state: AgcState, band: 'bass' | 'midHi'): 
 interface TickConstants {
   attackAlpha: number;
   releaseAlpha: number;
+  bandReleaseAlpha: number;
   onsetDecay: number;
   onsetRiseAlpha: number;
   agcDecayNormal: number;
@@ -138,6 +139,7 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
+    bandReleaseAlpha: 1 - Math.pow(1 - Math.min(1, cal.releaseAlpha * 4), ratio),
     onsetDecay: Math.pow(0.10, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.15, ratio),
     agcDecayNormal: Math.pow(AGC_MAX_DECAY_PER_SEC, secRatio),
@@ -564,9 +566,9 @@ export class PiLightEngine {
       const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
       // ── Per-band smoothing (precomputed alphas) ──
-      const bassAlpha = rawBassNorm > this.smoothedBass ? tc.attackAlpha : tc.releaseAlpha;
+      const bassAlpha = rawBassNorm > this.smoothedBass ? tc.attackAlpha : tc.bandReleaseAlpha;
       this.smoothedBass += bassAlpha * (rawBassNorm - this.smoothedBass);
-      const midHiAlpha = rawMidHiNorm > this.smoothedMidHi ? tc.attackAlpha : tc.releaseAlpha;
+      const midHiAlpha = rawMidHiNorm > this.smoothedMidHi ? tc.attackAlpha : tc.bandReleaseAlpha;
       this.smoothedMidHi += midHiAlpha * (rawMidHiNorm - this.smoothedMidHi);
 
       // ── Onset detection (precomputed constants) ──
