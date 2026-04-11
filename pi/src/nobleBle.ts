@@ -490,6 +490,13 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   lastWriteTime = performance.now();
   startKeepAlive();
 
+  // Auto-update saved name if it was missing (backfill for older configs)
+  if (savedDeviceId === peripheral.id && (!savedDeviceName || savedDeviceName === peripheral.id)) {
+    savedDeviceName = name;
+    setItem('ble-device-name', name);
+    console.log(`[BLE] Backfilled saved name: ${name}`);
+  }
+
   // Auto-reconnect on disconnect (only if demand is active)
   peripheral.once('disconnect', (reason: any) => {
     const uptime = Math.round((performance.now() - connectTime) / 1000);
