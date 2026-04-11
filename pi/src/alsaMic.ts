@@ -117,12 +117,14 @@ function processFFT(): void {
   latestBands.totalRms = Math.sqrt(totalSum / BIN_COUNT);
   latestBands.flux = flux;
 
-  // Debug logging every ~2 seconds
-  debugTickCount++;
-  if (debugTickCount >= DEBUG_INTERVAL) {
-    console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
-    debugTickCount = 0;
-    debugPeakRaw = 0;
+  // Debug logging every ~2 seconds (only when DEBUG=true)
+  if (DEBUG_ENABLED) {
+    debugTickCount++;
+    if (debugTickCount >= DEBUG_INTERVAL) {
+      console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
+      debugTickCount = 0;
+      debugPeakRaw = 0;
+    }
   }
 
   // Fire event immediately — engine can process with zero latency
