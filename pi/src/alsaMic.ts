@@ -164,8 +164,12 @@ export function setMicGain(gain: number): void {
  *  At lower volumes, gain increases proportionally. */
 const AUTO_GAIN_REF_VOL = 40;  // At volume 40, auto multiplier = 1.0
 const AUTO_GAIN_MAX = 8.0;     // Cap auto multiplier
+let autoGainEnabled = true;
+
+export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
 
 export function setAutoGainFromVolume(sonosVolume: number): void {
+  if (!autoGainEnabled) return; // Skip when disabled
   if (sonosVolume <= 0) { micGainAuto = AUTO_GAIN_MAX; updateEffectiveGain(); return; }
   micGainAuto = Math.min(AUTO_GAIN_MAX, Math.max(0.5, AUTO_GAIN_REF_VOL / sonosVolume));
   updateEffectiveGain();
@@ -173,9 +177,15 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
 }
 
 export function disableAutoGain(): void {
+  autoGainEnabled = false;
   micGainAuto = 1.0;
   updateEffectiveGain();
   console.log(`[ALSA] Auto-gain disabled (effective: ${micGain.toFixed(1)}x)`);
+}
+
+export function enableAutoGain(): void {
+  autoGainEnabled = true;
+  console.log(`[ALSA] Auto-gain enabled`);
 }
 
 export function getAlsaDevice(): string {
