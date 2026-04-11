@@ -477,10 +477,10 @@ async function connectPeripheral(peripheral: any): Promise<void> {
   console.log(`[BLE] ${name} ready`);
 }
 
-/** Reconnect with exponential backoff, then fall back to fresh scan */
+/** Reconnect with exponential backoff, then fall back to fresh scan with retries */
 async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0): Promise<void> {
   const maxDirectAttempts = 3;
-  const baseDelay = 300; // fast first retry
+  const baseDelay = 200; // fast first retry
 
   if (device || !_demandConnect) return;
 
@@ -500,11 +500,21 @@ async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0):
     }
   }
 
-  // Phase 2: fresh scan
-  if (!_demandConnect) return;
-  try {
-    await autoConnectSaved(10000);
-  } catch {}
+  // Phase 2: fresh scan with retries (don't wait for 15s background loop)
+  const scanRetries = 3;
+  for (let i = 0; i < scanRetries; i++) {
+    if (device || !_demandConnect) return;
+    try {
+      await autoConnectSaved(10000);
+      if (device) return;
+    } catch {}
+    if (i < scanRetries - 1) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  if (!device) {
+    console.warn(`[BLE] ${name} — all reconnect attempts failed, background loop will retry`);
+  }
 }
 
 /** Raw color write — bypasses dedup and brightness scaling. For test tools only. */
