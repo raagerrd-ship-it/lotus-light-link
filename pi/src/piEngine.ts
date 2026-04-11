@@ -34,12 +34,24 @@ interface AgcState {
   bassMax: number; bassMin: number;
   midHiMax: number; midHiMin: number;
   quietTicks: number;
+  bassQuietTicks: number;
+  midHiQuietTicks: number;
 }
 
 type AgcVolumeTable = Record<number, number>;
 
 function createAgcState(initialMax = 0.01): AgcState {
-  return { max: Math.max(initialMax, 0.01), min: 0, bassMax: 0.01, bassMin: 0, midHiMax: 0.01, midHiMin: 0, quietTicks: 0 };
+  return {
+    max: Math.max(initialMax, 0.01),
+    min: 0,
+    bassMax: 0.01,
+    bassMin: 0,
+    midHiMax: 0.01,
+    midHiMin: 0,
+    quietTicks: 0,
+    bassQuietTicks: 0,
+    midHiQuietTicks: 0,
+  };
 }
 
 function volumeToBucket(volume: number | undefined): number {
@@ -71,10 +83,18 @@ function updateRunningMaxFast(state: AgcState, smoothed: number, bassRms: number
   if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
   const decay = state.quietTicks >= tc.quietFastTicks ? tc.agcDecayFast
     : state.quietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
+  const bassQuiet = bassRms < state.bassMax * QUIET_THRESHOLD_RATIO;
+  if (bassQuiet) state.bassQuietTicks++; else state.bassQuietTicks = 0;
+  const bassDecay = state.bassQuietTicks >= tc.quietFastTicks ? tc.agcDecayFast
+    : state.bassQuietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
+  const midHiQuiet = midHiRms < state.midHiMax * QUIET_THRESHOLD_RATIO;
+  if (midHiQuiet) state.midHiQuietTicks++; else state.midHiQuietTicks = 0;
+  const midHiDecay = state.midHiQuietTicks >= tc.quietFastTicks ? tc.agcDecayFast
+    : state.midHiQuietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
   if (smoothed > state.max) state.max = smoothed; else state.max = Math.max(AGC_FLOOR, state.max * decay);
-  if (bassRms > state.bassMax) state.bassMax = bassRms; else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * decay);
+  if (bassRms > state.bassMax) state.bassMax = bassRms; else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * bassDecay);
   if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
-  if (midHiRms > state.midHiMax) state.midHiMax = midHiRms; else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * decay);
+  if (midHiRms > state.midHiMax) state.midHiMax = midHiRms; else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * midHiDecay);
   if (midHiRms < state.midHiMin || state.midHiMin === 0) state.midHiMin = midHiRms;
 }
 
