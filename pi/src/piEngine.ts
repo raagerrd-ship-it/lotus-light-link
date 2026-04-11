@@ -477,60 +477,36 @@ export class PiLightEngine {
       const tc = this.tc;
       const bands = getLatestBands();
 
-      // ── Smoothing (precomputed alphas) ──
-      const atkAlpha = bands.totalRms > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
-      this.smoothed += atkAlpha * (bands.totalRms - this.smoothed);
-
-      // ── Volume bucket & AGC ──
-      const bucket = volumeToBucket(this.volume);
-      if (bucket !== this.lastBucket) {
-        const floor = getFloorForVolume(this.volumeTable, bucket);
-        if (floor > this.agc.max) this.agc.max = floor;
-        this.lastBucket = bucket;
-      }
-      updateRunningMaxFast(this.agc, this.smoothed, bands.bassRms, bands.midHiRms, tc);
-      updateVolumeTable(this.volumeTable, bucket, this.smoothed);
-
-      // ── Normalize bands ──
-      const rawBassNorm = cal.agcEnabled !== false ? normalizeBand(bands.bassRms, this.agc, 'bass') : Math.min(1, bands.bassRms * 5);
-      const rawMidHiNorm = cal.agcEnabled !== false ? normalizeBand(bands.midHiRms, this.agc, 'midHi') : Math.min(1, bands.midHiRms * 5);
-      const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
-
-      // ── Per-band smoothing (precomputed alphas) ──
-      if (cal.bandSmoothingEnabled !== false) {
-        const bassAlpha = rawBassNorm > this.smoothedBass ? tc.attackAlpha : tc.bandReleaseAlpha;
-        this.smoothedBass += bassAlpha * (rawBassNorm - this.smoothedBass);
-        const midHiAlpha = rawMidHiNorm > this.smoothedMidHi ? tc.attackAlpha : tc.bandReleaseAlpha;
-        this.smoothedMidHi += midHiAlpha * (rawMidHiNorm - this.smoothedMidHi);
-      } else {
-        this.smoothedBass = rawBassNorm;
-        this.smoothedMidHi = rawMidHiNorm;
+      // ── 1. Simple peak AGC ──
+      if (cal.agcEnabled !== false) {
+        updatePeakAgc(this.agc, bands.totalRms, bands.bassRms, bands.midHiRms, tc);
       }
 
-      // ── Onset detection (precomputed constants) ──
-      this.processOnset(bands.flux);
-      const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
+      // ── 2. Normalize via peak ──
+      const peakMax = this.agc.peakMax;
+      const bassNorm = cal.agcEnabled !== false ? normalizeSimple(bands.bassRms, peakMax) : Math.min(1, bands.bassRms * 5);
+      const midHiNorm = cal.agcEnabled !== false ? normalizeSimple(bands.midHiRms, peakMax) : Math.min(1, bands.midHiRms * 5);
+      const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
 
-      // ── Brightness ──
-      let energyNorm = this.smoothedBass * cal.bassWeight + this.smoothedMidHi * (1 - cal.bassWeight);
-      energyNorm = energyNorm + fluxBoost;
-      if (energyNorm > 1) energyNorm = 1;
+      // ── 3. Bas/Disk mix ──
+      let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
+      // ── 4. Smoothing / fade (Mjukhet) ──
       const sm = (cal.smoothingEnabled !== false) ? (cal.smoothing ?? 0) : 0;
-      if (sm > 0 && cal.smoothingEnabled !== false) {
+      if (sm > 0) {
         const pctPre = energyNorm * 100;
-        const extraSmoothStep = pctPre > this.extraSmoothPct
+        const step = pctPre > this.extraSmoothPct
           ? (1 - tc.extraSmoothAlpha)
-          : Math.max(1 - tc.extraSmoothAlpha, tc.bandReleaseAlpha);
-        this.extraSmoothPct += extraSmoothStep * (pctPre - this.extraSmoothPct);
+          : Math.max(1 - tc.extraSmoothAlpha, tc.releaseAlpha);
+        this.extraSmoothPct += step * (pctPre - this.extraSmoothPct);
         energyNorm = this.extraSmoothPct / 100;
         if (energyNorm > 1) energyNorm = 1;
         if (energyNorm < 0) energyNorm = 0;
       }
 
-      const preDynamics = energyNorm; // capture before expansion
+      const preDynamics = energyNorm;
 
-      // Adaptive dynamic center — tracks the signal's midpoint for symmetric expansion
+      // ── 5. Dynamics expansion ──
       if (cal.dynamicsEnabled !== false) {
         this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
         if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
@@ -538,11 +514,17 @@ export class PiLightEngine {
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
 
+      // ── 6. Transient boost ──
+      this.processOnset(bands.flux);
+      const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
+      energyNorm = energyNorm + fluxBoost;
+      if (energyNorm > 1) energyNorm = 1;
+
+      // ── 7. Floor + Perceptual curve ──
       const floor = cal.brightnessFloor ?? 0;
       let pct = energyNorm * 100;
       if (pct < floor) pct = floor;
 
-      // Perceptual curve (use BLE brightness LUT gamma value — no Math.pow)
       if (cal.perceptualCurve && pct > floor && pct < 100) {
         const norm = (pct - floor) / (100 - floor);
         pct = floor + (norm > 0.0001 ? Math.exp(tc.dimmingGamma * Math.log(norm)) : 0) * (100 - floor);
@@ -553,7 +535,7 @@ export class PiLightEngine {
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
 
-      // ── Palette mode (precomputed speed) ──
+      // ── Palette mode ──
       const pm = cal.paletteMode ?? 'off';
       if (pm !== 'off' && this._palette.length > 1) {
         const pLen = this._palette.length;
@@ -567,7 +549,7 @@ export class PiLightEngine {
           this.color = this._palette[this._paletteIndex];
 
         } else if (pm === 'bass') {
-          const isHigh = this.smoothedBass > 0.45;
+          const isHigh = bassNorm > 0.45;
           if (isHigh && !this._bassWasHigh) {
             this._paletteIndex = (this._paletteIndex + 1) % pLen;
           }
@@ -592,7 +574,7 @@ export class PiLightEngine {
         }
       }
 
-      // ── Color calibration (fast path skips gamma when unity) ──
+      // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
 
@@ -600,16 +582,14 @@ export class PiLightEngine {
       if (isPunch) sendToBLE(255, 255, 255, pct);
       else sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], pct);
 
-      // ── Diagnostics snapshot (zero-alloc, fire-and-forget) ──
+      // ── Diagnostics ──
       _diag.rawRms = bands.totalRms;
       _diag.bassRms = bands.bassRms;
       _diag.midHiRms = bands.midHiRms;
-      _diag.agcMax = this.agc.max;
+      _diag.peakMax = this.agc.peakMax;
       _diag.agcQuietTicks = this.agc.quietTicks;
-      _diag.bassNorm = rawBassNorm;
-      _diag.midHiNorm = rawMidHiNorm;
-      _diag.bassMax = this.agc.bassMax;
-      _diag.midHiMax = this.agc.midHiMax;
+      _diag.bassNorm = bassNorm;
+      _diag.midHiNorm = midHiNorm;
       _diag.preDynamics = preDynamics;
       _diag.energyNorm = energyNorm;
       _diag.dynamicCenter = this.dynamicCenter;
@@ -622,7 +602,7 @@ export class PiLightEngine {
       _diag.tickCount++;
       _diag.lastTickUs = ((performance.now() - _tickStart) * 1000 + 0.5) | 0;
 
-      // ── Emit (reuse static TickData) ──
+      // ── Emit ──
       const td = _tickData;
       td.brightness = pct;
       td.color[0] = _finalColor[0]; td.color[1] = _finalColor[1]; td.color[2] = _finalColor[2];
