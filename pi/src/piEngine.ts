@@ -466,6 +466,7 @@ export class PiLightEngine {
   stop(): void {
     this._running = false;
     this.stopLoop();
+    this.stopIdleHeartbeat();
     onFFTReady(null); // unregister callback
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
