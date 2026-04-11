@@ -8,7 +8,7 @@
  */
 
 import record from 'node-record-lpcm16';
-import { fft512, FFT_N } from './fftRadix2.js';
+import { fft1024, FFT_N } from './fftRadix2.js';
 
 export interface BandResult {
   bassRms: number;
@@ -18,7 +18,7 @@ export interface BandResult {
 }
 
 const SAMPLE_RATE = 44100;
-const FFT_SIZE = FFT_N; // 512
+const FFT_SIZE = FFT_N; // 1024
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 
@@ -90,7 +90,7 @@ function processFFT(): void {
     windowedBuf[i] = ringBuf[(ringPos + i) % FFT_SIZE] * hannWindow[i];
   }
 
-  const [fftRe, fftIm] = fft512(windowedBuf);
+  const [fftRe, fftIm] = fft1024(windowedBuf);
 
   // Power spectrum + band sums in single pass (precomputed constants, no counters)
   let loSum = 0, midSum = 0, hiSum = 0;
