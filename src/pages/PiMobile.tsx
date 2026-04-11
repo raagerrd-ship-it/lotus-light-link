@@ -1028,9 +1028,25 @@ export default function PiMobile() {
         </div>
       </section>
 
-      {/* BLE Device */}
+      {/* Diagnostics toggle + panel */}
       <section className="mb-8">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">BLE-enhet</h2>
+        <button
+          onClick={() => setShowDiag(d => !d)}
+          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <Activity size={16} />
+          {showDiag ? 'Dölj diagnostik' : 'Visa diagnostik'}
+        </button>
+        {showDiag && (
+          <div className="mt-3 bg-secondary/50 rounded-xl p-3">
+            <DiagnosticsPanel piBase={piBase} />
+          </div>
+        )}
+      </section>
+
+    </div>
+  );
+}
 
         {/* Saved/paired device card */}
         {(bleSavedId || bleConnectedId) && !blePreview ? (
