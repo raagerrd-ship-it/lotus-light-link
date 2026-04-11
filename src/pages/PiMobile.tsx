@@ -638,6 +638,8 @@ export default function PiMobile() {
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
+  const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
+  const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Derive Pi base URL from current page (frontend proxies /api/* → engine)
@@ -754,19 +756,22 @@ export default function PiMobile() {
         if (!r.ok || cancelled) return;
         const data = await r.json();
         if (cancelled) return;
+        setPiOnline(true);
+        setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
         const track = data.sonos?.trackName ?? null;
         setLiveTrack(track);
         setLiveBleCount(data.ble?.connected ?? null);
         setBleConnectedId(data.ble?.connectedDeviceId ?? null);
         setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
-        // Only update palette when track changes (or first load)
         if (track && track !== lastTrackRef.current) {
           lastTrackRef.current = track;
           const palette = data.engine?.palette ?? [];
           setLivePalette(palette);
         }
-      } catch {}
+      } catch {
+        if (!cancelled) setPiOnline(false);
+      }
     };
     poll();
     const id = setInterval(poll, 5000);
@@ -983,6 +988,18 @@ export default function PiMobile() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+      </section>
+      {/* Version / Status */}
+      <section className="mt-4 mb-8 text-center text-[10px] text-muted-foreground space-y-1">
+        <div className="flex items-center justify-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
+          <span>{piOnline === true ? 'Pi online' : piOnline === false ? 'Pi offline' : 'Ansluter…'}</span>
+        </div>
+        {piVersion && (
+          <div className="font-mono">
+            v{piVersion.version} · {piVersion.commitShort} · {piVersion.branch}
           </div>
         )}
       </section>
