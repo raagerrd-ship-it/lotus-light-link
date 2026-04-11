@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
-import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled } from './alsaMic.js';
+import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
@@ -233,6 +233,36 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
      } else {
        res.status(400).json({ error: 'enabled must be boolean' });
      }
+   });
+
+   // --- Gain calibration (two-point) ---
+   // Load saved calibration at startup
+   try {
+     const saved = getItem('gain-cal-points');
+     if (saved) {
+       const { point1, point2 } = JSON.parse(saved);
+       setGainCalPoints(point1 ?? null, point2 ?? null);
+     }
+   } catch {}
+
+   app.get('/api/gain-calibration', (_req, res) => {
+     const { point1, point2 } = getGainCalPoints();
+     res.json({ point1, point2 });
+   });
+
+   app.put('/api/gain-calibration', (req, res) => {
+     const { point1, point2 } = req.body;
+     setGainCalPoints(point1 ?? null, point2 ?? null);
+     setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
+     // Auto-enable auto-gain when calibration is set
+     if (point1 && point2) enableAutoGain();
+     res.json({ ok: true, ...getGainCalPoints() });
+   });
+
+   app.delete('/api/gain-calibration', (_req, res) => {
+     setGainCalPoints(null, null);
+     setItem('gain-cal-points', JSON.stringify({ point1: null, point2: null }));
+     res.json({ ok: true });
    });
 
    // --- Dimming gamma ---

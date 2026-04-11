@@ -159,21 +159,51 @@ export function setMicGain(gain: number): void {
   console.log(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x)`);
 }
 
-/** Auto-gain: adjusts multiplier based on Sonos volume.
- *  Reference volume (refVol) = volume where multiplier is 1.0.
- *  At lower volumes, gain increases proportionally. */
-const AUTO_GAIN_REF_VOL = 40;  // At volume 40, auto multiplier = 1.0
-const AUTO_GAIN_MAX = 8.0;     // Cap auto multiplier
+/** Two-point gain calibration.
+ *  Two reference points: (vol1, gain1) and (vol2, gain2).
+ *  Auto-gain interpolates/extrapolates in log space between them. */
+export interface GainCalPoint { vol: number; gain: number; }
+
+let calPoint1: GainCalPoint | null = null;  // low volume point
+let calPoint2: GainCalPoint | null = null;  // high volume point
+const AUTO_GAIN_MAX = 12.0;
+const AUTO_GAIN_MIN = 0.3;
 let autoGainEnabled = true;
 
 export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
+export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainCalPoint | null } {
+  return { point1: calPoint1, point2: calPoint2 };
+}
+
+export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | null): void {
+  calPoint1 = p1;
+  calPoint2 = p2;
+  if (p1 && p2) {
+    console.log(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
+  }
+}
+
+function interpolateGain(sonosVolume: number): number {
+  if (!calPoint1 || !calPoint2) {
+    // Fallback: simple ratio with reference vol 40
+    return Math.min(AUTO_GAIN_MAX, Math.max(AUTO_GAIN_MIN, 40 / sonosVolume));
+  }
+  // Log-linear interpolation between the two calibrated points
+  const v1 = calPoint1.vol, g1 = calPoint1.gain;
+  const v2 = calPoint2.vol, g2 = calPoint2.gain;
+  if (v1 === v2) return g1; // degenerate
+  const logG1 = Math.log(g1), logG2 = Math.log(g2);
+  const t = (sonosVolume - v1) / (v2 - v1);
+  const logG = logG1 + t * (logG2 - logG1);
+  return Math.min(AUTO_GAIN_MAX, Math.max(AUTO_GAIN_MIN, Math.exp(logG)));
+}
 
 export function setAutoGainFromVolume(sonosVolume: number): void {
-  if (!autoGainEnabled) return; // Skip when disabled
+  if (!autoGainEnabled) return;
   if (sonosVolume <= 0) { micGainAuto = AUTO_GAIN_MAX; updateEffectiveGain(); return; }
-  micGainAuto = Math.min(AUTO_GAIN_MAX, Math.max(0.5, AUTO_GAIN_REF_VOL / sonosVolume));
+  micGainAuto = interpolateGain(sonosVolume);
   updateEffectiveGain();
-  console.log(`[ALSA] Auto-gain: vol=${sonosVolume} → multiplier=${micGainAuto.toFixed(1)}x (effective: ${micGain.toFixed(1)}x)`);
+  console.log(`[ALSA] Auto-gain: vol=${sonosVolume} → multiplier=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
 }
 
 export function disableAutoGain(): void {
