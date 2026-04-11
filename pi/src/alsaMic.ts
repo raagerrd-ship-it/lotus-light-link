@@ -22,13 +22,11 @@ const FFT_SIZE = FFT_N; // 512
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 
-// Pre-computed Blackman window
-const blackmanWindow = new Float64Array(FFT_SIZE);
+// Pre-computed Hann window (~6% more energy than Blackman, minimal spectral leakage)
+const hannWindow = new Float64Array(FFT_SIZE);
 {
-  const a0 = 0.42, a1 = 0.5, a2 = 0.08;
   for (let i = 0; i < FFT_SIZE; i++) {
-    blackmanWindow[i] = a0 - a1 * Math.cos(2 * Math.PI * i / (FFT_SIZE - 1))
-                            + a2 * Math.cos(4 * Math.PI * i / (FFT_SIZE - 1));
+    hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
   }
 }
 
@@ -66,8 +64,7 @@ const DEBUG_INTERVAL = 690; // ~2 seconds at 44100/128 ≈ 345 frames/sec
 let debugTickCount = 0;
 let debugPeakRaw = 0;
 
-const hsGain = Math.pow(10, 6 / 20);
-const HS_ALPHA = 0.15;
+const hsGain = Math.pow(10, 9 / 20);  // +9dB hi-shelf for INMP441 at ~1m distance
 
 // ── Event-driven FFT callback ──
 type FFTReadyCallback = (bands: BandResult) => void;
@@ -87,9 +84,9 @@ function applyHighShelfSample(sample: number): number {
 }
 
 function processFFT(): void {
-  // Copy ring buffer in order, apply Blackman window
+  // Copy ring buffer in order, apply Hann window
   for (let i = 0; i < FFT_SIZE; i++) {
-    windowedBuf[i] = ringBuf[(ringPos + i) % FFT_SIZE] * blackmanWindow[i];
+    windowedBuf[i] = ringBuf[(ringPos + i) % FFT_SIZE] * hannWindow[i];
   }
 
   const [fftRe, fftIm] = fft512(windowedBuf);
@@ -211,8 +208,8 @@ export function startMic(): void {
     for (let i = 0; i < samples; i++) {
       const s16 = buf.readInt16LE(i * 2);
       let raw = (s16 / 32768) * micGain;
-      // Soft-clip to prevent harsh distortion at high gain
-      if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
+      // Tanh soft-clip — preserves dynamics instead of hard clipping
+      if (raw > 0.5 || raw < -0.5) raw = Math.tanh(raw);
       if (DEBUG_ENABLED) {
         const abs = raw < 0 ? -raw : raw;
         if (abs > debugPeakRaw) debugPeakRaw = abs;
