@@ -784,7 +784,7 @@ function GlobalSettingsView({
         <p className="text-[10px] text-muted-foreground mt-0.5">Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.</p>
 
         {/* Auto-gain toggle */}
-        <AutoGainToggle piBase={piBase} />
+        <GainCalibrationPanel piBase={piBase} />
       </section>
 
       <section className="mb-8">
