@@ -137,7 +137,7 @@ export function resetLastSent(): void {
   lastWriteTime = 0;
 }
 
-/** Ultra-fast single-device BLE write */
+/** Ultra-fast single-device BLE write with failure detection */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number): Promise<void> {
   if (!device) return;
 
@@ -147,7 +147,16 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  if (writeInFlight) { bleStats.skipBusyCount++; return; }
+  // Timeout guard: if writeInFlight has been stuck for too long, force-release it
+  if (writeInFlight) {
+    if (lastWriteTime > 0 && (performance.now() - lastWriteTime) > WRITE_TIMEOUT_MS) {
+      console.warn('[BLE] Write timeout — forcing writeInFlight release');
+      writeInFlight = false;
+    } else {
+      bleStats.skipBusyCount++;
+      return;
+    }
+  }
   if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
     return;
@@ -167,6 +176,10 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
 
     lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
     bleStats.sentCount++;
+    if (writeFailCount > 0) {
+      console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
+    }
+    writeFailCount = 0;
 
     const elapsed = performance.now() - now;
     bleStats.writeLatMs = Math.round(elapsed * 10) / 10;
@@ -178,8 +191,24 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       bleStats.effectiveIntervalMs = Math.round(now - lastWriteTime);
     }
     lastWriteTime = now;
-  } catch {
-    // fire-and-forget
+  } catch (e: any) {
+    writeFailCount++;
+    bleStats.writeFailCount++;
+    if (writeFailCount === 1 || writeFailCount === WRITE_FAIL_THRESHOLD) {
+      console.warn(`[BLE] Write failed (${writeFailCount}x): ${e.message ?? e}`);
+    }
+    // Proactive reconnect: if writes keep failing, the connection is likely dead
+    if (writeFailCount >= WRITE_FAIL_THRESHOLD && device && _demandConnect) {
+      console.warn('[BLE] Too many write failures — triggering proactive reconnect');
+      const periph = device.peripheral;
+      const name = device.name;
+      stopKeepAlive();
+      device = null;
+      resetLastSent();
+      try { await periph.disconnectAsync(); } catch {}
+      reconnectWithBackoff(periph, name);
+      return;
+    }
   } finally {
     writeInFlight = false;
   }
