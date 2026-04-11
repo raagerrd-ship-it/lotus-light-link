@@ -60,11 +60,12 @@ taskset -c "$CORE" sudo apt-get install -y -qq \
   libasound2-dev alsa-utils \
   curl
 
-# ─── 2. Node.js 20 ───────────────────────────────────────
+# ─── 2. Node.js (LTS) ────────────────────────────────────
 echo "[2/8] Kontrollerar Node.js..."
-if ! command -v node &>/dev/null || [[ $(node -v | cut -d. -f1 | tr -d v) -lt 20 ]]; then
-  echo "  Installerar Node.js 20..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | taskset -c "$CORE" sudo -E bash -
+NODE_MAJOR=$(node -v 2>/dev/null | cut -d. -f1 | tr -d v || echo 0)
+if ! command -v node &>/dev/null || [ "$NODE_MAJOR" -lt 20 ]; then
+  echo "  Installerar Node.js 22 LTS..."
+  curl -fsSL https://deb.nodesource.com/setup_22.x | taskset -c "$CORE" sudo -E bash -
   taskset -c "$CORE" sudo apt-get install -y -qq nodejs
 else
   echo "  ✓ Node.js $(node -v) ($(uname -m))"
