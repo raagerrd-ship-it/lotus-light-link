@@ -127,7 +127,7 @@ function confirmedApply(next: SonosState): void {
   const candidateState = next.playbackState;
   const currentPlayback = currentState.playbackState;
 
-  // Boot phase: first real status → apply immediately (no waiting for confirmation)
+  // Boot phase: first real status → apply immediately
   if (bootPhase) {
     bootPhase = false;
     pendingState = null;
@@ -139,7 +139,7 @@ function confirmedApply(next: SonosState): void {
     return;
   }
 
-  // Same direction as current → apply immediately (no flip)
+  // Same direction as current → apply immediately
   if (candidateState === currentPlayback) {
     pendingState = null;
     pendingCount = 0;
@@ -147,7 +147,16 @@ function confirmedApply(next: SonosState): void {
     return;
   }
 
-  // Different state → accumulate confirmation
+  // PLAYING → apply immediately (no confirmation needed — idle heartbeat keeps lamp safe)
+  if (isPlaying(candidateState)) {
+    console.log(`[Sonos] ${currentPlayback} → ${candidateState} (immediate)`);
+    pendingState = null;
+    pendingCount = 0;
+    apply(next);
+    return;
+  }
+
+  // PAUSED/IDLE → require confirmation to avoid flicker
   if (candidateState === pendingState) {
     pendingCount++;
   } else {
@@ -156,13 +165,12 @@ function confirmedApply(next: SonosState): void {
   }
 
   if (pendingCount >= CONFIRM_COUNT) {
-    // Confirmed! Flip state
     console.log(`[Sonos] State confirmed: ${currentPlayback} → ${candidateState} (after ${pendingCount} polls)`);
     pendingState = null;
     pendingCount = 0;
     apply(next);
   } else {
-    // Not yet confirmed — apply metadata/volume updates but keep current playbackState
+    // Not yet confirmed — apply metadata/volume but keep current playbackState
     apply({ ...next, playbackState: currentPlayback });
   }
 }
