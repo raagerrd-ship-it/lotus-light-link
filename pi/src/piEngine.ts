@@ -20,7 +20,7 @@ import { getItem, setItem } from './storage.js';
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
 // --- AGC ---
-const AGC_FLOOR = 0.002;
+const AGC_FLOOR = 0.0001;
 const AGC_MAX_DECAY_PER_SEC = 0.99840;
 const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410;
 const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;
