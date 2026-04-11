@@ -202,13 +202,10 @@ export interface DiagSnapshot {
   rawRms: number;
   bassRms: number;
   midHiRms: number;
-  agcMax: number;
+  peakMax: number;       // simple AGC peak tracker
   agcQuietTicks: number;
-  // NEW: intermediate pipeline values for debugging
   bassNorm: number;      // after AGC normalization (0-1)
   midHiNorm: number;     // after AGC normalization (0-1)
-  bassMax: number;       // AGC bass tracker
-  midHiMax: number;      // AGC midHi tracker
   preDynamics: number;   // energyNorm BEFORE dynamics expansion
   energyNorm: number;    // after dynamics
   dynamicCenter: number;
@@ -222,8 +219,8 @@ export interface DiagSnapshot {
 
 const _diag: DiagSnapshot = {
   rawRms: 0, bassRms: 0, midHiRms: 0,
-  agcMax: 0, agcQuietTicks: 0,
-  bassNorm: 0, midHiNorm: 0, bassMax: 0, midHiMax: 0,
+  peakMax: 0, agcQuietTicks: 0,
+  bassNorm: 0, midHiNorm: 0,
   preDynamics: 0, energyNorm: 0, dynamicCenter: 0, onsetBoost: 0,
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
