@@ -1028,25 +1028,9 @@ export default function PiMobile() {
         </div>
       </section>
 
-      {/* Diagnostics toggle + panel */}
+      {/* BLE Device */}
       <section className="mb-8">
-        <button
-          onClick={() => setShowDiag(d => !d)}
-          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          <Activity size={16} />
-          {showDiag ? 'Dölj diagnostik' : 'Visa diagnostik'}
-        </button>
-        {showDiag && (
-          <div className="mt-3 bg-secondary/50 rounded-xl p-3">
-            <DiagnosticsPanel piBase={piBase} />
-          </div>
-        )}
-      </section>
-
-    </div>
-  );
-}
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">BLE-enhet</h2>
 
         {/* Saved/paired device card */}
         {(bleSavedId || bleConnectedId) && !blePreview ? (
@@ -1096,7 +1080,7 @@ export default function PiMobile() {
           </div>
         )}
 
-        {/* Scan button — always visible so user can re-scan or find first device */}
+        {/* Scan button */}
         <button
           onClick={async () => {
             setBleScanning(true);
@@ -1173,6 +1157,22 @@ export default function PiMobile() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* Diagnostics toggle + panel */}
+      <section className="mb-8">
+        <button
+          onClick={() => setShowDiag(d => !d)}
+          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <Activity size={16} />
+          {showDiag ? 'Dölj diagnostik' : 'Visa diagnostik'}
+        </button>
+        {showDiag && (
+          <div className="mt-3 bg-secondary/50 rounded-xl p-3">
+            <DiagnosticsPanel piBase={piBase} />
           </div>
         )}
       </section>
