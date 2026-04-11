@@ -147,7 +147,7 @@ async function main() {
   const statsTimer = setInterval(() => {
     const ble = getConnectedCount();
     console.log(`[Stats] BLE: ${ble} device(s) | Engine: ${engine.getTickMs()}ms tick`);
-  }, 60000);
+  }, 300_000);
 
   // Graceful shutdown
   const shutdown = async () => {
