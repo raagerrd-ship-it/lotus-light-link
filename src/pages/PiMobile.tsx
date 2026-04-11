@@ -631,10 +631,10 @@ export default function PiMobile() {
   const [blePreviewSec, setBlePreviewSec] = useState(0);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  // Derive Pi base URL from current page (same host, port 3001)
+  // Derive Pi base URL from current page (frontend proxies /api/* → engine)
   const piBase = typeof window !== 'undefined'
-    ? `http://${window.location.hostname}:3050`
-    : 'http://localhost:3050';
+    ? window.location.origin
+    : 'http://localhost:3001';
 
   const putJson = (path: string, body: unknown) =>
     fetch(`${piBase}${path}`, {
