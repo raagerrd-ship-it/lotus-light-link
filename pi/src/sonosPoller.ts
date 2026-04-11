@@ -36,6 +36,7 @@ export interface SonosState {
   positionMs: number | null;
   durationMs: number | null;
   isTvMode: boolean;
+  palette: [number, number, number][] | null;
 }
 
 type Listener = (state: SonosState) => void;
@@ -61,6 +62,7 @@ let currentState: SonosState = {
   positionMs: null,
   durationMs: null,
   isTvMode: false,
+  palette: null,
 };
 
 export function getSonosState(): SonosState {
@@ -223,6 +225,12 @@ function parseStatus(s: any): void {
     return;
   }
 
+  // Parse palette from gateway response (array of [r,g,b] tuples)
+  const gwPalette: [number, number, number][] | null =
+    Array.isArray(s.palette) && s.palette.length > 0
+      ? s.palette.filter((c: any) => Array.isArray(c) && c.length >= 3)
+      : null;
+
   confirmedApply({
     trackName: s.trackName ?? null,
     artistName: s.artistName ?? null,
@@ -232,6 +240,7 @@ function parseStatus(s: any): void {
     positionMs: s.positionMillis ?? null,
     durationMs: s.durationMillis ?? null,
     isTvMode: false,
+    palette: gwPalette ?? currentState.palette,
   });
 }
 
