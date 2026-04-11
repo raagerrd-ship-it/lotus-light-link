@@ -180,7 +180,7 @@ interface LightCalibration {
 const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 1.0, releaseAlpha: 0.025, dynamicDamping: 0.5,
+  attackAlpha: 1.0, releaseAlpha: 0.025, dynamicDamping: 0.8,
   bassWeight: 0.7, hiShelfGainDb: 6,
   punchWhiteThreshold: 100,
   smoothing: 0, brightnessFloor: 0,
