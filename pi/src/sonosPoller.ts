@@ -71,6 +71,8 @@ export function getSonosState(): SonosState {
 
 export function onSonosChange(fn: Listener): () => void {
   listeners.add(fn);
+  // Replay current state immediately so late subscribers don't miss boot-time PLAYING
+  fn(currentState);
   return () => listeners.delete(fn);
 }
 
