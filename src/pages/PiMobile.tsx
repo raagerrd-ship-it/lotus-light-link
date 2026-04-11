@@ -638,6 +638,8 @@ export default function PiMobile() {
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
+  const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
+  const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Derive Pi base URL from current page (frontend proxies /api/* → engine)
