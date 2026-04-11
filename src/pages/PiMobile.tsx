@@ -14,13 +14,13 @@ const PALETTE_MODES: { value: PaletteMode; label: string }[] = [
   { value: 'blend', label: 'Blend' },
 ];
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean };
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean; agcEnabled: boolean; bandSmoothingEnabled: boolean; dynamicsEnabled: boolean; smoothingEnabled: boolean };
 
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true },
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true, agcEnabled: true, bandSmoothingEnabled: true, dynamicsEnabled: true, smoothingEnabled: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -458,6 +458,25 @@ function ProfileSettingsView({
 
         {/* Toggles */}
         <div className="space-y-3">
+          {([
+            { key: 'agcEnabled' as const, label: 'AGC', desc: 'Auto Gain Control — normaliserar insignalen' },
+            { key: 'bandSmoothingEnabled' as const, label: 'Band-smoothing', desc: 'Mjukar upp bas/disk separat' },
+            { key: 'dynamicsEnabled' as const, label: 'Dynamik', desc: 'Expanderar/komprimerar signalen' },
+            { key: 'smoothingEnabled' as const, label: 'Extra smoothing', desc: 'Ytterligare utjämning (Mjukhet-slider)' },
+          ]).map(({ key, label, desc }) => (
+            <label key={key} className="flex items-center justify-between">
+              <div>
+                <div className="text-sm">{label}</div>
+                <p className="text-[10px] text-muted-foreground">{desc}</p>
+              </div>
+              <button
+                onClick={() => setCal({ ...cal, [key]: !cal[key] })}
+                className={`w-12 h-7 rounded-full transition-colors relative ${cal[key] ? 'bg-green-500' : 'bg-secondary border border-border'}`}
+              >
+                <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${cal[key] ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
+              </button>
+            </label>
+          ))}
           <label className="flex items-center justify-between">
             <div>
               <div className="text-sm">Perceptuell kurva</div>
@@ -897,6 +916,10 @@ export default function PiMobile() {
           paletteMode: cal.paletteMode,
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
+          agcEnabled: cal.agcEnabled,
+          bandSmoothingEnabled: cal.bandSmoothingEnabled,
+          dynamicsEnabled: cal.dynamicsEnabled,
+          smoothingEnabled: cal.smoothingEnabled,
           hiShelfGainDb: 6,
         }),
         // Tick rate
@@ -959,7 +982,10 @@ export default function PiMobile() {
           paletteMode: c.paletteMode ?? DEFAULT_CAL.paletteMode,
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
-          
+          agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
+          bandSmoothingEnabled: c.bandSmoothingEnabled ?? DEFAULT_CAL.bandSmoothingEnabled,
+          dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
+          smoothingEnabled: c.smoothingEnabled ?? DEFAULT_CAL.smoothingEnabled,
         });
       }
       if (micRes?.device) setAlsaDevice(micRes.device);
