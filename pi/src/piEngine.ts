@@ -64,7 +64,7 @@ interface TickConstants {
   agcDecayFast: number;
   quietFastTicks: number;
   centerAlpha: number;
-  extraSmoothAlpha: number;
+  
   paletteTimedSpeed: number;
   gammaIsUnity: boolean;
   dimmingGamma: number;
@@ -74,13 +74,6 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
 
-  const sm = cal.smoothing ?? 0;
-  let extraSmoothAlpha = 0;
-  if (sm > 0) {
-    const normalized = (sm / 100) * (sm / 100);
-    const alphaRef = Math.exp(-normalized * 4);
-    extraSmoothAlpha = Math.pow(alphaRef, ratio);
-  }
 
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
@@ -91,7 +84,6 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     agcDecayFast: Math.pow(AGC_FAST_DECAY_PER_SEC, secRatio),
     quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
-    extraSmoothAlpha,
     paletteTimedSpeed: Math.max(1, ((cal.paletteRotationSpeed ?? 8) * (125 / tickMs) + 0.5) | 0),
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
     dimmingGamma: getDimmingGamma(),
@@ -133,12 +125,11 @@ interface LightCalibration {
   dynamicDamping: number; bassWeight: number;
   hiShelfGainDb: number;
   punchWhiteThreshold: number;
-  smoothing: number; brightnessFloor: number;
+  brightnessFloor: number;
   transientBoost: boolean;
   perceptualCurve: boolean;
   agcEnabled: boolean;
   dynamicsEnabled: boolean;
-  smoothingEnabled: boolean;
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
   [key: string]: any;
@@ -150,12 +141,11 @@ const DEFAULT_CAL: LightCalibration = {
   attackAlpha: 1.0, releaseAlpha: 0.025, dynamicDamping: 0.8,
   bassWeight: 0.7, hiShelfGainDb: 6,
   punchWhiteThreshold: 100,
-  smoothing: 0, brightnessFloor: 0,
+  brightnessFloor: 0,
   transientBoost: true,
   perceptualCurve: false,
   agcEnabled: true,
   dynamicsEnabled: true,
-  smoothingEnabled: true,
   paletteMode: 'off', paletteRotationSpeed: 8,
 };
 
@@ -260,7 +250,7 @@ export class PiLightEngine {
 
   private smoothed = 0;
   private dynamicCenter = 0.5;
-  private extraSmoothPct = 0;
+  
 
   // Onset detection state — zero-alloc insertion-sort median
   private onsetBuffer: Float64Array;
@@ -500,7 +490,7 @@ export class PiLightEngine {
   private sanitizeState(): void {
     if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
     if (!Number.isFinite(this.dynamicCenter)) this.dynamicCenter = 0.5;
-    if (!Number.isFinite(this.extraSmoothPct)) this.extraSmoothPct = 0;
+    
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
 
@@ -529,18 +519,6 @@ export class PiLightEngine {
       // ── 3. Bas/Disk mix ──
       let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
 
-      // ── 4. Smoothing / fade (Mjukhet) ──
-      const sm = (cal.smoothingEnabled !== false) ? (cal.smoothing ?? 0) : 0;
-      if (sm > 0) {
-        const pctPre = energyNorm * 100;
-        const step = pctPre > this.extraSmoothPct
-          ? (1 - tc.extraSmoothAlpha)
-          : Math.max(1 - tc.extraSmoothAlpha, tc.releaseAlpha);
-        this.extraSmoothPct += step * (pctPre - this.extraSmoothPct);
-        energyNorm = this.extraSmoothPct / 100;
-        if (energyNorm > 1) energyNorm = 1;
-        if (energyNorm < 0) energyNorm = 0;
-      }
 
       const preDynamics = energyNorm;
 
