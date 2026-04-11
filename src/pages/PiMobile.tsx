@@ -1217,9 +1217,9 @@ export default function PiMobile() {
         setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
         setBleSavedName(data.ble?.savedDeviceName ?? null);
-        if (track && track !== lastTrackRef.current) {
-          lastTrackRef.current = track;
-          const palette = data.engine?.palette ?? [];
+        // Always update palette when available (may arrive after track change)
+        const palette = data.engine?.palette ?? [];
+        if (palette.length > 0) {
           setLivePalette(palette);
         }
       } catch {
