@@ -29,7 +29,7 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 20; // default tick rate (ms) — optimized for low-latency pipeline
+const TICK_MS = 10; // default tick rate (ms) — 100 Hz for maximum responsiveness
 
 async function main() {
   // 1. Restore persisted global settings (before banner so we can show effective values)
@@ -47,7 +47,7 @@ async function main() {
   if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
 
   const savedTickMs = getItem('tick-ms');
-  const effectiveTickMs = savedTickMs ? Math.max(20, Math.min(200, Number(savedTickMs))) : TICK_MS;
+  const effectiveTickMs = savedTickMs ? Math.max(10, Math.min(50, Number(savedTickMs))) : TICK_MS;
 
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║   Lotus Light Link — Pi Headless Runtime  ║');

@@ -277,7 +277,7 @@ export class PiLightEngine {
   private _paletteTickCounter = 0;
   private _bassWasHigh = false;
 
-  constructor(tickMs = 30) {
+  constructor(tickMs = 10) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
     this.agc = createAgcState();

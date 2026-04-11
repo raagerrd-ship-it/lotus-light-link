@@ -177,7 +177,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
   // --- Tick rate ---
   app.put('/api/tick-ms', (req, res) => {
     const { tickMs } = req.body;
-    if (typeof tickMs === 'number' && tickMs >= 20 && tickMs <= 200) {
+    if (typeof tickMs === 'number' && tickMs >= 10 && tickMs <= 50) {
       engine.setTickMs(tickMs);
       engine.restartTimer();
       setItem('tick-ms', String(tickMs));
