@@ -126,14 +126,25 @@ else
   exit 1
 fi
 
-cd "$PI_DIR"
-nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
+PI_DIST_READY=false
+if [ -f "$PI_DIR/dist/index.js" ]; then
+  PI_DIST_READY=true
+fi
 
-# ─── 6. Build Pi runtime ─────────────────────────────────
-echo "[6/8] Bygger Pi-backend..."
-nice -n 15 taskset -c "$CORE" npm run build
-nice -n 15 taskset -c "$CORE" npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
-echo "  Bygg klart ✓"
+cd "$PI_DIR"
+
+if [ "$PI_DIST_READY" = true ] && [ -d "$PI_DIR/node_modules" ]; then
+  echo "  Förbyggd Pi-backend hittad — hoppar över npm install/build ✓"
+else
+  echo "  Installerar Pi-beroenden..."
+  nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
+
+  # ─── 6. Build Pi runtime ─────────────────────────────────
+  echo "[6/8] Bygger Pi-backend..."
+  nice -n 15 taskset -c "$CORE" npm run build
+  nice -n 15 taskset -c "$CORE" npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
+  echo "  Bygg klart ✓"
+fi
 
 # ─── 7. BLE permissions & sudoers ─────────────────────────
 echo "[7/8] Sätter BLE-behörigheter och sudoers..."
