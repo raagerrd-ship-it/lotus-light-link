@@ -408,7 +408,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
         rawRms:        { ok: [0.01, 0.5],  warn: '0 = ingen signal' },
         bassRms:       { ok: [0.01, 0.3],  warn: '0 = ingen bas' },
         midHiRms:      { ok: [0.01, 0.2],  warn: '0 = inget diskant' },
-        agcMax:        { ok: [0.02, 1.0],  warn: '<0.02 = tyst rum' },
+        agcMax:        { ok: [0.005, 1.0], warn: '<0.005 = tyst rum' },
         agcQuietTicks: { ok: [0, 50],      warn: '>50 = tyst länge' },
         energyNorm:    { ok: [0.2, 0.8],   warn: '<0.1 = för tyst, >0.95 = clipping' },
         dynamicCenter: { ok: [0.3, 0.7],   warn: 'fast vid 0 eller 1 = problem' },
