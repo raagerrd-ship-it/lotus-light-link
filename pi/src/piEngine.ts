@@ -19,92 +19,38 @@ import { getItem, setItem } from './storage.js';
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
-// --- AGC ---
+// --- Simple Peak AGC ---
 const AGC_FLOOR = 0.0001;
-const AGC_MAX_DECAY_PER_SEC = 0.99840;
-const AGC_QUIET_DECAY_MEDIUM_PER_SEC = 0.98410;
-const AGC_QUIET_DECAY_FAST_PER_SEC = 0.92274;
-const QUIET_THRESHOLD_RATIO = 0.10;
-const QUIET_MS_MEDIUM = 2000;
-const QUIET_MS_FAST = 5000;
-const BUCKET_SIZE = 5;
+const AGC_DECAY_PER_SEC = 0.995;      // slow decay for peak tracker
+const AGC_FAST_DECAY_PER_SEC = 0.95;  // faster decay after prolonged silence
+const QUIET_THRESHOLD = 0.10;
+const QUIET_MS_FAST = 4000;
 
 interface AgcState {
-  max: number; min: number;
-  bassMax: number; bassMin: number;
-  midHiMax: number; midHiMin: number;
+  peakMax: number;       // single running max across all bands
   quietTicks: number;
-  bassQuietTicks: number;
-  midHiQuietTicks: number;
 }
 
-type AgcVolumeTable = Record<number, number>;
-
-function createAgcState(initialMax = 0.01): AgcState {
-  return {
-    max: Math.max(initialMax, 0.01),
-    min: 0,
-    bassMax: 0.01,
-    bassMin: 0,
-    midHiMax: 0.01,
-    midHiMin: 0,
-    quietTicks: 0,
-    bassQuietTicks: 0,
-    midHiQuietTicks: 0,
-  };
+function createAgcState(): AgcState {
+  return { peakMax: 0.01, quietTicks: 0 };
 }
 
-function volumeToBucket(volume: number | undefined): number {
-  if (volume == null || volume <= 0) return 0;
-  return (Math.min(100, volume) / BUCKET_SIZE) | 0;
-}
-
-function updateVolumeTable(table: AgcVolumeTable, bucket: number, value: number): void {
-  if (value > (table[bucket] ?? 0)) table[bucket] = value;
-}
-
-function getFloorForVolume(table: AgcVolumeTable, bucket: number): number {
-  if (table[bucket] != null) return table[bucket];
-  let nearestBucket: number | null = null, nearestDist = Infinity;
-  const keys = Object.keys(table);
-  for (let i = 0, len = keys.length; i < len; i++) {
-    const b = Number(keys[i]), dist = Math.abs(b - bucket);
-    if (dist < nearestDist) { nearestDist = dist; nearestBucket = b; }
+function updatePeakAgc(state: AgcState, totalRms: number, bassRms: number, midHiRms: number, tc: TickConstants): void {
+  // Track highest of all bands
+  const peak = Math.max(totalRms, bassRms, midHiRms);
+  if (peak > state.peakMax) {
+    state.peakMax = peak;
+    state.quietTicks = 0;
+  } else {
+    const isQuiet = totalRms < state.peakMax * QUIET_THRESHOLD;
+    if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
+    const decay = state.quietTicks >= tc.quietFastTicks ? tc.agcDecayFast : tc.agcDecayNormal;
+    state.peakMax = Math.max(AGC_FLOOR, state.peakMax * decay);
   }
-  if (nearestBucket == null) return 0.01;
-  const nearestVol = (nearestBucket * BUCKET_SIZE) || 1;
-  const currentVol = (bucket * BUCKET_SIZE) || 1;
-  return Math.max(AGC_FLOOR, table[nearestBucket] * (currentVol / nearestVol));
 }
 
-/** AGC update using precomputed decay constants — no Math.pow */
-function updateRunningMaxFast(state: AgcState, smoothed: number, bassRms: number, midHiRms: number, tc: TickConstants): void {
-  const isQuiet = smoothed < state.max * QUIET_THRESHOLD_RATIO;
-  if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
-  const decay = state.quietTicks >= tc.quietFastTicks ? tc.agcDecayFast
-    : state.quietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
-  const bassQuiet = bassRms < state.bassMax * QUIET_THRESHOLD_RATIO;
-  if (bassQuiet) state.bassQuietTicks++; else state.bassQuietTicks = 0;
-  const bassDecay = state.bassQuietTicks >= tc.quietFastTicks ? tc.agcDecayFast
-    : state.bassQuietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
-  const midHiQuiet = midHiRms < state.midHiMax * QUIET_THRESHOLD_RATIO;
-  if (midHiQuiet) state.midHiQuietTicks++; else state.midHiQuietTicks = 0;
-  const midHiDecay = state.midHiQuietTicks >= tc.quietFastTicks ? tc.agcDecayFast
-    : state.midHiQuietTicks >= tc.quietMediumTicks ? tc.agcDecayMedium : tc.agcDecayNormal;
-  if (smoothed > state.max) state.max = smoothed; else state.max = Math.max(AGC_FLOOR, state.max * decay);
-  if (bassRms > state.bassMax) state.bassMax = bassRms; else state.bassMax = Math.max(AGC_FLOOR, state.bassMax * bassDecay);
-  if (bassRms < state.bassMin || state.bassMin === 0) state.bassMin = bassRms;
-  else state.bassMin = state.bassMin + (bassRms - state.bassMin) * 0.0005; // slow upward drift
-  if (midHiRms > state.midHiMax) state.midHiMax = midHiRms; else state.midHiMax = Math.max(AGC_FLOOR, state.midHiMax * midHiDecay);
-  if (midHiRms < state.midHiMin || state.midHiMin === 0) state.midHiMin = midHiRms;
-  else state.midHiMin = state.midHiMin + (midHiRms - state.midHiMin) * 0.0005; // slow upward drift
-}
-
-function normalizeBand(value: number, state: AgcState, band: 'bass' | 'midHi'): number {
-  const max = band === 'bass' ? state.bassMax : state.midHiMax;
-  const min = band === 'bass' ? state.bassMin : state.midHiMin;
-  const range = Math.max(AGC_FLOOR, max - min);
-  const n = (value - min) / range;
+function normalizeSimple(value: number, peakMax: number): number {
+  const n = value / peakMax;
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
