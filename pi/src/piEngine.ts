@@ -199,6 +199,10 @@ interface LightCalibration {
   smoothing: number; brightnessFloor: number;
   transientBoost: boolean;
   perceptualCurve: boolean;
+  agcEnabled: boolean;
+  bandSmoothingEnabled: boolean;
+  dynamicsEnabled: boolean;
+  smoothingEnabled: boolean;
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
   agcVolumeTable: AgcVolumeTable;
@@ -214,6 +218,10 @@ const DEFAULT_CAL: LightCalibration = {
   smoothing: 0, brightnessFloor: 0,
   transientBoost: true,
   perceptualCurve: false,
+  agcEnabled: true,
+  bandSmoothingEnabled: true,
+  dynamicsEnabled: true,
+  smoothingEnabled: true,
   paletteMode: 'off', paletteRotationSpeed: 8,
   agcVolumeTable: {},
 };
@@ -567,15 +575,20 @@ export class PiLightEngine {
       updateVolumeTable(this.volumeTable, bucket, this.smoothed);
 
       // ── Normalize bands ──
-      const rawBassNorm = normalizeBand(bands.bassRms, this.agc, 'bass');
-      const rawMidHiNorm = normalizeBand(bands.midHiRms, this.agc, 'midHi');
+      const rawBassNorm = cal.agcEnabled !== false ? normalizeBand(bands.bassRms, this.agc, 'bass') : Math.min(1, bands.bassRms * 20);
+      const rawMidHiNorm = cal.agcEnabled !== false ? normalizeBand(bands.midHiRms, this.agc, 'midHi') : Math.min(1, bands.midHiRms * 20);
       const rawEnergy = rawBassNorm * 0.5 + rawMidHiNorm * 0.5;
 
       // ── Per-band smoothing (precomputed alphas) ──
-      const bassAlpha = rawBassNorm > this.smoothedBass ? tc.attackAlpha : tc.bandReleaseAlpha;
-      this.smoothedBass += bassAlpha * (rawBassNorm - this.smoothedBass);
-      const midHiAlpha = rawMidHiNorm > this.smoothedMidHi ? tc.attackAlpha : tc.bandReleaseAlpha;
-      this.smoothedMidHi += midHiAlpha * (rawMidHiNorm - this.smoothedMidHi);
+      if (cal.bandSmoothingEnabled !== false) {
+        const bassAlpha = rawBassNorm > this.smoothedBass ? tc.attackAlpha : tc.bandReleaseAlpha;
+        this.smoothedBass += bassAlpha * (rawBassNorm - this.smoothedBass);
+        const midHiAlpha = rawMidHiNorm > this.smoothedMidHi ? tc.attackAlpha : tc.bandReleaseAlpha;
+        this.smoothedMidHi += midHiAlpha * (rawMidHiNorm - this.smoothedMidHi);
+      } else {
+        this.smoothedBass = rawBassNorm;
+        this.smoothedMidHi = rawMidHiNorm;
+      }
 
       // ── Onset detection (precomputed constants) ──
       this.processOnset(bands.flux);
@@ -586,11 +599,8 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
-      // Extra smoothing BEFORE dynamics — smooth the signal first, then expand
-      // This prevents expansion from creating extreme swings (0/100) that smoothing
-      // would average back to ~50%, killing all dynamic range.
-      const sm = cal.smoothing ?? 0;
-      if (sm > 0) {
+      const sm = (cal.smoothingEnabled !== false) ? (cal.smoothing ?? 0) : 0;
+      if (sm > 0 && cal.smoothingEnabled !== false) {
         const pctPre = energyNorm * 100;
         const extraSmoothStep = pctPre > this.extraSmoothPct
           ? (1 - tc.extraSmoothAlpha)
@@ -604,10 +614,12 @@ export class PiLightEngine {
       const preDynamics = energyNorm; // capture before expansion
 
       // Adaptive dynamic center — tracks the signal's midpoint for symmetric expansion
-      this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
-      if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
-      if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
-      energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
+      if (cal.dynamicsEnabled !== false) {
+        this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
+        if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
+        if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
+        energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
+      }
 
       const floor = cal.brightnessFloor ?? 0;
       let pct = energyNorm * 100;
