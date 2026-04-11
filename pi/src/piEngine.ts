@@ -580,6 +580,18 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
+      // Extra smoothing BEFORE dynamics — smooth the signal first, then expand
+      // This prevents expansion from creating extreme swings (0/100) that smoothing
+      // would average back to ~50%, killing all dynamic range.
+      const sm = cal.smoothing ?? 0;
+      if (sm > 0) {
+        const pctPre = energyNorm * 100;
+        this.extraSmoothPct += (1 - tc.extraSmoothAlpha) * (pctPre - this.extraSmoothPct);
+        energyNorm = this.extraSmoothPct / 100;
+        if (energyNorm > 1) energyNorm = 1;
+        if (energyNorm < 0) energyNorm = 0;
+      }
+
       const preDynamics = energyNorm; // capture before expansion
 
       // Adaptive dynamic center — tracks the signal's midpoint for symmetric expansion
@@ -595,15 +607,7 @@ export class PiLightEngine {
       // Perceptual curve (use BLE brightness LUT gamma value — no Math.pow)
       if (cal.perceptualCurve && pct > floor && pct < 100) {
         const norm = (pct - floor) / (100 - floor);
-        // Fast exp-log pow: exp(gamma * ln(norm))
         pct = floor + (norm > 0.0001 ? Math.exp(tc.dimmingGamma * Math.log(norm)) : 0) * (100 - floor);
-      }
-
-      // Extra smoothing (precomputed alpha)
-      const sm = cal.smoothing ?? 0;
-      if (sm > 0) {
-        this.extraSmoothPct += (1 - tc.extraSmoothAlpha) * (pct - this.extraSmoothPct);
-        pct = this.extraSmoothPct;
       }
 
       // Fast round + clamp
