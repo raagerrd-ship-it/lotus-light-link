@@ -277,6 +277,10 @@ export class PiLightEngine {
   private _paletteTickCounter = 0;
   private _bassWasHigh = false;
 
+  // Raw mode — disables all processors for gain calibration
+  private _rawMode = false;
+  private _savedCal: Partial<LightCalibration> | null = null;
+
   constructor(tickMs = 10) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
@@ -392,8 +396,44 @@ export class PiLightEngine {
 
   reloadCalibration(): void {
     this.cal = loadCalibration();
+    // Re-apply raw mode overrides if active
+    if (this._rawMode) {
+      this.cal.agcEnabled = false;
+      this.cal.dynamicsEnabled = false;
+      this.cal.transientBoost = false;
+      this.cal.perceptualCurve = false;
+    }
     this.tc = computeTickConstants(this.tickMs, this.cal);
   }
+
+  /** Enable raw mode — disables all processors for gain calibration */
+  setRawMode(on: boolean): void {
+    if (on && !this._rawMode) {
+      this._rawMode = true;
+      this._savedCal = {
+        agcEnabled: this.cal.agcEnabled,
+        dynamicsEnabled: this.cal.dynamicsEnabled,
+        transientBoost: this.cal.transientBoost,
+        perceptualCurve: this.cal.perceptualCurve,
+      };
+      this.cal.agcEnabled = false;
+      this.cal.dynamicsEnabled = false;
+      this.cal.transientBoost = false;
+      this.cal.perceptualCurve = false;
+      this.tc = computeTickConstants(this.tickMs, this.cal);
+      console.log('[Engine] Raw mode ON — all processors disabled');
+    } else if (!on && this._rawMode) {
+      this._rawMode = false;
+      if (this._savedCal) {
+        Object.assign(this.cal, this._savedCal);
+        this._savedCal = null;
+      }
+      this.tc = computeTickConstants(this.tickMs, this.cal);
+      console.log('[Engine] Raw mode OFF — processors restored');
+    }
+  }
+
+  isRawMode(): boolean { return this._rawMode; }
 
   /** Initialize engine — call once at boot. Loop only starts when setPlaying(true). */
   start(): void {

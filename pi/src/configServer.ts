@@ -147,6 +147,17 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     res.json({ ok: true });
   });
 
+  // --- Raw mode (for gain calibration) ---
+  app.put('/api/raw-mode', (req, res) => {
+    const on = !!req.body.enabled;
+    engine.setRawMode(on);
+    res.json({ ok: true, rawMode: on });
+  });
+
+  app.get('/api/raw-mode', (_req, res) => {
+    res.json({ enabled: engine.isRawMode() });
+  });
+
   // --- Color ---
   app.put('/api/color', (req, res) => {
     const { r, g, b } = req.body;

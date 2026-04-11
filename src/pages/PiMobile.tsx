@@ -514,6 +514,7 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
   const [calStep, setCalStep] = useState<0 | 1 | 2 | 3>(0); // 0=idle, 1=step1, 2=step2, 3=done
   const [sonosVol, setSonosVol] = useState<number | null>(null);
   const [tempGain, setTempGain] = useState(15);
+  const [outputPct, setOutputPct] = useState(0);
 
   // Load initial state
   useEffect(() => {
@@ -527,19 +528,47 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
     }).catch(() => {});
   }, [piBase]);
 
-  // Poll Sonos volume during calibration
+  // Enable/disable raw mode when entering/leaving calibration
+  useEffect(() => {
+    if (calStep > 0 && calStep < 3) {
+      fetch(`${piBase}/api/raw-mode`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }).catch(() => {});
+    }
+    return () => {
+      // Disable raw mode on unmount or step change to 0/3
+      if (calStep > 0 && calStep < 3) {
+        fetch(`${piBase}/api/raw-mode`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: false }),
+        }).catch(() => {});
+      }
+    };
+  }, [piBase, calStep]);
+
+  // Poll Sonos volume + output level during calibration
   useEffect(() => {
     if (calStep === 0) return;
     let cancelled = false;
     const poll = async () => {
       try {
-        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) });
-        const d = await r.json();
-        if (!cancelled && d.sonos?.volume != null) setSonosVol(d.sonos.volume);
+        const [statusRes, diagRes] = await Promise.all([
+          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }),
+          fetch(`${piBase}/api/diagnostics`, { signal: AbortSignal.timeout(2000) }),
+        ]);
+        const status = await statusRes.json();
+        const diag = await diagRes.json();
+        if (!cancelled) {
+          if (status.sonos?.volume != null) setSonosVol(status.sonos.volume);
+          if (diag.pipeline?.brightnessPct != null) setOutputPct(diag.pipeline.brightnessPct);
+        }
       } catch {}
     };
     poll();
-    const id = setInterval(poll, 1500);
+    const id = setInterval(poll, 200);
     return () => { cancelled = true; clearInterval(id); };
   }, [piBase, calStep]);
 
@@ -555,11 +584,20 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
 
   const startCalibration = () => {
     setCalStep(1);
-    // Get current mic gain as starting point
     fetch(`${piBase}/api/mic-gain`, { signal: AbortSignal.timeout(2000) })
       .then(r => r.json())
       .then(d => setTempGain(d.gain ?? 15))
       .catch(() => {});
+  };
+
+  const exitCalibration = () => {
+    // Disable raw mode before leaving
+    fetch(`${piBase}/api/raw-mode`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    }).catch(() => {});
+    setCalStep(0);
   };
 
   const savePoint = (pointNum: 1 | 2) => {
@@ -571,14 +609,19 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
     setCalPoints(updated);
 
     if (pointNum === 1) {
-      setCalStep(2); // Move to step 2
+      setCalStep(2);
     } else {
-      // Save both points
       fetch(`${piBase}/api/gain-calibration`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
       }).then(() => {
+        // Disable raw mode
+        fetch(`${piBase}/api/raw-mode`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: false }),
+        }).catch(() => {});
         setCalStep(3);
         setTimeout(() => setCalStep(0), 2000);
       }).catch(() => {});
@@ -587,7 +630,6 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
 
   const applyTempGain = (gain: number) => {
     setTempGain(gain);
-    // Apply gain live so user can hear/see the effect
     fetch(`${piBase}/api/mic-gain`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -607,16 +649,33 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
     const stepNum = calStep;
     const stepLabel = stepNum === 1 ? 'Låg volym' : 'Hög volym';
     const stepDesc = stepNum === 1
-      ? 'Ställ Sonos på låg volym (t.ex. 10–20). Justera gain tills signalen ser bra ut i diagnostiken.'
-      : 'Ställ Sonos på hög volym (t.ex. 35–50). Justera gain igen.';
+      ? 'Ställ Sonos på låg volym (t.ex. 10–20). Justera gain tills output är ~40–60%.'
+      : 'Ställ Sonos på hög volym (t.ex. 35–50). Justera gain tills output är ~40–60%.';
+
+    // Color the bar based on level
+    const barColor = outputPct > 90 ? 'bg-red-500' : outputPct > 60 ? 'bg-yellow-500' : outputPct > 20 ? 'bg-green-500' : 'bg-muted-foreground';
 
     return (
       <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-primary">Kalibrering — Steg {stepNum}/2: {stepLabel}</span>
-          <button onClick={() => setCalStep(0)} className="text-[10px] text-muted-foreground underline">Avbryt</button>
+          <button onClick={exitCalibration} className="text-[10px] text-muted-foreground underline">Avbryt</button>
         </div>
         <p className="text-[10px] text-muted-foreground">{stepDesc}</p>
+
+        {/* Output bar */}
+        <div>
+          <div className="flex justify-between text-[10px] mb-1">
+            <span className="text-muted-foreground">Output (rå mic)</span>
+            <span className="font-mono font-bold">{outputPct}%</span>
+          </div>
+          <div className="w-full h-3 rounded-full bg-secondary overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-150 ${barColor}`}
+              style={{ width: `${Math.min(100, outputPct)}%` }}
+            />
+          </div>
+        </div>
 
         <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2">
           <span className="text-xs text-muted-foreground w-16">Sonos vol:</span>
