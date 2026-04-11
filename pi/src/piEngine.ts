@@ -137,12 +137,10 @@ interface LightCalibration {
   transientBoost: boolean;
   perceptualCurve: boolean;
   agcEnabled: boolean;
-  bandSmoothingEnabled: boolean;
   dynamicsEnabled: boolean;
   smoothingEnabled: boolean;
   paletteMode: PaletteMode;
   paletteRotationSpeed: number;
-  agcVolumeTable: AgcVolumeTable;
   [key: string]: any;
 }
 
@@ -156,11 +154,9 @@ const DEFAULT_CAL: LightCalibration = {
   transientBoost: true,
   perceptualCurve: false,
   agcEnabled: true,
-  bandSmoothingEnabled: true,
   dynamicsEnabled: true,
   smoothingEnabled: true,
   paletteMode: 'off', paletteRotationSpeed: 8,
-  agcVolumeTable: {},
 };
 
 function loadCalibration(): LightCalibration {
