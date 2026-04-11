@@ -769,6 +769,7 @@ export default function PiMobile() {
         setBleConnectedId(data.ble?.connectedDeviceId ?? null);
         setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
+        setBleSavedName(data.ble?.savedDeviceName ?? null);
         if (track && track !== lastTrackRef.current) {
           lastTrackRef.current = track;
           const palette = data.engine?.palette ?? [];
@@ -895,7 +896,7 @@ export default function PiMobile() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Bluetooth size={16} className={bleConnectedId ? "text-primary" : "text-muted-foreground"} />
-                <span className="text-sm font-medium">{bleConnectedName ?? bleSavedId?.substring(0, 12) ?? '—'}</span>
+                <span className="text-sm font-medium">{bleConnectedName ?? bleSavedName ?? bleSavedId?.substring(0, 12) ?? '—'}</span>
                 {bleConnectedId ? (
                   <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">Aktiv</span>
                 ) : (
