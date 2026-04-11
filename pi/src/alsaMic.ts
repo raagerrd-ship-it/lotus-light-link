@@ -142,6 +142,15 @@ export function resetFluxState(): void {
 let recorder: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
+// Software mic gain — multiplier applied to raw PCM samples before processing
+let micGain = 1.0;
+
+export function getMicGain(): number { return micGain; }
+export function setMicGain(gain: number): void {
+  micGain = Math.max(0.1, Math.min(50, gain));
+  console.log(`[ALSA] Mic gain set to ${micGain.toFixed(1)}x`);
+}
+
 export function getAlsaDevice(): string {
   return currentDevice;
 }
@@ -172,7 +181,9 @@ export function startMic(): void {
     const samples = buf.length / 2;
     for (let i = 0; i < samples; i++) {
       const s16 = buf.readInt16LE(i * 2);
-      const raw = s16 / 32768;
+      let raw = (s16 / 32768) * micGain;
+      // Soft-clip to prevent harsh distortion at high gain
+      if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
       if (DEBUG_ENABLED) {
         const abs = raw < 0 ? -raw : raw;
         if (abs > debugPeakRaw) debugPeakRaw = abs;
