@@ -365,17 +365,37 @@ export class PiLightEngine {
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
 
+  private _idleTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly IDLE_HEARTBEAT_MS = 2000;
+
+  private startIdleHeartbeat(): void {
+    this.stopIdleHeartbeat();
+    // Send immediately
+    this.sendIdleColor();
+    // Then repeat every 2s
+    this._idleTimer = setInterval(() => this.sendIdleColor(), PiLightEngine.IDLE_HEARTBEAT_MS);
+  }
+
+  private stopIdleHeartbeat(): void {
+    if (this._idleTimer) { clearInterval(this._idleTimer); this._idleTimer = null; }
+  }
+
+  private sendIdleColor(): void {
+    const idle = loadIdleColor();
+    applyColorCalibrationFast(idle[0], idle[1], idle[2], this.cal, this.tc.gammaIsUnity);
+    sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], 100);
+  }
+
   setPlaying(playing: boolean): void {
     const wasPlaying = this.playing;
     this.playing = playing;
 
     if (!playing && wasPlaying) {
       this.stopLoop();
-      const idle = loadIdleColor();
-      applyColorCalibrationFast(idle[0], idle[1], idle[2], this.cal, this.tc.gammaIsUnity);
-      sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], 100);
-      console.log('[Engine] → idle mode (loop stopped)');
+      this.startIdleHeartbeat();
+      console.log('[Engine] → idle mode (heartbeat every 2s)');
     } else if (playing && !wasPlaying) {
+      this.stopIdleHeartbeat();
       this.startLoop();
       console.log('[Engine] → active mode (loop started)');
     }
@@ -446,6 +466,7 @@ export class PiLightEngine {
   stop(): void {
     this._running = false;
     this.stopLoop();
+    this.stopIdleHeartbeat();
     onFFTReady(null); // unregister callback
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
