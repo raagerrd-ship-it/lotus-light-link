@@ -551,9 +551,11 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
-      // Dynamic center (precomputed alpha)
-      this.dynamicCenter += (energyNorm - this.dynamicCenter) * tc.centerAlpha;
-      energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
+      // Dynamic center — use fixed low center for mic input (room audio has less dynamic range)
+      // Adaptive tracking disabled: mic signal is too compressed for adaptive center to work well
+      const dynCenter = 0.35;
+      this.dynamicCenter = dynCenter;
+      energyNorm = applyDynamics(energyNorm, dynCenter, cal.dynamicDamping);
 
       const floor = cal.brightnessFloor ?? 0;
       let pct = energyNorm * 100;
