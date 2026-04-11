@@ -86,14 +86,7 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // --- Redirect root to Pi mobile ---
-  if (url === '/') {
-    res.writeHead(302, { Location: '/pi-mobile' });
-    res.end();
-    return;
-  }
-
-  // --- Only allow /pi-mobile route (block desktop UI) ---
+  // --- Serve SPA ---
   if (indexHtml) {
     const safePath = url.split('?')[0].split('#')[0];
 
@@ -125,16 +118,9 @@ const server = createServer((req, res) => {
       }
     }
 
-    // Allow /pi-mobile (SPA route)
-    if (safePath === '/pi-mobile' || safePath.startsWith('/pi-mobile/')) {
-      res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
-      res.end(indexHtml);
-      return;
-    }
-
-    // Block all other routes
-    res.writeHead(302, { Location: '/pi-mobile' });
-    res.end();
+    // All other routes → serve SPA index.html
+    res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
+    res.end(indexHtml);
     return;
   }
 
