@@ -60,8 +60,9 @@ let samplesReceived = 0;
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
-// Debug — log every ~2 seconds at current FFT rate (44100/128 ≈ 345 frames/sec)
-const DEBUG_INTERVAL = 690;
+// Debug — only active when DEBUG=true env var is set
+const DEBUG_ENABLED = process.env.DEBUG === 'true';
+const DEBUG_INTERVAL = 690; // ~2 seconds at 44100/128 ≈ 345 frames/sec
 let debugTickCount = 0;
 let debugPeakRaw = 0;
 
