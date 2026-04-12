@@ -3,6 +3,7 @@
   "name": "Lotus Light Link",
   "repo": "https://github.com/raagerrd-ship-it/lotus-light-link.git",
   "releaseUrl": "https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/latest",
+  "releaseAsset": "dist.tar.gz",
   "installDir": "/opt/lotus-light",
   "installScript": "pi/setup-lotus.sh",
   "updateScript": "/opt/lotus-light/pi/update-services.sh",
