@@ -219,7 +219,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
       setItem('tick-ms', String(tickMs));
       res.json({ ok: true, tickMs });
     } else {
-      res.status(400).json({ error: 'tickMs must be 20-200' });
+      res.status(400).json({ error: 'tickMs must be 10-50' });
     }
   });
 

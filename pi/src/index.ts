@@ -79,7 +79,7 @@ async function main() {
   console.log('[Boot] BLE ready (will connect on demand when music plays)');
   const reconnectTimer = startReconnectLoop(15000);
 
-  // 4. Start Sonos poller (configurable gateway)
+  // 5. Start Sonos poller (configurable gateway)
   // Load saved config or use env vars
   let sonosConfig: SonosPollerConfig = {
     baseUrl: BRIDGE_URL,
