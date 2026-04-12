@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, type BandResult } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 
@@ -670,6 +670,13 @@ export class PiLightEngine {
       _diag.onsetBoost = this.onsetBoost;
       _diag.brightnessPct = pct;
       _diag.bleScaleRaw = pct / 100;
+      // Noise gate state
+      const ng = getNoiseGateState();
+      _diag.ngFloor = ng.noiseFloor;
+      _diag.ngThreshold = ng.threshold;
+      _diag.ngPreBass = ng.smoothBass;
+      _diag.ngPreMidHi = ng.smoothMidHi;
+      _diag.ngPreTotal = ng.smoothTotal;
       _diag.finalR = isPunch ? 255 : _finalColor[0];
       _diag.finalG = isPunch ? 255 : _finalColor[1];
       _diag.finalB = isPunch ? 255 : _finalColor[2];
