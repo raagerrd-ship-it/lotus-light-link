@@ -442,6 +442,32 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     res.json({ running: updateRunning, log: updateLog });
   });
 
+  // --- Diagnostics recording ---
+  app.post('/api/diagnostics/record', async (req, res) => {
+    if (engine.isRecording()) {
+      return res.status(409).json({ error: 'Recording already in progress' });
+    }
+    const durationMs = typeof req.body?.durationMs === 'number' ? Math.min(10000, Math.max(1000, req.body.durationMs)) : 5000;
+    res.json({ ok: true, durationMs });
+    // Record runs in background; client polls /api/diagnostics/recording
+    engine.startRecording(durationMs).then(data => {
+      // Store last recording for retrieval
+      (engine as any)._lastRecordingData = data;
+    });
+  });
+
+  app.get('/api/diagnostics/recording', (_req, res) => {
+    if (engine.isRecording()) {
+      return res.json({ status: 'recording' });
+    }
+    const data = (engine as any)._lastRecordingData;
+    if (data) {
+      res.json({ status: 'done', samples: data });
+    } else {
+      res.json({ status: 'idle' });
+    }
+  });
+
   // --- Diagnostics ---
   app.get('/api/diagnostics', (_req, res) => {
     const diag = engine.getDiagnostics();
