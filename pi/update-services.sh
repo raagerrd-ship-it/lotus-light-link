@@ -21,7 +21,7 @@ if [ -f "$APP_DIR/VERSION.json" ]; then
 fi
 
 # Check latest release from GitHub API
-LATEST_JSON=$(curl -sf "https://api.github.com/repos/$GITHUB_REPO/releases/tags/latest" 2>/dev/null || echo "")
+LATEST_JSON=$(curl -sf "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null || echo "")
 if [ -z "$LATEST_JSON" ]; then
   echo "$LOG_PREFIX ERROR: Could not reach GitHub API"
   exit 1
@@ -42,7 +42,12 @@ fi
 echo "$LOG_PREFIX Updating: ${CURRENT_COMMIT:0:7} → ${LATEST_COMMIT:0:7}"
 
 # Download release tarball
-DOWNLOAD_URL="https://github.com/$GITHUB_REPO/releases/download/latest/dist.tar.gz"
+TARBALL_URL=$(echo "$LATEST_JSON" | python3 -c "import json,sys; assets=json.load(sys.stdin).get('assets',[]); print(next((a['browser_download_url'] for a in assets if a['name']=='dist.tar.gz'),''))" 2>/dev/null || echo "")
+if [ -z "$TARBALL_URL" ]; then
+  echo "$LOG_PREFIX ERROR: No dist.tar.gz asset found in release"
+  exit 1
+fi
+DOWNLOAD_URL="$TARBALL_URL"
 TMP_DIR=$(mktemp -d)
 trap "rm -rf $TMP_DIR" EXIT
 
