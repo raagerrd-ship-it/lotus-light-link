@@ -17,6 +17,7 @@ let SERVICE_VERSION = '1.0.0';
 let GIT_COMMIT = 'unknown';
 let GIT_COMMIT_SHORT = 'unknown';
 let GIT_BRANCH = 'unknown';
+const START_TIME = Date.now();
 
 // 1. Try VERSION.json (from release tarball — no git needed)
 try {
@@ -52,7 +53,31 @@ export function startConfigServer(engine: PiLightEngine, port = 3001): void {
     next();
   });
 
-  // --- Status ---
+  // --- Health (Pi Control Center standard) ---
+  app.get('/api/health', (_req, res) => {
+    const mem = process.memoryUsage();
+    const bleConnected = getConnectedCount();
+    const rss = Math.round(mem.rss / 1024 / 1024);
+
+    let status: 'ok' | 'degraded' | 'error' = 'ok';
+    if (rss > 100) status = 'degraded';
+    if (bleConnected === 0 && isDemandActive()) status = 'degraded';
+
+    res.json({
+      status,
+      service: 'lotus-light-engine',
+      version: SERVICE_VERSION,
+      uptime: Math.floor((Date.now() - START_TIME) / 1000),
+      memory: {
+        rss,
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // --- Status (full app status) ---
   app.get('/api/status', (_req, res) => {
     const sonos = getSonosState();
     res.json({

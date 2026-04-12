@@ -12,8 +12,9 @@ import { dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.CONFIG_PORT ?? 3001);
-const BACKEND_PORT = Number(process.env.BACKEND_PORT ?? 3050);
+// Pi Control Center sets PORT + ENGINE_PORT; legacy uses CONFIG_PORT/BACKEND_PORT
+const PORT = Number(process.env.PORT ?? process.env.CONFIG_PORT ?? 3001);
+const BACKEND_PORT = Number(process.env.ENGINE_PORT ?? process.env.BACKEND_PORT ?? 3050);
 const WEB_DIST = join(__dirname, '..', '..', 'dist');
 
 const MIME_TYPES: Record<string, string> = {
