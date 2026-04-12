@@ -326,6 +326,8 @@ export function stopMic(): void {
     ringPos = 0;
     ringBuf.fill(0);
     prevPower.fill(0);
+    smoothBass = 0; smoothMidHi = 0; smoothTotal = 0;
+    noiseFloor = 0.001;
     console.log('[ALSA] Microphone stopped');
   }
 }
