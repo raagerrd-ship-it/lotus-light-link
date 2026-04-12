@@ -1,11 +1,13 @@
 #!/bin/bash
-# setup-lotus.sh — Install Lotus Light Link on Raspberry Pi Zero 2 W
-# Called by Pi Dashboard: bash /opt/lotus-light/pi/setup-lotus.sh --port 3001 --core 1
-# The dashboard clones the repo to /opt/lotus-light before running this script.
+# setup-lotus.sh — Fallback install script for Lotus Light Link
+# Called by Pi Control Center: bash /opt/lotus-light/pi/setup-lotus.sh --port 3001 --core 1
+#
+# This script ONLY installs dependencies and builds the project.
+# Systemd services, sandboxing, and port assignment are handled by Pi Control Center.
 
 set -e
 
-# ─── Parse arguments from Pi Dashboard ───────────────────
+# ─── Parse arguments from Pi Control Center ───────────────
 PORT=3001
 CORE=1
 while [[ $# -gt 0 ]]; do
@@ -18,33 +20,22 @@ done
 
 APP_DIR="/opt/lotus-light"
 PI_DIR="$APP_DIR/pi"
-
-SERVICE_NAME="lotus-light"
+ENGINE_PORT=$((PORT + 50))
 TOTAL_CPUS=$(nproc 2>/dev/null || echo 4)
 
 echo ""
 echo "========================================"
-echo "  Lotus Light Link Installer"
+echo "  Lotus Light Link — Fallback Installer"
 echo "========================================"
 echo ""
-echo "  Port: $PORT"
-echo "  CPU:  Kärna $CORE (av $TOTAL_CPUS)"
-
-# ─── Detect target user (support running as root via Pi Dashboard) ────
-if [ "$EUID" -eq 0 ]; then
-  # Running as root — determine the real user
-  TARGET_USER="${SUDO_USER:-pi}"
-  TARGET_HOME=$(eval echo "~$TARGET_USER")
-  echo "  Kör som root → installerar för användare: $TARGET_USER"
-else
-  TARGET_USER="$USER"
-  TARGET_HOME="$HOME"
-fi
+echo "  UI Port:     $PORT"
+echo "  Engine Port: $ENGINE_PORT"
+echo "  CPU Core:    $CORE (av $TOTAL_CPUS)"
 
 # ─── 1. System dependencies ──────────────────────────────
-echo "[1/8] Installerar systempaket..."
+echo ""
+echo "[1/5] Installerar systempaket..."
 
-# Check RAM
 TOTAL_RAM=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
 TOTAL_SWAP=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}')
 if [ -n "$TOTAL_RAM" ]; then
@@ -61,7 +52,8 @@ taskset -c "$CORE" sudo apt-get install -y -qq \
   curl
 
 # ─── 2. Node.js (LTS) ────────────────────────────────────
-echo "[2/8] Kontrollerar Node.js..."
+echo ""
+echo "[2/5] Kontrollerar Node.js..."
 NODE_MAJOR=$(node -v 2>/dev/null | cut -d. -f1 | tr -d v || echo 0)
 if ! command -v node &>/dev/null || [ "$NODE_MAJOR" -lt 20 ]; then
   echo "  Installerar Node.js 22 LTS..."
@@ -72,7 +64,8 @@ else
 fi
 
 # ─── 3. I²S audio overlay (INMP441 mic) ──────────────────
-echo "[3/8] Konfigurerar I²S-ljud..."
+echo ""
+echo "[3/5] Konfigurerar I²S-ljud..."
 NEEDS_REBOOT=false
 CONFIG_FILE="/boot/config.txt"
 [ -f /boot/firmware/config.txt ] && CONFIG_FILE="/boot/firmware/config.txt"
@@ -85,20 +78,17 @@ else
   echo "  ✓ I²S overlay redan konfigurerad"
 fi
 
-# ─── 4. Hostname (informational only) ────────────────────
-echo "[4/8] Hostname: $(hostname).local"
-echo "  Tjänsten använder 127.0.0.1 internt — inget behov av /etc/hosts-ändring"
+# ─── 4. Build web app (if no pre-built dist) ─────────────
+echo ""
+echo "[4/5] Förbereder webbapp..."
 
-# ─── 5. Install npm dependencies & build web app ─────────
-echo "[5/8] Förbereder webbapp..."
-WEB_DIST_DIR="$APP_DIR/dist"
 WEB_DIST_READY=false
-if [ -f "$WEB_DIST_DIR/index.html" ] && [ -d "$WEB_DIST_DIR/assets" ]; then
+if [ -f "$APP_DIR/dist/index.html" ] && [ -d "$APP_DIR/dist/assets" ]; then
   WEB_DIST_READY=true
 fi
 
 if [ "$WEB_DIST_READY" = true ]; then
-  echo "  Förbyggd webbapp hittad i dist/ — hoppar över root npm install/build ✓"
+  echo "  Förbyggd webbapp hittad i dist/ — hoppar över build ✓"
 elif [ -f "$APP_DIR/package.json" ]; then
   cd "$APP_DIR"
   export NODE_OPTIONS="--max-old-space-size=256"
@@ -108,10 +98,13 @@ elif [ -f "$APP_DIR/package.json" ]; then
   nice -n 15 taskset -c "$CORE" npx vite build
   echo "  Webbapp klar ✓"
 else
-  echo "  ✗ Ingen förbyggd webbapp hittad och package.json saknas i root"
-  echo "    Förväntade antingen $WEB_DIST_DIR/index.html eller $APP_DIR/package.json"
+  echo "  ✗ Ingen förbyggd webbapp och inget package.json i root"
   exit 1
 fi
+
+# ─── 5. Build Pi engine ──────────────────────────────────
+echo ""
+echo "[5/5] Förbereder Pi-backend..."
 
 PI_DIST_READY=false
 if [ -f "$PI_DIR/dist/index.js" ]; then
@@ -121,178 +114,36 @@ fi
 cd "$PI_DIR"
 
 if [ "$PI_DIST_READY" = true ] && [ -d "$PI_DIR/node_modules" ]; then
-  echo "  Förbyggd Pi-backend hittad — hoppar över npm install/build ✓"
+  echo "  Förbyggd Pi-backend hittad — hoppar över build ✓"
 else
   echo "  Installerar Pi-beroenden..."
   nice -n 15 taskset -c "$CORE" npm install --no-audit --no-fund 2>&1 | tail -3
-
-  # ─── 6. Build Pi runtime ─────────────────────────────────
-  echo "[6/8] Bygger Pi-backend..."
+  echo "  Bygger Pi-backend..."
   nice -n 15 taskset -c "$CORE" npm run build
   nice -n 15 taskset -c "$CORE" npm prune --omit=dev 2>/dev/null || npm prune --production 2>/dev/null || true
   echo "  Bygg klart ✓"
 fi
 
-# Rebuild native modules for current architecture (e.g. bluetooth-hci-socket)
+# Rebuild native modules for current architecture
 echo "  Bygger om native-moduler för $(uname -m)..."
-cd "$PI_DIR"
 nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
 echo "  Native-moduler klara ✓"
 
-# ─── 7. BLE permissions & sudoers ─────────────────────────
-echo "[7/8] Sätter BLE-behörigheter och sudoers..."
+# ─── BLE permissions ─────────────────────────────────────
 NODE_BIN=$(readlink -f "$(which node)")
 sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
-chmod +x "$PI_DIR/update-services.sh" 2>/dev/null || true
-chmod +x "$PI_DIR/uninstall-lotus.sh" 2>/dev/null || true
-
-# Passwordless sudo for setcap and systemctl (used by auto-updater)
-SUDOERS_FILE="/etc/sudoers.d/lotus-light"
-cat > "$SUDOERS_FILE" 2>/dev/null || sudo tee "$SUDOERS_FILE" > /dev/null << SUDOEOF
-# Lotus Light Link — allow target user to manage BLE caps and service without password
-${TARGET_USER} ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_raw+eip *
-${TARGET_USER} ALL=(root) NOPASSWD: /bin/systemctl restart ${SERVICE_NAME}
-${TARGET_USER} ALL=(root) NOPASSWD: /bin/systemctl stop ${SERVICE_NAME}
-${TARGET_USER} ALL=(root) NOPASSWD: /bin/systemctl start ${SERVICE_NAME}
-SUDOEOF
-chmod 0440 "$SUDOERS_FILE" 2>/dev/null || sudo chmod 0440 "$SUDOERS_FILE"
-echo "  ✓ sudoers-regel skapad"
-
-# ─── 8. Validate core arg ────────────────────────────────
-if ! [[ "$CORE" =~ ^[0-3]$ ]]; then
-  echo "  Ogiltigt core '$CORE', använder standard: 1"
-  CORE=1
-fi
-
-# ─── 9. User-level systemd service ──────────────────────
-echo "[8/8] Skapar systemd-tjänst..."
-SYSTEMD_USER_DIR="$TARGET_HOME/.config/systemd/user"
-BACKEND_PORT=3050
-mkdir -p "$SYSTEMD_USER_DIR"
-
-# Remove old separate web service if it exists
-rm -f "$SYSTEMD_USER_DIR/${SERVICE_NAME}-web.service" 2>/dev/null
-
-# Single service using start-lotus.js (forks engine + runs frontend)
-cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}.service" << EOF
-[Unit]
-Description=Lotus Light Link — Audio-reactive BLE LED controller
-After=network.target bluetooth.target
-Wants=bluetooth.target
-
-[Service]
-Type=simple
-WorkingDirectory=${PI_DIR}
-ExecStart=${NODE_BIN} --max-old-space-size=192 ${PI_DIR}/start-lotus.js
-Restart=always
-RestartSec=5
-Environment=NODE_ENV=production
-Environment=HOME=${TARGET_HOME}
-Environment=BACKEND_PORT=${BACKEND_PORT}
-Environment=CONFIG_PORT=${PORT}
-Environment=TICK_MS=30
-
-CPUAffinity=${CORE}
-
-[Install]
-WantedBy=default.target
-EOF
-
-
-# Nightly restart for stability (05:00)
-cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-restart.service" << EOF
-[Unit]
-Description=Restart Lotus Light Link
-
-[Service]
-Type=oneshot
-ExecStart=/bin/systemctl --user restart ${SERVICE_NAME}
-EOF
-
-cat > "$SYSTEMD_USER_DIR/${SERVICE_NAME}-restart.timer" << EOF
-[Unit]
-Description=Nightly restart of Lotus Light Link
-
-[Timer]
-OnCalendar=*-*-* 05:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
-# Enable linger so user services survive logout
-loginctl enable-linger "$TARGET_USER" 2>/dev/null || true
-
-# Helper: run systemctl --user as TARGET_USER (works both as root and as the user)
-run_user_systemctl() {
-  if [ "$EUID" -eq 0 ]; then
-    sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" systemctl --user "$@"
-  else
-    systemctl --user "$@"
-  fi
-}
-
-# Fix ownership if created as root
-if [ "$EUID" -eq 0 ]; then
-  chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/systemd" 2>/dev/null || true
-fi
-
-run_user_systemctl daemon-reload
-run_user_systemctl enable "$SERVICE_NAME"
-run_user_systemctl enable "${SERVICE_NAME}-restart.timer"
-
-# Clean up old auto-update timer if present
-run_user_systemctl stop "${SERVICE_NAME}-update.timer" 2>/dev/null || true
-run_user_systemctl disable "${SERVICE_NAME}-update.timer" 2>/dev/null || true
-rm -f "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.service" 2>/dev/null
-rm -f "$SYSTEMD_USER_DIR/${SERVICE_NAME}-update.timer" 2>/dev/null
-
-# Stop old web service if running
-run_user_systemctl stop "${SERVICE_NAME}-web" 2>/dev/null || true
-run_user_systemctl disable "${SERVICE_NAME}-web" 2>/dev/null || true
-
-# Start everything
-run_user_systemctl start "${SERVICE_NAME}-restart.timer"
-run_user_systemctl restart "$SERVICE_NAME"
-
-# Verify
-sleep 3
-if run_user_systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-  echo "  ✓ Tjänsten startade"
-else
-  echo "  ⚠ Tjänsten startade inte"
-  echo ""
-  if [ "$EUID" -eq 0 ]; then
-    sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" \
-      journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
-  else
-    journalctl --user -u "$SERVICE_NAME" --no-pager -n 20 2>/dev/null || true
-  fi
-  echo ""
-  echo "  Manuell felsökning:"
-  echo "    cd ${PI_DIR} && BACKEND_PORT=${BACKEND_PORT} CONFIG_PORT=${PORT} node --max-old-space-size=192 ${PI_DIR}/start-lotus.js"
-fi
 
 # ─── Done ─────────────────────────────────────────────────
-IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
-
 echo ""
 echo "========================================"
 echo "  Installation klar!"
 echo "========================================"
 echo ""
-echo "  Port: ${PORT}, CPU core: ${CORE}"
-echo "  Config: http://${IP_ADDR:-lotus.local}:${PORT}"
+echo "  UI Port:     $PORT"
+echo "  Engine Port: $ENGINE_PORT"
+echo "  CPU Core:    $CORE"
 echo ""
-  echo "  Schema:"
-  echo "    05:00  Nattlig omstart"
-echo ""
-echo "  Kommandon:"
-echo "    Status:  systemctl --user status ${SERVICE_NAME}"
-echo "    Loggar:  journalctl --user -u ${SERVICE_NAME} -f"
-echo "    Stoppa:  systemctl --user stop ${SERVICE_NAME}"
-echo "    Starta:  systemctl --user start ${SERVICE_NAME}"
+echo "  Pi Control Center hanterar systemd-tjänster och sandboxing."
 
 if [ "$NEEDS_REBOOT" = true ]; then
   echo ""
