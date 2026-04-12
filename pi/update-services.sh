@@ -1,19 +1,18 @@
 #!/bin/bash
 # update-services.sh — Update Lotus Light Link from GitHub release
-# Downloads latest release tarball, replaces files, restarts service.
-# Called manually via API or dashboard button.
+# Called by Pi Control Center. Downloads latest release tarball and replaces files.
+# Pi Control Center handles service restarts after this script completes.
 
 set -euo pipefail
 
 APP_DIR="/opt/lotus-light"
 PI_DIR="$APP_DIR/pi"
-SERVICE="lotus-light"
 LOG_PREFIX="[lotus-update]"
 GITHUB_REPO="raagerrd-ship-it/lotus-light-link"
 
 echo "$LOG_PREFIX Checking for updates..."
 
-# Get current version from VERSION.json
+# Get current version
 CURRENT_COMMIT=""
 CURRENT_VERSION=""
 if [ -f "$APP_DIR/VERSION.json" ]; then
@@ -71,13 +70,13 @@ for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
-# Re-apply BLE capabilities (use readlink to resolve symlinks)
+# Re-apply BLE capabilities
 NODE_BIN=$(readlink -f "$(which node)")
 if [ -n "$NODE_BIN" ]; then
   sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
 fi
 
-# Rebuild native modules ONLY if architecture or Node major version differs
+# Rebuild native modules if architecture or Node version differs
 BUILD_ARCH=$(python3 -c "import json; print(json.load(open('$APP_DIR/VERSION.json')).get('arch',''))" 2>/dev/null || echo "")
 BUILD_NODE=$(python3 -c "import json; v=json.load(open('$APP_DIR/VERSION.json')).get('nodeVersion',''); print(v.split('.')[0])" 2>/dev/null || echo "")
 PI_ARCH=$(uname -m)
@@ -91,13 +90,11 @@ else
   echo "$LOG_PREFIX Native modules OK (arch=$PI_ARCH, node=$PI_NODE) — skipping rebuild ✓"
 fi
 
-# Restart service
-systemctl --user restart "$SERVICE"
-
 # Read new version
 NEW_VERSION=""
 if [ -f "$APP_DIR/VERSION.json" ]; then
   NEW_VERSION=$(python3 -c "import json; print(json.load(open('$APP_DIR/VERSION.json')).get('version',''))" 2>/dev/null || echo "")
 fi
 
-echo "$LOG_PREFIX Updated to v${NEW_VERSION} (${LATEST_COMMIT:0:7}) and restarted ✓"
+echo "$LOG_PREFIX Updated to v${NEW_VERSION} (${LATEST_COMMIT:0:7}) ✓"
+echo "$LOG_PREFIX Pi Control Center will restart services."
