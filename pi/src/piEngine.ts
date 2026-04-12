@@ -544,6 +544,8 @@ export class PiLightEngine {
 
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
+    // Skip processing when not playing — idle heartbeat handles BLE output
+    if (!this.playing) return;
     const _tickStart = performance.now();
     try {
       const cal = this.cal;
@@ -673,7 +675,7 @@ export class PiLightEngine {
       td.color[0] = _finalColor[0]; td.color[1] = _finalColor[1]; td.color[2] = _finalColor[2];
       td.bassLevel = bands.bassRms;
       td.midHiLevel = bands.midHiRms;
-      td.isPlaying = true;
+      td.isPlaying = this.playing;
       td.tickMs = this.tickMs;
       td.paletteIndex = this._paletteIndex;
       const cbs = this.callbacks;
