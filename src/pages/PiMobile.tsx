@@ -1097,7 +1097,7 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
             </span>
           </div>
           <p className="text-[10px] text-muted-foreground text-center mt-1">
-            {samples.length} samples, max input: {Math.max(...samples.map(s => s.inputRms)).toFixed(4)}
+            {samples.length} samples | avg latency: {(samples.reduce((s, x) => s + Math.max(0, x.tOutput - x.tInput), 0) / samples.length).toFixed(1)} ms
           </p>
           <button
             onClick={() => { setStatus('idle'); setSamples([]); }}
