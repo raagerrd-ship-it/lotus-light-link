@@ -544,6 +544,8 @@ export class PiLightEngine {
 
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
+    // Skip processing when not playing — idle heartbeat handles BLE output
+    if (!this.playing) return;
     const _tickStart = performance.now();
     try {
       const cal = this.cal;
