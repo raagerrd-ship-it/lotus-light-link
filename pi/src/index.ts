@@ -24,7 +24,8 @@ import { getItem, setItem } from './storage.js';
 
 // --- Config ---
 const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://172.0.0.1:3003/api/sonos';
-const CONFIG_PORT = Number(process.env.BACKEND_PORT ?? 3050);
+// Pi Control Center sets PORT; legacy uses BACKEND_PORT
+const CONFIG_PORT = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 3050);
 const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);

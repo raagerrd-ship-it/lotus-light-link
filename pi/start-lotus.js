@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, 'dist');
-const BACKEND_PORT = process.env.BACKEND_PORT ?? '3050';
+const BACKEND_PORT = process.env.ENGINE_PORT ?? process.env.BACKEND_PORT ?? '3050';
 
 // Kill any leftover process on the backend port to prevent EADDRINUSE
 try {
@@ -25,13 +25,16 @@ try {
 } catch {}
 
 
-// Pass PORT → CONFIG_PORT for frontend
+// Set env vars for child processes (Pi Control Center convention)
+const UI_PORT = process.env.UI_PORT ?? process.env.PORT ?? process.env.CONFIG_PORT ?? '3001';
 process.env.BACKEND_PORT = BACKEND_PORT;
-process.env.CONFIG_PORT = process.env.PORT ?? process.env.CONFIG_PORT ?? '3001';
+process.env.ENGINE_PORT = BACKEND_PORT;
+process.env.CONFIG_PORT = UI_PORT;
+process.env.UI_PORT = UI_PORT;
 
 // 1. Fork engine as separate process (dedicated real-time loop)
 const engine = fork(join(DIST, 'index.js'), [], {
-  env: { ...process.env, BACKEND_PORT },
+  env: { ...process.env, PORT: BACKEND_PORT, BACKEND_PORT, ENGINE_PORT: BACKEND_PORT },
   execArgv: ['--max-old-space-size=128'],
   stdio: 'inherit',
 });
