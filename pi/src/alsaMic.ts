@@ -142,9 +142,19 @@ function processFFT(): void {
     prevPower[i] = power;
   }
 
-  latestBands.bassRms = Math.sqrt(loSum / LO_COUNT);
-  latestBands.midHiRms = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
-  latestBands.totalRms = Math.sqrt(totalSum / BIN_COUNT);
+  // ── Pre-smoothing: exponential moving average to kill high-freq jitter ──
+  const rawBass = Math.sqrt(loSum / LO_COUNT);
+  const rawMidHi = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
+  const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
+
+  smoothBass += RMS_SMOOTH_ALPHA * (rawBass - smoothBass);
+  smoothMidHi += RMS_SMOOTH_ALPHA * (rawMidHi - smoothMidHi);
+  smoothTotal += RMS_SMOOTH_ALPHA * (rawTotal - smoothTotal);
+
+  // ── Noise gate: suppress signal near ambient noise floor ──
+  latestBands.bassRms = applyNoiseGate(smoothBass);
+  latestBands.midHiRms = applyNoiseGate(smoothMidHi);
+  latestBands.totalRms = applyNoiseGate(smoothTotal);
   latestBands.flux = flux;
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
