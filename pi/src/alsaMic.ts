@@ -184,6 +184,17 @@ export function resetFluxState(): void {
   prevPower.fill(0);
 }
 
+/** Expose noise gate state for diagnostics */
+export function getNoiseGateState(): { noiseFloor: number; threshold: number; smoothBass: number; smoothMidHi: number; smoothTotal: number } {
+  return {
+    noiseFloor,
+    threshold: noiseFloor * NOISE_GATE_KNEE,
+    smoothBass,
+    smoothMidHi,
+    smoothTotal,
+  };
+}
+
 let recorder: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 

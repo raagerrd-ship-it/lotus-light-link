@@ -979,10 +979,20 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
   const autoGainMultiplier = (data as any).micGain?.autoMultiplier ?? 1;
   const autoGainEnabled = (data as any).micGain?.autoGainEnabled ?? true;
 
+  // Noise gate values
+  const ngFloor = pipeline.ngFloor ?? 0;
+  const ngThreshold = pipeline.ngThreshold ?? 0;
+  const ngPreBass = pipeline.ngPreBass ?? 0;
+  const ngPreTotal = pipeline.ngPreTotal ?? 0;
+
   // Visual pipeline stages (simplified signal flow)
   const pipelineStages = [
     { label: 'Rå Bas',      value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRms' },
     { label: 'Rå Disk',     value: pipeline.midHiRms ?? 0, max: 0.2, key: 'midHiRms' },
+    { label: 'Noise Floor', value: ngFloor, max: 0.05, key: 'ngFloor', displayVal: ngFloor.toFixed(5) },
+    { label: 'Gate Tröskel', value: ngThreshold, max: 0.15, key: 'ngThreshold', displayVal: ngThreshold.toFixed(5) },
+    { label: 'Pre-gate Bas', value: ngPreBass, max: 0.3, key: 'ngPreBass' },
+    { label: 'Post-gate Bas', value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRmsPost' },
     { label: 'Auto-gain',   value: autoGainMultiplier / 8, max: 1, key: 'autoGain', displayVal: `${autoGainMultiplier.toFixed(1)}× ${autoGainEnabled ? '' : '(av)'}` },
     { label: 'Peak AGC',    value: pipeline.peakMax ?? 0, max: 1, key: 'peakMax' },
     { label: 'Bas (norm)',  value: pipeline.bassNorm ?? 0, max: 1, key: 'bassNorm' },
