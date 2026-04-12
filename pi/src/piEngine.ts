@@ -205,6 +205,12 @@ export interface DiagSnapshot {
   finalR: number; finalG: number; finalB: number;
   tickCount: number;
   lastTickUs: number;
+  // Noise gate diagnostics
+  ngFloor: number;       // current noise floor level
+  ngThreshold: number;   // gate opens fully above this (floor * knee)
+  ngPreBass: number;     // smoothed bass BEFORE gate
+  ngPreMidHi: number;    // smoothed midHi BEFORE gate
+  ngPreTotal: number;    // smoothed total BEFORE gate
 }
 
 const _diag: DiagSnapshot = {
@@ -215,6 +221,7 @@ const _diag: DiagSnapshot = {
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
   tickCount: 0, lastTickUs: 0,
+  ngFloor: 0, ngThreshold: 0, ngPreBass: 0, ngPreMidHi: 0, ngPreTotal: 0,
 };
 
 // Reusable TickData — mutated in place
