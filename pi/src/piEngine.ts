@@ -549,6 +549,48 @@ export class PiLightEngine {
   getDiagnostics(): DiagSnapshot { return _diag; }
   getCalibration(): LightCalibration { return this.cal; }
 
+  // ── Recording for diagnostics ──
+  private _recording = false;
+  private _recordBuffer: { t: number; inputRms: number; bassRms: number; outputPct: number }[] = [];
+  private _recordStart = 0;
+  private _recordDuration = 5000;
+  private _recordLastSample = 0;
+  private _recordResolve: ((data: typeof this._recordBuffer) => void) | null = null;
+
+  startRecording(durationMs = 5000): Promise<{ t: number; inputRms: number; bassRms: number; outputPct: number }[]> {
+    if (this._recording) return Promise.reject(new Error('Already recording'));
+    this._recording = true;
+    this._recordBuffer = [];
+    this._recordStart = performance.now();
+    this._recordDuration = durationMs;
+    this._recordLastSample = 0;
+    return new Promise(resolve => { this._recordResolve = resolve; });
+  }
+
+  isRecording(): boolean { return this._recording; }
+
+  private recordSample(): void {
+    if (!this._recording) return;
+    const now = performance.now();
+    const elapsed = now - this._recordStart;
+    // Sample every ~10ms
+    if (now - this._recordLastSample < 9) return;
+    this._recordLastSample = now;
+    this._recordBuffer.push({
+      t: Math.round(elapsed),
+      inputRms: _diag.rawRms,
+      bassRms: _diag.bassRms,
+      outputPct: _diag.brightnessPct,
+    });
+    if (elapsed >= this._recordDuration) {
+      this._recording = false;
+      if (this._recordResolve) {
+        this._recordResolve(this._recordBuffer);
+        this._recordResolve = null;
+      }
+    }
+  }
+
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
     // Skip processing when not playing — idle heartbeat handles BLE output
@@ -682,6 +724,9 @@ export class PiLightEngine {
       _diag.finalB = isPunch ? 255 : _finalColor[2];
       _diag.tickCount++;
       _diag.lastTickUs = ((performance.now() - _tickStart) * 1000 + 0.5) | 0;
+
+      // Record sample if recording active
+      this.recordSample();
 
       // ── Emit ──
       const td = _tickData;

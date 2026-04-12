@@ -899,228 +899,190 @@ function GlobalSettingsView({
 
 /* ── Main Component ── */
 // ── Diagnostics panel component ──
-type DiagRange = { ok: [number, number]; warn: string };
-type DiagData = {
-  pipeline: Record<string, number>;
-  ble: Record<string, number>;
-  calibration: Record<string, unknown>;
-  ranges: Record<string, DiagRange>;
-} | null;
-
-function diagStatus(value: number, range: DiagRange): 'green' | 'yellow' | 'red' {
-  const [lo, hi] = range.ok;
-  if (value >= lo && value <= hi) return 'green';
-  const span = (hi - lo) || 1;
-  const margin = span * 0.2;
-  if (value >= lo - margin && value <= hi + margin) return 'yellow';
-  return 'red';
-}
-
-const DIAG_STATUS_COLORS = {
-  green: 'bg-green-500',
-  yellow: 'bg-yellow-500',
-  red: 'bg-red-500',
-};
-
-const DIAG_LABELS: Record<string, string> = {
-  rawRms: 'Rå RMS',
-  bassRms: 'Bas RMS',
-  midHiRms: 'Disk RMS',
-  agcMax: 'AGC Max',
-  agcQuietTicks: 'AGC Tyst',
-  bassNorm: 'Bas (norm)',
-  midHiNorm: 'Disk (norm)',
-  bassMax: 'AGC Bas-tak',
-  midHiMax: 'AGC Disk-tak',
-  preDynamics: 'Pre-dyn',
-  energyNorm: 'Energi (norm)',
-  dynamicCenter: 'Dyn. Center',
-  onsetBoost: 'Onset Boost',
-  brightnessPct: 'Ljusstyrka %',
-  bleScaleRaw: 'BLE Skala',
-  lastTickUs: 'Tick μs',
-  tickCount: 'Tick #',
-  finalR: 'R', finalG: 'G', finalB: 'B',
-};
+/* ── Diagnostics Recording Panel ── */
+type RecordingSample = { t: number; inputRms: number; bassRms: number; outputPct: number };
 
 function DiagnosticsPanel({ piBase }: { piBase: string }) {
-  const [data, setData] = useState<DiagData>(null);
-  const [error, setError] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'recording' | 'done'>('idle');
+  const [countdown, setCountdown] = useState(0);
+  const [samples, setSamples] = useState<RecordingSample[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const countRef = useRef<ReturnType<typeof setInterval>>();
 
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
+  const startRecording = async () => {
+    setStatus('recording');
+    setCountdown(5);
+    setSamples([]);
+
+    // Countdown timer
+    let c = 5;
+    countRef.current = setInterval(() => {
+      c--;
+      setCountdown(c);
+      if (c <= 0) clearInterval(countRef.current);
+    }, 1000);
+
+    // Start recording on Pi
+    await fetch(`${piBase}/api/diagnostics/record`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ durationMs: 5000 }),
+    });
+
+    // Poll for results
+    pollRef.current = setInterval(async () => {
       try {
-        const r = await fetch(`${piBase}/api/diagnostics`, { signal: AbortSignal.timeout(2000) });
-        if (!r.ok || cancelled) return;
-        const d = await r.json();
-        if (!cancelled) { setData(d); setError(false); }
-      } catch {
-        if (!cancelled) setError(true);
-      }
-    };
-    poll();
-    const id = setInterval(poll, 500);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [piBase]);
+        const r = await fetch(`${piBase}/api/diagnostics/recording`);
+        const data = await r.json();
+        if (data.status === 'done' && data.samples) {
+          clearInterval(pollRef.current);
+          clearInterval(countRef.current);
+          setSamples(data.samples);
+          setStatus('done');
+        }
+      } catch {}
+    }, 300);
+  };
 
-  if (error) return <p className="text-xs text-muted-foreground">Kan ej nå diagnostik-API</p>;
-  if (!data) return <p className="text-xs text-muted-foreground animate-pulse">Laddar diagnostik…</p>;
+  useEffect(() => () => { clearInterval(pollRef.current); clearInterval(countRef.current); }, []);
 
-  const { pipeline, ble, calibration, ranges } = data;
+  // Draw graph when samples arrive
+  useEffect(() => {
+    if (samples.length === 0 || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-  // Pipeline metrics with ranges
-  const pipelineKeys = Object.keys(ranges).filter(k => k in pipeline);
-  // BLE stats
-  const bleWriteLatMs = ble?.writeLatAvgMs ?? 0;
-  const bleSkipBusy = ble?.skipBusyCount ?? 0;
+    const w = canvas.width;
+    const h = canvas.height;
+    const pad = { top: 20 * dpr, bottom: 28 * dpr, left: 36 * dpr, right: 12 * dpr };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
 
-  // Auto-gain info from micGain
-  const autoGainMultiplier = (data as any).micGain?.autoMultiplier ?? 1;
-  const autoGainEnabled = (data as any).micGain?.autoGainEnabled ?? true;
+    ctx.clearRect(0, 0, w, h);
 
-  // Noise gate values
-  const ngFloor = pipeline.ngFloor ?? 0;
-  const ngThreshold = pipeline.ngThreshold ?? 0;
-  const ngPreBass = pipeline.ngPreBass ?? 0;
-  const ngPreTotal = pipeline.ngPreTotal ?? 0;
+    // Find max time and normalize
+    const maxT = samples[samples.length - 1].t;
+    const maxInput = Math.max(0.001, ...samples.map(s => s.inputRms));
 
-  // Visual pipeline stages (simplified signal flow)
-  const pipelineStages = [
-    { label: 'Rå Bas',      value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRms' },
-    { label: 'Rå Disk',     value: pipeline.midHiRms ?? 0, max: 0.2, key: 'midHiRms' },
-    { label: 'Noise Floor', value: ngFloor, max: 0.05, key: 'ngFloor', displayVal: ngFloor.toFixed(5) },
-    { label: 'Gate Tröskel', value: ngThreshold, max: 0.15, key: 'ngThreshold', displayVal: ngThreshold.toFixed(5) },
-    { label: 'Pre-gate Bas', value: ngPreBass, max: 0.3, key: 'ngPreBass' },
-    { label: 'Post-gate Bas', value: pipeline.bassRms ?? 0, max: 0.3, key: 'bassRmsPost' },
-    { label: 'Auto-gain',   value: autoGainMultiplier / 8, max: 1, key: 'autoGain', displayVal: `${autoGainMultiplier.toFixed(1)}× ${autoGainEnabled ? '' : '(av)'}` },
-    { label: 'Peak AGC',    value: pipeline.peakMax ?? 0, max: 1, key: 'peakMax' },
-    { label: 'Bas (norm)',  value: pipeline.bassNorm ?? 0, max: 1, key: 'bassNorm' },
-    { label: 'Disk (norm)', value: pipeline.midHiNorm ?? 0, max: 1, key: 'midHiNorm' },
-    { label: 'Pre-dyn',     value: pipeline.preDynamics ?? 0, max: 1, key: 'preDynamics' },
-    { label: 'Dyn Center',  value: pipeline.dynamicCenter ?? 0, max: 1, key: 'dynamicCenter' },
-    { label: 'Post-dyn',    value: pipeline.energyNorm ?? 0, max: 1.5, key: 'energyNorm' },
-    { label: 'Ljusstyrka',  value: (pipeline.brightnessPct ?? 0) / 100, max: 1, key: 'brightnessPct' },
-  ];
+    const toX = (t: number) => pad.left + (t / maxT) * cw;
+    const toY = (v: number, max: number) => pad.top + ch * (1 - Math.min(v / max, 1));
 
-  // Determine which stage is the bottleneck (first one consistently >90% of max)
-  const bottleneckIdx = pipelineStages.findIndex(s => {
-    const pct = s.value / s.max;
-    return pct > 0.9 && s.key !== 'dynamicCenter' && s.key !== 'brightnessPct';
-  });
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (ch / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+    }
+
+    // X-axis labels
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${9 * dpr}px monospace`;
+    ctx.textAlign = 'center';
+    for (let s = 0; s <= 5; s++) {
+      const x = toX((maxT / 5) * s);
+      ctx.fillText(`${s}s`, x, h - 6 * dpr);
+    }
+
+    // Y-axis labels
+    ctx.textAlign = 'right';
+    ctx.fillText('100%', pad.left - 4 * dpr, pad.top + 4 * dpr);
+    ctx.fillText('0%', pad.left - 4 * dpr, pad.top + ch + 4 * dpr);
+
+    // Draw Input RMS curve (blue)
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(100,160,255,0.9)';
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < samples.length; i++) {
+      const x = toX(samples[i].t);
+      const y = toY(samples[i].inputRms, maxInput);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Draw Output brightness curve (orange)
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,140,50,0.9)';
+    ctx.lineWidth = 2 * dpr;
+    for (let i = 0; i < samples.length; i++) {
+      const x = toX(samples[i].t);
+      const y = toY(samples[i].outputPct, 100);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Fill under output
+    ctx.lineTo(toX(samples[samples.length - 1].t), pad.top + ch);
+    ctx.lineTo(toX(samples[0].t), pad.top + ch);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
+    grad.addColorStop(0, 'rgba(255,140,50,0.25)');
+    grad.addColorStop(1, 'rgba(255,140,50,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }, [samples]);
 
   return (
-    <div className="space-y-4">
-      {/* Visual Pipeline Flow */}
-      <div>
-        <p className="text-[10px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">Signalflöde</p>
-        <div className="space-y-1">
-          {pipelineStages.map((stage, i) => {
-            const pct = Math.min(1, stage.value / stage.max);
-            const isHot = pct > 0.9 && stage.key !== 'dynamicCenter';
-            const isBottleneck = i === bottleneckIdx;
-            const barColor = isBottleneck ? 'bg-red-500' : isHot ? 'bg-yellow-500' : 'bg-emerald-500';
-            const displayVal = (stage as any).displayVal ?? (stage.key === 'brightnessPct' ? `${(stage.value * 100).toFixed(0)}%` : stage.value.toFixed(4));
-            const isDynCenter = stage.key === 'dynamicCenter';
+    <div className="space-y-3">
+      {status === 'idle' && (
+        <button
+          onClick={startRecording}
+          className="w-full py-3 rounded-lg bg-primary text-primary-foreground text-sm font-medium active:scale-95 transition-transform flex items-center justify-center gap-2"
+        >
+          <Activity size={16} />
+          Starta diagnos (5s inspelning)
+        </button>
+      )}
 
-            return (
-              <div key={stage.key} className="flex items-center gap-1.5">
-                <span className={`text-[9px] font-mono w-[72px] shrink-0 ${isBottleneck ? 'text-red-400 font-bold' : 'text-muted-foreground'}`}>
-                  {stage.label}
-                </span>
-                <div className="flex-1 h-3 bg-secondary/60 rounded-sm overflow-hidden relative">
-                  <div
-                    className={`h-full rounded-sm transition-all duration-300 ${barColor}`}
-                    style={{ width: `${pct * 100}%`, opacity: 0.85 }}
-                  />
-                  {isDynCenter && (
-                    <div className="absolute top-0 h-full w-px bg-white/60" style={{ left: `${pct * 100}%` }} />
-                  )}
-                </div>
-                <span className={`text-[9px] font-mono w-[46px] text-right shrink-0 ${isBottleneck ? 'text-red-400 font-bold' : 'text-foreground/70'}`}>
-                  {displayVal}
-                </span>
-              </div>
-            );
-          })}
+      {status === 'recording' && (
+        <div className="text-center py-6">
+          <div className="text-4xl font-bold font-mono text-primary mb-2">{countdown}</div>
+          <p className="text-sm text-muted-foreground animate-pulse">Spelar in…</p>
+          <div className="w-full bg-secondary rounded-full h-2 mt-3">
+            <div
+              className="bg-primary h-2 rounded-full transition-all duration-1000"
+              style={{ width: `${((5 - countdown) / 5) * 100}%` }}
+            />
+          </div>
         </div>
-        {bottleneckIdx >= 0 && (
-          <p className="text-[9px] text-red-400 mt-1.5 font-mono">
-            ⚠ Flaskhals: {pipelineStages[bottleneckIdx].label} ({(pipelineStages[bottleneckIdx].value / pipelineStages[bottleneckIdx].max * 100).toFixed(0)}% av max)
+      )}
+
+      {status === 'done' && samples.length > 0 && (
+        <div>
+          <canvas
+            ref={canvasRef}
+            className="w-full rounded-lg"
+            style={{ height: 200, background: 'rgba(0,0,0,0.3)' }}
+          />
+          <div className="flex justify-center gap-5 mt-2 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(100,160,255,0.9)' }} /> Input RMS
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(255,140,50,0.9)' }} /> Output %
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground text-center mt-1">
+            {samples.length} samples, max input: {Math.max(...samples.map(s => s.inputRms)).toFixed(4)}
           </p>
-        )}
-      </div>
-
-      {/* Separator */}
-      <div className="border-t border-border/30" />
-
-      {/* Detailed table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-[10px] font-mono">
-          <thead>
-            <tr className="text-muted-foreground">
-              <th className="text-left py-1">Mätvärde</th>
-              <th className="text-right py-1">Värde</th>
-              <th className="text-right py-1">OK-range</th>
-              <th className="w-5" />
-            </tr>
-          </thead>
-          <tbody>
-            {pipelineKeys.map(key => {
-              const val = pipeline[key] ?? 0;
-              const range = ranges[key];
-              const status = diagStatus(val, range);
-              const display = val < 1 ? val.toFixed(4) : val < 100 ? val.toFixed(1) : String(val);
-              return (
-                <tr key={key} className="border-t border-border/30">
-                  <td className="py-1 text-muted-foreground">{DIAG_LABELS[key] ?? key}</td>
-                  <td className="text-right font-semibold">{display}</td>
-                  <td className="text-right text-muted-foreground">{range.ok[0]}–{range.ok[1]}</td>
-                  <td className="text-center"><div className={`w-2 h-2 rounded-full inline-block ${DIAG_STATUS_COLORS[status]}`} title={range.warn} /></td>
-                </tr>
-              );
-            })}
-            {/* BLE metrics from bleStats */}
-            <tr className="border-t border-border/30">
-              <td className="py-1 text-muted-foreground">BLE Latens ms</td>
-              <td className="text-right font-semibold">{bleWriteLatMs.toFixed(1)}</td>
-              <td className="text-right text-muted-foreground">0–15</td>
-              <td className="text-center"><div className={`w-2 h-2 rounded-full inline-block ${DIAG_STATUS_COLORS[diagStatus(bleWriteLatMs, ranges.bleWriteLatMs ?? { ok: [0, 15], warn: '' })]}`} /></td>
-            </tr>
-            <tr className="border-t border-border/30">
-              <td className="py-1 text-muted-foreground">BLE Skip Busy</td>
-              <td className="text-right font-semibold">{bleSkipBusy}</td>
-              <td className="text-right text-muted-foreground">0–50</td>
-              <td className="text-center"><div className={`w-2 h-2 rounded-full inline-block ${DIAG_STATUS_COLORS[diagStatus(bleSkipBusy, ranges.bleSkipBusy ?? { ok: [0, 50], warn: '' })]}`} /></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* Color preview */}
-      <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-full border border-border/50" style={{ backgroundColor: `rgb(${pipeline.finalR ?? 0},${pipeline.finalG ?? 0},${pipeline.finalB ?? 0})` }} />
-        <span className="text-[10px] text-muted-foreground font-mono">
-          rgb({pipeline.finalR},{pipeline.finalG},{pipeline.finalB}) @ {pipeline.brightnessPct}%
-        </span>
-      </div>
-
-      {/* Calibration snapshot */}
-      <details className="text-[10px]">
-        <summary className="text-muted-foreground cursor-pointer">Kalibrering</summary>
-        <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-muted-foreground">
-          {Object.entries(calibration).map(([k, v]) => (
-            <div key={k} className="flex justify-between">
-              <span>{k}</span>
-              <span className="font-semibold text-foreground">{typeof v === 'boolean' ? (v ? 'Ja' : 'Nej') : String(v)}</span>
-            </div>
-          ))}
+          <button
+            onClick={() => { setStatus('idle'); setSamples([]); }}
+            className="w-full mt-3 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium active:scale-95 transition-transform"
+          >
+            Ny inspelning
+          </button>
         </div>
-      </details>
+      )}
     </div>
   );
 }
-
 export default function PiMobile() {
   const [view, setView] = useState<"home" | "profile" | "global">("home");
   const [activePreset, setActivePreset] = useState<string>("Normal");
