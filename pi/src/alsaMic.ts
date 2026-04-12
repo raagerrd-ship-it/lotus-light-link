@@ -55,6 +55,38 @@ let ringPos = 0;
 const windowedBuf = new Float64Array(FFT_SIZE);
 let samplesReceived = 0;
 
+// ── RMS pre-smoothing (noise reduction) ──
+// Exponential moving average on RMS values before the engine sees them.
+// At ~345 FFT frames/sec, alpha=0.3 gives ~3-frame smoothing (~9ms) — 
+// kills jitter from amplified mic noise without adding perceptible latency.
+const RMS_SMOOTH_ALPHA = 0.3;
+let smoothBass = 0;
+let smoothMidHi = 0;
+let smoothTotal = 0;
+
+// ── Noise gate ──
+// Soft gate: signal below noiseFloor is exponentially attenuated.
+// The floor adapts slowly to track ambient noise level.
+const NOISE_FLOOR_TRACK_ALPHA = 0.001;  // very slow — tracks over ~3 seconds
+const NOISE_GATE_KNEE = 3.0;            // gate ratio: signal must be 3x noise floor for full pass
+let noiseFloor = 0.001;
+
+function applyNoiseGate(rms: number): number {
+  // Track noise floor (slow minimum follower)
+  if (rms < noiseFloor || noiseFloor < 0.0001) {
+    noiseFloor = rms;  // instant drop
+  } else {
+    noiseFloor += NOISE_FLOOR_TRACK_ALPHA * (rms - noiseFloor);
+  }
+  // Soft gate: ramp from 0→1 as signal goes from 1x→3x noise floor
+  const threshold = noiseFloor * NOISE_GATE_KNEE;
+  if (rms <= noiseFloor) return 0;
+  if (rms >= threshold) return rms;
+  // Smooth quadratic ramp in the knee region
+  const t = (rms - noiseFloor) / (threshold - noiseFloor);
+  return rms * (t * t);
+}
+
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
@@ -110,9 +142,19 @@ function processFFT(): void {
     prevPower[i] = power;
   }
 
-  latestBands.bassRms = Math.sqrt(loSum / LO_COUNT);
-  latestBands.midHiRms = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
-  latestBands.totalRms = Math.sqrt(totalSum / BIN_COUNT);
+  // ── Pre-smoothing: exponential moving average to kill high-freq jitter ──
+  const rawBass = Math.sqrt(loSum / LO_COUNT);
+  const rawMidHi = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
+  const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
+
+  smoothBass += RMS_SMOOTH_ALPHA * (rawBass - smoothBass);
+  smoothMidHi += RMS_SMOOTH_ALPHA * (rawMidHi - smoothMidHi);
+  smoothTotal += RMS_SMOOTH_ALPHA * (rawTotal - smoothTotal);
+
+  // ── Noise gate: suppress signal near ambient noise floor ──
+  latestBands.bassRms = applyNoiseGate(smoothBass);
+  latestBands.midHiRms = applyNoiseGate(smoothMidHi);
+  latestBands.totalRms = applyNoiseGate(smoothTotal);
   latestBands.flux = flux;
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
@@ -284,6 +326,8 @@ export function stopMic(): void {
     ringPos = 0;
     ringBuf.fill(0);
     prevPower.fill(0);
+    smoothBass = 0; smoothMidHi = 0; smoothTotal = 0;
+    noiseFloor = 0.001;
     console.log('[ALSA] Microphone stopped');
   }
 }
