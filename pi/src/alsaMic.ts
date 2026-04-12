@@ -55,14 +55,19 @@ let ringPos = 0;
 const windowedBuf = new Float64Array(FFT_SIZE);
 let samplesReceived = 0;
 
-// ── RMS pre-smoothing (noise reduction) ──
-// Exponential moving average on RMS values before the engine sees them.
-// At ~345 FFT frames/sec, alpha=0.3 gives ~3-frame smoothing (~9ms) — 
-// kills jitter from amplified mic noise without adding perceptible latency.
-const RMS_SMOOTH_ALPHA = 0.3;
+// ── Asymmetric RMS pre-smoothing (noise reduction + transient preservation) ──
+// Fast attack (alpha=0.8) lets kicks punch through with minimal delay (~1 frame).
+// Slow release (alpha=0.15) smooths out noise on the way down.
+const RMS_ATTACK_ALPHA = 0.8;   // fast rise — preserves kick transients
+const RMS_RELEASE_ALPHA = 0.15; // slow fall — kills noise jitter on decay
 let smoothBass = 0;
 let smoothMidHi = 0;
 let smoothTotal = 0;
+
+function smoothRms(raw: number, prev: number): number {
+  const alpha = raw > prev ? RMS_ATTACK_ALPHA : RMS_RELEASE_ALPHA;
+  return prev + alpha * (raw - prev);
+}
 
 // ── Noise gate ──
 // Soft gate: signal below noiseFloor is exponentially attenuated.
@@ -147,9 +152,9 @@ function processFFT(): void {
   const rawMidHi = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
   const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
 
-  smoothBass += RMS_SMOOTH_ALPHA * (rawBass - smoothBass);
-  smoothMidHi += RMS_SMOOTH_ALPHA * (rawMidHi - smoothMidHi);
-  smoothTotal += RMS_SMOOTH_ALPHA * (rawTotal - smoothTotal);
+  smoothBass = smoothRms(rawBass, smoothBass);
+  smoothMidHi = smoothRms(rawMidHi, smoothMidHi);
+  smoothTotal = smoothRms(rawTotal, smoothTotal);
 
   // ── Noise gate: suppress signal near ambient noise floor ──
   latestBands.bassRms = applyNoiseGate(smoothBass);
