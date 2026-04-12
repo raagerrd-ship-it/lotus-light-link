@@ -1077,6 +1077,9 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
               <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(100,160,255,0.9)' }} /> Input RMS
             </span>
             <span className="flex items-center gap-1">
+              <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(100,220,120,0.8)' }} /> Bass RMS
+            </span>
+            <span className="flex items-center gap-1">
               <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(255,140,50,0.9)' }} /> Output %
             </span>
           </div>
