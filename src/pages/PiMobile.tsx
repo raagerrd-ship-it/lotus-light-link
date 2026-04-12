@@ -1007,6 +1007,17 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
     }
     ctx.stroke();
 
+    // Draw Bass RMS curve (green)
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(100,220,120,0.8)';
+    ctx.lineWidth = 1.5 * dpr;
+    for (let i = 0; i < samples.length; i++) {
+      const x = toX(samples[i].t);
+      const y = toY(samples[i].bassRms, maxInput);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
     // Draw Output brightness curve (orange)
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(255,140,50,0.9)';
@@ -1064,6 +1075,9 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
           <div className="flex justify-center gap-5 mt-2 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(100,160,255,0.9)' }} /> Input RMS
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(100,220,120,0.8)' }} /> Bass RMS
             </span>
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 border-t-2" style={{ borderColor: 'rgba(255,140,50,0.9)' }} /> Output %
