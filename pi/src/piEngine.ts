@@ -376,8 +376,13 @@ export class PiLightEngine {
 
   private sendIdleColor(): void {
     const idle = loadIdleColor();
-    applyColorCalibrationFast(idle[0], idle[1], idle[2], this.cal, this.tc.gammaIsUnity);
-    sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], 100);
+    // Send idle color at full brightness — skip gamma so the color isn't dimmed
+    sendToBLE(
+      Math.max(0, Math.min(255, idle[0] | 0)),
+      Math.max(0, Math.min(255, idle[1] | 0)),
+      Math.max(0, Math.min(255, idle[2] | 0)),
+      100,
+    );
   }
 
   setPlaying(playing: boolean): void {
