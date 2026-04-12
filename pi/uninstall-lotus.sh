@@ -1,28 +1,11 @@
 #!/bin/bash
-# uninstall-lotus.sh — Remove Lotus Light Link from Raspberry Pi
-# Called by Pi Dashboard or manually: bash uninstall-lotus.sh
+# uninstall-lotus.sh — Clean up Lotus Light Link files
+# Called by Pi Control Center. Systemd services are managed by Pi Control Center.
+# This script ONLY removes application files and config.
 
-# Don't use set -e — we want to continue even if services don't exist
 set +e
 
-SERVICE_NAME="lotus-light"
-
-# ─── Detect target user (support running as root via Pi Dashboard) ────
-if [ "$EUID" -eq 0 ]; then
-  TARGET_USER="${SUDO_USER:-pi}"
-  TARGET_HOME=$(eval echo "~$TARGET_USER")
-else
-  TARGET_USER="$USER"
-  TARGET_HOME="$HOME"
-fi
-
-run_user_systemctl() {
-  if [ "$EUID" -eq 0 ]; then
-    sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" systemctl --user "$@" 2>/dev/null
-  else
-    systemctl --user "$@" 2>/dev/null
-  fi
-}
+APP_DIR="/opt/lotus-light"
 
 echo ""
 echo "========================================"
@@ -30,57 +13,30 @@ echo "  Lotus Light Link Uninstaller"
 echo "========================================"
 echo ""
 
-# 1. Stop and disable user-level services
-echo "[1/4] Stoppar tjänster..."
-run_user_systemctl stop "$SERVICE_NAME" || true
-run_user_systemctl stop "${SERVICE_NAME}-web" || true
-run_user_systemctl stop "${SERVICE_NAME}-update.timer" || true
-run_user_systemctl stop "${SERVICE_NAME}-restart.timer" || true
-run_user_systemctl disable "$SERVICE_NAME" || true
-run_user_systemctl disable "${SERVICE_NAME}-web" || true
-run_user_systemctl disable "${SERVICE_NAME}-update.timer" || true
-run_user_systemctl disable "${SERVICE_NAME}-restart.timer" || true
-echo "  ✓ Tjänster stoppade"
+# 1. Remove application files (preserve installDir removal to Pi Control Center)
+echo "[1/2] Rensar applikationsfiler..."
+rm -rf "$APP_DIR/dist" 2>/dev/null
+rm -rf "$APP_DIR/pi/dist" 2>/dev/null
+rm -rf "$APP_DIR/pi/node_modules" 2>/dev/null
+rm -rf "$APP_DIR/node_modules" 2>/dev/null
+echo "  ✓ Byggfiler och beroenden borttagna"
 
-# 2. Remove service files
-echo "[2/4] Tar bort systemd-filer..."
-rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}.service"
-rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-web.service"
-rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-update.service"
-rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-update.timer"
-rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-restart.service"
-rm -f "$TARGET_HOME/.config/systemd/user/${SERVICE_NAME}-restart.timer"
-run_user_systemctl daemon-reload || true
-echo "  ✓ Systemd-filer borttagna"
-
-# Also clean up legacy system-level services if they exist
-if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
-  echo "  Rensar gamla system-level tjänster..."
-  sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-  sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
-  sudo rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
-  sudo rm -f "/etc/systemd/system/lotus-update.service"
-  sudo rm -f "/etc/systemd/system/lotus-update.timer"
-  sudo systemctl daemon-reload 2>/dev/null || true
-  echo "  ✓ Legacy tjänster borttagna"
-fi
-
-# 3. Remove sudoers rule
-echo "[3/4] Tar bort sudoers-regel..."
-SUDOERS_FILE="/etc/sudoers.d/lotus-light"
-if [ -f "$SUDOERS_FILE" ]; then
-  sudo rm -f "$SUDOERS_FILE"
-  echo "  ✓ Sudoers-regel borttagen"
+# 2. Remove BLE capabilities (optional cleanup)
+echo "[2/2] Rensar BLE-rättigheter..."
+NODE_BIN=$(readlink -f "$(which node)" 2>/dev/null)
+if [ -n "$NODE_BIN" ]; then
+  sudo setcap -r "$NODE_BIN" 2>/dev/null || true
+  echo "  ✓ BLE-capabilities borttagna från Node"
 else
-  echo "  ✓ Ingen sudoers-regel att ta bort"
+  echo "  ✓ Inget att rensa"
 fi
 
-# 4. Summary (don't remove /opt/lotus-light — dashboard manages that)
-echo "[4/4] Klart"
 echo ""
 echo "========================================"
 echo "  Avinstallation klar!"
 echo "========================================"
+echo ""
+echo "  Pi Control Center hanterar systemd-tjänster."
 echo ""
 
 exit 0
