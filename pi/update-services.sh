@@ -64,6 +64,7 @@ cp -r "$TMP_DIR/pi/node_modules" "$PI_DIR/node_modules"
 cp "$TMP_DIR/pi/package.json" "$PI_DIR/package.json"
 cp "$TMP_DIR/pi/start-lotus.js" "$PI_DIR/start-lotus.js"
 [ -f "$TMP_DIR/VERSION.json" ] && cp "$TMP_DIR/VERSION.json" "$APP_DIR/VERSION.json"
+[ -f "$TMP_DIR/pi/services.json" ] && cp "$TMP_DIR/pi/services.json" "$PI_DIR/services.json"
 
 # Copy updated scripts
 for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
