@@ -152,9 +152,9 @@ function processFFT(): void {
   const rawMidHi = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
   const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
 
-  smoothBass += RMS_SMOOTH_ALPHA * (rawBass - smoothBass);
-  smoothMidHi += RMS_SMOOTH_ALPHA * (rawMidHi - smoothMidHi);
-  smoothTotal += RMS_SMOOTH_ALPHA * (rawTotal - smoothTotal);
+  smoothBass = smoothRms(rawBass, smoothBass);
+  smoothMidHi = smoothRms(rawMidHi, smoothMidHi);
+  smoothTotal = smoothRms(rawTotal, smoothTotal);
 
   // ── Noise gate: suppress signal near ambient noise floor ──
   latestBands.bassRms = applyNoiseGate(smoothBass);
