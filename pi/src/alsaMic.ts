@@ -95,6 +95,9 @@ function applyNoiseGate(rms: number): number {
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
+// Timestamp of last FFT completion (performance.now())
+let lastFFTTimestamp = 0;
+
 // Debug — only active when DEBUG=true env var is set
 const DEBUG_ENABLED = process.env.DEBUG === 'true';
 const DEBUG_INTERVAL = 690; // ~2 seconds at 44100/128 ≈ 345 frames/sec
@@ -172,6 +175,9 @@ function processFFT(): void {
     }
   }
 
+  // Stamp FFT completion time
+  lastFFTTimestamp = performance.now();
+
   // Fire event immediately — engine can process with zero latency
   if (_onFFTReady) _onFFTReady(latestBands);
 }
@@ -182,6 +188,11 @@ export function getLatestBands(): BandResult {
 
 export function resetFluxState(): void {
   prevPower.fill(0);
+}
+
+/** Return timestamp (performance.now) of last FFT completion */
+export function getLastFFTTimestamp(): number {
+  return lastFFTTimestamp;
 }
 
 /** Expose noise gate state for diagnostics */

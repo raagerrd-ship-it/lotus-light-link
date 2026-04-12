@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, type BandResult } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 
@@ -551,13 +551,13 @@ export class PiLightEngine {
 
   // ── Recording for diagnostics ──
   private _recording = false;
-  private _recordBuffer: { t: number; inputRms: number; bassRms: number; outputPct: number }[] = [];
+  private _recordBuffer: { tInput: number; tOutput: number; inputRms: number; bassRms: number; outputPct: number }[] = [];
   private _recordStart = 0;
   private _recordDuration = 5000;
   private _recordLastSample = 0;
   private _recordResolve: ((data: typeof this._recordBuffer) => void) | null = null;
 
-  startRecording(durationMs = 5000): Promise<{ t: number; inputRms: number; bassRms: number; outputPct: number }[]> {
+  startRecording(durationMs = 5000): Promise<{ tInput: number; tOutput: number; inputRms: number; bassRms: number; outputPct: number }[]> {
     if (this._recording) return Promise.reject(new Error('Already recording'));
     this._recording = true;
     this._recordBuffer = [];
@@ -576,8 +576,10 @@ export class PiLightEngine {
     // Sample every ~10ms
     if (now - this._recordLastSample < 9) return;
     this._recordLastSample = now;
+    const fftTime = getLastFFTTimestamp();
     this._recordBuffer.push({
-      t: Math.round(elapsed),
+      tInput: Math.round(fftTime - this._recordStart),
+      tOutput: Math.round(elapsed),
       inputRms: _diag.rawRms,
       bassRms: _diag.bassRms,
       outputPct: _diag.brightnessPct,
