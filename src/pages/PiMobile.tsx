@@ -900,7 +900,7 @@ function GlobalSettingsView({
 /* ── Main Component ── */
 // ── Diagnostics panel component ──
 /* ── Diagnostics Recording Panel ── */
-type RecordingSample = { t: number; inputRms: number; bassRms: number; outputPct: number };
+type RecordingSample = { tInput: number; tOutput: number; inputRms: number; bassRms: number; outputPct: number };
 
 function DiagnosticsPanel({ piBase }: { piBase: string }) {
   const [status, setStatus] = useState<'idle' | 'recording' | 'done'>('idle');
@@ -967,7 +967,7 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
     ctx.clearRect(0, 0, w, h);
 
     // Find max time and normalize
-    const maxT = samples[samples.length - 1].t;
+    const maxT = Math.max(samples[samples.length - 1].tInput, samples[samples.length - 1].tOutput);
     const maxInput = Math.max(0.001, ...samples.map(s => s.inputRms));
 
     const toX = (t: number) => pad.left + (t / maxT) * cw;
@@ -995,49 +995,62 @@ function DiagnosticsPanel({ piBase }: { piBase: string }) {
     ctx.fillText('100%', pad.left - 4 * dpr, pad.top + 4 * dpr);
     ctx.fillText('0%', pad.left - 4 * dpr, pad.top + ch + 4 * dpr);
 
-    // Draw Input RMS curve (blue)
+    // Draw Input RMS curve (blue) — plotted against tInput
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(100,160,255,0.9)';
     ctx.lineWidth = 1.5 * dpr;
     ctx.lineJoin = 'round';
     for (let i = 0; i < samples.length; i++) {
-      const x = toX(samples[i].t);
+      const x = toX(samples[i].tInput);
       const y = toY(samples[i].inputRms, maxInput);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
 
-    // Draw Bass RMS curve (green)
+    // Draw Bass RMS curve (green) — plotted against tInput
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(100,220,120,0.8)';
     ctx.lineWidth = 1.5 * dpr;
     for (let i = 0; i < samples.length; i++) {
-      const x = toX(samples[i].t);
+      const x = toX(samples[i].tInput);
       const y = toY(samples[i].bassRms, maxInput);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
 
-    // Draw Output brightness curve (orange)
+    // Draw Output brightness curve (orange) — plotted against tOutput
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(255,140,50,0.9)';
     ctx.lineWidth = 2 * dpr;
     for (let i = 0; i < samples.length; i++) {
-      const x = toX(samples[i].t);
+      const x = toX(samples[i].tOutput);
       const y = toY(samples[i].outputPct, 100);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
 
     // Fill under output
-    ctx.lineTo(toX(samples[samples.length - 1].t), pad.top + ch);
-    ctx.lineTo(toX(samples[0].t), pad.top + ch);
+    ctx.lineTo(toX(samples[samples.length - 1].tOutput), pad.top + ch);
+    ctx.lineTo(toX(samples[0].tOutput), pad.top + ch);
     ctx.closePath();
     const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
     grad.addColorStop(0, 'rgba(255,140,50,0.25)');
     grad.addColorStop(1, 'rgba(255,140,50,0)');
     ctx.fillStyle = grad;
     ctx.fill();
+
+    // Compute and draw average latency label
+    let totalDelay = 0;
+    let delayCount = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const d = samples[i].tOutput - samples[i].tInput;
+      if (d >= 0) { totalDelay += d; delayCount++; }
+    }
+    const avgDelay = delayCount > 0 ? totalDelay / delayCount : 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = `${10 * dpr}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(`avg latency: ${avgDelay.toFixed(1)} ms`, pad.left + 4 * dpr, pad.top + 14 * dpr);
   }, [samples]);
 
   return (
