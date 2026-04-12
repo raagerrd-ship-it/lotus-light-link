@@ -1,34 +1,33 @@
 
 
-## Plan: Diagnostik → "Spela in & visa graf"
+## Plan: Visa input→output-fördröjning i diagnostikgrafen
 
-### Koncept
-Ersätt alla realtids-staplar och tabellvärden i diagnostikpanelen med en enda **"Starta diagnos"**-knapp. Vid tryck spelar Pi:n in 5 sekunder av signaldata och returnerar det, sedan ritas en interaktiv graf med två kurvor: **Input (post-gain RMS)** och **Output (brightness %)** över tid.
+### Problem
+Nuvarande recording samplar `inputRms` och `outputPct` i samma ögonblick (efter BLE-skrivning), så kurvorna ser synkroniserade ut. Den verkliga fördröjningen (mic→ljus) syns inte.
 
-### Backend (Pi)
+### Lösning
+Spara **separata tidsstämplar** för input och output i varje sample:
+- `tInput` = tidpunkt då FFT-data anlände (mic-signalen)
+- `tOutput` = tidpunkt då BLE-skrivningen gjordes
 
-**Ny endpoint `POST /api/diagnostics/record`** i `pi/src/configServer.ts`:
-- Startar en 5-sekunders inspelning
-- Varje engine-tick samplar: `{ t, inputRms: rawRms, bassRms, outputPct: brightnessPct }`
-- Lagrar i en ringbuffer (~500 samples á 10ms)
-- Returnerar hela arrayen som JSON när klart
-- Endpoint returnerar 409 om inspelning redan pågår
+Grafen plottar sedan input-kurvan mot `tInput` och output-kurvan mot `tOutput`, så man visuellt ser tidsförskjutningen (~10-15ms).
 
-**Ny metod `startRecording(durationMs)` / `getRecording()`** i `pi/src/piEngine.ts`:
-- I `tickInner()`: om recording pågår, pusha snapshot till array
-- Sampla max var 10ms (1 av ~3 ticks) för rimlig datamängd
+### Ändringar
 
-### Frontend (UI)
+**1. `pi/src/piEngine.ts`**
+- Lägg till `_lastFFTTimestamp` som sätts i `tickInner()` vid ingångspunkten (innan processing)
+- Ändra `_recordBuffer`-typen: lägg till `tInput` och `tOutput` (separata tidsstämplar relativt recording-start)
+- I `recordSample()`: spara `tInput` = FFT-ankomsttid, `tOutput` = nuvarande tid (efter BLE-send)
 
-**Ersätt `DiagnosticsPanel`** i `src/pages/PiMobile.tsx`:
-- Visa en "Starta diagnos"-knapp (+ 5s nedräkning under inspelning)
-- Efter inspelning: rendera en **tidsserie-graf** med `<canvas>` (ren Canvas 2D, inget externt lib)
-- Två kurvor: blå = Input RMS (post-gain), orange = Output brightness
-- X-axel = tid (0–5s), Y-axel = normaliserat 0–1
-- Behåll möjlighet att köra ny inspelning
+**2. `pi/src/alsaMic.ts`**
+- Exportera en `getLastFFTTimestamp()` som returnerar `performance.now()` vid senaste FFT-beräkning
+
+**3. `src/pages/PiMobile.tsx`**
+- Ändra canvas-ritningen: plotta input-kurvorna (blå/grön) mot `tInput` och output-kurvan (orange) mot `tOutput`
+- Lägg till en liten label som visar genomsnittlig fördröjning i ms
 
 ### Filer som ändras
-1. `pi/src/piEngine.ts` — lägg till recording-logik + metoder
-2. `pi/src/configServer.ts` — ny POST-endpoint
-3. `src/pages/PiMobile.tsx` — ersätt DiagnosticsPanel med knapp + canvas-graf
+1. `pi/src/alsaMic.ts` — exportera FFT-tidsstämpel
+2. `pi/src/piEngine.ts` — dubbla tidsstämplar i recording-buffern
+3. `src/pages/PiMobile.tsx` — rita kurvor med separata tidsaxlar
 
