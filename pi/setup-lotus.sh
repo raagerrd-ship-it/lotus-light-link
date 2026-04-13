@@ -130,12 +130,32 @@ nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
 echo "  Native-moduler klara ✓"
 
 # ─── BLE permissions & unblock ────────────────────────────
-NODE_BIN=$(readlink -f "$(which node)")
-sudo setcap cap_net_raw,cap_net_admin+eip "$NODE_BIN" 2>/dev/null || true
-
-# Unblock Bluetooth (often soft-blocked after reboot on Pi Zero 2 W)
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
+
+# ─── 6. Install standalone systemd service ────────────────
+echo ""
+echo "[6/6] Installerar systemd-tjänst (utanför PCC-sandbox)..."
+
+SERVICE_SRC="$PI_DIR/lotus-light-engine.service"
+SERVICE_DST="/etc/systemd/system/lotus-light-engine.service"
+
+if [ -f "$SERVICE_SRC" ]; then
+  # Patch CPU affinity and port into the unit file
+  sudo cp "$SERVICE_SRC" "$SERVICE_DST"
+  sudo sed -i "s/^CPUAffinity=.*/CPUAffinity=$CORE/" "$SERVICE_DST"
+  sudo sed -i "s/^Environment=PORT=.*/Environment=PORT=$ENGINE_PORT/" "$SERVICE_DST"
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable lotus-light-engine.service
+  sudo systemctl restart lotus-light-engine.service
+  echo "  ✓ lotus-light-engine.service installerad (core=$CORE, port=$ENGINE_PORT)"
+  echo "  ✓ AmbientCapabilities=CAP_NET_RAW — noble HCI fungerar utan setcap"
+else
+  echo "  ⚠ Tjänstfil saknas — faller tillbaka till PCC-hanterad process"
+  NODE_BIN=$(readlink -f "$(which node)")
+  sudo setcap cap_net_raw,cap_net_admin+eip "$NODE_BIN" 2>/dev/null || true
+fi
 
 # ─── Done ─────────────────────────────────────────────────
 echo ""
