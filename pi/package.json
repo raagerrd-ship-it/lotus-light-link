@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@abandonware/noble": "^1.9.2-25",
-    "alsa-capture": "^1.0.1",
     "eventsource": "^2.0.2",
     "express": "^4.21.0"
+  },
+  "optionalDependencies": {
+    "alsa-capture": "^0.3.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
