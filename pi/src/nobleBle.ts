@@ -115,16 +115,18 @@ const HCI_RESET_THRESHOLD = 3;
 async function resetHciAdapter(): Promise<void> {
   try {
     const { exec } = await import('child_process');
+    // Use bluetoothctl power cycle instead of hciconfig reset
+    // hciconfig reset strips AmbientCapabilities and causes "unauthorized"
     await new Promise<void>((resolve, reject) => {
-      exec('sudo hciconfig hci0 reset', { timeout: 5000 }, (err) => {
+      exec('bluetoothctl power off && sleep 1 && bluetoothctl power on', { timeout: 10000 }, (err) => {
         if (err) reject(err); else resolve();
       });
     });
-    bleStats.lastDisconnectReason = 'hci_reset';
-    console.log('[BLE] HCI adapter reset ✓');
+    bleStats.lastDisconnectReason = 'bt_power_cycle';
+    console.log('[BLE] Bluetooth power cycled ✓');
     await new Promise(r => setTimeout(r, 2000));
   } catch (e: any) {
-    console.warn(`[BLE] HCI reset failed: ${e.message}`);
+    console.warn(`[BLE] Bluetooth power cycle failed: ${e.message}`);
   }
 }
 
