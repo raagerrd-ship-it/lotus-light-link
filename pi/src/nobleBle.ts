@@ -555,16 +555,20 @@ async function connectPeripheral(peripheral: any, _retryCount = 0): Promise<void
   // Auto-reconnect on disconnect (only if demand is active)
   peripheral.once('disconnect', (reason: any) => {
     const uptime = Math.round((performance.now() - connectTime) / 1000);
-    // Quiet log: single line, no stats dump for short-lived connections
+    bleStats.disconnectCount++;
+    bleStats.lastDisconnectReason = String(reason ?? 'unknown');
+    bleStats.lastDisconnectAt = new Date().toISOString();
     if (uptime < 10) {
-      console.log(`[BLE] ${name} dropped after ${uptime}s (reason ${reason ?? '?'})`);
+      console.log(`[BLE] ${name} dropped after ${uptime}s (reason ${reason ?? '?'}) [dc#${bleStats.disconnectCount}]`);
     } else {
-      console.log(`[BLE] ${name} disconnected after ${uptime}s — reason: ${reason ?? 'unknown'}, sent=${bleStats.sentCount}, avgLat=${bleStats.writeLatAvgMs}ms`);
+      console.log(`[BLE] ${name} disconnected after ${uptime}s — reason: ${reason ?? 'unknown'}, sent=${bleStats.sentCount}, avgLat=${bleStats.writeLatAvgMs}ms [dc#${bleStats.disconnectCount}]`);
     }
     stopKeepAlive();
     device = null;
     resetLastSent();
     if (_demandConnect) {
+      bleStats.reconnectCount++;
+      console.log(`[BLE] Reconnecting... [rc#${bleStats.reconnectCount}]`);
       reconnectWithBackoff(peripheral, name);
     }
   });
