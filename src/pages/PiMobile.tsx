@@ -860,7 +860,7 @@ function GlobalSettingsView({
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sonos Gateway</h2>
         <input
           type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
-          placeholder="http://192.168.1.x:5005"
+          placeholder="http://127.0.0.1:3053/api/sonos"
           className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </section>
@@ -1313,7 +1313,7 @@ export default function PiMobile() {
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(10);
-  const [sonosUrl, setSonosUrl] = useState("http://192.168.1.100:5005");
+  const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);

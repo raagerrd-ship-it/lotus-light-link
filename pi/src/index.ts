@@ -23,7 +23,12 @@ import { getItem, setItem } from './storage.js';
 // Palette now comes from Sonos Gateway response (no cloud call needed)
 
 // --- Config ---
-const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3053/api/sonos';
+const SONOS_BUDDY_API_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3053/api/sonos';
+const LEGACY_LOCAL_SONOS_URLS = new Set([
+  'http://172.0.0.1:3003/api/sonos',
+  'http://127.0.0.1:3003/api/sonos',
+  'http://127.0.0.1:3002/api/sonos',
+]);
 // Pi Control Center sets PORT; legacy uses BACKEND_PORT
 const CONFIG_PORT = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 3050);
 const SSE_PATH = process.env.SSE_PATH ?? '/events';
@@ -31,6 +36,23 @@ const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
 const TICK_MS = 10; // default tick rate (ms) — 100 Hz for maximum responsiveness
+
+function normalizeSonosConfig(config: Partial<SonosPollerConfig> | null | undefined): SonosPollerConfig {
+  const rawBaseUrl = typeof config?.baseUrl === 'string' && config.baseUrl.trim().length > 0
+    ? config.baseUrl.trim().replace(/\/$/, '')
+    : SONOS_BUDDY_API_URL;
+
+  const baseUrl = LEGACY_LOCAL_SONOS_URLS.has(rawBaseUrl) ? SONOS_BUDDY_API_URL : rawBaseUrl;
+
+  return {
+    baseUrl,
+    ssePath: config?.ssePath ?? SSE_PATH,
+    statusPath: config?.statusPath ?? STATUS_PATH,
+    pollIntervalMs: config?.pollIntervalMs ?? POLL_INTERVAL,
+    pollTimeoutMs: config?.pollTimeoutMs,
+    disableSSE: config?.disableSSE ?? DISABLE_SSE,
+  };
+}
 
 async function main() {
   // 1. Restore persisted global settings (before banner so we can show effective values)
@@ -54,7 +76,7 @@ async function main() {
   console.log('║   Lotus Light Link — Pi Headless Runtime  ║');
   console.log('╚═══════════════════════════════════════════╝');
   console.log(`  Tick: ${effectiveTickMs}ms (${Math.round(1000 / effectiveTickMs)} Hz)${savedTickMs ? ' (saved)' : ''}`);
-  console.log(`  Bridge: ${BRIDGE_URL}`);
+  console.log(`  Bridge: ${SONOS_BUDDY_API_URL}`);
   console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
   console.log(`  Config API: :${CONFIG_PORT} (backend)`);
   
@@ -80,17 +102,18 @@ async function main() {
   const reconnectTimer = startReconnectLoop(15000);
 
   // 5. Start Sonos poller (configurable gateway)
-  // Load saved config or use env vars
-  let sonosConfig: SonosPollerConfig = {
-    baseUrl: BRIDGE_URL,
-    ssePath: SSE_PATH,
-    statusPath: STATUS_PATH,
-    pollIntervalMs: POLL_INTERVAL,
-    disableSSE: DISABLE_SSE,
-  };
+  let sonosConfig = normalizeSonosConfig({});
   try {
     const saved = getItem('sonos-gateway');
-    if (saved) sonosConfig = { ...sonosConfig, ...JSON.parse(saved) };
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const normalized = normalizeSonosConfig(parsed);
+      sonosConfig = normalized;
+      if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+        setItem('sonos-gateway', JSON.stringify(normalized));
+        console.log(`[Boot] Migrated Sonos gateway URL → ${normalized.baseUrl}`);
+      }
+    }
   } catch {}
 
   console.log('[Boot] Starting Sonos poller...');

@@ -336,18 +336,48 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   });
 
   // --- Sonos gateway config ---
+  const normalizeSonosGatewayConfig = (config: Partial<SonosPollerConfig> | null | undefined): SonosPollerConfig => {
+    const rawBaseUrl = typeof config?.baseUrl === 'string' && config.baseUrl.trim().length > 0
+      ? config.baseUrl.trim().replace(/\/$/, '')
+      : 'http://127.0.0.1:3053/api/sonos';
+    const baseUrl = [
+      'http://172.0.0.1:3003/api/sonos',
+      'http://127.0.0.1:3003/api/sonos',
+      'http://127.0.0.1:3002/api/sonos',
+    ].includes(rawBaseUrl)
+      ? 'http://127.0.0.1:3053/api/sonos'
+      : rawBaseUrl;
+
+    return {
+      baseUrl,
+      ssePath: config?.ssePath ?? '/events',
+      statusPath: config?.statusPath ?? '/status',
+      pollIntervalMs: config?.pollIntervalMs,
+      pollTimeoutMs: config?.pollTimeoutMs,
+      disableSSE: config?.disableSSE,
+    };
+  };
+
   app.get('/api/sonos-gateway', (_req, res) => {
-    const saved = getItem('sonos-gateway');
+    const savedRaw = getItem('sonos-gateway');
+    let saved: SonosPollerConfig | null = null;
+    if (savedRaw) {
+      try {
+        saved = normalizeSonosGatewayConfig(JSON.parse(savedRaw));
+        if (savedRaw !== JSON.stringify(saved)) setItem('sonos-gateway', JSON.stringify(saved));
+      } catch {}
+    }
+
     const current = getPollerConfig();
     res.json({
-      saved: saved ? JSON.parse(saved) : null,
-      active: current,
+      saved,
+      active: current ? normalizeSonosGatewayConfig(current) : null,
     });
   });
 
   app.put('/api/sonos-gateway', (req, res) => {
-    const config: SonosPollerConfig = req.body;
-    if (!config?.baseUrl) {
+    const config = normalizeSonosGatewayConfig(req.body);
+    if (!config.baseUrl) {
       return res.status(400).json({ error: 'Need baseUrl' });
     }
     // Persist and restart poller (non-blocking — don't await)
