@@ -1590,7 +1590,11 @@ export default function PiMobile() {
           </div>
         )}
       </div>
-
+      {saveError && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
+          ⚠ Sparning misslyckades: {saveError}
+        </div>
+      )}
 
       {/* Version / Status */}
       <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-1">
