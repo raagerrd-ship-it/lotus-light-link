@@ -1542,6 +1542,7 @@ export default function PiMobile() {
   const [bleSavedId, setBleSavedId] = useState<string | null>(null);
   const [bleSavedName, setBleSavedName] = useState<string | null>(null);
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
+  const [bleDemand, setBleDemand] = useState(false);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
@@ -1687,6 +1688,7 @@ export default function PiMobile() {
         setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
         setBleSavedName(data.ble?.savedDeviceName ?? null);
+        setBleDemand(data.ble?.demand ?? false);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
         // Always update palette when available (may arrive after track change)
         const palette = data.engine?.palette ?? [];
@@ -1807,8 +1809,8 @@ export default function PiMobile() {
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center gap-1.5 shrink-0">
-          <Bluetooth size={14} className={bleConnectedId ? 'text-primary' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
-          <span>{bleConnectedId ? (bleConnectedName ?? '1 aktiv') : bleSavedId ? 'Vilar' : 'Ej kopplad'}</span>
+          <Bluetooth size={14} className={bleConnectedId ? 'text-primary' : bleDemand && bleSavedId ? 'text-yellow-400 animate-pulse' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
+          <span>{bleConnectedId ? (bleConnectedName ?? '1 aktiv') : bleDemand && bleSavedId ? 'Ansluter…' : bleSavedId ? 'Vilar' : 'Ej kopplad'}</span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <Music size={14} className="shrink-0" />
@@ -1883,6 +1885,8 @@ export default function PiMobile() {
                 <span className="text-sm font-medium">{bleConnectedName ?? bleSavedName ?? bleSavedId?.substring(0, 12) ?? '—'}</span>
                 {bleConnectedId ? (
                   <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">Aktiv</span>
+                ) : bleDemand ? (
+                  <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full animate-pulse">Ansluter…</span>
                 ) : (
                   <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">Vilar</span>
                 )}
@@ -1903,8 +1907,11 @@ export default function PiMobile() {
                 <X size={16} />
               </button>
             </div>
-            {!bleConnectedId && (
+            {!bleConnectedId && !bleDemand && (
               <p className="text-[10px] text-muted-foreground mt-1.5 ml-6">Ansluter automatiskt när musik spelas</p>
+            )}
+            {!bleConnectedId && bleDemand && (
+              <p className="text-[10px] text-yellow-400 mt-1.5 ml-6">Söker enhet…</p>
             )}
           </div>
         ) : null}
