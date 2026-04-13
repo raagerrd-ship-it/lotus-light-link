@@ -23,7 +23,7 @@ import { getItem, setItem } from './storage.js';
 // Palette now comes from Sonos Gateway response (no cloud call needed)
 
 // --- Config ---
-const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3002/api/sonos';
+const BRIDGE_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3053/api/sonos';
 // Pi Control Center sets PORT; legacy uses BACKEND_PORT
 const CONFIG_PORT = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 3050);
 const SSE_PATH = process.env.SSE_PATH ?? '/events';
