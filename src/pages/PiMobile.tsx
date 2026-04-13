@@ -797,6 +797,11 @@ function GlobalSettingsView({
           {saved ? <Check size={20} /> : <Save size={20} />}
         </button>
       </div>
+      {saveError && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
+          ⚠ Sparning misslyckades: {saveError}
+        </div>
+      )}
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Motor</h2>
