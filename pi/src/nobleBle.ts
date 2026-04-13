@@ -95,6 +95,11 @@ export const bleStats = {
   writeLatMs: 0,
   writeLatAvgMs: 0,
   effectiveIntervalMs: 0,
+
+  // Connection interval diagnostics
+  requestedIntervalMs: '—' as string,  // what we asked for
+  actualIntervalMs: '—' as string,     // what controller accepted (from HCI event)
+  intervalSource: 'unknown' as string, // 'hci_event' | 'estimated' | 'unknown'
 };
 
 // Keep-alive interval (prevents BLE supervision timeout when idle)
