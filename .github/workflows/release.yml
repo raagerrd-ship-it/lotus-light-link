@@ -32,7 +32,9 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # Find latest versioned tag (skip "latest" pointer tag)
+          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          LATEST=${LATEST:-v0.0.0}
           # Bump patch: v1.2.3 → v1.2.4
           MAJOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f1)
           MINOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f2)
