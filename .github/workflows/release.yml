@@ -29,22 +29,32 @@ jobs:
         with:
           node-version: 24
 
-      # Determine version: bump patch from latest tag, or start at v1.0.0
+      # Determine version: prefer valid semver tags, recover from legacy malformed tags if needed
       - name: Determine version
         id: version
         run: |
-          # Find latest versioned tag (skip "latest" pointer tag)
-          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1)
-          LATEST=${LATEST:-v0.0.0}
-          # Bump patch: v1.2.3 → v1.2.4
-          MAJOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f1)
-          MINOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f2)
-          PATCH=$(echo "$LATEST" | sed 's/v//' | cut -d. -f3)
-          PATCH=$((PATCH + 1))
-          VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          LATEST=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+
+          if [ -n "$LATEST" ]; then
+            MAJOR=$(echo "$LATEST" | sed -E 's/^v([0-9]+)\..*/\1/')
+            MINOR=$(echo "$LATEST" | sed -E 's/^v[0-9]+\.([0-9]+)\..*/\1/')
+            PATCH=$(echo "$LATEST" | sed -E 's/^v[0-9]+\.[0-9]+\.([0-9]+)$/\1/')
+            VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            PREVIOUS="$LATEST"
+          else
+            LEGACY_PATCH=$(git tag -l | sed -nE 's/^vlatest\.latest\.([0-9]+)$/\1/p' | sort -nr | head -n1 || true)
+            if [ -n "$LEGACY_PATCH" ]; then
+              VERSION="v1.0.$((LEGACY_PATCH + 1))"
+              PREVIOUS="vlatest.latest.${LEGACY_PATCH}"
+            else
+              VERSION="v1.0.0"
+              PREVIOUS="none"
+            fi
+          fi
+
           echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
-          echo "📦 Release: $VERSION (previous: $LATEST)"
+          echo "📦 Release: $VERSION (previous: $PREVIOUS)"
 
       # Build web app (vite)
       - run: npm install --no-audit --no-fund

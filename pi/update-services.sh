@@ -13,40 +13,40 @@ GITHUB_REPO="raagerrd-ship-it/lotus-light-link"
 echo "$LOG_PREFIX Checking for updates..."
 
 # Get current version
-CURRENT_COMMIT=""
 CURRENT_VERSION=""
 if [ -f "$APP_DIR/VERSION.json" ]; then
-  CURRENT_COMMIT=$(python3 -c "import json; print(json.load(open('$APP_DIR/VERSION.json')).get('commit',''))" 2>/dev/null || echo "")
   CURRENT_VERSION=$(python3 -c "import json; print(json.load(open('$APP_DIR/VERSION.json')).get('version',''))" 2>/dev/null || echo "")
 fi
 
-# Check latest versioned release from GitHub API (skip the "latest" pointer tag)
+# Check latest valid semver release from GitHub API (skip legacy malformed tags and the "latest" pointer tag)
 LATEST_JSON=$(curl -sf "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null | python3 -c "
-import json,sys
+import json,re,sys
 releases = json.load(sys.stdin)
 for r in releases:
-    if r.get('tag_name','') != 'latest' and not r.get('draft') and not r.get('prerelease'):
+    tag = r.get('tag_name','')
+    if re.fullmatch(r'v\\d+\\.\\d+\\.\\d+', tag) and not r.get('draft') and not r.get('prerelease'):
         print(json.dumps(r))
         break
 " 2>/dev/null || echo "")
 if [ -z "$LATEST_JSON" ]; then
-  echo "$LOG_PREFIX ERROR: Could not reach GitHub API or no versioned release found"
+  echo "$LOG_PREFIX ERROR: Could not reach GitHub API or no valid semver release found"
   exit 1
 fi
 
-LATEST_COMMIT=$(echo "$LATEST_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('target_commitish',''))" 2>/dev/null || echo "")
+LATEST_TAG=$(echo "$LATEST_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || echo "")
+LATEST_VERSION=${LATEST_TAG#v}
 
-if [ -z "$LATEST_COMMIT" ]; then
-  echo "$LOG_PREFIX ERROR: Could not parse latest release"
+if [ -z "$LATEST_VERSION" ]; then
+  echo "$LOG_PREFIX ERROR: Could not parse latest release version"
   exit 1
 fi
 
-if [ "$CURRENT_COMMIT" = "$LATEST_COMMIT" ]; then
-  echo "$LOG_PREFIX Already up to date (v${CURRENT_VERSION} ${CURRENT_COMMIT:0:7})"
+if [ -n "$CURRENT_VERSION" ] && [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+  echo "$LOG_PREFIX Already up to date (v${CURRENT_VERSION})"
   exit 0
 fi
 
-echo "$LOG_PREFIX Updating: ${CURRENT_COMMIT:0:7} → ${LATEST_COMMIT:0:7}"
+echo "$LOG_PREFIX Updating: v${CURRENT_VERSION:-unknown} → $LATEST_TAG"
 
 # Download release tarball
 TARBALL_URL=$(echo "$LATEST_JSON" | python3 -c "import json,sys; assets=json.load(sys.stdin).get('assets',[]); print(next((a['browser_download_url'] for a in assets if a['name']=='dist.tar.gz'),''))" 2>/dev/null || echo "")
@@ -103,11 +103,13 @@ else
   echo "$LOG_PREFIX Native modules OK (arch=$PI_ARCH, node=$PI_NODE) — skipping rebuild ✓"
 fi
 
-# Read new version
+# Read new version + commit
 NEW_VERSION=""
+NEW_COMMIT=""
 if [ -f "$APP_DIR/VERSION.json" ]; then
   NEW_VERSION=$(python3 -c "import json; print(json.load(open('$APP_DIR/VERSION.json')).get('version',''))" 2>/dev/null || echo "")
+  NEW_COMMIT=$(python3 -c "import json; d=json.load(open('$APP_DIR/VERSION.json')); print(d.get('commitShort') or d.get('commit',''))" 2>/dev/null || echo "")
 fi
 
-echo "$LOG_PREFIX Updated to v${NEW_VERSION} (${LATEST_COMMIT:0:7}) ✓"
+echo "$LOG_PREFIX Updated to v${NEW_VERSION}${NEW_COMMIT:+ (${NEW_COMMIT:0:7})} ✓"
 echo "$LOG_PREFIX Pi Control Center will restart services."
