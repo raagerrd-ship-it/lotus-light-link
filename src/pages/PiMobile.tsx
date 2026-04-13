@@ -769,7 +769,7 @@ function GlobalSettingsView({
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   piBase,
-  onBack, onSave, saved,
+  onBack, onSave, saved, saveError,
 }: {
   tickMs: number; setTickMs: (v: number) => void;
   sonosUrl: string; setSonosUrl: (v: string) => void;
@@ -779,7 +779,7 @@ function GlobalSettingsView({
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   piBase: string;
-  onBack: () => void; onSave: () => void; saved: boolean;
+  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
