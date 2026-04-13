@@ -20,10 +20,17 @@ if [ -f "$APP_DIR/VERSION.json" ]; then
   CURRENT_VERSION=$(python3 -c "import json; print(json.load(open('$APP_DIR/VERSION.json')).get('version',''))" 2>/dev/null || echo "")
 fi
 
-# Check latest release from GitHub API
-LATEST_JSON=$(curl -sf "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null || echo "")
+# Check latest versioned release from GitHub API (skip the "latest" pointer tag)
+LATEST_JSON=$(curl -sf "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null | python3 -c "
+import json,sys
+releases = json.load(sys.stdin)
+for r in releases:
+    if r.get('tag_name','') != 'latest' and not r.get('draft') and not r.get('prerelease'):
+        print(json.dumps(r))
+        break
+" 2>/dev/null || echo "")
 if [ -z "$LATEST_JSON" ]; then
-  echo "$LOG_PREFIX ERROR: Could not reach GitHub API"
+  echo "$LOG_PREFIX ERROR: Could not reach GitHub API or no versioned release found"
   exit 1
 fi
 
