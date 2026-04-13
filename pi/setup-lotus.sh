@@ -129,9 +129,13 @@ echo "  Bygger om native-moduler för $(uname -m)..."
 nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
 echo "  Native-moduler klara ✓"
 
-# ─── BLE permissions ─────────────────────────────────────
+# ─── BLE permissions & unblock ────────────────────────────
 NODE_BIN=$(readlink -f "$(which node)")
 sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
+
+# Unblock Bluetooth (often soft-blocked after reboot on Pi Zero 2 W)
+sudo rfkill unblock bluetooth 2>/dev/null || true
+echo "  Bluetooth unblocked ✓"
 
 # ─── Done ─────────────────────────────────────────────────
 echo ""
