@@ -16,8 +16,8 @@
       "alwaysOn": true
     },
     "ui": {
-      "type": "node",
-      "entrypoint": "pi/dist/frontend.js",
+      "type": "python",
+      "entrypoint": "python3 -m http.server ${PORT:-3001} --directory /opt/lotus-light/dist",
       "service": "lotus-light-ui",
       "alwaysOn": false
     }
