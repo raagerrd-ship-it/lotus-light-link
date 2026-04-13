@@ -1907,8 +1907,11 @@ export default function PiMobile() {
                 <X size={16} />
               </button>
             </div>
-            {!bleConnectedId && (
+            {!bleConnectedId && !bleDemand && (
               <p className="text-[10px] text-muted-foreground mt-1.5 ml-6">Ansluter automatiskt när musik spelas</p>
+            )}
+            {!bleConnectedId && bleDemand && (
+              <p className="text-[10px] text-yellow-400 mt-1.5 ml-6">Söker enhet…</p>
             )}
           </div>
         ) : null}
