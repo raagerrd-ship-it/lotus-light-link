@@ -12,7 +12,8 @@
   "dependencies": {
     "@abandonware/noble": "^1.9.2-25",
     "eventsource": "^2.0.2",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "node-record-lpcm16": "^1.0.1"
   },
   "optionalDependencies": {
     "alsa-capture": "^0.3.0"
