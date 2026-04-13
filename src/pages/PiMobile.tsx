@@ -1337,6 +1337,7 @@ export default function PiMobile() {
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
+  const [sonosPlaying, setSonosPlaying] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Direct to engine port (no proxy needed)
@@ -1476,6 +1477,7 @@ export default function PiMobile() {
         setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
         setBleSavedName(data.ble?.savedDeviceName ?? null);
+        setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
         // Always update palette when available (may arrive after track change)
         const palette = data.engine?.palette ?? [];
         if (palette.length > 0) {
@@ -1580,7 +1582,7 @@ export default function PiMobile() {
         </div>
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <Music size={14} className="shrink-0" />
-          <span className="truncate">{liveTrack ? `▶ ${liveTrack}` : 'Ingen låt'}</span>
+          <span className="truncate">{liveTrack ? `${sonosPlaying ? '▶' : '⏸'} ${liveTrack}` : 'Ingen låt'}</span>
         </div>
         {livePalette.length > 0 && (
           <div className="flex gap-1 shrink-0">
