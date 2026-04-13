@@ -6,7 +6,7 @@
  * - INMP441 I²S MEMS microphone (ALSA)
  * - BLEDOM LED strips via noble
  * - Sonos now-playing via Cast Away bridge SSE
- * - Config API on :3001
+ * - Config API on :3050 (or PORT env var)
  */
 
 import { installLocalStorageShim } from './storage.js';
