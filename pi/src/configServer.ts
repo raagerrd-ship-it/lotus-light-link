@@ -504,6 +504,26 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     res.json({ running: updateRunning, log: updateLog });
   });
 
+  // Force update — skip version check, clear caches, redownload
+  app.post('/api/update/force', async (_req, res) => {
+    if (updateRunning) return res.status(409).json({ error: 'Update already running' });
+    updateRunning = true;
+    updateLog = '';
+    res.json({ ok: true, message: 'Force update started' });
+
+    const { exec } = await import('child_process');
+    // Delete VERSION.json so update-services.sh won't skip due to "already up to date"
+    const cmds = [
+      'rm -f /opt/lotus-light/VERSION.json',
+      'bash /opt/lotus-light/pi/update-services.sh 2>&1',
+    ].join(' && ');
+    exec(cmds, { timeout: 180000 }, (err, stdout, stderr) => {
+      updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
+      updateRunning = false;
+      console.log('[Force Update]', updateLog);
+    });
+  });
+
   // --- Diagnostics recording ---
   app.post('/api/diagnostics/record', async (req, res) => {
     if (engine.isRecording()) {
