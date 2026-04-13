@@ -60,6 +60,9 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npx vite build
 
+      # ALSA headers needed for alsa-capture native addon (node-gyp)
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libasound2-dev
+
       # Build Pi backend (TypeScript)
       - run: cd pi && npm install --no-audit --no-fund
       - run: cd pi && npx tsc
