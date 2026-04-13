@@ -133,28 +133,34 @@ echo "  Native-moduler klara ✓"
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
 
-# ─── 6. Install standalone systemd service ────────────────
+# ─── 6. BLE-rättigheter (bluetooth-grupp + polkit) ────────
 echo ""
-echo "[6/6] Installerar systemd-tjänst (utanför PCC-sandbox)..."
+echo "[6/6] Konfigurerar BLE-rättigheter..."
 
-SERVICE_SRC="$PI_DIR/lotus-light-engine.service"
-SERVICE_DST="/etc/systemd/system/lotus-light-engine.service"
-
-if [ -f "$SERVICE_SRC" ]; then
-  # Patch CPU affinity and port into the unit file
-  sudo cp "$SERVICE_SRC" "$SERVICE_DST"
-  sudo sed -i "s/^CPUAffinity=.*/CPUAffinity=$CORE/" "$SERVICE_DST"
-  sudo sed -i "s/^Environment=PORT=.*/Environment=PORT=$ENGINE_PORT/" "$SERVICE_DST"
-
-  sudo systemctl daemon-reload
-  sudo systemctl enable lotus-light-engine.service
-  sudo systemctl restart lotus-light-engine.service
-  echo "  ✓ lotus-light-engine.service installerad (core=$CORE, port=$ENGINE_PORT)"
-  echo "  ✓ AmbientCapabilities=CAP_NET_RAW — noble HCI fungerar utan setcap"
+# Add the service user to the bluetooth group for HCI access
+LOTUS_USER="${SUDO_USER:-$(whoami)}"
+if id -nG "$LOTUS_USER" 2>/dev/null | grep -qw bluetooth; then
+  echo "  ✓ $LOTUS_USER redan i bluetooth-gruppen"
 else
-  echo "  ⚠ Tjänstfil saknas — faller tillbaka till PCC-hanterad process"
-  NODE_BIN=$(readlink -f "$(which node)")
-  sudo setcap cap_net_raw,cap_net_admin+eip "$NODE_BIN" 2>/dev/null || true
+  sudo usermod -aG bluetooth "$LOTUS_USER"
+  echo "  ✓ $LOTUS_USER tillagd i bluetooth-gruppen"
+fi
+
+# Install polkit rule for BlueZ adapter access without root
+POLKIT_DIR="/etc/polkit-1/localauthority/50-local.d"
+POLKIT_FILE="$POLKIT_DIR/lotus-light-ble.pkla"
+if [ ! -f "$POLKIT_FILE" ]; then
+  sudo mkdir -p "$POLKIT_DIR"
+  sudo tee "$POLKIT_FILE" > /dev/null << 'PKLA'
+[Lotus Light BLE Access]
+Identity=unix-group:bluetooth
+Action=org.bluez.*
+ResultActive=yes
+ResultAny=yes
+PKLA
+  echo "  ✓ Polkit-regel installerad för BlueZ"
+else
+  echo "  ✓ Polkit-regel redan på plats"
 fi
 
 # ─── Done ─────────────────────────────────────────────────
