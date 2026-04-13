@@ -493,11 +493,37 @@ async function connectPeripheral(peripheral: any, _retryCount = 0): Promise<void
       // params: handle, minInterval, maxInterval, latency, supervisionTimeout (in 1.25ms/10ms units)
       // 6 = 7.5ms, 8 = 10ms, 0 = no slave latency, 200 = 2000ms supervision timeout
       hci.writeLeConnectionUpdate(handle, 6, 8, 0, 200);
+      bleStats.requestedIntervalMs = '7.5–10';
       console.log(`[BLE] Requested connection interval 7.5–10ms for ${name}`);
+
+      // Listen for LE Connection Update Complete event from HCI
+      // The controller responds with the actual negotiated interval
+      if (typeof hci.on === 'function') {
+        const onLeConnUpdateComplete = (status: number, connHandle: number, interval: number, latency: number, supervisionTimeout: number) => {
+          if (connHandle !== handle) return;
+          const actualMs = (interval * 1.25).toFixed(1);
+          bleStats.actualIntervalMs = actualMs;
+          bleStats.intervalSource = 'hci_event';
+          console.log(`[BLE] Connection interval accepted: ${actualMs}ms (latency=${latency}, timeout=${supervisionTimeout * 10}ms)`);
+          // One-shot: remove listener after receiving
+          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
+        };
+        hci.on('leConnUpdateComplete', onLeConnUpdateComplete);
+        // Timeout: if no HCI event within 3s, estimate from write latency
+        setTimeout(() => {
+          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
+          if (bleStats.intervalSource === 'unknown') {
+            bleStats.intervalSource = 'estimated';
+            // Will be filled in after enough writes
+          }
+        }, 3000);
+      }
     } else {
+      bleStats.requestedIntervalMs = 'n/a (no HCI)';
       console.log(`[BLE] Connection interval update not available (HCI access limited)`);
     }
   } catch (e: any) {
+    bleStats.requestedIntervalMs = 'error';
     console.warn(`[BLE] Failed to set connection interval: ${e.message}`);
   }
 
