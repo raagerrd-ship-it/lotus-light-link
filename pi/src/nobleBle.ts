@@ -128,7 +128,7 @@ async function resetHciAdapter(): Promise<void> {
   }
 }
 
-
+const KEEPALIVE_MS = 1000;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
 
