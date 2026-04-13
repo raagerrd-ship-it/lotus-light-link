@@ -13,32 +13,44 @@ import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
-// Version info — resolved once at startup
+// Version info — refresh on demand so UI reflects the latest deployed release
 let SERVICE_VERSION = '1.0.0';
 let GIT_COMMIT = 'unknown';
 let GIT_COMMIT_SHORT = 'unknown';
 let GIT_BRANCH = 'unknown';
 const START_TIME = Date.now();
 
-// 1. Try VERSION.json (from release tarball — no git needed)
-try {
-  const vf = JSON.parse(readFileSync('/opt/lotus-light/VERSION.json', 'utf8'));
-  SERVICE_VERSION = vf.version ?? SERVICE_VERSION;
-  GIT_COMMIT = vf.commit ?? GIT_COMMIT;
-  GIT_COMMIT_SHORT = vf.commitShort ?? GIT_COMMIT_SHORT;
-  GIT_BRANCH = vf.branch ?? GIT_BRANCH;
-} catch {
-  // 2. Fallback: read from git (dev / git-clone installs)
+function refreshVersionInfo(): void {
+  let version = '1.0.0';
+  let commit = 'unknown';
+  let commitShort = 'unknown';
+  let branch = 'unknown';
+
   try {
-    GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-    GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
-    GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+    const vf = JSON.parse(readFileSync('/opt/lotus-light/VERSION.json', 'utf8'));
+    version = vf.version ?? version;
+    commit = vf.commit ?? commit;
+    commitShort = vf.commitShort ?? (typeof commit === 'string' ? commit.substring(0, 7) : commitShort);
+    branch = vf.branch ?? branch;
+  } catch {
     try {
-      const tag = execSync("git tag -l --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n1", { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-      if (tag) SERVICE_VERSION = tag.replace(/^v/, '');
-    } catch { /* no semver tags */ }
-  } catch { /* not a git repo */ }
+      commit = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+      commitShort = commit.substring(0, 7);
+      branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+      try {
+        const tag = execSync("git tag -l --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n1", { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+        if (tag) version = tag.replace(/^v/, '');
+      } catch {}
+    } catch {}
+  }
+
+  SERVICE_VERSION = version;
+  GIT_COMMIT = commit;
+  GIT_COMMIT_SHORT = commitShort;
+  GIT_BRANCH = branch;
 }
+
+refreshVersionInfo();
 
 export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
@@ -56,6 +68,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Health (Pi Control Center standard) ---
   app.get('/api/health', (_req, res) => {
+    refreshVersionInfo();
     const mem = process.memoryUsage();
     const bleConnected = getConnectedCount();
     const rss = Math.round(mem.rss / 1024 / 1024);
@@ -80,6 +93,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Status (full app status) ---
   app.get('/api/status', (_req, res) => {
+    refreshVersionInfo();
     const sonos = getSonosState();
     res.json({
       ok: true,
@@ -108,6 +122,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Version ---
   app.get('/api/version', (_req, res) => {
+    refreshVersionInfo();
     res.json({
       name: 'lotus-light-link',
       version: SERVICE_VERSION,
