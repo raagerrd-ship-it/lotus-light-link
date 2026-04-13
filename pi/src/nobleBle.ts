@@ -95,6 +95,11 @@ export const bleStats = {
   writeLatMs: 0,
   writeLatAvgMs: 0,
   effectiveIntervalMs: 0,
+
+  // Connection interval diagnostics
+  requestedIntervalMs: '—' as string,  // what we asked for
+  actualIntervalMs: '—' as string,     // what controller accepted (from HCI event)
+  intervalSource: 'unknown' as string, // 'hci_event' | 'estimated' | 'unknown'
 };
 
 // Keep-alive interval (prevents BLE supervision timeout when idle)
@@ -135,6 +140,9 @@ export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
   writeInFlight = false;
   lastWriteTime = 0;
+  bleStats.requestedIntervalMs = '—';
+  bleStats.actualIntervalMs = '—';
+  bleStats.intervalSource = 'unknown';
 }
 
 /** Ultra-fast single-device BLE write with failure detection */
@@ -191,6 +199,11 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       bleStats.effectiveIntervalMs = Math.round(now - lastWriteTime);
     }
     lastWriteTime = now;
+
+    // Estimate connection interval from write latency if HCI event wasn't available
+    if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
+      bleStats.actualIntervalMs = bleStats.writeLatAvgMs.toFixed(1) + ' (est)';
+    }
   } catch (e: any) {
     writeFailCount++;
     bleStats.writeFailCount++;
@@ -488,11 +501,37 @@ async function connectPeripheral(peripheral: any, _retryCount = 0): Promise<void
       // params: handle, minInterval, maxInterval, latency, supervisionTimeout (in 1.25ms/10ms units)
       // 6 = 7.5ms, 8 = 10ms, 0 = no slave latency, 200 = 2000ms supervision timeout
       hci.writeLeConnectionUpdate(handle, 6, 8, 0, 200);
+      bleStats.requestedIntervalMs = '7.5–10';
       console.log(`[BLE] Requested connection interval 7.5–10ms for ${name}`);
+
+      // Listen for LE Connection Update Complete event from HCI
+      // The controller responds with the actual negotiated interval
+      if (typeof hci.on === 'function') {
+        const onLeConnUpdateComplete = (status: number, connHandle: number, interval: number, latency: number, supervisionTimeout: number) => {
+          if (connHandle !== handle) return;
+          const actualMs = (interval * 1.25).toFixed(1);
+          bleStats.actualIntervalMs = actualMs;
+          bleStats.intervalSource = 'hci_event';
+          console.log(`[BLE] Connection interval accepted: ${actualMs}ms (latency=${latency}, timeout=${supervisionTimeout * 10}ms)`);
+          // One-shot: remove listener after receiving
+          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
+        };
+        hci.on('leConnUpdateComplete', onLeConnUpdateComplete);
+        // Timeout: if no HCI event within 3s, estimate from write latency
+        setTimeout(() => {
+          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
+          if (bleStats.intervalSource === 'unknown') {
+            bleStats.intervalSource = 'estimated';
+            // Will be filled in after enough writes
+          }
+        }, 3000);
+      }
     } else {
+      bleStats.requestedIntervalMs = 'n/a (no HCI)';
       console.log(`[BLE] Connection interval update not available (HCI access limited)`);
     }
   } catch (e: any) {
+    bleStats.requestedIntervalMs = 'error';
     console.warn(`[BLE] Failed to set connection interval: ${e.message}`);
   }
 
