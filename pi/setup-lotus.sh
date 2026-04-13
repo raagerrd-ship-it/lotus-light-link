@@ -20,7 +20,9 @@ done
 
 APP_DIR="/opt/lotus-light"
 PI_DIR="$APP_DIR/pi"
-ENGINE_PORT=$((PORT + 50))
+SERVICES_JSON="$PI_DIR/services.json"
+PORT_OFFSET=$(python3 -c "import json; print(json.load(open('$SERVICES_JSON')).get('portOffset', 50))" 2>/dev/null || echo 50)
+ENGINE_PORT=$((PORT + PORT_OFFSET))
 TOTAL_CPUS=$(nproc 2>/dev/null || echo 4)
 
 echo ""
