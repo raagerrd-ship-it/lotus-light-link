@@ -226,7 +226,7 @@ export function getNoiseGateState(): typeof _ngState {
   return _ngState;
 }
 
-let capture: AlsaCapture | null = null;
+let capture: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
 // Software mic gain — multiplier applied to raw PCM samples before processing
