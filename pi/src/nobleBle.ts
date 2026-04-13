@@ -108,7 +108,10 @@ export const bleStats = {
   intervalSource: 'unknown' as string,
 };
 
-// Keep-alive interval (prevents BLE supervision timeout when idle)
+// HCI reset tracking
+let consecutiveConnectFailures = 0;
+const HCI_RESET_THRESHOLD = 3;
+
 const KEEPALIVE_MS = 1000;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
