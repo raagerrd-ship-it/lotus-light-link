@@ -21,33 +21,41 @@ let GIT_BRANCH = 'unknown';
 const START_TIME = Date.now();
 
 function refreshVersionInfo(): void {
-  let version = '1.0.0';
-  let commit = 'unknown';
-  let commitShort = 'unknown';
-  let branch = 'unknown';
+  // Try multiple paths for VERSION.json
+  const paths = [
+    '/opt/lotus-light/VERSION.json',
+    new URL('../VERSION.json', import.meta.url).pathname,
+    new URL('../../VERSION.json', import.meta.url).pathname,
+  ];
 
-  try {
-    const vf = JSON.parse(readFileSync('/opt/lotus-light/VERSION.json', 'utf8'));
-    version = vf.version ?? version;
-    commit = vf.commit ?? commit;
-    commitShort = vf.commitShort ?? (typeof commit === 'string' ? commit.substring(0, 7) : commitShort);
-    branch = vf.branch ?? branch;
-  } catch {
+  for (const p of paths) {
     try {
-      commit = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-      commitShort = commit.substring(0, 7);
-      branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-      try {
-        const tag = execSync("git tag -l --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n1", { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-        if (tag) version = tag.replace(/^v/, '');
-      } catch {}
-    } catch {}
+      const raw = readFileSync(p, 'utf8');
+      const vf = JSON.parse(raw);
+      if (vf.version) {
+        SERVICE_VERSION = vf.version;
+        GIT_COMMIT = vf.commit ?? GIT_COMMIT;
+        GIT_COMMIT_SHORT = vf.commitShort ?? (typeof vf.commit === 'string' ? vf.commit.substring(0, 7) : GIT_COMMIT_SHORT);
+        GIT_BRANCH = vf.branch ?? GIT_BRANCH;
+        return;
+      }
+    } catch {
+      // try next path
+    }
   }
 
-  SERVICE_VERSION = version;
-  GIT_COMMIT = commit;
-  GIT_COMMIT_SHORT = commitShort;
-  GIT_BRANCH = branch;
+  // Fallback: git (dev only)
+  try {
+    GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+    GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
+    GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+    try {
+      const tag = execSync("git tag -l --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n1", { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+      if (tag) SERVICE_VERSION = tag.replace(/^v/, '');
+    } catch {}
+  } catch {}
+
+  console.warn(`[Config] VERSION.json not found at any path, using fallback v${SERVICE_VERSION}/${GIT_COMMIT_SHORT}`);
 }
 
 refreshVersionInfo();
