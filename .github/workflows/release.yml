@@ -56,7 +56,7 @@ jobs:
 
       # Write VERSION file for non-git installs
       - run: |
-          echo '{"version":"${{ steps.version.outputs.version }}","commit":"'$(git rev-parse HEAD)'","commitShort":"'$(git rev-parse --short HEAD)'","branch":"'$(git rev-parse --abbrev-ref HEAD)'","nodeVersion":"'$(node -v)'","arch":"'$(uname -m)'"}' > VERSION.json
+          echo '{"tag":"${{ steps.version.outputs.tag }}","version":"${{ steps.version.outputs.version }}","commit":"'$(git rev-parse HEAD)'","commitShort":"'$(git rev-parse --short HEAD)'","branch":"'$(git rev-parse --abbrev-ref HEAD)'","nodeVersion":"'$(node -v)'","arch":"'$(uname -m)'"}' > VERSION.json
 
       # Package everything needed for Pi deployment
       - run: |
