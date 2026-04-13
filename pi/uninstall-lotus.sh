@@ -14,7 +14,7 @@ echo "========================================"
 echo ""
 
 # 1. Remove application files (preserve installDir removal to Pi Control Center)
-echo "[1/2] Rensar applikationsfiler..."
+echo "[1/3] Rensar applikationsfiler..."
 rm -rf "$APP_DIR/dist" 2>/dev/null
 rm -rf "$APP_DIR/pi/dist" 2>/dev/null
 rm -rf "$APP_DIR/pi/node_modules" 2>/dev/null
