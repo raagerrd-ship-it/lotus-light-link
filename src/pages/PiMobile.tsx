@@ -395,11 +395,11 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 /* ── Profile Settings View (calibration per preset) ── */
 function ProfileSettingsView({
   cal, setCal, activePreset,
-  onBack, onSave, saved,
+  onBack, onSave, saved, saveError,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
   activePreset: string;
-  onBack: () => void; onSave: () => void; saved: boolean;
+  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
@@ -417,6 +417,11 @@ function ProfileSettingsView({
           {saved ? <Check size={20} /> : <Save size={20} />}
         </button>
       </div>
+      {saveError && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
+          ⚠ Sparning misslyckades: {saveError}
+        </div>
+      )}
 
       <section className="space-y-5 mb-8">
         
