@@ -1,13 +1,32 @@
 /**
- * ALSA microphone input via alsa-capture (native C++ addon) → FFT → BandResult.
- * Direct snd_pcm_readi() — no subprocess, no pipe IPC overhead.
+ * ALSA microphone input → FFT → BandResult.
+ * Prefers native alsa-capture (direct snd_pcm_readi, no subprocess).
+ * Falls back to node-record-lpcm16 (arecord subprocess) if native addon unavailable.
  * Uses custom zero-alloc radix-2 FFT (no fft-js dependency).
  * 
  * Event-driven: fires onFFTReady callback immediately after each FFT frame,
  * enabling the engine to process with zero additional latency.
  */
 
-import AlsaCapture from 'alsa-capture';
+import { fft1024, FFT_N } from './fftRadix2.js';
+
+// Dynamic import — alsa-capture is optional (native C++ addon)
+let AlsaCapture: any = null;
+let nodeRecord: any = null;
+let useNative = false;
+
+try {
+  AlsaCapture = (await import('alsa-capture')).default;
+  useNative = true;
+  console.log('[ALSA] Using native alsa-capture (direct snd_pcm_readi)');
+} catch {
+  try {
+    nodeRecord = (await import('node-record-lpcm16')).default;
+    console.log('[ALSA] Falling back to node-record-lpcm16 (arecord subprocess)');
+  } catch {
+    console.warn('[ALSA] No audio capture module available');
+  }
+}
 import { fft1024, FFT_N } from './fftRadix2.js';
 
 export interface BandResult {
@@ -306,53 +325,71 @@ export function setAlsaDevice(device: string): void {
 export function startMic(): void {
   if (capture) return;
 
-  capture = new AlsaCapture({
-    channels: 1,
-    rate: SAMPLE_RATE,
-    format: 'S16_LE',
-    device: currentDevice,
-    periodSize: HOP_SIZE, // 128 samples — matches FFT hop exactly
-  });
+  if (useNative && AlsaCapture) {
+    // Native path — direct ALSA snd_pcm_readi(), no subprocess
+    capture = new AlsaCapture({
+      channels: 1,
+      rate: SAMPLE_RATE,
+      format: 'S16_LE',
+      device: currentDevice,
+      periodSize: HOP_SIZE,
+    });
 
-  capture.on('audio', (buf: Buffer) => {
-    // Int16Array view — avoids per-sample readInt16LE calls
-    const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
-    const len = samples.length;
+    capture.on('audio', onAudioData);
+    capture.on('overrun', () => console.warn('[ALSA] Buffer overrun detected'));
+    capture.on('error', (err: Error) => console.error('[ALSA] capture error:', err.message));
+    console.log(`[ALSA] Mic started via native ALSA (44.1kHz, S16_LE, mono, period=${HOP_SIZE}, device: ${currentDevice})`);
 
-    for (let i = 0; i < len; i++) {
-      let raw = (samples[i] / 32768) * micGain;
-      // Tanh soft-clip — preserves dynamics instead of hard clipping
-      if (raw > 0.5 || raw < -0.5) raw = Math.tanh(raw);
-      if (DEBUG_ENABLED) {
-        const abs = raw < 0 ? -raw : raw;
-        if (abs > debugPeakRaw) debugPeakRaw = abs;
-      }
-      ringBuf[ringPos] = applyHighShelfSample(raw);
-      ringPos = (ringPos + 1) & FFT_MASK;
-      samplesReceived++;
+  } else if (nodeRecord) {
+    // Fallback — arecord subprocess + pipe
+    capture = nodeRecord.record({
+      sampleRate: SAMPLE_RATE,
+      channels: 1,
+      audioType: 'raw',
+      recorder: 'arecord',
+      device: currentDevice,
+    });
+    const stream = capture.stream();
+    stream.on('data', onAudioData);
+    stream.on('error', (err: Error) => console.error('[ALSA] stream error:', err.message));
+    console.log(`[ALSA] Mic started via arecord (44.1kHz, 16-bit, mono, device: ${currentDevice})`);
+
+  } else {
+    console.error('[ALSA] No audio capture module available — mic disabled');
+    return;
+  }
+}
+
+/** Shared audio data handler for both native and fallback paths */
+function onAudioData(buf: Buffer): void {
+  const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
+  const len = samples.length;
+
+  for (let i = 0; i < len; i++) {
+    let raw = (samples[i] / 32768) * micGain;
+    if (raw > 0.5 || raw < -0.5) raw = Math.tanh(raw);
+    if (DEBUG_ENABLED) {
+      const abs = raw < 0 ? -raw : raw;
+      if (abs > debugPeakRaw) debugPeakRaw = abs;
     }
+    ringBuf[ringPos] = applyHighShelfSample(raw);
+    ringPos = (ringPos + 1) & FFT_MASK;
+    samplesReceived++;
+  }
 
-    // Trigger FFT every 128 samples (~2.9ms) with overlap on 1024-point window.
-    if (samplesReceived >= HOP_SIZE) {
-      processFFT();
-      samplesReceived = 0;
-    }
-  });
-
-  capture.on('overrun', () => {
-    console.warn('[ALSA] Buffer overrun detected — audio data lost');
-  });
-
-  capture.on('error', (err: Error) => {
-    console.error('[ALSA] capture error:', err.message);
-  });
-
-  console.log(`[ALSA] Microphone started via native ALSA (44.1kHz, S16_LE, mono, period=${HOP_SIZE}, device: ${currentDevice})`);
+  if (samplesReceived >= HOP_SIZE) {
+    processFFT();
+    samplesReceived = 0;
+  }
 }
 
 export function stopMic(): void {
   if (capture) {
-    capture.close();
+    if (useNative) {
+      capture.close();
+    } else {
+      capture.stop();
+    }
     capture = null;
     hsState = 0;
     samplesReceived = 0;

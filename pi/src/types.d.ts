@@ -14,5 +14,7 @@ declare module 'alsa-capture' {
     close(): void;
   }
 
-  export = AlsaCapture;
+  export default AlsaCapture;
 }
+
+declare module 'node-record-lpcm16';
