@@ -1347,7 +1347,7 @@ export default function PiMobile() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return r;

@@ -123,7 +123,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       return res.status(409).json({ error: 'Scan already in progress' });
     }
     const devices = await scanForDevices(10000);
-    res.json({ ok: true, devices });
+    res.json({ ok: true, devices, adapterState: getAdapterState() });
   });
 
   app.get('/api/ble/devices', (_req, res) => {
@@ -345,15 +345,15 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     });
   });
 
-  app.put('/api/sonos-gateway', async (req, res) => {
+  app.put('/api/sonos-gateway', (req, res) => {
     const config: SonosPollerConfig = req.body;
     if (!config?.baseUrl) {
       return res.status(400).json({ error: 'Need baseUrl' });
     }
-    // Persist and restart poller
+    // Persist and restart poller (non-blocking — don't await)
     setItem('sonos-gateway', JSON.stringify(config));
     stopSonosPoller();
-    await startSonosPoller(config);
+    startSonosPoller(config).catch((e: any) => console.warn('[Sonos] Restart failed:', e.message));
     res.json({ ok: true, config });
   });
 
