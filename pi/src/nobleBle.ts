@@ -196,6 +196,11 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       bleStats.effectiveIntervalMs = Math.round(now - lastWriteTime);
     }
     lastWriteTime = now;
+
+    // Estimate connection interval from write latency if HCI event wasn't available
+    if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
+      bleStats.actualIntervalMs = bleStats.writeLatAvgMs.toFixed(1) + ' (est)';
+    }
   } catch (e: any) {
     writeFailCount++;
     bleStats.writeFailCount++;
