@@ -83,6 +83,18 @@ for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
+# Update the systemd unit file if present, preserving runtime port + core
+if [ -f "$TMP_DIR/pi/lotus-light-engine.service" ]; then
+  CURRENT_PORT=$(grep -oP '(?<=Environment=PORT=)\d+' /etc/systemd/system/lotus-light-engine.service 2>/dev/null || echo "")
+  CURRENT_CORE=$(grep -oP '(?<=CPUAffinity=)\d+' /etc/systemd/system/lotus-light-engine.service 2>/dev/null || echo "")
+  cp "$TMP_DIR/pi/lotus-light-engine.service" "$PI_DIR/lotus-light-engine.service"
+  sudo cp "$PI_DIR/lotus-light-engine.service" /etc/systemd/system/lotus-light-engine.service
+  [ -n "$CURRENT_PORT" ] && sudo sed -i "s/^Environment=PORT=.*/Environment=PORT=$CURRENT_PORT/" /etc/systemd/system/lotus-light-engine.service
+  [ -n "$CURRENT_CORE" ] && sudo sed -i "s/^CPUAffinity=.*/CPUAffinity=$CURRENT_CORE/" /etc/systemd/system/lotus-light-engine.service
+  sudo systemctl daemon-reload
+  echo "$LOG_PREFIX Systemd unit file updated (port=${CURRENT_PORT:-default}, core=${CURRENT_CORE:-default}) ✓"
+fi
+
 # Re-apply BLE capabilities
 NODE_BIN=$(readlink -f "$(which node)")
 if [ -n "$NODE_BIN" ]; then
