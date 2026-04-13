@@ -1761,8 +1761,28 @@ export default function PiMobile() {
                 }, 2000);
               } catch { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); }
             }}
+            onContextMenu={async (e) => {
+              e.preventDefault();
+              if (updateStatus === 'running') return;
+              if (!confirm('Tvinga ominstallation? (Hoppar över versionskontroll)')) return;
+              setUpdateStatus('running');
+              try {
+                await fetch(`${piBase}/api/update/force`, { method: 'POST' });
+                const poll = setInterval(async () => {
+                  try {
+                    const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
+                    const sd = await s.json();
+                    if (!sd.running) {
+                      clearInterval(poll);
+                      setUpdateStatus('done');
+                      setTimeout(() => setUpdateStatus(null), 5000);
+                    }
+                  } catch { clearInterval(poll); setUpdateStatus('error'); }
+                }, 2000);
+              } catch { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); }
+            }}
             className="p-2 rounded-lg active:bg-accent"
-            title={updateStatus === 'running' ? 'Uppdaterar…' : 'Sök efter uppdatering'}
+            title={updateStatus === 'running' ? 'Uppdaterar…' : 'Tryck = uppdatera | Håll/högerklick = tvinga ominstallation'}
           >
             {updateStatus === 'checking' || updateStatus === 'running' ? (
               <Loader2 size={20} className="text-primary animate-spin" />
