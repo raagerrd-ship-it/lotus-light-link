@@ -1758,8 +1758,19 @@ export default function PiMobile() {
           {showDiag ? 'Dölj diagnostik' : 'Visa diagnostik'}
         </button>
         {showDiag && (
-          <div className="mt-3 bg-secondary/50 rounded-xl p-3">
-            <DiagnosticsPanel piBase={piBase} />
+          <div className="mt-3 space-y-4">
+            <div className="bg-secondary/50 rounded-xl p-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Activity size={12} /> Latens-inspelning
+              </h3>
+              <DiagnosticsPanel piBase={piBase} />
+            </div>
+            <div className="bg-secondary/50 rounded-xl p-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Timer size={12} /> Pipeline-profiler
+              </h3>
+              <ProfilerPanel piBase={piBase} />
+            </div>
           </div>
         )}
       </section>
