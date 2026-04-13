@@ -421,7 +421,13 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
           await connectPeripheral(found);
           resolve(1);
         } catch (e: any) {
-          console.error(`[BLE] Auto-connect failed: ${e.message}`);
+          consecutiveConnectFailures++;
+          console.error(`[BLE] Auto-connect failed: ${e.message} [fail#${consecutiveConnectFailures}]`);
+          if (consecutiveConnectFailures >= HCI_RESET_THRESHOLD) {
+            console.warn(`[BLE] ${consecutiveConnectFailures} consecutive failures — resetting HCI adapter`);
+            await resetHciAdapter();
+            consecutiveConnectFailures = 0;
+          }
           resolve(0);
         }
       };
