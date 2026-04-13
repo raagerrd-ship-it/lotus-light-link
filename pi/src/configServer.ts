@@ -39,7 +39,7 @@ try {
   } catch { /* not a git repo */ }
 }
 
-export function startConfigServer(engine: PiLightEngine, port = 3001): void {
+export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   const app = express();
   app.use(express.json());
