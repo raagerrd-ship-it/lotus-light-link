@@ -83,22 +83,20 @@ for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
-# Update the systemd unit file if present, preserving runtime port + core
-if [ -f "$TMP_DIR/pi/lotus-light-engine.service" ]; then
-  CURRENT_PORT=$(grep -oP '(?<=Environment=PORT=)\d+' /etc/systemd/system/lotus-light-engine.service 2>/dev/null || echo "")
-  CURRENT_CORE=$(grep -oP '(?<=CPUAffinity=)\d+' /etc/systemd/system/lotus-light-engine.service 2>/dev/null || echo "")
-  cp "$TMP_DIR/pi/lotus-light-engine.service" "$PI_DIR/lotus-light-engine.service"
-  sudo cp "$PI_DIR/lotus-light-engine.service" /etc/systemd/system/lotus-light-engine.service
-  [ -n "$CURRENT_PORT" ] && sudo sed -i "s/^Environment=PORT=.*/Environment=PORT=$CURRENT_PORT/" /etc/systemd/system/lotus-light-engine.service
-  [ -n "$CURRENT_CORE" ] && sudo sed -i "s/^CPUAffinity=.*/CPUAffinity=$CURRENT_CORE/" /etc/systemd/system/lotus-light-engine.service
+# Clean up legacy systemd service if still installed
+if systemctl is-active --quiet lotus-light-engine.service 2>/dev/null; then
+  sudo systemctl stop lotus-light-engine.service
+  sudo systemctl disable lotus-light-engine.service
+  sudo rm -f /etc/systemd/system/lotus-light-engine.service
   sudo systemctl daemon-reload
-  echo "$LOG_PREFIX Systemd unit file updated (port=${CURRENT_PORT:-default}, core=${CURRENT_CORE:-default}) ✓"
+  echo "$LOG_PREFIX Removed legacy systemd service ✓"
 fi
 
-# Re-apply BLE capabilities
-NODE_BIN=$(readlink -f "$(which node)")
-if [ -n "$NODE_BIN" ]; then
-  sudo setcap cap_net_raw,cap_net_admin+eip "$NODE_BIN" 2>/dev/null || true
+# Ensure BLE permissions via bluetooth group
+LOTUS_USER="${SUDO_USER:-$(whoami)}"
+if ! id -nG "$LOTUS_USER" 2>/dev/null | grep -qw bluetooth; then
+  sudo usermod -aG bluetooth "$LOTUS_USER"
+  echo "$LOG_PREFIX Added $LOTUS_USER to bluetooth group ✓"
 fi
 
 # Rebuild native modules if architecture or Node version differs
