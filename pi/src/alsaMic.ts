@@ -1,13 +1,13 @@
 /**
- * ALSA microphone input via node-record-lpcm16 → FFT → BandResult.
- * Replaces Web Audio API AnalyserNode on Raspberry Pi.
+ * ALSA microphone input via alsa-capture (native C++ addon) → FFT → BandResult.
+ * Direct snd_pcm_readi() — no subprocess, no pipe IPC overhead.
  * Uses custom zero-alloc radix-2 FFT (no fft-js dependency).
  * 
  * Event-driven: fires onFFTReady callback immediately after each FFT frame,
  * enabling the engine to process with zero additional latency.
  */
 
-import record from 'node-record-lpcm16';
+import AlsaCapture from 'alsa-capture';
 import { fft1024, FFT_N } from './fftRadix2.js';
 
 export interface BandResult {
@@ -19,8 +19,10 @@ export interface BandResult {
 
 const SAMPLE_RATE = 44100;
 const FFT_SIZE = FFT_N; // 1024
+const HOP_SIZE = 128;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
+const FFT_MASK = FFT_SIZE - 1; // 0x3FF for & bitmask
 
 // Pre-computed Hann window (~6% more energy than Blackman, minimal spectral leakage)
 const hannWindow = new Float64Array(FFT_SIZE);
@@ -125,9 +127,9 @@ function applyHighShelfSample(sample: number): number {
 }
 
 function processFFT(): void {
-  // Copy ring buffer in order, apply Hann window
+  // Copy ring buffer in order, apply Hann window — bitmask instead of modulo
   for (let i = 0; i < FFT_SIZE; i++) {
-    windowedBuf[i] = ringBuf[(ringPos + i) % FFT_SIZE] * hannWindow[i];
+    windowedBuf[i] = ringBuf[(ringPos + i) & FFT_MASK] * hannWindow[i];
   }
 
   const [fftRe, fftIm] = fft1024(windowedBuf);
@@ -206,7 +208,7 @@ export function getNoiseGateState(): typeof _ngState {
   return _ngState;
 }
 
-let recorder: any = null;
+let capture: AlsaCapture | null = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
 // Software mic gain — multiplier applied to raw PCM samples before processing
@@ -293,32 +295,32 @@ export function getAlsaDevice(): string {
 }
 
 export function setAlsaDevice(device: string): void {
-  if (device === currentDevice && recorder) return;
+  if (device === currentDevice && capture) return;
   currentDevice = device;
-  if (recorder) {
+  if (capture) {
     stopMic();
     startMic();
   }
 }
 
 export function startMic(): void {
-  if (recorder) return;
+  if (capture) return;
 
-  recorder = record.record({
-    sampleRate: SAMPLE_RATE,
+  capture = new AlsaCapture({
     channels: 1,
-    audioType: 'raw',
-    recorder: 'arecord',
+    rate: SAMPLE_RATE,
+    format: 'S16_LE',
     device: currentDevice,
+    periodSize: HOP_SIZE, // 128 samples — matches FFT hop exactly
   });
 
-  const stream = recorder.stream();
+  capture.on('audio', (buf: Buffer) => {
+    // Int16Array view — avoids per-sample readInt16LE calls
+    const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
+    const len = samples.length;
 
-  stream.on('data', (buf: Buffer) => {
-    const samples = buf.length / 2;
-    for (let i = 0; i < samples; i++) {
-      const s16 = buf.readInt16LE(i * 2);
-      let raw = (s16 / 32768) * micGain;
+    for (let i = 0; i < len; i++) {
+      let raw = (samples[i] / 32768) * micGain;
       // Tanh soft-clip — preserves dynamics instead of hard clipping
       if (raw > 0.5 || raw < -0.5) raw = Math.tanh(raw);
       if (DEBUG_ENABLED) {
@@ -326,28 +328,32 @@ export function startMic(): void {
         if (abs > debugPeakRaw) debugPeakRaw = abs;
       }
       ringBuf[ringPos] = applyHighShelfSample(raw);
-      ringPos = (ringPos + 1) % FFT_SIZE;
+      ringPos = (ringPos + 1) & FFT_MASK;
       samplesReceived++;
     }
 
-    // Trigger FFT every 128 samples (~2.9ms) with 75% overlap on 512-point window.
-    if (samplesReceived >= 128) {
+    // Trigger FFT every 128 samples (~2.9ms) with overlap on 1024-point window.
+    if (samplesReceived >= HOP_SIZE) {
       processFFT();
       samplesReceived = 0;
     }
   });
 
-  stream.on('error', (err: Error) => {
-    console.error('[ALSA] stream error:', err.message);
+  capture.on('overrun', () => {
+    console.warn('[ALSA] Buffer overrun detected — audio data lost');
   });
 
-  console.log(`[ALSA] Microphone started (44.1kHz, 16-bit, mono, device: ${currentDevice})`);
+  capture.on('error', (err: Error) => {
+    console.error('[ALSA] capture error:', err.message);
+  });
+
+  console.log(`[ALSA] Microphone started via native ALSA (44.1kHz, S16_LE, mono, period=${HOP_SIZE}, device: ${currentDevice})`);
 }
 
 export function stopMic(): void {
-  if (recorder) {
-    recorder.stop();
-    recorder = null;
+  if (capture) {
+    capture.close();
+    capture = null;
     hsState = 0;
     samplesReceived = 0;
     ringPos = 0;
