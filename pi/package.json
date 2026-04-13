@@ -10,7 +10,7 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "dbus-next": "^0.10.2",
+    "@abandonware/noble": "^1.9.2-25",
     "eventsource": "^2.0.2",
     "express": "^4.21.0",
     
