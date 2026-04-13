@@ -140,6 +140,9 @@ export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
   writeInFlight = false;
   lastWriteTime = 0;
+  bleStats.requestedIntervalMs = '—';
+  bleStats.actualIntervalMs = '—';
+  bleStats.intervalSource = 'unknown';
 }
 
 /** Ultra-fast single-device BLE write with failure detection */
