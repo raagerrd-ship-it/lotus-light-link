@@ -67,7 +67,7 @@ function rebuildBrightnessLut(): void {
 }
 rebuildBrightnessLut();
 
-function getAdapterState(): string | undefined {
+export function getAdapterState(): string | undefined {
   const nobleWithState = noble as typeof noble & { state?: string; _state?: string };
   return nobleWithState.state ?? nobleWithState._state;
 }

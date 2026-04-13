@@ -1347,7 +1347,7 @@ export default function PiMobile() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return r;
@@ -1702,8 +1702,15 @@ export default function PiMobile() {
                 console.warn('[BLE scan]', data.error);
               }
               setBleScanResults(data.devices ?? []);
+              // Show adapter state if no devices found
+              if ((data.devices ?? []).length === 0 && data.adapterState) {
+                setSaveError(`BLE-adapter: ${data.adapterState}. Inga enheter hittades.`);
+                setTimeout(() => setSaveError(null), 5000);
+              }
             } catch (e) {
               console.error('[BLE scan] failed:', e);
+              setSaveError('BLE-scan misslyckades — kontrollera att motorn är nåbar');
+              setTimeout(() => setSaveError(null), 5000);
             }
             setBleScanning(false);
           }}
