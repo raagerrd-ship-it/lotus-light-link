@@ -395,11 +395,11 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 /* ── Profile Settings View (calibration per preset) ── */
 function ProfileSettingsView({
   cal, setCal, activePreset,
-  onBack, onSave, saved,
+  onBack, onSave, saved, saveError,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
   activePreset: string;
-  onBack: () => void; onSave: () => void; saved: boolean;
+  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
@@ -417,6 +417,11 @@ function ProfileSettingsView({
           {saved ? <Check size={20} /> : <Save size={20} />}
         </button>
       </div>
+      {saveError && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
+          ⚠ Sparning misslyckades: {saveError}
+        </div>
+      )}
 
       <section className="space-y-5 mb-8">
         
@@ -764,7 +769,7 @@ function GlobalSettingsView({
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   piBase,
-  onBack, onSave, saved,
+  onBack, onSave, saved, saveError,
 }: {
   tickMs: number; setTickMs: (v: number) => void;
   sonosUrl: string; setSonosUrl: (v: string) => void;
@@ -774,7 +779,7 @@ function GlobalSettingsView({
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   piBase: string;
-  onBack: () => void; onSave: () => void; saved: boolean;
+  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
@@ -792,6 +797,11 @@ function GlobalSettingsView({
           {saved ? <Check size={20} /> : <Save size={20} />}
         </button>
       </div>
+      {saveError && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
+          ⚠ Sparning misslyckades: {saveError}
+        </div>
+      )}
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Motor</h2>
@@ -1311,6 +1321,7 @@ export default function PiMobile() {
   const [showDiag, setShowDiag] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
   const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
@@ -1331,18 +1342,22 @@ export default function PiMobile() {
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
 
-  const putJson = (path: string, body: unknown) =>
-    fetch(`${piBase}${path}`, {
+  const putJson = async (path: string, body: unknown) => {
+    const r = await fetch(`${piBase}${path}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
     });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return r;
+  };
 
   const handleSave = async () => {
+    setSaveError(null);
     try {
       const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-      await Promise.all([
-        // Calibration — send flat fields (server merges into stored object)
+      const results = await Promise.allSettled([
         putJson('/api/calibration', {
           bassWeight: cal.bassWeight,
           releaseAlpha,
@@ -1354,30 +1369,34 @@ export default function PiMobile() {
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
           agcEnabled: cal.agcEnabled,
-
           dynamicsEnabled: cal.dynamicsEnabled,
           hiShelfGainDb: 6,
         }),
-        // Tick rate
         putJson('/api/tick-ms', { tickMs }),
-        // Mic device
         putJson('/api/mic-device', { device: alsaDevice }),
-        // Dimming gamma
         putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
-        // Idle color
         putJson('/api/idle-color', { color: idleColor }),
-        // Sonos gateway
         ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
-        // Auto TV-mode
         putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
-        // Mic gain
         putJson('/api/mic-gain', { gain: micGain }),
       ]);
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        const reasons = failed.map(r => (r as PromiseRejectedResult).reason?.message ?? 'okänt').join(', ');
+        console.error('[PiMobile] Partial save failure:', reasons);
+        setSaveError(`${failed.length}/${results.length} misslyckades: ${reasons}`);
+        clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setSaveError(null), 6000);
+        return;
+      }
       setSaved(true);
       clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(false), 1500);
-    } catch (e) {
+    } catch (e: any) {
       console.error('[PiMobile] Save failed', e);
+      setSaveError(e.message ?? 'Kunde inte nå motorn');
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaveError(null), 6000);
     }
   };
 
@@ -1475,7 +1494,7 @@ export default function PiMobile() {
     return (
       <ProfileSettingsView
         cal={cal} setCal={setCal} activePreset={activePreset}
-        onBack={() => setView("home")} onSave={handleSave} saved={saved}
+        onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
       />
     );
   }
@@ -1491,7 +1510,7 @@ export default function PiMobile() {
         idleColor={idleColor} setIdleColor={setIdleColor}
         autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
         piBase={piBase}
-        onBack={() => setView("home")} onSave={handleSave} saved={saved}
+        onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
       />
     );
   }
@@ -1576,7 +1595,11 @@ export default function PiMobile() {
           </div>
         )}
       </div>
-
+      {saveError && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
+          ⚠ Sparning misslyckades: {saveError}
+        </div>
+      )}
 
       {/* Version / Status */}
       <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-1">
