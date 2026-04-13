@@ -161,12 +161,23 @@ function saveCalibration(cal: LightCalibration): void {
   setItem('light-calibration', JSON.stringify(cal));
 }
 
+// Cached idle color — only re-parsed when changed via API
+let _cachedIdleColor: [number, number, number] = [255, 60, 0];
+let _idleColorLoaded = false;
+
 function loadIdleColor(): [number, number, number] {
+  if (_idleColorLoaded) return _cachedIdleColor;
   try {
     const raw = getItem('idle-color');
-    if (raw) { const p = JSON.parse(raw); if (Array.isArray(p) && p.length === 3) return p as [number, number, number]; }
+    if (raw) { const p = JSON.parse(raw); if (Array.isArray(p) && p.length === 3) { _cachedIdleColor = p as [number, number, number]; } }
   } catch {}
-  return [255, 60, 0];
+  _idleColorLoaded = true;
+  return _cachedIdleColor;
+}
+
+/** Invalidate cached idle color (call after API update) */
+export function invalidateIdleColorCache(): void {
+  _idleColorLoaded = false;
 }
 
 /** Fast color calibration — skips gamma when unity */

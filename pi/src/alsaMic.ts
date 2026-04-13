@@ -195,15 +195,15 @@ export function getLastFFTTimestamp(): number {
   return lastFFTTimestamp;
 }
 
-/** Expose noise gate state for diagnostics */
-export function getNoiseGateState(): { noiseFloor: number; threshold: number; smoothBass: number; smoothMidHi: number; smoothTotal: number } {
-  return {
-    noiseFloor,
-    threshold: noiseFloor * NOISE_GATE_KNEE,
-    smoothBass,
-    smoothMidHi,
-    smoothTotal,
-  };
+/** Expose noise gate state for diagnostics — zero-alloc static object */
+const _ngState = { noiseFloor: 0, threshold: 0, smoothBass: 0, smoothMidHi: 0, smoothTotal: 0 };
+export function getNoiseGateState(): typeof _ngState {
+  _ngState.noiseFloor = noiseFloor;
+  _ngState.threshold = noiseFloor * NOISE_GATE_KNEE;
+  _ngState.smoothBass = smoothBass;
+  _ngState.smoothMidHi = smoothMidHi;
+  _ngState.smoothTotal = smoothTotal;
+  return _ngState;
 }
 
 let recorder: any = null;
