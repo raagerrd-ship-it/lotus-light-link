@@ -1332,18 +1332,22 @@ export default function PiMobile() {
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
 
-  const putJson = (path: string, body: unknown) =>
-    fetch(`${piBase}${path}`, {
+  const putJson = async (path: string, body: unknown) => {
+    const r = await fetch(`${piBase}${path}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
     });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return r;
+  };
 
   const handleSave = async () => {
+    setSaveError(null);
     try {
       const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-      await Promise.all([
-        // Calibration — send flat fields (server merges into stored object)
+      const results = await Promise.allSettled([
         putJson('/api/calibration', {
           bassWeight: cal.bassWeight,
           releaseAlpha,
@@ -1355,30 +1359,34 @@ export default function PiMobile() {
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
           agcEnabled: cal.agcEnabled,
-
           dynamicsEnabled: cal.dynamicsEnabled,
           hiShelfGainDb: 6,
         }),
-        // Tick rate
         putJson('/api/tick-ms', { tickMs }),
-        // Mic device
         putJson('/api/mic-device', { device: alsaDevice }),
-        // Dimming gamma
         putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
-        // Idle color
         putJson('/api/idle-color', { color: idleColor }),
-        // Sonos gateway
         ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
-        // Auto TV-mode
         putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
-        // Mic gain
         putJson('/api/mic-gain', { gain: micGain }),
       ]);
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        const reasons = failed.map(r => (r as PromiseRejectedResult).reason?.message ?? 'okänt').join(', ');
+        console.error('[PiMobile] Partial save failure:', reasons);
+        setSaveError(`${failed.length}/${results.length} misslyckades: ${reasons}`);
+        clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setSaveError(null), 6000);
+        return;
+      }
       setSaved(true);
       clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(false), 1500);
-    } catch (e) {
+    } catch (e: any) {
       console.error('[PiMobile] Save failed', e);
+      setSaveError(e.message ?? 'Kunde inte nå motorn');
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaveError(null), 6000);
     }
   };
 
