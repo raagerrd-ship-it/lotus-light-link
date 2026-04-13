@@ -112,7 +112,23 @@ export const bleStats = {
 let consecutiveConnectFailures = 0;
 const HCI_RESET_THRESHOLD = 3;
 
-const KEEPALIVE_MS = 1000;
+async function resetHciAdapter(): Promise<void> {
+  try {
+    const { exec } = await import('child_process');
+    await new Promise<void>((resolve, reject) => {
+      exec('sudo hciconfig hci0 reset', { timeout: 5000 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+    bleStats.lastDisconnectReason = 'hci_reset';
+    console.log('[BLE] HCI adapter reset ✓');
+    await new Promise(r => setTimeout(r, 2000));
+  } catch (e: any) {
+    console.warn(`[BLE] HCI reset failed: ${e.message}`);
+  }
+}
+
+
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
 
