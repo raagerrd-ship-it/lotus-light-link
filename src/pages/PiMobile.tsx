@@ -1908,7 +1908,19 @@ export default function PiMobile() {
               </button>
             </div>
             {!bleConnectedId && !bleDemand && (
-              <p className="text-[10px] text-muted-foreground mt-1.5 ml-6">Ansluter automatiskt när musik spelas</p>
+              <div className="mt-2 ml-6 flex items-center gap-2">
+                <p className="text-[10px] text-muted-foreground">Ansluter automatiskt när musik spelas</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetch(`${piBase}/api/ble/connect`, { method: 'POST' });
+                    } catch {}
+                  }}
+                  className="text-[10px] text-primary font-medium px-2 py-0.5 rounded-md bg-primary/10 active:bg-primary/20 transition-colors shrink-0"
+                >
+                  Anslut nu
+                </button>
+              </div>
             )}
             {!bleConnectedId && bleDemand && (
               <p className="text-[10px] text-yellow-400 mt-1.5 ml-6">Söker enhet…</p>
