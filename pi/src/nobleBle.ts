@@ -108,7 +108,26 @@ export const bleStats = {
   intervalSource: 'unknown' as string,
 };
 
-// Keep-alive interval (prevents BLE supervision timeout when idle)
+// HCI reset tracking
+let consecutiveConnectFailures = 0;
+const HCI_RESET_THRESHOLD = 3;
+
+async function resetHciAdapter(): Promise<void> {
+  try {
+    const { exec } = await import('child_process');
+    await new Promise<void>((resolve, reject) => {
+      exec('sudo hciconfig hci0 reset', { timeout: 5000 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+    bleStats.lastDisconnectReason = 'hci_reset';
+    console.log('[BLE] HCI adapter reset ✓');
+    await new Promise(r => setTimeout(r, 2000));
+  } catch (e: any) {
+    console.warn(`[BLE] HCI reset failed: ${e.message}`);
+  }
+}
+
 const KEEPALIVE_MS = 1000;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
@@ -402,7 +421,13 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
           await connectPeripheral(found);
           resolve(1);
         } catch (e: any) {
-          console.error(`[BLE] Auto-connect failed: ${e.message}`);
+          consecutiveConnectFailures++;
+          console.error(`[BLE] Auto-connect failed: ${e.message} [fail#${consecutiveConnectFailures}]`);
+          if (consecutiveConnectFailures >= HCI_RESET_THRESHOLD) {
+            console.warn(`[BLE] ${consecutiveConnectFailures} consecutive failures — resetting HCI adapter`);
+            await resetHciAdapter();
+            consecutiveConnectFailures = 0;
+          }
           resolve(0);
         }
       };
@@ -542,6 +567,7 @@ async function connectPeripheral(peripheral: any, _retryCount = 0): Promise<void
   }
 
   device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
+  consecutiveConnectFailures = 0; // reset on successful connect
   lastWriteTime = performance.now();
   startKeepAlive();
 
