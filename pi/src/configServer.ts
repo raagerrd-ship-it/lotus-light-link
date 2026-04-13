@@ -10,6 +10,7 @@ import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getConnectedDeviceId, isScanning, isDemandActive, requestConnect } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
+import { invalidateIdleColorCache } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 
 // Version info — resolved once at startup
@@ -204,6 +205,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     const { color } = req.body;
     if (Array.isArray(color) && color.length === 3) {
       setItem('idle-color', JSON.stringify(color));
+      invalidateIdleColorCache(); // clear cache so next heartbeat picks up new color
       res.json({ ok: true });
     } else {
       res.status(400).json({ error: 'Need color: [r,g,b]' });
