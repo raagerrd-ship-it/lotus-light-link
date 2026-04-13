@@ -13,6 +13,7 @@
       "type": "node",
       "entrypoint": "pi/dist/index.js",
       "service": "lotus-light-engine",
+      "portOffset": 50,
       "alwaysOn": true,
       "managed": false
     },
