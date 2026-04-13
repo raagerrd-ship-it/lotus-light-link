@@ -908,7 +908,87 @@ function GlobalSettingsView({
   );
 }
 
-/* ── Main Component ── */
+/* ── BLE Connection Interval Diagnostics ── */
+function BleIntervalDiag({ piBase }: { piBase: string }) {
+  const [data, setData] = useState<{
+    requestedIntervalMs: string;
+    actualIntervalMs: string;
+    intervalSource: string;
+    writeLatAvgMs: number;
+    effectiveIntervalMs: number;
+    sentCount: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(3000) });
+        if (!r.ok || cancelled) return;
+        const json = await r.json();
+        if (!cancelled && json.ble?.stats) setData(json.ble.stats);
+      } catch {}
+    };
+    poll();
+    const iv = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [piBase]);
+
+  if (!data) return null;
+
+  const isHci = data.intervalSource === 'hci_event';
+  const isEst = data.intervalSource === 'estimated';
+  const isUnknown = data.intervalSource === 'unknown';
+
+  const statusColor = isHci
+    ? 'text-green-400'
+    : isEst
+    ? 'text-yellow-400'
+    : 'text-muted-foreground';
+
+  const statusLabel = isHci
+    ? 'HCI bekräftat'
+    : isEst
+    ? 'Estimerat (latens)'
+    : 'Väntar på data…';
+
+  return (
+    <div className="bg-secondary/50 rounded-xl p-3">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+        <Bluetooth size={12} /> BLE Connection Interval
+      </h3>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">Begärt</div>
+          <div className="font-mono font-bold">{data.requestedIntervalMs} ms</div>
+        </div>
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">Accepterat</div>
+          <div className={`font-mono font-bold ${statusColor}`}>{data.actualIntervalMs} ms</div>
+        </div>
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">Snitt skrivlatens</div>
+          <div className="font-mono font-bold">{data.writeLatAvgMs?.toFixed(1) ?? '—'} ms</div>
+        </div>
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">Effektivt intervall</div>
+          <div className="font-mono font-bold">{data.effectiveIntervalMs ?? '—'} ms</div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[10px]">
+        <span className={statusColor}>● {statusLabel}</span>
+        <span className="text-muted-foreground">{data.sentCount} paket</span>
+      </div>
+      {isUnknown && data.sentCount === 0 && (
+        <p className="text-[10px] text-muted-foreground mt-1.5">
+          Anslut en BLE-enhet och starta musik för att se diagnostik.
+        </p>
+      )}
+    </div>
+  );
+}
+
+
 // ── Diagnostics panel component ──
 /* ── Diagnostics Recording Panel ── */
 type RecordingSample = { tInput: number; tOutput: number; inputRms: number; bassRms: number; outputPct: number };
