@@ -7,7 +7,7 @@
  * Resolution order:
  *  1. VITE_ENGINE_URL env var (full URL, e.g. "http://192.168.1.50:3050")
  *  2. VITE_ENGINE_PORT env var → same hostname, different port
- *  3. Default: same hostname as current page, port 3050
+ *  3. Default: same hostname as current page, port 3051
  */
 
 function resolveApiBase(): string {
@@ -17,7 +17,7 @@ function resolveApiBase(): string {
 
   // Port override
   const envPort = import.meta.env.VITE_ENGINE_PORT;
-  const port = envPort || '3050';
+  const port = envPort || '3051';
 
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;
@@ -27,5 +27,5 @@ function resolveApiBase(): string {
   return `http://localhost:${port}`;
 }
 
-/** Base URL for engine API calls, e.g. "http://192.168.1.50:3050" */
+/** Base URL for engine API calls, e.g. "http://192.168.1.50:3051" */
 export const apiBase = resolveApiBase();
