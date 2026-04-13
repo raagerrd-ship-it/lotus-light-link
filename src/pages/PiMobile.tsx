@@ -1885,6 +1885,8 @@ export default function PiMobile() {
                 <span className="text-sm font-medium">{bleConnectedName ?? bleSavedName ?? bleSavedId?.substring(0, 12) ?? '—'}</span>
                 {bleConnectedId ? (
                   <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">Aktiv</span>
+                ) : bleDemand ? (
+                  <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full animate-pulse">Ansluter…</span>
                 ) : (
                   <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">Vilar</span>
                 )}
