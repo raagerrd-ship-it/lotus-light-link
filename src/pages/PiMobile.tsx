@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity, Download } from "lucide-react";
+import { apiBase } from "@/lib/apiBase";
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
@@ -1141,10 +1142,8 @@ export default function PiMobile() {
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  // Derive Pi base URL from current page (frontend proxies /api/* → engine)
-  const piBase = typeof window !== 'undefined'
-    ? window.location.origin
-    : 'http://localhost:3001';
+  // Direct to engine port (no proxy needed)
+  const piBase = apiBase;
 
   const putJson = (path: string, body: unknown) =>
     fetch(`${piBase}${path}`, {
