@@ -17,7 +17,7 @@ function resolveApiBase(): string {
 
   // Port override
   const envPort = import.meta.env.VITE_ENGINE_PORT;
-  const port = envPort || '3051';
+  const port = envPort || '3050';
 
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;
