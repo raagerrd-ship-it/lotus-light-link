@@ -34,9 +34,9 @@ try {
     GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
     GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
     try {
-      const tag = execSync('git describe --tags --abbrev=0 2>/dev/null', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
+      const tag = execSync("git tag -l --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n1", { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
       if (tag) SERVICE_VERSION = tag.replace(/^v/, '');
-    } catch { /* no tags */ }
+    } catch { /* no semver tags */ }
   } catch { /* not a git repo */ }
 }
 
@@ -435,18 +435,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       const r = await fetch('https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases', { signal: AbortSignal.timeout(5000) });
       if (!r.ok) return res.json({ error: 'GitHub API error' });
       const releases = await r.json();
-      // Find first non-"latest" release
-      const data = (releases as any[]).find((rel: any) => rel.tag_name !== 'latest' && !rel.draft && !rel.prerelease);
-      if (!data) return res.json({ error: 'No versioned release found' });
-      const latestCommit = data.target_commitish ?? '';
+      const data = (releases as any[]).find((rel: any) => /^v\d+\.\d+\.\d+$/.test(rel.tag_name ?? '') && !rel.draft && !rel.prerelease);
+      if (!data) return res.json({ error: 'No valid semver release found' });
       const latestVersion = data.tag_name?.replace(/^v/, '') ?? '';
-      const upToDate = currentCommit === latestCommit;
+      const latestCommitRaw = data.target_commitish ?? '';
+      const latestCommit = /^[0-9a-f]{7,40}$/i.test(latestCommitRaw) ? latestCommitRaw : '';
+      const upToDate = SERVICE_VERSION === latestVersion;
 
       res.json({
         upToDate,
         currentCommit: currentCommit.substring(0, 7),
         latestCommit: latestCommit.substring(0, 7),
-        releaseName: data.name ?? '',
+        releaseName: data.name ?? data.tag_name ?? '',
         currentVersion: SERVICE_VERSION,
         latestVersion,
       });
