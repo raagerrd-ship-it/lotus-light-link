@@ -159,6 +159,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     res.json({ ok: true });
   });
 
+  // Manual connect — force BLE connection even without music playing
+  app.post('/api/ble/connect', async (_req, res) => {
+    if (!getSavedDeviceId()) return res.status(400).json({ error: 'No saved device' });
+    if (getConnectedDeviceId()) return res.json({ ok: true, message: 'Already connected' });
+    try {
+      await requestConnect();
+      res.json({ ok: true, message: 'Connect requested' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // --- Calibration ---
   app.get('/api/calibration', (_req, res) => {
     const raw = getItem('light-calibration');
