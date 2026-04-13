@@ -1542,6 +1542,7 @@ export default function PiMobile() {
   const [bleSavedId, setBleSavedId] = useState<string | null>(null);
   const [bleSavedName, setBleSavedName] = useState<string | null>(null);
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
+  const [bleDemand, setBleDemand] = useState(false);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
