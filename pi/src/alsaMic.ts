@@ -27,7 +27,6 @@ try {
     console.warn('[ALSA] No audio capture module available');
   }
 }
-import { fft1024, FFT_N } from './fftRadix2.js';
 
 export interface BandResult {
   bassRms: number;
