@@ -92,11 +92,25 @@ if systemctl is-active --quiet lotus-light-engine.service 2>/dev/null; then
   echo "$LOG_PREFIX Removed legacy systemd service ✓"
 fi
 
-# Ensure BLE permissions via bluetooth group
+# Ensure BLE permissions via bluetooth group + polkit
 LOTUS_USER="${SUDO_USER:-$(whoami)}"
 if ! id -nG "$LOTUS_USER" 2>/dev/null | grep -qw bluetooth; then
   sudo usermod -aG bluetooth "$LOTUS_USER"
   echo "$LOG_PREFIX Added $LOTUS_USER to bluetooth group ✓"
+fi
+
+POLKIT_DIR="/etc/polkit-1/localauthority/50-local.d"
+POLKIT_FILE="$POLKIT_DIR/lotus-light-ble.pkla"
+if [ ! -f "$POLKIT_FILE" ]; then
+  sudo mkdir -p "$POLKIT_DIR"
+  sudo tee "$POLKIT_FILE" > /dev/null << 'PKLA'
+[Lotus Light BLE Access]
+Identity=unix-group:bluetooth
+Action=org.bluez.*
+ResultActive=yes
+ResultAny=yes
+PKLA
+  echo "$LOG_PREFIX Polkit rule installed ✓"
 fi
 
 # Rebuild native modules if architecture or Node version differs
