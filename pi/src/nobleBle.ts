@@ -262,7 +262,8 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       const onDiscover = (peripheral: any) => {
         const name = peripheral.advertisement?.localName ?? '';
         console.log(`[BLE] Saw: "${name || '(no name)'}" id=${peripheral.id} rssi=${peripheral.rssi}`);
-        if (!/^(ELK-BLEDOM|BLEDOM|ELK|MELK)/i.test(name)) return;
+        // Show all named devices — no BLEDOM filter
+        if (!name) return;
         const id = peripheral.id;
         if (discoveredPeripherals.has(id)) return;
 
