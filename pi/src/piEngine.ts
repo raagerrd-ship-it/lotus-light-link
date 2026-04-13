@@ -298,6 +298,8 @@ export class PiLightEngine {
   // Raw mode — disables all processors for gain calibration
   private _rawMode = false;
   private _savedCal: Partial<LightCalibration> | null = null;
+  // Dirty-flag for calibration save — avoids unnecessary disk writes
+  private _calDirty = false;
 
   constructor(tickMs = 10) {
     this.tickMs = tickMs;
@@ -419,6 +421,7 @@ export class PiLightEngine {
 
   reloadCalibration(): void {
     this.cal = loadCalibration();
+    this._calDirty = true; // mark for next save cycle
     // Re-apply raw mode overrides if active
     if (this._rawMode) {
       this.cal.agcEnabled = false;
@@ -472,7 +475,10 @@ export class PiLightEngine {
     this.startIdleHeartbeat();
 
     this.saveTimer = setInterval(() => {
-      saveCalibration(this.cal);
+      if (this._calDirty) {
+        saveCalibration(this.cal);
+        this._calDirty = false;
+      }
     }, 10_000);
 
     console.log(`[Engine] Initialized (${this.tickMs}ms, loop always active, idle heartbeat until playback)`);
