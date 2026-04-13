@@ -432,10 +432,14 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         currentCommit = vf.commit ?? '';
       } catch {}
 
-      const r = await fetch('https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases/tags/latest', { signal: AbortSignal.timeout(5000) });
+      const r = await fetch('https://api.github.com/repos/raagerrd-ship-it/lotus-light-link/releases', { signal: AbortSignal.timeout(5000) });
       if (!r.ok) return res.json({ error: 'GitHub API error' });
-      const data = await r.json();
+      const releases = await r.json();
+      // Find first non-"latest" release
+      const data = (releases as any[]).find((rel: any) => rel.tag_name !== 'latest' && !rel.draft && !rel.prerelease);
+      if (!data) return res.json({ error: 'No versioned release found' });
       const latestCommit = data.target_commitish ?? '';
+      const latestVersion = data.tag_name?.replace(/^v/, '') ?? '';
       const upToDate = currentCommit === latestCommit;
 
       res.json({
@@ -444,6 +448,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         latestCommit: latestCommit.substring(0, 7),
         releaseName: data.name ?? '',
         currentVersion: SERVICE_VERSION,
+        latestVersion,
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
