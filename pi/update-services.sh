@@ -86,7 +86,7 @@ done
 # Re-apply BLE capabilities
 NODE_BIN=$(readlink -f "$(which node)")
 if [ -n "$NODE_BIN" ]; then
-  sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
+  sudo setcap cap_net_raw,cap_net_admin+eip "$NODE_BIN" 2>/dev/null || true
 fi
 
 # Rebuild native modules if architecture or Node version differs

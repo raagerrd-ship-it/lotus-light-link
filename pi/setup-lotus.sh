@@ -131,7 +131,7 @@ echo "  Native-moduler klara ✓"
 
 # ─── BLE permissions & unblock ────────────────────────────
 NODE_BIN=$(readlink -f "$(which node)")
-sudo setcap cap_net_raw+eip "$NODE_BIN" 2>/dev/null || true
+sudo setcap cap_net_raw,cap_net_admin+eip "$NODE_BIN" 2>/dev/null || true
 
 # Unblock Bluetooth (often soft-blocked after reboot on Pi Zero 2 W)
 sudo rfkill unblock bluetooth 2>/dev/null || true
