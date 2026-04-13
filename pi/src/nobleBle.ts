@@ -561,6 +561,7 @@ async function connectPeripheral(peripheral: any, _retryCount = 0): Promise<void
   }
 
   device = { peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id };
+  consecutiveConnectFailures = 0; // reset on successful connect
   lastWriteTime = performance.now();
   startKeepAlive();
 
