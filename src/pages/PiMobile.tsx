@@ -1809,7 +1809,7 @@ export default function PiMobile() {
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center gap-1.5 shrink-0">
-          <Bluetooth size={14} className={bleConnectedId ? 'text-primary' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
+          <Bluetooth size={14} className={bleConnectedId ? 'text-primary' : bleDemand && bleSavedId ? 'text-yellow-400 animate-pulse' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
           <span>{bleConnectedId ? (bleConnectedName ?? '1 aktiv') : bleDemand && bleSavedId ? 'Ansluter…' : bleSavedId ? 'Vilar' : 'Ej kopplad'}</span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
