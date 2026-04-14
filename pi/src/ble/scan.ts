@@ -341,42 +341,26 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   if (directResult) return 1;
   if (getDevice()) return 1;
 
+  // Auto-connect uses noble only (no hcitool) to avoid blocking manual scans
   const savedName = getSavedDeviceName() ?? savedId;
-  scanning = true;
-  logConnectionEvent({ type: 'scan_start', device: savedName, detail: `auto-connect hcitool scan, timeout=${timeoutMs}ms` });
+  logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'auto-connect noble scan' });
+
+  const peripheral = await nobleFind(savedId, Math.min(timeoutMs, 5000));
+  if (!peripheral) {
+    logConnectionEvent({ type: 'scan_done', device: savedName, detail: 'Not found via noble' });
+    return 0;
+  }
 
   try {
-    // Use hcitool to check if device is nearby
-    const devices = await hcitoolScan(timeoutMs);
-    const found = devices.find(d => d.id === savedId);
-    if (!found) {
-      logConnectionEvent({ type: 'scan_done', device: savedName, detail: `Not found via hcitool within ${timeoutMs}ms` });
-      return 0;
+    await connectPeripheral(peripheral);
+    return 1;
+  } catch (e: any) {
+    incrementConsecutiveFailures();
+    const fails = getConsecutiveFailures();
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Auto-connect failed: ${e.message} [fail#${fails}]` });
+    if (fails >= HCI_RESET_THRESHOLD) {
+      await resetHciAdapter();
     }
-
-    logConnectionEvent({ type: 'scan_done', device: savedName, detail: 'Found via hcitool, connecting via noble...' });
-
-    // Now get noble peripheral for GATT
-    const peripheral = await nobleFind(savedId, 5000);
-    if (!peripheral) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'hcitool found device but noble cannot see it' });
-      return 0;
-    }
-
-    try {
-      await connectPeripheral(peripheral);
-      return 1;
-    } catch (e: any) {
-      incrementConsecutiveFailures();
-      const fails = getConsecutiveFailures();
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Auto-connect failed: ${e.message} [fail#${fails}]` });
-      if (fails >= HCI_RESET_THRESHOLD) {
-        await resetHciAdapter();
-      }
-      return 0;
-    }
-  } finally {
-    scanning = false;
-    scanAbort = null;
+    return 0;
   }
 }
