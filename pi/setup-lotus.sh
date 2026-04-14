@@ -131,11 +131,47 @@ echo "  Bygger om native-moduler för $(uname -m)..."
 nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
 echo "  Native-moduler klara ✓"
 
-# ─── BLE permissions & unblock ────────────────────────────
+# ─── BLE permissions (hanteras av Pi Control Center) ────────
+echo ""
+echo "[BLE] Verifierar Bluetooth-tillgång..."
+
+# 1. Säkerställ att Bluetooth inte är blockerat
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
 
-# ─── Done ─────────────────────────────────────────────────
+# 2-4. Kontrollera att Pi Control Center har konfigurerat systemd-tjänsten
+# med: NoNewPrivileges=false, AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+# och CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+SVC_FILE="/home/pi/.config/systemd/user/lotus-light-engine.service"
+if [ -f "$SVC_FILE" ]; then
+  echo "  Kontrollerar systemd-tjänstkonfiguration..."
+  
+  # Kontrollera NoNewPrivileges=false
+  if ! grep -q "NoNewPrivileges=false" "$SVC_FILE" 2>/dev/null; then
+    echo "  ⚠️  VARNING: NoNewPrivileges=false saknas i $SVC_FILE"
+    echo "      noble kräver detta för direkt HCI-åtkomst (bypassar D-Bus/bluez)"
+  else
+    echo "  NoNewPrivileges=false ✓"
+  fi
+  
+  # Kontrollera AmbientCapabilities
+  if ! grep -q "AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN" "$SVC_FILE" 2>/dev/null; then
+    echo "  ⚠️  VARNING: AmbientCapabilities saknas i $SVC_FILE"
+    echo "      noble kräver CAP_NET_RAW och CAP_NET_ADMIN för BLE HCI-åtkomst"
+  else
+    echo "  AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN ✓"
+  fi
+  
+  # Kontrollera CapabilityBoundingSet
+  if ! grep -q "CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN" "$SVC_FILE" 2>/dev/null; then
+    echo "  ⚠️  VARNING: CapabilityBoundingSet saknas i $SVC_FILE"
+  else
+    echo "  CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN ✓"
+  fi
+else
+  echo "  ℹ️  Systemd-tjänstfil inte hittad — förutsätter att Pi Control Center hanterar detta"
+fi
+
 echo ""
 echo "========================================"
 echo "  Installation klar!"
@@ -145,7 +181,12 @@ echo "  UI Port:     $PORT"
 echo "  Engine Port: $ENGINE_PORT"
 echo "  CPU Core:    $CORE"
 echo ""
-echo "  Pi Control Center hanterar systemd-tjänster och sandboxing."
+echo "  Obs: BLE-rättigheter hanteras av Pi Control Center via systemd."
+echo "      Kontrollera att lotus-light-engine.service har:"
+echo "        - NoNewPrivileges=false"
+echo "        - AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN"
+echo "        - CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN"
+echo ""
 
 if [ "$NEEDS_REBOOT" = true ]; then
   echo ""
