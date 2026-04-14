@@ -72,6 +72,27 @@ export function getAdapterState(): string | undefined {
   return nobleWithState.state ?? nobleWithState._state;
 }
 
+// ── Startup diagnostics ──
+const initState = getAdapterState();
+if (initState === 'unauthorized') {
+  console.error('[BLE] Adapter state: unauthorized — PCC-tjänsten saknar AmbientCapabilities (CAP_NET_RAW + CAP_NET_ADMIN). Kontrollera att tjänsten körs via Pi Control Center.');
+} else if (initState === 'poweredOff') {
+  console.warn('[BLE] Adapter state: poweredOff — Bluetooth är avstängt eller rfkill-blockerat.');
+} else if (initState === 'poweredOn') {
+  console.log('[BLE] Adapter state: poweredOn ✓');
+} else {
+  console.log(`[BLE] Adapter state at init: ${initState ?? 'unknown'} — waiting for stateChange event`);
+  noble.once('stateChange', (state: string) => {
+    if (state === 'unauthorized') {
+      console.error('[BLE] Adapter → unauthorized — PCC-tjänsten saknar AmbientCapabilities.');
+    } else if (state === 'poweredOn') {
+      console.log('[BLE] Adapter → poweredOn ✓');
+    } else {
+      console.log(`[BLE] Adapter → ${state}`);
+    }
+  });
+}
+
 function brightnessToScale(brightness: number): number {
   const idx = brightness < 0 ? 0 : brightness > 100 ? 100 : (brightness + 0.5) | 0;
   return brightnessLut[idx];
