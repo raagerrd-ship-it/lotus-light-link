@@ -22,14 +22,18 @@ export function setDevice(d: ConnectedDevice | null): void { _device = d; }
 // ── Saved device (persisted) ──
 let _savedDeviceId: string | null = getItem('ble-device-id') ?? null;
 let _savedDeviceName: string | null = getItem('ble-device-name') ?? null;
+let _savedDeviceAddress: string | null = getItem('ble-device-address') ?? null;
 
 export function getSavedDeviceId(): string | null { return _savedDeviceId; }
 export function getSavedDeviceName(): string | null { return _savedDeviceName; }
-export function setSavedDevice(id: string | null, name: string | null): void {
+export function getSavedDeviceAddress(): string | null { return _savedDeviceAddress; }
+export function setSavedDevice(id: string | null, name: string | null, address?: string | null): void {
   _savedDeviceId = id;
   _savedDeviceName = name;
+  _savedDeviceAddress = address ?? null;
   setItem('ble-device-id', id ?? '');
   setItem('ble-device-name', name ?? '');
+  setItem('ble-device-address', address ?? '');
 }
 
 // ── Demand-based connection ──
