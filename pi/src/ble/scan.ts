@@ -25,6 +25,11 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
 
   return new Promise((resolve) => {
     // Reset HCI adapter before scanning — required for reliable discovery
+    // This also releases noble's hold on the HCI socket
+    try {
+      // Stop noble scanning first
+      noble.stopScanning();
+    } catch {}
     try {
       execSync('sudo hciconfig hci0 reset', { timeout: 3000 });
       console.log('[BLE] hci0 reset before scan');
