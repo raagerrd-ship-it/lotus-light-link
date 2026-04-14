@@ -19,7 +19,7 @@
     },
     "ui": {
       "type": "python",
-      "entrypoint": "python3 -m http.server ${PORT} --directory /opt/lotus-light/dist",
+      "entrypoint": "python3 /opt/lotus-light/pi/ui_server.py",
       "service": "lotus-light-ui",
       "alwaysOn": false
     }
