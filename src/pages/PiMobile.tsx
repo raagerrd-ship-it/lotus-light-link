@@ -1599,6 +1599,19 @@ export default function PiMobile() {
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
+  const bleIdentityRef = useRef<{ savedId: string | null; savedName: string | null; connectedId: string | null }>({
+    savedId: null,
+    savedName: null,
+    connectedId: null,
+  });
+
+  useEffect(() => {
+    bleIdentityRef.current = {
+      savedId: bleSavedId,
+      savedName: bleSavedName,
+      connectedId: bleConnectedId,
+    };
+  }, [bleSavedId, bleSavedName, bleConnectedId]);
 
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
@@ -2033,16 +2046,17 @@ export default function PiMobile() {
             try {
               const r = await fetch(`${piBase}/api/ble/scan`, { method: 'POST', signal: AbortSignal.timeout(15000) });
               const data = await r.json();
+              const hasKnownBleDevice = Boolean(
+                bleIdentityRef.current.savedId || bleIdentityRef.current.savedName || bleIdentityRef.current.connectedId
+              );
               if (data.error) {
                 console.warn('[BLE scan]', data.error);
               }
               setBleScanResults(data.devices ?? []);
               // Show adapter state if no devices found
-              if ((data.devices ?? []).length === 0 && data.adapterState) {
-                if (!bleSavedId) {
-                  setSaveError(`BLE-adapter: ${data.adapterState}. Inga enheter hittades.`);
-                  setTimeout(() => setSaveError(null), 5000);
-                }
+              if ((data.devices ?? []).length === 0 && data.adapterState && !hasKnownBleDevice) {
+                setSaveError(`BLE-adapter: ${data.adapterState}. Inga enheter hittades.`);
+                setTimeout(() => setSaveError(null), 5000);
               }
             } catch (e) {
               console.error('[BLE scan] failed:', e);
