@@ -26,8 +26,9 @@ export { scanForDevices, selectDevice, forgetDevice, autoConnectSaved, getLastSc
 export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.js';
 
 // ── Convenience / legacy aliases ──
-import { getDevice } from './state.js';
+import { getDevice, setDevice } from './state.js';
 import { stopKeepAlive, resetLastSent } from './protocol.js';
+import { autoConnectSaved } from './scan.js';
 
 export function getConnectedCount(): number {
   return getDevice() ? 1 : 0;
@@ -47,7 +48,6 @@ export async function disconnect(): Promise<void> {
   const d = getDevice();
   if (d) {
     try { await d.peripheral.disconnectAsync(); } catch {}
-    const { setDevice } = await import('./state.js');
     setDevice(null);
     resetLastSent();
     console.log('[BLE] Disconnected');
@@ -55,12 +55,11 @@ export async function disconnect(): Promise<void> {
 }
 
 export const disconnectAll = disconnect;
-export const scanAndConnect = (await import('./scan.js')).autoConnectSaved;
+export const scanAndConnect = autoConnectSaved;
 export function setExpectedDeviceCount(_n: number): void { /* no-op */ }
 
 // ── Startup diagnostics ──
-import { getAdapterState, noble } from './state.js';
-import { logConnectionEvent } from './state.js';
+import { getAdapterState, noble, logConnectionEvent } from './state.js';
 
 const initState = getAdapterState();
 if (initState === 'unauthorized') {
