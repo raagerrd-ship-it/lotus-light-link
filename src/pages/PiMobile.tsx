@@ -1543,6 +1543,7 @@ export default function PiMobile() {
   const [bleSavedName, setBleSavedName] = useState<string | null>(null);
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const [bleDemand, setBleDemand] = useState(false);
+  const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
@@ -1689,6 +1690,7 @@ export default function PiMobile() {
         setBleSavedId(data.ble?.savedDeviceId ?? null);
         setBleSavedName(data.ble?.savedDeviceName ?? null);
         setBleDemand(data.ble?.demand ?? false);
+        setBleAdapterState(data.ble?.stats?.adapterState ?? null);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
         // Always update palette when available (may arrive after track change)
         const palette = data.engine?.palette ?? [];
@@ -1807,10 +1809,26 @@ export default function PiMobile() {
         </div>
       </div>
 
+      {/* BLE capability warning */}
+      {bleAdapterState === 'unauthorized' && (
+        <div className="mb-3 p-2.5 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-[11px] flex items-start gap-2">
+          <Bluetooth size={14} className="shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold">BLE saknar rättigheter</span> — tjänsten behöver AmbientCapabilities (CAP_NET_RAW). Kontrollera att den körs via Pi Control Center.
+          </div>
+        </div>
+      )}
+      {bleAdapterState === 'poweredOff' && (
+        <div className="mb-3 p-2.5 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-[11px] flex items-start gap-2">
+          <Bluetooth size={14} className="shrink-0 mt-0.5" />
+          <span>Bluetooth-adapter avstängd eller blockerad</span>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center gap-1.5 shrink-0">
-          <Bluetooth size={14} className={bleConnectedId ? 'text-primary' : bleDemand && bleSavedId ? 'text-yellow-400 animate-pulse' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
-          <span>{bleConnectedId ? (bleConnectedName ?? '1 aktiv') : bleDemand && bleSavedId ? 'Ansluter…' : bleSavedId ? 'Vilar' : 'Ej kopplad'}</span>
+          <Bluetooth size={14} className={bleAdapterState === 'unauthorized' ? 'text-destructive' : bleAdapterState === 'poweredOff' ? 'text-yellow-400' : bleConnectedId ? 'text-primary' : bleDemand && bleSavedId ? 'text-yellow-400 animate-pulse' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
+          <span>{bleAdapterState === 'unauthorized' ? 'Ej behörig' : bleAdapterState === 'poweredOff' ? 'Avstängd' : bleConnectedId ? (bleConnectedName ?? '1 aktiv') : bleDemand && bleSavedId ? 'Ansluter…' : bleSavedId ? 'Vilar' : 'Ej kopplad'}</span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <Music size={14} className="shrink-0" />
