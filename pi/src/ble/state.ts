@@ -5,6 +5,7 @@
 
 // @ts-ignore — noble types are approximate
 import noble from '@abandonware/noble';
+import { readFileSync } from 'fs';
 import { getItem, setItem } from '../storage.js';
 import type { ConnectedDevice, BleConnectionEvent } from './types.js';
 
@@ -82,31 +83,19 @@ export function getConnectionLog(): BleConnectionEvent[] {
 
 // ── Noble adapter helpers ──
 
-/**
- * Check if the current process actually has CAP_NET_RAW + CAP_NET_ADMIN
- * by reading /proc/self/status. This is the ground truth — noble's own
- * state can lag or be wrong after a service-file update + restart.
- */
-let _capsVerified: boolean | null = null;
-
 export function processHasBtCaps(): boolean {
-  if (_capsVerified !== null) return _capsVerified;
   try {
-    const { readFileSync } = require('fs') as typeof import('fs');
     const status = readFileSync('/proc/self/status', 'utf8');
     const match = status.match(/^CapEff:\s*([0-9a-fA-F]+)$/m);
     if (match) {
       const caps = BigInt('0x' + match[1]);
-      // CAP_NET_ADMIN = bit 12, CAP_NET_RAW = bit 13
       const needed = (1n << 12n) | (1n << 13n);
-      _capsVerified = (caps & needed) === needed;
-    } else {
-      _capsVerified = false;
+      return (caps & needed) === needed;
     }
   } catch {
-    _capsVerified = false;
+    // not on Linux or /proc unavailable
   }
-  return _capsVerified;
+  return false;
 }
 
 export function getAdapterState(): string | undefined {
