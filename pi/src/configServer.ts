@@ -207,6 +207,11 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     }
   });
 
+  // BLE connection diagnostics log
+  app.get('/api/ble/log', (_req, res) => {
+    res.json({ events: getConnectionLog() });
+  });
+
   // --- Calibration ---
   app.get('/api/calibration', (_req, res) => {
     const raw = getItem('light-calibration');
