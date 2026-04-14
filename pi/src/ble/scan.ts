@@ -6,7 +6,7 @@
  * so we use it for discovery and noble only for GATT connect.
  */
 
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
@@ -24,6 +24,14 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   const seen = new Map<string, DiscoveredDevice>();
 
   return new Promise((resolve) => {
+    // Reset HCI adapter before scanning — required for reliable discovery
+    try {
+      execSync('sudo hciconfig hci0 reset', { timeout: 3000 });
+      console.log('[BLE] hci0 reset before scan');
+    } catch (e: any) {
+      console.warn(`[BLE] hci0 reset failed: ${e.message}`);
+    }
+
     // hcitool lescan streams discoveries to stdout until killed
     const proc = spawn('sudo', ['hcitool', 'lescan', '--duplicates'], {
       stdio: ['ignore', 'pipe', 'pipe'],
