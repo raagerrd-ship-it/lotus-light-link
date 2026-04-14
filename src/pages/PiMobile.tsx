@@ -1690,7 +1690,7 @@ export default function PiMobile() {
         setBleSavedId(data.ble?.savedDeviceId ?? null);
         setBleSavedName(data.ble?.savedDeviceName ?? null);
         setBleDemand(data.ble?.demand ?? false);
-        setBleAdapterState(data.ble?.stats?.adapterState ?? null);
+        setBleAdapterState(data.ble?.adapterState ?? null);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
         // Always update palette when available (may arrive after track change)
         const palette = data.engine?.palette ?? [];

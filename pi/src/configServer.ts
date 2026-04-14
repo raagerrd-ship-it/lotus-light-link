@@ -120,6 +120,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       ble: {
         connected: getConnectedCount(),
         devices: getConnectedNames(),
+        adapterState: getAdapterState() ?? 'unknown',
         stats: bleStats,
         savedDeviceId: getSavedDeviceId(),
         savedDeviceName: getSavedDeviceName(),
