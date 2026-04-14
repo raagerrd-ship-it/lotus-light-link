@@ -406,6 +406,22 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     };
   };
 
+  // Detect if a local Sonos gateway service is reachable
+  app.get('/api/sonos-gateway/detect', async (_req, res) => {
+    const LOCAL_URL = 'http://127.0.0.1:3053/api';
+    try {
+      const r = await fetch(`${LOCAL_URL}/status`, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) {
+        const data = await r.json();
+        res.json({ found: true, url: `${LOCAL_URL}/sonos`, name: data?.name ?? 'Cast Away', version: data?.version ?? null });
+      } else {
+        res.json({ found: false });
+      }
+    } catch {
+      res.json({ found: false });
+    }
+  });
+
   app.get('/api/sonos-gateway', (_req, res) => {
     const savedRaw = getItem('sonos-gateway');
     let saved: SonosPollerConfig | null = null;
