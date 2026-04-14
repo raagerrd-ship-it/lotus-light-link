@@ -135,36 +135,6 @@ echo "  Native-moduler klara ✓"
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
 
-# ─── 6. BLE-rättigheter (bluetooth-grupp + polkit) ────────
-echo ""
-echo "[6/6] Konfigurerar BLE-rättigheter..."
-
-# Add the service user to the bluetooth group for HCI access
-LOTUS_USER="${SUDO_USER:-$(whoami)}"
-if id -nG "$LOTUS_USER" 2>/dev/null | grep -qw bluetooth; then
-  echo "  ✓ $LOTUS_USER redan i bluetooth-gruppen"
-else
-  sudo usermod -aG bluetooth "$LOTUS_USER"
-  echo "  ✓ $LOTUS_USER tillagd i bluetooth-gruppen"
-fi
-
-# Install polkit rule for BlueZ adapter access without root
-POLKIT_DIR="/etc/polkit-1/localauthority/50-local.d"
-POLKIT_FILE="$POLKIT_DIR/lotus-light-ble.pkla"
-if [ ! -f "$POLKIT_FILE" ]; then
-  sudo mkdir -p "$POLKIT_DIR"
-  sudo tee "$POLKIT_FILE" > /dev/null << 'PKLA'
-[Lotus Light BLE Access]
-Identity=unix-group:bluetooth
-Action=org.bluez.*
-ResultActive=yes
-ResultAny=yes
-PKLA
-  echo "  ✓ Polkit-regel installerad för BlueZ"
-else
-  echo "  ✓ Polkit-regel redan på plats"
-fi
-
 # ─── Done ─────────────────────────────────────────────────
 echo ""
 echo "========================================"
