@@ -1623,7 +1623,7 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes] = await Promise.all([
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
         safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
@@ -1654,7 +1654,6 @@ export default function PiMobile() {
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
           agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
-          
           dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
         });
       }
@@ -1665,10 +1664,24 @@ export default function PiMobile() {
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
       if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
 
-      // Sonos gateway: detect local or use saved
-      const detectRes = (await Promise.all([safeFetch(`${piBase}/api/sonos-gateway/detect`)]))[0] ?? sonosLocalDetected;
-      // Actually detectRes is already in the destructured array above as the 9th element
-      const sonosDetect = arguments.length; // dummy — let me fix this
+      // Sonos gateway: detect local service or fall back to saved/extern
+      if (detectRes?.found) {
+        setSonosLocalDetected(detectRes);
+        // If saved URL matches local default, use local mode
+        const savedUrl = sonosRes?.active?.baseUrl ?? sonosRes?.saved?.baseUrl ?? '';
+        const isLocal = !savedUrl || savedUrl.includes('127.0.0.1:3053');
+        setSonosMode(isLocal ? 'local' : 'extern');
+        if (isLocal) {
+          setSonosUrl(detectRes.url);
+        } else {
+          setSonosUrl(savedUrl);
+        }
+      } else {
+        setSonosLocalDetected(detectRes ?? { found: false, url: '', name: '', version: null });
+        setSonosMode('extern');
+        if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
+        else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
+      }
 
     };
     load();
