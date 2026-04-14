@@ -9,6 +9,22 @@ import type { DiscoveredDevice } from './types.js';
 
 const HCI_RESET_THRESHOLD = 3;
 
+function getPeripheralName(peripheral: any): string {
+  const advertisedName = peripheral.advertisement?.localName?.trim();
+  if (advertisedName) return advertisedName;
+
+  if (peripheral.id === getSavedDeviceId()) {
+    const savedName = getSavedDeviceName();
+    if (savedName) return savedName;
+  }
+
+  const address = typeof peripheral.address === 'string' && peripheral.address !== 'unknown'
+    ? peripheral.address.toUpperCase()
+    : peripheral.id;
+
+  return `Okänd enhet (${address})`;
+}
+
 // ── Discovered devices from last scan ──
 let lastScanResults: DiscoveredDevice[] = [];
 let discoveredPeripherals = new Map<string, any>();
@@ -34,13 +50,18 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   try {
     return await new Promise((resolve) => {
       const onDiscover = (peripheral: any) => {
-        const name = peripheral.advertisement?.localName ?? '';
-        if (!name) return;
         const id = peripheral.id;
-        if (discoveredPeripherals.has(id)) return;
+        const name = getPeripheralName(peripheral);
+        const existingIndex = lastScanResults.findIndex((device) => device.id === id);
 
         discoveredPeripherals.set(id, peripheral);
         const entry: DiscoveredDevice = { id, name, rssi: peripheral.rssi ?? -100 };
+
+        if (existingIndex >= 0) {
+          lastScanResults[existingIndex] = entry;
+          return;
+        }
+
         lastScanResults.push(entry);
         console.log(`[BLE] Discovered: ${name} (${id}) RSSI: ${entry.rssi}`);
       };
@@ -55,7 +76,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       }, timeoutMs);
 
       const startScan = () => {
-        noble.startScanningAsync([], false).catch(() => {});
+        noble.startScanningAsync([], true).catch(() => {});
       };
 
       if (getAdapterState() === 'poweredOn') {
@@ -91,7 +112,7 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
 
   try {
     await connectPeripheral(peripheral);
-    const name = peripheral.advertisement?.localName ?? deviceId;
+    const name = getPeripheralName(peripheral);
     setSavedDevice(deviceId, name);
     console.log(`[BLE] Saved device: ${name} (${deviceId})`);
     return true;
@@ -136,7 +157,7 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
       const onDiscover = (peripheral: any) => {
         if (found) return;
         if (peripheral.id === savedId) {
-          const name = peripheral.advertisement?.localName ?? peripheral.id;
+          const name = getPeripheralName(peripheral);
           logConnectionEvent({ type: 'scan_done', device: name, detail: 'Saved device found' });
           found = peripheral;
           noble.stopScanningAsync().catch(() => {});
@@ -154,7 +175,7 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
         } catch (e: any) {
           incrementConsecutiveFailures();
           const fails = getConsecutiveFailures();
-          logConnectionEvent({ type: 'connect_fail', device: found.advertisement?.localName ?? savedId, detail: `Auto-connect failed: ${e.message} [fail#${fails}]` });
+          logConnectionEvent({ type: 'connect_fail', device: getPeripheralName(found), detail: `Auto-connect failed: ${e.message} [fail#${fails}]` });
           if (fails >= HCI_RESET_THRESHOLD) {
             await resetHciAdapter();
           }
@@ -174,11 +195,11 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
       }, timeoutMs);
 
       if (getAdapterState() === 'poweredOn') {
-        noble.startScanningAsync([], false).catch(() => {});
+        noble.startScanningAsync([], true).catch(() => {});
       } else {
         noble.once('stateChange', (state: string) => {
           if (state === 'poweredOn') {
-            noble.startScanningAsync([], false).catch(() => {});
+            noble.startScanningAsync([], true).catch(() => {});
           }
         });
       }
