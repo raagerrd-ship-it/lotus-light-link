@@ -20,7 +20,7 @@ const HCI_RESET_THRESHOLD = 3;
  * Run `hcitool lescan` for the given duration and parse discovered devices.
  * Returns a list of unique devices with MAC-derived IDs (noble-compatible).
  */
-function hcitoolScan(timeoutMs: number): Promise<DiscoveredDevice[]> {
+function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   const seen = new Map<string, DiscoveredDevice>();
 
   return new Promise((resolve) => {
@@ -35,7 +35,7 @@ function hcitoolScan(timeoutMs: number): Promise<DiscoveredDevice[]> {
     const finish = () => {
       if (settled) return;
       settled = true;
-      try { proc.kill('SIGINT'); } catch {}
+      try { proc.kill('SIGKILL'); } catch {}
       const devices = Array.from(seen.values());
       console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
       resolve(devices);
@@ -174,7 +174,7 @@ export function isScanning(): boolean { return scanning; }
  * Scan for all BLE devices using hcitool and return the list.
  * Does NOT auto-connect — user picks from the list, then selectDevice() handles GATT.
  */
-export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
+export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   if (scanning && scanAbort) { scanAbort(); await new Promise(r => setTimeout(r, 200)); }
   if (scanning) {
     return lastScanResults;
