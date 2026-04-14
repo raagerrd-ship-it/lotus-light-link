@@ -25,6 +25,11 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
 
   return new Promise((resolve) => {
     // Reset HCI adapter before scanning — required for reliable discovery
+    // This also releases noble's hold on the HCI socket
+    try {
+      // Stop noble scanning first
+      noble.stopScanning();
+    } catch {}
     try {
       execSync('sudo hciconfig hci0 reset', { timeout: 3000 });
       console.log('[BLE] hci0 reset before scan');
@@ -43,6 +48,8 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
     const finish = () => {
       if (settled) return;
       settled = true;
+      // proc runs as root via sudo — kill the child hcitool, not just sudo
+      try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
       try { proc.kill('SIGKILL'); } catch {}
       const devices = Array.from(seen.values());
       console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
@@ -54,6 +61,7 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
       if (!settled) {
         console.warn('[BLE] hcitool safety timeout — force resolving');
         settled = true;
+        try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
         try { proc.kill('SIGKILL'); } catch {}
         resolve(Array.from(seen.values()));
       }
