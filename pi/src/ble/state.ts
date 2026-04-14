@@ -89,7 +89,7 @@ export function getConnectionLog(): BleConnectionEvent[] {
  */
 let _capsVerified: boolean | null = null;
 
-function processHasBtCaps(): boolean {
+export function processHasBtCaps(): boolean {
   if (_capsVerified !== null) return _capsVerified;
   try {
     const { readFileSync } = require('fs') as typeof import('fs');

@@ -58,19 +58,69 @@ export const disconnectAll = disconnect;
 export const scanAndConnect = autoConnectSaved;
 export function setExpectedDeviceCount(_n: number): void { /* no-op */ }
 
-// ── Startup diagnostics ──
-import { getAdapterState, noble, logConnectionEvent } from './state.js';
+// ── Startup diagnostics with adapter retry ──
+import { getAdapterState, noble, logConnectionEvent, processHasBtCaps } from './state.js';
+import { resetHciAdapter } from './connection.js';
 
-const initState = getAdapterState();
-if (initState === 'unauthorized') {
-  console.error('[BLE] Adapter state: unauthorized — PCC-tjänsten saknar AmbientCapabilities (CAP_NET_RAW + CAP_NET_ADMIN).');
-} else if (initState === 'poweredOff') {
-  console.warn('[BLE] Adapter state: poweredOff — Bluetooth är avstängt eller rfkill-blockerat.');
-} else if (initState === 'poweredOn') {
-  console.log('[BLE] Adapter state: poweredOn ✓');
-} else {
-  console.log(`[BLE] Adapter state at init: ${initState ?? 'unknown'} — waiting for stateChange event`);
-  noble.once('stateChange', (state: string) => {
-    logConnectionEvent({ type: 'connect_start', detail: `Adapter state changed: ${state}` });
-  });
+async function initAdapter(): Promise<void> {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 3000;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const state = getAdapterState();
+
+    if (state === 'poweredOn') {
+      console.log('[BLE] Adapter state: poweredOn ✓');
+      logConnectionEvent({ type: 'connect_start', detail: `Adapter ready (attempt ${attempt})` });
+      return;
+    }
+
+    if (state === 'unauthorized' && processHasBtCaps()) {
+      console.warn(`[BLE] noble reports unauthorized but process has caps — retrying adapter (${attempt + 1}/${MAX_RETRIES})`);
+      logConnectionEvent({ type: 'hci_reset', detail: `Adapter unauthorized despite caps, retry ${attempt + 1}` });
+      try {
+        await resetHciAdapter();
+        // Wait for noble to pick up the state change
+        const settled = await new Promise<string>((resolve) => {
+          const timeout = setTimeout(() => resolve('timeout'), RETRY_DELAY_MS);
+          noble.once('stateChange', (s: string) => {
+            clearTimeout(timeout);
+            resolve(s);
+          });
+        });
+        if (settled === 'poweredOn') {
+          console.log('[BLE] Adapter recovered after HCI reset ✓');
+          logConnectionEvent({ type: 'connect_start', detail: 'Adapter recovered after retry ✓' });
+          return;
+        }
+      } catch (e: any) {
+        console.error(`[BLE] HCI reset attempt ${attempt + 1} failed: ${e.message}`);
+      }
+      continue;
+    }
+
+    // Non-retryable states
+    if (state === 'unauthorized') {
+      console.error('[BLE] Adapter state: unauthorized — saknar CAP_NET_RAW + CAP_NET_ADMIN.');
+      logConnectionEvent({ type: 'connect_start', detail: 'unauthorized — caps missing' });
+      return;
+    }
+    if (state === 'poweredOff') {
+      console.warn('[BLE] Adapter state: poweredOff — Bluetooth är avstängt eller rfkill-blockerat.');
+      return;
+    }
+
+    // Unknown/undefined — wait for stateChange once
+    console.log(`[BLE] Adapter state at init: ${state ?? 'unknown'} — waiting for stateChange`);
+    noble.once('stateChange', (s: string) => {
+      logConnectionEvent({ type: 'connect_start', detail: `Adapter state changed: ${s}` });
+    });
+    return;
+  }
+
+  console.error('[BLE] Adapter failed to reach poweredOn after retries');
+  logConnectionEvent({ type: 'connect_start', detail: 'Adapter stuck unauthorized after all retries' });
 }
+
+// Fire and forget — don't block module loading
+initAdapter().catch((e) => console.error('[BLE] initAdapter error:', e));
