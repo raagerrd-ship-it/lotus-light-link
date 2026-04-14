@@ -2,8 +2,7 @@
  * BLE BLEDOM protocol: packet formats, write pipeline, keepalive, brightness.
  */
 
-import { getDevice, setDevice, bleStats, isDemandActive, logConnectionEvent } from './state.js';
-import { resetLastSent as _resetLastSent } from './writeState.js';
+import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
