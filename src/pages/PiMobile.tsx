@@ -1790,6 +1790,7 @@ export default function PiMobile() {
         micGain={micGain} setMicGain={setMicGain}
         idleColor={idleColor} setIdleColor={setIdleColor}
         autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
+        sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
         piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
       />
