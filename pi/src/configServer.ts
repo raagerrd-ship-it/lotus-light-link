@@ -80,10 +80,15 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     const mem = process.memoryUsage();
     const bleConnected = getConnectedCount();
     const rss = Math.round(mem.rss / 1024 / 1024);
+    const adapterState = getAdapterState() ?? 'unknown';
+
+    // Check if BLE has the capabilities it needs (poweredOn = caps are OK)
+    const hasCapabilities = adapterState !== 'unauthorized';
 
     let status: 'ok' | 'degraded' | 'error' = 'ok';
     if (rss > 100) status = 'degraded';
     if (bleConnected === 0 && isDemandActive()) status = 'degraded';
+    if (adapterState === 'unauthorized') status = 'error';
 
     res.json({
       status,
@@ -94,6 +99,13 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         rss,
         heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
         heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+      },
+      ble: {
+        adapterState,
+        hasCapabilities,
+        connected: bleConnected,
+        savedDevice: getSavedDeviceName(),
+        demand: isDemandActive(),
       },
       timestamp: new Date().toISOString(),
     });
