@@ -40,6 +40,7 @@ function getPeripheralAddress(peripheral: any): string | null {
 let lastScanResults: DiscoveredDevice[] = [];
 let discoveredPeripherals = new Map<string, any>();
 let scanning = false;
+let scanAbort: (() => void) | null = null;
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
@@ -49,8 +50,15 @@ export function isScanning(): boolean { return scanning; }
  * Does NOT auto-connect — user picks from the list.
  */
 export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
+  // Abort any in-progress auto-connect scan so manual scan takes priority
+  if (scanning && scanAbort) {
+    console.log('[BLE] Aborting previous scan for manual scan');
+    scanAbort();
+    // Small delay for noble to settle
+    await new Promise(r => setTimeout(r, 200));
+  }
   if (scanning) {
-    console.log('[BLE] Scan already in progress');
+    console.log('[BLE] Scan still in progress after abort attempt');
     return lastScanResults;
   }
   scanning = true;
@@ -86,6 +94,13 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
         resolve(lastScanResults);
       }, timeoutMs);
 
+      scanAbort = () => {
+        noble.removeListener('discover', onDiscover);
+        noble.stopScanningAsync().catch(() => {});
+        clearTimeout(timer);
+        resolve(lastScanResults);
+      };
+
       const startScan = () => {
         noble.startScanningAsync([], true).catch(() => {});
       };
@@ -100,6 +115,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     });
   } finally {
     scanning = false;
+    scanAbort = null;
   }
 }
 
@@ -287,6 +303,13 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
         }
       }, timeoutMs);
 
+      scanAbort = () => {
+        noble.removeListener('discover', onDiscover);
+        noble.stopScanningAsync().catch(() => {});
+        clearTimeout(timer);
+        if (!found) resolve(0);
+      };
+
       if (getAdapterState() === 'poweredOn') {
         noble.startScanningAsync([], true).catch(() => {});
       } else {
@@ -299,5 +322,6 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
     });
   } finally {
     scanning = false;
+    scanAbort = null;
   }
 }
