@@ -406,18 +406,26 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     };
   };
 
-  // Detect if a local Sonos gateway service is reachable
+  // Detect Sonos gateway on any PCC core (port 3050–3052 = engine ports for core 0–2)
   app.get('/api/sonos-gateway/detect', async (_req, res) => {
-    const LOCAL_URL = 'http://127.0.0.1:3053/api';
-    try {
-      const r = await fetch(`${LOCAL_URL}/status`, { signal: AbortSignal.timeout(2000) });
-      if (r.ok) {
+    const CORE_PORTS = [3050, 3051, 3052];
+    const probes = CORE_PORTS.map(async (port) => {
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1500) });
+        if (!r.ok) return null;
         const data = await r.json();
-        res.json({ found: true, url: `${LOCAL_URL}/sonos`, name: data?.name ?? 'Cast Away', version: data?.version ?? null });
-      } else {
-        res.json({ found: false });
-      }
-    } catch {
+        // Check if this service has a Sonos-related endpoint (sonos status in health or service name)
+        const name = data?.service ?? '';
+        const isSonosGateway = name.includes('sonos') || name.includes('cast-away') || name.includes('buddy');
+        if (!isSonosGateway) return null;
+        return { port, url: `http://127.0.0.1:${port}/api/sonos`, name: data.service, version: data.version ?? null, core: port - 3050 };
+      } catch { return null; }
+    });
+    const results = (await Promise.all(probes)).filter(Boolean);
+    if (results.length > 0) {
+      const best = results[0]!;
+      res.json({ found: true, url: best.url, name: best.name, version: best.version, core: best.core });
+    } else {
       res.json({ found: false });
     }
   });
