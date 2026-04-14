@@ -66,6 +66,10 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   discoveredPeripherals.clear();
   logConnectionEvent({ type: 'scan_start', detail: `timeout=${timeoutMs}ms` });
 
+  // Force-stop any lingering noble scan state before starting fresh
+  try { await noble.stopScanningAsync(); } catch {}
+  await new Promise(r => setTimeout(r, 100));
+
   try {
     return await new Promise((resolve) => {
       const onDiscover = (peripheral: any) => {
