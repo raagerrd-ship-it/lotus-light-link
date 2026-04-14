@@ -1,13 +1,138 @@
 /**
- * BLE scanning: device discovery, selection, persistence.
+ * BLE scanning: device discovery via hcitool, GATT connection via noble.
+ *
+ * noble's own LE scanning often fails on Pi due to HCI socket contention.
+ * hcitool lescan uses legacy HCI commands that coexist with noble's socket,
+ * so we use it for discovery and noble only for GATT connect.
  */
 
+import { spawn } from 'child_process';
 import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
 import type { DiscoveredDevice } from './types.js';
 
 const HCI_RESET_THRESHOLD = 3;
+
+// ── hcitool-based discovery ──
+
+/**
+ * Run `hcitool lescan` for the given duration and parse discovered devices.
+ * Returns a list of unique devices with MAC-derived IDs (noble-compatible).
+ */
+function hcitoolScan(timeoutMs: number): Promise<DiscoveredDevice[]> {
+  const seen = new Map<string, DiscoveredDevice>();
+
+  return new Promise((resolve) => {
+    // hcitool lescan streams discoveries to stdout until killed
+    const proc = spawn('hcitool', ['lescan', '--duplicates'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let buffer = '';
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try { proc.kill('SIGINT'); } catch {}
+      const devices = Array.from(seen.values());
+      console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
+      resolve(devices);
+    };
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString();
+      // Parse complete lines: "XX:XX:XX:XX:XX:XX DeviceName"
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? ''; // keep incomplete last line
+      for (const line of lines) {
+        const match = line.trim().match(/^([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
+        if (!match) continue;
+        const [, mac, rawName] = match;
+        const id = mac.replace(/:/g, '').toLowerCase();
+        const name = rawName.trim() === '(unknown)' || rawName.trim().length === 0
+          ? `Okänd enhet (${mac.toUpperCase()})`
+          : rawName.trim();
+        if (!seen.has(id)) {
+          console.log(`[BLE] hcitool discovered: ${name} (${mac})`);
+        }
+        seen.set(id, { id, name, rssi: -50 }); // hcitool doesn't provide RSSI
+      }
+    });
+
+    proc.stderr.on('data', (chunk: Buffer) => {
+      const msg = chunk.toString().trim();
+      if (msg) console.warn(`[BLE] hcitool stderr: ${msg}`);
+    });
+
+    const timer = setTimeout(finish, timeoutMs);
+
+    scanAbort = () => {
+      clearTimeout(timer);
+      finish();
+    };
+
+    proc.on('error', (err) => {
+      console.error(`[BLE] hcitool spawn error: ${err.message}`);
+      clearTimeout(timer);
+      finish();
+    });
+
+    proc.on('close', () => {
+      clearTimeout(timer);
+      finish();
+    });
+  });
+}
+
+/**
+ * Use noble to find a specific peripheral by ID (MAC-based).
+ * Short targeted scan — we already know the device is nearby from hcitool.
+ */
+function nobleFind(targetId: string, timeoutMs = 5000): Promise<any | null> {
+  return new Promise((resolve) => {
+    if (getAdapterState() !== 'poweredOn') {
+      console.warn('[BLE] nobleFind: adapter not poweredOn');
+      resolve(null);
+      return;
+    }
+
+    // Check noble's cache first
+    const cached = (noble as any)._peripherals?.[targetId];
+    if (cached) {
+      console.log(`[BLE] nobleFind: found ${targetId} in noble cache`);
+      resolve(cached);
+      return;
+    }
+
+    let found = false;
+
+    const onDiscover = (peripheral: any) => {
+      if (found) return;
+      if (peripheral.id === targetId) {
+        found = true;
+        noble.removeListener('discover', onDiscover);
+        noble.stopScanningAsync().catch(() => {});
+        clearTimeout(timer);
+        console.log(`[BLE] nobleFind: found ${targetId} via scan`);
+        resolve(peripheral);
+      }
+    };
+
+    noble.on('discover', onDiscover);
+    noble.startScanningAsync([], true).catch(() => {});
+
+    const timer = setTimeout(() => {
+      noble.removeListener('discover', onDiscover);
+      noble.stopScanningAsync().catch(() => {});
+      if (!found) {
+        console.warn(`[BLE] nobleFind: ${targetId} not found within ${timeoutMs}ms`);
+        resolve(null);
+      }
+    }, timeoutMs);
+  });
+}
 
 function getPeripheralName(peripheral: any): string {
   const advertisedName = peripheral.advertisement?.localName?.trim();
@@ -46,77 +171,27 @@ export function getLastScanResults(): DiscoveredDevice[] { return lastScanResult
 export function isScanning(): boolean { return scanning; }
 
 /**
- * Scan for all BLE devices and return the list.
- * Does NOT auto-connect — user picks from the list.
+ * Scan for all BLE devices using hcitool and return the list.
+ * Does NOT auto-connect — user picks from the list, then selectDevice() handles GATT.
  */
 export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
-  // Abort any in-progress auto-connect scan so manual scan takes priority
-  if (scanning && scanAbort) {
-    console.log('[BLE] Aborting previous scan for manual scan');
-    scanAbort();
-    // Small delay for noble to settle
-    await new Promise(r => setTimeout(r, 200));
-  }
+  if (scanning && scanAbort) { scanAbort(); await new Promise(r => setTimeout(r, 200)); }
   if (scanning) {
-    console.log('[BLE] Scan still in progress after abort attempt');
     return lastScanResults;
   }
   scanning = true;
   lastScanResults = [];
   discoveredPeripherals.clear();
-  logConnectionEvent({ type: 'scan_start', detail: `timeout=${timeoutMs}ms` });
+  logConnectionEvent({ type: 'scan_start', detail: `hcitool scan, timeout=${timeoutMs}ms` });
 
-  // Force-stop any lingering noble scan state before starting fresh
+  // Stop any noble scan so hcitool can use the adapter
   try { await noble.stopScanningAsync(); } catch {}
-  await new Promise(r => setTimeout(r, 100));
 
   try {
-    return await new Promise((resolve) => {
-      const onDiscover = (peripheral: any) => {
-        const id = peripheral.id;
-        const name = getPeripheralName(peripheral);
-        const existingIndex = lastScanResults.findIndex((device) => device.id === id);
-
-        discoveredPeripherals.set(id, peripheral);
-        const entry: DiscoveredDevice = { id, name, rssi: peripheral.rssi ?? -100 };
-
-        if (existingIndex >= 0) {
-          lastScanResults[existingIndex] = entry;
-          return;
-        }
-
-        lastScanResults.push(entry);
-        console.log(`[BLE] Discovered: ${name} (${id}) RSSI: ${entry.rssi}`);
-      };
-
-      noble.on('discover', onDiscover);
-
-      const timer = setTimeout(() => {
-        noble.removeListener('discover', onDiscover);
-        noble.stopScanningAsync().catch(() => {});
-        logConnectionEvent({ type: 'scan_done', detail: `found ${lastScanResults.length} device(s)` });
-        resolve(lastScanResults);
-      }, timeoutMs);
-
-      scanAbort = () => {
-        noble.removeListener('discover', onDiscover);
-        noble.stopScanningAsync().catch(() => {});
-        clearTimeout(timer);
-        resolve(lastScanResults);
-      };
-
-      const startScan = () => {
-        noble.startScanningAsync([], true).catch(() => {});
-      };
-
-      if (getAdapterState() === 'poweredOn') {
-        startScan();
-      } else {
-        noble.once('stateChange', (state: string) => {
-          if (state === 'poweredOn') startScan();
-        });
-      }
-    });
+    const devices = await hcitoolScan(timeoutMs);
+    lastScanResults = devices;
+    logConnectionEvent({ type: 'scan_done', detail: `found ${devices.length} device(s) via hcitool` });
+    return devices;
   } finally {
     scanning = false;
     scanAbort = null;
@@ -128,9 +203,9 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
  * Saves the ID for auto-reconnect on restart.
  */
 export async function selectDevice(deviceId: string): Promise<boolean> {
-  const peripheral = discoveredPeripherals.get(deviceId);
-  if (!peripheral) {
-    console.error(`[BLE] Device ${deviceId} not in scan results`);
+  const entry = lastScanResults.find(d => d.id === deviceId);
+  if (!entry) {
+    console.error(`[BLE] Device ${deviceId} not in hcitool scan results`);
     return false;
   }
 
@@ -142,6 +217,13 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
   }
 
   try {
+    // Get noble peripheral object via quick targeted scan
+    const peripheral = await nobleFind(deviceId, 5000);
+    if (!peripheral) {
+      console.error(`[BLE] Could not find ${deviceId} via noble for GATT connect`);
+      return false;
+    }
+
     await connectPeripheral(peripheral);
     const name = getPeripheralName(peripheral);
     const address = getPeripheralAddress(peripheral);
@@ -171,7 +253,7 @@ export async function forgetDevice(): Promise<void> {
  * Noble on Linux can re-create a peripheral from a cached address.
  * Returns true if connected successfully.
  */
-async function tryDirectConnect(savedId: string): Promise<boolean> {
+export async function tryDirectConnect(savedId: string): Promise<boolean> {
   if (getAdapterState() !== 'poweredOn') return false;
 
   const savedAddress = getSavedDeviceAddress();
@@ -206,37 +288,17 @@ async function tryDirectConnect(savedId: string): Promise<boolean> {
     }
   }
 
-  // Quick targeted scan — only 3 seconds instead of full timeout
-  if (getAdapterState() === 'poweredOn') {
-    logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'Quick targeted scan (3s)' });
-    return new Promise((resolve) => {
-      let found = false;
-
-      const onDiscover = (peripheral: any) => {
-        if (found) return;
-        if (peripheral.id === savedId) {
-          found = true;
-          noble.stopScanningAsync().catch(() => {});
-          noble.removeListener('discover', onDiscover);
-          clearTimeout(quickTimer);
-          connectPeripheral(peripheral)
-            .then(() => resolve(true))
-            .catch(() => resolve(false));
-        }
-      };
-
-      noble.on('discover', onDiscover);
-      noble.startScanningAsync([], true).catch(() => {});
-
-      const quickTimer = setTimeout(() => {
-        noble.removeListener('discover', onDiscover);
-        noble.stopScanningAsync().catch(() => {});
-        if (!found) {
-          logConnectionEvent({ type: 'scan_done', device: savedName, detail: 'Quick scan — not found' });
-          resolve(false);
-        }
-      }, 3000);
-    });
+  // Quick targeted scan via noble — 3 seconds
+  logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'Quick noble targeted scan (3s)' });
+  const peripheral = await nobleFind(savedId, 3000);
+  if (peripheral) {
+    try {
+      await connectPeripheral(peripheral);
+      return true;
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Quick scan connect failed: ${e.message}` });
+      return false;
+    }
   }
 
   return false;
@@ -260,70 +322,40 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   if (directResult) return 1;
   if (getDevice()) return 1;
 
+  const savedName = getSavedDeviceName() ?? savedId;
   scanning = true;
-  logConnectionEvent({ type: 'scan_start', device: getSavedDeviceName() ?? savedId, detail: `auto-connect scan, timeout=${timeoutMs}ms` });
+  logConnectionEvent({ type: 'scan_start', device: savedName, detail: `auto-connect hcitool scan, timeout=${timeoutMs}ms` });
 
   try {
-    return await new Promise((resolve) => {
-      let found: any = null;
+    // Use hcitool to check if device is nearby
+    const devices = await hcitoolScan(timeoutMs);
+    const found = devices.find(d => d.id === savedId);
+    if (!found) {
+      logConnectionEvent({ type: 'scan_done', device: savedName, detail: `Not found via hcitool within ${timeoutMs}ms` });
+      return 0;
+    }
 
-      const onDiscover = (peripheral: any) => {
-        if (found) return;
-        if (peripheral.id === savedId) {
-          const name = getPeripheralName(peripheral);
-          logConnectionEvent({ type: 'scan_done', device: name, detail: 'Saved device found' });
-          found = peripheral;
-          noble.stopScanningAsync().catch(() => {});
-          noble.removeListener('discover', onDiscover);
-          clearTimeout(timer);
-          finishConnect();
-        }
-      };
+    logConnectionEvent({ type: 'scan_done', device: savedName, detail: 'Found via hcitool, connecting via noble...' });
 
-      const finishConnect = async () => {
-        if (!found) { resolve(0); return; }
-        try {
-          await connectPeripheral(found);
-          resolve(1);
-        } catch (e: any) {
-          incrementConsecutiveFailures();
-          const fails = getConsecutiveFailures();
-          logConnectionEvent({ type: 'connect_fail', device: getPeripheralName(found), detail: `Auto-connect failed: ${e.message} [fail#${fails}]` });
-          if (fails >= HCI_RESET_THRESHOLD) {
-            await resetHciAdapter();
-          }
-          resolve(0);
-        }
-      };
+    // Now get noble peripheral for GATT
+    const peripheral = await nobleFind(savedId, 5000);
+    if (!peripheral) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'hcitool found device but noble cannot see it' });
+      return 0;
+    }
 
-      noble.on('discover', onDiscover);
-
-      const timer = setTimeout(() => {
-        noble.removeListener('discover', onDiscover);
-        noble.stopScanningAsync().catch(() => {});
-        if (!found) {
-          logConnectionEvent({ type: 'scan_done', detail: `Saved device not found within ${timeoutMs}ms` });
-          resolve(0);
-        }
-      }, timeoutMs);
-
-      scanAbort = () => {
-        noble.removeListener('discover', onDiscover);
-        noble.stopScanningAsync().catch(() => {});
-        clearTimeout(timer);
-        if (!found) resolve(0);
-      };
-
-      if (getAdapterState() === 'poweredOn') {
-        noble.startScanningAsync([], true).catch(() => {});
-      } else {
-        noble.once('stateChange', (state: string) => {
-          if (state === 'poweredOn') {
-            noble.startScanningAsync([], true).catch(() => {});
-          }
-        });
+    try {
+      await connectPeripheral(peripheral);
+      return 1;
+    } catch (e: any) {
+      incrementConsecutiveFailures();
+      const fails = getConsecutiveFailures();
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Auto-connect failed: ${e.message} [fail#${fails}]` });
+      if (fails >= HCI_RESET_THRESHOLD) {
+        await resetHciAdapter();
       }
-    });
+      return 0;
+    }
   } finally {
     scanning = false;
     scanAbort = null;
