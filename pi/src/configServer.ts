@@ -575,6 +575,13 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
       updateRunning = false;
       console.log('[Update]', updateLog);
+      if (!err) {
+        console.log('[Update] Restarting service...');
+        exec('systemctl --user restart lotus-light-engine', { timeout: 10000 }, (restartErr) => {
+          if (restartErr) console.error('[Update] Restart failed:', restartErr.message);
+          else console.log('[Update] Service restarted ✓');
+        });
+      }
     });
   });
 
@@ -599,6 +606,14 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
       updateRunning = false;
       console.log('[Force Update]', updateLog);
+      // Auto-restart service after successful update
+      if (!err) {
+        console.log('[Force Update] Restarting service...');
+        exec('systemctl --user restart lotus-light-engine', { timeout: 10000 }, (restartErr) => {
+          if (restartErr) console.error('[Force Update] Restart failed:', restartErr.message);
+          else console.log('[Force Update] Service restarted ✓');
+        });
+      }
     });
   });
 
