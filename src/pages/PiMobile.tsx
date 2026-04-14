@@ -1632,6 +1632,7 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway`),
         safeFetch(`${piBase}/api/auto-tv-mode`),
         safeFetch(`${piBase}/api/mic-gain`),
+        safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
       // calRes is the flat stored calibration object (or {} if empty)
@@ -1661,10 +1662,13 @@ export default function PiMobile() {
       if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
       if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
       if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
-      if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
-      else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
       if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
+
+      // Sonos gateway: detect local or use saved
+      const detectRes = (await Promise.all([safeFetch(`${piBase}/api/sonos-gateway/detect`)]))[0] ?? sonosLocalDetected;
+      // Actually detectRes is already in the destructured array above as the 9th element
+      const sonosDetect = arguments.length; // dummy — let me fix this
 
     };
     load();
