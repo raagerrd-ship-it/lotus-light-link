@@ -41,6 +41,16 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
       resolve(devices);
     };
 
+    // Hard safety: if process hasn't exited 1s after SIGKILL, resolve anyway
+    const safetyTimer = setTimeout(() => {
+      if (!settled) {
+        console.warn('[BLE] hcitool safety timeout — force resolving');
+        settled = true;
+        try { proc.kill('SIGKILL'); } catch {}
+        resolve(Array.from(seen.values()));
+      }
+    }, timeoutMs + 1000);
+
     proc.stdout.on('data', (chunk: Buffer) => {
       buffer += chunk.toString();
       // Parse complete lines: "XX:XX:XX:XX:XX:XX DeviceName"
@@ -81,6 +91,7 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
 
     proc.on('close', () => {
       clearTimeout(timer);
+      clearTimeout(safetyTimer);
       finish();
     });
   });
