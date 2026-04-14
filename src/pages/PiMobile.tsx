@@ -2039,8 +2039,10 @@ export default function PiMobile() {
               setBleScanResults(data.devices ?? []);
               // Show adapter state if no devices found
               if ((data.devices ?? []).length === 0 && data.adapterState) {
-                setSaveError(`BLE-adapter: ${data.adapterState}. Inga enheter hittades.`);
-                setTimeout(() => setSaveError(null), 5000);
+                if (!bleSavedId) {
+                  setSaveError(`BLE-adapter: ${data.adapterState}. Inga enheter hittades.`);
+                  setTimeout(() => setSaveError(null), 5000);
+                }
               }
             } catch (e) {
               console.error('[BLE scan] failed:', e);
