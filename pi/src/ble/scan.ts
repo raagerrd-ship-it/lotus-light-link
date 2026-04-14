@@ -2,7 +2,7 @@
  * BLE scanning: device discovery, selection, persistence.
  */
 
-import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, setSavedDevice, logConnectionEvent } from './state.js';
+import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
 import type { DiscoveredDevice } from './types.js';
@@ -23,6 +23,17 @@ function getPeripheralName(peripheral: any): string {
     : peripheral.id;
 
   return `Okänd enhet (${address})`;
+}
+
+function getPeripheralAddress(peripheral: any): string | null {
+  if (typeof peripheral.address === 'string' && peripheral.address !== 'unknown') {
+    return peripheral.address.toUpperCase();
+  }
+  // On Linux, noble id IS the MAC without colons
+  if (typeof peripheral.id === 'string' && peripheral.id.length === 12) {
+    return peripheral.id.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+  }
+  return null;
 }
 
 // ── Discovered devices from last scan ──
@@ -113,7 +124,8 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
   try {
     await connectPeripheral(peripheral);
     const name = getPeripheralName(peripheral);
-    setSavedDevice(deviceId, name);
+    const address = getPeripheralAddress(peripheral);
+    setSavedDevice(deviceId, name, address);
     console.log(`[BLE] Saved device: ${name} (${deviceId})`);
     return true;
   } catch (e: any) {
@@ -124,7 +136,7 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
 
 /** Forget saved device and disconnect */
 export async function forgetDevice(): Promise<void> {
-  setSavedDevice(null, null);
+  setSavedDevice(null, null, null);
   const device = getDevice();
   if (device) {
     try { await device.peripheral.disconnectAsync(); } catch {}
@@ -135,8 +147,84 @@ export async function forgetDevice(): Promise<void> {
 }
 
 /**
+ * Try to connect directly by address without scanning.
+ * Noble on Linux can re-create a peripheral from a cached address.
+ * Returns true if connected successfully.
+ */
+async function tryDirectConnect(savedId: string): Promise<boolean> {
+  if (getAdapterState() !== 'poweredOn') return false;
+
+  const savedAddress = getSavedDeviceAddress();
+  const savedName = getSavedDeviceName() ?? savedId;
+
+  // Check if noble has the peripheral cached from a previous session
+  const bindings = (noble as any)._bindings;
+  const cachedPeripheral = (noble as any)._peripherals?.[savedId];
+
+  if (cachedPeripheral) {
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (cached peripheral)' });
+    try {
+      await connectPeripheral(cachedPeripheral);
+      return true;
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed: ${e.message}` });
+      return false;
+    }
+  }
+
+  // Try to create peripheral from known address via HCI bindings
+  if (savedAddress && bindings && typeof bindings.connectKnownDevice === 'function') {
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Direct connect by address ${savedAddress}` });
+    try {
+      const peripheral = await bindings.connectKnownDevice(savedAddress);
+      if (peripheral) {
+        await connectPeripheral(peripheral);
+        return true;
+      }
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct address connect failed: ${e.message}` });
+    }
+  }
+
+  // Quick targeted scan — only 3 seconds instead of full timeout
+  if (getAdapterState() === 'poweredOn') {
+    logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'Quick targeted scan (3s)' });
+    return new Promise((resolve) => {
+      let found = false;
+
+      const onDiscover = (peripheral: any) => {
+        if (found) return;
+        if (peripheral.id === savedId) {
+          found = true;
+          noble.stopScanningAsync().catch(() => {});
+          noble.removeListener('discover', onDiscover);
+          clearTimeout(quickTimer);
+          connectPeripheral(peripheral)
+            .then(() => resolve(true))
+            .catch(() => resolve(false));
+        }
+      };
+
+      noble.on('discover', onDiscover);
+      noble.startScanningAsync([], true).catch(() => {});
+
+      const quickTimer = setTimeout(() => {
+        noble.removeListener('discover', onDiscover);
+        noble.stopScanningAsync().catch(() => {});
+        if (!found) {
+          logConnectionEvent({ type: 'scan_done', device: savedName, detail: 'Quick scan — not found' });
+          resolve(false);
+        }
+      }, 3000);
+    });
+  }
+
+  return false;
+}
+
+/**
  * Auto-connect to saved device if available.
- * Scans and connects only to the previously selected device.
+ * Tries direct connect first (no scan), falls back to scan.
  */
 export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   const savedId = getSavedDeviceId();
@@ -146,6 +234,11 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   }
   if (getDevice()) return 1;
   if (scanning) return 0;
+
+  // Try direct connect first (skip scan entirely)
+  const directResult = await tryDirectConnect(savedId);
+  if (directResult) return 1;
+  if (getDevice()) return 1;
 
   scanning = true;
   logConnectionEvent({ type: 'scan_start', device: getSavedDeviceName() ?? savedId, detail: `auto-connect scan, timeout=${timeoutMs}ms` });
