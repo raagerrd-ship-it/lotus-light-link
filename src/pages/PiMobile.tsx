@@ -858,11 +858,54 @@ function GlobalSettingsView({
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sonos Gateway</h2>
-        <input
-          type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
-          placeholder="http://127.0.0.1:3053/api/sonos"
-          className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+        
+        {/* Local detected info */}
+        {sonosLocalDetected?.found && (
+          <div className="mb-3 p-2.5 rounded-lg bg-green-500/10 border border-green-500/20 text-[11px]">
+            <div className="flex items-center gap-1.5 text-green-400 font-medium">
+              <Check size={12} /> Lokal tjänst hittad: {sonosLocalDetected.name}
+              {sonosLocalDetected.version && <span className="text-muted-foreground">v{sonosLocalDetected.version}</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Mode toggle: Local vs Extern */}
+        {sonosLocalDetected?.found && (
+          <div className="flex gap-1.5 mb-3">
+            {(['local', 'extern'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setSonosMode(mode);
+                  if (mode === 'local' && sonosLocalDetected?.url) setSonosUrl(sonosLocalDetected.url);
+                }}
+                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  sonosMode === mode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground'
+                }`}
+              >
+                {mode === 'local' ? '🏠 Lokal' : '🌐 Extern'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* URL input — shown for extern mode or when no local detected */}
+        {(sonosMode === 'extern' || !sonosLocalDetected?.found) && (
+          <input
+            type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
+            placeholder="http://192.168.1.x:3053/api/sonos"
+            className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        )}
+
+        {/* Show active URL for local mode */}
+        {sonosMode === 'local' && sonosLocalDetected?.found && (
+          <div className="text-[10px] text-muted-foreground font-mono bg-secondary/50 rounded-lg px-3 py-2">
+            {sonosUrl}
+          </div>
+        )}
       </section>
 
       <section className="mb-8">
