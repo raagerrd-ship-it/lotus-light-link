@@ -1524,6 +1524,8 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(10);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
+  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto'); // auto = detecting
+  const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
