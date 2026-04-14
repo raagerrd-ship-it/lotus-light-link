@@ -2,7 +2,7 @@
  * BLE scanning: device discovery, selection, persistence.
  */
 
-import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, setSavedDevice, logConnectionEvent } from './state.js';
+import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
 import type { DiscoveredDevice } from './types.js';
@@ -23,6 +23,17 @@ function getPeripheralName(peripheral: any): string {
     : peripheral.id;
 
   return `Okänd enhet (${address})`;
+}
+
+function getPeripheralAddress(peripheral: any): string | null {
+  if (typeof peripheral.address === 'string' && peripheral.address !== 'unknown') {
+    return peripheral.address.toUpperCase();
+  }
+  // On Linux, noble id IS the MAC without colons
+  if (typeof peripheral.id === 'string' && peripheral.id.length === 12) {
+    return peripheral.id.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+  }
+  return null;
 }
 
 // ── Discovered devices from last scan ──
@@ -113,7 +124,8 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
   try {
     await connectPeripheral(peripheral);
     const name = getPeripheralName(peripheral);
-    setSavedDevice(deviceId, name);
+    const address = getPeripheralAddress(peripheral);
+    setSavedDevice(deviceId, name, address);
     console.log(`[BLE] Saved device: ${name} (${deviceId})`);
     return true;
   } catch (e: any) {
@@ -136,7 +148,7 @@ export async function forgetDevice(): Promise<void> {
 
 /**
  * Auto-connect to saved device if available.
- * Scans and connects only to the previously selected device.
+ * Tries direct connect first (no scan), falls back to scan.
  */
 export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   const savedId = getSavedDeviceId();
@@ -146,6 +158,11 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   }
   if (getDevice()) return 1;
   if (scanning) return 0;
+
+  // Try direct connect first (skip scan entirely)
+  const directResult = await tryDirectConnect(savedId);
+  if (directResult) return 1;
+  if (getDevice()) return 1;
 
   scanning = true;
   logConnectionEvent({ type: 'scan_start', device: getSavedDeviceName() ?? savedId, detail: `auto-connect scan, timeout=${timeoutMs}ms` });
