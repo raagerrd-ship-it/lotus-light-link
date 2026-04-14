@@ -79,7 +79,7 @@ cp "$TMP_DIR/pi/package.json" "$PI_DIR/package.json"
 [ -f "$TMP_DIR/pi/services.json" ] && cp "$TMP_DIR/pi/services.json" "$PI_DIR/services.json"
 
 # Copy updated scripts
-for script in setup-lotus.sh uninstall-lotus.sh update-services.sh ui_server.py; do
+for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
