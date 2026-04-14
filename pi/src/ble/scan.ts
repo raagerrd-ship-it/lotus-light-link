@@ -136,7 +136,7 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
 
 /** Forget saved device and disconnect */
 export async function forgetDevice(): Promise<void> {
-  setSavedDevice(null, null);
+  setSavedDevice(null, null, null);
   const device = getDevice();
   if (device) {
     try { await device.peripheral.disconnectAsync(); } catch {}
@@ -144,6 +144,82 @@ export async function forgetDevice(): Promise<void> {
     resetLastSent();
   }
   console.log('[BLE] Device forgotten');
+}
+
+/**
+ * Try to connect directly by address without scanning.
+ * Noble on Linux can re-create a peripheral from a cached address.
+ * Returns true if connected successfully.
+ */
+async function tryDirectConnect(savedId: string): Promise<boolean> {
+  if (getAdapterState() !== 'poweredOn') return false;
+
+  const savedAddress = getSavedDeviceAddress();
+  const savedName = getSavedDeviceName() ?? savedId;
+
+  // Check if noble has the peripheral cached from a previous session
+  const bindings = (noble as any)._bindings;
+  const cachedPeripheral = (noble as any)._peripherals?.[savedId];
+
+  if (cachedPeripheral) {
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (cached peripheral)' });
+    try {
+      await connectPeripheral(cachedPeripheral);
+      return true;
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed: ${e.message}` });
+      return false;
+    }
+  }
+
+  // Try to create peripheral from known address via HCI bindings
+  if (savedAddress && bindings && typeof bindings.connectKnownDevice === 'function') {
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Direct connect by address ${savedAddress}` });
+    try {
+      const peripheral = await bindings.connectKnownDevice(savedAddress);
+      if (peripheral) {
+        await connectPeripheral(peripheral);
+        return true;
+      }
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct address connect failed: ${e.message}` });
+    }
+  }
+
+  // Quick targeted scan — only 3 seconds instead of full timeout
+  if (getAdapterState() === 'poweredOn') {
+    logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'Quick targeted scan (3s)' });
+    return new Promise((resolve) => {
+      let found = false;
+
+      const onDiscover = (peripheral: any) => {
+        if (found) return;
+        if (peripheral.id === savedId) {
+          found = true;
+          noble.stopScanningAsync().catch(() => {});
+          noble.removeListener('discover', onDiscover);
+          clearTimeout(quickTimer);
+          connectPeripheral(peripheral)
+            .then(() => resolve(true))
+            .catch(() => resolve(false));
+        }
+      };
+
+      noble.on('discover', onDiscover);
+      noble.startScanningAsync([], true).catch(() => {});
+
+      const quickTimer = setTimeout(() => {
+        noble.removeListener('discover', onDiscover);
+        noble.stopScanningAsync().catch(() => {});
+        if (!found) {
+          logConnectionEvent({ type: 'scan_done', device: savedName, detail: 'Quick scan — not found' });
+          resolve(false);
+        }
+      }, 3000);
+    });
+  }
+
+  return false;
 }
 
 /**
