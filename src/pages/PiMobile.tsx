@@ -768,6 +768,7 @@ function GlobalSettingsView({
   micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
+  sonosMode, setSonosMode, sonosLocalDetected,
   piBase,
   onBack, onSave, saved, saveError,
 }: {
@@ -778,6 +779,8 @@ function GlobalSettingsView({
   micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
+  sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
+  sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
   piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
@@ -858,11 +861,54 @@ function GlobalSettingsView({
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sonos Gateway</h2>
-        <input
-          type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
-          placeholder="http://127.0.0.1:3053/api/sonos"
-          className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+        
+        {/* Local detected info */}
+        {sonosLocalDetected?.found && (
+          <div className="mb-3 p-2.5 rounded-lg bg-green-500/10 border border-green-500/20 text-[11px]">
+            <div className="flex items-center gap-1.5 text-green-400 font-medium">
+              <Check size={12} /> Lokal tjänst hittad: {sonosLocalDetected.name}
+              {sonosLocalDetected.version && <span className="text-muted-foreground">v{sonosLocalDetected.version}</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Mode toggle: Local vs Extern */}
+        {sonosLocalDetected?.found && (
+          <div className="flex gap-1.5 mb-3">
+            {(['local', 'extern'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setSonosMode(mode);
+                  if (mode === 'local' && sonosLocalDetected?.url) setSonosUrl(sonosLocalDetected.url);
+                }}
+                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  sonosMode === mode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground'
+                }`}
+              >
+                {mode === 'local' ? '🏠 Lokal' : '🌐 Extern'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* URL input — shown for extern mode or when no local detected */}
+        {(sonosMode === 'extern' || !sonosLocalDetected?.found) && (
+          <input
+            type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
+            placeholder="http://192.168.1.x:3053/api/sonos"
+            className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        )}
+
+        {/* Show active URL for local mode */}
+        {sonosMode === 'local' && sonosLocalDetected?.found && (
+          <div className="text-[10px] text-muted-foreground font-mono bg-secondary/50 rounded-lg px-3 py-2">
+            {sonosUrl}
+          </div>
+        )}
       </section>
 
       <section className="mb-8">
@@ -1524,6 +1570,8 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(10);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
+  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto'); // auto = detecting
+  const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
@@ -1621,7 +1669,7 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes] = await Promise.all([
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
         safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
@@ -1630,6 +1678,7 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway`),
         safeFetch(`${piBase}/api/auto-tv-mode`),
         safeFetch(`${piBase}/api/mic-gain`),
+        safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
       // calRes is the flat stored calibration object (or {} if empty)
@@ -1651,7 +1700,6 @@ export default function PiMobile() {
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
           agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
-          
           dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
         });
       }
@@ -1659,10 +1707,27 @@ export default function PiMobile() {
       if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
       if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
       if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
-      if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
-      else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
       if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
+
+      // Sonos gateway: detect local service or fall back to saved/extern
+      if (detectRes?.found) {
+        setSonosLocalDetected(detectRes);
+        // If saved URL matches local default, use local mode
+        const savedUrl = sonosRes?.active?.baseUrl ?? sonosRes?.saved?.baseUrl ?? '';
+        const isLocal = !savedUrl || savedUrl.includes('127.0.0.1:3053');
+        setSonosMode(isLocal ? 'local' : 'extern');
+        if (isLocal) {
+          setSonosUrl(detectRes.url);
+        } else {
+          setSonosUrl(savedUrl);
+        }
+      } else {
+        setSonosLocalDetected(detectRes ?? { found: false, url: '', name: '', version: null });
+        setSonosMode('extern');
+        if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
+        else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
+      }
 
     };
     load();
@@ -1725,6 +1790,7 @@ export default function PiMobile() {
         micGain={micGain} setMicGain={setMicGain}
         idleColor={idleColor} setIdleColor={setIdleColor}
         autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
+        sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
         piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
       />
