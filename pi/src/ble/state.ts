@@ -81,9 +81,45 @@ export function getConnectionLog(): BleConnectionEvent[] {
 }
 
 // ── Noble adapter helpers ──
+
+/**
+ * Check if the current process actually has CAP_NET_RAW + CAP_NET_ADMIN
+ * by reading /proc/self/status. This is the ground truth — noble's own
+ * state can lag or be wrong after a service-file update + restart.
+ */
+let _capsVerified: boolean | null = null;
+
+function processHasBtCaps(): boolean {
+  if (_capsVerified !== null) return _capsVerified;
+  try {
+    const { readFileSync } = require('fs') as typeof import('fs');
+    const status = readFileSync('/proc/self/status', 'utf8');
+    const match = status.match(/^CapEff:\s*([0-9a-fA-F]+)$/m);
+    if (match) {
+      const caps = BigInt('0x' + match[1]);
+      // CAP_NET_ADMIN = bit 12, CAP_NET_RAW = bit 13
+      const needed = (1n << 12n) | (1n << 13n);
+      _capsVerified = (caps & needed) === needed;
+    } else {
+      _capsVerified = false;
+    }
+  } catch {
+    _capsVerified = false;
+  }
+  return _capsVerified;
+}
+
 export function getAdapterState(): string | undefined {
   const n = noble as typeof noble & { state?: string; _state?: string };
-  return n.state ?? n._state;
+  const raw = n.state ?? n._state;
+
+  // If noble says "unauthorized" but we actually have the caps, override.
+  // This happens when noble caches the state before caps are applied.
+  if (raw === 'unauthorized' && processHasBtCaps()) {
+    console.log('[BLE] noble reports unauthorized but process has CAP_NET_RAW+CAP_NET_ADMIN — overriding to poweredOn');
+    return 'poweredOn';
+  }
+  return raw;
 }
 
 export { noble };
