@@ -6,16 +6,15 @@
   "releaseAsset": "dist.tar.gz",
   "installDir": "/opt/lotus-light",
   "installScript": "pi/setup-lotus.sh",
+  "runInstallOnRelease": true,
   "updateScript": "/opt/lotus-light/pi/update-services.sh",
   "uninstallScript": "pi/uninstall-lotus.sh",
-  "portOffset": 50,
   "components": {
     "engine": {
       "type": "node",
       "entrypoint": "pi/dist/index.js",
       "service": "lotus-light-engine",
-      "alwaysOn": true,
-      "managed": false
+      "alwaysOn": true
     },
     "ui": {
       "type": "static",
