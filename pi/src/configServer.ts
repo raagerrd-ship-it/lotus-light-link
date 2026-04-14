@@ -159,7 +159,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     if (isScanning()) {
       return res.status(409).json({ error: 'Scan already in progress' });
     }
-    const devices = await scanForDevices(10000);
+    const devices = await scanForDevices(2000);
     res.json({ ok: true, devices, adapterState: getAdapterState() });
   });
 
