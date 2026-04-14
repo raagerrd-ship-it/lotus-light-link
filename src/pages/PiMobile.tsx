@@ -768,6 +768,7 @@ function GlobalSettingsView({
   micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
+  sonosMode, setSonosMode, sonosLocalDetected,
   piBase,
   onBack, onSave, saved, saveError,
 }: {
@@ -778,6 +779,8 @@ function GlobalSettingsView({
   micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
+  sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
+  sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
   piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
