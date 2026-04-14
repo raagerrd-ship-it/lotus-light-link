@@ -25,7 +25,7 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
 
   return new Promise((resolve) => {
     // hcitool lescan streams discoveries to stdout until killed
-    const proc = spawn('hcitool', ['lescan', '--duplicates'], {
+    const proc = spawn('sudo', ['hcitool', 'lescan', '--duplicates'], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
