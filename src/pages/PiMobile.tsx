@@ -1589,6 +1589,7 @@ export default function PiMobile() {
   const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
   const [bleSavedId, setBleSavedId] = useState<string | null>(null);
   const [bleSavedName, setBleSavedName] = useState<string | null>(null);
+  const [bleSavedAddress, setBleSavedAddress] = useState<string | null>(null);
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const [bleDemand, setBleDemand] = useState(false);
   const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
@@ -1767,6 +1768,7 @@ export default function PiMobile() {
         setBleConnectedName(data.ble?.devices?.[0] ?? null);
         setBleSavedId(data.ble?.savedDeviceId ?? null);
         setBleSavedName(data.ble?.savedDeviceName ?? null);
+        setBleSavedAddress(data.ble?.savedDeviceAddress ?? null);
         setBleDemand(data.ble?.demand ?? false);
         setBleAdapterState(data.ble?.adapterState ?? null);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
@@ -1979,7 +1981,10 @@ export default function PiMobile() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Bluetooth size={16} className={bleConnectedId ? "text-primary" : "text-muted-foreground"} />
-                <span className="text-sm font-medium">{bleConnectedName ?? bleSavedName ?? bleSavedId?.substring(0, 12) ?? '—'}</span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{bleConnectedName ?? bleSavedName ?? bleSavedId?.substring(0, 12) ?? '—'}</span>
+                  {bleSavedAddress && <span className="text-[10px] text-muted-foreground font-mono">{bleSavedAddress}</span>}
+                </div>
                 {bleConnectedId ? (
                   <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">Aktiv</span>
                 ) : bleDemand ? (
