@@ -18,8 +18,8 @@
       "managed": false
     },
     "ui": {
-      "type": "python",
-      "entrypoint": "python3 /opt/lotus-light/pi/ui_server.py",
+      "type": "static",
+      "entrypoint": "dist/",
       "service": "lotus-light-ui",
       "alwaysOn": false
     }
