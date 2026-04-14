@@ -1614,6 +1614,9 @@ export default function PiMobile() {
     };
   }, [bleSavedId, bleSavedName, bleConnectedId]);
 
+  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const longPressTriggered = useRef(false);
+
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
 
@@ -1821,7 +1824,32 @@ export default function PiMobile() {
         </div>
         <div className="flex gap-1">
           <button
+            onTouchStart={() => {
+              longPressTriggered.current = false;
+              longPressTimer.current = setTimeout(() => {
+                longPressTriggered.current = true;
+                if (updateStatus === 'running') return;
+                if (!confirm('Tvinga ominstallation? (Hoppar över versionskontroll)')) return;
+                setUpdateStatus('running');
+                fetch(`${piBase}/api/update/force`, { method: 'POST' }).then(() => {
+                  const poll = setInterval(async () => {
+                    try {
+                      const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
+                      const sd = await s.json();
+                      if (!sd.running) {
+                        clearInterval(poll);
+                        setUpdateStatus('done');
+                        setTimeout(() => setUpdateStatus(null), 5000);
+                      }
+                    } catch { clearInterval(poll); setUpdateStatus('error'); }
+                  }, 2000);
+                }).catch(() => { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); });
+              }, 800);
+            }}
+            onTouchEnd={() => { clearTimeout(longPressTimer.current); }}
+            onTouchCancel={() => { clearTimeout(longPressTimer.current); }}
             onClick={async () => {
+              if (longPressTriggered.current) return;
               if (updateStatus === 'running') return;
               setUpdateStatus('checking');
               try {
@@ -1829,10 +1857,8 @@ export default function PiMobile() {
                 const data = await r.json();
                 if (data.error) { setUpdateStatus('error'); return; }
                 if (data.upToDate) { setUpdateStatus('uptodate'); setTimeout(() => setUpdateStatus(null), 3000); return; }
-                // Update available — run it
                 setUpdateStatus('running');
                 await fetch(`${piBase}/api/update/run`, { method: 'POST' });
-                // Poll status
                 const poll = setInterval(async () => {
                   try {
                     const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
@@ -1846,28 +1872,9 @@ export default function PiMobile() {
                 }, 2000);
               } catch { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); }
             }}
-            onContextMenu={async (e) => {
-              e.preventDefault();
-              if (updateStatus === 'running') return;
-              if (!confirm('Tvinga ominstallation? (Hoppar över versionskontroll)')) return;
-              setUpdateStatus('running');
-              try {
-                await fetch(`${piBase}/api/update/force`, { method: 'POST' });
-                const poll = setInterval(async () => {
-                  try {
-                    const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
-                    const sd = await s.json();
-                    if (!sd.running) {
-                      clearInterval(poll);
-                      setUpdateStatus('done');
-                      setTimeout(() => setUpdateStatus(null), 5000);
-                    }
-                  } catch { clearInterval(poll); setUpdateStatus('error'); }
-                }, 2000);
-              } catch { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); }
-            }}
+            onContextMenu={(e) => e.preventDefault()}
             className="p-2 rounded-lg active:bg-accent"
-            title={updateStatus === 'running' ? 'Uppdaterar…' : 'Tryck = uppdatera | Håll/högerklick = tvinga ominstallation'}
+            title={updateStatus === 'running' ? 'Uppdaterar…' : 'Tryck = uppdatera | Håll = tvinga ominstallation'}
           >
             {updateStatus === 'checking' || updateStatus === 'running' ? (
               <Loader2 size={20} className="text-primary animate-spin" />
