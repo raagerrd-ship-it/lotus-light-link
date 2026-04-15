@@ -1584,6 +1584,8 @@ export default function PiMobile() {
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
   const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const [bleScanning, setBleScanning] = useState(false);
+  const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; ts: string }[]>([]);
+  const [showBleLog, setShowBleLog] = useState(false);
   const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number }[]>([]);
   const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
   const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
