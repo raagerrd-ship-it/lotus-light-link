@@ -189,6 +189,7 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     logConnectionEvent({ type: 'connect_fail', device: getSavedDeviceName() ?? savedId, detail: `Adapter not ready: ${adapterState ?? 'unknown'}` });
     return false;
   }
+  const savedAddress = getSavedDeviceAddress();
   const savedName = getSavedDeviceName() ?? savedId;
 
   if (!savedAddress) {
