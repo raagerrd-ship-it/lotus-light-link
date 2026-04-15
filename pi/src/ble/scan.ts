@@ -6,7 +6,7 @@
  * so we use it for discovery and noble only for GATT connect.
  */
 
-import { spawn, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
@@ -155,7 +155,7 @@ function getPeripheralAddress(peripheral: any): string | null {
 let lastScanResults: DiscoveredDevice[] = [];
 let discoveredPeripherals = new Map<string, any>();
 let scanning = false;
-let scanAbort: (() => void) | null = null;
+
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
