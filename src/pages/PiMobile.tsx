@@ -2097,32 +2097,50 @@ export default function PiMobile() {
         </button>
 
         {/* BLE Scan Log */}
-        {showBleLog && bleScanLog.length > 0 && (
+        {showBleLog && (
           <div className="mt-3">
-            <button
-              onClick={() => setShowBleLog(false)}
-              className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1.5 active:text-foreground"
-            >
-              <Activity size={10} /> BLE-logg ({bleScanLog.length}) <X size={10} className="ml-1" />
-            </button>
-            <div className="bg-secondary/60 rounded-lg border border-border p-2 max-h-48 overflow-y-auto text-[10px] font-mono space-y-0.5">
-              {bleScanLog.slice().reverse().map((ev, i) => {
-                const time = new Date(ev.ts).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const typeColor = ev.type === 'connect_fail' || ev.type === 'disconnect'
-                  ? 'text-destructive'
-                  : ev.type === 'connected'
-                    ? 'text-green-400'
-                    : 'text-muted-foreground';
-                return (
-                  <div key={i} className="flex gap-1.5 leading-tight">
-                    <span className="text-muted-foreground/60 shrink-0">{time}</span>
-                    <span className={`shrink-0 ${typeColor}`}>{ev.type}</span>
-                    {ev.device && <span className="text-foreground/70">{ev.device}</span>}
-                    {ev.detail && <span className="text-muted-foreground truncate">{ev.detail}</span>}
-                  </div>
-                );
-              })}
+            <div className="flex items-center gap-2 mb-1.5">
+              <button
+                onClick={() => setShowBleLog(false)}
+                className="flex items-center gap-1 text-[10px] text-muted-foreground active:text-foreground"
+              >
+                <Activity size={10} /> BLE-logg ({bleScanLog.length}) <X size={10} className="ml-1" />
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await fetch(`${piBase}/api/ble/log`);
+                    const data = await r.json();
+                    setBleScanLog(data.events ?? []);
+                  } catch {}
+                }}
+                className="ml-auto text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50"
+              >
+                ↻ Uppdatera
+              </button>
             </div>
+            {bleScanLog.length > 0 ? (
+              <div className="bg-secondary/60 rounded-lg border border-border p-2 max-h-48 overflow-y-auto text-[10px] font-mono space-y-0.5">
+                {bleScanLog.slice().reverse().map((ev, i) => {
+                  const time = new Date(ev.ts).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  const typeColor = ev.type === 'connect_fail' || ev.type === 'disconnect'
+                    ? 'text-destructive'
+                    : ev.type === 'connected'
+                      ? 'text-green-400'
+                      : 'text-muted-foreground';
+                  return (
+                    <div key={i} className="flex gap-1.5 leading-tight">
+                      <span className="text-muted-foreground/60 shrink-0">{time}</span>
+                      <span className={`shrink-0 ${typeColor}`}>{ev.type}</span>
+                      {ev.device && <span className="text-foreground/70">{ev.device}</span>}
+                      {ev.detail && <span className="text-muted-foreground truncate">{ev.detail}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-[10px] text-muted-foreground italic">Ingen logg ännu.</p>
+            )}
           </div>
         )}
 
