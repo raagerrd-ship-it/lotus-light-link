@@ -219,8 +219,8 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     try {
       const peripheral = await (noble as any).connectAsync(savedAddress);
       if (peripheral) {
-        logConnectionEvent({ type: 'connect_ok', device: savedName, detail: 'Direct connect OK — starting GATT' });
-        await connectPeripheral(peripheral);
+        logConnectionEvent({ type: 'connect_ok', device: savedName, detail: 'Direct connect OK — GATT discovery' });
+        await connectPeripheral(peripheral, 0, true);  // skipL2cap — already connected
         return true;
       }
     } catch (e: any) {
