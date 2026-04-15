@@ -103,13 +103,16 @@ export function processHasBtCaps(): boolean {
 }
 
 export function getAdapterState(): string | undefined {
-  const n = noble as typeof noble & { state?: string; _state?: string };
-  const raw = n.state ?? n._state;
+  const n = noble as typeof noble & {
+    state?: string;
+    _state?: string;
+    adapterState?: string;
+    _adapterState?: string;
+  };
+  const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
 
-  // If noble says "unauthorized" but we actually have the caps, override.
-  // This happens when noble caches the state before caps are applied.
-  if (raw === 'unauthorized' && processHasBtCaps()) {
-    console.log('[BLE] noble reports unauthorized but process has CAP_NET_RAW+CAP_NET_ADMIN — overriding to poweredOn');
+  if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
+    console.log('[BLE] noble state unclear but process has CAP_NET_RAW+CAP_NET_ADMIN — overriding to poweredOn');
     return 'poweredOn';
   }
   return raw;

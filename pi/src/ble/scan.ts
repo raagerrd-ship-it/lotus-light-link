@@ -184,8 +184,11 @@ export async function forgetDevice(): Promise<void> {
  * state and call connect directly.
  */
 export async function tryDirectConnect(savedId: string): Promise<boolean> {
-  if (getAdapterState() !== 'poweredOn') return false;
-
+  const adapterState = getAdapterState();
+  if (adapterState !== 'poweredOn') {
+    logConnectionEvent({ type: 'connect_fail', device: getSavedDeviceName() ?? savedId, detail: `Adapter not ready: ${adapterState ?? 'unknown'}` });
+    return false;
+  }
   const savedAddress = getSavedDeviceAddress();
   const savedName = getSavedDeviceName() ?? savedId;
 
