@@ -192,11 +192,16 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     return false;
   }
 
-  // Wait for adapter to be ready (poll up to 5s)
-  for (let i = 0; i < 10; i++) {
+  // Force adapter up, then wait for poweredOn
+  try {
+    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v btmgmt >/dev/null 2>&1 && btmgmt power on >/dev/null 2>&1) || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'], { timeout: 4000, stdio: 'ignore' });
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Forced adapter power-on' });
+  } catch {}
+
+  for (let i = 0; i < 12; i++) {
     if (getAdapterState() === 'poweredOn') break;
-    if (i === 9) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after 5s: ${getAdapterState() ?? 'unknown'}` });
+    if (i === 11) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after power-on: ${getAdapterState() ?? 'unknown'}` });
       return false;
     }
     await new Promise(r => setTimeout(r, 500));
