@@ -1584,7 +1584,7 @@ export default function PiMobile() {
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
   const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const [bleScanning, setBleScanning] = useState(false);
-  const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; ts: string }[]>([]);
+  const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; timestamp: string }[]>([]);
   const [showBleLog, setShowBleLog] = useState(false);
   const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number }[]>([]);
   const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
@@ -2122,9 +2122,9 @@ export default function PiMobile() {
             {bleScanLog.length > 0 ? (
               <div className="bg-secondary/60 rounded-lg border border-border p-2 max-h-48 overflow-y-auto text-[10px] font-mono space-y-0.5">
                 {bleScanLog.slice().reverse().map((ev, i) => {
-                  const parsed = new Date(ev.ts);
+                  const parsed = new Date(ev.timestamp);
                   const time = isNaN(parsed.getTime())
-                    ? (typeof ev.ts === 'string' ? ev.ts.slice(11, 19) : '??:??:??')
+                    ? (typeof ev.timestamp === 'string' ? ev.timestamp.slice(11, 19) : '??:??:??')
                     : parsed.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                   const typeColor = ev.type === 'connect_fail' || ev.type === 'disconnect'
                     ? 'text-destructive'
