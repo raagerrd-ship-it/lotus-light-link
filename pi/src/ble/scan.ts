@@ -273,60 +273,75 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
   const savedName = getSavedDeviceName() ?? savedId;
   const uuid = normalizeBleKey(savedId);
 
-  // 1. Check noble cache first
-  const cachedPeripheral = (noble as any)._peripherals?.[uuid];
-  if (cachedPeripheral) {
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (cached peripheral)' });
+  // Ensure bluetoothctl isn't holding the HCI socket
+  try {
+    execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
+  } catch {}
+
+  // Try up to 2 attempts (inject may need a retry after HCI settles)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Retry ${attempt + 1} after 500ms` });
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Ensure peripheral exists in noble's internal state
+    const peripheral = ensureNoblePeripheral(uuid, savedAddress, savedName);
+    if (!peripheral) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Could not create noble peripheral (attempt ${attempt + 1})` });
+      continue;
+    }
+
+    const source = (noble as any)._peripherals?.[uuid] === peripheral ? 'cache/inject' : 'unknown';
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Connecting via ${source} (attempt ${attempt + 1})` });
+
     try {
-      await connectPeripheral(cachedPeripheral);
+      await connectPeripheral(peripheral);
       return true;
     } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Cached connect failed: ${e.message}` });
-    }
-  }
-
-  // 2. Inject peripheral into noble from known MAC and connect directly
-  if (savedAddress) {
-    const addressRaw = savedAddress.toLowerCase();
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Injecting ${savedAddress} into noble — direct connect (no scan)` });
-
-    try {
-      // Ensure bluetoothctl isn't holding the adapter
-      try {
-        execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
-      } catch {}
-
-      // Emit discover to populate noble's internal Peripheral object
-      const bindings = (noble as any)._bindings;
-      if (bindings && typeof bindings.emit === 'function') {
-        // Noble expects: uuid, address, addressType, connectable, advertisement, rssi
-        const advertisement = {
-          localName: savedName,
-          txPowerLevel: undefined,
-          manufacturerData: undefined,
-          serviceData: [],
-          serviceUuids: [SERVICE_UUID],
-          solicitationServiceUuids: [],
-        };
-        bindings.emit('discover', uuid, addressRaw, 'public', true, advertisement, -50);
-        // Small delay to let noble process the event and create the Peripheral
-        await new Promise(r => setTimeout(r, 50));
-      }
-
-      const peripheral = (noble as any)._peripherals?.[uuid];
-      if (peripheral) {
-        logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Peripheral injected OK, connecting...` });
-        await connectPeripheral(peripheral);
-        return true;
-      } else {
-        logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Peripheral not created after inject' });
-      }
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct inject connect failed: ${e.message}` });
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Connect failed (attempt ${attempt + 1}): ${e.message}` });
+      // Clear stale peripheral before retry
+      try { await peripheral.disconnectAsync(); } catch {}
+      delete (noble as any)._peripherals?.[uuid];
     }
   }
 
   return false;
+}
+
+/**
+ * Ensure noble has a Peripheral object for the given UUID/MAC.
+ * Populates noble's internal address maps and triggers onDiscover if needed.
+ */
+function ensureNoblePeripheral(uuid: string, savedAddress: string | null, name: string): any | null {
+  // Already in cache?
+  const existing = (noble as any)._peripherals?.[uuid];
+  if (existing) return existing;
+
+  if (!savedAddress) return null;
+
+  const addressRaw = savedAddress.toLowerCase();
+  const bindings = (noble as any)._bindings;
+  if (!bindings) return null;
+
+  // Directly populate noble's internal address maps (required for connect)
+  if (bindings._addresses) bindings._addresses[uuid] = addressRaw;
+  if (bindings._addresseTypes) bindings._addresseTypes[uuid] = 'public';
+
+  // Emit discover to let noble create the Peripheral object
+  if (typeof bindings.emit === 'function') {
+    const advertisement = {
+      localName: name,
+      txPowerLevel: undefined,
+      manufacturerData: undefined,
+      serviceData: [],
+      serviceUuids: [SERVICE_UUID],
+      solicitationServiceUuids: [],
+    };
+    bindings.emit('discover', uuid, addressRaw, 'public', true, advertisement, -50);
+  }
+
+  return (noble as any)._peripherals?.[uuid] ?? null;
 }
 
 /**
