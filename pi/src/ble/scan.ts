@@ -13,6 +13,21 @@ import { resetLastSent } from './protocol.js';
 import type { DiscoveredDevice } from './types.js';
 
 const HCI_RESET_THRESHOLD = 3;
+const STOP_SCAN_TIMEOUT_MS = 1500;
+
+async function stopNobleScanningSafely(timeoutMs = STOP_SCAN_TIMEOUT_MS): Promise<void> {
+  try {
+    await Promise.race([
+      noble.stopScanningAsync(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`stopScanningAsync timeout after ${timeoutMs}ms`)), timeoutMs)
+      ),
+    ]);
+  } catch (e: any) {
+    logConnectionEvent({ type: 'scan_start', detail: `noble stopScanningAsync fastnade, fallback används: ${e.message}` });
+    try { noble.stopScanning(); } catch {}
+  }
+}
 
 // ── hcitool-based discovery ──
 
@@ -169,7 +184,7 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   logConnectionEvent({ type: 'scan_start', detail: `hcitool scan, timeout=${timeoutMs}ms` });
 
   // Stop any noble scan so hcitool can use the adapter
-  try { await noble.stopScanningAsync(); } catch {}
+  await stopNobleScanningSafely();
 
   try {
     const devices = await hcitoolScan(timeoutMs);
