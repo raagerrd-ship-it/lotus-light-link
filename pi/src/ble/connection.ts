@@ -31,7 +31,7 @@ export async function resetHciAdapter(): Promise<void> {
   }
 }
 
-const STEP_TIMEOUT_MS = 8000;
+const STEP_TIMEOUT_MS = 3000;
 
 function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
