@@ -6,7 +6,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent, SERVICE_UUID } from './state.js';
+import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
 import type { DiscoveredDevice } from './types.js';
@@ -84,94 +84,11 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
   return Promise.resolve(devices);
 }
 
-/**
- * Use noble to find a specific peripheral by ID (MAC-based).
- * Short targeted scan — we already know the device is nearby from hcitool.
- */
+
 function normalizeBleKey(value: string | null | undefined): string {
   return (value ?? '').replace(/:/g, '').toLowerCase();
 }
 
-function nobleFind(targetId: string, timeoutMs = 5000): Promise<any | null> {
-  return new Promise((resolve) => {
-    const normalizedTarget = normalizeBleKey(targetId);
-
-    if (getAdapterState() !== 'poweredOn') {
-      console.warn('[BLE] nobleFind: adapter not poweredOn');
-      resolve(null);
-      return;
-    }
-
-    const cached = Object.values((noble as any)._peripherals ?? {}).find((peripheral: any) => {
-      return normalizeBleKey(peripheral?.id) === normalizedTarget
-        || normalizeBleKey(peripheral?.address) === normalizedTarget;
-    });
-    if (cached) {
-      console.log(`[BLE] nobleFind: found ${targetId} in noble cache`);
-      resolve(cached);
-      return;
-    }
-
-    let found = false;
-
-    const onDiscover = (peripheral: any) => {
-      if (found) return;
-      const peripheralId = normalizeBleKey(peripheral?.id);
-      const peripheralAddress = normalizeBleKey(peripheral?.address);
-      if (peripheralId === normalizedTarget || peripheralAddress === normalizedTarget) {
-        found = true;
-        noble.removeListener('discover', onDiscover);
-        noble.stopScanningAsync().catch(() => {});
-        clearTimeout(timer);
-        console.log(`[BLE] nobleFind: found ${targetId} via scan`);
-        resolve(peripheral);
-      }
-    };
-
-    try {
-      execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
-    } catch {}
-
-    noble.on('discover', onDiscover);
-    noble.startScanningAsync([], true).catch(() => {});
-
-    const timer = setTimeout(() => {
-      noble.removeListener('discover', onDiscover);
-      noble.stopScanningAsync().catch(() => {});
-      if (!found) {
-        console.warn(`[BLE] nobleFind: ${targetId} not found within ${timeoutMs}ms`);
-        resolve(null);
-      }
-    }, timeoutMs);
-  });
-}
-
-function getPeripheralName(peripheral: any): string {
-  const advertisedName = peripheral.advertisement?.localName?.trim();
-  if (advertisedName) return advertisedName;
-
-  if (peripheral.id === getSavedDeviceId()) {
-    const savedName = getSavedDeviceName();
-    if (savedName) return savedName;
-  }
-
-  const address = typeof peripheral.address === 'string' && peripheral.address !== 'unknown'
-    ? peripheral.address.toUpperCase()
-    : peripheral.id;
-
-  return `Okänd enhet (${address})`;
-}
-
-function getPeripheralAddress(peripheral: any): string | null {
-  if (typeof peripheral.address === 'string' && peripheral.address !== 'unknown') {
-    return peripheral.address.toUpperCase();
-  }
-  // On Linux, noble id IS the MAC without colons
-  if (typeof peripheral.id === 'string' && peripheral.id.length === 12) {
-    return peripheral.id.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
-  }
-  return null;
-}
 
 // ── Discovered devices from last scan ──
 let lastScanResults: DiscoveredDevice[] = [];
