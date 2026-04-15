@@ -299,11 +299,23 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
       // Emit discover to populate noble's internal Peripheral object
       const bindings = (noble as any)._bindings;
       if (bindings && typeof bindings.emit === 'function') {
-        bindings.emit('discover', uuid, addressRaw, 'public', true, { localName: savedName }, 0);
+        // Noble expects: uuid, address, addressType, connectable, advertisement, rssi
+        const advertisement = {
+          localName: savedName,
+          txPowerLevel: undefined,
+          manufacturerData: undefined,
+          serviceData: [],
+          serviceUuids: [SERVICE_UUID],
+          solicitationServiceUuids: [],
+        };
+        bindings.emit('discover', uuid, addressRaw, 'public', true, advertisement, -50);
+        // Small delay to let noble process the event and create the Peripheral
+        await new Promise(r => setTimeout(r, 50));
       }
 
       const peripheral = (noble as any)._peripherals?.[uuid];
       if (peripheral) {
+        logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Peripheral injected OK, connecting...` });
         await connectPeripheral(peripheral);
         return true;
       } else {
