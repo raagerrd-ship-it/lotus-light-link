@@ -261,48 +261,63 @@ export async function forgetDevice(): Promise<void> {
 }
 
 /**
- * Try to connect directly by address without scanning.
- * Noble on Linux can re-create a peripheral from a cached address.
- * Returns true if connected successfully.
+ * Connect directly by MAC address without scanning.
+ * On Linux, noble uses HCI bindings where the peripheral UUID is the MAC
+ * without colons, lowercase. We can inject a peripheral into noble's internal
+ * state and call connect directly — no scan needed.
  */
 export async function tryDirectConnect(savedId: string): Promise<boolean> {
   if (getAdapterState() !== 'poweredOn') return false;
 
   const savedAddress = getSavedDeviceAddress();
   const savedName = getSavedDeviceName() ?? savedId;
+  const uuid = normalizeBleKey(savedId); // MAC without colons, lowercase
 
-  // Check if noble has the peripheral cached from a previous session
-  const bindings = (noble as any)._bindings;
-  const cachedPeripheral = (noble as any)._peripherals?.[savedId];
-
+  // 1. Check noble cache first
+  const cachedPeripheral = (noble as any)._peripherals?.[uuid];
   if (cachedPeripheral) {
     logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (cached peripheral)' });
     try {
       await connectPeripheral(cachedPeripheral);
       return true;
     } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed: ${e.message}` });
-      return false;
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Cached connect failed: ${e.message}` });
     }
   }
 
-  // Try to create peripheral from known address via HCI bindings
-  if (savedAddress && bindings && typeof bindings.connectKnownDevice === 'function') {
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Direct connect by address ${savedAddress}` });
+  // 2. Inject peripheral into noble's internal state from known MAC
+  if (savedAddress) {
+    const addressRaw = savedAddress.toLowerCase();
+    const addressType = 'public'; // BLEDOM uses public addresses
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Injecting peripheral ${savedAddress} into noble and connecting directly` });
+
     try {
-      const peripheral = await bindings.connectKnownDevice(savedAddress);
+      // Stop any ongoing bluetoothctl scan so HCI is free
+      try {
+        execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
+      } catch {}
+
+      // Emit a fake 'discover' event to populate noble's internal structures
+      const bindings = (noble as any)._bindings;
+      if (bindings && typeof bindings.emit === 'function') {
+        // This triggers noble to create a Peripheral object internally
+        bindings.emit('discover', uuid, addressRaw, addressType, true, { localName: savedName }, 0);
+      }
+
+      // Now the peripheral should exist in noble's cache
+      const peripheral = (noble as any)._peripherals?.[uuid];
       if (peripheral) {
         await connectPeripheral(peripheral);
         return true;
+      } else {
+        logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Peripheral not created after inject' });
       }
     } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct address connect failed: ${e.message}` });
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct inject connect failed: ${e.message}` });
     }
-  } else if (savedAddress) {
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Direct address connect unavailable for ${savedAddress}` });
   }
 
-  // Quick targeted scan via noble — 3 seconds
+  // 3. Fallback: quick noble scan
   logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'Quick noble targeted scan (3s)' });
   const peripheral = await nobleFind(savedId, 3000);
   if (peripheral) {
