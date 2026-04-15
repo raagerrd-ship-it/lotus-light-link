@@ -52,22 +52,25 @@ export function setReconnectHandler(fn: (peripheral: any, name: string) => void)
  * Connect to a peripheral, discover GATT, set up disconnect handler.
  * Includes detailed diagnostics logging at each step.
  */
-export async function connectPeripheral(peripheral: any, _retryCount = 0): Promise<void> {
+export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2cap = false): Promise<void> {
   const MAX_DISCOVERY_RETRIES = 3;
   const name = peripheral.advertisement?.localName ?? peripheral.id;
   const connectStart = performance.now();
+  let connectDuration = 0;
 
-  logConnectionEvent({ type: 'connect_start', device: name, detail: `attempt ${_retryCount + 1}` });
+  logConnectionEvent({ type: 'connect_start', device: name, detail: `attempt ${_retryCount + 1}${skipL2cap ? ' (already connected)' : ''}` });
 
-  // Step 1: Connect
-  try {
-    await withTimeout(peripheral.connectAsync(), 'BLE connect');
-  } catch (e: any) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Connect failed: ${e.message}`, durationMs: Math.round(performance.now() - connectStart) });
-    throw e;
+  // Step 1: Connect (skip if noble.connectAsync already established L2CAP)
+  if (!skipL2cap) {
+    try {
+      await withTimeout(peripheral.connectAsync(), 'BLE connect');
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: `Connect failed: ${e.message}`, durationMs: Math.round(performance.now() - connectStart) });
+      throw e;
+    }
   }
-  const connectDuration = Math.round(performance.now() - connectStart);
-  logConnectionEvent({ type: 'connect_ok', device: name, detail: 'L2CAP connected', durationMs: connectDuration });
+  connectDuration = Math.round(performance.now() - connectStart);
+  logConnectionEvent({ type: 'connect_ok', device: name, detail: skipL2cap ? 'L2CAP already up' : 'L2CAP connected', durationMs: connectDuration });
 
   // Step 2: GATT discovery
   const gattStart = performance.now();
