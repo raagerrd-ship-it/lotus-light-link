@@ -28,8 +28,9 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
   // Stop noble scanning so it doesn't hold the HCI socket
   try { noble.stopScanning(); } catch {}
 
-  // Run LE scan then list discovered devices (no hciconfig reset — it breaks bluetoothctl's D-Bus connection)
-  const cmd = `sudo bluetoothctl --timeout ${scanSeconds} scan le >/dev/null 2>&1; sudo bluetoothctl devices`;
+  // Run LE scan then list discovered devices.
+  // Avoid sudo here: the engine runs as a user service and non-interactive sudo can fail silently.
+  const cmd = `bluetoothctl --timeout ${scanSeconds} scan le >/dev/null 2>&1; bluetoothctl devices`;
   const execTimeoutMs = (scanSeconds * 1000) + 3000;
 
   let output = '';
@@ -51,7 +52,8 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
       : Buffer.isBuffer(e?.stderr)
         ? e.stderr.toString('utf-8')
         : '';
-    logConnectionEvent({ type: 'connect_fail', detail: `bluetoothctl exitade med felkod, stdout=${output.length}b stderr=${stderr.length}b` });
+    const stderrPreview = stderr.trim().replace(/\s+/g, ' ').slice(0, 120);
+    logConnectionEvent({ type: 'connect_fail', detail: `bluetoothctl exitade med felkod, stdout=${output.length}b stderr=${stderr.length}b${stderrPreview ? ` — ${stderrPreview}` : ''}` });
     if (stderr) {
       console.error(`[BLE] bluetoothctl stderr: ${stderr}`);
     }
