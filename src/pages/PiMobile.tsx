@@ -2077,6 +2077,13 @@ export default function PiMobile() {
               setSaveError('BLE-scan misslyckades — kontrollera att motorn är nåbar');
               setTimeout(() => setSaveError(null), 5000);
             }
+            // Fetch BLE log after scan
+            try {
+              const logR = await fetch(`${piBase}/api/ble/log`);
+              const logData = await logR.json();
+              setBleScanLog(logData.events ?? []);
+              setShowBleLog(true);
+            } catch {}
             setBleScanning(false);
           }}
           disabled={bleScanning}
