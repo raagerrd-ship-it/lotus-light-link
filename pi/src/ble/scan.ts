@@ -271,108 +271,39 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
 
   const savedAddress = getSavedDeviceAddress();
   const savedName = getSavedDeviceName() ?? savedId;
-  const uuid = normalizeBleKey(savedId);
+
+  if (!savedAddress) {
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'No saved MAC address' });
+    return false;
+  }
 
   // Ensure bluetoothctl isn't holding the HCI socket
   try {
     execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
   } catch {}
 
-  // Try up to 2 attempts (inject may need a retry after HCI settles)
+  // @stoprocent/noble supports direct connect by address — no scan needed
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0) {
       logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Retry ${attempt + 1} after 500ms` });
       await new Promise(r => setTimeout(r, 500));
     }
 
-    // Ensure peripheral exists in noble's internal state
-    const peripheral = ensureNoblePeripheral(uuid, savedAddress, savedName);
-    if (!peripheral) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Could not create noble peripheral (attempt ${attempt + 1})` });
-      continue;
-    }
-
-    const source = (noble as any)._peripherals?.[uuid] === peripheral ? 'cache/inject' : 'unknown';
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Connecting via ${source} (attempt ${attempt + 1})` });
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `noble.connectAsync(${savedAddress}) attempt ${attempt + 1}` });
 
     try {
-      await connectPeripheral(peripheral);
-      return true;
+      const peripheral = await (noble as any).connectAsync(savedAddress);
+      if (peripheral) {
+        logConnectionEvent({ type: 'connect_ok', device: savedName, detail: 'Direct connect OK — starting GATT' });
+        await connectPeripheral(peripheral);
+        return true;
+      }
     } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Connect failed (attempt ${attempt + 1}): ${e.message}` });
-      // Clear stale peripheral before retry
-      try { await peripheral.disconnectAsync(); } catch {}
-      delete (noble as any)._peripherals?.[uuid];
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed (attempt ${attempt + 1}): ${e.message}` });
     }
   }
 
   return false;
-}
-
-/**
- * Ensure noble has a Peripheral object for the given UUID/MAC.
- * Populates noble's internal address maps and triggers onDiscover if needed.
- */
-function ensureNoblePeripheral(uuid: string, savedAddress: string | null, name: string): any | null {
-  // Already in cache?
-  const existing = (noble as any)._peripherals?.[uuid];
-  if (existing) {
-    logConnectionEvent({ type: 'connect_start', device: name, detail: 'Using cached peripheral' });
-    return existing;
-  }
-
-  if (!savedAddress) return null;
-
-  const addressRaw = savedAddress.toLowerCase();
-  const bindings = (noble as any)._bindings;
-  if (!bindings) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: 'No noble bindings available' });
-    return null;
-  }
-
-  // Ensure address maps exist and populate them (required for HCI createLeConn)
-  if (!bindings._addresses) bindings._addresses = {};
-  if (!bindings._addresseTypes) bindings._addresseTypes = {};
-  bindings._addresses[uuid] = addressRaw;
-  bindings._addresseTypes[uuid] = 'public';
-
-  // Also ensure noble's own maps exist
-  if (!(noble as any)._peripherals) (noble as any)._peripherals = {};
-  if (!(noble as any)._services) (noble as any)._services = {};
-  if (!(noble as any)._characteristics) (noble as any)._characteristics = {};
-  if (!(noble as any)._descriptors) (noble as any)._descriptors = {};
-
-  // Call noble's onDiscover directly — creates a proper Peripheral with _noble reference
-  const advertisement = {
-    localName: name,
-    txPowerLevel: undefined,
-    manufacturerData: undefined,
-    serviceData: [],
-    serviceUuids: [SERVICE_UUID],
-    solicitationServiceUuids: [],
-  };
-
-  if (typeof (noble as any).onDiscover === 'function') {
-    (noble as any).onDiscover(uuid, addressRaw, 'public', true, advertisement, -50);
-    logConnectionEvent({ type: 'connect_start', device: name, detail: 'Injected via noble.onDiscover()' });
-  } else if (typeof bindings.emit === 'function') {
-    bindings.emit('discover', uuid, addressRaw, 'public', true, advertisement, -50);
-    logConnectionEvent({ type: 'connect_start', device: name, detail: 'Injected via bindings.emit()' });
-  }
-
-  const peripheral = (noble as any)._peripherals?.[uuid];
-  if (!peripheral) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Peripheral not created — trying HCI direct` });
-
-    // Last resort: call HCI createLeConn directly and wait for connect event
-    const hci = bindings._hci;
-    if (hci && typeof hci.createLeConn === 'function') {
-      logConnectionEvent({ type: 'connect_start', device: name, detail: `HCI createLeConn(${addressRaw}, public)` });
-      hci.createLeConn(addressRaw, 'public');
-      // Noble will create the peripheral when leConnComplete fires
-    }
-  }
-  return peripheral ?? null;
 }
 
 /**
