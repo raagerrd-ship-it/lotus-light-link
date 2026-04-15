@@ -198,9 +198,14 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
 export async function selectDevice(deviceId: string): Promise<boolean> {
   const entry = lastScanResults.find(d => d.id === deviceId);
   if (!entry) {
-    console.error(`[BLE] Device ${deviceId} not in hcitool scan results`);
+    console.error(`[BLE] Device ${deviceId} not in scan results`);
     return false;
   }
+
+  // Save immediately so auto-reconnect knows which device to target
+  const mac = deviceId.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+  setSavedDevice(deviceId, entry.name, mac);
+  console.log(`[BLE] Saved device: ${entry.name} (${mac})`);
 
   const device = getDevice();
   if (device) {
@@ -223,10 +228,6 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
     }
 
     await connectPeripheral(peripheral);
-    const name = getPeripheralName(peripheral);
-    const address = getPeripheralAddress(peripheral);
-    setSavedDevice(deviceId, name, address);
-    console.log(`[BLE] Saved device: ${name} (${deviceId})`);
     return true;
   } catch (e: any) {
     console.error(`[BLE] Failed to connect to ${deviceId}: ${e.message}`);
