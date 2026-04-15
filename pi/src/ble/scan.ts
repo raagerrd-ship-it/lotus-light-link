@@ -165,7 +165,6 @@ export function isScanning(): boolean { return scanning; }
  * Does NOT auto-connect — user picks from the list, then selectDevice() handles GATT.
  */
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
-  if (scanning && scanAbort) { scanAbort(); await new Promise(r => setTimeout(r, 200)); }
   if (scanning) {
     return lastScanResults;
   }
@@ -184,7 +183,6 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
     return devices;
   } finally {
     scanning = false;
-    scanAbort = null;
   }
 }
 
