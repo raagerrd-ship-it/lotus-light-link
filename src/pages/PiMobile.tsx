@@ -2122,7 +2122,10 @@ export default function PiMobile() {
             {bleScanLog.length > 0 ? (
               <div className="bg-secondary/60 rounded-lg border border-border p-2 max-h-48 overflow-y-auto text-[10px] font-mono space-y-0.5">
                 {bleScanLog.slice().reverse().map((ev, i) => {
-                  const time = new Date(ev.ts).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  const parsed = new Date(ev.ts);
+                  const time = isNaN(parsed.getTime())
+                    ? (typeof ev.ts === 'string' ? ev.ts.slice(11, 19) : '??:??:??')
+                    : parsed.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                   const typeColor = ev.type === 'connect_fail' || ev.type === 'disconnect'
                     ? 'text-destructive'
                     : ev.type === 'connected'
