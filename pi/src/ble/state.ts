@@ -23,17 +23,39 @@ export function setDevice(d: ConnectedDevice | null): void { _device = d; }
 let _savedDeviceId: string | null = getItem('ble-device-id') ?? null;
 let _savedDeviceName: string | null = getItem('ble-device-name') ?? null;
 let _savedDeviceAddress: string | null = getItem('ble-device-address') ?? null;
+let _savedAddressType: string | null = getItem('ble-address-type') ?? null;
+let _savedConnectable: boolean | null = (() => { const v = getItem('ble-connectable'); return v === 'true' ? true : v === 'false' ? false : null; })();
+let _savedServiceUuids: string[] | null = (() => { try { const v = getItem('ble-service-uuids'); return v ? JSON.parse(v) : null; } catch { return null; } })();
 
 export function getSavedDeviceId(): string | null { return _savedDeviceId; }
 export function getSavedDeviceName(): string | null { return _savedDeviceName; }
 export function getSavedDeviceAddress(): string | null { return _savedDeviceAddress; }
-export function setSavedDevice(id: string | null, name: string | null, address?: string | null): void {
+export function getSavedAddressType(): string | null { return _savedAddressType; }
+export function getSavedConnectable(): boolean | null { return _savedConnectable; }
+export function getSavedServiceUuids(): string[] | null { return _savedServiceUuids; }
+
+export interface SavedDeviceMetadata {
+  id: string | null;
+  name: string | null;
+  address?: string | null;
+  addressType?: string | null;
+  connectable?: boolean | null;
+  serviceUuids?: string[] | null;
+}
+
+export function setSavedDevice(id: string | null, name: string | null, address?: string | null, meta?: Partial<SavedDeviceMetadata>): void {
   _savedDeviceId = id;
   _savedDeviceName = name;
   _savedDeviceAddress = address ?? null;
+  _savedAddressType = meta?.addressType ?? null;
+  _savedConnectable = meta?.connectable ?? null;
+  _savedServiceUuids = meta?.serviceUuids ?? null;
   setItem('ble-device-id', id ?? '');
   setItem('ble-device-name', name ?? '');
   setItem('ble-device-address', address ?? '');
+  setItem('ble-address-type', _savedAddressType ?? '');
+  setItem('ble-connectable', _savedConnectable != null ? String(_savedConnectable) : '');
+  setItem('ble-service-uuids', _savedServiceUuids ? JSON.stringify(_savedServiceUuids) : '');
 }
 
 // ── Demand-based connection ──
