@@ -70,11 +70,6 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
   return Promise.resolve(devices);
 }
-      clearTimeout(safetyTimer);
-      finish();
-    });
-  });
-}
 
 /**
  * Use noble to find a specific peripheral by ID (MAC-based).
