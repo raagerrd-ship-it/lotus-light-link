@@ -211,9 +211,14 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
 
   try {
     // Get noble peripheral object via quick targeted scan
+    logConnectionEvent({ type: 'connect_start', detail: `selectDevice: nobleFind for ${deviceId}, adapter=${getAdapterState()}` });
     const peripheral = await nobleFind(deviceId, 5000);
     if (!peripheral) {
-      console.error(`[BLE] Could not find ${deviceId} via noble for GATT connect`);
+      const reason = getAdapterState() !== 'poweredOn'
+        ? `adapter state: ${getAdapterState()}`
+        : 'not found in noble scan/cache';
+      logConnectionEvent({ type: 'connect_fail', detail: `selectDevice failed: ${reason}` });
+      console.error(`[BLE] Could not find ${deviceId} via noble — ${reason}`);
       return false;
     }
 
