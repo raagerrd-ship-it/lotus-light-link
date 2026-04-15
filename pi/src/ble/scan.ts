@@ -1,8 +1,9 @@
 /**
- * BLE scanning: device discovery via bluetoothctl + noble, GATT connection via noble.
+ * BLE scanning: device discovery via bluetoothctl, GATT connection via noble.
  *
  * bluetoothctl discovers devices (reliable stdout parsing).
- * noble runs in parallel to capture addressType and peripheral metadata for reconnection.
+ * noble is used only for GATT connect — it needs its own brief scan to populate
+ * internal peripheral state before connectAsync works.
  */
 
 import { execFileSync } from 'child_process';
@@ -20,7 +21,6 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
   const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
 
   logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl scan starting (timeout=${scanSeconds}s)` });
-
   try { noble.stopScanning(); } catch {}
 
   const cmd = `bluetoothctl --timeout ${scanSeconds} scan le >/dev/null 2>&1; bluetoothctl devices`;
@@ -57,60 +57,66 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
   return Promise.resolve(Array.from(seen.values()));
 }
 
+function normalizeBleKey(value: string | null | undefined): string {
+  return (value ?? '').replace(/:/g, '').toLowerCase();
+}
+
 /**
- * Run a short noble scan after bluetoothctl has finished so the two tools do not
- * compete for the same HCI socket. This captures reconnect metadata only.
+ * Do a brief noble BLE scan to find a specific device's peripheral object.
+ * Noble needs this internal state before connectAsync will work.
+ * Returns the peripheral if found, null otherwise.
  */
-function nobleScanForMetadata(timeoutMs = 2500): Promise<Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>> {
-  const results = new Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>();
+function nobleDiscoverPeripheral(targetId: string, timeoutMs = 3000): Promise<{ peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] } | null> {
+  const targetNorm = normalizeBleKey(targetId);
 
   return new Promise((resolve) => {
     let settled = false;
+
+    const finish = (result: any) => {
+      if (settled) return;
+      settled = true;
+      try { noble.stopScanning(); } catch {}
+      noble.removeListener('discover', onDiscover);
+      if (timer) clearTimeout(timer);
+      if (adapterTimer) clearTimeout(adapterTimer);
+      resolve(result);
+    };
+
     let timer: ReturnType<typeof setTimeout> | null = null;
     let adapterTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onDiscover = (peripheral: any) => {
-      const keys = new Set([
+      const keys = [
         normalizeBleKey(peripheral.id),
         normalizeBleKey(peripheral.address),
         normalizeBleKey(peripheral.uuid),
-      ].filter(Boolean));
+      ];
 
-      const entry = {
+      if (!keys.includes(targetNorm)) return;
+
+      const meta = {
         peripheral,
         addressType: peripheral.addressType ?? 'unknown',
         connectable: peripheral.connectable !== false,
         serviceUuids: peripheral.advertisement?.serviceUuids ?? [],
       };
 
-      for (const key of keys) {
-        results.set(key, entry);
-      }
-    };
-
-    const cleanup = () => {
-      try { noble.stopScanning(); } catch {}
-      noble.removeListener('discover', onDiscover);
-      if (adapterTimer) clearTimeout(adapterTimer);
-      if (timer) clearTimeout(timer);
-    };
-
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(results);
+      logConnectionEvent({ type: 'scan_done', detail: `noble found target: addressType=${meta.addressType}, connectable=${meta.connectable}` });
+      finish(meta);
     };
 
     const startScan = () => {
       noble.on('discover', onDiscover);
       try {
         noble.startScanning([], true);
-        logConnectionEvent({ type: 'scan_start', detail: `noble metadata scan starting (${timeoutMs}ms)` });
-        timer = setTimeout(finish, timeoutMs);
+        logConnectionEvent({ type: 'scan_start', detail: `noble targeted scan for ${targetNorm} (${timeoutMs}ms)` });
+        timer = setTimeout(() => {
+          logConnectionEvent({ type: 'scan_done', detail: `noble targeted scan timeout — device not found` });
+          finish(null);
+        }, timeoutMs);
       } catch (e: any) {
-        logConnectionEvent({ type: 'scan_done', detail: `noble metadata scan skipped: ${e.message}` });
-        finish();
+        logConnectionEvent({ type: 'scan_done', detail: `noble scan failed: ${e.message}` });
+        finish(null);
       }
     };
 
@@ -129,46 +135,34 @@ function nobleScanForMetadata(timeoutMs = 2500): Promise<Map<string, { periphera
     noble.on('stateChange', onState);
     adapterTimer = setTimeout(() => {
       noble.removeListener('stateChange', onState);
-      logConnectionEvent({ type: 'scan_done', detail: `noble metadata scan skipped: adapter=${getAdapterState() ?? 'unknown'}` });
-      finish();
+      logConnectionEvent({ type: 'scan_done', detail: `noble scan skipped: adapter=${getAdapterState() ?? 'unknown'}` });
+      finish(null);
     }, 3000);
   });
 }
 
-function mergeDiscoveryMetadata(devices: DiscoveredDevice[], nobleMeta: Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>): void {
-  for (const device of devices) {
-    const meta = nobleMeta.get(device.id);
-    if (!meta) continue;
-    logConnectionEvent({ type: 'scan_done', detail: `${device.name}: addressType=${meta.addressType}, connectable=${meta.connectable}` });
-  }
-}
+// ── Discovered devices from last scan ──
+let lastScanResults: DiscoveredDevice[] = [];
+let scanning = false;
+
+export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
+export function isScanning(): boolean { return scanning; }
 
 /**
- * Scan for all BLE devices using bluetoothctl first, then a short noble pass for
- * metadata capture. Running them sequentially avoids HCI contention on Raspberry Pi.
+ * Scan for all BLE devices using bluetoothctl only.
+ * Does NOT auto-connect — user picks from the list, then selectDevice() handles GATT.
  */
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   if (scanning) return lastScanResults;
   scanning = true;
   lastScanResults = [];
-  discoveredMeta.clear();
-  logConnectionEvent({ type: 'scan_start', detail: `hybrid scan, timeout=${timeoutMs}ms` });
+  logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl scan, timeout=${timeoutMs}ms` });
 
   try {
-    const btDevices = await bluetoothctlScan(timeoutMs);
-    lastScanResults = btDevices;
-
-    if (btDevices.length === 0) {
-      logConnectionEvent({ type: 'scan_done', detail: 'bluetoothctl found 0 devices — skipping noble metadata scan' });
-      return btDevices;
-    }
-
-    const nobleMeta = await nobleScanForMetadata(Math.min(2500, timeoutMs));
-    discoveredMeta = nobleMeta;
-    mergeDiscoveryMetadata(btDevices, nobleMeta);
-
-    logConnectionEvent({ type: 'scan_done', detail: `found ${btDevices.length} device(s), ${nobleMeta.size} metadata key(s)` });
-    return btDevices;
+    const devices = await bluetoothctlScan(timeoutMs);
+    lastScanResults = devices;
+    logConnectionEvent({ type: 'scan_done', detail: `found ${devices.length} device(s)` });
+    return devices;
   } finally {
     scanning = false;
   }
@@ -176,7 +170,8 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
 
 /**
  * Connect to a specific device by ID (from scan results).
- * Saves full discovery metadata for reconnection without re-scanning.
+ * Does a brief noble scan to discover the peripheral (needed for GATT),
+ * then saves metadata for future reconnection.
  */
 export async function selectDevice(deviceId: string): Promise<boolean> {
   const entry = lastScanResults.find(d => d.id === deviceId);
@@ -186,16 +181,8 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
   }
 
   const mac = deviceId.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
-  const meta = discoveredMeta.get(deviceId);
 
-  // Save with full metadata for reconnection
-  setSavedDevice(deviceId, entry.name, mac, {
-    addressType: meta?.addressType ?? null,
-    connectable: meta?.connectable ?? null,
-    serviceUuids: meta?.serviceUuids ?? null,
-  });
-  console.log(`[BLE] Saved device: ${entry.name} (${mac}) addressType=${meta?.addressType ?? 'unknown'}`);
-
+  // Disconnect existing device
   const device = getDevice();
   if (device) {
     try { await device.peripheral.disconnectAsync(); } catch {}
@@ -203,27 +190,40 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
     resetLastSent();
   }
 
-  // If we have a noble peripheral from the scan, connect directly via it
+  // Brief noble scan to find the peripheral object with addressType
+  logConnectionEvent({ type: 'connect_start', detail: `selectDevice: noble scan for ${entry.name} (${mac})` });
+  const meta = await nobleDiscoverPeripheral(deviceId, 4000);
+
+  // Save with metadata (even if noble didn't find it, save what we have)
+  setSavedDevice(deviceId, entry.name, mac, {
+    addressType: meta?.addressType ?? null,
+    connectable: meta?.connectable ?? null,
+    serviceUuids: meta?.serviceUuids ?? null,
+  });
+  console.log(`[BLE] Saved device: ${entry.name} (${mac}) addressType=${meta?.addressType ?? 'unknown'}`);
+
+  // Connect via the discovered noble peripheral
   if (meta?.peripheral) {
     try {
-      logConnectionEvent({ type: 'connect_start', detail: `selectDevice: using cached noble peripheral` });
+      logConnectionEvent({ type: 'connect_start', detail: `selectDevice: connecting via noble peripheral` });
       await connectPeripheral(meta.peripheral, 0, true);
       return true;
     } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', detail: `Cached peripheral connect failed: ${e.message}` });
+      logConnectionEvent({ type: 'connect_fail', detail: `Noble peripheral connect failed: ${e.message}` });
     }
   }
 
-  // Fallback to direct connect
+  // Fallback: try direct connect (will also do a noble scan)
+  logConnectionEvent({ type: 'connect_start', detail: `selectDevice: fallback to tryDirectConnect` });
   try {
     const ok = await tryDirectConnect(deviceId);
     if (ok) return true;
-    logConnectionEvent({ type: 'connect_fail', detail: `selectDevice failed for ${deviceId}` });
-    return false;
   } catch (e: any) {
     console.error(`[BLE] Failed to connect to ${deviceId}: ${e.message}`);
-    return false;
   }
+
+  logConnectionEvent({ type: 'connect_fail', detail: `selectDevice failed for ${deviceId}` });
+  return false;
 }
 
 /** Forget saved device and disconnect */
@@ -239,13 +239,12 @@ export async function forgetDevice(): Promise<void> {
 }
 
 /**
- * Connect directly by MAC address using saved metadata — NO scanning.
- * Uses saved addressType to create a proper noble peripheral.
+ * Connect directly to a saved device — does a brief noble scan to find the
+ * peripheral, then connects. No bluetoothctl scan needed.
  */
 export async function tryDirectConnect(savedId: string): Promise<boolean> {
   const savedAddress = getSavedDeviceAddress();
   const savedName = getSavedDeviceName() ?? savedId;
-  const savedAddressType = getSavedAddressType() ?? 'random';
 
   if (!savedAddress) {
     logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'No saved MAC address' });
@@ -272,40 +271,27 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
   } catch {}
 
-  const macLower = savedAddress.toLowerCase();
+  // Noble needs its own scan to populate internal peripheral state
+  logConnectionEvent({ type: 'connect_start', device: savedName, detail: `noble scan for ${savedId}` });
+  const meta = await nobleDiscoverPeripheral(savedId, 4000);
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) {
-      logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Retry ${attempt + 1}` });
-      await new Promise(r => setTimeout(r, 500));
+  if (meta?.peripheral) {
+    try {
+      logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Connecting via noble peripheral (addressType=${meta.addressType})` });
+      await connectPeripheral(meta.peripheral, 0, true);
+      return true;
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Noble connect failed: ${e.message}` });
     }
-
-    // Try connectAsync with address (noble @stoprocent supports MAC address + addressType)
-    for (const target of [macLower, normalizeBleKey(savedId)]) {
-      logConnectionEvent({ type: 'connect_start', device: savedName, detail: `noble.connectAsync(${target}, addressType=${savedAddressType}) attempt ${attempt + 1}` });
-
-      try {
-        const peripheral = await Promise.race<any>([
-          (noble as any).connectAsync(target, { addressType: savedAddressType }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error(`connectAsync timeout`)), 5000)),
-        ]);
-
-        if (peripheral) {
-          logConnectionEvent({ type: 'connect_ok', device: savedName, detail: `Direct connect OK via ${target} (addressType=${savedAddressType})` });
-          await connectPeripheral(peripheral, 0, true);
-          return true;
-        }
-      } catch (e: any) {
-        logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Failed ${target}: ${e.message}` });
-      }
-    }
+  } else {
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Device not found in noble scan' });
   }
 
   return false;
 }
 
 /**
- * Auto-connect to saved device — direct MAC connect only, no scanning.
+ * Auto-connect to saved device — brief noble scan then connect.
  */
 export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   const savedId = getSavedDeviceId();
