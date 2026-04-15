@@ -5,7 +5,7 @@
  * making it reliable for programmatic use. noble is used only for GATT connect.
  */
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
@@ -29,42 +29,53 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
   try { noble.stopScanning(); } catch {}
 
   // Run LE scan then list discovered devices (no hciconfig reset — it breaks bluetoothctl's D-Bus connection)
-  const cmd = `sudo bluetoothctl --timeout ${scanSeconds} scan le > /dev/null 2>&1; sudo bluetoothctl devices`;
+  const cmd = `sudo bluetoothctl --timeout ${scanSeconds} scan le >/dev/null 2>&1; sudo bluetoothctl devices`;
   const execTimeoutMs = (scanSeconds * 1000) + 3000;
 
+  let output = '';
   try {
     logConnectionEvent({ type: 'scan_start', detail: `Running: ${cmd}` });
-    const output = execSync(cmd, {
+    output = execFileSync('bash', ['-lc', cmd], {
       timeout: execTimeoutMs,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-
-    // Parse "Device XX:XX:XX:XX:XX:XX Name" lines
-    const lines = (output || '').split('\n');
-    logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl output: ${lines.length} lines` });
-    for (const line of lines) {
-      const match = line.trim().match(/^Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
-      if (!match) continue;
-      const [, mac, rawName] = match;
-      const id = mac.replace(/:/g, '').toLowerCase();
-      const trimmedName = rawName.trim();
-      // bluetoothctl shows MAC as name when unknown (e.g. "42-5F-FC-A0-7F-A8")
-      const name = trimmedName.length === 0 || trimmedName.match(/^[0-9A-Fa-f]{2}(-[0-9A-Fa-f]{2}){5}$/)
-        ? `Okänd enhet (${mac.toUpperCase()})`
-        : trimmedName;
-      if (!seen.has(id)) {
-        logConnectionEvent({ type: 'scan_start', detail: `discovered: ${name} [${mac}]` });
-        console.log(`[BLE] discovered: ${name} (${mac})`);
-      }
-      seen.set(id, { id, name, rssi: -50 });
-    }
-
-    logConnectionEvent({ type: 'scan_done', detail: `bluetoothctl done — ${seen.size} unique device(s)` });
   } catch (e: any) {
-    logConnectionEvent({ type: 'connect_fail', detail: `bluetoothctl scan failed: ${e.message?.slice(0, 120)}` });
-    console.error(`[BLE] bluetoothctl scan failed: ${e.message}`);
+    output = typeof e?.stdout === 'string'
+      ? e.stdout
+      : Buffer.isBuffer(e?.stdout)
+        ? e.stdout.toString('utf-8')
+        : '';
+    const stderr = typeof e?.stderr === 'string'
+      ? e.stderr
+      : Buffer.isBuffer(e?.stderr)
+        ? e.stderr.toString('utf-8')
+        : '';
+    logConnectionEvent({ type: 'connect_fail', detail: `bluetoothctl exitade med felkod, stdout=${output.length}b stderr=${stderr.length}b` });
+    if (stderr) {
+      console.error(`[BLE] bluetoothctl stderr: ${stderr}`);
+    }
   }
+
+  const lines = (output || '').split('\n');
+  logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl output: ${lines.length} lines` });
+  for (const line of lines) {
+    const match = line.trim().match(/^Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
+    if (!match) continue;
+    const [, mac, rawName] = match;
+    const id = mac.replace(/:/g, '').toLowerCase();
+    const trimmedName = rawName.trim();
+    const name = trimmedName.length === 0 || trimmedName.match(/^[0-9A-Fa-f]{2}(-[0-9A-Fa-f]{2}){5}$/)
+      ? `Okänd enhet (${mac.toUpperCase()})`
+      : trimmedName;
+    if (!seen.has(id)) {
+      logConnectionEvent({ type: 'scan_start', detail: `discovered: ${name} [${mac}]` });
+      console.log(`[BLE] discovered: ${name} (${mac})`);
+    }
+    seen.set(id, { id, name, rssi: -50 });
+  }
+
+  logConnectionEvent({ type: 'scan_done', detail: `bluetoothctl done — ${seen.size} unique device(s)` });
 
   const devices = Array.from(seen.values());
   console.log(`[BLE] scan done — ${devices.length} device(s)`);
