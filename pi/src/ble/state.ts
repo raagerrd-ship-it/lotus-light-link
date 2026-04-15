@@ -4,7 +4,7 @@
  */
 
 // @ts-ignore — noble types are approximate
-import noble from '@abandonware/noble';
+import noble from '@stoprocent/noble';
 import { readFileSync } from 'fs';
 import { getItem, setItem } from '../storage.js';
 import type { ConnectedDevice, BleConnectionEvent } from './types.js';

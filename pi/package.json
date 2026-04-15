@@ -10,7 +10,7 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@abandonware/noble": "^1.9.2-25",
+    "@stoprocent/noble": "^2.1.0",
     "eventsource": "^2.0.2",
     "express": "^4.21.0",
     "node-record-lpcm16": "^1.0.1"
