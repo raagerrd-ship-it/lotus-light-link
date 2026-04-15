@@ -58,79 +58,94 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
 }
 
 /**
- * Run a brief noble scan in parallel to capture peripheral metadata (addressType etc).
- * Returns a map of normalizedId → peripheral metadata.
+ * Run a short noble scan after bluetoothctl has finished so the two tools do not
+ * compete for the same HCI socket. This captures reconnect metadata only.
  */
-function nobleScanForMetadata(timeoutMs = 4000): Promise<Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>> {
-  const results = new Map<string, any>();
+function nobleScanForMetadata(timeoutMs = 2500): Promise<Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>> {
+  const results = new Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>();
 
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      try { noble.stopScanning(); } catch {}
-      noble.removeAllListeners('discover');
-      resolve(results);
-    }, timeoutMs);
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let adapterTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onDiscover = (peripheral: any) => {
-      const id = normalizeBleKey(peripheral.id ?? peripheral.uuid ?? peripheral.address);
-      if (!id) return;
-      results.set(id, {
+      const keys = new Set([
+        normalizeBleKey(peripheral.id),
+        normalizeBleKey(peripheral.address),
+        normalizeBleKey(peripheral.uuid),
+      ].filter(Boolean));
+
+      const entry = {
         peripheral,
         addressType: peripheral.addressType ?? 'unknown',
         connectable: peripheral.connectable !== false,
         serviceUuids: peripheral.advertisement?.serviceUuids ?? [],
-      });
+      };
+
+      for (const key of keys) {
+        results.set(key, entry);
+      }
     };
 
-    noble.on('discover', onDiscover);
+    const cleanup = () => {
+      try { noble.stopScanning(); } catch {}
+      noble.removeListener('discover', onDiscover);
+      if (adapterTimer) clearTimeout(adapterTimer);
+      if (timer) clearTimeout(timer);
+    };
 
-    // Only start scanning if adapter is ready
-    if (getAdapterState() === 'poweredOn') {
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(results);
+    };
+
+    const startScan = () => {
+      noble.on('discover', onDiscover);
       try {
         noble.startScanning([], true);
-      } catch {
-        clearTimeout(timer);
-        noble.removeAllListeners('discover');
-        resolve(results);
+        logConnectionEvent({ type: 'scan_start', detail: `noble metadata scan starting (${timeoutMs}ms)` });
+        timer = setTimeout(finish, timeoutMs);
+      } catch (e: any) {
+        logConnectionEvent({ type: 'scan_done', detail: `noble metadata scan skipped: ${e.message}` });
+        finish();
       }
-    } else {
-      // Wait briefly for adapter
-      const adapterWait = setTimeout(() => {
-        clearTimeout(timer);
-        noble.removeAllListeners('discover');
-        resolve(results);
-      }, 3000);
+    };
 
-      const onState = (state: string) => {
-        if (state === 'poweredOn') {
-          clearTimeout(adapterWait);
-          noble.removeListener('stateChange', onState);
-          try { noble.startScanning([], true); } catch {}
-        }
-      };
-      noble.on('stateChange', onState);
+    if (getAdapterState() === 'poweredOn') {
+      startScan();
+      return;
     }
+
+    const onState = (state: string) => {
+      if (state !== 'poweredOn') return;
+      noble.removeListener('stateChange', onState);
+      if (adapterTimer) clearTimeout(adapterTimer);
+      startScan();
+    };
+
+    noble.on('stateChange', onState);
+    adapterTimer = setTimeout(() => {
+      noble.removeListener('stateChange', onState);
+      logConnectionEvent({ type: 'scan_done', detail: `noble metadata scan skipped: adapter=${getAdapterState() ?? 'unknown'}` });
+      finish();
+    }, 3000);
   });
 }
 
-function normalizeBleKey(value: string | null | undefined): string {
-  return (value ?? '').replace(/:/g, '').toLowerCase();
+function mergeDiscoveryMetadata(devices: DiscoveredDevice[], nobleMeta: Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>): void {
+  for (const device of devices) {
+    const meta = nobleMeta.get(device.id);
+    if (!meta) continue;
+    logConnectionEvent({ type: 'scan_done', detail: `${device.name}: addressType=${meta.addressType}, connectable=${meta.connectable}` });
+  }
 }
 
-
-// ── Discovered devices from last scan ──
-let lastScanResults: DiscoveredDevice[] = [];
-/** Noble peripheral metadata captured during scan, keyed by normalized ID */
-let discoveredMeta = new Map<string, { peripheral: any; addressType: string; connectable: boolean; serviceUuids: string[] }>();
-let scanning = false;
-
-
-export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
-export function isScanning(): boolean { return scanning; }
-
 /**
- * Scan for all BLE devices using bluetoothctl + noble in parallel.
- * bluetoothctl gives us the device list; noble gives us addressType metadata.
+ * Scan for all BLE devices using bluetoothctl first, then a short noble pass for
+ * metadata capture. Running them sequentially avoids HCI contention on Raspberry Pi.
  */
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   if (scanning) return lastScanResults;
@@ -140,24 +155,19 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   logConnectionEvent({ type: 'scan_start', detail: `hybrid scan, timeout=${timeoutMs}ms` });
 
   try {
-    // Run both scans in parallel
-    const [btDevices, nobleMeta] = await Promise.all([
-      bluetoothctlScan(timeoutMs),
-      nobleScanForMetadata(Math.min(timeoutMs + 1000, 8000)),
-    ]);
-
-    discoveredMeta = nobleMeta;
+    const btDevices = await bluetoothctlScan(timeoutMs);
     lastScanResults = btDevices;
 
-    // Log which devices have noble metadata
-    for (const d of btDevices) {
-      const meta = nobleMeta.get(d.id);
-      if (meta) {
-        logConnectionEvent({ type: 'scan_done', detail: `${d.name}: addressType=${meta.addressType}, connectable=${meta.connectable}` });
-      }
+    if (btDevices.length === 0) {
+      logConnectionEvent({ type: 'scan_done', detail: 'bluetoothctl found 0 devices — skipping noble metadata scan' });
+      return btDevices;
     }
 
-    logConnectionEvent({ type: 'scan_done', detail: `found ${btDevices.length} device(s), ${nobleMeta.size} with noble metadata` });
+    const nobleMeta = await nobleScanForMetadata(Math.min(2500, timeoutMs));
+    discoveredMeta = nobleMeta;
+    mergeDiscoveryMetadata(btDevices, nobleMeta);
+
+    logConnectionEvent({ type: 'scan_done', detail: `found ${btDevices.length} device(s), ${nobleMeta.size} metadata key(s)` });
     return btDevices;
   } finally {
     scanning = false;
