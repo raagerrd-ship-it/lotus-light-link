@@ -316,32 +316,49 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
 function ensureNoblePeripheral(uuid: string, savedAddress: string | null, name: string): any | null {
   // Already in cache?
   const existing = (noble as any)._peripherals?.[uuid];
-  if (existing) return existing;
+  if (existing) {
+    logConnectionEvent({ type: 'connect_start', device: name, detail: 'Using cached peripheral' });
+    return existing;
+  }
 
   if (!savedAddress) return null;
 
   const addressRaw = savedAddress.toLowerCase();
   const bindings = (noble as any)._bindings;
-  if (!bindings) return null;
+  if (!bindings) {
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: 'No noble bindings available' });
+    return null;
+  }
 
-  // Directly populate noble's internal address maps (required for connect)
+  // Populate noble's internal address maps (required for HCI connect)
   if (bindings._addresses) bindings._addresses[uuid] = addressRaw;
   if (bindings._addresseTypes) bindings._addresseTypes[uuid] = 'public';
 
-  // Emit discover to let noble create the Peripheral object
-  if (typeof bindings.emit === 'function') {
-    const advertisement = {
-      localName: name,
-      txPowerLevel: undefined,
-      manufacturerData: undefined,
-      serviceData: [],
-      serviceUuids: [SERVICE_UUID],
-      solicitationServiceUuids: [],
-    };
+  // Call noble's onDiscover directly — more reliable than bindings.emit
+  // This creates a proper Peripheral with _noble reference set
+  const advertisement = {
+    localName: name,
+    txPowerLevel: undefined,
+    manufacturerData: undefined,
+    serviceData: [],
+    serviceUuids: [SERVICE_UUID],
+    solicitationServiceUuids: [],
+  };
+
+  if (typeof (noble as any).onDiscover === 'function') {
+    (noble as any).onDiscover(uuid, addressRaw, 'public', true, advertisement, -50);
+    logConnectionEvent({ type: 'connect_start', device: name, detail: 'Injected via noble.onDiscover()' });
+  } else if (typeof bindings.emit === 'function') {
+    // Fallback to bindings.emit
     bindings.emit('discover', uuid, addressRaw, 'public', true, advertisement, -50);
+    logConnectionEvent({ type: 'connect_start', device: name, detail: 'Injected via bindings.emit()' });
   }
 
-  return (noble as any)._peripherals?.[uuid] ?? null;
+  const peripheral = (noble as any)._peripherals?.[uuid];
+  if (!peripheral) {
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Peripheral not created (onDiscover=${typeof (noble as any).onDiscover}, keys=${Object.keys((noble as any)._peripherals ?? {}).length})` });
+  }
+  return peripheral ?? null;
 }
 
 /**
