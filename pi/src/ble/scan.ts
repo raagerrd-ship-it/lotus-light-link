@@ -6,7 +6,8 @@
  * so we use it for discovery and noble only for GATT connect.
  */
 
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
+import { readFileSync, unlinkSync } from 'fs';
 import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
@@ -43,23 +44,26 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   // Stop noble scanning so it doesn't hold the HCI socket
   try { noble.stopScanning(); } catch {}
 
-  // Reset adapter first, then scan — scan timeout is separate from reset time
+  // Reset adapter, then scan to tempfile so output survives SIGTERM
   const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
-  // stdbuf -oL forces line-buffered stdout so output is not lost when timeout kills hcitool
-  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo stdbuf -oL timeout ${scanSeconds} hcitool lescan --duplicates 2>/dev/null || true`;
-  const execTimeoutMs = (scanSeconds * 1000) + 5000;
+  const tmpFile = '/tmp/ble_scan_out.txt';
+  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo timeout ${scanSeconds} hcitool lescan --duplicates > ${tmpFile} 2>/dev/null; true`;
+  const execTimeoutMs = (scanSeconds * 1000) + 5000; // margin for reset + sleep
 
   try {
     logConnectionEvent({ type: 'scan_start', detail: `Running: ${cmd}` });
-    const output = execSync(cmd, {
+    execSync(cmd, {
       timeout: execTimeoutMs,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', 'ignore', 'ignore'],
     });
 
-    // Parse output lines: "XX:XX:XX:XX:XX:XX DeviceName"
-    const lines = (output || '').split('\n');
-    logConnectionEvent({ type: 'scan_start', detail: `hcitool raw output: ${lines.length} lines` });
+    // Read captured output from tempfile
+    let output = '';
+    try { output = readFileSync(tmpFile, 'utf-8'); } catch {}
+    try { unlinkSync(tmpFile); } catch {}
+
+    const lines = output.split('\n');
+    logConnectionEvent({ type: 'scan_start', detail: `hcitool raw output: ${lines.length} lines, ${output.length} bytes` });
     for (const line of lines) {
       const match = line.trim().match(/^([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
       if (!match) continue;
