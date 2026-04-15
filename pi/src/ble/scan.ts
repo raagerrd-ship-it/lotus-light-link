@@ -184,16 +184,21 @@ export async function forgetDevice(): Promise<void> {
  * state and call connect directly.
  */
 export async function tryDirectConnect(savedId: string): Promise<boolean> {
-  const adapterState = getAdapterState();
-  if (adapterState !== 'poweredOn') {
-    logConnectionEvent({ type: 'connect_fail', device: getSavedDeviceName() ?? savedId, detail: `Adapter not ready: ${adapterState ?? 'unknown'}` });
-    return false;
-  }
   const savedAddress = getSavedDeviceAddress();
   const savedName = getSavedDeviceName() ?? savedId;
 
   if (!savedAddress) {
     logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'No saved MAC address' });
+    return false;
+  }
+
+  // Wait for adapter to be ready (up to 5s)
+  try {
+    await (noble as any).waitForPoweredOnAsync(5000);
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Adapter poweredOn ✓' });
+  } catch {
+    const state = getAdapterState();
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after 5s: ${state ?? 'unknown'}` });
     return false;
   }
 
