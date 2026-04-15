@@ -1,95 +1,73 @@
 /**
- * BLE scanning: device discovery via hcitool, GATT connection via noble.
+ * BLE scanning: device discovery via bluetoothctl, GATT connection via noble.
  *
- * noble's own LE scanning often fails on Pi due to HCI socket contention.
- * hcitool lescan uses legacy HCI commands that coexist with noble's socket,
- * so we use it for discovery and noble only for GATT connect.
+ * bluetoothctl writes to stdout (unlike hcitool which writes to TTY),
+ * making it reliable for programmatic use. noble is used only for GATT connect.
  */
 
-import { execSync, spawnSync } from 'child_process';
-import { readFileSync, unlinkSync } from 'fs';
+import { execSync } from 'child_process';
 import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
 import type { DiscoveredDevice } from './types.js';
 
 const HCI_RESET_THRESHOLD = 3;
-const STOP_SCAN_TIMEOUT_MS = 1500;
 
-async function stopNobleScanningSafely(timeoutMs = STOP_SCAN_TIMEOUT_MS): Promise<void> {
-  try {
-    await Promise.race([
-      noble.stopScanningAsync(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`stopScanningAsync timeout after ${timeoutMs}ms`)), timeoutMs)
-      ),
-    ]);
-  } catch (e: any) {
-    logConnectionEvent({ type: 'scan_start', detail: `noble stopScanningAsync fastnade, fallback används: ${e.message}` });
-    try { noble.stopScanning(); } catch {}
-  }
-}
-
-// ── hcitool-based discovery ──
+// ── bluetoothctl-based discovery ──
 
 /**
- * Run `hcitool lescan` for the given duration and parse discovered devices.
- * Returns a list of unique devices with MAC-derived IDs (noble-compatible).
+ * Run `bluetoothctl scan le` for the given duration, then list discovered devices.
+ * bluetoothctl writes to stdout reliably (unlike hcitool which writes to TTY).
  */
-function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
+function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
   const seen = new Map<string, DiscoveredDevice>();
+  const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
 
-  logConnectionEvent({ type: 'scan_start', detail: `hcitool scan starting (timeout=${timeoutMs}ms)` });
+  logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl scan starting (timeout=${scanSeconds}s)` });
 
   // Stop noble scanning so it doesn't hold the HCI socket
   try { noble.stopScanning(); } catch {}
 
-  // Reset adapter, then scan to tempfile so output survives SIGTERM
-  const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
-  const tmpFile = '/tmp/ble_scan_out.txt';
-  // hcitool lescan writes directly to the TTY — use `script` to capture terminal output
-  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && script -qc "sudo timeout ${scanSeconds} hcitool lescan --duplicates" ${tmpFile}; true`;
-  const execTimeoutMs = (scanSeconds * 1000) + 5000; // margin for reset + sleep
+  // Reset adapter, run LE scan, then list discovered devices
+  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo bluetoothctl --timeout ${scanSeconds} scan le > /dev/null 2>&1; sudo bluetoothctl devices`;
+  const execTimeoutMs = (scanSeconds * 1000) + 5000;
 
   try {
     logConnectionEvent({ type: 'scan_start', detail: `Running: ${cmd}` });
-    execSync(cmd, {
+    const output = execSync(cmd, {
       timeout: execTimeoutMs,
-      stdio: ['ignore', 'ignore', 'ignore'],
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    // Read captured output from tempfile
-    let output = '';
-    try { output = readFileSync(tmpFile, 'utf-8'); } catch {}
-    try { unlinkSync(tmpFile); } catch {}
-
-    const lines = output.split('\n');
-    logConnectionEvent({ type: 'scan_start', detail: `hcitool raw output: ${lines.length} lines, ${output.length} bytes` });
+    // Parse "Device XX:XX:XX:XX:XX:XX Name" lines
+    const lines = (output || '').split('\n');
+    logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl output: ${lines.length} lines` });
     for (const line of lines) {
-      const match = line.trim().match(/^([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
+      const match = line.trim().match(/^Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
       if (!match) continue;
       const [, mac, rawName] = match;
       const id = mac.replace(/:/g, '').toLowerCase();
-      const name = rawName.trim() === '(unknown)' || rawName.trim().length === 0
+      const trimmedName = rawName.trim();
+      // bluetoothctl shows MAC as name when unknown (e.g. "42-5F-FC-A0-7F-A8")
+      const name = trimmedName.length === 0 || trimmedName.match(/^[0-9A-Fa-f]{2}(-[0-9A-Fa-f]{2}){5}$/)
         ? `Okänd enhet (${mac.toUpperCase()})`
-        : rawName.trim();
+        : trimmedName;
       if (!seen.has(id)) {
-        logConnectionEvent({ type: 'scan_start', detail: `discovered: ${name} (${mac})` });
-        console.log(`[BLE] hcitool discovered: ${name} (${mac})`);
+        logConnectionEvent({ type: 'scan_start', detail: `discovered: ${name} [${mac}]` });
+        console.log(`[BLE] discovered: ${name} (${mac})`);
       }
       seen.set(id, { id, name, rssi: -50 });
     }
 
-    logConnectionEvent({ type: 'scan_done', detail: `hcitool done — ${seen.size} unique device(s)` });
+    logConnectionEvent({ type: 'scan_done', detail: `bluetoothctl done — ${seen.size} unique device(s)` });
   } catch (e: any) {
-    logConnectionEvent({ type: 'connect_fail', detail: `hcitool exec failed: ${e.message?.slice(0, 120)}` });
-    console.error(`[BLE] hcitool exec failed: ${e.message}`);
-    // Try to kill any leftover hcitool process
-    try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
+    logConnectionEvent({ type: 'connect_fail', detail: `bluetoothctl scan failed: ${e.message?.slice(0, 120)}` });
+    console.error(`[BLE] bluetoothctl scan failed: ${e.message}`);
   }
 
   const devices = Array.from(seen.values());
-  console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
+  console.log(`[BLE] scan done — ${devices.length} device(s)`);
   return Promise.resolve(devices);
 }
 
@@ -188,15 +166,12 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   scanning = true;
   lastScanResults = [];
   discoveredPeripherals.clear();
-  logConnectionEvent({ type: 'scan_start', detail: `hcitool scan, timeout=${timeoutMs}ms` });
-
-  // Stop any noble scan so hcitool can use the adapter
-  await stopNobleScanningSafely();
+  logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl scan, timeout=${timeoutMs}ms` });
 
   try {
-    const devices = await hcitoolScan(timeoutMs);
+    const devices = await bluetoothctlScan(timeoutMs);
     lastScanResults = devices;
-    logConnectionEvent({ type: 'scan_done', detail: `found ${devices.length} device(s) via hcitool` });
+    logConnectionEvent({ type: 'scan_done', detail: `found ${devices.length} device(s) via bluetoothctl` });
     return devices;
   } finally {
     scanning = false;
