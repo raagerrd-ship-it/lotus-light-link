@@ -181,8 +181,13 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     if (typeof deviceId !== 'string') {
       return res.status(400).json({ error: 'Need deviceId' });
     }
-    const ok = await selectDevice(deviceId);
-    if (!ok) return res.json({ ok: false });
+    try {
+      const ok = await selectDevice(deviceId);
+      if (!ok) return res.json({ ok: false, error: 'Connection failed — noble could not find or connect to device' });
+    } catch (e: any) {
+      console.error(`[BLE] selectDevice error: ${e.message}`);
+      return res.json({ ok: false, error: e.message });
+    }
 
     // Preview: run engine tick loop for 10s (sends idle color naturally), then stop + disconnect
     engine.setPlaying(true);
