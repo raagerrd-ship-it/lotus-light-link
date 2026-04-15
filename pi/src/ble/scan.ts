@@ -28,9 +28,9 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
   // Stop noble scanning so it doesn't hold the HCI socket
   try { noble.stopScanning(); } catch {}
 
-  // Reset adapter, run LE scan, then list discovered devices
-  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo bluetoothctl --timeout ${scanSeconds} scan le > /dev/null 2>&1; sudo bluetoothctl devices`;
-  const execTimeoutMs = (scanSeconds * 1000) + 5000;
+  // Run LE scan then list discovered devices (no hciconfig reset — it breaks bluetoothctl's D-Bus connection)
+  const cmd = `sudo bluetoothctl --timeout ${scanSeconds} scan le > /dev/null 2>&1; sudo bluetoothctl devices`;
+  const execTimeoutMs = (scanSeconds * 1000) + 3000;
 
   try {
     logConnectionEvent({ type: 'scan_start', detail: `Running: ${cmd}` });
