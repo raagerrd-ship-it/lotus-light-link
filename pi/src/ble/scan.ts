@@ -45,8 +45,9 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
 
   // Reset adapter first, then scan — scan timeout is separate from reset time
   const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
-  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo timeout ${scanSeconds} hcitool lescan --duplicates 2>/dev/null || true`;
-  const execTimeoutMs = (scanSeconds * 1000) + 5000; // scan time + margin for reset/sleep
+  // stdbuf -oL forces line-buffered stdout so output is not lost when timeout kills hcitool
+  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo stdbuf -oL timeout ${scanSeconds} hcitool lescan --duplicates 2>/dev/null || true`;
+  const execTimeoutMs = (scanSeconds * 1000) + 5000;
 
   try {
     logConnectionEvent({ type: 'scan_start', detail: `Running: ${cmd}` });
