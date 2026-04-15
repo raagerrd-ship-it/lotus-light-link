@@ -192,15 +192,16 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     return false;
   }
 
-  // Wait for adapter to be ready (up to 5s)
-  try {
-    await (noble as any).waitForPoweredOnAsync(5000);
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Adapter poweredOn ✓' });
-  } catch {
-    const state = getAdapterState();
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after 5s: ${state ?? 'unknown'}` });
-    return false;
+  // Wait for adapter to be ready (poll up to 5s)
+  for (let i = 0; i < 10; i++) {
+    if (getAdapterState() === 'poweredOn') break;
+    if (i === 9) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after 5s: ${getAdapterState() ?? 'unknown'}` });
+      return false;
+    }
+    await new Promise(r => setTimeout(r, 500));
   }
+  logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Adapter poweredOn ✓' });
 
   // Ensure bluetoothctl isn't holding the HCI socket
   try {
