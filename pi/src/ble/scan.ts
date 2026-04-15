@@ -6,7 +6,7 @@
  * so we use it for discovery and noble only for GATT connect.
  */
 
-import { spawn, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
@@ -23,101 +23,53 @@ const HCI_RESET_THRESHOLD = 3;
 function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   const seen = new Map<string, DiscoveredDevice>();
 
-  return new Promise((resolve) => {
-    // Reset HCI adapter before scanning — required for reliable discovery
-    // This also releases noble's hold on the HCI socket
-    try {
-      // Stop noble scanning first
-      noble.stopScanning();
-    } catch {}
-    try {
-      execSync('sudo hciconfig hci0 reset', { timeout: 3000 });
-      console.log('[BLE] hci0 reset before scan');
-      logConnectionEvent({ type: 'hci_reset', detail: 'hci0 reset OK before hcitool scan' });
-    } catch (e: any) {
-      console.warn(`[BLE] hci0 reset failed: ${e.message}`);
-      logConnectionEvent({ type: 'hci_reset', detail: `hci0 reset FAILED: ${e.message}` });
-    }
+  logConnectionEvent({ type: 'scan_start', detail: `hcitool scan starting (timeout=${timeoutMs}ms)` });
 
-    // hcitool lescan streams discoveries to stdout until killed
-    const proc = spawn('sudo', ['hcitool', 'lescan', '--duplicates'], {
+  // Stop noble scanning so it doesn't hold the HCI socket
+  try { noble.stopScanning(); } catch {}
+
+  // Run the entire scan as a single shell command with timeout — same as SSH
+  // This avoids noble re-grabbing the socket between reset and lescan
+  const scanSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo timeout ${scanSeconds} hcitool lescan --duplicates 2>/dev/null || true`;
+
+  try {
+    logConnectionEvent({ type: 'scan_start', detail: `Running: ${cmd}` });
+    const output = execSync(cmd, {
+      timeout: timeoutMs + 3000, // extra margin for reset + sleep
+      encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    logConnectionEvent({ type: 'scan_start', detail: `hcitool lescan spawned (pid ${proc.pid}), timeout=${timeoutMs}ms` });
 
-    let buffer = '';
-    let settled = false;
-
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      // proc runs as root via sudo — kill the child hcitool, not just sudo
-      try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
-      try { proc.kill('SIGKILL'); } catch {}
-      const devices = Array.from(seen.values());
-      logConnectionEvent({ type: 'scan_done', detail: `hcitool killed — ${devices.length} device(s) found` });
-      console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
-      resolve(devices);
-    };
-
-    // Hard safety: if process hasn't exited 1s after SIGKILL, resolve anyway
-    const safetyTimer = setTimeout(() => {
-      if (!settled) {
-        logConnectionEvent({ type: 'scan_done', detail: `hcitool safety timeout — force kill after ${timeoutMs + 1000}ms` });
-        console.warn('[BLE] hcitool safety timeout — force resolving');
-        settled = true;
-        try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
-        try { proc.kill('SIGKILL'); } catch {}
-        resolve(Array.from(seen.values()));
+    // Parse output lines: "XX:XX:XX:XX:XX:XX DeviceName"
+    const lines = (output || '').split('\n');
+    for (const line of lines) {
+      const match = line.trim().match(/^([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
+      if (!match) continue;
+      const [, mac, rawName] = match;
+      const id = mac.replace(/:/g, '').toLowerCase();
+      const name = rawName.trim() === '(unknown)' || rawName.trim().length === 0
+        ? `Okänd enhet (${mac.toUpperCase()})`
+        : rawName.trim();
+      if (!seen.has(id)) {
+        logConnectionEvent({ type: 'scan_start', detail: `discovered: ${name} (${mac})` });
+        console.log(`[BLE] hcitool discovered: ${name} (${mac})`);
       }
-    }, timeoutMs + 1000);
+      seen.set(id, { id, name, rssi: -50 });
+    }
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString();
-      // Parse complete lines: "XX:XX:XX:XX:XX:XX DeviceName"
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? ''; // keep incomplete last line
-      for (const line of lines) {
-        const match = line.trim().match(/^([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
-        if (!match) continue;
-        const [, mac, rawName] = match;
-        const id = mac.replace(/:/g, '').toLowerCase();
-        const name = rawName.trim() === '(unknown)' || rawName.trim().length === 0
-          ? `Okänd enhet (${mac.toUpperCase()})`
-          : rawName.trim();
-        if (!seen.has(id)) {
-          logConnectionEvent({ type: 'scan_start', detail: `hcitool discovered: ${name} (${mac})` });
-          console.log(`[BLE] hcitool discovered: ${name} (${mac})`);
-        }
-        seen.set(id, { id, name, rssi: -50 }); // hcitool doesn't provide RSSI
-      }
-    });
+    logConnectionEvent({ type: 'scan_done', detail: `hcitool done — ${seen.size} unique device(s)` });
+  } catch (e: any) {
+    logConnectionEvent({ type: 'connect_fail', detail: `hcitool exec failed: ${e.message?.slice(0, 120)}` });
+    console.error(`[BLE] hcitool exec failed: ${e.message}`);
+    // Try to kill any leftover hcitool process
+    try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
+  }
 
-    proc.stderr.on('data', (chunk: Buffer) => {
-      const msg = chunk.toString().trim();
-      if (msg) {
-        logConnectionEvent({ type: 'connect_fail', detail: `hcitool stderr: ${msg}` });
-        console.warn(`[BLE] hcitool stderr: ${msg}`);
-      }
-    });
-
-    const timer = setTimeout(finish, timeoutMs);
-
-    scanAbort = () => {
-      clearTimeout(timer);
-      finish();
-    };
-
-    proc.on('error', (err) => {
-      logConnectionEvent({ type: 'connect_fail', detail: `hcitool spawn error: ${err.message}` });
-      console.error(`[BLE] hcitool spawn error: ${err.message}`);
-      clearTimeout(timer);
-      finish();
-    });
-
-    proc.on('close', (code) => {
-      logConnectionEvent({ type: 'scan_done', detail: `hcitool process exited (code ${code})` });
-      clearTimeout(timer);
+  const devices = Array.from(seen.values());
+  console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
+  return Promise.resolve(devices);
+}
       clearTimeout(safetyTimer);
       finish();
     });
@@ -203,7 +155,7 @@ function getPeripheralAddress(peripheral: any): string | null {
 let lastScanResults: DiscoveredDevice[] = [];
 let discoveredPeripherals = new Map<string, any>();
 let scanning = false;
-let scanAbort: (() => void) | null = null;
+
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
@@ -213,7 +165,6 @@ export function isScanning(): boolean { return scanning; }
  * Does NOT auto-connect — user picks from the list, then selectDevice() handles GATT.
  */
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
-  if (scanning && scanAbort) { scanAbort(); await new Promise(r => setTimeout(r, 200)); }
   if (scanning) {
     return lastScanResults;
   }
@@ -232,7 +183,6 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
     return devices;
   } finally {
     scanning = false;
-    scanAbort = null;
   }
 }
 
