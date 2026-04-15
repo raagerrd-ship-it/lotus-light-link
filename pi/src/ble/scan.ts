@@ -33,8 +33,10 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
     try {
       execSync('sudo hciconfig hci0 reset', { timeout: 3000 });
       console.log('[BLE] hci0 reset before scan');
+      logConnectionEvent({ type: 'hci_reset', detail: 'hci0 reset OK before hcitool scan' });
     } catch (e: any) {
       console.warn(`[BLE] hci0 reset failed: ${e.message}`);
+      logConnectionEvent({ type: 'hci_reset', detail: `hci0 reset FAILED: ${e.message}` });
     }
 
     // hcitool lescan streams discoveries to stdout until killed
