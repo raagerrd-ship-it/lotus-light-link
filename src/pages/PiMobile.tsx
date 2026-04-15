@@ -2185,8 +2185,12 @@ export default function PiMobile() {
                           return prev - 1;
                         });
                       }, 1000);
+                    } else {
+                      alert(`Kunde inte ansluta: ${data.error || 'okänt fel'}`);
                     }
-                  } catch {}
+                  } catch (e: any) {
+                    alert(`Nätverksfel: ${e.message}`);
+                  }
                   setBleConnecting(null);
                 }}
                 disabled={bleConnecting === d.id}
