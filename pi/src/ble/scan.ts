@@ -261,17 +261,17 @@ export async function forgetDevice(): Promise<void> {
 }
 
 /**
- * Connect directly by MAC address without scanning.
+ * Connect directly by MAC address — NO scanning.
  * On Linux, noble uses HCI bindings where the peripheral UUID is the MAC
- * without colons, lowercase. We can inject a peripheral into noble's internal
- * state and call connect directly — no scan needed.
+ * without colons, lowercase. We inject a peripheral into noble's internal
+ * state and call connect directly.
  */
 export async function tryDirectConnect(savedId: string): Promise<boolean> {
   if (getAdapterState() !== 'poweredOn') return false;
 
   const savedAddress = getSavedDeviceAddress();
   const savedName = getSavedDeviceName() ?? savedId;
-  const uuid = normalizeBleKey(savedId); // MAC without colons, lowercase
+  const uuid = normalizeBleKey(savedId);
 
   // 1. Check noble cache first
   const cachedPeripheral = (noble as any)._peripherals?.[uuid];
@@ -285,26 +285,23 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     }
   }
 
-  // 2. Inject peripheral into noble's internal state from known MAC
+  // 2. Inject peripheral into noble from known MAC and connect directly
   if (savedAddress) {
     const addressRaw = savedAddress.toLowerCase();
-    const addressType = 'public'; // BLEDOM uses public addresses
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Injecting peripheral ${savedAddress} into noble and connecting directly` });
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Injecting ${savedAddress} into noble — direct connect (no scan)` });
 
     try {
-      // Stop any ongoing bluetoothctl scan so HCI is free
+      // Ensure bluetoothctl isn't holding the adapter
       try {
         execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
       } catch {}
 
-      // Emit a fake 'discover' event to populate noble's internal structures
+      // Emit discover to populate noble's internal Peripheral object
       const bindings = (noble as any)._bindings;
       if (bindings && typeof bindings.emit === 'function') {
-        // This triggers noble to create a Peripheral object internally
-        bindings.emit('discover', uuid, addressRaw, addressType, true, { localName: savedName }, 0);
+        bindings.emit('discover', uuid, addressRaw, 'public', true, { localName: savedName }, 0);
       }
 
-      // Now the peripheral should exist in noble's cache
       const peripheral = (noble as any)._peripherals?.[uuid];
       if (peripheral) {
         await connectPeripheral(peripheral);
@@ -317,25 +314,11 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     }
   }
 
-  // 3. Fallback: quick noble scan
-  logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'Quick noble targeted scan (3s)' });
-  const peripheral = await nobleFind(savedId, 3000);
-  if (peripheral) {
-    try {
-      await connectPeripheral(peripheral);
-      return true;
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Quick scan connect failed: ${e.message}` });
-      return false;
-    }
-  }
-
   return false;
 }
 
 /**
- * Auto-connect to saved device if available.
- * Tries direct connect first (no scan), falls back to scan.
+ * Auto-connect to saved device — direct MAC connect only, no scanning.
  */
 export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   const savedId = getSavedDeviceId();
@@ -346,31 +329,16 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   if (getDevice()) return 1;
   if (scanning) return 0;
 
-  // Try direct connect first (skip scan entirely)
-  const directResult = await tryDirectConnect(savedId);
-  if (directResult) return 1;
-  if (getDevice()) return 1;
+  const ok = await tryDirectConnect(savedId);
+  if (ok) return 1;
 
-  // Auto-connect uses noble only (no hcitool) to avoid blocking manual scans
+  // Direct connect failed — don't scan, just report failure
   const savedName = getSavedDeviceName() ?? savedId;
-  logConnectionEvent({ type: 'scan_start', device: savedName, detail: 'auto-connect noble scan' });
-
-  const peripheral = await nobleFind(savedId, Math.min(timeoutMs, 5000));
-  if (!peripheral) {
-    logConnectionEvent({ type: 'scan_done', device: savedName, detail: 'Not found via noble' });
-    return 0;
+  incrementConsecutiveFailures();
+  const fails = getConsecutiveFailures();
+  logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Auto-connect failed (no scan) [fail#${fails}]` });
+  if (fails >= HCI_RESET_THRESHOLD) {
+    await resetHciAdapter();
   }
-
-  try {
-    await connectPeripheral(peripheral);
-    return 1;
-  } catch (e: any) {
-    incrementConsecutiveFailures();
-    const fails = getConsecutiveFailures();
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Auto-connect failed: ${e.message} [fail#${fails}]` });
-    if (fails >= HCI_RESET_THRESHOLD) {
-      await resetHciAdapter();
-    }
-    return 0;
-  }
+  return 0;
 }
