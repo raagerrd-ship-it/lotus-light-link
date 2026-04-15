@@ -215,20 +215,19 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
   }
 
   try {
-    // Get noble peripheral object via quick targeted scan
-    logConnectionEvent({ type: 'connect_start', detail: `selectDevice: nobleFind for ${deviceId}, adapter=${getAdapterState()}` });
-    const peripheral = await nobleFind(deviceId, 5000);
-    if (!peripheral) {
-      const reason = getAdapterState() !== 'poweredOn'
-        ? `adapter state: ${getAdapterState()}`
-        : 'not found in noble scan/cache';
-      logConnectionEvent({ type: 'connect_fail', detail: `selectDevice failed: ${reason}` });
-      console.error(`[BLE] Could not find ${deviceId} via noble — ${reason}`);
-      return false;
+    logConnectionEvent({ type: 'connect_start', detail: `selectDevice: direct connect for ${deviceId}, adapter=${getAdapterState()}` });
+
+    const ok = await tryDirectConnect(deviceId);
+    if (ok) {
+      return true;
     }
 
-    await connectPeripheral(peripheral);
-    return true;
+    const reason = getAdapterState() !== 'poweredOn'
+      ? `adapter state: ${getAdapterState()}`
+      : 'not found in noble cache/direct-address/scan';
+    logConnectionEvent({ type: 'connect_fail', detail: `selectDevice failed: ${reason}` });
+    console.error(`[BLE] Could not connect ${deviceId} — ${reason}`);
+    return false;
   } catch (e: any) {
     console.error(`[BLE] Failed to connect to ${deviceId}: ${e.message}`);
     return false;
