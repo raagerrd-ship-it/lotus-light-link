@@ -43,6 +43,7 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
     const proc = spawn('sudo', ['hcitool', 'lescan', '--duplicates'], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    logConnectionEvent({ type: 'scan_start', detail: `hcitool lescan spawned (pid ${proc.pid}), timeout=${timeoutMs}ms` });
 
     let buffer = '';
     let settled = false;
@@ -54,6 +55,7 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
       try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
       try { proc.kill('SIGKILL'); } catch {}
       const devices = Array.from(seen.values());
+      logConnectionEvent({ type: 'scan_done', detail: `hcitool killed — ${devices.length} device(s) found` });
       console.log(`[BLE] hcitool scan done — ${devices.length} device(s)`);
       resolve(devices);
     };
@@ -61,6 +63,7 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
     // Hard safety: if process hasn't exited 1s after SIGKILL, resolve anyway
     const safetyTimer = setTimeout(() => {
       if (!settled) {
+        logConnectionEvent({ type: 'scan_done', detail: `hcitool safety timeout — force kill after ${timeoutMs + 1000}ms` });
         console.warn('[BLE] hcitool safety timeout — force resolving');
         settled = true;
         try { execSync('sudo killall -9 hcitool', { timeout: 2000 }); } catch {}
@@ -83,6 +86,7 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
           ? `Okänd enhet (${mac.toUpperCase()})`
           : rawName.trim();
         if (!seen.has(id)) {
+          logConnectionEvent({ type: 'scan_start', detail: `hcitool discovered: ${name} (${mac})` });
           console.log(`[BLE] hcitool discovered: ${name} (${mac})`);
         }
         seen.set(id, { id, name, rssi: -50 }); // hcitool doesn't provide RSSI
@@ -91,7 +95,10 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
 
     proc.stderr.on('data', (chunk: Buffer) => {
       const msg = chunk.toString().trim();
-      if (msg) console.warn(`[BLE] hcitool stderr: ${msg}`);
+      if (msg) {
+        logConnectionEvent({ type: 'connect_fail', detail: `hcitool stderr: ${msg}` });
+        console.warn(`[BLE] hcitool stderr: ${msg}`);
+      }
     });
 
     const timer = setTimeout(finish, timeoutMs);
@@ -102,12 +109,14 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
     };
 
     proc.on('error', (err) => {
+      logConnectionEvent({ type: 'connect_fail', detail: `hcitool spawn error: ${err.message}` });
       console.error(`[BLE] hcitool spawn error: ${err.message}`);
       clearTimeout(timer);
       finish();
     });
 
-    proc.on('close', () => {
+    proc.on('close', (code) => {
+      logConnectionEvent({ type: 'scan_done', detail: `hcitool process exited (code ${code})` });
       clearTimeout(timer);
       clearTimeout(safetyTimer);
       finish();
