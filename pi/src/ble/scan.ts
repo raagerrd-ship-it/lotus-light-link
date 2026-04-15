@@ -214,23 +214,34 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
   } catch {}
 
   // @stoprocent/noble supports direct connect by address — no scan needed
+  const connectTargets = Array.from(new Set([
+    savedAddress.toLowerCase(),
+    normalizeBleKey(savedId),
+  ]));
+
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0) {
       logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Retry ${attempt + 1} after 500ms` });
       await new Promise(r => setTimeout(r, 500));
     }
 
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `noble.connectAsync(${savedAddress}) attempt ${attempt + 1}` });
+    for (const target of connectTargets) {
+      logConnectionEvent({ type: 'connect_start', device: savedName, detail: `noble.connectAsync(${target}) attempt ${attempt + 1}` });
 
-    try {
-      const peripheral = await (noble as any).connectAsync(savedAddress);
-      if (peripheral) {
-        logConnectionEvent({ type: 'connect_ok', device: savedName, detail: 'Direct connect OK — GATT discovery' });
-        await connectPeripheral(peripheral, 0, true);  // skipL2cap — already connected
-        return true;
+      try {
+        const peripheral = await Promise.race<any>([
+          (noble as any).connectAsync(target),
+          new Promise((_, reject) => setTimeout(() => reject(new Error(`connectAsync timeout (${target})`)), 4000)),
+        ]);
+
+        if (peripheral) {
+          logConnectionEvent({ type: 'connect_ok', device: savedName, detail: `Direct connect OK via ${target} — GATT discovery` });
+          await connectPeripheral(peripheral, 0, true);
+          return true;
+        }
+      } catch (e: any) {
+        logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed via ${target} (attempt ${attempt + 1}): ${e.message}` });
       }
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed (attempt ${attempt + 1}): ${e.message}` });
     }
   }
 
