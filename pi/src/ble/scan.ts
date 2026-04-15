@@ -47,7 +47,8 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   // Reset adapter, then scan to tempfile so output survives SIGTERM
   const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
   const tmpFile = '/tmp/ble_scan_out.txt';
-  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo timeout ${scanSeconds} hcitool lescan --duplicates > ${tmpFile} 2>/dev/null; true`;
+  // hcitool lescan writes to stderr on some systems — capture both streams
+  const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo timeout ${scanSeconds} hcitool lescan --duplicates > ${tmpFile} 2>&1; true`;
   const execTimeoutMs = (scanSeconds * 1000) + 5000; // margin for reset + sleep
 
   try {
