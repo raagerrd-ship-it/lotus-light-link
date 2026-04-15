@@ -43,21 +43,22 @@ function hcitoolScan(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   // Stop noble scanning so it doesn't hold the HCI socket
   try { noble.stopScanning(); } catch {}
 
-  // Run the entire scan as a single shell command with timeout — same as SSH
-  // This avoids noble re-grabbing the socket between reset and lescan
-  const scanSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  // Reset adapter first, then scan — scan timeout is separate from reset time
+  const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
   const cmd = `sudo hciconfig hci0 reset && sleep 0.5 && sudo timeout ${scanSeconds} hcitool lescan --duplicates 2>/dev/null || true`;
+  const execTimeoutMs = (scanSeconds * 1000) + 5000; // scan time + margin for reset/sleep
 
   try {
     logConnectionEvent({ type: 'scan_start', detail: `Running: ${cmd}` });
     const output = execSync(cmd, {
-      timeout: timeoutMs + 3000, // extra margin for reset + sleep
+      timeout: execTimeoutMs,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     // Parse output lines: "XX:XX:XX:XX:XX:XX DeviceName"
     const lines = (output || '').split('\n');
+    logConnectionEvent({ type: 'scan_start', detail: `hcitool raw output: ${lines.length} lines` });
     for (const line of lines) {
       const match = line.trim().match(/^([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/);
       if (!match) continue;
