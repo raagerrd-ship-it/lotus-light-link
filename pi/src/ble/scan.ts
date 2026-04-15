@@ -88,16 +88,24 @@ function bluetoothctlScan(timeoutMs = 2000): Promise<DiscoveredDevice[]> {
  * Use noble to find a specific peripheral by ID (MAC-based).
  * Short targeted scan — we already know the device is nearby from hcitool.
  */
+function normalizeBleKey(value: string | null | undefined): string {
+  return (value ?? '').replace(/:/g, '').toLowerCase();
+}
+
 function nobleFind(targetId: string, timeoutMs = 5000): Promise<any | null> {
   return new Promise((resolve) => {
+    const normalizedTarget = normalizeBleKey(targetId);
+
     if (getAdapterState() !== 'poweredOn') {
       console.warn('[BLE] nobleFind: adapter not poweredOn');
       resolve(null);
       return;
     }
 
-    // Check noble's cache first
-    const cached = (noble as any)._peripherals?.[targetId];
+    const cached = Object.values((noble as any)._peripherals ?? {}).find((peripheral: any) => {
+      return normalizeBleKey(peripheral?.id) === normalizedTarget
+        || normalizeBleKey(peripheral?.address) === normalizedTarget;
+    });
     if (cached) {
       console.log(`[BLE] nobleFind: found ${targetId} in noble cache`);
       resolve(cached);
@@ -108,7 +116,9 @@ function nobleFind(targetId: string, timeoutMs = 5000): Promise<any | null> {
 
     const onDiscover = (peripheral: any) => {
       if (found) return;
-      if (peripheral.id === targetId) {
+      const peripheralId = normalizeBleKey(peripheral?.id);
+      const peripheralAddress = normalizeBleKey(peripheral?.address);
+      if (peripheralId === normalizedTarget || peripheralAddress === normalizedTarget) {
         found = true;
         noble.removeListener('discover', onDiscover);
         noble.stopScanningAsync().catch(() => {});
@@ -117,6 +127,10 @@ function nobleFind(targetId: string, timeoutMs = 5000): Promise<any | null> {
         resolve(peripheral);
       }
     };
+
+    try {
+      execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
+    } catch {}
 
     noble.on('discover', onDiscover);
     noble.startScanningAsync([], true).catch(() => {});
@@ -284,6 +298,8 @@ export async function tryDirectConnect(savedId: string): Promise<boolean> {
     } catch (e: any) {
       logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct address connect failed: ${e.message}` });
     }
+  } else if (savedAddress) {
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: `Direct address connect unavailable for ${savedAddress}` });
   }
 
   // Quick targeted scan via noble — 3 seconds
