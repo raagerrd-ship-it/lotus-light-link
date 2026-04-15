@@ -2126,6 +2126,7 @@ export default function PiMobile() {
           </div>
         )}
 
+        {bleScanResults.length > 0 && (
           <div className="mt-3 space-y-2">
             {bleScanResults.map((d) => (
               <button
