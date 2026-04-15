@@ -330,12 +330,19 @@ function ensureNoblePeripheral(uuid: string, savedAddress: string | null, name: 
     return null;
   }
 
-  // Populate noble's internal address maps (required for HCI connect)
-  if (bindings._addresses) bindings._addresses[uuid] = addressRaw;
-  if (bindings._addresseTypes) bindings._addresseTypes[uuid] = 'public';
+  // Ensure address maps exist and populate them (required for HCI createLeConn)
+  if (!bindings._addresses) bindings._addresses = {};
+  if (!bindings._addresseTypes) bindings._addresseTypes = {};
+  bindings._addresses[uuid] = addressRaw;
+  bindings._addresseTypes[uuid] = 'public';
 
-  // Call noble's onDiscover directly — more reliable than bindings.emit
-  // This creates a proper Peripheral with _noble reference set
+  // Also ensure noble's own maps exist
+  if (!(noble as any)._peripherals) (noble as any)._peripherals = {};
+  if (!(noble as any)._services) (noble as any)._services = {};
+  if (!(noble as any)._characteristics) (noble as any)._characteristics = {};
+  if (!(noble as any)._descriptors) (noble as any)._descriptors = {};
+
+  // Call noble's onDiscover directly — creates a proper Peripheral with _noble reference
   const advertisement = {
     localName: name,
     txPowerLevel: undefined,
@@ -349,14 +356,21 @@ function ensureNoblePeripheral(uuid: string, savedAddress: string | null, name: 
     (noble as any).onDiscover(uuid, addressRaw, 'public', true, advertisement, -50);
     logConnectionEvent({ type: 'connect_start', device: name, detail: 'Injected via noble.onDiscover()' });
   } else if (typeof bindings.emit === 'function') {
-    // Fallback to bindings.emit
     bindings.emit('discover', uuid, addressRaw, 'public', true, advertisement, -50);
     logConnectionEvent({ type: 'connect_start', device: name, detail: 'Injected via bindings.emit()' });
   }
 
   const peripheral = (noble as any)._peripherals?.[uuid];
   if (!peripheral) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Peripheral not created (onDiscover=${typeof (noble as any).onDiscover}, keys=${Object.keys((noble as any)._peripherals ?? {}).length})` });
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Peripheral not created — trying HCI direct` });
+
+    // Last resort: call HCI createLeConn directly and wait for connect event
+    const hci = bindings._hci;
+    if (hci && typeof hci.createLeConn === 'function') {
+      logConnectionEvent({ type: 'connect_start', device: name, detail: `HCI createLeConn(${addressRaw}, public)` });
+      hci.createLeConn(addressRaw, 'public');
+      // Noble will create the peripheral when leConnComplete fires
+    }
   }
   return peripheral ?? null;
 }
