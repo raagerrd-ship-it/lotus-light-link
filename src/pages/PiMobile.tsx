@@ -2034,7 +2034,7 @@ export default function PiMobile() {
               </div>
             )}
             {!bleConnectedId && bleDemand && (
-              <p className="text-[10px] text-yellow-400 mt-1.5 ml-6">Söker enhet…</p>
+              <p className="text-[10px] text-yellow-400 mt-1.5 ml-6">Ansluter…</p>
             )}
           </div>
         ) : null}
