@@ -86,7 +86,7 @@ export async function saveManualDevice(address: string, name: string): Promise<b
     serviceUuids: ['fff0'],
   });
   console.log(`[BLE] Manually saved device: ${cleanName} (${mac})`);
-  logConnectionEvent({ type: 'connect', device: cleanName, detail: `Manually saved (${mac})` });
+  logConnectionEvent({ type: 'connect_ok', device: cleanName, detail: `Manually saved (${mac})` });
 
   // Try to connect immediately
   try {
