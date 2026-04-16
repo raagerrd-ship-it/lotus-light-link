@@ -47,3 +47,4 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
 - [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — bluetoothctl scan for discovery, noble for GATT. ANSI-strip required.
 - [Release pipeline](mem://pi/deployment/release-via-github-actions) — Pi builds via GitHub Actions, deploy via PCC (never build on Pi)
+- [Hybrid BLE transport](mem://pi/ble/hybrid-transport) — Manual gatttool fallback toggle when noble.state stays unknown
