@@ -261,7 +261,57 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     });
   });
 
-  // BLE full diagnostics (adapter + HCI + events)
+  // Run hcitool lescan as a fallback when noble scan fails.
+  // Returns raw output so user can copy MAC into manual save form.
+  app.post('/api/ble/hci-scan', async (_req, res) => {
+    try {
+      // Reset adapter, then run lescan with a 2s timeout.
+      // `timeout` exits 124 on success (kill after timeout) — that's expected.
+      let resetOut = '';
+      try {
+        resetOut = execSync('sudo hciconfig hci0 reset 2>&1', { encoding: 'utf8', timeout: 5000 });
+      } catch (e: any) {
+        resetOut = `(reset failed: ${e.message})`;
+      }
+      await new Promise(r => setTimeout(r, 500));
+
+      let scanOut = '';
+      try {
+        scanOut = execSync('sudo timeout 3 hcitool lescan --duplicates 2>&1', {
+          encoding: 'utf8',
+          timeout: 6000,
+        });
+      } catch (e: any) {
+        // timeout exits 124 — capture stdout from the error
+        scanOut = (e.stdout?.toString() ?? '') + (e.stderr?.toString() ?? '');
+        if (!scanOut) scanOut = `(scan error: ${e.message})`;
+      }
+
+      // Parse "AA:BB:CC:DD:EE:FF Name" lines, dedupe by MAC
+      const seen = new Map<string, string>();
+      for (const line of scanOut.split('\n')) {
+        const m = line.match(/^([0-9A-F:]{17})\s+(.+)$/i);
+        if (m) {
+          const mac = m[1].toUpperCase();
+          const name = m[2].trim();
+          // Prefer real name over "(unknown)"
+          if (!seen.has(mac) || (name !== '(unknown)' && seen.get(mac) === '(unknown)')) {
+            seen.set(mac, name);
+          }
+        }
+      }
+      const devices = Array.from(seen.entries()).map(([address, name]) => ({ address, name }));
+
+      res.json({
+        ok: true,
+        devices,
+        rawOutput: scanOut.split('\n').slice(0, 100).join('\n'),
+        resetOutput: resetOut.trim(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message ?? 'hcitool scan failed' });
+    }
+  });
   app.get('/api/ble/diagnostics', (_req, res) => {
     const adapterState = getAdapterState() ?? 'unknown';
     const hasCaps = processHasBtCaps();
