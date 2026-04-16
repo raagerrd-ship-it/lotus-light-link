@@ -289,77 +289,55 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Brief noble scan to find a specific peripheral, then GATT connect.
- * Used by selectDevice() when the user picks a device for the first time —
- * we need noble to discover the peripheral to get addressType metadata.
+ * Connect directly to a selected device without relying on noble scanning.
+ * On Raspberry Pi, noble discovery can stay stuck in `unknown` even when
+ * direct connect works, so first-pairing uses the scanned MAC address.
  */
 export async function nobleConnect(targetId: string, name: string, timeoutMs = 5000): Promise<boolean> {
   const targetNorm = normalizeBleKey(targetId);
+  const mac = targetNorm.replace(/(.{2})(?=.)/g, '$1:').toLowerCase();
+  const savedAddressType = getSavedAddressType() ?? undefined;
 
-  // Only restart noble HCI if adapter is not already ready
   const { getAdapterState } = await import('./state.js');
   if (getAdapterState() !== 'poweredOn') {
     await restartNobleHci(name);
   }
   if (!await waitForAdapter(name)) return false;
 
-  logConnectionEvent({ type: 'scan_start', device: name, detail: `noble scan for ${targetNorm} (${timeoutMs}ms)` });
-
-  const peripheral = await new Promise<any>((resolve) => {
-    let found = false;
-    const timer = setTimeout(() => {
-      if (!found) {
-        stopNoble();
-        noble.removeAllListeners('discover');
-        resolve(null);
-      }
-    }, timeoutMs);
-
-    const onDiscover = (p: any) => {
-      const keys = [
-        normalizeBleKey(p.id),
-        normalizeBleKey(p.address),
-        normalizeBleKey(p.uuid),
-      ];
-      if (!keys.includes(targetNorm)) return;
-
-      found = true;
-      clearTimeout(timer);
-      stopNoble();
-      noble.removeAllListeners('discover');
-      logConnectionEvent({ type: 'scan_done', device: name, detail: `Found! addressType=${p.addressType}, connectable=${p.connectable}` });
-      resolve(p);
-    };
-
-    noble.on('discover', onDiscover);
-    try {
-      noble.startScanning([], true);
-    } catch (e: any) {
-      clearTimeout(timer);
-      noble.removeAllListeners('discover');
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `noble.startScanning failed: ${e.message}` });
-      resolve(null);
-    }
+  logConnectionEvent({
+    type: 'connect_start',
+    device: name,
+    detail: `Direct first-pair connect via noble.connectAsync(${mac})${savedAddressType ? ` addressType=${savedAddressType}` : ''}`,
   });
 
-  if (!peripheral) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: 'Not found in noble scan' });
-    return false;
-  }
-
-  // Save metadata with fresh info from the scan (addressType, connectable)
-  const savedId = getSavedDeviceId();
-  if (savedId && normalizeBleKey(savedId) === targetNorm) {
-    const mac = getSavedDeviceAddress() ?? targetId.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
-    savePeripheralMetadata(peripheral, savedId, name, mac);
-  }
-
   try {
-    logConnectionEvent({ type: 'connect_start', device: name, detail: `Connecting (addressType=${peripheral.addressType})` });
-    await connectPeripheral(peripheral, 0, false);
+    const peripheral = await (noble as any).connectAsync(mac, {
+      ...(savedAddressType ? { addressType: savedAddressType } : {}),
+      minInterval: 6,
+      maxInterval: 8,
+      timeout: timeoutMs,
+    });
+
+    if (!peripheral) {
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: 'noble.connectAsync returned null' });
+      return false;
+    }
+
+    const savedId = getSavedDeviceId();
+    if (savedId && normalizeBleKey(savedId) === targetNorm) {
+      savePeripheralMetadata(peripheral, savedId, name, mac.toUpperCase());
+    }
+
+    logConnectionEvent({
+      type: 'connect_ok',
+      device: name,
+      detail: `Direct pair connect OK (addressType=${peripheral.addressType ?? savedAddressType ?? 'unknown'})`,
+    });
+
+    await connectPeripheral(peripheral, 0, true);
     return true;
   } catch (e: any) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: `GATT connect failed: ${e.message}` });
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Direct pair connect failed: ${e.message}` });
     return false;
   }
 }
