@@ -1,87 +1,42 @@
 
 
-# BLE-modul: Post-refactor granskning
+# BLE-modul: Slutlig granskning — tre kvarvarande problem
 
-## Kritiska buggar
+## Status
+Modulen är i **bra skick** efter alla tidigare refaktorer. Scanning, direct connect, GATT-cache, reconnect, keep-alive och demand-logik är alla stabila och använder officiella API:er. Tre mindre problem kvarstår:
 
-### 1. `adapter.ts` — `setNobleHciReleased` saknar import (RUNTIME CRASH)
-Rad 26 anropar `setNobleHciReleased(false)` men funktionen importeras aldrig. Detta kraschar vid varje anrop till `restartNobleHci()`.
+## 1. Död `_nobleHciReleased`-override i `getAdapterState()` (state.ts:170-173)
+Denna branch sätter `poweredOff` → `poweredOn` när noble HCI "avsiktligt släppts" för bluetoothctl. Men bluetoothctl är borttagen — `_nobleHciReleased` sätts aldrig till `true` i den nya koden. Branchen är **oanvändbar** och kan maskera riktiga `poweredOff`-tillstånd om den av misstag triggas.
 
-### 2. `nobleDirectConnect` — MAC-format fel
-Rad 254: `savedAddress.toLowerCase().replace(/:/g, '')` tar bort kolon. Men noble's `connectAsync(idOrAddress)` förväntar sig MAC **med** kolon (t.ex. `aa:bb:cc:dd:ee:ff`) baserat på dokumentation och typdeklarationer. Utan kolon kan noble inte matcha adressen.
+**Åtgärd:** Ta bort den döda branchen (rad 170-173) i `getAdapterState()`.
 
-### 3. GATT "cache" gör ingenting
-Rad 105-123: Trots att vi sparar `serviceHandle` och `charHandle`, anropar koden fortfarande `discoverServicesAsync([SERVICE_UUID])` + `discoverCharacteristicsAsync([CHAR_UUID])` — exakt samma som icke-cachad väg. Ingen tidsbesparing.
+## 2. `discoverSomeServicesAndCharacteristicsAsync` felaktig resultatparsning (connect.ts:149-153)
+Fallback-pathen förväntar sig `result.characteristics` (objekt), men noble returnerar en **array** `[services, characteristics]`. Om den tvåstegs-discovery misslyckas och fallback triggas, returneras `undefined` → tom array → retry → onödig fördröjning.
 
-**Lösning:** Noble har `peripheral.writeHandleAsync(handle, data, withoutResponse)` — med cachade handles kan vi skriva **direkt utan GATT discovery**.
-
-## Prestandaoptimeringar
-
-### 4. `ConnectOptions` har `minInterval`/`maxInterval`
-Noble's `connectAsync()` accepterar connection interval-parametrar direkt:
+**Åtgärd:** Ändra till:
 ```typescript
-noble.connectAsync(address, {
-  addressType: 'public',
-  minInterval: 6,   // 7.5ms
-  maxInterval: 8,   // 10ms
-});
+const [, characteristics] = await withTimeout(
+  peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
+  'Combined GATT discovery'
+);
 ```
-Detta ersätter det separata `requestConnectionInterval()` HCI-anropet och sätter intervallet **redan vid connect**.
 
-### 5. `waitForPoweredOnAsync()` — ersätter manuella loops
-Noble har en inbyggd `waitForPoweredOnAsync(timeout?)`. Ersätter:
-- `waitForAdapter()` i `adapter.ts` (10-iteration poll-loop)
-- Adapter-väntan i `scan.ts` (manuell stateChange-listener)
+## 3. Synkron `startScanning` i `nobleConnect` (connect.ts:336)
+`nobleConnect` använder `noble.startScanning([], true)` (synkron) medan resten av modulen använder `startScanningAsync`. Synkrona versionen kastar inte promise-rejection vid fel — felet fångas bara i try/catch som sync throw.
 
-### 6. `nobleConnect` anropar `restartNobleHci` ovillkorligt
-Rad 292 bör ha samma villkorliga check som `nobleDirectConnect` — skippa om adapter redan är `poweredOn`.
+**Åtgärd:** Byt till `await noble.startScanningAsync([], true)`.
 
-## Cleanup
-
-### 7. `restartNobleHci` anropar fortfarande `stopBluetoothctl()`
-Bluetoothctl används inte längre efter scan-refaktorn. Ta bort anropet och delays.
-
-### 8. `index.ts` kommentarer
-Rad 1 och 28 refererar fortfarande till "bluetoothctl discovery".
-
-## Plan
-
-### Steg 1: Fixa import-crash i `adapter.ts`
-Lägg till `setNobleHciReleased` i importen från `./state.js`.
-
-### Steg 2: Fixa MAC-format i `nobleDirectConnect`
-Behåll kolon i adressen: `savedAddress.toLowerCase()` (utan `.replace(/:/g, '')`).
-
-### Steg 3: Riktig GATT-cache med `writeHandleAsync`
-I `connectPeripheral()`: om cachade handles finns, skapa ett minimalt characteristic-objekt som använder `peripheral.writeHandleAsync(charHandle, ...)` direkt. Skippa `discoverServicesAsync` + `discoverCharacteristicsAsync` helt.
-
-Fallback till full discovery om `writeHandleAsync` misslyckas.
-
-### Steg 4: Connection interval via `ConnectOptions`
-Lägg till `minInterval: 6, maxInterval: 8` i `noble.connectAsync()` options. Behåll `requestConnectionInterval()` som fallback för `nobleConnect`-vägen (scan-based).
-
-### Steg 5: Ersätt adapter-wait med `waitForPoweredOnAsync`
-- `adapter.ts` → `waitForAdapter()`: `await noble.waitForPoweredOnAsync(5000)`
-- `scan.ts` → adapter-wait: `await noble.waitForPoweredOnAsync(5000)`
-
-### Steg 6: Villkorlig `restartNobleHci` i `nobleConnect`
-Samma check som `nobleDirectConnect` — skippa om `poweredOn`.
-
-### Steg 7: Ta bort `stopBluetoothctl` och städa kommentarer
-- Ta bort `stopBluetoothctl()` från `adapter.ts`
-- Uppdatera kommentarer i `index.ts`
+## Berörda filer
+- `pi/src/ble/state.ts` — ta bort död override-branch
+- `pi/src/ble/connect.ts` — fixa GATT fallback-parsning + async scan
 
 ## Sammanfattning
 
-| Problem | Typ | Påverkan |
-|---------|-----|----------|
-| Saknad import | BUG | Runtime crash |
-| MAC utan kolon | BUG | Anslutning misslyckas |
-| Falsk GATT-cache | PERF | 100-300ms bortkastad |
-| Connection interval vid connect | PERF | Snabbare anslutning |
-| Manuell adapter-wait | PERF | Onödig kod |
-| Ovillkorlig `restartNobleHci` | PERF | +600ms vid scan-connect |
-| Bluetoothctl-rester | CLEANUP | Död kod |
+| Problem | Typ | Risk |
+|---------|-----|------|
+| Död HCI-released override | CLEANUP | Kan maskera poweredOff |
+| Felaktig array-destructuring | BUG | GATT fallback misslyckas tyst |
+| Synkron startScanning | CLEANUP | Inkonsekvent felhantering |
 
-Berörda filer: `connect.ts`, `adapter.ts`, `scan.ts`, `index.ts`, `protocol.ts` (PiCharacteristic-typ för writeHandleAsync).
+Inga andra stabilitets- eller prestandaproblem identifierade. Efter dessa tre fixar är BLE-modulen fullt optimerad.
 
