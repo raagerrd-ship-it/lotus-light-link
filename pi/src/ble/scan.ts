@@ -10,7 +10,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, logConnectionEvent } from './state.js';
+import { noble, getDevice, setDevice, getAdapterState, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, setSavedDevice, setNobleHciReleased, logConnectionEvent } from './state.js';
 import { connectPeripheral, incrementConsecutiveFailures, getConsecutiveFailures, resetHciAdapter } from './connection.js';
 import { resetLastSent } from './protocol.js';
 import type { DiscoveredDevice } from './types.js';
@@ -31,11 +31,11 @@ function stopBluetoothctl(): void {
 /** Force noble to fully release HCI so bluetoothctl can use the adapter */
 function stopNoble(): void {
   try { noble.stopScanning(); } catch {}
-  // noble holds HCI open even when not scanning — we must close the underlying socket
   try {
     const bindings = (noble as any)._bindings;
     if (bindings?._hci?.stop) {
       bindings._hci.stop();
+      setNobleHciReleased(true);
       logConnectionEvent({ type: 'scan_start', detail: 'noble HCI released for bluetoothctl' });
     }
   } catch {}
@@ -60,7 +60,6 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
   logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl scan, timeout=${scanSeconds}s` });
 
-  // Release HCI from noble before bluetoothctl uses it
   stopNoble();
 
   const cmd = `bluetoothctl --timeout ${scanSeconds} scan le >/dev/null 2>&1; bluetoothctl devices`;
@@ -110,19 +109,18 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
 async function nobleConnect(targetId: string, name: string, timeoutMs = 5000): Promise<boolean> {
   const targetNorm = normalizeBleKey(targetId);
 
-  // Ensure bluetoothctl isn't holding HCI
   stopBluetoothctl();
-  await new Promise(r => setTimeout(r, 300)); // let HCI settle
+  await new Promise(r => setTimeout(r, 300));
 
-  // Re-initialize noble's HCI binding (we stopped it during scan)
   try {
+    setNobleHciReleased(false);
     const bindings = (noble as any)._bindings;
     if (bindings?._hci?.start) {
       bindings._hci.start();
       logConnectionEvent({ type: 'connect_start', device: name, detail: 'noble HCI re-initialized' });
     }
   } catch {}
-  await new Promise(r => setTimeout(r, 300)); // let noble HCI settle
+  await new Promise(r => setTimeout(r, 300));
 
   // Wait for adapter
   for (let i = 0; i < 10; i++) {

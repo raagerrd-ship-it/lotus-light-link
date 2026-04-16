@@ -109,6 +109,8 @@ export function getConnectionLog(): BleConnectionEvent[] {
 
 // ── Noble adapter helpers ──
 
+let _nobleHciReleased = false;
+
 export function processHasBtCaps(): boolean {
   try {
     const status = readFileSync('/proc/self/status', 'utf8');
@@ -124,6 +126,10 @@ export function processHasBtCaps(): boolean {
   return false;
 }
 
+export function setNobleHciReleased(released: boolean): void {
+  _nobleHciReleased = released;
+}
+
 export function getAdapterState(): string | undefined {
   const n = noble as typeof noble & {
     state?: string;
@@ -132,6 +138,11 @@ export function getAdapterState(): string | undefined {
     _adapterState?: string;
   };
   const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+
+  if (raw === 'poweredOff' && _nobleHciReleased && processHasBtCaps()) {
+    console.log('[BLE] noble HCI intentionally released — treating adapter as poweredOn for bluetoothctl mode');
+    return 'poweredOn';
+  }
 
   if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
     console.log('[BLE] noble state unclear but process has CAP_NET_RAW+CAP_NET_ADMIN — overriding to poweredOn');
