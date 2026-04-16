@@ -54,6 +54,49 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
   return nobleConnect(deviceId, entry.name, 5000);
 }
 
+/**
+ * Save a device manually by MAC address (no scan required).
+ * Useful when noble scan is unreliable but the user knows the address.
+ * Skips the metadata-discovery connect — connect.ts will fall back to
+ * peripheral lookup on first connect attempt.
+ */
+export async function saveManualDevice(address: string, name: string): Promise<boolean> {
+  // Normalize: "BE:67:00:15:09:41" → uppercase MAC
+  const mac = address.trim().toUpperCase().replace(/[^0-9A-F:]/g, '');
+  if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) {
+    console.error(`[BLE] Invalid MAC address: ${address}`);
+    return false;
+  }
+  // noble's id format = MAC without colons, lowercase
+  const id = mac.replace(/:/g, '').toLowerCase();
+  const cleanName = name.trim() || 'BLE Device';
+
+  // Disconnect current if any
+  const device = getDevice();
+  if (device) {
+    try { await device.peripheral.disconnectAsync(); } catch {}
+    setDevice(null);
+    resetLastSent();
+  }
+
+  // Save with sane BLEDOM defaults so direct-connect can try immediately
+  setSavedDevice(id, cleanName, mac, {
+    addressType: 'public',
+    connectable: true,
+    serviceUuids: ['fff0'],
+  });
+  console.log(`[BLE] Manually saved device: ${cleanName} (${mac})`);
+  logConnectionEvent({ type: 'connect', device: cleanName, detail: `Manually saved (${mac})` });
+
+  // Try to connect immediately
+  try {
+    return await nobleConnect(id, cleanName, 8000);
+  } catch (e: any) {
+    console.warn(`[BLE] Initial manual connect failed: ${e.message} — will retry on demand`);
+    return true; // saved successfully, even if connect failed
+  }
+}
+
 /** Forget saved device and disconnect */
 export async function forgetDevice(): Promise<void> {
   setSavedDevice(null, null, null);

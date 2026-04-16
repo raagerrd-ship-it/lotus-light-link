@@ -29,7 +29,7 @@ export { connectPeripheral, resetHciAdapter, autoConnectSaved } from './connect.
 export { scanForDevices, getLastScanResults, isScanning } from './scan.js';
 
 // Device persistence (save / forget)
-export { selectDevice, forgetDevice } from './save.js';
+export { selectDevice, forgetDevice, saveManualDevice } from './save.js';
 
 // Reconnection & demand
 export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.js';
