@@ -1,89 +1,37 @@
 /**
- * BLE scanning — hybrid strategy.
+ * BLE scanning — noble's official async scan API.
  *
- * noble.startScanningAsync hangs on Raspberry Pi (timeout after 6s) even when
- * adapter is poweredOn and HCI works. We fall back to `hcitool lescan` which
- * is reliable on the Pi, then parse stdout for MAC + name.
- *
- * noble is still used for GATT connect/read/write — only discovery is shelled out.
+ * Isolated tests confirm noble.startScanningAsync resolves in <10ms when
+ * waitForPoweredOnAsync is called first — even if our shim already reports
+ * poweredOn. Noble's internal scan API requires its own stateChange event.
  */
 
-import { spawn } from 'child_process';
-import { logConnectionEvent, getAdapterState, processHasBtCaps } from './state.js';
+import { noble, logConnectionEvent, getAdapterState, processHasBtCaps } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 
 // ── Scan state ──
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
+const SCAN_STEP_TIMEOUT_MS = 6000;
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
 
-/**
- * Run `hcitool lescan` for `timeoutMs` and parse stdout.
- * Returns devices keyed by MAC; later lines with a real name overwrite "(unknown)".
- */
-function hcitoolLescan(timeoutMs: number): Promise<DiscoveredDevice[]> {
-  return new Promise((resolve) => {
-    const seen = new Map<string, DiscoveredDevice>();
-    const proc = spawn('hcitool', ['lescan', '--duplicates'], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderrBuf = '';
-
-    const macRegex = /^([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)$/;
-
-    proc.stdout.on('data', (chunk: Buffer) => {
-      const lines = chunk.toString('utf8').split(/\r?\n/);
-      for (const line of lines) {
-        const m = line.trim().match(macRegex);
-        if (!m) continue;
-        const mac = m[1].toUpperCase();
-        const rawName = m[2].trim();
-        const id = mac.replace(/:/g, '').toLowerCase();
-        const isUnknown = rawName === '(unknown)' || rawName.length === 0;
-        const existing = seen.get(id);
-        // Prefer entries with a real name
-        if (!existing || (existing.name.startsWith('Okänd') && !isUnknown)) {
-          const name = isUnknown ? `Okänd enhet (${mac})` : rawName;
-          seen.set(id, { id, name, rssi: -100 });
-          if (!existing) {
-            logConnectionEvent({ type: 'scan_start', detail: `Found: ${name} (${mac})` });
-          } else if (!isUnknown) {
-            logConnectionEvent({ type: 'scan_start', detail: `Resolved name: ${name} (${mac})` });
-          }
-        }
-      }
-    });
-
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderrBuf += chunk.toString('utf8');
-    });
-
-    const cleanup = () => {
-      try { proc.kill('SIGINT'); } catch {}
-      // Force kill if it doesn't exit
-      setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} }, 500);
-    };
-
-    const stopTimer = setTimeout(cleanup, timeoutMs);
-
-    proc.on('error', (err) => {
-      clearTimeout(stopTimer);
-      logConnectionEvent({ type: 'scan_done', detail: `hcitool spawn error: ${err.message}` });
-      resolve([]);
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(stopTimer);
-      if (stderrBuf && seen.size === 0) {
-        logConnectionEvent({ type: 'scan_done', detail: `hcitool stderr: ${stderrBuf.trim().slice(0, 200)}` });
-      }
-      resolve(Array.from(seen.values()));
-    });
-  });
+function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = SCAN_STEP_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise.then((value) => {
+      clearTimeout(timer);
+      return value;
+    }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
 }
 
 /**
- * Scan for BLE devices using hcitool lescan (noble's scan hangs on Pi).
+ * Scan for BLE devices using noble's native async API.
  */
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   if (scanning) {
@@ -95,20 +43,61 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
 
   const adapterState = getAdapterState();
   const hasCaps = processHasBtCaps();
-  logConnectionEvent({ type: 'scan_start', detail: `hcitool scan, timeout=${timeoutMs}ms, adapter=${adapterState}, caps=${hasCaps}` });
+  logConnectionEvent({ type: 'scan_start', detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, caps=${hasCaps}` });
+
+  const seen = new Map<string, DiscoveredDevice>();
+  let discoverCount = 0;
+
+  const onDiscover = (peripheral: any) => {
+    discoverCount++;
+    const mac: string = peripheral.address ?? '';
+    if (!mac || mac === 'unknown') return;
+    const id = mac.replace(/:/g, '').toLowerCase();
+    const rawName: string = peripheral.advertisement?.localName ?? '';
+    const name = rawName.length > 0 ? rawName : `Okänd enhet (${mac.toUpperCase()})`;
+    const rssi: number = peripheral.rssi ?? -100;
+
+    if (!seen.has(id)) {
+      logConnectionEvent({ type: 'scan_start', detail: `Found: ${name} (${mac}) rssi=${rssi}` });
+    }
+    seen.set(id, { id, name, rssi });
+  };
 
   try {
-    lastScanResults = await hcitoolLescan(timeoutMs);
-    logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found` });
+    // ALWAYS call waitForPoweredOnAsync — noble's internal scan requires its own
+    // stateChange event, not just our adapter-state shim. Isolated tests show scan
+    // resolves in <10ms when this is called first.
+    logConnectionEvent({ type: 'scan_start', detail: 'Calling waitForPoweredOnAsync(5000)...' });
+    try {
+      await withTimeout((noble as any).waitForPoweredOnAsync(5000), 'waitForPoweredOnAsync', 5500);
+      logConnectionEvent({ type: 'scan_start', detail: 'Adapter ready via noble stateChange' });
+    } catch (e: any) {
+      logConnectionEvent({ type: 'scan_start', detail: `waitForPoweredOnAsync failed: ${e.message} — proceeding anyway` });
+    }
+
+    logConnectionEvent({ type: 'scan_start', detail: 'Starting scan (allowDuplicates=true)' });
+    noble.on('discover', onDiscover);
+    await withTimeout(noble.startScanningAsync([], true), 'startScanningAsync');
+
+    await new Promise(r => setTimeout(r, timeoutMs));
+
+    await withTimeout(noble.stopScanningAsync(), 'stopScanningAsync', 3000);
+    logConnectionEvent({ type: 'scan_done', detail: `Stopped. Raw events=${discoverCount}, unique=${seen.size}` });
   } catch (e: any) {
     logConnectionEvent({ type: 'scan_done', detail: `Error: ${e.message}` });
     console.error(`[BLE] scan error: ${e.message}`);
+    try { await withTimeout(noble.stopScanningAsync(), 'stopScanningAsync(cleanup)', 3000); } catch {}
   } finally {
-    scanning = false;
+    noble.removeListener('discover', onDiscover);
   }
+
+  lastScanResults = Array.from(seen.values());
+  scanning = false;
 
   if (lastScanResults.length === 0) {
     logConnectionEvent({ type: 'scan_done', detail: `0 devices — är BLEDOM på och i närheten? Adapter=${getAdapterState()}` });
+  } else {
+    logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found` });
   }
   return lastScanResults;
 }
