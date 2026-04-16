@@ -261,6 +261,35 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     });
   });
 
+  // BLE transport mode toggle (noble vs hcitool/gatttool fallback)
+  app.get('/api/ble/transport', (_req, res) => {
+    res.json({
+      hciEnabled: isHciTransportEnabled(),
+      hciConnected: isHciTransportConnected(),
+    });
+  });
+  app.put('/api/ble/transport', async (req, res) => {
+    const { hciEnabled } = req.body ?? {};
+    if (typeof hciEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'hciEnabled must be boolean' });
+    }
+    setHciTransportEnabled(hciEnabled);
+    // If turning on and we have a saved device, try to connect now
+    if (hciEnabled && getSavedDeviceId()) {
+      const mac = (getSavedDeviceAddress() ?? getSavedDeviceId()!.replace(/(.{2})(?=.)/g, '$1:')).toUpperCase();
+      const name = getSavedDeviceName() ?? 'BLE';
+      try { await connectViaHciTransport(mac, name); } catch {}
+    }
+    if (!hciEnabled) {
+      try { await disconnectHciTransport(); } catch {}
+    }
+    res.json({
+      ok: true,
+      hciEnabled: isHciTransportEnabled(),
+      hciConnected: isHciTransportConnected(),
+    });
+  });
+
   // Run hcitool lescan as a fallback when noble scan fails.
   // Returns raw output so user can copy MAC into manual save form.
   app.post('/api/ble/hci-scan', async (_req, res) => {
