@@ -73,21 +73,29 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   };
 
   try {
-    logConnectionEvent({ type: 'scan_start', detail: 'Waiting for adapter poweredOn...' });
-    await (noble as any).waitForPoweredOnAsync(5000);
-    logConnectionEvent({ type: 'scan_start', detail: `Adapter ready, starting scan (allowDuplicates=true)` });
+    const adapterNow = getAdapterState();
+    const adapterReady = adapterNow === 'poweredOn';
 
+    if (adapterReady) {
+      logConnectionEvent({ type: 'scan_start', detail: `Adapter already ready via state=${adapterNow} — skipping waitForPoweredOnAsync` });
+    } else {
+      logConnectionEvent({ type: 'scan_start', detail: 'Waiting for adapter poweredOn...' });
+      await withTimeout((noble as any).waitForPoweredOnAsync(5000), 'waitForPoweredOnAsync', 5500);
+      logConnectionEvent({ type: 'scan_start', detail: 'Adapter became poweredOn via noble stateChange' });
+    }
+
+    logConnectionEvent({ type: 'scan_start', detail: 'Starting scan (allowDuplicates=true)' });
     noble.on('discover', onDiscover);
-    await noble.startScanningAsync([], true);
+    await withTimeout(noble.startScanningAsync([], true), 'startScanningAsync');
 
     await new Promise(r => setTimeout(r, timeoutMs));
 
-    await noble.stopScanningAsync();
+    await withTimeout(noble.stopScanningAsync(), 'stopScanningAsync', 3000);
     logConnectionEvent({ type: 'scan_done', detail: `Stopped. Raw events=${discoverCount}, unique=${seen.size}` });
   } catch (e: any) {
     logConnectionEvent({ type: 'scan_done', detail: `Error: ${e.message}` });
     console.error(`[BLE] scan error: ${e.message}`);
-    try { await noble.stopScanningAsync(); } catch {}
+    try { await withTimeout(noble.stopScanningAsync(), 'stopScanningAsync(cleanup)', 3000); } catch {}
   } finally {
     noble.removeListener('discover', onDiscover);
   }
