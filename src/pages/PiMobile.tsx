@@ -962,7 +962,15 @@ function GlobalSettingsView({
 /* ── BLE Adapter Diagnostics Panel ── */
 function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const [diag, setDiag] = useState<{
-    adapter: { state: string; hciReleased: boolean; hasCaps: boolean; mode: string };
+    adapter: {
+      state: string;
+      hciReleased?: boolean;
+      hasCaps: boolean;
+      mode?: string;
+      nobleRaw?: { state: string | null; _state: string | null; adapterState: string | null; _adapterState: string | null };
+      hci?: { raw: string; error: string | null };
+      rfkill?: string;
+    };
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
       connectedDeviceId: string | null; demand: boolean; scanning: boolean;
@@ -999,19 +1007,23 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const a = diag.adapter;
   const s = diag.stats;
   const stateColor = a.state === 'poweredOn' ? 'text-green-400' : a.state === 'unauthorized' ? 'text-destructive' : 'text-yellow-400';
+  const nobleRaw = a.nobleRaw;
+  const nobleStateRaw = nobleRaw?.state ?? nobleRaw?._state ?? nobleRaw?.adapterState ?? nobleRaw?._adapterState ?? 'unknown';
+  const nobleStateColor = nobleStateRaw === 'poweredOn' ? 'text-green-400' : nobleStateRaw === 'unauthorized' ? 'text-destructive' : 'text-yellow-400';
+  const stateMismatch = a.state === 'poweredOn' && nobleStateRaw !== 'poweredOn';
 
   return (
     <div className="space-y-3">
       {/* Adapter status */}
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-background/50 rounded-lg p-2">
-          <div className="text-muted-foreground text-[10px]">Adapter</div>
+          <div className="text-muted-foreground text-[10px]">Adapter (effektiv)</div>
           <div className={`font-mono font-bold ${stateColor}`}>{a.state}</div>
         </div>
         <div className="bg-background/50 rounded-lg p-2">
-          <div className="text-muted-foreground text-[10px]">HCI-läge</div>
-          <div className="font-mono font-bold">{a.mode}</div>
-          {a.hciReleased && <span className="text-[9px] text-yellow-400">HCI frigiven</span>}
+          <div className="text-muted-foreground text-[10px]">noble.state (raw)</div>
+          <div className={`font-mono font-bold ${nobleStateColor}`}>{nobleStateRaw}</div>
+          {stateMismatch && <span className="text-[9px] text-yellow-400">OS ≠ noble</span>}
         </div>
         <div className="bg-background/50 rounded-lg p-2">
           <div className="text-muted-foreground text-[10px]">Capabilities</div>
@@ -1026,6 +1038,40 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
           </div>
         </div>
       </div>
+
+      {/* Noble internals + raw HCI from OS */}
+      {(nobleRaw || a.hci || a.rfkill) && (
+        <details className="bg-background/40 rounded-lg border border-border/50">
+          <summary className="cursor-pointer px-2 py-1.5 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider active:text-foreground">
+            OS ↔ noble (hciconfig + rfkill + noble internals)
+          </summary>
+          <div className="p-2 space-y-2 text-[10px] font-mono">
+            {nobleRaw && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">noble internals</div>
+                <div className="bg-background/60 rounded px-1.5 py-1 leading-tight">
+                  <div>state:         <span className="text-foreground">{String(nobleRaw.state)}</span></div>
+                  <div>_state:        <span className="text-foreground">{String(nobleRaw._state)}</span></div>
+                  <div>adapterState:  <span className="text-foreground">{String(nobleRaw.adapterState)}</span></div>
+                  <div>_adapterState: <span className="text-foreground">{String(nobleRaw._adapterState)}</span></div>
+                </div>
+              </div>
+            )}
+            {a.hci && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">hciconfig hci0 {a.hci.error && <span className="text-destructive">({a.hci.error})</span>}</div>
+                <pre className="bg-background/60 rounded px-1.5 py-1 whitespace-pre-wrap break-all text-foreground/80">{a.hci.raw || '(no output)'}</pre>
+              </div>
+            )}
+            {a.rfkill && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">rfkill list bluetooth</div>
+                <pre className="bg-background/60 rounded px-1.5 py-1 whitespace-pre-wrap break-all text-foreground/80">{a.rfkill}</pre>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
 
       {/* Stats row */}
       <div className="flex flex-wrap gap-2 text-[10px]">
