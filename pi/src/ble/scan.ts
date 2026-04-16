@@ -57,9 +57,13 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
       : Buffer.isBuffer(e?.stdout) ? e.stdout.toString('utf-8') : '';
   }
 
+  // Strip ANSI escape codes (bluetoothctl embeds color codes)
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const cleanOutput = stripAnsi(scanOutput || '');
+
   // Parse [NEW] Device lines from scan output (these are the actual discoveries)
   const seen = new Map<string, DiscoveredDevice>();
-  for (const line of (scanOutput || '').split('\n')) {
+  for (const line of cleanOutput.split('\n')) {
     // Match: [NEW] Device XX:XX:XX:XX:XX:XX Name
     const match = line.match(/\[NEW\]\s+Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)/);
     if (!match) continue;
@@ -74,7 +78,7 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   }
 
   // Also try to extract RSSI from [CHG] lines
-  for (const line of (scanOutput || '').split('\n')) {
+  for (const line of cleanOutput.split('\n')) {
     const rssiMatch = line.match(/\[CHG\]\s+Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+RSSI:\s+\S+\s+\((-?\d+)\)/);
     if (!rssiMatch) continue;
     const id = rssiMatch[1].replace(/:/g, '').toLowerCase();
