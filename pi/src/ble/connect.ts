@@ -227,21 +227,20 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Direct connect — primary path using saved metadata (no scan)
+//  Direct connect — primary path using noble.connectAsync(address)
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Create a peripheral from saved metadata without scanning.
- * Uses noble's internal API to construct a peripheral object, then
- * proceeds to GATT discovery via connectPeripheral().
+ * Connect directly to a saved device using noble.connectAsync(address).
+ * Uses the official API — no internal bindings manipulation needed.
+ * The peripheral is returned already connected; we skip L2CAP in connectPeripheral.
  */
 export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promise<boolean> {
-  const savedId = getSavedDeviceId();
   const savedAddress = getSavedDeviceAddress();
   const savedAddressType = getSavedAddressType();
 
-  if (!savedId || !savedAddress || !savedAddressType) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: 'Direct connect: missing saved metadata (address/addressType)' });
+  if (!savedAddress || !savedAddressType) {
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: 'Direct connect: missing saved address/addressType' });
     return false;
   }
 
@@ -252,53 +251,25 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
   }
   if (!await waitForAdapter(name)) return false;
 
-  logConnectionEvent({ type: 'connect_start', device: name, detail: `Direct connect: ${savedAddress} (${savedAddressType})` });
+  const macFormatted = savedAddress.toLowerCase().replace(/:/g, '');
+  logConnectionEvent({ type: 'connect_start', device: name, detail: `Direct connect via noble.connectAsync(${savedAddress})` });
 
   try {
-    const bindings = (noble as any)._bindings;
-    if (!bindings) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: 'Direct connect: no noble bindings' });
-      return false;
-    }
-
-    const normalizedId = normalizeBleKey(savedId);
-    const macFormatted = savedAddress.toLowerCase();
-
-    // Check if already cached from a previous session
-    let peripheral: any = (noble as any)._peripherals?.[normalizedId] ?? (noble as any)._peripherals?.[macFormatted];
-    if (peripheral) {
-      logConnectionEvent({ type: 'connect_start', device: name, detail: 'Using cached peripheral from noble' });
-    }
-
-    // Construct via bindings if not cached
-    if (!peripheral && bindings._peripherals) {
-      try {
-        if (typeof bindings.connect === 'function') {
-          const fakeAdvertisement = {
-            localName: name,
-            serviceUuids: getSavedServiceUuids() ?? [],
-          };
-          const uuid = normalizedId;
-          if (!(noble as any)._peripherals) (noble as any)._peripherals = {};
-          if (!(noble as any)._peripherals[uuid]) {
-            const connectable = getSavedConnectable() ?? true;
-            bindings.emit?.('discover', uuid, macFormatted, savedAddressType, connectable, fakeAdvertisement, -50);
-            await new Promise(r => setTimeout(r, 100));
-            peripheral = (noble as any)._peripherals?.[uuid];
-          }
-        }
-      } catch (e: any) {
-        logConnectionEvent({ type: 'connect_fail', device: name, detail: `Failed to construct peripheral: ${e.message}` });
-      }
-    }
+    // Official API: returns a connected peripheral object
+    const peripheral = await (noble as any).connectAsync(macFormatted, {
+      addressType: savedAddressType,
+      timeout: timeoutMs,
+    });
 
     if (!peripheral) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: 'Direct connect: could not create peripheral object' });
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: 'noble.connectAsync returned null' });
       return false;
     }
 
-    logConnectionEvent({ type: 'connect_start', device: name, detail: `Direct connecting (addressType=${peripheral.addressType})` });
-    await connectPeripheral(peripheral, 0, false);
+    logConnectionEvent({ type: 'connect_ok', device: name, detail: `noble.connectAsync OK (addressType=${peripheral.addressType ?? savedAddressType})` });
+
+    // Peripheral is already connected — skip L2CAP step
+    await connectPeripheral(peripheral, 0, true);
     return true;
   } catch (e: any) {
     logConnectionEvent({ type: 'connect_fail', device: name, detail: `Direct connect failed: ${e.message}` });
