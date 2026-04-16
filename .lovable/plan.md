@@ -1,51 +1,52 @@
 
 
-# Plan: Uppgradera BLE direct connect till officiellt API + GATT-cache
+# Plan: Ersätt bluetoothctl-scan med nobles officiella scan-API
 
-## Bakgrund (research-resultat)
+## Varför
 
-**Branschvalidering av ert mönster:**
-- Always-connected med demand = rekommenderat för realtidsstyrning (PunchThrough)
-- Exponentiell backoff = standard (bleak-retry-connector)
-- Sparad MAC + direct connect = korrekt (Nordic Semiconductor)
+Nuvarande `scan.ts` kör `bluetoothctl` via shell, vilket kräver:
+- Stoppa noble och släppa HCI-socketen (500ms delay)
+- Starta bluetoothctl som egen process
+- Parsa ANSI-färgkodad textoutput med regex
+- Starta om noble efteråt
 
-**Identifierat problem:**
-`nobleDirectConnect()` använder `bindings.emit('discover', ...)` — ett odokumenterat internt API. `@stoprocent/noble` har ett officiellt `noble.connectAsync(idOrAddress)` som ersätter detta.
+`@stoprocent/noble` har ett officiellt async scan-API som eliminerar allt detta.
 
-**Optimeringsmöjlighet:**
-GATT service caching — spara service/characteristic-handles så reconnect slipper full GATT discovery (~100-300ms besparad per reconnect).
+## Vad ändras
 
-## Ändringar
+### 1. `pi/src/ble/scan.ts` — Helt ny implementation
+Ersätt bluetoothctl-anropet med:
+```typescript
+await noble.waitForPoweredOnAsync();
+await noble.startScanningAsync([], true); // alla enheter, allow duplicates för RSSI
+// Samla enheter via 'discover' event under timeoutMs
+await noble.stopScanningAsync();
+```
+- Inga shell-exec, ingen ANSI-parsing, ingen HCI-release
+- RSSI och namn kommer direkt från `peripheral.rssi` och `peripheral.advertisement.localName`
+- Behåll samma `DiscoveredDevice[]` returtyp
 
-### 1. Ersätt `_bindings.emit('discover')` med `noble.connectAsync()`
-I `connect.ts` → `nobleDirectConnect()`:
-- Ta bort hela blocket som manuellt konstruerar peripheral via bindings (rad 217-256)
-- Ersätt med: `const peripheral = await noble.connectAsync(savedAddress, { timeout: timeoutMs })`
-- Skippa L2CAP-steget i `connectPeripheral()` eftersom peripheral redan är connected
-- Behåll `waitForAdapter()` och adapter-state-check
+### 2. `pi/src/ble/adapter.ts` — Förenkling
+- `stopNoble()` behövs inte längre för scan (noble äger HCI hela tiden)
+- `stopBluetoothctl()` kan tas bort om bluetoothctl inte används någon annanstans
+- Behåll `restartNobleHci()` och `waitForAdapter()` för connect-flödet
 
-### 2. Lägg till GATT service caching
-I `state.ts`:
-- Spara `serviceHandle` och `charHandle` efter första lyckade GATT discovery
-- I `connectPeripheral()`: om cached handles finns, försök använda dem direkt
-- Fallback till full discovery om cache misslyckas
+### 3. Ingen ändring i övriga filer
+`connect.ts`, `protocol.ts`, `reconnect.ts`, `save.ts` — oförändrade.
 
-### 3. Uppdatera `savePeripheralMetadata()`
-I `save.ts`:
-- Lägg till GATT handles i sparad metadata
-
-## Teknisk detalj
+## Teknisk jämförelse
 
 ```text
-Före (fragilt):
-  savedAddress → _bindings.emit('discover') → noble._peripherals[id] → connectAsync() → GATT discovery
+Före:                                          Efter:
+stopNoble() → 500ms delay →                   waitForPoweredOnAsync() →
+bluetoothctl scan le (shell) →                 startScanningAsync() →
+parse ANSI + regex →                           discover events (native) →
+stopBluetoothctl() →                           stopScanningAsync()
+restartNobleHci()
 
-Efter (officiellt API):
-  savedAddress → noble.connectAsync(address) → peripheral (redan connected) → GATT discovery (cached)
+Total overhead: ~1500ms+                       Total overhead: ~0ms
 ```
 
-## Berörda filer
-- `pi/src/ble/connect.ts` — ersätt direct connect + lägg till GATT cache
-- `pi/src/ble/state.ts` — spara/läsa GATT handles
-- `pi/src/ble/save.ts` — inkludera handles i metadata
+## Risk
+Låg. Noble's scan-API är den primära dokumenterade metoden. Om det mot förmodan inte fungerar på Pi Zero 2W kan vi alltid återgå till bluetoothctl.
 
