@@ -322,6 +322,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         state: adapterState,
         hasCaps,
       },
+      build: {
+        bleTag: BLE_BUILD_TAG,
+      },
       stats: {
         connected: getConnectedCount(),
         savedDevice: getSavedDeviceName(),

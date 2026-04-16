@@ -20,6 +20,7 @@ import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setS
 import { PiLightEngine } from './piEngine.js';
 import { startConfigServer } from './configServer.js';
 import { getItem, setItem } from './storage.js';
+import { BLE_BUILD_TAG } from './nobleBle.js';
 // Palette now comes from Sonos Gateway response (no cloud call needed)
 
 // --- Config ---
@@ -81,7 +82,7 @@ async function main() {
   console.log(`  Bridge: ${SONOS_BUDDY_API_URL}`);
   console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
   console.log(`  Config API: :${CONFIG_PORT} (backend)${process.env.PORT ? ' [from env PORT]' : process.env.BACKEND_PORT ? ' [from env BACKEND_PORT]' : ' [default]'}`);
-  
+  console.log(`  BLE build: ${BLE_BUILD_TAG}`);
 
   console.log('');
 
