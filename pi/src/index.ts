@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * Lotus Light Link — Headless Pi runtime
- * 
+ *
  * Runs on Raspberry Pi Zero 2 W with:
  * - INMP441 I²S MEMS microphone (ALSA)
- * - BLEDOM LED strips via noble
+ * - BLEDOM LED strips via noble (fixed: removed state mutation that broke startScanningAsync)
  * - Sonos now-playing via Cast Away bridge SSE
  * - Config API on :3050 (or PORT env var)
  */
