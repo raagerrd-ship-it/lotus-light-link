@@ -11,7 +11,7 @@ import {
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { waitForAdapter, ensureAdapterUp, normalizeBleKey } from './adapter.js';
+import { waitForAdapter, ensureAdapterUp, normalizeBleKey, restartNobleHci } from './adapter.js';
 import { isScanning } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
