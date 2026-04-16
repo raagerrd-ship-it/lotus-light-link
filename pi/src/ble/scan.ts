@@ -114,6 +114,16 @@ async function nobleConnect(targetId: string, name: string, timeoutMs = 5000): P
   stopBluetoothctl();
   await new Promise(r => setTimeout(r, 300)); // let HCI settle
 
+  // Re-initialize noble's HCI binding (we stopped it during scan)
+  try {
+    const bindings = (noble as any)._bindings;
+    if (bindings?._hci?.start) {
+      bindings._hci.start();
+      logConnectionEvent({ type: 'connect_start', device: name, detail: 'noble HCI re-initialized' });
+    }
+  } catch {}
+  await new Promise(r => setTimeout(r, 300)); // let noble HCI settle
+
   // Wait for adapter
   for (let i = 0; i < 10; i++) {
     if (getAdapterState() === 'poweredOn') break;
