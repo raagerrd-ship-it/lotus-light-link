@@ -1,12 +1,9 @@
 /**
- * BLE adapter management — HCI socket arbitration between noble and bluetoothctl.
- *
- * Key constraint: noble and bluetoothctl cannot use the HCI socket simultaneously.
- * This module provides helpers to switch between the two cleanly.
+ * BLE adapter management — noble HCI helpers and adapter init.
  */
 
 import { execFileSync } from 'child_process';
-import { noble, getAdapterState, setNobleHciReleased, logConnectionEvent } from './state.js';
+import { noble, getAdapterState, logConnectionEvent } from './state.js';
 
 /** Kill any bluetoothctl scan so noble can use HCI */
 export function stopBluetoothctl(): void {
