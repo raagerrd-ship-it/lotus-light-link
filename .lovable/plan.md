@@ -1,32 +1,43 @@
 
 
-## Plan: Rensa duplicerad BLE-rättighetshantering från Lotus Light
+# Spara BLE-metadata för direktanslutning utan scan
 
-### Bakgrund
+## Problem
+Varje gång vi vill ansluta till en sparad enhet måste noble scanna i ~5 sekunder för att populera sin interna peripheral-cache. Detta är onödigt om vi redan vet enhetens adress och addressType.
 
-Pi Control Center (PCC) ger redan `CAP_NET_RAW` + `CAP_NET_ADMIN` via systemd `AmbientCapabilities` till alla `node`-engine-komponenter. Det gäller Lotus Light sedan `managed: false` togs bort. De BLE-rättighetssteg som finns i Lotus Light's skript (bluetooth-grupp, polkit-regel) är alltså **dubbletter** som kan orsaka förvirring.
+## Vad som behöver sparas (utöver id/name/mac)
+- **addressType** (`"public"` | `"random"`) — krävs för L2CAP
+- **connectable** (boolean) — bra att veta
+- **serviceUuids** (string[]) — för filtrering
 
-### Ändringar
+## Teknisk plan
 
-#### 1. `pi/setup-lotus.sh` — Ta bort steg 6 (BLE-rättigheter)
-- Ta bort hela bluetooth-grupp + polkit-sektionen (rad ~105-135)
-- Dessa hanteras av PCC vid service-generering
-- Behåll `rfkill unblock bluetooth` (rad ~98) — det är en HW-sak, inte rättigheter
+### 1. Utöka `selectDevice()` i discover.ts
+När användaren väljer en enhet efter scan, spara hela noble-peripheralens metadata (inte bara id/name):
+- Hämta peripheral-objektet från nobles cache via `noble._peripherals[id]`
+- Extrahera `addressType`, `connectable`, `serviceUuids`
+- Skicka med till `setSavedDevice()`
 
-#### 2. `pi/update-services.sh` — Ta bort BLE-rättighetssteg
-- Ta bort bluetooth-grupp-check och polkit-installation (~rad 85-100)
-- PCC hanterar capabilities vid tjänstestart
+### 2. Uppdatera `setSavedDevice()` i state.ts
+Lägg till fält för `addressType`, `connectable`, `serviceUuids` i persisterad state (localStorage via storage.ts). State.ts har redan stöd för detta — `SavedDeviceMetadata` och extra parametrar finns, men de fylls aldrig i från discover.ts.
 
-#### 3. `pi/uninstall-lotus.sh` — Ta bort BLE-rensning
-- Ta bort steg 2 (polkit-regel + bluetooth-grupp, rad ~25-40)
-- PCC rensar sina egna systemd-tjänster vid avinstallation
+### 3. Lägg till `nobleDirectConnect()` i discover.ts
+Ny funktion som skapar ett peripheral-objekt direkt utan scan:
+```
+noble._bindings.connectAsync(savedAddress, savedAddressType)
+```
+Eller via nobles interna API. Om det misslyckas → fallback till nuvarande `nobleConnect()` med scan.
 
-#### 4. `pi/src/nobleBle.ts` — Förbättra diagnostik (refaktorering)
-- Logga tydligare vid `unauthorized` adapter-state: `"BLE unauthorized — kontrollera att PCC-tjänsten har AmbientCapabilities"`
-- Logga adapter-state vid uppstart för snabbare felsökning
+### 4. Uppdatera `autoConnectSaved()` 
+Försök `nobleDirectConnect()` först. Om det misslyckas, fallback till `nobleConnect()` (scan + connect).
 
-### Resultat
-- Lotus Light förlitar sig helt på PCC för rättigheter — samma modell som Sonos Gateway
-- Enklare skript, ingen duplicering
-- Bättre felmeddelanden vid BLE-problem
+### Filer som ändras
+- `pi/src/ble/discover.ts` — spara metadata vid select, ny directConnect-funktion
+- `pi/src/ble/state.ts` — redan förberett, bara behöver fyllas i korrekt
+- `pi/src/ble/scan.ts` — eventuellt spara addressType från bluetoothctl-output (om tillgängligt)
+- `.lovable/memory/pi/ble/hybrid-discovery-strategy.md` — uppdatera med direktanslutningsflöde
+
+### Risker
+- Noble's interna API (`_bindings`, `_peripherals`) är ej dokumenterad och kan ändras mellan versioner
+- Om addressType sparas fel → connection timeout → fallback till scan (säker degradering)
 
