@@ -6,7 +6,7 @@
  * 2. nobleConnect() — brief noble scan to find peripheral (first-time / fallback)
  *
  * connectPeripheral() handles GATT discovery, connection interval, and disconnect handler.
- * GATT handles are cached after first discovery for faster reconnects.
+ * GATT handles are cached after first discovery — reconnects use writeHandleAsync to skip discovery.
  */
 
 import {
@@ -71,6 +71,19 @@ export function setReconnectHandler(fn: (peripheral: any, name: string) => void)
 // ═══════════════════════════════════════════════════════════════════
 
 /**
+ * Create a handle-based characteristic wrapper that writes directly
+ * via peripheral.writeHandleAsync, bypassing GATT discovery entirely.
+ */
+function createCachedCharacteristic(peripheral: any, charHandle: number, name: string): PiCharacteristic {
+  return {
+    writeAsync: (data: Buffer, withoutResponse: boolean) =>
+      peripheral.writeHandleAsync(charHandle, data, withoutResponse),
+    deviceName: name,
+    deviceId: peripheral.id,
+  } as PiCharacteristic;
+}
+
+/**
  * Connect to a peripheral, discover GATT services/characteristics,
  * set connection interval, and wire up disconnect handler.
  */
@@ -94,37 +107,28 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   connectDuration = Math.round(performance.now() - connectStart);
   logConnectionEvent({ type: 'connect_ok', device: name, detail: skipL2cap ? 'L2CAP already up' : 'L2CAP connected', durationMs: connectDuration });
 
-  // Step 2: GATT discovery (with optional handle cache for faster reconnects)
+  // Step 2: GATT — try cached handle-based write first (skips discovery entirely)
   const gattStart = performance.now();
-  let characteristics: any[] = [];
-  const cachedServiceHandle = getSavedServiceHandle();
+  let char: PiCharacteristic | null = null;
   const cachedCharHandle = getSavedCharHandle();
-  let usedCache = false;
 
-  // Try cached GATT handles first (saves ~100-300ms on reconnect)
-  if (cachedServiceHandle != null && cachedCharHandle != null) {
+  if (cachedCharHandle != null) {
     try {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Trying cached handles (svc=${cachedServiceHandle}, char=${cachedCharHandle})` });
-      const services: any[] = await withTimeout(
-        peripheral.discoverServicesAsync([SERVICE_UUID]),
-        'Cached service discovery'
-      );
-      if (services?.length) {
-        characteristics = await withTimeout(
-          services[0].discoverCharacteristicsAsync([CHAR_UUID]),
-          'Cached characteristic discovery'
-        );
-        usedCache = true;
-      }
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Trying cached writeHandle (char=${cachedCharHandle})` });
+      const cachedChar = createCachedCharacteristic(peripheral, cachedCharHandle, name);
+      // Validate the handle by writing brightness max
+      await withTimeout(cachedChar.writeAsync(brightMaxBuf, true), 'Cached handle write');
+      char = cachedChar;
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'Cached handle OK — skipped GATT discovery', durationMs: Math.round(performance.now() - gattStart) });
     } catch (e: any) {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Cache attempt failed (${e.message}), falling back to full discovery` });
-      characteristics = [];
-      usedCache = false;
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Cached handle failed (${e.message}), falling back to full discovery` });
+      char = null;
     }
   }
 
   // Full GATT discovery if cache miss or not available
-  if (!characteristics?.length) {
+  if (!char) {
+    let characteristics: any[] = [];
     try {
       logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'Two-step: discovering services...' });
       const services: any[] = await withTimeout(
@@ -148,46 +152,44 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
       );
       characteristics = (result as any).characteristics ?? [];
     }
-  }
 
-  const gattDuration = Math.round(performance.now() - gattStart);
+    const gattDuration = Math.round(performance.now() - gattStart);
 
-  if (!characteristics?.length) {
-    try { await peripheral.disconnectAsync(); } catch {}
-    if (_retryCount < MAX_DISCOVERY_RETRIES) {
-      const delay = 500 * (_retryCount + 1);
-      logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms`, durationMs: gattDuration });
-      await new Promise(r => setTimeout(r, delay));
-      return connectPeripheral(peripheral, _retryCount + 1);
+    if (!characteristics?.length) {
+      try { await peripheral.disconnectAsync(); } catch {}
+      if (_retryCount < MAX_DISCOVERY_RETRIES) {
+        const delay = 500 * (_retryCount + 1);
+        logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms`, durationMs: gattDuration });
+        await new Promise(r => setTimeout(r, delay));
+        return connectPeripheral(peripheral, _retryCount + 1);
+      }
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: `No characteristic after ${MAX_DISCOVERY_RETRIES} retries`, durationMs: gattDuration });
+      throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
     }
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: `No characteristic after ${MAX_DISCOVERY_RETRIES} retries`, durationMs: gattDuration });
-    throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
-  }
 
-  // Cache GATT handles for future reconnects
-  const foundChar = characteristics[0];
-  if (foundChar._serviceUuid && foundChar.uuid) {
+    // Cache GATT handles for future reconnects
+    const foundChar = characteristics[0];
     const sHandle = foundChar.startHandle ?? foundChar._handle ?? null;
     const cHandle = foundChar.valueHandle ?? foundChar._valueHandle ?? null;
     if (sHandle != null || cHandle != null) {
       setSavedGattHandles(sHandle, cHandle);
       logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Cached GATT handles (svc=${sHandle}, char=${cHandle})` });
     }
+
+    logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
+
+    char = characteristics[0] as PiCharacteristic;
+    char.deviceName = name;
+    char.deviceId = peripheral.id;
+
+    // Write brightness max (not done via cache path)
+    await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
   }
 
-  logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK${usedCache ? ' (cached)' : ''} — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
-
-  const char = characteristics[0] as PiCharacteristic;
-  char.deviceName = name;
-  char.deviceId = peripheral.id;
-
-  // Step 3: Set hardware brightness to max
-  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
-
-  // Step 4: Request minimum connection interval
+  // Step 3: Request minimum connection interval
   requestConnectionInterval(peripheral, name);
 
-  // Step 5: Register disconnect handler BEFORE activating device (prevents race condition)
+  // Step 4: Register disconnect handler BEFORE activating device (prevents race condition)
   peripheral.once('disconnect', (reason: any) => {
     const uptime = Math.round((performance.now() - connectStart) / 1000);
     bleStats.disconnectCount++;
@@ -211,7 +213,7 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
     }
   });
 
-  // Step 6: Activate device (safe — disconnect handler already registered)
+  // Step 5: Activate device (safe — disconnect handler already registered)
   setDevice({ peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id });
   consecutiveConnectFailures = 0;
   startKeepAlive();
@@ -223,7 +225,7 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   }
 
   const totalDuration = Math.round(performance.now() - connectStart);
-  logConnectionEvent({ type: 'connect_ok', device: name, detail: `Fully ready (connect=${connectDuration}ms, gatt=${gattDuration}ms)`, durationMs: totalDuration });
+  logConnectionEvent({ type: 'connect_ok', device: name, detail: `Fully ready (connect=${connectDuration}ms, gatt=${Math.round(performance.now() - gattStart)}ms)`, durationMs: totalDuration });
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -251,13 +253,17 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
   }
   if (!await waitForAdapter(name)) return false;
 
-  const macFormatted = savedAddress.toLowerCase().replace(/:/g, '');
-  logConnectionEvent({ type: 'connect_start', device: name, detail: `Direct connect via noble.connectAsync(${savedAddress})` });
+  // Keep MAC with colons — noble expects aa:bb:cc:dd:ee:ff format
+  const macFormatted = savedAddress.toLowerCase();
+  logConnectionEvent({ type: 'connect_start', device: name, detail: `Direct connect via noble.connectAsync(${macFormatted})` });
 
   try {
     // Official API: returns a connected peripheral object
+    // Pass connection interval params directly for fastest possible link
     const peripheral = await (noble as any).connectAsync(macFormatted, {
       addressType: savedAddressType,
+      minInterval: 6,   // 7.5ms
+      maxInterval: 8,   // 10ms
       timeout: timeoutMs,
     });
 
@@ -266,6 +272,7 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
       return false;
     }
 
+    bleStats.requestedIntervalMs = '7.5–10';
     logConnectionEvent({ type: 'connect_ok', device: name, detail: `noble.connectAsync OK (addressType=${peripheral.addressType ?? savedAddressType})` });
 
     // Peripheral is already connected — skip L2CAP step
@@ -289,7 +296,11 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
 export async function nobleConnect(targetId: string, name: string, timeoutMs = 5000): Promise<boolean> {
   const targetNorm = normalizeBleKey(targetId);
 
-  await restartNobleHci(name);
+  // Only restart noble HCI if adapter is not already ready
+  const { getAdapterState } = await import('./state.js');
+  if (getAdapterState() !== 'poweredOn') {
+    await restartNobleHci(name);
+  }
   if (!await waitForAdapter(name)) return false;
 
   logConnectionEvent({ type: 'scan_start', device: name, detail: `noble scan for ${targetNorm} (${timeoutMs}ms)` });

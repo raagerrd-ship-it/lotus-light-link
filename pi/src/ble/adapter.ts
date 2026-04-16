@@ -2,26 +2,15 @@
  * BLE adapter management — noble HCI helpers and adapter init.
  */
 
-import { execFileSync } from 'child_process';
-import { noble, getAdapterState, logConnectionEvent } from './state.js';
-
-/** Kill any bluetoothctl scan so noble can use HCI */
-export function stopBluetoothctl(): void {
-  try {
-    execFileSync('bash', ['-lc', 'bluetoothctl scan off >/dev/null 2>&1 || true'], { timeout: 2000, stdio: 'ignore' });
-  } catch {}
-}
+import { noble, getAdapterState, logConnectionEvent, setNobleHciReleased, processHasBtCaps } from './state.js';
 
 /** Stop noble scanning (no HCI release — noble keeps the socket) */
 export function stopNoble(): void {
   try { noble.stopScanning(); } catch {}
 }
 
-/** Re-initialize noble's HCI binding after it was stopped for bluetoothctl */
+/** Re-initialize noble's HCI binding after it was stopped */
 export async function restartNobleHci(deviceName?: string): Promise<void> {
-  stopBluetoothctl();
-  await new Promise(r => setTimeout(r, 300));
-
   try {
     setNobleHciReleased(false);
     const bindings = (noble as any)._bindings;
@@ -33,22 +22,21 @@ export async function restartNobleHci(deviceName?: string): Promise<void> {
   await new Promise(r => setTimeout(r, 300));
 }
 
-/** Wait for adapter to reach poweredOn state (up to ~5s) */
+/** Wait for adapter to reach poweredOn state using noble's official API */
 export async function waitForAdapter(deviceName?: string): Promise<boolean> {
-  for (let i = 0; i < 10; i++) {
-    if (getAdapterState() === 'poweredOn') return true;
-    if (i === 9) {
-      logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `Adapter not ready: ${getAdapterState()}` });
-      return false;
-    }
-    await new Promise(r => setTimeout(r, 500));
+  try {
+    await (noble as any).waitForPoweredOnAsync(5000);
+    return true;
+  } catch {
+    logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `Adapter not ready: ${getAdapterState()}` });
+    return false;
   }
-  return false;
 }
 
 /** Force Bluetooth adapter up via rfkill/hciconfig (for auto-reconnect) */
 export function ensureAdapterUp(): void {
   try {
+    const { execFileSync } = require('child_process');
     execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'], { timeout: 4000, stdio: 'ignore' });
   } catch {}
 }
@@ -60,7 +48,6 @@ export function normalizeBleKey(value: string | null | undefined): string {
 
 // ── Startup diagnostics with adapter retry ──
 import { resetHciAdapter } from './connect.js';
-import { processHasBtCaps } from './state.js';
 
 async function initAdapter(): Promise<void> {
   const MAX_RETRIES = 3;

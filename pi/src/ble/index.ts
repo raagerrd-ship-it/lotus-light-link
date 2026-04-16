@@ -2,12 +2,12 @@
  * BLE module — public API re-exports.
  *
  * File structure:
- *   scan.ts      — bluetoothctl discovery → device list
+ *   scan.ts      — noble async scan → device list
  *   save.ts      — selectDevice, forgetDevice, savePeripheralMetadata
  *   connect.ts   — direct connect + GATT discovery + autoConnectSaved
  *   protocol.ts  — BLEDOM packet format, write pipeline, keep-alive
  *   reconnect.ts — reconnect loop, demand-based connection
- *   adapter.ts   — HCI socket arbitration (noble ↔ bluetoothctl)
+ *   adapter.ts   — adapter init, HCI helpers
  *   state.ts     — shared mutable state, stats, noble reference
  */
 
@@ -25,7 +25,7 @@ export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamm
 // Connection (direct connect + GATT)
 export { connectPeripheral, resetHciAdapter, autoConnectSaved } from './connect.js';
 
-// Scanning (bluetoothctl discovery)
+// Scanning (noble async discovery)
 export { scanForDevices, getLastScanResults, isScanning } from './scan.js';
 
 // Device persistence (save / forget)
