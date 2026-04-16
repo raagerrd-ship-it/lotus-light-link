@@ -12,7 +12,7 @@ export type { DeviceMode, PiCharacteristic, DiscoveredDevice, BleConnectionEvent
 // State & adapter
 export { bleStats, getAdapterState, isDemandActive, getConnectionLog } from './state.js';
 export { getDevice, getSavedDeviceId, getSavedDeviceName } from './state.js';
-export { getSavedDeviceAddress } from './state.js';
+export { getSavedDeviceAddress, isNobleHciReleased, processHasBtCaps } from './state.js';
 
 // Protocol (write pipeline)
 export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma } from './protocol.js';

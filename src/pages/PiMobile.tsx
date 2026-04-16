@@ -954,7 +954,143 @@ function GlobalSettingsView({
   );
 }
 
-/* ── BLE Connection Interval Diagnostics ── */
+/* ── BLE Adapter Diagnostics Panel ── */
+function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
+  const [diag, setDiag] = useState<{
+    adapter: { state: string; hciReleased: boolean; hasCaps: boolean; mode: string };
+    stats: {
+      connected: number; savedDevice: string | null; savedDeviceId: string | null;
+      connectedDeviceId: string | null; demand: boolean; scanning: boolean;
+      sentCount: number; writeFailCount: number; disconnectCount: number;
+      reconnectCount: number; lastDisconnectReason: string | null; lastDisconnectAt: string | null;
+    };
+    events: { type: string; device?: string; detail?: string; timestamp: string; durationMs?: number }[];
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${piBase}/api/ble/diagnostics`, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) setDiag(await r.json());
+    } catch {}
+    setLoading(false);
+  }, [piBase]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Auto-poll every 5s
+  useEffect(() => {
+    const iv = setInterval(refresh, 5000);
+    return () => clearInterval(iv);
+  }, [refresh]);
+
+  if (!diag) return (
+    <div className="text-center py-4 text-sm text-muted-foreground">
+      {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Kunde inte hämta diagnostik'}
+    </div>
+  );
+
+  const a = diag.adapter;
+  const s = diag.stats;
+  const stateColor = a.state === 'poweredOn' ? 'text-green-400' : a.state === 'unauthorized' ? 'text-destructive' : 'text-yellow-400';
+
+  return (
+    <div className="space-y-3">
+      {/* Adapter status */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">Adapter</div>
+          <div className={`font-mono font-bold ${stateColor}`}>{a.state}</div>
+        </div>
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">HCI-läge</div>
+          <div className="font-mono font-bold">{a.mode}</div>
+          {a.hciReleased && <span className="text-[9px] text-yellow-400">HCI frigiven</span>}
+        </div>
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">Capabilities</div>
+          <div className={`font-mono font-bold ${a.hasCaps ? 'text-green-400' : 'text-destructive'}`}>
+            {a.hasCaps ? 'OK ✓' : 'Saknas ✗'}
+          </div>
+        </div>
+        <div className="bg-background/50 rounded-lg p-2">
+          <div className="text-muted-foreground text-[10px]">Status</div>
+          <div className="font-mono font-bold">
+            {s.connected > 0 ? '🟢 Ansluten' : s.demand ? '🟡 Ansluter' : s.scanning ? '🔵 Söker' : '⚪ Vilar'}
+          </div>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div className="flex flex-wrap gap-2 text-[10px]">
+        <span className="bg-background/50 rounded px-2 py-1 font-mono">
+          📤 {s.sentCount} skickade
+        </span>
+        {s.writeFailCount > 0 && (
+          <span className="bg-destructive/20 text-destructive rounded px-2 py-1 font-mono">
+            ❌ {s.writeFailCount} misslyckade
+          </span>
+        )}
+        {s.disconnectCount > 0 && (
+          <span className="bg-yellow-500/20 text-yellow-400 rounded px-2 py-1 font-mono">
+            🔌 {s.disconnectCount} frånkopplingar
+          </span>
+        )}
+        {s.reconnectCount > 0 && (
+          <span className="bg-green-500/20 text-green-400 rounded px-2 py-1 font-mono">
+            🔄 {s.reconnectCount} återanslutningar
+          </span>
+        )}
+      </div>
+
+      {s.lastDisconnectReason && (
+        <div className="text-[10px] text-muted-foreground bg-background/30 rounded px-2 py-1">
+          Senaste frånkoppling: <span className="font-mono text-destructive">{s.lastDisconnectReason}</span>
+          {s.lastDisconnectAt && <span className="ml-1">({new Date(s.lastDisconnectAt).toLocaleTimeString('sv-SE')})</span>}
+        </div>
+      )}
+
+      {/* Event log */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+            Eventlogg ({diag.events.length})
+          </span>
+          <button onClick={refresh} disabled={loading} className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50">
+            {loading ? <Loader2 size={10} className="animate-spin" /> : '↻'}
+          </button>
+        </div>
+        {diag.events.length > 0 ? (
+          <div className="bg-background/40 rounded-lg border border-border/50 p-2 max-h-56 overflow-y-auto text-[10px] font-mono space-y-0.5">
+            {diag.events.slice().reverse().map((ev, i) => {
+              const parsed = new Date(ev.timestamp);
+              const time = isNaN(parsed.getTime()) ? '??:??:??' : parsed.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              const typeColor = ev.type.includes('fail') || ev.type === 'disconnect' ? 'text-destructive'
+                : ev.type.includes('ok') || ev.type.includes('connect_start') ? 'text-green-400'
+                : ev.type.includes('scan') ? 'text-blue-400'
+                : ev.type.includes('hci') ? 'text-yellow-400'
+                : 'text-muted-foreground';
+              return (
+                <div key={i} className="flex gap-1.5 leading-tight">
+                  <span className="text-muted-foreground/60 shrink-0">{time}</span>
+                  <span className={`shrink-0 ${typeColor}`}>{ev.type}</span>
+                  {ev.device && <span className="text-foreground/70">{ev.device}</span>}
+                  {ev.durationMs != null && <span className="text-muted-foreground">{ev.durationMs}ms</span>}
+                  {ev.detail && <span className="text-muted-foreground truncate">{ev.detail}</span>}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-[10px] text-muted-foreground italic">Inga events ännu.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 const BLE_LATENCY_HISTORY_LEN = 60; // ~3 min at 3s poll
 
 function BleIntervalDiag({ piBase }: { piBase: string }) {
@@ -2224,6 +2360,12 @@ export default function PiMobile() {
         </button>
         {showDiag && (
           <div className="mt-3 space-y-4">
+            <div className="bg-secondary/50 rounded-xl p-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Bluetooth size={12} /> BLE Adapter & Status
+              </h3>
+              <BleDiagnosticsPanel piBase={piBase} />
+            </div>
             <BleIntervalDiag piBase={piBase} />
             <div className="bg-secondary/50 rounded-xl p-3">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">

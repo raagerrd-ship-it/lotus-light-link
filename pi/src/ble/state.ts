@@ -126,6 +126,7 @@ export function processHasBtCaps(): boolean {
   return false;
 }
 
+export function isNobleHciReleased(): boolean { return _nobleHciReleased; }
 export function setNobleHciReleased(released: boolean): void {
   _nobleHciReleased = released;
 }
