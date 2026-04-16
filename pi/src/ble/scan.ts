@@ -11,6 +11,7 @@ import type { DiscoveredDevice } from './types.js';
 // ── Scan state ──
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
+const SCAN_STEP_TIMEOUT_MS = 6000;
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
