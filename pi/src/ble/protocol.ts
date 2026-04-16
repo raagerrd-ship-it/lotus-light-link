@@ -3,6 +3,7 @@
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
+import { isHciTransportEnabled, isHciTransportConnected, writeViaHciTransport } from './hciTransport.js';
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
@@ -108,7 +109,8 @@ export function setReconnectTrigger(fn: (peripheral: any, name: string) => void)
 /** Ultra-fast single-device BLE write with failure detection */
 export async function sendToBLE(r: number, g: number, b: number, brightness: number): Promise<void> {
   const device = getDevice();
-  if (!device) return;
+  const useHci = isHciTransportEnabled() && isHciTransportConnected();
+  if (!device && !useHci) return;
 
   const scale = brightnessToScale(brightness);
   const cr = (r * scale + 0.5) | 0;
@@ -135,12 +137,19 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   const now = performance.now();
 
   try {
-    if (device.mode === 'brightness') {
+    const mode = device?.mode ?? 'rgb';
+    let buf: Buffer;
+    if (mode === 'brightness') {
       brightBuf[3] = cbr;
-      await device.characteristic.writeAsync(brightBuf, true);
+      buf = brightBuf;
     } else {
       writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
-      await device.characteristic.writeAsync(writeBuf, true);
+      buf = writeBuf;
+    }
+    if (useHci) {
+      await writeViaHciTransport(buf);
+    } else {
+      await device!.characteristic.writeAsync(buf, true);
     }
 
     lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
@@ -171,8 +180,8 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
     if (writeFailCount === 1 || writeFailCount === WRITE_FAIL_THRESHOLD) {
       console.warn(`[BLE] Write failed (${writeFailCount}x): ${e.message ?? e}`);
     }
-    // Proactive reconnect
-    if (writeFailCount >= WRITE_FAIL_THRESHOLD && device && isDemandActive()) {
+    // Proactive reconnect (noble path only — hci transport handles its own session)
+    if (!useHci && writeFailCount >= WRITE_FAIL_THRESHOLD && device && isDemandActive()) {
       console.warn('[BLE] Too many write failures — triggering proactive reconnect');
       const periph = device.peripheral;
       const name = device.name;
@@ -192,10 +201,12 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
 /** Raw color write — bypasses dedup and brightness scaling. For test tools only. */
 export async function sendRawColor(r: number, g: number, b: number): Promise<void> {
   const device = getDevice();
-  if (!device) return;
+  const useHci = isHciTransportEnabled() && isHciTransportConnected();
+  if (!device && !useHci) return;
   resetLastSent();
   writeBuf[4] = r; writeBuf[5] = g; writeBuf[6] = b;
   try {
-    await device.characteristic.writeAsync(writeBuf, true);
+    if (useHci) await writeViaHciTransport(writeBuf);
+    else await device!.characteristic.writeAsync(writeBuf, true);
   } catch { /* fire-and-forget */ }
 }
