@@ -232,6 +232,11 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   await resetHciAdapter();
   await new Promise(r => setTimeout(r, 300));
 
+  // Force noble to re-init HCI binding so its internal state goes
+  // unknown → poweredOn. Without this, startScanningAsync fails with
+  // "state is unknown (not poweredOn)" forever.
+  await forceNoblePoweredOn(name);
+
   const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
     let done = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
