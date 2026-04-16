@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -317,10 +317,35 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     const hasCaps = processHasBtCaps();
     const events = getConnectionLog();
 
+    // Raw noble internals (before any caps-aware override) — for OS↔noble comparison
+    const n = noble as any;
+    const nobleRaw = {
+      state: n?.state ?? null,
+      _state: n?._state ?? null,
+      adapterState: n?.adapterState ?? null,
+      _adapterState: n?._adapterState ?? null,
+    };
+
+    // Raw HCI adapter info from the OS (hciconfig hci0)
+    let hciRaw = '';
+    let hciError: string | null = null;
+    try {
+      hciRaw = execSync('hciconfig hci0 2>&1', { encoding: 'utf8', timeout: 2000 }).trim();
+    } catch (e: any) {
+      hciError = e?.message ?? 'hciconfig failed';
+    }
+    let rfkill = '';
+    try {
+      rfkill = execSync('rfkill list bluetooth 2>&1', { encoding: 'utf8', timeout: 2000 }).trim();
+    } catch {}
+
     res.json({
       adapter: {
         state: adapterState,
         hasCaps,
+        nobleRaw,
+        hci: { raw: hciRaw, error: hciError },
+        rfkill,
       },
       build: {
         bleTag: BLE_BUILD_TAG,
