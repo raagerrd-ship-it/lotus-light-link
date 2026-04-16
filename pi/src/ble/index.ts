@@ -21,6 +21,9 @@ export { getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSav
 export { BLE_BUILD_TAG } from './state.js';
 export { noble } from './state.js';
 
+// HCI transport (manual fallback when noble HCI binding is stuck)
+export { isHciTransportEnabled, setHciTransportEnabled, isHciTransportConnected, connectViaHciTransport, disconnectHciTransport } from './hciTransport.js';
+
 // Protocol (write pipeline)
 export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma } from './protocol.js';
 

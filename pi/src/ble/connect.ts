@@ -15,6 +15,10 @@ import { waitForAdapter, ensureAdapterUp, normalizeBleKey, restartNobleHci } fro
 import { isScanning } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
+import {
+  isHciTransportEnabled, isHciTransportConnected,
+  connectViaHciTransport, disconnectHciTransport,
+} from './hciTransport.js';
 
 // ── HCI reset tracking ──
 let consecutiveConnectFailures = 0;
@@ -366,6 +370,11 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
  * direct connect works, so first-pairing uses the scanned MAC address.
  */
 export async function nobleConnect(targetId: string, name: string, timeoutMs = 8000): Promise<boolean> {
+  if (isHciTransportEnabled()) {
+    const mac = (getSavedDeviceAddress() ?? targetId.replace(/(.{2})(?=.)/g, '$1:')).toUpperCase();
+    const ok = await connectViaHciTransport(mac, name);
+    return ok;
+  }
   return withConnectLock(name, () => true, async () => {
     const ok = await nobleScanConnect(targetId, name, timeoutMs);
     if (ok) {
@@ -396,6 +405,13 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     return 0;
   }
   if (getDevice()) return 1;
+  if (isHciTransportEnabled()) {
+    if (isHciTransportConnected()) return 1;
+    const savedName = getSavedDeviceName() ?? savedId;
+    const mac = (getSavedDeviceAddress() ?? savedId.replace(/(.{2})(?=.)/g, '$1:')).toUpperCase();
+    const ok = await connectViaHciTransport(mac, savedName);
+    return ok ? 1 : 0;
+  }
   if (isScanning()) return 0;
 
   const savedName = getSavedDeviceName() ?? savedId;
