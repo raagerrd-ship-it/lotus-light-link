@@ -238,7 +238,8 @@ export async function forgetDevice(): Promise<void> {
 
 /**
  * Auto-connect to saved device on startup / reconnect loop.
- * Tries direct connect first (no scan), falls back to noble scan.
+ * Requires saved metadata (addressType) from a previous selectDevice().
+ * If metadata is missing, returns 0 — user must scan and select a device.
  */
 export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   const savedId = getSavedDeviceId();
@@ -250,26 +251,25 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   if (isScanning()) return 0;
 
   const savedName = getSavedDeviceName() ?? savedId;
+  const savedAddressType = getSavedAddressType();
+
+  if (!savedAddressType) {
+    console.log('[BLE] Saved device missing addressType — user must scan and select again');
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Missing addressType metadata — scan required' });
+    return 0;
+  }
 
   // Force adapter up
   ensureAdapterUp();
 
-  // Try 1: Direct connect using saved metadata (no scan needed)
-  const savedAddressType = getSavedAddressType();
-  if (savedAddressType) {
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Trying direct connect (no scan)' });
-    const ok = await nobleDirectConnect(savedName, Math.min(timeoutMs, 6000));
-    if (ok) return 1;
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Direct connect failed — falling back to scan' });
-  }
-
-  // Try 2: Scan-based connect (fallback)
-  const ok = await nobleConnect(savedId, savedName, Math.min(timeoutMs, 6000));
+  // Direct connect using saved metadata (no scan)
+  logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (no scan)' });
+  const ok = await nobleDirectConnect(savedName, Math.min(timeoutMs, 6000));
   if (ok) return 1;
 
   incrementConsecutiveFailures();
   const fails = getConsecutiveFailures();
-  logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Auto-connect failed [fail#${fails}]` });
+  logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed [fail#${fails}]` });
   if (fails >= HCI_RESET_THRESHOLD) {
     await resetHciAdapter();
   }
