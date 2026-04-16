@@ -238,16 +238,13 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   // BLE full diagnostics (adapter + HCI + events)
   app.get('/api/ble/diagnostics', (_req, res) => {
     const adapterState = getAdapterState() ?? 'unknown';
-    const hciReleased = isNobleHciReleased();
     const hasCaps = processHasBtCaps();
     const events = getConnectionLog();
 
     res.json({
       adapter: {
         state: adapterState,
-        hciReleased,
         hasCaps,
-        mode: hciReleased ? 'bluetoothctl' : 'noble',
       },
       stats: {
         connected: getConnectedCount(),
