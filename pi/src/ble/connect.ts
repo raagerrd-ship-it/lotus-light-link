@@ -25,10 +25,32 @@ import type { PiCharacteristic } from './types.js';
 // ── HCI reset tracking ──
 let consecutiveConnectFailures = 0;
 const HCI_RESET_THRESHOLD = 3;
+let activeConnectPromise: Promise<void> | null = null;
 
 export function getConsecutiveFailures(): number { return consecutiveConnectFailures; }
 export function resetConsecutiveFailures(): void { consecutiveConnectFailures = 0; }
 export function incrementConsecutiveFailures(): void { consecutiveConnectFailures++; }
+
+async function withConnectLock<T>(deviceName: string | undefined, successResult: () => T, fn: () => Promise<T>): Promise<T> {
+  while (activeConnectPromise) {
+    logConnectionEvent({ type: 'connect_start', device: deviceName, detail: 'Connect already in progress — waiting' });
+    await activeConnectPromise.catch(() => undefined);
+    if (getDevice()) return successResult();
+  }
+
+  let release!: () => void;
+  const lock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  activeConnectPromise = lock;
+
+  try {
+    return await fn();
+  } finally {
+    if (activeConnectPromise === lock) activeConnectPromise = null;
+    release();
+  }
+}
 
 export async function resetHciAdapter(): Promise<void> {
   logConnectionEvent({ type: 'hci_reset', detail: 'Initiating Bluetooth power cycle' });
@@ -294,52 +316,54 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
  * direct connect works, so first-pairing uses the scanned MAC address.
  */
 export async function nobleConnect(targetId: string, name: string, timeoutMs = 5000): Promise<boolean> {
-  const targetNorm = normalizeBleKey(targetId);
-  const mac = targetNorm.replace(/(.{2})(?=.)/g, '$1:').toLowerCase();
-  const savedAddressType = getSavedAddressType() ?? undefined;
+  return withConnectLock(name, () => true, async () => {
+    const targetNorm = normalizeBleKey(targetId);
+    const mac = targetNorm.replace(/(.{2})(?=.)/g, '$1:').toLowerCase();
+    const savedAddressType = getSavedAddressType() ?? undefined;
 
-  const { getAdapterState } = await import('./state.js');
-  if (getAdapterState() !== 'poweredOn') {
-    await restartNobleHci(name);
-  }
-  if (!await waitForAdapter(name)) return false;
-
-  logConnectionEvent({
-    type: 'connect_start',
-    device: name,
-    detail: `Direct first-pair connect via noble.connectAsync(${mac})${savedAddressType ? ` addressType=${savedAddressType}` : ''}`,
-  });
-
-  try {
-    const peripheral = await (noble as any).connectAsync(mac, {
-      ...(savedAddressType ? { addressType: savedAddressType } : {}),
-      minInterval: 6,
-      maxInterval: 8,
-      timeout: timeoutMs,
-    });
-
-    if (!peripheral) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: 'noble.connectAsync returned null' });
-      return false;
+    const { getAdapterState } = await import('./state.js');
+    if (getAdapterState() !== 'poweredOn') {
+      await restartNobleHci(name);
     }
-
-    const savedId = getSavedDeviceId();
-    if (savedId && normalizeBleKey(savedId) === targetNorm) {
-      savePeripheralMetadata(peripheral, savedId, name, mac.toUpperCase());
-    }
+    if (!await waitForAdapter(name)) return false;
 
     logConnectionEvent({
-      type: 'connect_ok',
+      type: 'connect_start',
       device: name,
-      detail: `Direct pair connect OK (addressType=${peripheral.addressType ?? savedAddressType ?? 'unknown'})`,
+      detail: `Direct first-pair connect via noble.connectAsync(${mac})${savedAddressType ? ` addressType=${savedAddressType}` : ''}`,
     });
 
-    await connectPeripheral(peripheral, 0, true);
-    return true;
-  } catch (e: any) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Direct pair connect failed: ${e.message}` });
-    return false;
-  }
+    try {
+      const peripheral = await (noble as any).connectAsync(mac, {
+        ...(savedAddressType ? { addressType: savedAddressType } : {}),
+        minInterval: 6,
+        maxInterval: 8,
+        timeout: timeoutMs,
+      });
+
+      if (!peripheral) {
+        logConnectionEvent({ type: 'connect_fail', device: name, detail: 'noble.connectAsync returned null' });
+        return false;
+      }
+
+      const savedId = getSavedDeviceId();
+      if (savedId && normalizeBleKey(savedId) === targetNorm) {
+        savePeripheralMetadata(peripheral, savedId, name, mac.toUpperCase());
+      }
+
+      logConnectionEvent({
+        type: 'connect_ok',
+        device: name,
+        detail: `Direct pair connect OK (addressType=${peripheral.addressType ?? savedAddressType ?? 'unknown'})`,
+      });
+
+      await connectPeripheral(peripheral, 0, true);
+      return true;
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: `Direct pair connect failed: ${e.message}` });
+      return false;
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -370,20 +394,24 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
     return 0;
   }
 
-  ensureAdapterUp();
+  return withConnectLock(savedName, () => 1, async () => {
+    if (getDevice()) return 1;
 
-  logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (no scan)' });
-  const ok = await nobleDirectConnect(savedName, Math.min(timeoutMs, 6000));
-  if (ok) return 1;
+    ensureAdapterUp();
 
-  incrementConsecutiveFailures();
-  const fails = getConsecutiveFailures();
-  logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Enheten är ev. avstängd eller utom räckhåll [fail#${fails}]` });
-  if (fails >= HCI_RESET_THRESHOLD) {
-    await resetHciAdapter();
-    resetConsecutiveFailures();
-  }
-  return 0;
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (no scan)' });
+    const ok = await nobleDirectConnect(savedName, Math.min(timeoutMs, 6000));
+    if (ok) return 1;
+
+    incrementConsecutiveFailures();
+    const fails = getConsecutiveFailures();
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Enheten är ev. avstängd eller utom räckhåll [fail#${fails}]` });
+    if (fails >= HCI_RESET_THRESHOLD) {
+      await resetHciAdapter();
+      resetConsecutiveFailures();
+    }
+    return 0;
+  });
 }
 
 // Legacy alias
