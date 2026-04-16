@@ -136,8 +136,6 @@ export function getConnectionLog(): BleConnectionEvent[] {
 
 // ── Noble adapter helpers ──
 
-let _nobleHciReleased = false;
-
 export function processHasBtCaps(): boolean {
   try {
     const status = readFileSync('/proc/self/status', 'utf8');
