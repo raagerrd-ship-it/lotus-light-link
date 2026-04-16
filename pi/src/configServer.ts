@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, isNobleHciReleased, processHasBtCaps } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, isNobleHciReleased, processHasBtCaps } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -220,6 +220,19 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   // BLE connection diagnostics log
   app.get('/api/ble/log', (_req, res) => {
     res.json({ events: getConnectionLog() });
+  });
+
+  // BLE saved device metadata (for verifying direct-connect data)
+  app.get('/api/ble/saved-metadata', (_req, res) => {
+    res.json({
+      id: getSavedDeviceId(),
+      name: getSavedDeviceName(),
+      address: getSavedDeviceAddress(),
+      addressType: getSavedAddressType(),
+      connectable: getSavedConnectable(),
+      serviceUuids: getSavedServiceUuids(),
+      directConnectReady: !!(getSavedAddressType() && getSavedDeviceAddress()),
+    });
   });
 
   // BLE full diagnostics (adapter + HCI + events)
