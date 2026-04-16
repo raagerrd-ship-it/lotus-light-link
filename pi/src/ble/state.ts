@@ -150,7 +150,6 @@ export function processHasBtCaps(): boolean {
   }
   return false;
 }
-}
 
 export function getAdapterState(): string | undefined {
   const n = noble as typeof noble & {
