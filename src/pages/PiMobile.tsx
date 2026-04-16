@@ -2199,15 +2199,7 @@ export default function PiMobile() {
 
         {/* Manual MAC entry — only path to add a device. HCI-scan inside the form. */}
         <div className="mt-2">
-          {true ? (
-              <button
-                onClick={() => setShowManualBle(true)}
-                className="text-[11px] text-muted-foreground active:text-foreground underline-offset-2 hover:underline"
-              >
-                Lägg till manuellt (MAC-adress)
-              </button>
-            ) : (
-              <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2">
+          <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-medium text-foreground">Lägg till manuellt</span>
                   <button
@@ -2353,9 +2345,7 @@ export default function PiMobile() {
                   Försöker ansluta direkt efter sparning. BLEDOM-standardvärden används (public address, fff0-tjänst).
                 </p>
               </div>
-            )}
           </div>
-        )}
 
         {/* BLE Scan Log */}
         {showBleLog && (
