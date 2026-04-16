@@ -53,19 +53,15 @@ async function withConnectLock<T>(deviceName: string | undefined, successResult:
 }
 
 export async function resetHciAdapter(): Promise<void> {
-  logConnectionEvent({ type: 'hci_reset', detail: 'Initiating Bluetooth power cycle' });
+  logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig hci0 reset (sandbox-friendly)' });
   try {
-    const { exec } = await import('child_process');
-    await new Promise<void>((resolve, reject) => {
-      exec('bluetoothctl power off && sleep 1 && bluetoothctl power on', { timeout: 10000 }, (err) => {
-        if (err) reject(err); else resolve();
-      });
-    });
-    bleStats.lastDisconnectReason = 'bt_power_cycle';
-    logConnectionEvent({ type: 'hci_reset', detail: 'Power cycle complete ✓' });
-    await new Promise(r => setTimeout(r, 2000));
+    const { execFileSync } = await import('child_process');
+    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 down >/dev/null 2>&1; command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1; command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
+    bleStats.lastDisconnectReason = 'hci_reset';
+    logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig reset complete ✓' });
+    await new Promise(r => setTimeout(r, 1000));
   } catch (e: any) {
-    logConnectionEvent({ type: 'hci_reset', detail: `Power cycle FAILED: ${e.message}` });
+    logConnectionEvent({ type: 'hci_reset', detail: `hciconfig reset failed: ${e.message}` });
   }
 }
 
