@@ -2262,6 +2262,32 @@ export default function PiMobile() {
               >
                 ↻ Uppdatera
               </button>
+              <button
+                onClick={async () => {
+                  const text = bleScanLog.map(ev => {
+                    const t = typeof ev.timestamp === 'string' ? ev.timestamp : '';
+                    return `${t}\t${ev.type}${ev.device ? '\t' + ev.device : ''}${ev.detail ? '\t' + ev.detail : ''}`;
+                  }).join('\n');
+                  try {
+                    if (navigator.clipboard?.writeText) {
+                      await navigator.clipboard.writeText(text);
+                    } else {
+                      const ta = document.createElement('textarea');
+                      ta.value = text; document.body.appendChild(ta);
+                      ta.select(); document.execCommand('copy'); ta.remove();
+                    }
+                  } catch {}
+                }}
+                className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50"
+              >
+                ⧉ Kopiera
+              </button>
+              <button
+                onClick={() => setBleScanLog([])}
+                className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50"
+              >
+                ✕ Rensa
+              </button>
             </div>
             {bleScanLog.length > 0 ? (
               <div className="bg-secondary/60 rounded-lg border border-border p-2 max-h-48 overflow-y-auto text-[10px] font-mono space-y-0.5">
