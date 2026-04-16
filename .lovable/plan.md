@@ -1,52 +1,87 @@
 
 
-# Plan: Ersätt bluetoothctl-scan med nobles officiella scan-API
+# BLE-modul: Post-refactor granskning
 
-## Varför
+## Kritiska buggar
 
-Nuvarande `scan.ts` kör `bluetoothctl` via shell, vilket kräver:
-- Stoppa noble och släppa HCI-socketen (500ms delay)
-- Starta bluetoothctl som egen process
-- Parsa ANSI-färgkodad textoutput med regex
-- Starta om noble efteråt
+### 1. `adapter.ts` — `setNobleHciReleased` saknar import (RUNTIME CRASH)
+Rad 26 anropar `setNobleHciReleased(false)` men funktionen importeras aldrig. Detta kraschar vid varje anrop till `restartNobleHci()`.
 
-`@stoprocent/noble` har ett officiellt async scan-API som eliminerar allt detta.
+### 2. `nobleDirectConnect` — MAC-format fel
+Rad 254: `savedAddress.toLowerCase().replace(/:/g, '')` tar bort kolon. Men noble's `connectAsync(idOrAddress)` förväntar sig MAC **med** kolon (t.ex. `aa:bb:cc:dd:ee:ff`) baserat på dokumentation och typdeklarationer. Utan kolon kan noble inte matcha adressen.
 
-## Vad ändras
+### 3. GATT "cache" gör ingenting
+Rad 105-123: Trots att vi sparar `serviceHandle` och `charHandle`, anropar koden fortfarande `discoverServicesAsync([SERVICE_UUID])` + `discoverCharacteristicsAsync([CHAR_UUID])` — exakt samma som icke-cachad väg. Ingen tidsbesparing.
 
-### 1. `pi/src/ble/scan.ts` — Helt ny implementation
-Ersätt bluetoothctl-anropet med:
+**Lösning:** Noble har `peripheral.writeHandleAsync(handle, data, withoutResponse)` — med cachade handles kan vi skriva **direkt utan GATT discovery**.
+
+## Prestandaoptimeringar
+
+### 4. `ConnectOptions` har `minInterval`/`maxInterval`
+Noble's `connectAsync()` accepterar connection interval-parametrar direkt:
 ```typescript
-await noble.waitForPoweredOnAsync();
-await noble.startScanningAsync([], true); // alla enheter, allow duplicates för RSSI
-// Samla enheter via 'discover' event under timeoutMs
-await noble.stopScanningAsync();
+noble.connectAsync(address, {
+  addressType: 'public',
+  minInterval: 6,   // 7.5ms
+  maxInterval: 8,   // 10ms
+});
 ```
-- Inga shell-exec, ingen ANSI-parsing, ingen HCI-release
-- RSSI och namn kommer direkt från `peripheral.rssi` och `peripheral.advertisement.localName`
-- Behåll samma `DiscoveredDevice[]` returtyp
+Detta ersätter det separata `requestConnectionInterval()` HCI-anropet och sätter intervallet **redan vid connect**.
 
-### 2. `pi/src/ble/adapter.ts` — Förenkling
-- `stopNoble()` behövs inte längre för scan (noble äger HCI hela tiden)
-- `stopBluetoothctl()` kan tas bort om bluetoothctl inte används någon annanstans
-- Behåll `restartNobleHci()` och `waitForAdapter()` för connect-flödet
+### 5. `waitForPoweredOnAsync()` — ersätter manuella loops
+Noble har en inbyggd `waitForPoweredOnAsync(timeout?)`. Ersätter:
+- `waitForAdapter()` i `adapter.ts` (10-iteration poll-loop)
+- Adapter-väntan i `scan.ts` (manuell stateChange-listener)
 
-### 3. Ingen ändring i övriga filer
-`connect.ts`, `protocol.ts`, `reconnect.ts`, `save.ts` — oförändrade.
+### 6. `nobleConnect` anropar `restartNobleHci` ovillkorligt
+Rad 292 bör ha samma villkorliga check som `nobleDirectConnect` — skippa om adapter redan är `poweredOn`.
 
-## Teknisk jämförelse
+## Cleanup
 
-```text
-Före:                                          Efter:
-stopNoble() → 500ms delay →                   waitForPoweredOnAsync() →
-bluetoothctl scan le (shell) →                 startScanningAsync() →
-parse ANSI + regex →                           discover events (native) →
-stopBluetoothctl() →                           stopScanningAsync()
-restartNobleHci()
+### 7. `restartNobleHci` anropar fortfarande `stopBluetoothctl()`
+Bluetoothctl används inte längre efter scan-refaktorn. Ta bort anropet och delays.
 
-Total overhead: ~1500ms+                       Total overhead: ~0ms
-```
+### 8. `index.ts` kommentarer
+Rad 1 och 28 refererar fortfarande till "bluetoothctl discovery".
 
-## Risk
-Låg. Noble's scan-API är den primära dokumenterade metoden. Om det mot förmodan inte fungerar på Pi Zero 2W kan vi alltid återgå till bluetoothctl.
+## Plan
+
+### Steg 1: Fixa import-crash i `adapter.ts`
+Lägg till `setNobleHciReleased` i importen från `./state.js`.
+
+### Steg 2: Fixa MAC-format i `nobleDirectConnect`
+Behåll kolon i adressen: `savedAddress.toLowerCase()` (utan `.replace(/:/g, '')`).
+
+### Steg 3: Riktig GATT-cache med `writeHandleAsync`
+I `connectPeripheral()`: om cachade handles finns, skapa ett minimalt characteristic-objekt som använder `peripheral.writeHandleAsync(charHandle, ...)` direkt. Skippa `discoverServicesAsync` + `discoverCharacteristicsAsync` helt.
+
+Fallback till full discovery om `writeHandleAsync` misslyckas.
+
+### Steg 4: Connection interval via `ConnectOptions`
+Lägg till `minInterval: 6, maxInterval: 8` i `noble.connectAsync()` options. Behåll `requestConnectionInterval()` som fallback för `nobleConnect`-vägen (scan-based).
+
+### Steg 5: Ersätt adapter-wait med `waitForPoweredOnAsync`
+- `adapter.ts` → `waitForAdapter()`: `await noble.waitForPoweredOnAsync(5000)`
+- `scan.ts` → adapter-wait: `await noble.waitForPoweredOnAsync(5000)`
+
+### Steg 6: Villkorlig `restartNobleHci` i `nobleConnect`
+Samma check som `nobleDirectConnect` — skippa om `poweredOn`.
+
+### Steg 7: Ta bort `stopBluetoothctl` och städa kommentarer
+- Ta bort `stopBluetoothctl()` från `adapter.ts`
+- Uppdatera kommentarer i `index.ts`
+
+## Sammanfattning
+
+| Problem | Typ | Påverkan |
+|---------|-----|----------|
+| Saknad import | BUG | Runtime crash |
+| MAC utan kolon | BUG | Anslutning misslyckas |
+| Falsk GATT-cache | PERF | 100-300ms bortkastad |
+| Connection interval vid connect | PERF | Snabbare anslutning |
+| Manuell adapter-wait | PERF | Onödig kod |
+| Ovillkorlig `restartNobleHci` | PERF | +600ms vid scan-connect |
+| Bluetoothctl-rester | CLEANUP | Död kod |
+
+Berörda filer: `connect.ts`, `adapter.ts`, `scan.ts`, `index.ts`, `protocol.ts` (PiCharacteristic-typ för writeHandleAsync).
 
