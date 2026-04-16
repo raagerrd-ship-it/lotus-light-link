@@ -1,9 +1,14 @@
 /**
  * BLE module — public API re-exports.
- * Drop-in replacement for the old monolithic nobleBle.ts.
  *
- * Import order matters: reconnect.ts must load after connection.ts and protocol.ts
- * to wire up cross-module callbacks.
+ * File structure:
+ *   scan.ts      — bluetoothctl discovery → device list
+ *   save.ts      — selectDevice, forgetDevice, savePeripheralMetadata
+ *   connect.ts   — direct connect + GATT discovery + autoConnectSaved
+ *   protocol.ts  — BLEDOM packet format, write pipeline, keep-alive
+ *   reconnect.ts — reconnect loop, demand-based connection
+ *   adapter.ts   — HCI socket arbitration (noble ↔ bluetoothctl)
+ *   state.ts     — shared mutable state, stats, noble reference
  */
 
 // Types
@@ -17,14 +22,14 @@ export { getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSav
 // Protocol (write pipeline)
 export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma } from './protocol.js';
 
-// Connection
-export { connectPeripheral, resetHciAdapter } from './connection.js';
+// Connection (direct connect + GATT)
+export { connectPeripheral, resetHciAdapter, autoConnectSaved } from './connect.js';
 
 // Scanning (bluetoothctl discovery)
 export { scanForDevices, getLastScanResults, isScanning } from './scan.js';
 
-// Device selection & noble-based connect
-export { selectDevice, forgetDevice, autoConnectSaved } from './discover.js';
+// Device persistence (save / forget)
+export { selectDevice, forgetDevice } from './save.js';
 
 // Reconnection & demand
 export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.js';
@@ -32,7 +37,7 @@ export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.j
 // ── Convenience / legacy aliases ──
 import { getDevice, setDevice } from './state.js';
 import { stopKeepAlive, resetLastSent } from './protocol.js';
-import { autoConnectSaved } from './discover.js';
+import { autoConnectSaved } from './connect.js';
 
 export function getConnectedCount(): number {
   return getDevice() ? 1 : 0;
