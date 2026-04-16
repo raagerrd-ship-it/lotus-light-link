@@ -971,6 +971,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       hci?: { raw: string; error: string | null };
       rfkill?: string;
     };
+    transport?: { hciEnabled: boolean; hciConnected: boolean };
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
       connectedDeviceId: string | null; demand: boolean; scanning: boolean;
@@ -980,6 +981,25 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
     events: { type: string; device?: string; detail?: string; timestamp: string; durationMs?: number }[];
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  const toggleTransport = useCallback(async (next: boolean) => {
+    setToggling(true);
+    try {
+      await fetch(`${piBase}/api/ble/transport`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hciEnabled: next }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {}
+    setToggling(false);
+    // Force refresh
+    try {
+      const r = await fetch(`${piBase}/api/ble/diagnostics`, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) setDiag(await r.json());
+    } catch {}
+  }, [piBase]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -1072,6 +1092,33 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
           </div>
         </details>
       )}
+
+      {/* Transport toggle (noble vs hcitool/gatttool) */}
+      <div className="bg-background/40 rounded-lg border border-border/50 p-2 space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">BLE-transport</div>
+            <div className="text-[11px] font-mono text-foreground">
+              {diag.transport?.hciEnabled ? 'hcitool + gatttool' : 'noble (default)'}
+              {diag.transport?.hciEnabled && (
+                <span className={`ml-1.5 ${diag.transport.hciConnected ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {diag.transport.hciConnected ? '● ansluten' : '○ ej ansluten'}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            disabled={toggling}
+            onClick={() => toggleTransport(!diag.transport?.hciEnabled)}
+            className={`text-[11px] font-medium px-2.5 py-1 rounded-md border ${diag.transport?.hciEnabled ? 'bg-yellow-500/20 border-yellow-500/40 text-yellow-300 active:bg-yellow-500/30' : 'bg-secondary border-border text-foreground active:bg-secondary/70'} disabled:opacity-50`}
+          >
+            {toggling ? <Loader2 size={12} className="animate-spin inline" /> : diag.transport?.hciEnabled ? 'Stäng av' : 'Aktivera fallback'}
+          </button>
+        </div>
+        <p className="text-[10px] text-muted-foreground leading-snug">
+          Aktivera om noble.state stannar på <span className="font-mono">unknown</span> trots att hciconfig visar UP. Använder bluetoothctl/gatttool direkt mot sparad MAC.
+        </p>
+      </div>
 
       {/* Stats row */}
       <div className="flex flex-wrap gap-2 text-[10px]">
