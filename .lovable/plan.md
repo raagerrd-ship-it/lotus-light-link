@@ -1,43 +1,75 @@
 
 
-# Spara BLE-metadata för direktanslutning utan scan
+# BLE-modul: Stabilitetsanalys och åtgärder
 
-## Problem
-Varje gång vi vill ansluta till en sparad enhet måste noble scanna i ~5 sekunder för att populera sin interna peripheral-cache. Detta är onödigt om vi redan vet enhetens adress och addressType.
+## Identifierade problem
 
-## Vad som behöver sparas (utöver id/name/mac)
-- **addressType** (`"public"` | `"random"`) — krävs för L2CAP
-- **connectable** (boolean) — bra att veta
-- **serviceUuids** (string[]) — för filtrering
+### 1. Timer-läcka i `withTimeout` (connect.ts:52-58)
+`setTimeout` rensas aldrig vid lyckad resolve. Timern lever kvar och skapar en ohanterad rejection som kan krascha processen.
 
-## Teknisk plan
+### 2. Reconnect använder gammalt peripheral-objekt (reconnect.ts:23)
+`reconnectWithBackoff` tar emot det gamla peripheral-objektet och försöker `connectPeripheral(peripheral)` direkt. Efter disconnect kan det objektet vara ogiltigt. Bör använda `autoConnectSaved()` direkt istället för att dela upp i "direct retry" och "scan retry".
 
-### 1. Utöka `selectDevice()` i discover.ts
-När användaren väljer en enhet efter scan, spara hela noble-peripheralens metadata (inte bara id/name):
-- Hämta peripheral-objektet från nobles cache via `noble._peripherals[id]`
-- Extrahera `addressType`, `connectable`, `serviceUuids`
-- Skicka med till `setSavedDevice()`
+### 3. Disconnect-handler registreras EFTER device aktiveras (connect.ts:148-181)
+`setDevice()` anropas på rad 149, men `peripheral.once('disconnect')` registreras på rad 160. Om disconnect sker i det fönstret missar vi eventet → zombie-device.
 
-### 2. Uppdatera `setSavedDevice()` i state.ts
-Lägg till fält för `addressType`, `connectable`, `serviceUuids` i persisterad state (localStorage via storage.ts). State.ts har redan stöd för detta — `SavedDeviceMetadata` och extra parametrar finns, men de fylls aldrig i från discover.ts.
+### 4. Keep-alive triggar aldrig reconnect (protocol.ts:63-82)
+Om keep-alive misslyckas upprepade gånger loggas det bara — ingen disconnect/reconnect. Enheten kan hamna i zombieläge där `getDevice()` returnerar ett dött objekt.
 
-### 3. Lägg till `nobleDirectConnect()` i discover.ts
-Ny funktion som skapar ett peripheral-objekt direkt utan scan:
+### 5. HCI reset nollställer inte failure-räknaren (connect.ts:376-378)
+Efter `resetHciAdapter()` fortsätter `consecutiveConnectFailures` att öka. Varje framtida misslyckat försök triggar ny HCI-reset, onödigt aggressivt.
+
+### 6. `restartNobleHci` körs varje direktanslutning (connect.ts:206)
+Lägger till 600ms+ (två 300ms-sleeps) även om adaptern redan är redo. Bör bara köras om adaptern inte är `poweredOn`.
+
+### 7. `scan.ts` startar om bluetooth-tjänsten varje scan (scan.ts:37)
+`systemctl restart bluetooth` vid varje scan är tungt och kan störa noble-tillståndet.
+
+## Plan
+
+### Steg 1: Fixa `withTimeout` timer-läcka
+Använd `AbortController` eller rensa timern manuellt vid resolve:
+```typescript
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise.then(v => { clearTimeout(timer); return v; }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out`)), STEP_TIMEOUT_MS);
+    }),
+  ]);
+}
 ```
-noble._bindings.connectAsync(savedAddress, savedAddressType)
-```
-Eller via nobles interna API. Om det misslyckas → fallback till nuvarande `nobleConnect()` med scan.
 
-### 4. Uppdatera `autoConnectSaved()` 
-Försök `nobleDirectConnect()` först. Om det misslyckas, fallback till `nobleConnect()` (scan + connect).
+### Steg 2: Flytta disconnect-handler före `setDevice`
+Registrera `peripheral.once('disconnect')` **innan** `setDevice()` anropas.
 
-### Filer som ändras
-- `pi/src/ble/discover.ts` — spara metadata vid select, ny directConnect-funktion
-- `pi/src/ble/state.ts` — redan förberett, bara behöver fyllas i korrekt
-- `pi/src/ble/scan.ts` — eventuellt spara addressType från bluetoothctl-output (om tillgängligt)
-- `.lovable/memory/pi/ble/hybrid-discovery-strategy.md` — uppdatera med direktanslutningsflöde
+### Steg 3: Förenkla reconnect — använd alltid `autoConnectSaved`
+Ta bort fas 1 (direct retry med gammalt peripheral). Hela `reconnectWithBackoff` bör köra `autoConnectSaved()` med backoff. Inga stale-objekt.
 
-### Risker
-- Noble's interna API (`_bindings`, `_peripherals`) är ej dokumenterad och kan ändras mellan versioner
-- Om addressType sparas fel → connection timeout → fallback till scan (säker degradering)
+### Steg 4: Keep-alive → proaktiv reconnect vid upprepade misslyckanden
+Om keep-alive misslyckas 5+ gånger i rad → trigga disconnect + reconnect (samma logik som `sendToBLE` redan har).
+
+### Steg 5: Nollställ failure-räknare efter HCI-reset
+Lägg till `resetConsecutiveFailures()` efter lyckad `resetHciAdapter()`.
+
+### Steg 6: Skippa `restartNobleHci` om adaptern redan är uppe
+Kolla `getAdapterState() === 'poweredOn'` först i `nobleDirectConnect`. Skippa restart om redan redo.
+
+### Steg 7: Ta bort `systemctl restart bluetooth` i scan.ts
+Ersätt med enbart `stopNoble()` + kort delay. Bluetooth-tjänsten ska inte startas om vid varje scan.
+
+## Teknisk sammanfattning
+
+| Problem | Risk | Åtgärd |
+|---------|------|--------|
+| Timer-läcka | Ohanterad rejection → crash | Rensa timer |
+| Stale peripheral i reconnect | Misslyckas alltid → onödig delay | Använd `autoConnectSaved` |
+| Disconnect-handler race | Zombie-device | Flytta handler före `setDevice` |
+| Keep-alive zombie | Device dött men ej detekterat | Proaktiv reconnect |
+| HCI reset spam | Onödig power-cycle | Nollställ räknare |
+| Onödig adapter-restart | +600ms per connect | Villkorlig restart |
+| Bluetooth service restart | Tungt, störande | Ta bort |
+
+Alla ändringar sker i `pi/src/ble/` — fyra filer berörs: `connect.ts`, `reconnect.ts`, `protocol.ts`, `scan.ts`.
 
