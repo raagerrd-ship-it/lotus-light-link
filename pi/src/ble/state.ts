@@ -41,6 +41,22 @@ export interface SavedDeviceMetadata {
   addressType?: string | null;
   connectable?: boolean | null;
   serviceUuids?: string[] | null;
+  serviceHandle?: number | null;
+  charHandle?: number | null;
+}
+
+// ── GATT handle cache ──
+let _savedServiceHandle: number | null = (() => { const v = getItem('ble-service-handle'); return v ? Number(v) : null; })();
+let _savedCharHandle: number | null = (() => { const v = getItem('ble-char-handle'); return v ? Number(v) : null; })();
+
+export function getSavedServiceHandle(): number | null { return _savedServiceHandle; }
+export function getSavedCharHandle(): number | null { return _savedCharHandle; }
+
+export function setSavedGattHandles(serviceHandle: number | null, charHandle: number | null): void {
+  _savedServiceHandle = serviceHandle;
+  _savedCharHandle = charHandle;
+  setItem('ble-service-handle', serviceHandle != null ? String(serviceHandle) : '');
+  setItem('ble-char-handle', charHandle != null ? String(charHandle) : '');
 }
 
 export function setSavedDevice(id: string | null, name: string | null, address?: string | null, meta?: Partial<SavedDeviceMetadata>): void {
@@ -50,12 +66,23 @@ export function setSavedDevice(id: string | null, name: string | null, address?:
   _savedAddressType = meta?.addressType ?? null;
   _savedConnectable = meta?.connectable ?? null;
   _savedServiceUuids = meta?.serviceUuids ?? null;
+  if (meta?.serviceHandle !== undefined) _savedServiceHandle = meta.serviceHandle ?? null;
+  if (meta?.charHandle !== undefined) _savedCharHandle = meta.charHandle ?? null;
   setItem('ble-device-id', id ?? '');
   setItem('ble-device-name', name ?? '');
   setItem('ble-device-address', address ?? '');
   setItem('ble-address-type', _savedAddressType ?? '');
   setItem('ble-connectable', _savedConnectable != null ? String(_savedConnectable) : '');
   setItem('ble-service-uuids', _savedServiceUuids ? JSON.stringify(_savedServiceUuids) : '');
+  if (meta?.serviceHandle !== undefined) setItem('ble-service-handle', _savedServiceHandle != null ? String(_savedServiceHandle) : '');
+  if (meta?.charHandle !== undefined) setItem('ble-char-handle', _savedCharHandle != null ? String(_savedCharHandle) : '');
+  // Clear GATT cache when device is forgotten
+  if (id === null) {
+    _savedServiceHandle = null;
+    _savedCharHandle = null;
+    setItem('ble-service-handle', '');
+    setItem('ble-char-handle', '');
+  }
 }
 
 // ── Demand-based connection ──
