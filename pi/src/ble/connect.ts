@@ -20,6 +20,9 @@ import type { PiCharacteristic } from './types.js';
 let consecutiveConnectFailures = 0;
 const HCI_RESET_THRESHOLD = 3;
 let activeConnectPromise: Promise<void> | null = null;
+let nobleScanActive = false;
+
+export function isNobleScanActive(): boolean { return nobleScanActive; }
 
 export function getConsecutiveFailures(): number { return consecutiveConnectFailures; }
 export function resetConsecutiveFailures(): void { consecutiveConnectFailures = 0; }
@@ -219,7 +222,10 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   // Trust caps — don't gate on adapter state
   if (!await waitForAdapter(name)) return false;
 
-  return new Promise<boolean>((resolve) => {
+  // Make sure no stale scan is holding the HCI socket
+  try { (noble as any).stopScanning?.(); } catch {}
+
+  const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
     let done = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -227,6 +233,7 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
       if (timer) { clearTimeout(timer); timer = null; }
       noble.removeListener('discover', onDiscover);
       try { noble.stopScanning(); } catch {}
+      nobleScanActive = false;
     };
 
     const finish = (ok: boolean) => {
@@ -258,6 +265,7 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
     };
 
     noble.on('discover', onDiscover);
+    nobleScanActive = true;
 
     timer = setTimeout(() => {
       logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect timeout (${timeoutMs}ms) — device not advertising?` });
@@ -280,6 +288,22 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
       finish(false);
     }
   });
+
+  // First attempt
+  let ok = await attempt();
+  if (ok) return true;
+
+  // If first attempt failed quickly (most likely startScanning rejected because
+  // HCI socket was busy/locked from a previous scan or hcitool), do a single
+  // hciconfig reset + short wait and retry once. This is the missing piece
+  // that previously caused us to hammer "startScanning failed" forever.
+  logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — resetting HCI before retry' });
+  try { (noble as any).stopScanning?.(); } catch {}
+  await resetHciAdapter();
+  await new Promise(r => setTimeout(r, 400));
+
+  ok = await attempt();
+  return ok;
 }
 
 /**
