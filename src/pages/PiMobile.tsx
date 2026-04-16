@@ -1733,6 +1733,11 @@ export default function PiMobile() {
   const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
+  const [showManualBle, setShowManualBle] = useState(false);
+  const [manualBleMac, setManualBleMac] = useState("");
+  const [manualBleName, setManualBleName] = useState("");
+  const [manualBleSaving, setManualBleSaving] = useState(false);
+  const [manualBleError, setManualBleError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
