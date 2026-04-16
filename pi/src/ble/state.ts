@@ -151,6 +151,8 @@ export function processHasBtCaps(): boolean {
   return false;
 }
 
+let _capsOverrideLogged = false;
+
 export function getAdapterState(): string | undefined {
   const n = noble as typeof noble & {
     state?: string;
@@ -161,10 +163,13 @@ export function getAdapterState(): string | undefined {
   const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
 
   if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
-    console.log('[BLE] noble state unclear but process has CAP_NET_RAW+CAP_NET_ADMIN — overriding to poweredOn');
+    if (!_capsOverrideLogged) {
+      console.log('[BLE] noble state unclear but process has CAP_NET_RAW+CAP_NET_ADMIN — reporting poweredOn');
+      _capsOverrideLogged = true;
+    }
     // Force noble's internal state so startScanningAsync/connectAsync don't reject
-    if (n.state !== undefined) (n as any).state = 'poweredOn';
-    if (n._state !== undefined) (n as any)._state = 'poweredOn';
+    try { (n as any).state = 'poweredOn'; } catch {}
+    try { (n as any)._state = 'poweredOn'; } catch {}
     return 'poweredOn';
   }
   return raw;
