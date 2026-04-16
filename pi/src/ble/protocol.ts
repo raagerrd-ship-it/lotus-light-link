@@ -84,6 +84,7 @@ export function startKeepAlive(): void {
         console.warn('[BLE] Keep-alive threshold reached — triggering proactive reconnect');
         const periph = device.peripheral;
         const name = device.name;
+        periph.removeAllListeners('disconnect');
         stopKeepAlive();
         setDevice(null);
         resetLastSent();
@@ -175,6 +176,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       console.warn('[BLE] Too many write failures — triggering proactive reconnect');
       const periph = device.peripheral;
       const name = device.name;
+      periph.removeAllListeners('disconnect');
       stopKeepAlive();
       setDevice(null);
       resetLastSent();
