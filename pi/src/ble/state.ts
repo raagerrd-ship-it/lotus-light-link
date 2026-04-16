@@ -167,10 +167,6 @@ export function getAdapterState(): string | undefined {
   };
   const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
 
-  if (raw === 'poweredOff' && _nobleHciReleased && processHasBtCaps()) {
-    console.log('[BLE] noble HCI intentionally released — treating adapter as poweredOn for bluetoothctl mode');
-    return 'poweredOn';
-  }
 
   if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
     console.log('[BLE] noble state unclear but process has CAP_NET_RAW+CAP_NET_ADMIN — overriding to poweredOn');
