@@ -270,7 +270,7 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
 
   incrementConsecutiveFailures();
   const fails = getConsecutiveFailures();
-  logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct connect failed [fail#${fails}]` });
+  logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Enheten är ev. avstängd eller utom räckhåll [fail#${fails}]` });
   if (fails >= HCI_RESET_THRESHOLD) {
     await resetHciAdapter();
   }
