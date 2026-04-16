@@ -60,6 +60,11 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   } catch (e: any) {
     scanOutput = typeof e?.stdout === 'string' ? e.stdout
       : Buffer.isBuffer(e?.stdout) ? e.stdout.toString('utf-8') : '';
+  } finally {
+    // Always stop scan to prevent blocking future scans
+    try {
+      execFileSync('bluetoothctl', ['scan', 'off'], { timeout: 2000, stdio: 'ignore' });
+    } catch {}
   }
 
   // Strip ANSI escape codes (bluetoothctl embeds color codes)
@@ -69,7 +74,6 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   // Parse [NEW] Device lines from scan output (these are the actual discoveries)
   const seen = new Map<string, DiscoveredDevice>();
   for (const line of cleanOutput.split('\n')) {
-    // Match: [NEW] Device XX:XX:XX:XX:XX:XX Name
     const match = line.match(/\[NEW\]\s+Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)/);
     if (!match) continue;
     const [, mac, rawName] = match;
