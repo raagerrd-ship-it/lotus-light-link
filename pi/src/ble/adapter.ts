@@ -3,6 +3,7 @@
  */
 
 import { noble, getAdapterState, logConnectionEvent, processHasBtCaps } from './state.js';
+export { processHasBtCaps };
 
 /** Stop noble scanning (no HCI release — noble keeps the socket) */
 export function stopNoble(): void {
@@ -21,22 +22,25 @@ export async function restartNobleHci(deviceName?: string): Promise<void> {
   await new Promise(r => setTimeout(r, 300));
 }
 
-/** Wait for adapter to reach poweredOn state. Trusts caps-based override. */
+/**
+ * Wait for adapter to be ready.
+ * Like the old browser Web Bluetooth implementation, we don't gate on adapter state —
+ * we just trust noble.connectAsync to handle adapter readiness internally.
+ * If process has BT caps OR noble reports poweredOn, we proceed.
+ */
 export async function waitForAdapter(deviceName?: string): Promise<boolean> {
-  // Fast path: if our caps-aware getAdapterState() already reports poweredOn, trust it.
-  // noble.waitForPoweredOnAsync would otherwise time out because our override doesn't
-  // mutate noble's internal _state.
+  // If caps-aware state says poweredOn, trust it
   if (getAdapterState() === 'poweredOn') return true;
+  if (processHasBtCaps()) return true;
 
+  // Last resort: brief wait for noble to confirm
   try {
-    await (noble as any).waitForPoweredOnAsync(5000);
+    await (noble as any).waitForPoweredOnAsync(2000);
     return true;
   } catch {
-    // After timeout, re-check via caps override one more time
-    const state = getAdapterState();
-    if (state === 'poweredOn') return true;
-    logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `Adapter not ready: ${state}` });
-    return false;
+    // Don't block — let connectAsync try and fail with a real error
+    logConnectionEvent({ type: 'connect_start', device: deviceName, detail: `Adapter state unclear (${getAdapterState()}) — proceeding anyway` });
+    return true;
   }
 }
 
