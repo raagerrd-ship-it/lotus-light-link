@@ -21,12 +21,19 @@ export async function restartNobleHci(deviceName?: string): Promise<void> {
   await new Promise(r => setTimeout(r, 300));
 }
 
-/** Wait for adapter to reach poweredOn state using noble's official API */
+/** Wait for adapter to reach poweredOn state. Trusts caps-based override. */
 export async function waitForAdapter(deviceName?: string): Promise<boolean> {
+  // Fast path: if our caps-aware getAdapterState() already reports poweredOn, trust it.
+  // noble.waitForPoweredOnAsync would otherwise time out because our override doesn't
+  // mutate noble's internal _state.
+  if (getAdapterState() === 'poweredOn') return true;
+
   try {
     await (noble as any).waitForPoweredOnAsync(5000);
     return true;
   } catch {
+    // After timeout, re-check via caps override one more time
+    if (getAdapterState() === 'poweredOn') return true;
     logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `Adapter not ready: ${getAdapterState()}` });
     return false;
   }
