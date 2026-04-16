@@ -78,7 +78,7 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   }
 
   // Also try to extract RSSI from [CHG] lines
-  for (const line of (scanOutput || '').split('\n')) {
+  for (const line of cleanOutput.split('\n')) {
     const rssiMatch = line.match(/\[CHG\]\s+Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+RSSI:\s+\S+\s+\((-?\d+)\)/);
     if (!rssiMatch) continue;
     const id = rssiMatch[1].replace(/:/g, '').toLowerCase();
