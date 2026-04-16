@@ -1733,6 +1733,11 @@ export default function PiMobile() {
   const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
+  const [showManualBle, setShowManualBle] = useState(false);
+  const [manualBleMac, setManualBleMac] = useState("");
+  const [manualBleName, setManualBleName] = useState("");
+  const [manualBleSaving, setManualBleSaving] = useState(false);
+  const [manualBleError, setManualBleError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
@@ -2239,6 +2244,103 @@ export default function PiMobile() {
             <><Search size={16} /> {bleSavedId ? 'Byt enhet' : 'Sök efter enheter'}</>
           )}
         </button>
+
+        {/* Manual MAC entry — fallback when scan fails */}
+        {!bleSavedId && (
+          <div className="mt-2">
+            {!showManualBle ? (
+              <button
+                onClick={() => setShowManualBle(true)}
+                className="text-[11px] text-muted-foreground active:text-foreground underline-offset-2 hover:underline"
+              >
+                Lägg till manuellt (MAC-adress)
+              </button>
+            ) : (
+              <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-foreground">Lägg till manuellt</span>
+                  <button
+                    onClick={() => { setShowManualBle(false); setManualBleError(null); }}
+                    className="text-muted-foreground active:text-foreground"
+                    aria-label="Stäng"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block">
+                    <span className="text-[10px] text-muted-foreground">MAC-adress</span>
+                    <input
+                      type="text"
+                      value={manualBleMac}
+                      onChange={(e) => { setManualBleMac(e.target.value); setManualBleError(null); }}
+                      placeholder="BE:67:00:15:09:41"
+                      maxLength={17}
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="w-full mt-0.5 bg-background border border-border rounded-md px-2 py-1.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] text-muted-foreground">Namn</span>
+                    <input
+                      type="text"
+                      value={manualBleName}
+                      onChange={(e) => { setManualBleName(e.target.value); setManualBleError(null); }}
+                      placeholder="ELK-BLEDOM01"
+                      maxLength={64}
+                      className="w-full mt-0.5 bg-background border border-border rounded-md px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </label>
+                </div>
+                {manualBleError && (
+                  <p className="text-[10px] text-destructive">{manualBleError}</p>
+                )}
+                <button
+                  disabled={manualBleSaving || !manualBleMac.trim() || !manualBleName.trim()}
+                  onClick={async () => {
+                    setManualBleSaving(true);
+                    setManualBleError(null);
+                    try {
+                      const r = await fetch(`${piBase}/api/ble/save-manual`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ address: manualBleMac.trim(), name: manualBleName.trim() }),
+                        signal: AbortSignal.timeout(12000),
+                      });
+                      const data = await r.json();
+                      if (!r.ok || !data.ok) {
+                        setManualBleError(data.error ?? 'Kunde inte spara enheten');
+                      } else {
+                        setBleSavedId(data.savedDeviceId ?? null);
+                        setBleSavedName(data.savedDeviceName ?? null);
+                        setBleSavedAddress(data.savedDeviceAddress ?? null);
+                        setShowManualBle(false);
+                        setManualBleMac("");
+                        setManualBleName("");
+                      }
+                    } catch (e: any) {
+                      setManualBleError(e?.message ?? 'Nätverksfel');
+                    } finally {
+                      setManualBleSaving(false);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 text-xs font-medium px-3 py-2 rounded-lg bg-primary text-primary-foreground active:bg-primary/80 disabled:opacity-50 disabled:active:bg-primary"
+                >
+                  {manualBleSaving ? (
+                    <><Loader2 size={14} className="animate-spin" /> Sparar…</>
+                  ) : (
+                    <><Save size={14} /> Spara enhet</>
+                  )}
+                </button>
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  Försöker ansluta direkt efter sparning. BLEDOM-standardvärden används (public address, fff0-tjänst).
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* BLE Scan Log */}
         {showBleLog && (

@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -203,6 +203,32 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   app.post('/api/ble/forget', async (_req, res) => {
     await forgetDevice();
     res.json({ ok: true });
+  });
+
+  // Manually save a device by MAC address (skips scan).
+  // Body: { address: "BE:67:00:15:09:41", name: "ELK-BLEDOM01" }
+  app.post('/api/ble/save-manual', async (req, res) => {
+    const { address, name } = req.body ?? {};
+    if (typeof address !== 'string' || !address.trim()) {
+      return res.status(400).json({ error: 'Need MAC address (e.g. BE:67:00:15:09:41)' });
+    }
+    if (typeof name !== 'string' || name.trim().length > 64) {
+      return res.status(400).json({ error: 'Name must be a string (max 64 chars)' });
+    }
+    try {
+      const ok = await saveManualDevice(address, name);
+      if (!ok) return res.status(400).json({ error: 'Invalid MAC address format' });
+      res.json({
+        ok: true,
+        savedDeviceId: getSavedDeviceId(),
+        savedDeviceName: getSavedDeviceName(),
+        savedDeviceAddress: getSavedDeviceAddress(),
+        connected: !!getConnectedDeviceId(),
+      });
+    } catch (e: any) {
+      console.error(`[BLE] saveManualDevice error: ${e.message}`);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Manual connect — force BLE connection even without music playing
