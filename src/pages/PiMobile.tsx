@@ -1733,7 +1733,7 @@ export default function PiMobile() {
   const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
-  const [showManualBle, setShowManualBle] = useState(false);
+  const [showManualBle, setShowManualBle] = useState(true);
   const [manualBleMac, setManualBleMac] = useState("");
   const [manualBleName, setManualBleName] = useState("");
   const [manualBleSaving, setManualBleSaving] = useState(false);
