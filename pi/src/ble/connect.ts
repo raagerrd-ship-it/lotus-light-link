@@ -62,6 +62,31 @@ export async function resetHciAdapter(): Promise<void> {
   }
 }
 
+/**
+ * Force noble's internal HCI binding to re-initialize and reach poweredOn.
+ * On Pi, noble can stay stuck in `unknown` even when the adapter is up.
+ * This restarts noble's HCI socket and waits for stateChange → poweredOn.
+ */
+async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
+  const currentState = (noble as any).state ?? (noble as any)._state;
+  if (currentState === 'poweredOn') return;
+
+  logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble state=${currentState ?? 'unknown'} — restarting HCI binding` });
+
+  try {
+    await restartNobleHci(deviceName);
+  } catch {}
+
+  // Wait up to 2s for noble to confirm poweredOn
+  try {
+    await (noble as any).waitForPoweredOnAsync?.(2000);
+    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓' });
+  } catch {
+    const after = (noble as any).state ?? (noble as any)._state;
+    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble still ${after ?? 'unknown'} after restart — proceeding anyway` });
+  }
+}
+
 // ── Timeout helper ──
 const STEP_TIMEOUT_MS = 3000;
 
