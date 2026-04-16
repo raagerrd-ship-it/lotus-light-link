@@ -1738,6 +1738,10 @@ export default function PiMobile() {
   const [manualBleName, setManualBleName] = useState("");
   const [manualBleSaving, setManualBleSaving] = useState(false);
   const [manualBleError, setManualBleError] = useState<string | null>(null);
+  const [hciScanning, setHciScanning] = useState(false);
+  const [hciScanResults, setHciScanResults] = useState<{ address: string; name: string }[]>([]);
+  const [hciScanRaw, setHciScanRaw] = useState<string>("");
+  const [hciScanError, setHciScanError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
