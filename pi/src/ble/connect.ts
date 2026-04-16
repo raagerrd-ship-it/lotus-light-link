@@ -146,11 +146,11 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
       }
     } catch (e: any) {
       logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Two-step failed (${e.message}), trying combined...` });
-      const result = await withTimeout(
+      const [, chars] = await withTimeout(
         peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
         'Combined GATT discovery'
       );
-      characteristics = (result as any).characteristics ?? [];
+      characteristics = chars ?? [];
     }
 
     const gattDuration = Math.round(performance.now() - gattStart);
@@ -333,7 +333,7 @@ export async function nobleConnect(targetId: string, name: string, timeoutMs = 5
 
     noble.on('discover', onDiscover);
     try {
-      noble.startScanning([], true);
+      await noble.startScanningAsync([], true);
     } catch (e: any) {
       clearTimeout(timer);
       noble.removeAllListeners('discover');
