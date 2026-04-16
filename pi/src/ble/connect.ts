@@ -403,25 +403,6 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   });
 }
 
-  return withConnectLock(savedName, () => 1, async () => {
-    if (getDevice()) return 1;
-
-    ensureAdapterUp();
-
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Direct connect (no scan)' });
-    const ok = await nobleDirectConnect(savedName, Math.min(timeoutMs, 6000));
-    if (ok) return 1;
-
-    incrementConsecutiveFailures();
-    const fails = getConsecutiveFailures();
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Enheten är ev. avstängd eller utom räckhåll [fail#${fails}]` });
-    if (fails >= HCI_RESET_THRESHOLD) {
-      await resetHciAdapter();
-      resetConsecutiveFailures();
-    }
-    return 0;
-  });
-}
 
 // Legacy alias
 export const tryDirectConnect = (_id: string) => autoConnectSaved().then(r => r > 0);
