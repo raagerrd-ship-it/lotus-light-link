@@ -1,13 +1,11 @@
 /**
- * BLE scanning — pure bluetoothctl discovery.
+ * BLE scanning — noble's official async scan API.
  *
- * This module only handles device discovery via bluetoothctl.
- * Connection is handled by discover.ts.
+ * Uses noble.startScanningAsync / stopScanningAsync with 'discover' events.
+ * No shell exec, no ANSI parsing, no HCI socket juggling.
  */
 
-import { execFileSync } from 'child_process';
-import { logConnectionEvent } from './state.js';
-import { stopNoble } from './adapter.js';
+import { noble, logConnectionEvent } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 
 // ── Scan state ──
@@ -18,75 +16,65 @@ export function getLastScanResults(): DiscoveredDevice[] { return lastScanResult
 export function isScanning(): boolean { return scanning; }
 
 /**
- * Scan for BLE devices using bluetoothctl.
- * Releases noble's HCI socket first to avoid contention.
+ * Scan for BLE devices using noble's native async API.
+ * Returns discovered devices with name and RSSI.
  */
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   if (scanning) return lastScanResults;
   scanning = true;
   lastScanResults = [];
 
-  const scanSeconds = Math.max(2, Math.ceil(timeoutMs / 1000));
-  logConnectionEvent({ type: 'scan_start', detail: `bluetoothctl scan, timeout=${scanSeconds}s` });
+  logConnectionEvent({ type: 'scan_start', detail: `noble scan, timeout=${timeoutMs}ms` });
 
-  // Release HCI from noble before bluetoothctl uses it
-  stopNoble();
-  // Brief delay for HCI socket release (no heavy service restart)
-  await new Promise(r => setTimeout(r, 500));
-
-  // Stop any in-progress bluetoothctl scan to prevent hang
-  try {
-    execFileSync('bluetoothctl', ['scan', 'off'], { timeout: 2000, stdio: 'ignore' });
-  } catch {}
-
-  // Run scan and capture output directly (bluetoothctl devices doesn't show discovered devices)
-  const scanCmd = `bluetoothctl --timeout ${scanSeconds} scan le 2>&1`;
-  const execTimeoutMs = (scanSeconds * 1000) + 5000;
-
-  let scanOutput = '';
-  try {
-    scanOutput = execFileSync('bash', ['-lc', scanCmd], {
-      timeout: execTimeoutMs,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (e: any) {
-    scanOutput = typeof e?.stdout === 'string' ? e.stdout
-      : Buffer.isBuffer(e?.stdout) ? e.stdout.toString('utf-8') : '';
-  } finally {
-    // Always stop scan to prevent blocking future scans
-    try {
-      execFileSync('bluetoothctl', ['scan', 'off'], { timeout: 2000, stdio: 'ignore' });
-    } catch {}
-  }
-
-  // Strip ANSI escape codes (bluetoothctl embeds color codes)
-  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
-  const cleanOutput = stripAnsi(scanOutput || '');
-
-  // Parse [NEW] Device lines from scan output (these are the actual discoveries)
   const seen = new Map<string, DiscoveredDevice>();
-  for (const line of cleanOutput.split('\n')) {
-    const match = line.match(/\[NEW\]\s+Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+(.*)/);
-    if (!match) continue;
-    const [, mac, rawName] = match;
-    const id = mac.replace(/:/g, '').toLowerCase();
-    const trimmedName = rawName.trim();
-    const name = trimmedName.length === 0 || trimmedName.match(/^[0-9A-Fa-f]{2}(-[0-9A-Fa-f]{2}){5}$/)
-      ? `Okänd enhet (${mac.toUpperCase()})`
-      : trimmedName;
-    if (!seen.has(id)) console.log(`[BLE] discovered: ${name} (${mac})`);
-    seen.set(id, { id, name, rssi: -50 });
-  }
 
-  // Also try to extract RSSI from [CHG] lines
-  for (const line of cleanOutput.split('\n')) {
-    const rssiMatch = line.match(/\[CHG\]\s+Device\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\s+RSSI:\s+\S+\s+\((-?\d+)\)/);
-    if (!rssiMatch) continue;
-    const id = rssiMatch[1].replace(/:/g, '').toLowerCase();
-    const rssi = parseInt(rssiMatch[2], 10);
-    const existing = seen.get(id);
-    if (existing) existing.rssi = rssi;
+  const onDiscover = (peripheral: any) => {
+    const mac: string = peripheral.address ?? '';
+    if (!mac || mac === 'unknown') return;
+    const id = mac.replace(/:/g, '').toLowerCase();
+    const rawName: string = peripheral.advertisement?.localName ?? '';
+    const name = rawName.length > 0
+      ? rawName
+      : `Okänd enhet (${mac.toUpperCase()})`;
+    const rssi: number = peripheral.rssi ?? -100;
+
+    if (!seen.has(id)) {
+      console.log(`[BLE] discovered: ${name} (${mac}) rssi=${rssi}`);
+    }
+    // Update RSSI on duplicates (allow duplicates = true)
+    seen.set(id, { id, name, rssi });
+  };
+
+  try {
+    // Wait for adapter to be ready
+    const state = (noble as any).state ?? (noble as any)._state;
+    if (state !== 'poweredOn') {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Adapter not ready')), 5000);
+        const check = (s: string) => {
+          if (s === 'poweredOn') { clearTimeout(timeout); resolve(); }
+        };
+        if (((noble as any).state ?? (noble as any)._state) === 'poweredOn') {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          noble.once('stateChange', check);
+        }
+      });
+    }
+
+    noble.on('discover', onDiscover);
+    await noble.startScanningAsync([], true); // all services, allow duplicates
+
+    // Collect discoveries for timeoutMs
+    await new Promise(r => setTimeout(r, timeoutMs));
+
+    await noble.stopScanningAsync();
+  } catch (e: any) {
+    console.error(`[BLE] scan error: ${e.message}`);
+    try { await noble.stopScanningAsync(); } catch {}
+  } finally {
+    noble.removeListener('discover', onDiscover);
   }
 
   lastScanResults = Array.from(seen.values());

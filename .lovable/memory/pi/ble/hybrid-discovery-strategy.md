@@ -1,27 +1,27 @@
 ---
 name: Hybrid BLE discovery strategy
-description: bluetoothctl scan för discovery, noble.connectAsync(address) för direktanslutning, GATT handle caching för snabbare reconnect.
+description: noble scan API för discovery, noble.connectAsync(address) för direktanslutning, GATT handle caching för snabbare reconnect.
 type: feature
 ---
-Systemet använder en hybridstrategi för BLE med renligt separerade filer:
+Systemet använder nobles officiella API för hela BLE-flödet:
 
 **Filstruktur:**
-- `scan.ts` — bluetoothctl-scan → enhetslista
+- `scan.ts` — noble startScanningAsync/stopScanningAsync → enhetslista
 - `save.ts` — selectDevice(), forgetDevice(), savePeripheralMetadata()
 - `connect.ts` — noble.connectAsync(address) direktanslutning + GATT discovery + autoConnectSaved()
 - `protocol.ts` — BLEDOM-paket, write pipeline, keep-alive (proaktiv reconnect vid 5+ failures)
 - `reconnect.ts` — backoff-strategi via autoConnectSaved(), demand-baserad reconnect
-- `adapter.ts` — HCI-arbitrering (noble ↔ bluetoothctl)
+- `adapter.ts` — HCI-hantering, adapter init/retry
 - `state.ts` — delat state, stats, noble-referens, GATT handle cache
 
 **Discovery (scan.ts):**
-- Stoppar noble + kort delay innan scan (ingen systemctl restart)
-- `bluetoothctl --timeout N scan le` med output-parsing
-- Parsar `[NEW] Device MAC Name`-rader, ANSI strippas
-- RSSI från `[CHG] Device MAC RSSI:`-rader
+- `noble.startScanningAsync([], true)` — alla tjänster, allow duplicates för RSSI-uppdateringar
+- `discover`-event ger peripheral med namn, MAC, RSSI direkt
+- Ingen shell-exec, ingen ANSI-parsing, ingen HCI-release
+- Noble behåller HCI-socketen genom hela scan+connect-flödet
 
 **Anslutning (connect.ts):**
-- nobleDirectConnect(): använder officiellt `noble.connectAsync(address, {addressType, timeout})` — INGEN intern API-manipulation
+- nobleDirectConnect(): använder officiellt `noble.connectAsync(address, {addressType, timeout})`
 - nobleConnect(): kort noble-scan för första gången (selectDevice), sparar metadata
 - connectPeripheral(): GATT discovery (med handle-cache) + connection interval + disconnect handler
 - autoConnectSaved(): kräver addressType, annars return 0 och glöm enhet
@@ -50,5 +50,5 @@ Systemet använder en hybridstrategi för BLE med renligt separerade filer:
 3. connectPeripheral(skipL2cap=true) → GATT discovery (cached) → klar
 
 **Viktigt:**
-- noble kan inte scanna samtidigt som bluetoothctl — HCI-kontention
-- Officiellt API (noble.connectAsync) ersätter fragilt _bindings.emit('discover')
+- Noble äger HCI-socketen genom hela livscykeln (scan + connect)
+- Officiellt API (noble.connectAsync + startScanningAsync) — inga interna hacks
