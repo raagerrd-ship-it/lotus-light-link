@@ -347,54 +347,18 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
  * On Raspberry Pi, noble discovery can stay stuck in `unknown` even when
  * direct connect works, so first-pairing uses the scanned MAC address.
  */
-export async function nobleConnect(targetId: string, name: string, timeoutMs = 5000): Promise<boolean> {
+export async function nobleConnect(targetId: string, name: string, timeoutMs = 8000): Promise<boolean> {
   return withConnectLock(name, () => true, async () => {
-    const targetNorm = normalizeBleKey(targetId);
-    const mac = targetNorm.replace(/(.{2})(?=.)/g, '$1:').toLowerCase();
-    const savedAddressType = getSavedAddressType() ?? undefined;
-
-    const { getAdapterState } = await import('./state.js');
-    if (getAdapterState() !== 'poweredOn') {
-      await restartNobleHci(name);
-    }
-    if (!await waitForAdapter(name)) return false;
-
-    logConnectionEvent({
-      type: 'connect_start',
-      device: name,
-      detail: `Direct first-pair connect via noble.connectAsync(${mac})${savedAddressType ? ` addressType=${savedAddressType}` : ''}`,
-    });
-
-    try {
-      const peripheral = await (noble as any).connectAsync(mac, {
-        ...(savedAddressType ? { addressType: savedAddressType } : {}),
-        minInterval: 6,
-        maxInterval: 8,
-        timeout: timeoutMs,
-      });
-
-      if (!peripheral) {
-        logConnectionEvent({ type: 'connect_fail', device: name, detail: 'noble.connectAsync returned null' });
-        return false;
-      }
-
+    const ok = await nobleScanConnect(targetId, name, timeoutMs);
+    if (ok) {
+      const dev = getDevice();
       const savedId = getSavedDeviceId();
-      if (savedId && normalizeBleKey(savedId) === targetNorm) {
-        savePeripheralMetadata(peripheral, savedId, name, mac.toUpperCase());
+      if (dev && savedId && normalizeBleKey(savedId) === normalizeBleKey(targetId)) {
+        const macWithColons = normalizeBleKey(targetId).replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+        savePeripheralMetadata(dev.peripheral, savedId, name, macWithColons);
       }
-
-      logConnectionEvent({
-        type: 'connect_ok',
-        device: name,
-        detail: `Direct pair connect OK (addressType=${peripheral.addressType ?? savedAddressType ?? 'unknown'})`,
-      });
-
-      await connectPeripheral(peripheral, 0, true);
-      return true;
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `Direct pair connect failed: ${e.message}` });
-      return false;
     }
+    return ok;
   });
 }
 
@@ -403,11 +367,11 @@ export async function nobleConnect(targetId: string, name: string, timeoutMs = 5
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Auto-connect to saved device.
- * Requires saved metadata (addressType) from a previous selectDevice().
- * If metadata is missing, returns 0 — user must scan and select a device.
+ * Auto-connect to saved device via brief scan + peripheral.connectAsync().
+ * Mirrors the early monolithic Pi version that worked reliably.
+ * No longer requires addressType metadata — scan finds it automatically.
  */
-export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
+export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   const savedId = getSavedDeviceId();
   if (!savedId) {
     console.log('[BLE] No saved device — waiting for user selection');
@@ -417,14 +381,27 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   if (isScanning()) return 0;
 
   const savedName = getSavedDeviceName() ?? savedId;
-  const savedAddressType = getSavedAddressType();
+  const target = getSavedDeviceAddress() ?? savedId;
 
-  if (!savedAddressType) {
-    console.log('[BLE] Saved device missing addressType — clearing saved device, user must scan and select');
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Missing addressType metadata — forgetting device' });
-    setSavedDevice(null, null, null);
+  return withConnectLock(savedName, () => 1, async () => {
+    if (getDevice()) return 1;
+
+    ensureAdapterUp();
+
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Scan-connect (mirrors early monolith)' });
+    const ok = await nobleScanConnect(target, savedName, Math.min(timeoutMs, 8000));
+    if (ok) return 1;
+
+    incrementConsecutiveFailures();
+    const fails = getConsecutiveFailures();
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Enheten är ev. avstängd eller utom räckhåll [fail#${fails}]` });
+    if (fails >= HCI_RESET_THRESHOLD) {
+      await resetHciAdapter();
+      resetConsecutiveFailures();
+    }
     return 0;
-  }
+  });
+}
 
   return withConnectLock(savedName, () => 1, async () => {
     if (getDevice()) return 1;
