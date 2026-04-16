@@ -160,9 +160,11 @@ export function getAdapterState(): string | undefined {
   };
   const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
 
-
   if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
     console.log('[BLE] noble state unclear but process has CAP_NET_RAW+CAP_NET_ADMIN — overriding to poweredOn');
+    // Force noble's internal state so startScanningAsync/connectAsync don't reject
+    if (n.state !== undefined) (n as any).state = 'poweredOn';
+    if (n._state !== undefined) (n as any)._state = 'poweredOn';
     return 'poweredOn';
   }
   return raw;
