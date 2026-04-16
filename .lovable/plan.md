@@ -1,42 +1,38 @@
 
 
-# BLE-modul: Slutlig granskning — tre kvarvarande problem
+## BLE-modul: Sista stabilitetsfixen
 
-## Status
-Modulen är i **bra skick** efter alla tidigare refaktorer. Scanning, direct connect, GATT-cache, reconnect, keep-alive och demand-logik är alla stabila och använder officiella API:er. Tre mindre problem kvarstår:
+### Problem: Dubbel reconnect vid proaktiv disconnect
 
-## 1. Död `_nobleHciReleased`-override i `getAdapterState()` (state.ts:170-173)
-Denna branch sätter `poweredOff` → `poweredOn` när noble HCI "avsiktligt släppts" för bluetoothctl. Men bluetoothctl är borttagen — `_nobleHciReleased` sätts aldrig till `true` i den nya koden. Branchen är **oanvändbar** och kan maskera riktiga `poweredOff`-tillstånd om den av misstag triggas.
+I `protocol.ts` (både keep-alive och write-failure-pathen):
+1. `setDevice(null)` + `disconnectAsync()` + `_triggerReconnect()` körs i sekvens
+2. Men `disconnectAsync()` triggar disconnect-eventet i `connect.ts` som OCKSÅ kör `_reconnectWithBackoff()`
+3. Resultat: två parallella reconnect-loopar
 
-**Åtgärd:** Ta bort den döda branchen (rad 170-173) i `getAdapterState()`.
+### Åtgärd
 
-## 2. `discoverSomeServicesAndCharacteristicsAsync` felaktig resultatparsning (connect.ts:149-153)
-Fallback-pathen förväntar sig `result.characteristics` (objekt), men noble returnerar en **array** `[services, characteristics]`. Om den tvåstegs-discovery misslyckas och fallback triggas, returneras `undefined` → tom array → retry → onödig fördröjning.
+**`protocol.ts`** — Ta bort disconnect-listenern INNAN `disconnectAsync()` anropas, i båda ställena (keep-alive rad ~86 och write-failure rad ~177):
 
-**Åtgärd:** Ändra till:
 ```typescript
-const [, characteristics] = await withTimeout(
-  peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
-  'Combined GATT discovery'
-);
+// Before disconnectAsync — prevent double reconnect
+periph.removeAllListeners('disconnect');
+stopKeepAlive();
+setDevice(null);
+resetLastSent();
+try { await periph.disconnectAsync(); } catch {}
+if (_triggerReconnect) _triggerReconnect(periph, name);
 ```
 
-## 3. Synkron `startScanning` i `nobleConnect` (connect.ts:336)
-`nobleConnect` använder `noble.startScanning([], true)` (synkron) medan resten av modulen använder `startScanningAsync`. Synkrona versionen kastar inte promise-rejection vid fel — felet fångas bara i try/catch som sync throw.
+Detta säkerställer att bara EN reconnect-loop startas — den från protocol.ts som har kontext om varför disconnecten skedde.
 
-**Åtgärd:** Byt till `await noble.startScanningAsync([], true)`.
+### Berörda filer
+- `pi/src/ble/protocol.ts` — 2 ställen: keep-alive (rad ~85-91) och write-failure (rad ~174-183)
 
-## Berörda filer
-- `pi/src/ble/state.ts` — ta bort död override-branch
-- `pi/src/ble/connect.ts` — fixa GATT fallback-parsning + async scan
+### Redan fixat (från planen)
+- ✅ Död `_nobleHciReleased`-branch borttagen
+- ✅ GATT fallback array-destructuring fixad
+- ⚠️ Synkron `startScanning` i nobleConnect — medvetet behållen (kan inte `await` i Promise executor)
 
-## Sammanfattning
-
-| Problem | Typ | Risk |
-|---------|-----|------|
-| Död HCI-released override | CLEANUP | Kan maskera poweredOff |
-| Felaktig array-destructuring | BUG | GATT fallback misslyckas tyst |
-| Synkron startScanning | CLEANUP | Inkonsekvent felhantering |
-
-Inga andra stabilitets- eller prestandaproblem identifierade. Efter dessa tre fixar är BLE-modulen fullt optimerad.
+### Sammanfattning
+Efter denna fix finns inga fler identifierade stabilitets- eller korrekthetsproblem i BLE-modulen.
 
