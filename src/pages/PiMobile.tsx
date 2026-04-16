@@ -1733,7 +1733,7 @@ export default function PiMobile() {
   const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
-  const [showManualBle, setShowManualBle] = useState(false);
+  const [showManualBle, setShowManualBle] = useState(true);
   const [manualBleMac, setManualBleMac] = useState("");
   const [manualBleName, setManualBleName] = useState("");
   const [manualBleSaving, setManualBleSaving] = useState(false);
@@ -2197,19 +2197,9 @@ export default function PiMobile() {
           </div>
         )}
 
-        {/* Manual entry is the only path — scan via HCI inside the form */}
-        {/* Manual MAC entry — fallback when scan fails */}
-        {!bleSavedId && (
-          <div className="mt-2">
-            {!showManualBle ? (
-              <button
-                onClick={() => setShowManualBle(true)}
-                className="text-[11px] text-muted-foreground active:text-foreground underline-offset-2 hover:underline"
-              >
-                Lägg till manuellt (MAC-adress)
-              </button>
-            ) : (
-              <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2">
+        {/* Manual MAC entry — only path to add a device. HCI-scan inside the form. */}
+        <div className="mt-2">
+          <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-medium text-foreground">Lägg till manuellt</span>
                   <button
@@ -2355,9 +2345,7 @@ export default function PiMobile() {
                   Försöker ansluta direkt efter sparning. BLEDOM-standardvärden används (public address, fff0-tjänst).
                 </p>
               </div>
-            )}
           </div>
-        )}
 
       </section>
 
