@@ -2362,6 +2362,7 @@ export default function PiMobile() {
                     </details>
                   )}
                 </div>
+                {manualBleError && (
                   <p className="text-[10px] text-destructive">{manualBleError}</p>
                 )}
                 <button
