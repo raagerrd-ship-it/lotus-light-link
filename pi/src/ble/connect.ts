@@ -1,12 +1,12 @@
 /**
  * BLE connection — all connection logic in one place.
  *
- * Three connection paths, all ending in the same GATT discovery:
- * 1. nobleDirectConnect() — uses saved metadata to skip scanning (primary)
+ * Two connection paths, both ending in the same GATT discovery:
+ * 1. nobleDirectConnect() — uses noble.connectAsync(address) to connect without scanning (primary)
  * 2. nobleConnect() — brief noble scan to find peripheral (first-time / fallback)
- * 3. connectPeripheral() — L2CAP + GATT discovery (shared by both paths above)
  *
- * Also handles: HCI reset, connection interval optimization, disconnect handler.
+ * connectPeripheral() handles GATT discovery, connection interval, and disconnect handler.
+ * GATT handles are cached after first discovery for faster reconnects.
  */
 
 import {
