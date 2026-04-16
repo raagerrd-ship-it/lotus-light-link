@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -321,6 +321,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       adapter: {
         state: adapterState,
         hasCaps,
+      },
+      build: {
+        bleTag: BLE_BUILD_TAG,
       },
       stats: {
         connected: getConnectedCount(),

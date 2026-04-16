@@ -18,6 +18,7 @@ export type { DeviceMode, PiCharacteristic, DiscoveredDevice, BleConnectionEvent
 export { bleStats, getAdapterState, isDemandActive, getConnectionLog } from './state.js';
 export { getDevice, getSavedDeviceId, getSavedDeviceName } from './state.js';
 export { getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, processHasBtCaps } from './state.js';
+export { BLE_BUILD_TAG } from './state.js';
 
 // Protocol (write pipeline)
 export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma } from './protocol.js';
