@@ -94,31 +94,60 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   connectDuration = Math.round(performance.now() - connectStart);
   logConnectionEvent({ type: 'connect_ok', device: name, detail: skipL2cap ? 'L2CAP already up' : 'L2CAP connected', durationMs: connectDuration });
 
-  // Step 2: GATT discovery
+  // Step 2: GATT discovery (with optional handle cache for faster reconnects)
   const gattStart = performance.now();
   let characteristics: any[] = [];
-  try {
-    logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'Two-step: discovering services...' });
-    const services: any[] = await withTimeout(
-      peripheral.discoverServicesAsync([SERVICE_UUID]),
-      'Service discovery'
-    );
-    if (services?.length) {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Found ${services.length} service(s), discovering characteristics...` });
-      characteristics = await withTimeout(
-        services[0].discoverCharacteristicsAsync([CHAR_UUID]),
-        'Characteristic discovery'
+  const cachedServiceHandle = getSavedServiceHandle();
+  const cachedCharHandle = getSavedCharHandle();
+  let usedCache = false;
+
+  // Try cached GATT handles first (saves ~100-300ms on reconnect)
+  if (cachedServiceHandle != null && cachedCharHandle != null) {
+    try {
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Trying cached handles (svc=${cachedServiceHandle}, char=${cachedCharHandle})` });
+      const services: any[] = await withTimeout(
+        peripheral.discoverServicesAsync([SERVICE_UUID]),
+        'Cached service discovery'
       );
-    } else {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'No matching services found' });
+      if (services?.length) {
+        characteristics = await withTimeout(
+          services[0].discoverCharacteristicsAsync([CHAR_UUID]),
+          'Cached characteristic discovery'
+        );
+        usedCache = true;
+      }
+    } catch (e: any) {
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Cache attempt failed (${e.message}), falling back to full discovery` });
+      characteristics = [];
+      usedCache = false;
     }
-  } catch (e: any) {
-    logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Two-step failed (${e.message}), trying combined...` });
-    const result = await withTimeout(
-      peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
-      'Combined GATT discovery'
-    );
-    characteristics = (result as any).characteristics ?? [];
+  }
+
+  // Full GATT discovery if cache miss or not available
+  if (!characteristics?.length) {
+    try {
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'Two-step: discovering services...' });
+      const services: any[] = await withTimeout(
+        peripheral.discoverServicesAsync([SERVICE_UUID]),
+        'Service discovery'
+      );
+      if (services?.length) {
+        logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Found ${services.length} service(s), discovering characteristics...` });
+        characteristics = await withTimeout(
+          services[0].discoverCharacteristicsAsync([CHAR_UUID]),
+          'Characteristic discovery'
+        );
+      } else {
+        logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'No matching services found' });
+      }
+    } catch (e: any) {
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Two-step failed (${e.message}), trying combined...` });
+      const result = await withTimeout(
+        peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
+        'Combined GATT discovery'
+      );
+      characteristics = (result as any).characteristics ?? [];
+    }
   }
 
   const gattDuration = Math.round(performance.now() - gattStart);
@@ -135,7 +164,18 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
     throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
   }
 
-  logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
+  // Cache GATT handles for future reconnects
+  const foundChar = characteristics[0];
+  if (foundChar._serviceUuid && foundChar.uuid) {
+    const sHandle = foundChar.startHandle ?? foundChar._handle ?? null;
+    const cHandle = foundChar.valueHandle ?? foundChar._valueHandle ?? null;
+    if (sHandle != null || cHandle != null) {
+      setSavedGattHandles(sHandle, cHandle);
+      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Cached GATT handles (svc=${sHandle}, char=${cHandle})` });
+    }
+  }
+
+  logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK${usedCache ? ' (cached)' : ''} — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
 
   const char = characteristics[0] as PiCharacteristic;
   char.deviceName = name;
