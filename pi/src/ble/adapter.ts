@@ -53,17 +53,24 @@ async function initAdapter(): Promise<void> {
   const RETRY_DELAY_MS = 3000;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const state = getAdapterState();
-
-    if (state === 'poweredOn') {
-      console.log('[BLE] Adapter state: poweredOn ✓');
+    // Always call waitForPoweredOnAsync to ensure noble's internal state machine
+    // is properly initialized — our caps-based override in getAdapterState() does
+    // NOT set noble's real state, so startScanningAsync would fail without this.
+    try {
+      console.log(`[BLE] initAdapter attempt ${attempt}: calling waitForPoweredOnAsync...`);
+      await (noble as any).waitForPoweredOnAsync(5000);
+      console.log('[BLE] Adapter state: poweredOn ✓ (noble confirmed)');
       logConnectionEvent({ type: 'connect_start', detail: `Adapter ready (attempt ${attempt})` });
       return;
+    } catch {
+      // waitForPoweredOnAsync timed out — check if retryable
     }
 
-    if (state === 'unauthorized' && processHasBtCaps()) {
-      console.warn(`[BLE] noble reports unauthorized but process has caps — retrying adapter (${attempt + 1}/${MAX_RETRIES})`);
-      logConnectionEvent({ type: 'hci_reset', detail: `Adapter unauthorized despite caps, retry ${attempt + 1}` });
+    const state = getAdapterState();
+
+    if ((state === 'unauthorized' || state === 'poweredOn') && processHasBtCaps()) {
+      console.warn(`[BLE] noble not poweredOn but process has caps — HCI reset retry ${attempt + 1}/${MAX_RETRIES}`);
+      logConnectionEvent({ type: 'hci_reset', detail: `Adapter not ready despite caps, retry ${attempt + 1}` });
       try {
         await resetHciAdapter();
         const settled = await new Promise<string>((resolve) => {
@@ -95,7 +102,6 @@ async function initAdapter(): Promise<void> {
       return;
     }
 
-    // Unknown/undefined — wait for stateChange once
     console.log(`[BLE] Adapter state at init: ${state ?? 'unknown'} — waiting for stateChange`);
     noble.once('stateChange', (s: string) => {
       logConnectionEvent({ type: 'connect_start', detail: `Adapter state changed: ${s}` });
@@ -104,7 +110,7 @@ async function initAdapter(): Promise<void> {
   }
 
   console.error('[BLE] Adapter failed to reach poweredOn after retries');
-  logConnectionEvent({ type: 'connect_start', detail: 'Adapter stuck unauthorized after all retries' });
+  logConnectionEvent({ type: 'connect_start', detail: 'Adapter stuck after all retries' });
 }
 
 // Fire and forget — don't block module loading
