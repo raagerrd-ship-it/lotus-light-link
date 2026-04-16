@@ -254,8 +254,9 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   const savedAddressType = getSavedAddressType();
 
   if (!savedAddressType) {
-    console.log('[BLE] Saved device missing addressType — user must scan and select again');
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Missing addressType metadata — scan required' });
+    console.log('[BLE] Saved device missing addressType — clearing saved device, user must scan and select');
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: 'Missing addressType metadata — forgetting device' });
+    setSavedDevice(null, null, null);
     return 0;
   }
 
