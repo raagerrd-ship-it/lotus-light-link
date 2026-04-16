@@ -32,11 +32,11 @@ export async function waitForAdapter(deviceName?: string): Promise<boolean> {
   }
 }
 
-/** Force Bluetooth adapter up via rfkill/hciconfig (for auto-reconnect) */
+/** Force Bluetooth adapter up via rfkill/hciconfig + reset (required for noble to detect poweredOn on Pi) */
 export function ensureAdapterUp(): void {
   try {
     const { execFileSync } = require('child_process');
-    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'], { timeout: 4000, stdio: 'ignore' });
+    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
   } catch {}
 }
 
