@@ -20,8 +20,11 @@ export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamm
 // Connection
 export { connectPeripheral, resetHciAdapter } from './connection.js';
 
-// Scanning
-export { scanForDevices, selectDevice, forgetDevice, autoConnectSaved, getLastScanResults, isScanning } from './scan.js';
+// Scanning (bluetoothctl discovery)
+export { scanForDevices, getLastScanResults, isScanning } from './scan.js';
+
+// Device selection & noble-based connect
+export { selectDevice, forgetDevice, autoConnectSaved } from './discover.js';
 
 // Reconnection & demand
 export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.js';
@@ -29,7 +32,7 @@ export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.j
 // ── Convenience / legacy aliases ──
 import { getDevice, setDevice } from './state.js';
 import { stopKeepAlive, resetLastSent } from './protocol.js';
-import { autoConnectSaved } from './scan.js';
+import { autoConnectSaved } from './discover.js';
 
 export function getConnectedCount(): number {
   return getDevice() ? 1 : 0;
@@ -81,7 +84,6 @@ async function initAdapter(): Promise<void> {
       logConnectionEvent({ type: 'hci_reset', detail: `Adapter unauthorized despite caps, retry ${attempt + 1}` });
       try {
         await resetHciAdapter();
-        // Wait for noble to pick up the state change
         const settled = await new Promise<string>((resolve) => {
           const timeout = setTimeout(() => resolve('timeout'), RETRY_DELAY_MS);
           noble.once('stateChange', (s: string) => {
