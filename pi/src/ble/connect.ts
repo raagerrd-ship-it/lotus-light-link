@@ -11,7 +11,7 @@ import {
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { waitForAdapter, ensureAdapterUp, normalizeBleKey } from './adapter.js';
+import { waitForAdapter, ensureAdapterUp, normalizeBleKey, restartNobleHci } from './adapter.js';
 import { isScanning } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
@@ -59,6 +59,31 @@ export async function resetHciAdapter(): Promise<void> {
     await new Promise(r => setTimeout(r, 1000));
   } catch (e: any) {
     logConnectionEvent({ type: 'hci_reset', detail: `hciconfig reset failed: ${e.message}` });
+  }
+}
+
+/**
+ * Force noble's internal HCI binding to re-initialize and reach poweredOn.
+ * On Pi, noble can stay stuck in `unknown` even when the adapter is up.
+ * This restarts noble's HCI socket and waits for stateChange → poweredOn.
+ */
+async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
+  const currentState = (noble as any).state ?? (noble as any)._state;
+  if (currentState === 'poweredOn') return;
+
+  logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble state=${currentState ?? 'unknown'} — restarting HCI binding` });
+
+  try {
+    await restartNobleHci(deviceName);
+  } catch {}
+
+  // Wait up to 2s for noble to confirm poweredOn
+  try {
+    await (noble as any).waitForPoweredOnAsync?.(2000);
+    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓' });
+  } catch {
+    const after = (noble as any).state ?? (noble as any)._state;
+    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble still ${after ?? 'unknown'} after restart — proceeding anyway` });
   }
 }
 
@@ -231,6 +256,11 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   logConnectionEvent({ type: 'hci_reset', detail: 'Pre-scan HCI reset (proactive)' });
   await resetHciAdapter();
   await new Promise(r => setTimeout(r, 300));
+
+  // Force noble to re-init HCI binding so its internal state goes
+  // unknown → poweredOn. Without this, startScanningAsync fails with
+  // "state is unknown (not poweredOn)" forever.
+  await forceNoblePoweredOn(name);
 
   const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
     let done = false;
