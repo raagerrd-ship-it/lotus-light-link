@@ -205,6 +205,32 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     res.json({ ok: true });
   });
 
+  // Manually save a device by MAC address (skips scan).
+  // Body: { address: "BE:67:00:15:09:41", name: "ELK-BLEDOM01" }
+  app.post('/api/ble/save-manual', async (req, res) => {
+    const { address, name } = req.body ?? {};
+    if (typeof address !== 'string' || !address.trim()) {
+      return res.status(400).json({ error: 'Need MAC address (e.g. BE:67:00:15:09:41)' });
+    }
+    if (typeof name !== 'string' || name.trim().length > 64) {
+      return res.status(400).json({ error: 'Name must be a string (max 64 chars)' });
+    }
+    try {
+      const ok = await saveManualDevice(address, name);
+      if (!ok) return res.status(400).json({ error: 'Invalid MAC address format' });
+      res.json({
+        ok: true,
+        savedDeviceId: getSavedDeviceId(),
+        savedDeviceName: getSavedDeviceName(),
+        savedDeviceAddress: getSavedDeviceAddress(),
+        connected: !!getConnectedDeviceId(),
+      });
+    } catch (e: any) {
+      console.error(`[BLE] saveManualDevice error: ${e.message}`);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Manual connect — force BLE connection even without music playing
   app.post('/api/ble/connect', async (_req, res) => {
     if (!getSavedDeviceId()) return res.status(400).json({ error: 'No saved device' });
