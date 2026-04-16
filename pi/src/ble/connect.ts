@@ -1,23 +1,17 @@
 /**
  * BLE connection — all connection logic in one place.
  *
- * Two connection paths, both ending in the same GATT discovery:
- * 1. nobleDirectConnect() — uses noble.connectAsync(address) to connect without scanning (primary)
- * 2. nobleConnect() — brief noble scan to find peripheral (first-time / fallback)
- *
- * connectPeripheral() handles GATT discovery, connection interval, and disconnect handler.
- * GATT handles are cached after first discovery — reconnects use writeHandleAsync to skip discovery.
+ * Single connection path: brief scan → peripheral.connectAsync() → full GATT discovery.
+ * Mirrors the early monolithic Pi version that worked reliably.
  */
 
 import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress,
-  getSavedAddressType, getSavedConnectable, getSavedServiceUuids,
-  getSavedServiceHandle, getSavedCharHandle, setSavedGattHandles,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { stopNoble, restartNobleHci, waitForAdapter, ensureAdapterUp, normalizeBleKey } from './adapter.js';
+import { waitForAdapter, ensureAdapterUp, normalizeBleKey } from './adapter.js';
 import { isScanning } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
@@ -92,18 +86,16 @@ export function setReconnectHandler(fn: (peripheral: any, name: string) => void)
  * Create a handle-based characteristic wrapper that writes directly
  * via peripheral.writeHandleAsync, bypassing GATT discovery entirely.
  */
-function createCachedCharacteristic(peripheral: any, charHandle: number, name: string): PiCharacteristic {
-  return {
-    writeAsync: (data: Buffer, withoutResponse: boolean) =>
-      peripheral.writeHandleAsync(charHandle, data, withoutResponse),
-    deviceName: name,
-    deviceId: peripheral.id,
-  } as PiCharacteristic;
-}
+// ═══════════════════════════════════════════════════════════════════
+//  GATT discovery — mirrors early monolith (always full discovery, no cache)
+// ═══════════════════════════════════════════════════════════════════
 
 /**
  * Connect to a peripheral, discover GATT services/characteristics,
  * set connection interval, and wire up disconnect handler.
+ *
+ * Always performs full GATT discovery — no handle cache. The cache caused
+ * stale-handle failures across reconnects and adds no measurable value.
  */
 export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2cap = false): Promise<void> {
   const MAX_DISCOVERY_RETRIES = 3;
@@ -125,84 +117,49 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   connectDuration = Math.round(performance.now() - connectStart);
   logConnectionEvent({ type: 'connect_ok', device: name, detail: skipL2cap ? 'L2CAP already up' : 'L2CAP connected', durationMs: connectDuration });
 
-  // Step 2: GATT — try cached handle-based write first (skips discovery entirely)
+  // Step 2: Full GATT discovery (combined call, like the early monolith)
   const gattStart = performance.now();
-  let char: PiCharacteristic | null = null;
-  const cachedCharHandle = getSavedCharHandle();
-
-  if (cachedCharHandle != null) {
-    try {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Trying cached writeHandle (char=${cachedCharHandle})` });
-      const cachedChar = createCachedCharacteristic(peripheral, cachedCharHandle, name);
-      // Validate the handle by writing brightness max
-      await withTimeout(cachedChar.writeAsync(brightMaxBuf, true), 'Cached handle write');
-      char = cachedChar;
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'Cached handle OK — skipped GATT discovery', durationMs: Math.round(performance.now() - gattStart) });
-    } catch (e: any) {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Cached handle failed (${e.message}), falling back to full discovery` });
-      char = null;
+  let characteristics: any[] = [];
+  try {
+    logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'discoverSomeServicesAndCharacteristicsAsync...' });
+    const result = await withTimeout(
+      peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
+      'GATT discovery'
+    ) as any;
+    // @stoprocent/noble returns { services, characteristics } object;
+    // @abandonware/noble returned [services, characteristics] array.
+    // Handle both shapes.
+    if (Array.isArray(result)) {
+      characteristics = result[1] ?? [];
+    } else {
+      characteristics = result?.characteristics ?? [];
     }
+  } catch (e: any) {
+    logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT discovery failed: ${e.message}` });
   }
 
-  // Full GATT discovery if cache miss or not available
-  if (!char) {
-    let characteristics: any[] = [];
-    try {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'Two-step: discovering services...' });
-      const services: any[] = await withTimeout(
-        peripheral.discoverServicesAsync([SERVICE_UUID]),
-        'Service discovery'
-      );
-      if (services?.length) {
-        logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Found ${services.length} service(s), discovering characteristics...` });
-        characteristics = await withTimeout(
-          services[0].discoverCharacteristicsAsync([CHAR_UUID]),
-          'Characteristic discovery'
-        );
-      } else {
-        logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'No matching services found' });
-      }
-    } catch (e: any) {
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Two-step failed (${e.message}), trying combined...` });
-      const result = await withTimeout(
-        peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
-        'Combined GATT discovery'
-      ) as any[];
-      characteristics = result?.[1] ?? [];
+  const gattDuration = Math.round(performance.now() - gattStart);
+
+  if (!characteristics?.length) {
+    try { await peripheral.disconnectAsync(); } catch {}
+    if (_retryCount < MAX_DISCOVERY_RETRIES) {
+      const delay = 500 * (_retryCount + 1);
+      logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms`, durationMs: gattDuration });
+      await new Promise(r => setTimeout(r, delay));
+      return connectPeripheral(peripheral, _retryCount + 1);
     }
-
-    const gattDuration = Math.round(performance.now() - gattStart);
-
-    if (!characteristics?.length) {
-      try { await peripheral.disconnectAsync(); } catch {}
-      if (_retryCount < MAX_DISCOVERY_RETRIES) {
-        const delay = 500 * (_retryCount + 1);
-        logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms`, durationMs: gattDuration });
-        await new Promise(r => setTimeout(r, delay));
-        return connectPeripheral(peripheral, _retryCount + 1);
-      }
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `No characteristic after ${MAX_DISCOVERY_RETRIES} retries`, durationMs: gattDuration });
-      throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
-    }
-
-    // Cache GATT handles for future reconnects
-    const foundChar = characteristics[0];
-    const sHandle = foundChar.startHandle ?? foundChar._handle ?? null;
-    const cHandle = foundChar.valueHandle ?? foundChar._valueHandle ?? null;
-    if (sHandle != null || cHandle != null) {
-      setSavedGattHandles(sHandle, cHandle);
-      logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `Cached GATT handles (svc=${sHandle}, char=${cHandle})` });
-    }
-
-    logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
-
-    char = characteristics[0] as PiCharacteristic;
-    char.deviceName = name;
-    char.deviceId = peripheral.id;
-
-    // Write brightness max (not done via cache path)
-    await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: `No characteristic after ${MAX_DISCOVERY_RETRIES} retries`, durationMs: gattDuration });
+    throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
   }
+
+  logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
+
+  const char = characteristics[0] as PiCharacteristic;
+  char.deviceName = name;
+  char.deviceId = peripheral.id;
+
+  // Write brightness max — same as early monolith
+  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
 
   // Step 3: Request minimum connection interval
   requestConnectionInterval(peripheral, name);
