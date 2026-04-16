@@ -32,11 +32,11 @@ export async function waitForAdapter(deviceName?: string): Promise<boolean> {
   }
 }
 
-/** Force Bluetooth adapter up via rfkill/hciconfig (for auto-reconnect) */
+/** Force Bluetooth adapter up via rfkill/hciconfig + reset (required for noble to detect poweredOn on Pi) */
 export function ensureAdapterUp(): void {
   try {
     const { execFileSync } = require('child_process');
-    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'], { timeout: 4000, stdio: 'ignore' });
+    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
   } catch {}
 }
 
@@ -53,11 +53,15 @@ async function initAdapter(): Promise<void> {
   const RETRY_DELAY_MS = 3000;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Reset HCI adapter before each attempt — required on Pi for noble to register poweredOn
+    ensureAdapterUp();
+    await new Promise(r => setTimeout(r, 500));
+
     // Always call waitForPoweredOnAsync to ensure noble's internal state machine
     // is properly initialized — our caps-based override in getAdapterState() does
     // NOT set noble's real state, so startScanningAsync would fail without this.
     try {
-      console.log(`[BLE] initAdapter attempt ${attempt}: calling waitForPoweredOnAsync...`);
+      console.log(`[BLE] initAdapter attempt ${attempt}: hciconfig reset + waitForPoweredOnAsync...`);
       await (noble as any).waitForPoweredOnAsync(5000);
       console.log('[BLE] Adapter state: poweredOn ✓ (noble confirmed)');
       logConnectionEvent({ type: 'connect_start', detail: `Adapter ready (attempt ${attempt})` });
