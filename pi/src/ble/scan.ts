@@ -9,6 +9,7 @@
 import { execFileSync } from 'child_process';
 import { logConnectionEvent, getAdapterState, processHasBtCaps } from './state.js';
 import type { DiscoveredDevice } from './types.js';
+import { isNobleScanActive } from './connect.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -72,6 +73,12 @@ function scanWithHcitool(timeoutMs: number): DiscoveredDevice[] {
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
+    return lastScanResults;
+  }
+  // Avoid HCI contention: if noble is currently scanning for a connect target,
+  // hcitool will fail to open the socket and leave HCI in a bad state.
+  if (isNobleScanActive()) {
+    logConnectionEvent({ type: 'scan_start', detail: 'Skipped — noble scan-connect is active (would lock HCI)' });
     return lastScanResults;
   }
 
