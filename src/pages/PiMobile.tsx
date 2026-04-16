@@ -62,6 +62,11 @@ function buildRawCurve(): number[] {
 
 const RAW_CURVE = buildRawCurve();
 
+function normalizeMacInput(value: string): string {
+  const hex = value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 12);
+  return hex.match(/.{1,2}/g)?.join(':') ?? '';
+}
+
 /** Apply calibration to a raw curve and return processed curve */
 /** Real applyDynamics — mirrors src/lib/engine/brightnessEngine.ts */
 function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
@@ -2216,7 +2221,7 @@ export default function PiMobile() {
                     <input
                       type="text"
                       value={manualBleMac}
-                      onChange={(e) => { setManualBleMac(e.target.value); setManualBleError(null); }}
+                      onChange={(e) => { setManualBleMac(normalizeMacInput(e.target.value)); setManualBleError(null); }}
                       placeholder="BE:67:00:15:09:41"
                       maxLength={17}
                       autoCapitalize="characters"
@@ -2282,7 +2287,7 @@ export default function PiMobile() {
                         <button
                           key={d.address}
                           onClick={() => {
-                            setManualBleMac(d.address);
+                            setManualBleMac(normalizeMacInput(d.address));
                             if (d.name && d.name !== '(unknown)') setManualBleName(d.name);
                             setManualBleError(null);
                           }}
@@ -2313,7 +2318,7 @@ export default function PiMobile() {
                       const r = await fetch(`${piBase}/api/ble/save-manual`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ address: manualBleMac.trim(), name: manualBleName.trim() }),
+                        body: JSON.stringify({ address: normalizeMacInput(manualBleMac.trim()), name: manualBleName.trim() }),
                         signal: AbortSignal.timeout(12000),
                       });
                       const data = await r.json();

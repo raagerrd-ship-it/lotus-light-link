@@ -61,10 +61,15 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
  * peripheral lookup on first connect attempt.
  */
 export async function saveManualDevice(address: string, name: string): Promise<boolean> {
-  // Normalize: "BE:67:00:15:09:41" → uppercase MAC
-  const mac = address.trim().toUpperCase().replace(/[^0-9A-F:]/g, '');
-  if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) {
+  // Normalize both colon and colonless formats to uppercase MAC
+  const hex = address.trim().toUpperCase().replace(/[^0-9A-F]/g, '');
+  if (hex.length !== 12) {
     console.error(`[BLE] Invalid MAC address: ${address}`);
+    return false;
+  }
+  const mac = hex.match(/.{1,2}/g)?.join(':') ?? '';
+  if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) {
+    console.error(`[BLE] Invalid MAC address after normalization: ${address}`);
     return false;
   }
   // noble's id format = MAC without colons, lowercase
