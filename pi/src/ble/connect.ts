@@ -1,23 +1,17 @@
 /**
  * BLE connection — all connection logic in one place.
  *
- * Two connection paths, both ending in the same GATT discovery:
- * 1. nobleDirectConnect() — uses noble.connectAsync(address) to connect without scanning (primary)
- * 2. nobleConnect() — brief noble scan to find peripheral (first-time / fallback)
- *
- * connectPeripheral() handles GATT discovery, connection interval, and disconnect handler.
- * GATT handles are cached after first discovery — reconnects use writeHandleAsync to skip discovery.
+ * Single connection path: brief scan → peripheral.connectAsync() → full GATT discovery.
+ * Mirrors the early monolithic Pi version that worked reliably.
  */
 
 import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress,
-  getSavedAddressType, getSavedConnectable, getSavedServiceUuids,
-  getSavedServiceHandle, getSavedCharHandle, setSavedGattHandles,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { stopNoble, restartNobleHci, waitForAdapter, ensureAdapterUp, normalizeBleKey } from './adapter.js';
+import { waitForAdapter, ensureAdapterUp, normalizeBleKey } from './adapter.js';
 import { isScanning } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
