@@ -70,7 +70,7 @@ export function normalizeBleKey(value: string | null | undefined): string {
 }
 
 // ── Startup diagnostics with adapter retry ──
-import { resetHciAdapter } from './connection.js';
+import { resetHciAdapter } from './connect.js';
 import { processHasBtCaps } from './state.js';
 
 async function initAdapter(): Promise<void> {

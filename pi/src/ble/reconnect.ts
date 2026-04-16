@@ -3,9 +3,8 @@
  */
 
 import { getDevice, isDemandActive, setDemand, getSavedDeviceId, logConnectionEvent } from './state.js';
-import { connectPeripheral, setReconnectHandler } from './connection.js';
+import { connectPeripheral, setReconnectHandler, autoConnectSaved } from './connect.js';
 import { setReconnectTrigger } from './protocol.js';
-import { autoConnectSaved } from './discover.js';
 
 /** Reconnect with exponential backoff, then fall back to fresh scan with retries */
 async function reconnectWithBackoff(peripheral: any, name: string, attempt = 0): Promise<void> {
