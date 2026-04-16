@@ -46,22 +46,8 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   };
 
   try {
-    // Wait for adapter to be ready
-    const state = (noble as any).state ?? (noble as any)._state;
-    if (state !== 'poweredOn') {
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Adapter not ready')), 5000);
-        const check = (s: string) => {
-          if (s === 'poweredOn') { clearTimeout(timeout); resolve(); }
-        };
-        if (((noble as any).state ?? (noble as any)._state) === 'poweredOn') {
-          clearTimeout(timeout);
-          resolve();
-        } else {
-          noble.once('stateChange', check);
-        }
-      });
-    }
+    // Wait for adapter using official API
+    await (noble as any).waitForPoweredOnAsync(5000);
 
     noble.on('discover', onDiscover);
     await noble.startScanningAsync([], true); // all services, allow duplicates
