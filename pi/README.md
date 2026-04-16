@@ -205,7 +205,7 @@ curl -X PUT http://lotus.local:3001/api/sonos-gateway \
 curl http://lotus.local:3001/api/sonos-gateway
 ```
 
-This saves to `~/.lotus-light/sonos-gateway.json` and persists across restarts.
+This saves to `/opt/lotus-light/pi/data/` and persists across restarts and updates.
 
 ---
 
@@ -279,7 +279,7 @@ cd /opt/lotus-light && git remote -v
 | `src/sonosPoller.ts` | Configurable SSE + poll for Sonos state |
 | `src/piEngine.ts` | Headless LightEngine (AGC, smoothing, brightness) |
 | `src/configServer.ts` | Express :3050 — REST API for config |
-| `src/storage.ts` | File-based localStorage (~/.lotus-light/) |
+| `src/storage.ts` | File-based localStorage (`/opt/lotus-light/pi/data/`) |
 | `setup-lotus.sh` | Full install script (deps, I²S, systemd) |
 | `update-services.sh` | Auto-update script (GitHub → build → restart) |
 
