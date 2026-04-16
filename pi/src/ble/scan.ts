@@ -5,7 +5,7 @@
  * No shell exec, no ANSI parsing, no HCI socket juggling.
  */
 
-import { noble, logConnectionEvent } from './state.js';
+import { noble, logConnectionEvent, getAdapterState, processHasBtCaps } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 
 // ── Scan state ──
