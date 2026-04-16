@@ -46,3 +46,4 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
 - [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — bluetoothctl scan for discovery, noble for GATT. ANSI-strip required.
+- [Release pipeline](mem://pi/deployment/release-via-github-actions) — Pi builds via GitHub Actions, deploy via PCC (never build on Pi)
