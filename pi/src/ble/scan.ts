@@ -6,6 +6,7 @@
  * poweredOn. Noble's internal scan API requires its own stateChange event.
  */
 
+import { execFileSync } from 'child_process';
 import { noble, logConnectionEvent, getAdapterState, processHasBtCaps } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 
@@ -30,6 +31,22 @@ function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = SCAN_STE
   ]);
 }
 
+function getNobleRawState(): string | undefined {
+  const n = noble as typeof noble & {
+    state?: string;
+    _state?: string;
+    adapterState?: string;
+    _adapterState?: string;
+  };
+  return n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+}
+
+function resetAdapterForScan(): void {
+  try {
+    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
+  } catch {}
+}
+
 /**
  * Scan for BLE devices using noble's native async API.
  */
@@ -42,8 +59,9 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   lastScanResults = [];
 
   const adapterState = getAdapterState();
+  const rawAdapterState = getNobleRawState() ?? 'unknown';
   const hasCaps = processHasBtCaps();
-  logConnectionEvent({ type: 'scan_start', detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, caps=${hasCaps}` });
+  logConnectionEvent({ type: 'scan_start', detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, noble=${rawAdapterState}, caps=${hasCaps}` });
 
   const seen = new Map<string, DiscoveredDevice>();
   let discoverCount = 0;
@@ -64,16 +82,20 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   };
 
   try {
+    logConnectionEvent({ type: 'scan_start', detail: 'Resetting hci0 before scan...' });
+    resetAdapterForScan();
+    await new Promise(r => setTimeout(r, 500));
+
     // ALWAYS call waitForPoweredOnAsync — noble's internal scan requires its own
-    // stateChange event, not just our adapter-state shim. Isolated tests show scan
-    // resolves in <10ms when this is called first.
+    // stateChange event, not just our adapter-state shim.
     logConnectionEvent({ type: 'scan_start', detail: 'Calling waitForPoweredOnAsync(5000)...' });
-    try {
-      await withTimeout((noble as any).waitForPoweredOnAsync(5000), 'waitForPoweredOnAsync', 5500);
-      logConnectionEvent({ type: 'scan_start', detail: 'Adapter ready via noble stateChange' });
-    } catch (e: any) {
-      logConnectionEvent({ type: 'scan_start', detail: `waitForPoweredOnAsync failed: ${e.message} — proceeding anyway` });
+    await withTimeout((noble as any).waitForPoweredOnAsync(5000), 'waitForPoweredOnAsync', 5500);
+
+    const nobleState = getNobleRawState() ?? 'unknown';
+    if (nobleState !== 'poweredOn') {
+      throw new Error(`Noble adapter not ready: ${nobleState}`);
     }
+    logConnectionEvent({ type: 'scan_start', detail: 'Adapter ready via noble stateChange' });
 
     logConnectionEvent({ type: 'scan_start', detail: 'Starting scan (allowDuplicates=true)' });
     noble.on('discover', onDiscover);
@@ -89,13 +111,13 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
     try { await withTimeout(noble.stopScanningAsync(), 'stopScanningAsync(cleanup)', 3000); } catch {}
   } finally {
     noble.removeListener('discover', onDiscover);
+    scanning = false;
   }
 
   lastScanResults = Array.from(seen.values());
-  scanning = false;
 
   if (lastScanResults.length === 0) {
-    logConnectionEvent({ type: 'scan_done', detail: `0 devices — är BLEDOM på och i närheten? Adapter=${getAdapterState()}` });
+    logConnectionEvent({ type: 'scan_done', detail: `0 devices — är BLEDOM på och i närheten? Adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}` });
   } else {
     logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found` });
   }
