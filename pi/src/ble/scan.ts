@@ -31,15 +31,8 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
 
   // Release HCI from noble before bluetoothctl uses it
   stopNoble();
-
-  // Restart bluetoothd to ensure it owns the adapter (noble may have locked it)
-  try {
-    execFileSync('systemctl', ['restart', 'bluetooth'], { timeout: 5000, stdio: 'ignore' });
-    // Wait for daemon to be ready
-    execFileSync('bash', ['-c', 'sleep 1'], { timeout: 3000 });
-  } catch (e: any) {
-    console.warn('[BLE] Failed to restart bluetooth service:', e.message);
-  }
+  // Brief delay for HCI socket release (no heavy service restart)
+  await new Promise(r => setTimeout(r, 500));
 
   // Stop any in-progress bluetoothctl scan to prevent hang
   try {

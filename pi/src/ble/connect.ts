@@ -50,11 +50,12 @@ export async function resetHciAdapter(): Promise<void> {
 const STEP_TIMEOUT_MS = 3000;
 
 function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${STEP_TIMEOUT_MS}ms`)), STEP_TIMEOUT_MS)
-    ),
+    promise.then(v => { clearTimeout(timer); return v; }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${STEP_TIMEOUT_MS}ms`)), STEP_TIMEOUT_MS);
+    }),
   ]);
 }
 
@@ -145,18 +146,7 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   // Step 4: Request minimum connection interval
   requestConnectionInterval(peripheral, name);
 
-  // Step 5: Activate device
-  setDevice({ peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id });
-  consecutiveConnectFailures = 0;
-  startKeepAlive();
-
-  // Backfill saved name if missing
-  if (getSavedDeviceId() === peripheral.id && (!getSavedDeviceName() || getSavedDeviceName() === peripheral.id)) {
-    setSavedDevice(peripheral.id, name);
-    console.log(`[BLE] Backfilled saved name: ${name}`);
-  }
-
-  // Step 6: Disconnect handler
+  // Step 5: Register disconnect handler BEFORE activating device (prevents race condition)
   peripheral.once('disconnect', (reason: any) => {
     const uptime = Math.round((performance.now() - connectStart) / 1000);
     bleStats.disconnectCount++;
@@ -179,6 +169,17 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
       if (_reconnectWithBackoff) _reconnectWithBackoff(peripheral, name);
     }
   });
+
+  // Step 6: Activate device (safe — disconnect handler already registered)
+  setDevice({ peripheral, characteristic: char, mode: 'rgb', name, id: peripheral.id });
+  consecutiveConnectFailures = 0;
+  startKeepAlive();
+
+  // Backfill saved name if missing
+  if (getSavedDeviceId() === peripheral.id && (!getSavedDeviceName() || getSavedDeviceName() === peripheral.id)) {
+    setSavedDevice(peripheral.id, name);
+    console.log(`[BLE] Backfilled saved name: ${name}`);
+  }
 
   const totalDuration = Math.round(performance.now() - connectStart);
   logConnectionEvent({ type: 'connect_ok', device: name, detail: `Fully ready (connect=${connectDuration}ms, gatt=${gattDuration}ms)`, durationMs: totalDuration });
@@ -203,7 +204,11 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
     return false;
   }
 
-  await restartNobleHci(name);
+  // Only restart noble HCI if adapter is not already ready
+  const { getAdapterState } = await import('./state.js');
+  if (getAdapterState() !== 'poweredOn') {
+    await restartNobleHci(name);
+  }
   if (!await waitForAdapter(name)) return false;
 
   logConnectionEvent({ type: 'connect_start', device: name, detail: `Direct connect: ${savedAddress} (${savedAddressType})` });
@@ -375,6 +380,7 @@ export async function autoConnectSaved(timeoutMs = 15000): Promise<number> {
   logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Enheten är ev. avstängd eller utom räckhåll [fail#${fails}]` });
   if (fails >= HCI_RESET_THRESHOLD) {
     await resetHciAdapter();
+    resetConsecutiveFailures();
   }
   return 0;
 }
