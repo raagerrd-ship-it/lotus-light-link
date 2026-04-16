@@ -54,6 +54,7 @@ export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 
 // ── Keepalive ──
 const KEEPALIVE_MS = 1000;
+const KEEPALIVE_FAIL_THRESHOLD = 5;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
 
@@ -77,6 +78,17 @@ export function startKeepAlive(): void {
       keepAliveFailCount++;
       if (keepAliveFailCount <= 3 || keepAliveFailCount % 10 === 0) {
         console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e.message ?? e}`);
+      }
+      // Proactive reconnect: too many keep-alive failures → device is dead
+      if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && device && isDemandActive()) {
+        console.warn('[BLE] Keep-alive threshold reached — triggering proactive reconnect');
+        const periph = device.peripheral;
+        const name = device.name;
+        stopKeepAlive();
+        setDevice(null);
+        resetLastSent();
+        try { await periph.disconnectAsync(); } catch {}
+        if (_triggerReconnect) _triggerReconnect(periph, name);
       }
     }
   }, KEEPALIVE_MS);
