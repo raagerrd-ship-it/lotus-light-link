@@ -28,9 +28,17 @@ function stopBluetoothctl(): void {
   } catch {}
 }
 
-/** Kill noble scanning so bluetoothctl can use HCI */
+/** Force noble to fully release HCI so bluetoothctl can use the adapter */
 function stopNoble(): void {
   try { noble.stopScanning(); } catch {}
+  // noble holds HCI open even when not scanning — we must close the underlying socket
+  try {
+    const bindings = (noble as any)._bindings;
+    if (bindings?._hci?.stop) {
+      bindings._hci.stop();
+      logConnectionEvent({ type: 'scan_start', detail: 'noble HCI released for bluetoothctl' });
+    }
+  } catch {}
 }
 
 // ── State ──
