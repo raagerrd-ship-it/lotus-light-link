@@ -2360,6 +2360,12 @@ export default function PiMobile() {
         </button>
         {showDiag && (
           <div className="mt-3 space-y-4">
+            <div className="bg-secondary/50 rounded-xl p-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Bluetooth size={12} /> BLE Adapter & Status
+              </h3>
+              <BleDiagnosticsPanel piBase={piBase} />
+            </div>
             <BleIntervalDiag piBase={piBase} />
             <div className="bg-secondary/50 rounded-xl p-3">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
