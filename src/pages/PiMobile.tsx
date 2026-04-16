@@ -2197,62 +2197,9 @@ export default function PiMobile() {
           </div>
         )}
 
-        {/* Scan button */}
-        <button
-          onClick={async () => {
-            setBleScanning(true);
-            setBleScanResults([]);
-            try {
-              const r = await fetch(`${piBase}/api/ble/scan`, { method: 'POST', signal: AbortSignal.timeout(15000) });
-              const data = await r.json();
-              const hasKnownBleDevice = Boolean(
-                bleIdentityRef.current.savedId || bleIdentityRef.current.savedName || bleIdentityRef.current.connectedId
-              );
-              if (data.error) {
-                console.warn('[BLE scan]', data.error);
-                setBleScanLog(prev => [...prev, { type: 'connect_fail', detail: `API error: ${data.error}`, timestamp: new Date().toISOString() }]);
-              }
-              setBleScanResults(data.devices ?? []);
-              if ((data.devices ?? []).length === 0 && data.adapterState && !hasKnownBleDevice) {
-                setSaveError(`BLE-adapter: ${data.adapterState}. Inga enheter hittades.`);
-                setTimeout(() => setSaveError(null), 5000);
-              }
-            } catch (e: any) {
-              const reason = e?.name === 'TimeoutError' ? 'Timeout (15s) — Pi svarar inte'
-                : e?.name === 'AbortError' ? 'Avbruten'
-                : e?.message?.includes('Failed to fetch') ? 'Nätverksfel — Pi ej nåbar'
-                : `${e?.name ?? 'Error'}: ${e?.message ?? 'okänt'}`;
-              console.error('[BLE scan] failed:', reason);
-              setSaveError(`BLE-scan: ${reason}`);
-              setTimeout(() => setSaveError(null), 8000);
-              setBleScanLog(prev => [...prev, { type: 'connect_fail', detail: `Scan fetch failed: ${reason}`, timestamp: new Date().toISOString() }]);
-              setShowBleLog(true);
-            }
-            // Fetch BLE log after scan (may fail if Pi unreachable)
-            try {
-              const logR = await fetch(`${piBase}/api/ble/log`, { signal: AbortSignal.timeout(3000) });
-              const logData = await logR.json();
-              setBleScanLog(logData.events ?? []);
-              setShowBleLog(true);
-            } catch {
-              // Keep local log entries if Pi unreachable
-            }
-            setBleScanning(false);
-          }}
-          disabled={bleScanning}
-          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {bleScanning ? (
-            <><Loader2 size={16} className="animate-spin" /> Söker…</>
-          ) : (
-            <><Search size={16} /> {bleSavedId ? 'Byt enhet' : 'Sök efter enheter'}</>
-          )}
-        </button>
-
-        {/* Manual MAC entry — fallback when scan fails */}
-        {!bleSavedId && (
-          <div className="mt-2">
-            {!showManualBle ? (
+        {/* Manual MAC entry — only path to add a device. HCI-scan inside the form. */}
+        <div className="mt-2">
+          {true ? (
               <button
                 onClick={() => setShowManualBle(true)}
                 className="text-[11px] text-muted-foreground active:text-foreground underline-offset-2 hover:underline"
