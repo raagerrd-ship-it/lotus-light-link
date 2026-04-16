@@ -136,8 +136,6 @@ export function getConnectionLog(): BleConnectionEvent[] {
 
 // ── Noble adapter helpers ──
 
-let _nobleHciReleased = false;
-
 export function processHasBtCaps(): boolean {
   try {
     const status = readFileSync('/proc/self/status', 'utf8');
@@ -151,11 +149,6 @@ export function processHasBtCaps(): boolean {
     // not on Linux or /proc unavailable
   }
   return false;
-}
-
-export function isNobleHciReleased(): boolean { return _nobleHciReleased; }
-export function setNobleHciReleased(released: boolean): void {
-  _nobleHciReleased = released;
 }
 
 export function getAdapterState(): string | undefined {
