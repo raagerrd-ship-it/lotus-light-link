@@ -20,6 +20,23 @@ export function isScanning(): boolean { return scanning; }
  * Scan for BLE devices using noble's native async API.
  * Returns discovered devices with name and RSSI.
  */
+function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = SCAN_STEP_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise.then((value) => {
+      clearTimeout(timer);
+      return value;
+    }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
+}
+
+/**
+ * Scan for BLE devices using noble's native async API.
+ * Returns discovered devices with name and RSSI.
+ */
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
