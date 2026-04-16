@@ -2298,7 +2298,70 @@ export default function PiMobile() {
                     />
                   </label>
                 </div>
-                {manualBleError && (
+
+                {/* HCI scan — alternative to noble scan */}
+                <div className="space-y-1.5">
+                  <button
+                    disabled={hciScanning}
+                    onClick={async () => {
+                      setHciScanning(true);
+                      setHciScanError(null);
+                      setHciScanResults([]);
+                      setHciScanRaw("");
+                      try {
+                        const r = await fetch(`${piBase}/api/ble/hci-scan`, {
+                          method: 'POST',
+                          signal: AbortSignal.timeout(15000),
+                        });
+                        const data = await r.json();
+                        if (!r.ok) {
+                          setHciScanError(data.error ?? 'HCI-scan misslyckades');
+                        } else {
+                          setHciScanResults(data.devices ?? []);
+                          setHciScanRaw(data.rawOutput ?? '');
+                        }
+                      } catch (e: any) {
+                        setHciScanError(e?.message ?? 'Nätverksfel');
+                      } finally {
+                        setHciScanning(false);
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-2 text-[11px] font-medium px-2.5 py-1.5 rounded-md bg-secondary text-foreground active:bg-secondary/70 disabled:opacity-50 border border-border/60"
+                  >
+                    {hciScanning ? (
+                      <><Loader2 size={12} className="animate-spin" /> HCI-scannar (3s)…</>
+                    ) : (
+                      <><Search size={12} /> HCI-scan (hcitool lescan)</>
+                    )}
+                  </button>
+                  {hciScanError && (
+                    <p className="text-[10px] text-destructive">{hciScanError}</p>
+                  )}
+                  {hciScanResults.length > 0 && (
+                    <div className="bg-background/60 border border-border rounded-md max-h-40 overflow-y-auto divide-y divide-border/60">
+                      {hciScanResults.map((d) => (
+                        <button
+                          key={d.address}
+                          onClick={() => {
+                            setManualBleMac(d.address);
+                            if (d.name && d.name !== '(unknown)') setManualBleName(d.name);
+                            setManualBleError(null);
+                          }}
+                          className="w-full text-left px-2 py-1.5 active:bg-secondary/40 transition-colors"
+                        >
+                          <div className="text-[11px] font-mono text-foreground">{d.address}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">{d.name}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {hciScanRaw && (
+                    <details className="text-[10px]">
+                      <summary className="text-muted-foreground cursor-pointer active:text-foreground">Rå output</summary>
+                      <pre className="mt-1 bg-background/60 border border-border rounded-md p-1.5 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-muted-foreground">{hciScanRaw}</pre>
+                    </details>
+                  )}
+                </div>
                   <p className="text-[10px] text-destructive">{manualBleError}</p>
                 )}
                 <button
