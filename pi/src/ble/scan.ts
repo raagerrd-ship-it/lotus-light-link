@@ -41,6 +41,11 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
     console.warn('[BLE] Failed to restart bluetooth service:', e.message);
   }
 
+  // Stop any in-progress bluetoothctl scan to prevent hang
+  try {
+    execFileSync('bluetoothctl', ['scan', 'off'], { timeout: 2000, stdio: 'ignore' });
+  } catch {}
+
   // Run scan and capture output directly (bluetoothctl devices doesn't show discovered devices)
   const scanCmd = `bluetoothctl --timeout ${scanSeconds} scan le 2>&1`;
   const execTimeoutMs = (scanSeconds * 1000) + 5000;
