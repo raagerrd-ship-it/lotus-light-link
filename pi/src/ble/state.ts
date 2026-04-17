@@ -120,6 +120,36 @@ export const bleStats = {
   intervalSource: 'unknown' as string,
 };
 
+// ── Workaround usage counters ──
+// Spårar hur ofta varje defensiv fallback faktiskt triggas. Om en counter
+// står på 0 efter en vecka i drift → koden är död och kan rensas bort
+// efter den rena PCC-installationen. Visas i /api/ble/diagnostics.
+export const workaroundCounters = {
+  // forceNoblePoweredOn() — varje gång vi ger upp och accepterar caps-aware state
+  forceNoblePoweredOn_invoked: 0,
+  forceNoblePoweredOn_skippedHealthy: 0,
+  forceNoblePoweredOn_neededRefresh: 0,
+  // hciconfig down/up/reset
+  resetHciAdapter_invoked: 0,
+  // systemctl restart bluetooth (last resort)
+  hardBluetoothRestart_invoked: 0,
+  // POST /api/ble/reset från UI-knappen
+  manualBleReset_invoked: 0,
+  // restartNobleHci — refresh av noble HCI-listeners
+  restartNobleHci_invoked: 0,
+  // getAdapterState() override (raw=unknown men caps OK → reporting poweredOn)
+  capsOverride_applied: 0,
+  // Caps self-check failures (saknar CAP_NET_RAW/CAP_NET_ADMIN)
+  capsSelfCheck_failed: 0,
+  // Sista gång varje workaround triggades
+  lastInvocationAt: {} as Record<string, string>,
+};
+
+export function bumpWorkaround(key: keyof Omit<typeof workaroundCounters, 'lastInvocationAt'>): void {
+  workaroundCounters[key]++;
+  workaroundCounters.lastInvocationAt[key] = new Date().toISOString();
+}
+
 // ── Connection event log (ring buffer for diagnostics) ──
 const MAX_EVENTS = 50;
 const _connectionLog: BleConnectionEvent[] = [];
@@ -232,6 +262,7 @@ export function runBleCapsSelfCheck(): {
     if (isRoot) {
       console.error('[BLE:caps-check] (kör som root men saknar ändå caps — ovanligt; kontrollera CapBnd)');
     }
+    bumpWorkaround('capsSelfCheck_failed');
     logConnectionEvent({
       type: 'connect_fail',
       detail: `caps-check FAIL: saknar ${missing.join('+')} (CapEff=${capEff}, uid=${uid}) — fixa systemd-service`,
@@ -253,6 +284,7 @@ export function getAdapterState(): string | undefined {
   const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
 
   if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
+    bumpWorkaround('capsOverride_applied');
     if (!_capsOverrideLogged) {
       console.log('[BLE] noble state unclear but process has CAP_NET_RAW+CAP_NET_ADMIN — reporting poweredOn (without mutating noble internals)');
       _capsOverrideLogged = true;
