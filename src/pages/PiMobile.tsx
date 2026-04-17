@@ -971,6 +971,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       hci?: { raw: string; error: string | null };
       rfkill?: string;
     };
+    build?: { bleTag?: string };
     // transport toggle removed (gatttool fallback eliminated)
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
