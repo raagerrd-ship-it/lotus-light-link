@@ -1106,6 +1106,12 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         </div>
       )}
 
+      {diag.build?.bleTag && (
+        <div className="text-[10px] text-muted-foreground/70 font-mono px-1">
+          build: <span className="text-foreground/70">{diag.build.bleTag}</span>
+        </div>
+      )}
+
       {/* Event log */}
       <div>
         <div className="flex items-center justify-between mb-1">
