@@ -170,17 +170,29 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
   });
 }
 
-// ── Timeout helper ──
-const STEP_TIMEOUT_MS = 3000;
+// ── Timeout helper — per-step budgets ──
+// L2CAP and write are quick; GATT discovery on BLEDOM has been observed
+// up to ~4s on a marginal link, so give it more headroom.
+const TIMEOUTS = { l2cap: 3000, gatt: 5000, write: 2000 } as const;
+type StepKind = keyof typeof TIMEOUTS;
 
-function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
+  const ms = TIMEOUTS[kind];
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     promise.then(v => { clearTimeout(timer); return v; }),
     new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${label} timed out after ${STEP_TIMEOUT_MS}ms`)), STEP_TIMEOUT_MS);
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     }),
   ]);
+}
+
+/** Exposed so reconnect.ts can wait out an in-flight connect before its first attempt. */
+export function isConnectInProgress(): boolean { return activeConnectPromise !== null; }
+export async function waitForConnectIdle(maxMs = 12_000): Promise<void> {
+  const p = activeConnectPromise;
+  if (!p) return;
+  await Promise.race([p.catch(() => {}), new Promise(r => setTimeout(r, maxMs))]);
 }
 
 // ── Reconnect handler (set by reconnect.ts to break circular dep) ──
@@ -219,7 +231,7 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   // Step 1: L2CAP connect
   if (!skipL2cap) {
     try {
-      await withTimeout(peripheral.connectAsync(), 'BLE connect');
+      await withTimeout(peripheral.connectAsync(), 'BLE connect', 'l2cap');
     } catch (e: any) {
       logConnectionEvent({ type: 'connect_fail', device: name, detail: `Connect failed: ${e.message}`, durationMs: Math.round(performance.now() - connectStart) });
       throw e;
@@ -235,7 +247,8 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
     logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'discoverSomeServicesAndCharacteristicsAsync...' });
     const result = await withTimeout(
       peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
-      'GATT discovery'
+      'GATT discovery',
+      'gatt'
     ) as any;
     // @stoprocent/noble returns { services, characteristics } object;
     // @abandonware/noble returned [services, characteristics] array.
@@ -252,13 +265,15 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   const gattDuration = Math.round(performance.now() - gattStart);
 
   if (!characteristics?.length) {
-    try { await peripheral.disconnectAsync(); } catch {}
     if (_retryCount < MAX_DISCOVERY_RETRIES) {
+      // Keep L2CAP up between GATT retries — disconnecting and reconnecting
+      // on @stoprocent/noble often triggers "already connected" errors.
       const delay = 500 * (_retryCount + 1);
-      logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms`, durationMs: gattDuration });
+      logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms (L2CAP kept)`, durationMs: gattDuration });
       await new Promise(r => setTimeout(r, delay));
-      return connectPeripheral(peripheral, _retryCount + 1);
+      return connectPeripheral(peripheral, _retryCount + 1, true);
     }
+    try { await peripheral.disconnectAsync(); } catch {}
     logConnectionEvent({ type: 'connect_fail', device: name, detail: `No characteristic after ${MAX_DISCOVERY_RETRIES} retries`, durationMs: gattDuration });
     throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
   }
@@ -270,7 +285,7 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   char.deviceId = peripheral.id;
 
   // Write brightness max — same as early monolith
-  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
+  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write', 'write');
 
   // Step 3: Request minimum connection interval
   requestConnectionInterval(peripheral, name);
@@ -340,40 +355,44 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
     let done = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let onDiscover: ((peripheral: any) => void) | null = null;
 
     const cleanup = () => {
       if (timer) { clearTimeout(timer); timer = null; }
-      noble.removeListener('discover', onDiscover);
+      if (onDiscover) { try { noble.removeListener('discover', onDiscover); } catch {} onDiscover = null; }
       try { noble.stopScanning(); } catch {}
+      // Always clear the active flag — even if listener removal threw.
       nobleScanActive = false;
     };
 
     const finish = (ok: boolean) => {
       if (done) return;
-      done = true;
-      cleanup();
+      done = true;          // set BEFORE cleanup so re-entrant events bail
+      try { cleanup(); } catch {}
       resolve(ok);
     };
 
-    const onDiscover = async (peripheral: any) => {
+    onDiscover = (peripheral: any) => {
+      if (done) return;     // duplicate advertisement after match — ignore
       const pid = normalizeBleKey(peripheral.id);
       const pmac = normalizeBleKey(peripheral.address);
       if (pid !== targetNorm && pmac !== targetNorm) return;
 
-      cleanup();
+      // Mark done + tear down the listener BEFORE awaiting connect, so the
+      // scan timer can't fire finish(false) while we're mid-connect, and a
+      // second discover event for the same peripheral can't re-enter.
+      done = true;
+      try { cleanup(); } catch {}
+
       logConnectionEvent({ type: 'connect_start', device: name, detail: `Found via scan, connecting (addressType=${peripheral.addressType ?? 'unknown'})` });
 
-      try {
-        await connectPeripheral(peripheral, 0, false);
-        if (done) return;
-        done = true;
-        resolve(true);
-      } catch (e: any) {
-        if (done) return;
-        done = true;
-        logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect failed: ${e.message}` });
-        resolve(false);
-      }
+      connectPeripheral(peripheral, 0, false).then(
+        () => resolve(true),
+        (e: any) => {
+          logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect failed: ${e.message}` });
+          resolve(false);
+        }
+      );
     };
 
     noble.on('discover', onDiscover);
@@ -509,22 +528,31 @@ function requestConnectionInterval(peripheral: any, name: string): void {
     const hci = (noble as any)._bindings?._hci;
     const handle = peripheral._handle ?? peripheral.handle;
     if (hci && handle != null && typeof hci.writeLeConnectionUpdate === 'function') {
-      hci.writeLeConnectionUpdate(handle, 6, 8, 0, 200);
+      // Capture handle in a const for strict comparison inside the listener.
+      const expectedHandle = handle;
+      hci.writeLeConnectionUpdate(expectedHandle, 6, 8, 0, 200);
       bleStats.requestedIntervalMs = '7.5–10';
       console.log(`[BLE] Requested connection interval 7.5–10ms for ${name}`);
 
       if (typeof hci.on === 'function') {
-        const onLeConnUpdateComplete = (status: number, connHandle: number, interval: number, latency: number, supervisionTimeout: number) => {
-          if (connHandle !== handle) return;
+        let settled = false;
+        let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+        const onLeConnUpdateComplete = (_status: number, connHandle: number, interval: number, latency: number, supervisionTimeout: number) => {
+          if (connHandle !== expectedHandle) return;     // strict — ignore other handles
+          if (settled) return;
+          settled = true;
+          if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
+          try { hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete); } catch {}
           const actualMs = (interval * 1.25).toFixed(1);
           bleStats.actualIntervalMs = actualMs;
           bleStats.intervalSource = 'hci_event';
           console.log(`[BLE] Connection interval accepted: ${actualMs}ms (latency=${latency}, timeout=${supervisionTimeout * 10}ms)`);
-          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
         };
         hci.on('leConnUpdateComplete', onLeConnUpdateComplete);
-        setTimeout(() => {
-          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
+        timeoutTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          try { hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete); } catch {}
           if (bleStats.intervalSource === 'unknown') {
             bleStats.intervalSource = 'estimated';
           }
