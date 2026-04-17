@@ -15,10 +15,6 @@ import { waitForAdapter, ensureAdapterUp, normalizeBleKey, restartNobleHci } fro
 import { isScanning } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
-import {
-  isHciTransportEnabled, isHciTransportConnected,
-  connectViaHciTransport, disconnectHciTransport,
-} from './hciTransport.js';
 
 // ── HCI reset tracking ──
 let consecutiveConnectFailures = 0;
@@ -69,26 +65,56 @@ export async function resetHciAdapter(): Promise<void> {
 /**
  * Force noble's internal HCI binding to re-initialize and reach poweredOn.
  * On Pi, noble can stay stuck in `unknown` even when the adapter is up.
- * This restarts noble's HCI socket and waits for stateChange → poweredOn.
+ *
+ * Strategy: up to 5 attempts. Each attempt does a full hciconfig down/up/reset
+ * (releases the kernel HCI socket), restarts noble's internal HCI binding, then
+ * waits up to 2s for noble.state → poweredOn. Total worst-case ~16s before we
+ * give up and let the caller proceed (which will then fail loudly).
  */
 async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
-  const currentState = (noble as any).state ?? (noble as any)._state;
-  if (currentState === 'poweredOn') return;
+  const readState = () => (noble as any).state ?? (noble as any)._state;
+  if (readState() === 'poweredOn') return;
 
-  logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble state=${currentState ?? 'unknown'} — restarting HCI binding` });
+  const MAX_ATTEMPTS = 5;
+  for (let i = 1; i <= MAX_ATTEMPTS; i++) {
+    const before = readState();
+    logConnectionEvent({
+      type: 'hci_reset',
+      device: deviceName,
+      detail: `noble state=${before ?? 'unknown'} — reinit attempt ${i}/${MAX_ATTEMPTS}`,
+    });
 
-  try {
-    await restartNobleHci(deviceName);
-  } catch {}
+    // Step 1: full hciconfig down/up/reset to release any stuck kernel HCI socket
+    try { await resetHciAdapter(); } catch {}
 
-  // Wait up to 2s for noble to confirm poweredOn
-  try {
-    await (noble as any).waitForPoweredOnAsync?.(2000);
-    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓' });
-  } catch {
-    const after = (noble as any).state ?? (noble as any)._state;
-    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble still ${after ?? 'unknown'} after restart — proceeding anyway` });
+    // Step 2: bounce noble's HCI binding so it re-reads adapter state
+    try { await restartNobleHci(deviceName); } catch {}
+
+    // Step 3: wait up to 2s for noble to confirm poweredOn
+    try {
+      await (noble as any).waitForPoweredOnAsync?.(2000);
+      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble poweredOn ✓ (after ${i} attempt${i === 1 ? '' : 's'})` });
+      return;
+    } catch {
+      const after = readState();
+      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble still ${after ?? 'unknown'} after attempt ${i}` });
+      if (after === 'poweredOn') return;
+      if (after === 'unauthorized' || after === 'poweredOff') {
+        // Hard failures — no point looping
+        logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `Hard fail (${after}) — abort reinit loop` });
+        return;
+      }
+    }
+
+    // Brief backoff between attempts
+    await new Promise(r => setTimeout(r, 500));
   }
+
+  logConnectionEvent({
+    type: 'hci_reset',
+    device: deviceName,
+    detail: `noble still ${readState() ?? 'unknown'} after ${MAX_ATTEMPTS} reinit attempts — proceeding anyway`,
+  });
 }
 
 // ── Timeout helper ──
@@ -370,11 +396,6 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
  * direct connect works, so first-pairing uses the scanned MAC address.
  */
 export async function nobleConnect(targetId: string, name: string, timeoutMs = 8000): Promise<boolean> {
-  if (isHciTransportEnabled()) {
-    const mac = (getSavedDeviceAddress() ?? targetId.replace(/(.{2})(?=.)/g, '$1:')).toUpperCase();
-    const ok = await connectViaHciTransport(mac, name);
-    return ok;
-  }
   return withConnectLock(name, () => true, async () => {
     const ok = await nobleScanConnect(targetId, name, timeoutMs);
     if (ok) {
@@ -405,13 +426,6 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     return 0;
   }
   if (getDevice()) return 1;
-  if (isHciTransportEnabled()) {
-    if (isHciTransportConnected()) return 1;
-    const savedName = getSavedDeviceName() ?? savedId;
-    const mac = (getSavedDeviceAddress() ?? savedId.replace(/(.{2})(?=.)/g, '$1:')).toUpperCase();
-    const ok = await connectViaHciTransport(mac, savedName);
-    return ok ? 1 : 0;
-  }
   if (isScanning()) return 0;
 
   const savedName = getSavedDeviceName() ?? savedId;

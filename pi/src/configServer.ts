@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isHciTransportEnabled, setHciTransportEnabled, isHciTransportConnected, connectViaHciTransport, disconnectHciTransport } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -261,34 +261,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     });
   });
 
-  // BLE transport mode toggle (noble vs hcitool/gatttool fallback)
-  app.get('/api/ble/transport', (_req, res) => {
-    res.json({
-      hciEnabled: isHciTransportEnabled(),
-      hciConnected: isHciTransportConnected(),
-    });
-  });
-  app.put('/api/ble/transport', async (req, res) => {
-    const { hciEnabled } = req.body ?? {};
-    if (typeof hciEnabled !== 'boolean') {
-      return res.status(400).json({ error: 'hciEnabled must be boolean' });
-    }
-    setHciTransportEnabled(hciEnabled);
-    // If turning on and we have a saved device, try to connect now
-    if (hciEnabled && getSavedDeviceId()) {
-      const mac = (getSavedDeviceAddress() ?? getSavedDeviceId()!.replace(/(.{2})(?=.)/g, '$1:')).toUpperCase();
-      const name = getSavedDeviceName() ?? 'BLE';
-      try { await connectViaHciTransport(mac, name); } catch {}
-    }
-    if (!hciEnabled) {
-      try { await disconnectHciTransport(); } catch {}
-    }
-    res.json({
-      ok: true,
-      hciEnabled: isHciTransportEnabled(),
-      hciConnected: isHciTransportConnected(),
-    });
-  });
+
 
   // Run hcitool lescan as a fallback when noble scan fails.
   // Returns raw output so user can copy MAC into manual save form.
@@ -375,10 +348,6 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         nobleRaw,
         hci: { raw: hciRaw, error: hciError },
         rfkill,
-      },
-      transport: {
-        hciEnabled: isHciTransportEnabled(),
-        hciConnected: isHciTransportConnected(),
       },
       build: {
         bleTag: BLE_BUILD_TAG,
