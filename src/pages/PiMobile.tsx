@@ -1862,6 +1862,8 @@ export default function PiMobile() {
 
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
+  const showBlePicker = !bleSavedId || bleScanning || bleScanResults.length > 0;
+  const showBleSavedCard = (bleSavedId || bleConnectedId) && !blePreview && !showBlePicker;
 
   const putJson = async (path: string, body: unknown) => {
     const r = await fetch(`${piBase}${path}`, {
