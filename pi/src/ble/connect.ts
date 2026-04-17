@@ -12,7 +12,7 @@ import {
   bumpWorkaround,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { waitForAdapter, ensureAdapterUp, normalizeBleKey, restartNobleHci } from './adapter.js';
+import { waitForAdapter, ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
 import { isScanning } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
@@ -67,13 +67,30 @@ async function withConnectLock<T>(deviceName: string | undefined, successResult:
 
 export async function resetHciAdapter(): Promise<void> {
   bumpWorkaround('resetHciAdapter_invoked');
-  logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig hci0 reset (sandbox-friendly)' });
+  logConnectionEvent({ type: 'hci_reset', detail: 'rfkill unblock + hciconfig reset/up' });
   try {
     const { execFileSync } = await import('child_process');
-    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 down >/dev/null 2>&1; command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1; command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
+    execFileSync('bash', ['-lc',
+      // 1) unblock rfkill FIRST — without this hciconfig up is a no-op
+      'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
+      // 2) cycle the adapter
+      '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 down >/dev/null 2>&1; ' +
+      ' command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1; ' +
+      // 3) bring it back up (must come AFTER reset, otherwise reset leaves it DOWN)
+      ' command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
+      // 4) double-check rfkill in case reset re-blocked it (seen on some kernels)
+      'rfkill unblock bluetooth >/dev/null 2>&1 || true'
+    ], { timeout: 6000, stdio: 'ignore' });
     bleStats.lastDisconnectReason = 'hci_reset';
-    logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig reset complete ✓' });
-    await new Promise(r => setTimeout(r, 1000));
+    logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig reset complete ✓ — waiting for poweredOn' });
+
+    // Wait for noble to actually see the adapter as poweredOn
+    const ok = await waitForNoblePoweredOn(5000);
+    if (ok) {
+      logConnectionEvent({ type: 'hci_reset', detail: 'adapter poweredOn ✓ (post-reset)' });
+    } else {
+      logConnectionEvent({ type: 'hci_reset', detail: `adapter still ${getAdapterState() ?? 'unknown'} after 5s — manual investigation needed` });
+    }
   } catch (e: any) {
     logConnectionEvent({ type: 'hci_reset', detail: `hciconfig reset failed: ${e.message}` });
   }
