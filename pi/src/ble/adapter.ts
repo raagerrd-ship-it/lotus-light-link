@@ -2,7 +2,7 @@
  * BLE adapter management — noble HCI helpers and adapter init.
  */
 
-import { noble, getAdapterState, logConnectionEvent, processHasBtCaps } from './state.js';
+import { noble, getAdapterState, logConnectionEvent, processHasBtCaps, bumpWorkaround } from './state.js';
 export { processHasBtCaps };
 
 /** Stop noble scanning (no HCI release — noble keeps the socket) */
@@ -16,6 +16,7 @@ export function stopNoble(): void {
  * noble in raw `unknown`, so keep this re-init best-effort and non-destructive.
  */
 export async function restartNobleHci(deviceName?: string): Promise<void> {
+  bumpWorkaround('restartNobleHci_invoked');
   try {
     const bindings = (noble as any)._bindings;
     const hci = bindings?._hci;

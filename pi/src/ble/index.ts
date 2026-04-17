@@ -19,6 +19,7 @@ export { bleStats, getAdapterState, isDemandActive, getConnectionLog } from './s
 export { getDevice, getSavedDeviceId, getSavedDeviceName } from './state.js';
 export { getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, processHasBtCaps } from './state.js';
 export { BLE_BUILD_TAG } from './state.js';
+export { workaroundCounters } from './state.js';
 export { noble } from './state.js';
 
 // Protocol (write pipeline)
