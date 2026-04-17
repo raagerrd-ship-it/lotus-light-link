@@ -52,3 +52,4 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — Noble scan + connect, GATT handle caching
 - [fix-sudo ownership](mem://pi/deployment/fix-sudo-ownership) — fix-sudo.sh ägs av PCC; Lotus har bara thin wrapper
 - [HCI ownership policy](mem://pi/ble/hci-ownership-policy) — Noble äger HCI hela processen; ingen auto-release; manuell reset via /api/ble/reset
+- [BLE build tag bump](mem://pi/ble/build-tag-policy) — Bumpa BLE_BUILD_TAG vid varje BLE-ändring
