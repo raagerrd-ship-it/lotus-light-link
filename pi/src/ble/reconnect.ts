@@ -6,7 +6,7 @@
  */
 
 import { getDevice, isDemandActive, setDemand, getSavedDeviceId, logConnectionEvent } from './state.js';
-import { setReconnectHandler, autoConnectSaved, isConnectInProgress, waitForConnectIdle } from './connect.js';
+import { setReconnectHandler, autoConnectSaved, isConnectInProgress, waitForConnectIdle, getConsecutiveFailures, resetConsecutiveFailures } from './connect.js';
 import { setReconnectTrigger } from './protocol.js';
 
 /** Reconnect with exponential backoff using fresh connections only */
@@ -64,11 +64,40 @@ export function releaseDemand(): void {
   console.log('[BLE] Demand OFF — will not reconnect on next disconnect');
 }
 
-/** Background reconnect loop — only reconnects when demand is active */
-export function startReconnectLoop(intervalMs = 15000): NodeJS.Timeout {
+/**
+ * Background reconnect loop — only reconnects when demand is active.
+ *
+ * Adaptiv backoff baserat på consecutiveConnectFailures:
+ *   0–2 fails  → försök varje baseIntervalMs (15s default) — lampa precis offline
+ *   3–9 fails  → vart 30s — sannolikt avstängd, mindre intensitet
+ *   10+ fails  → var 60s — permanent offline, spara batteri/CPU
+ *
+ * Counter nollställs av connect.ts vid lyckad anslutning, så fungerande
+ * lampor får alltid snabb reconnect även om de tidigare har varit offline.
+ */
+export function startReconnectLoop(baseIntervalMs = 15000): NodeJS.Timeout {
+  let nextAttemptAt = Date.now();
+  // Tickar 1× per sekund — billigt — och beslutar internt om det är dags.
   return setInterval(async () => {
-    if (!getDevice() && getSavedDeviceId() && isDemandActive()) {
-      await autoConnectSaved(10000);
+    if (Date.now() < nextAttemptAt) return;
+    if (getDevice() || !getSavedDeviceId() || !isDemandActive()) {
+      // Inget att göra — håll nästa-tid kort så vi reagerar snabbt vid demand.
+      nextAttemptAt = Date.now() + baseIntervalMs;
+      return;
     }
-  }, intervalMs);
+
+    const fails = getConsecutiveFailures();
+    let interval = baseIntervalMs;                       // 15s
+    if (fails >= 10) interval = baseIntervalMs * 4;      // 60s
+    else if (fails >= 3) interval = baseIntervalMs * 2;  // 30s
+
+    nextAttemptAt = Date.now() + interval;
+    if (fails > 0 && fails % 5 === 0) {
+      logConnectionEvent({
+        type: 'reconnect_start',
+        detail: `Adaptiv backoff: ${fails} fails → nästa försök om ${Math.round(interval / 1000)}s`,
+      });
+    }
+    await autoConnectSaved(10000);
+  }, 1000);
 }
