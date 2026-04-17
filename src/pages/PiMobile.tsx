@@ -2228,7 +2228,7 @@ export default function PiMobile() {
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">BLE-enhet</h2>
 
         {/* Saved/paired device card */}
-        {(bleSavedId || bleConnectedId) && !blePreview ? (
+        {showBleSavedCard ? (
           <div className="bg-secondary/50 rounded-xl p-3 mb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -2295,8 +2295,8 @@ export default function PiMobile() {
           </div>
         )}
 
-        {/* Scan for nearby BLE devices — only shown when no device is saved. */}
-        {!bleSavedId && (
+        {/* Scan for nearby BLE devices — only shown when no device is saved or while an active scan/result is visible. */}
+        {showBlePicker && (
           <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2 mb-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-medium text-foreground">Sök efter enheter i närheten</span>
