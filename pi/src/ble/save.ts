@@ -10,7 +10,7 @@
 import { getDevice, setDevice, getSavedDeviceId, setSavedDevice, logConnectionEvent } from './state.js';
 import { resetLastSent, stopKeepAlive } from './protocol.js';
 import { getLastScanResults } from './scan.js';
-import { nobleConnect, resetHciAdapter } from './connect.js';
+import { nobleConnect } from './connect.js';
 
 /**
  * Extract and persist metadata from a noble peripheral object.
@@ -99,7 +99,9 @@ export async function saveManualDevice(address: string, name: string): Promise<b
   return true;
 }
 
-/** Forget saved device, disconnect, and release HCI socket so adapter is clean for next pairing */
+/** Forget saved device + disconnect, but keep noble's HCI socket so the
+ *  next scan/parning is instant. The user can manually reset HCI from the
+ *  diagnostics panel if noble ever wedges. */
 export async function forgetDevice(): Promise<void> {
   setSavedDevice(null, null, null);
   const device = getDevice();
@@ -109,9 +111,6 @@ export async function forgetDevice(): Promise<void> {
     setDevice(null);
     resetLastSent();
   }
-  // Släpp HCI-socketen — användaren har glömt enheten, ingen reconnect ska ske.
-  // Nästa connect/scan väcker noble igen via forceNoblePoweredOn.
-  try { await resetHciAdapter(); } catch {}
-  logConnectionEvent({ type: 'disconnect', detail: 'Device forgotten by user — HCI released' });
-  console.log('[BLE] Device forgotten + HCI released');
+  logConnectionEvent({ type: 'disconnect', detail: 'Device forgotten by user — noble kept live' });
+  console.log('[BLE] Device forgotten (noble HCI kept live)');
 }

@@ -1121,6 +1121,36 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         </div>
       )}
 
+      {/* Manual recovery — only needed if noble wedges */}
+      <div className="bg-background/30 rounded-lg p-2 border border-border/40">
+        <div className="text-[10px] text-muted-foreground mb-1.5">
+          Återställning (vid problem)
+        </div>
+        <button
+          onClick={async () => {
+            if (!confirm('Återställ BLE-stacken? Detta kopplar från enheten och släpper HCI-socketen. Använd bara om noble fastnat.')) return;
+            setLoading(true);
+            try {
+              const r = await fetch(`${piBase}/api/ble/reset`, { method: 'POST', signal: AbortSignal.timeout(8000) });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(j?.error ?? 'reset failed');
+              await refresh();
+            } catch (e: any) {
+              alert(`Reset misslyckades: ${e?.message ?? 'okänt fel'}`);
+            } finally {
+              setLoading(false);
+            }
+          }}
+          disabled={loading}
+          className="w-full text-xs px-3 py-2 rounded-md bg-destructive/15 text-destructive border border-destructive/30 active:bg-destructive/25 disabled:opacity-50 font-medium"
+        >
+          🔄 Återställ BLE-stack
+        </button>
+        <div className="text-[9px] text-muted-foreground/70 mt-1">
+          I normal drift äger noble HCI hela tiden. Använd bara om scan/anslutning hänger.
+        </div>
+      </div>
+
       {/* Event log */}
       <div>
         <div className="flex items-center justify-between mb-1">
