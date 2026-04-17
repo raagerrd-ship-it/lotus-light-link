@@ -63,57 +63,95 @@ export async function resetHciAdapter(): Promise<void> {
 }
 
 /**
- * Force noble's internal HCI binding to re-initialize and reach poweredOn.
- * On Pi, noble can stay stuck in `unknown` even when the adapter is up.
+ * Hard kernel-level Bluetooth stack reset — last resort when noble is
+ * permanently stuck in `unknown` after multiple HCI resets.
  *
- * Strategy: up to 5 attempts. Each attempt does a full hciconfig down/up/reset
- * (releases the kernel HCI socket), restarts noble's internal HCI binding, then
- * waits up to 2s for noble.state → poweredOn. Total worst-case ~16s before we
- * give up and let the caller proceed (which will then fail loudly).
+ * `systemctl restart bluetooth` reloads bluetoothd which holds the management
+ * socket. Combined with a brief settle, this almost always unsticks noble.
+ */
+async function hardBluetoothRestart(deviceName?: string): Promise<void> {
+  logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'systemctl restart bluetooth (last resort)' });
+  try {
+    const { execFileSync } = await import('child_process');
+    execFileSync('bash', ['-lc', 'systemctl restart bluetooth >/dev/null 2>&1 || sudo systemctl restart bluetooth >/dev/null 2>&1 || true'], { timeout: 8000, stdio: 'ignore' });
+    // bluetoothd needs a moment to re-register the adapter
+    await new Promise(r => setTimeout(r, 2500));
+    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'bluetooth service restarted ✓' });
+  } catch (e: any) {
+    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `bluetooth restart failed: ${e.message}` });
+  }
+}
+
+/**
+ * Force noble's internal HCI binding to reach poweredOn.
+ *
+ * Strategy (least-invasive first):
+ *  0. If noble is already poweredOn → no-op (don't disturb a healthy adapter).
+ *  1. Wait up to 3s for noble to settle on its own (it often just needs time).
+ *  2. Up to 3 soft attempts: hciconfig down/up/reset + restartNobleHci + wait 2s.
+ *  3. Last resort: systemctl restart bluetooth + restartNobleHci + wait 3s.
+ *
+ * Aborts early on `unauthorized` / `poweredOff` (hard fails — no point looping).
  */
 async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
   const readState = () => (noble as any).state ?? (noble as any)._state;
+
+  // Step 0: if noble already OK, do nothing — touching the adapter
+  // when it's healthy is what causes most of our `unknown` lockups.
   if (readState() === 'poweredOn') return;
 
-  const MAX_ATTEMPTS = 5;
-  for (let i = 1; i <= MAX_ATTEMPTS; i++) {
+  // Step 1: give noble up to 3s to come up on its own (common at boot)
+  try {
+    await (noble as any).waitForPoweredOnAsync?.(3000);
+    if (readState() === 'poweredOn') {
+      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓ (no reset needed)' });
+      return;
+    }
+  } catch {}
+
+  // Step 2: soft retry loop — hciconfig down/up/reset + noble HCI bounce
+  const SOFT_ATTEMPTS = 3;
+  for (let i = 1; i <= SOFT_ATTEMPTS; i++) {
     const before = readState();
     logConnectionEvent({
       type: 'hci_reset',
       device: deviceName,
-      detail: `noble state=${before ?? 'unknown'} — reinit attempt ${i}/${MAX_ATTEMPTS}`,
+      detail: `noble state=${before ?? 'unknown'} — soft reinit ${i}/${SOFT_ATTEMPTS}`,
     });
 
-    // Step 1: full hciconfig down/up/reset to release any stuck kernel HCI socket
     try { await resetHciAdapter(); } catch {}
-
-    // Step 2: bounce noble's HCI binding so it re-reads adapter state
     try { await restartNobleHci(deviceName); } catch {}
 
-    // Step 3: wait up to 2s for noble to confirm poweredOn
     try {
       await (noble as any).waitForPoweredOnAsync?.(2000);
-      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble poweredOn ✓ (after ${i} attempt${i === 1 ? '' : 's'})` });
+      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble poweredOn ✓ (after soft attempt ${i})` });
       return;
     } catch {
       const after = readState();
-      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble still ${after ?? 'unknown'} after attempt ${i}` });
+      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble still ${after ?? 'unknown'} after soft ${i}` });
       if (after === 'poweredOn') return;
       if (after === 'unauthorized' || after === 'poweredOff') {
-        // Hard failures — no point looping
-        logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `Hard fail (${after}) — abort reinit loop` });
+        logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `Hard fail (${after}) — abort` });
         return;
       }
     }
-
-    // Brief backoff between attempts
     await new Promise(r => setTimeout(r, 500));
   }
+
+  // Step 3: last resort — full bluetoothd restart
+  logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'soft resets exhausted — escalating to bluetooth service restart' });
+  await hardBluetoothRestart(deviceName);
+  try { await restartNobleHci(deviceName); } catch {}
+  try {
+    await (noble as any).waitForPoweredOnAsync?.(3000);
+    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓ (after bluetoothd restart)' });
+    return;
+  } catch {}
 
   logConnectionEvent({
     type: 'hci_reset',
     device: deviceName,
-    detail: `noble still ${readState() ?? 'unknown'} after ${MAX_ATTEMPTS} reinit attempts — proceeding anyway`,
+    detail: `noble still ${readState() ?? 'unknown'} after all recovery — proceeding anyway`,
   });
 }
 
