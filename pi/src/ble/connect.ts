@@ -7,7 +7,7 @@
 
 import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
-  getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress,
+  getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
