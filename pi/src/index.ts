@@ -118,8 +118,8 @@ async function main() {
   console.log('[Boot] Preparing Bluetooth adapter (non-destructive)...');
   try {
     const { ensureAdapterUp } = await import('./ble/adapter.js');
-    ensureAdapterUp();
-    console.log('[Boot] ✓ Bluetooth adapter prepared');
+    const ready = await ensureAdapterUp();
+    console.log(ready ? '[Boot] ✓ Bluetooth adapter prepared' : '[Boot] ⚠ Bluetooth adapter prep timed out');
   } catch (e: any) {
     console.warn('[Boot] Bluetooth prep failed (continuing):', e.message);
   }

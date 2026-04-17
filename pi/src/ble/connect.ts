@@ -99,8 +99,7 @@ export async function resetHciAdapter(): Promise<void> {
       // Last resort: hard-restart bluetoothd, which always re-arms the mgmt socket
       logConnectionEvent({ type: 'hci_reset', detail: `adapter still ${getAdapterState() ?? 'unknown'} after 5s — trying systemctl restart bluetooth` });
       await hardBluetoothRestart('hci_reset');
-      try { await restartNobleHci('hci_reset'); } catch {}
-      const ok2 = await waitForNoblePoweredOn(5000);
+      const ok2 = await ensureAdapterUp();
       logConnectionEvent({
         type: 'hci_reset',
         detail: ok2
@@ -592,7 +591,11 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   return withConnectLock(savedName, () => 1, async () => {
     if (getDevice()) return 1;
 
-    ensureAdapterUp();
+    const adapterReady = await ensureAdapterUp();
+    if (!adapterReady) {
+      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after ensureAdapterUp (${getAdapterState() ?? 'unknown'})` });
+      return 0;
+    }
 
     // Direct-connect ONLY. Scan-fallback borttagen — den kraschar noble-state
     // och är onödig för redan-sparade enheter (vi har MAC + addressType).
