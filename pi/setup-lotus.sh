@@ -34,136 +34,17 @@ echo "  UI Port:     $PORT"
 echo "  Engine Port: $ENGINE_PORT"
 echo "  CPU Core:    $CORE (av $TOTAL_CPUS)"
 
-# ─── 0. Reparera sudo om /etc/sudo.conf har fel ägare ─────
-# Vissa Pi-images (eller manuella chown -R) lämnar /etc/sudo.conf ägd av
-# en vanlig användare, vilket gör att sudo tyst vägrar köra ("sudo: ...
-# must be owned by uid 0"). Vi har caps via systemd så BLE funkar utan
-# sudo, men andra verktyg på Pi:n (apt, systemctl, reboot) behöver det.
-# Reparera utan sudo via pkexec/su om vi inte redan är root.
+# ─── 0. Sudo pre-flight (utbruten till scripts/fix-sudo.sh) ───
+# Verifierar och reparerar /etc/sudo.conf, /usr/bin/sudo, /etc/sudoers och
+# /etc/sudoers.d/. BLE behöver inte sudo (vi har CAP_NET_RAW/ADMIN via systemd)
+# men apt/systemctl/reboot gör det, så vi normaliserar permissions här.
 echo ""
-echo "[0/5] Verifierar /etc/sudo.conf..."
-SUDO_CONF_FIX_NEEDED=false
-if [ -f /etc/sudo.conf ]; then
-  OWNER=$(stat -c '%U:%G' /etc/sudo.conf 2>/dev/null || echo "?")
-  PERMS=$(stat -c '%a' /etc/sudo.conf 2>/dev/null || echo "?")
-  if [ "$OWNER" != "root:root" ] || [ "$PERMS" != "644" ]; then
-    echo "  ⚠ /etc/sudo.conf har fel ägarskap/permissions: $OWNER ($PERMS) — försöker reparera"
-    SUDO_CONF_FIX_NEEDED=true
-    if [ "$(id -u)" = "0" ]; then
-      chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf && echo "  ✓ Fixade /etc/sudo.conf som root"
-    elif command -v pkexec >/dev/null 2>&1; then
-      pkexec sh -c 'chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf' \
-        && echo "  ✓ Fixade /etc/sudo.conf via pkexec" \
-        || echo "  ✗ pkexec misslyckades — kör manuellt: su -c 'chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf'"
-    else
-      echo "  ✗ Kan inte reparera (kör inte som root och saknar pkexec)"
-      echo "    Kör manuellt: su -c 'chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf'"
-    fi
-    # Verifiera resultatet
-    NEW_OWNER=$(stat -c '%U:%G' /etc/sudo.conf 2>/dev/null || echo "?")
-    NEW_PERMS=$(stat -c '%a' /etc/sudo.conf 2>/dev/null || echo "?")
-    if [ "$NEW_OWNER" = "root:root" ] && [ "$NEW_PERMS" = "644" ]; then
-      echo "  ✓ /etc/sudo.conf nu korrekt: root:root (644)"
-      SUDO_CONF_FIX_NEEDED=false
-    fi
-  else
-    echo "  ✓ /etc/sudo.conf OK (root:root, 644)"
-  fi
+echo "[0/5] Sudo pre-flight check..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/scripts/fix-sudo.sh" ]; then
+  bash "$SCRIPT_DIR/scripts/fix-sudo.sh" || echo "  ⚠ fix-sudo.sh rapporterade problem — fortsätter ändå"
 else
-  echo "  ℹ /etc/sudo.conf saknas — sudo använder kompilerade defaults (OK)"
-fi
-
-# Verifiera /usr/bin/sudo setuid-bit (måste vara 4755 root:root för att eskalera till root)
-SUDO_BIN=$(command -v sudo 2>/dev/null || echo /usr/bin/sudo)
-if [ -f "$SUDO_BIN" ]; then
-  SUDO_OWNER=$(stat -c '%U:%G' "$SUDO_BIN" 2>/dev/null || echo "?")
-  SUDO_MODE=$(stat -c '%a' "$SUDO_BIN" 2>/dev/null || echo "?")
-  if [ "$SUDO_OWNER" != "root:root" ] || [ "$SUDO_MODE" != "4755" ]; then
-    echo "  ⚠ $SUDO_BIN har fel ägare/mode: $SUDO_OWNER ($SUDO_MODE) — försöker reparera (förväntat: root:root 4755)"
-    SUDO_CONF_FIX_NEEDED=true
-    if [ "$(id -u)" = "0" ]; then
-      chown root:root "$SUDO_BIN" && chmod 4755 "$SUDO_BIN" && echo "  ✓ Fixade $SUDO_BIN som root"
-    elif command -v pkexec >/dev/null 2>&1; then
-      pkexec sh -c "chown root:root '$SUDO_BIN' && chmod 4755 '$SUDO_BIN'" \
-        && echo "  ✓ Fixade $SUDO_BIN via pkexec" \
-        || echo "  ✗ pkexec misslyckades — kör manuellt: su -c \"chown root:root $SUDO_BIN && chmod 4755 $SUDO_BIN\""
-    else
-      echo "  ✗ Kan inte reparera (kör inte som root och saknar pkexec)"
-      echo "    Kör manuellt: su -c \"chown root:root $SUDO_BIN && chmod 4755 $SUDO_BIN\""
-    fi
-    NEW_SUDO_OWNER=$(stat -c '%U:%G' "$SUDO_BIN" 2>/dev/null || echo "?")
-    NEW_SUDO_MODE=$(stat -c '%a' "$SUDO_BIN" 2>/dev/null || echo "?")
-    if [ "$NEW_SUDO_OWNER" = "root:root" ] && [ "$NEW_SUDO_MODE" = "4755" ]; then
-      echo "  ✓ $SUDO_BIN nu korrekt: root:root (4755)"
-      SUDO_CONF_FIX_NEEDED=false
-    fi
-  else
-    echo "  ✓ $SUDO_BIN OK (root:root, 4755)"
-  fi
-else
-  echo "  ⚠ sudo-binären hittas inte ($SUDO_BIN) — installera med: apt install sudo"
-fi
-
-# Verifiera /etc/sudoers (måste vara root:root 440) och /etc/sudoers.d/*
-# (filer måste vara root:root 440, katalogen root:root 750). Fel permissions
-# här gör att sudo vägrar starta med "/etc/sudoers is mode 0xxx, should be 0440".
-fix_perms() {
-  # $1 = path, $2 = expected owner, $3 = expected mode
-  local path="$1" exp_owner="$2" exp_mode="$3"
-  [ -e "$path" ] || return 0
-  local owner mode
-  owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo "?")
-  mode=$(stat -c '%a' "$path" 2>/dev/null || echo "?")
-  if [ "$owner" = "$exp_owner" ] && [ "$mode" = "$exp_mode" ]; then
-    echo "  ✓ $path OK ($exp_owner, $exp_mode)"
-    return 0
-  fi
-  echo "  ⚠ $path har fel ägare/mode: $owner ($mode) — försöker reparera (förväntat: $exp_owner $exp_mode)"
-  SUDO_CONF_FIX_NEEDED=true
-  if [ "$(id -u)" = "0" ]; then
-    chown "$exp_owner" "$path" && chmod "$exp_mode" "$path" && echo "  ✓ Fixade $path som root"
-  elif command -v pkexec >/dev/null 2>&1; then
-    pkexec sh -c "chown '$exp_owner' '$path' && chmod '$exp_mode' '$path'" \
-      && echo "  ✓ Fixade $path via pkexec" \
-      || echo "  ✗ pkexec misslyckades — kör manuellt: su -c \"chown $exp_owner $path && chmod $exp_mode $path\""
-  else
-    echo "  ✗ Kan inte reparera (kör inte som root och saknar pkexec)"
-    echo "    Kör manuellt: su -c \"chown $exp_owner $path && chmod $exp_mode $path\""
-  fi
-  local new_owner new_mode
-  new_owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo "?")
-  new_mode=$(stat -c '%a' "$path" 2>/dev/null || echo "?")
-  if [ "$new_owner" = "$exp_owner" ] && [ "$new_mode" = "$exp_mode" ]; then
-    echo "  ✓ $path nu korrekt ($exp_owner, $exp_mode)"
-    SUDO_CONF_FIX_NEEDED=false
-  fi
-}
-
-# /etc/sudoers — måste vara root:root 440
-if [ -f /etc/sudoers ]; then
-  fix_perms /etc/sudoers root:root 440
-else
-  echo "  ⚠ /etc/sudoers saknas — sudo kommer inte fungera"
-fi
-
-# /etc/sudoers.d/ — katalog 750, filer 440
-if [ -d /etc/sudoers.d ]; then
-  fix_perms /etc/sudoers.d root:root 750
-  # Iterera över filer (visa endast om de existerar)
-  for f in /etc/sudoers.d/*; do
-    [ -e "$f" ] || continue
-    # Hoppa över README (ofta 444, accepteras av visudo men vi normaliserar)
-    fix_perms "$f" root:root 440
-  done
-else
-  echo "  ℹ /etc/sudoers.d/ saknas — endast /etc/sudoers används (OK)"
-fi
-
-# Snabbtest: går sudo att köra alls?
-if ! sudo -n true 2>/dev/null && ! sudo -v 2>/dev/null; then
-  if [ "$SUDO_CONF_FIX_NEEDED" = true ]; then
-    echo "  ⚠ sudo verkar trasigt — fortsätter ändå (BLE behöver inte sudo tack vare CAP_NET_RAW/ADMIN)"
-  fi
+  echo "  ⚠ scripts/fix-sudo.sh saknas — hoppar över sudo-check"
 fi
 
 # ─── 1. System dependencies ──────────────────────────────
