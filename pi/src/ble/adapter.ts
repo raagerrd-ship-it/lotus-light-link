@@ -10,13 +10,22 @@ export function stopNoble(): void {
   try { noble.stopScanning(); } catch {}
 }
 
-/** Re-initialize noble's HCI binding after it was stopped */
+/**
+ * Ask noble to refresh its HCI listeners without toggling the kernel adapter.
+ * On Pi, destructive hciconfig down/up while noble is alive often wedges
+ * noble in raw `unknown`, so keep this re-init best-effort and non-destructive.
+ */
 export async function restartNobleHci(deviceName?: string): Promise<void> {
   try {
     const bindings = (noble as any)._bindings;
-    if (bindings?._hci?.start) {
-      bindings._hci.start();
-      logConnectionEvent({ type: 'connect_start', device: deviceName, detail: 'noble HCI re-initialized' });
+    const hci = bindings?._hci;
+
+    if (typeof hci?.stop === 'function') {
+      try { hci.stop(); } catch {}
+    }
+    if (typeof hci?.start === 'function') {
+      hci.start();
+      logConnectionEvent({ type: 'connect_start', device: deviceName, detail: 'noble HCI listeners refreshed' });
     }
   } catch {}
   await new Promise(r => setTimeout(r, 300));
@@ -44,11 +53,15 @@ export async function waitForAdapter(deviceName?: string): Promise<boolean> {
   }
 }
 
-/** Force Bluetooth adapter up via rfkill/hciconfig + reset (required for noble to detect poweredOn on Pi) */
+/**
+ * Make sure Bluetooth is unblocked and the adapter is up.
+ * Avoid hciconfig reset here — resetting under a live noble instance is what
+ * tends to strand raw noble.state in `unknown` on Raspberry Pi.
+ */
 export function ensureAdapterUp(): void {
   try {
     const { execFileSync } = require('child_process');
-    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
+    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
   } catch {}
 }
 
