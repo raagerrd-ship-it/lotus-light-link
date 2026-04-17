@@ -49,7 +49,6 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [PCC alignment](mem://pi/runtime/pcc-alignment) — Pi Control Center integration and runInstallOnRelease
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
-- [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — hcitool for lescan, noble for GATT
+- [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — Noble scan + connect, GATT handle caching
 - [fix-sudo ownership](mem://pi/deployment/fix-sudo-ownership) — fix-sudo.sh ägs av PCC; Lotus har bara thin wrapper
-- [HCI release policy](mem://pi/ble/hci-release-policy) — När HCI-socketen släpps vs hålls (forget/shutdown/scan släpper)
-- [Noble unknown recovery](mem://pi/ble/noble-unknown-recovery) — Up to 5 hciconfig down/up + restartNobleHci attempts when noble.state stuck
+- [HCI ownership policy](mem://pi/ble/hci-ownership-policy) — Noble äger HCI hela processen; ingen auto-release; manuell reset via /api/ble/reset
