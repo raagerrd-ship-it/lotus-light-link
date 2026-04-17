@@ -28,22 +28,37 @@ export function getConsecutiveFailures(): number { return consecutiveConnectFail
 export function resetConsecutiveFailures(): void { consecutiveConnectFailures = 0; }
 export function incrementConsecutiveFailures(): void { consecutiveConnectFailures++; }
 
+// Hard ceiling for any single connect attempt. If the inner fn() never
+// settles (e.g. noble's discover listener got wedged), we still release the
+// lock so the next /api/ble/connect doesn't queue forever.
+const CONNECT_LOCK_HARD_TIMEOUT_MS = 12_000;
+
 async function withConnectLock<T>(deviceName: string | undefined, successResult: () => T, fn: () => Promise<T>): Promise<T> {
-  while (activeConnectPromise) {
-    logConnectionEvent({ type: 'connect_start', device: deviceName, detail: 'Connect already in progress — waiting' });
-    await activeConnectPromise.catch(() => undefined);
-    if (getDevice()) return successResult();
+  // Don't queue: if a connect is already running, just bail with a no-op.
+  // Stacking waiters caused the "Connect already in progress" infinite log.
+  if (activeConnectPromise) {
+    logConnectionEvent({ type: 'connect_start', device: deviceName, detail: 'Connect already in progress — skipping duplicate' });
+    try { await activeConnectPromise; } catch {}
+    return getDevice() ? successResult() : (0 as any);
   }
 
   let release!: () => void;
-  const lock = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const lock = new Promise<void>((resolve) => { release = resolve; });
   activeConnectPromise = lock;
+
+  // Hard timeout: force-release the lock even if fn() never settles.
+  const safetyTimer = setTimeout(() => {
+    if (activeConnectPromise === lock) {
+      activeConnectPromise = null;
+      logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `Lock safety timeout after ${CONNECT_LOCK_HARD_TIMEOUT_MS}ms — releasing` });
+      release();
+    }
+  }, CONNECT_LOCK_HARD_TIMEOUT_MS);
 
   try {
     return await fn();
   } finally {
+    clearTimeout(safetyTimer);
     if (activeConnectPromise === lock) activeConnectPromise = null;
     release();
   }
