@@ -298,6 +298,15 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         if (!scanOut) scanOut = `(scan error: ${e.message})`;
       }
 
+      // Steg 4: släpp HCI-socketen så noble kan ta över direkt utan låsning.
+      // hcitool lescan håller annars kvar adaptern i ett halv-låst tillstånd.
+      let releaseOut = '';
+      try {
+        releaseOut = execSync('sudo hciconfig hci0 reset 2>&1', { encoding: 'utf8', timeout: 5000 });
+      } catch (e: any) {
+        releaseOut = `(release failed: ${e.message})`;
+      }
+
       // Parse "AA:BB:CC:DD:EE:FF Name" lines, dedupe by MAC
       const seen = new Map<string, string>();
       for (const line of scanOut.split('\n')) {
@@ -318,6 +327,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         devices,
         rawOutput: scanOut.split('\n').slice(0, 100).join('\n'),
         resetOutput: resetOut.trim(),
+        releaseOutput: releaseOut.trim(),
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message ?? 'hcitool scan failed' });
