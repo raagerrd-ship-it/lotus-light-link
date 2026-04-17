@@ -277,10 +277,14 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       // Steg 1: rfkill unblock + hciconfig reset (matchar exakt det som funkar manuellt via SSH).
       // Steg 2: 500ms paus så kärnan hinner ta upp adaptern igen.
       // Steg 3: timeout 3 hcitool lescan --duplicates (timeout exits 124 — det är OK).
+      // OBS: kör utan sudo — processen har CAP_NET_RAW + CAP_NET_ADMIN via systemd
+      // AmbientCapabilities (se memory pi/ble/permissions-model). Sudo är dessutom
+      // trasigt på vissa Pi-images (/etc/sudo.conf ownership) vilket gör att
+      // 'sudo hcitool' tyst returnerar 0 enheter.
       let resetOut = '';
       try {
-        execSync('sudo rfkill unblock bluetooth 2>&1 || true', { encoding: 'utf8', timeout: 3000 });
-        resetOut = execSync('sudo hciconfig hci0 reset 2>&1', { encoding: 'utf8', timeout: 5000 });
+        execSync('rfkill unblock bluetooth 2>&1 || true', { encoding: 'utf8', timeout: 3000 });
+        resetOut = execSync('hciconfig hci0 reset 2>&1', { encoding: 'utf8', timeout: 5000 });
       } catch (e: any) {
         resetOut = `(reset failed: ${e.message})`;
       }
@@ -288,7 +292,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
       let scanOut = '';
       try {
-        scanOut = execSync('sudo timeout 3 hcitool lescan --duplicates 2>&1', {
+        scanOut = execSync('timeout 3 hcitool lescan --duplicates 2>&1', {
           encoding: 'utf8',
           timeout: 6000,
         });
@@ -302,7 +306,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       // hcitool lescan håller annars kvar adaptern i ett halv-låst tillstånd.
       let releaseOut = '';
       try {
-        releaseOut = execSync('sudo hciconfig hci0 reset 2>&1', { encoding: 'utf8', timeout: 5000 });
+        releaseOut = execSync('hciconfig hci0 reset 2>&1', { encoding: 'utf8', timeout: 5000 });
       } catch (e: any) {
         releaseOut = `(release failed: ${e.message})`;
       }
