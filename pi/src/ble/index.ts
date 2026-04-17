@@ -25,7 +25,7 @@ export { noble } from './state.js';
 export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma } from './protocol.js';
 
 // Connection (direct connect + GATT)
-export { connectPeripheral, resetHciAdapter, autoConnectSaved } from './connect.js';
+export { connectPeripheral, resetHciAdapter, autoConnectSaved, isConnectInProgress, waitForConnectIdle } from './connect.js';
 
 // Scanning (noble async discovery)
 export { scanForDevices, getLastScanResults, isScanning } from './scan.js';
