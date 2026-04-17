@@ -10,10 +10,74 @@
  * peripheral.connectAsync() från ett scan-resultat är robust.
  */
 
-import { noble, getAdapterState, processHasBtCaps, logConnectionEvent } from './state.js';
+import { noble, getAdapterState, processHasBtCaps, logConnectionEvent, bumpWorkaround } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
-import { ensureAdapterUp } from './adapter.js';
+import { ensureAdapterUp, restartNobleHci } from './adapter.js';
+
+/**
+ * Reads noble's INTERNAL bindings state (not the caps-aware override).
+ * This is what noble.startScanningAsync() checks internally — and it's
+ * what returns `unknown` even when our exposed state says `poweredOn`.
+ */
+function getNobleRawBindingsState(): string | undefined {
+  const n = noble as any;
+  return n?._bindings?._state ?? n?._state ?? n?.state;
+}
+
+/**
+ * When noble's internal _state is `unknown` but our caps-override says
+ * poweredOn, noble.startScanningAsync() will throw synchronously with
+ * "state is unknown". Force noble to re-init its HCI bindings and wait
+ * for a real `stateChange` → `poweredOn` event before proceeding.
+ *
+ * Returns true if noble's raw internal state ended up poweredOn.
+ */
+async function ensureNobleReallyPoweredOn(timeoutMs: number): Promise<boolean> {
+  const raw0 = getNobleRawBindingsState();
+  if (raw0 === 'poweredOn') return true;
+
+  logConnectionEvent({
+    type: 'scan_start',
+    detail: `noble raw=${raw0 ?? 'null'} — forcing HCI rebind`,
+  });
+  bumpWorkaround('restartNobleHci_invoked');
+
+  // Attach stateChange listener BEFORE rebinding so we don't miss the event
+  const waitForEvent = new Promise<boolean>((resolve) => {
+    const n = noble as any;
+    let done = false;
+    const onState = (s: string) => {
+      if (s === 'poweredOn' && !done) { done = true; cleanup(); resolve(true); }
+    };
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      cleanup();
+      resolve(getNobleRawBindingsState() === 'poweredOn');
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      try { n.removeListener?.('stateChange', onState); } catch {}
+    };
+    try { n.on?.('stateChange', onState); } catch {}
+  });
+
+  try {
+    const bindings = (noble as any)._bindings;
+    const hci = bindings?._hci;
+    if (typeof hci?.stop === 'function') { try { hci.stop(); } catch {} }
+    await new Promise(r => setTimeout(r, 150));
+    if (typeof hci?.start === 'function') { try { hci.start(); } catch {} }
+  } catch {}
+
+  const ok = await waitForEvent;
+  logConnectionEvent({
+    type: 'scan_start',
+    detail: `noble rebind done — raw=${getNobleRawBindingsState() ?? 'null'}, ok=${ok}`,
+  });
+  return ok;
+}
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -90,10 +154,11 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
   try {
     const adapterState = getAdapterState();
+    const rawNoble = getNobleRawBindingsState();
     const hasCaps = processHasBtCaps();
     logConnectionEvent({
       type: 'scan_start',
-      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, caps=${hasCaps}`,
+      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, rawNoble=${rawNoble ?? 'null'}, caps=${hasCaps}`,
     });
 
     try { await ensureAdapterUp(); } catch {}
@@ -110,9 +175,34 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       return lastScanResults;
     }
 
+    // KRITISK: även om caps-override säger poweredOn kan noble:s interna
+    // _state fortfarande vara 'unknown'. startScanningAsync() kollar rå
+    // internal state och kastar "state is unknown". Tvinga rebind här.
+    if (getNobleRawBindingsState() !== 'poweredOn') {
+      const rebindOk = await ensureNobleReallyPoweredOn(4000);
+      if (!rebindOk) {
+        logConnectionEvent({
+          type: 'scan_done',
+          detail: `noble raw-state still ${getNobleRawBindingsState() ?? 'null'} after rebind — aborting`,
+        });
+        lastScanResults = [];
+        return lastScanResults;
+      }
+    }
+
     (noble as any).on('discover', onDiscover);
 
-    await (noble as any).startScanningAsync([], true);
+    try {
+      await (noble as any).startScanningAsync([], true);
+    } catch (scanErr: any) {
+      // Fallback: noble fortfarande inte redo — gör en sista rebind och försök igen
+      logConnectionEvent({
+        type: 'scan_start',
+        detail: `startScanning threw "${scanErr?.message ?? scanErr}" — retrying after rebind`,
+      });
+      await ensureNobleReallyPoweredOn(4000);
+      await (noble as any).startScanningAsync([], true);
+    }
 
     await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
 
