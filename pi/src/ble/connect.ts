@@ -9,6 +9,7 @@ import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
+  bumpWorkaround,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 import { waitForAdapter, ensureAdapterUp, normalizeBleKey, restartNobleHci } from './adapter.js';
@@ -65,6 +66,7 @@ async function withConnectLock<T>(deviceName: string | undefined, successResult:
 }
 
 export async function resetHciAdapter(): Promise<void> {
+  bumpWorkaround('resetHciAdapter_invoked');
   logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig hci0 reset (sandbox-friendly)' });
   try {
     const { execFileSync } = await import('child_process');
@@ -85,6 +87,7 @@ export async function resetHciAdapter(): Promise<void> {
  * socket. Combined with a brief settle, this almost always unsticks noble.
  */
 async function hardBluetoothRestart(deviceName?: string): Promise<void> {
+  bumpWorkaround('hardBluetoothRestart_invoked');
   logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'systemctl restart bluetooth (last resort)' });
   try {
     const { execFileSync } = await import('child_process');
@@ -109,12 +112,14 @@ async function hardBluetoothRestart(deviceName?: string): Promise<void> {
  * Aborts early on `unauthorized` / `poweredOff` (hard fails — no point looping).
  */
 async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
+  bumpWorkaround('forceNoblePoweredOn_invoked');
   const readState = () => (noble as any).state ?? (noble as any)._state;
   const effectiveState = () => getAdapterState();
 
   // If the caps-aware adapter state is already good, do not touch the kernel
   // adapter. On Pi, that is the exact path that tends to wedge raw noble state.
   if (effectiveState() === 'poweredOn') {
+    bumpWorkaround('forceNoblePoweredOn_skippedHealthy');
     logConnectionEvent({
       type: 'hci_reset',
       device: deviceName,
@@ -122,6 +127,8 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
     });
     return;
   }
+
+  bumpWorkaround('forceNoblePoweredOn_neededRefresh');
 
   try {
     await (noble as any).waitForPoweredOnAsync?.(3000);
