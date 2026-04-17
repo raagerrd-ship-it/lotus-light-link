@@ -56,12 +56,11 @@ export function getConnectedDeviceId(): string | null {
 
 /**
  * Disconnect current BLE device.
- * @param releaseHci  When true (default for manual disconnects without demand),
- *                    also frees the HCI socket so the adapter is clean.
- *                    When false (engine still wants the device), keep noble's
- *                    socket so reconnect can fire immediately.
+ * @param releaseHci  When true, also reset the HCI adapter (manual recovery
+ *                    from a wedged noble state). Default: false — noble keeps
+ *                    its HCI socket so the next scan/connect is instant.
  */
-export async function disconnect(releaseHci?: boolean): Promise<void> {
+export async function disconnect(releaseHci: boolean = false): Promise<void> {
   stopKeepAlive();
   const d = getDevice();
   if (d) {
@@ -70,11 +69,9 @@ export async function disconnect(releaseHci?: boolean): Promise<void> {
     resetLastSent();
     console.log('[BLE] Disconnected');
   }
-  // Default: släpp HCI om det inte finns aktiv demand (motorn vill inte ha enheten)
-  const shouldRelease = releaseHci ?? !isDemandActive();
-  if (shouldRelease) {
+  if (releaseHci) {
     try { await resetHciAdapter(); } catch {}
-    console.log('[BLE] HCI socket released');
+    console.log('[BLE] HCI socket released (manual)');
   }
 }
 
