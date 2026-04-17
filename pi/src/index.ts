@@ -100,11 +100,16 @@ async function main() {
     console.error('[Boot] Mic failed (continuing without):', e.message);
   }
 
-  // 5. BLE — don't connect at boot, wait for Sonos to signal playback
-  // 5. BLE — boot-time HCI clean slate, then ready for on-demand connect.
-  // Skyddar mot stale kernel/bluez-state efter strömavbrott, OOM-kill,
-  // git-uppdatering, eller tidigare process som inte hann köra SIGTERM-shutdown.
-  // Billigt (~1s) jämfört med att riskera fastna i `unknown` vid första connect.
+  // 5. BLE — start reconnect-loop FIRST so any demand-event under boot
+  // (Sonos already playing) blir uppfångat även om första connect missar.
+  // Loopen tickar var 15s och anropar autoConnectSaved när demand är aktiv.
+  const reconnectTimer = startReconnectLoop(15000);
+
+  // Boot-time HCI clean slate — skyddar mot stale kernel/bluez-state efter
+  // strömavbrott, OOM-kill, git-uppdatering eller process som inte hann köra
+  // SIGTERM-shutdown. Billigt (~1s) jämfört med att riskera fastna i `unknown`
+  // vid första connect. Reconnect-loopen är redan registrerad så event-flow
+  // som kommer in samtidigt fungerar.
   console.log('[Boot] Cleaning HCI adapter (recovery from previous run)...');
   try {
     const { resetHciAdapter } = await import('./ble/connect.js');
@@ -113,7 +118,6 @@ async function main() {
   } catch (e: any) {
     console.warn('[Boot] HCI clean failed (continuing):', e.message);
   }
-  const reconnectTimer = startReconnectLoop(15000);
 
   // 5. Start Sonos poller (configurable gateway)
   let sonosConfig = normalizeSonosConfig({});

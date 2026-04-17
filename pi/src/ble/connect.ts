@@ -490,7 +490,20 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     return 0;
   }
   if (getDevice()) return 1;
-  if (isScanning()) return 0;
+
+  // Fix A: vänta ut en pågående HCI-scan istället för att bailla tyst.
+  // Scan tar typiskt ~3s; vi väntar upp till 5s innan vi ger upp.
+  if (isScanning()) {
+    logConnectionEvent({ type: 'connect_start', detail: 'Waiting for HCI-scan to finish before connect' });
+    for (let i = 0; i < 50 && isScanning(); i++) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (isScanning()) {
+      logConnectionEvent({ type: 'connect_fail', detail: 'HCI-scan still active after 5s — skipping connect' });
+      return 0;
+    }
+    if (getDevice()) return 1;
+  }
 
   const savedName = getSavedDeviceName() ?? savedId;
   const target = getSavedDeviceAddress() ?? savedId;
