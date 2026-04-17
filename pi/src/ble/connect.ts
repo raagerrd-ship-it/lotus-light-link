@@ -535,8 +535,7 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   }
   if (getDevice()) return 1;
 
-  // Fix A: vänta ut en pågående HCI-scan istället för att bailla tyst.
-  // Scan tar typiskt ~3s; vi väntar upp till 5s innan vi ger upp.
+  // Vänta ut ev. pågående scan (manuell parning från UI) innan connect.
   if (isScanning()) {
     logConnectionEvent({ type: 'connect_start', detail: 'Waiting for HCI-scan to finish before connect' });
     for (let i = 0; i < 50 && isScanning(); i++) {
@@ -550,30 +549,30 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   }
 
   const savedName = getSavedDeviceName() ?? savedId;
-  const target = getSavedDeviceAddress() ?? savedId;
 
   return withConnectLock(savedName, () => 1, async () => {
     if (getDevice()) return 1;
 
     ensureAdapterUp();
 
-    // Steg 1: Försök direct-connect (snabbt, ~500ms) om vi har sparad addressType.
-    // Hoppar över hela scan-fasen och går rakt på noble.connectAsync(address).
-    if (getSavedAddressType()) {
-      const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 3000));
-      if (directOk) return 1;
-      // Fall through till scan-connect — direct misslyckades men vi räknar
-      // bara failures när hela kedjan inkl. scan-fallback misslyckats.
+    // Direct-connect ONLY. Scan-fallback borttagen — den kraschar noble-state
+    // och är onödig för redan-sparade enheter (vi har MAC + addressType).
+    // Om addressType saknas måste användaren parna om via UI:ts scan-flöde.
+    if (!getSavedAddressType()) {
+      logConnectionEvent({
+        type: 'connect_fail',
+        device: savedName,
+        detail: 'Saknar addressType — parna om enheten via Scan i UI',
+      });
+      return 0;
     }
 
-    // Steg 2: Fallback till scan-connect (mirrors early monolith — beprövat på Pi)
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Scan-connect fallback (mirrors early monolith)' });
-    const ok = await nobleScanConnect(target, savedName, Math.min(timeoutMs, 8000));
-    if (ok) return 1;
+    const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 3000));
+    if (directOk) return 1;
 
     incrementConsecutiveFailures();
     const fails = getConsecutiveFailures();
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Enheten är ev. avstängd eller utom räckhåll [fail#${fails}]` });
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct-connect misslyckades — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
     if (fails >= HCI_RESET_THRESHOLD) {
       await resetHciAdapter();
       resetConsecutiveFailures();
