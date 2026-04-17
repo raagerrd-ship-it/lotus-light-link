@@ -170,17 +170,29 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
   });
 }
 
-// ── Timeout helper ──
-const STEP_TIMEOUT_MS = 3000;
+// ── Timeout helper — per-step budgets ──
+// L2CAP and write are quick; GATT discovery on BLEDOM has been observed
+// up to ~4s on a marginal link, so give it more headroom.
+const TIMEOUTS = { l2cap: 3000, gatt: 5000, write: 2000 } as const;
+type StepKind = keyof typeof TIMEOUTS;
 
-function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
+  const ms = TIMEOUTS[kind];
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     promise.then(v => { clearTimeout(timer); return v; }),
     new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${label} timed out after ${STEP_TIMEOUT_MS}ms`)), STEP_TIMEOUT_MS);
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     }),
   ]);
+}
+
+/** Exposed so reconnect.ts can wait out an in-flight connect before its first attempt. */
+export function isConnectInProgress(): boolean { return activeConnectPromise !== null; }
+export async function waitForConnectIdle(maxMs = 12_000): Promise<void> {
+  const p = activeConnectPromise;
+  if (!p) return;
+  await Promise.race([p.catch(() => {}), new Promise(r => setTimeout(r, maxMs))]);
 }
 
 // ── Reconnect handler (set by reconnect.ts to break circular dep) ──
