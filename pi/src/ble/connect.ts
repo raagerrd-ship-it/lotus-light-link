@@ -13,7 +13,7 @@ import {
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 import { waitForAdapter, ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
-import { isScanning } from './scan.js';
+import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
 
@@ -541,9 +541,38 @@ export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promis
  * On Raspberry Pi, noble discovery can stay stuck in `unknown` even when
  * direct connect works, so first-pairing uses the scanned MAC address.
  */
+/**
+ * Connect using a peripheral object cached from a recent scan.
+ * This is exactly how the early monolith worked: scan → keep peripheral →
+ * peripheral.connectAsync(). Mycket mer pålitligt än att starta en ny scan
+ * eller använda noble.connectAsync(address) på Pi.
+ */
+async function connectFromScanCache(targetId: string, name: string): Promise<boolean> {
+  const peripheral = getDiscoveredPeripheral(targetId);
+  if (!peripheral) {
+    logConnectionEvent({ type: 'connect_start', device: name, detail: `No cached peripheral for ${targetId} — falling back to scan-connect` });
+    return false;
+  }
+  logConnectionEvent({
+    type: 'connect_start',
+    device: name,
+    detail: `Using cached peripheral from scan (addressType=${peripheral.addressType ?? 'unknown'})`,
+  });
+  try {
+    await connectPeripheral(peripheral, 0, false);
+    return !!getDevice();
+  } catch (e: any) {
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Cached connect failed: ${e.message}` });
+    return false;
+  }
+}
+
 export async function nobleConnect(targetId: string, name: string, timeoutMs = 8000): Promise<boolean> {
   return withConnectLock(name, () => true, async () => {
-    const ok = await nobleScanConnect(targetId, name, timeoutMs);
+    // 1) Försök med peripheral från senaste scan (gamla monolit-vägen)
+    let ok = await connectFromScanCache(targetId, name);
+    // 2) Fallback: starta egen mini-scan och connecta när vi ser MAC:en
+    if (!ok) ok = await nobleScanConnect(targetId, name, timeoutMs);
     if (ok) {
       const dev = getDevice();
       const savedId = getSavedDeviceId();
