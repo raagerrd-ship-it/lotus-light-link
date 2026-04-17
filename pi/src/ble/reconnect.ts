@@ -6,7 +6,7 @@
  */
 
 import { getDevice, isDemandActive, setDemand, getSavedDeviceId, logConnectionEvent } from './state.js';
-import { setReconnectHandler, autoConnectSaved, isConnectInProgress, waitForConnectIdle } from './connect.js';
+import { setReconnectHandler, autoConnectSaved, isConnectInProgress, waitForConnectIdle, getConsecutiveFailures, resetConsecutiveFailures } from './connect.js';
 import { setReconnectTrigger } from './protocol.js';
 
 /** Reconnect with exponential backoff using fresh connections only */
