@@ -7,7 +7,8 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters } from './nobleBle.js';
+import { bumpWorkaround } from './ble/state.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -246,6 +247,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   // Manual HCI/noble reset — only used as recovery if noble wedges.
   // In normal operation noble owns the HCI socket from boot to shutdown.
   app.post('/api/ble/reset', async (_req, res) => {
+    bumpWorkaround('manualBleReset_invoked');
     try {
       await disconnect(true); // disconnect + release HCI
       res.json({ ok: true, message: 'BLE-stacken återställd. Anslut igen vid behov.' });
@@ -309,6 +311,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       build: {
         bleTag: BLE_BUILD_TAG,
       },
+      workarounds: workaroundCounters,
       stats: {
         connected: getConnectedCount(),
         savedDevice: getSavedDeviceName(),
