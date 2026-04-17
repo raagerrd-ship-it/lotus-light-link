@@ -34,6 +34,52 @@ echo "  UI Port:     $PORT"
 echo "  Engine Port: $ENGINE_PORT"
 echo "  CPU Core:    $CORE (av $TOTAL_CPUS)"
 
+# ─── 0. Reparera sudo om /etc/sudo.conf har fel ägare ─────
+# Vissa Pi-images (eller manuella chown -R) lämnar /etc/sudo.conf ägd av
+# en vanlig användare, vilket gör att sudo tyst vägrar köra ("sudo: ...
+# must be owned by uid 0"). Vi har caps via systemd så BLE funkar utan
+# sudo, men andra verktyg på Pi:n (apt, systemctl, reboot) behöver det.
+# Reparera utan sudo via pkexec/su om vi inte redan är root.
+echo ""
+echo "[0/5] Verifierar /etc/sudo.conf..."
+SUDO_CONF_FIX_NEEDED=false
+if [ -f /etc/sudo.conf ]; then
+  OWNER=$(stat -c '%U:%G' /etc/sudo.conf 2>/dev/null || echo "?")
+  PERMS=$(stat -c '%a' /etc/sudo.conf 2>/dev/null || echo "?")
+  if [ "$OWNER" != "root:root" ] || [ "$PERMS" != "644" ]; then
+    echo "  ⚠ /etc/sudo.conf har fel ägarskap/permissions: $OWNER ($PERMS) — försöker reparera"
+    SUDO_CONF_FIX_NEEDED=true
+    if [ "$(id -u)" = "0" ]; then
+      chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf && echo "  ✓ Fixade /etc/sudo.conf som root"
+    elif command -v pkexec >/dev/null 2>&1; then
+      pkexec sh -c 'chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf' \
+        && echo "  ✓ Fixade /etc/sudo.conf via pkexec" \
+        || echo "  ✗ pkexec misslyckades — kör manuellt: su -c 'chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf'"
+    else
+      echo "  ✗ Kan inte reparera (kör inte som root och saknar pkexec)"
+      echo "    Kör manuellt: su -c 'chown root:root /etc/sudo.conf && chmod 644 /etc/sudo.conf'"
+    fi
+    # Verifiera resultatet
+    NEW_OWNER=$(stat -c '%U:%G' /etc/sudo.conf 2>/dev/null || echo "?")
+    NEW_PERMS=$(stat -c '%a' /etc/sudo.conf 2>/dev/null || echo "?")
+    if [ "$NEW_OWNER" = "root:root" ] && [ "$NEW_PERMS" = "644" ]; then
+      echo "  ✓ /etc/sudo.conf nu korrekt: root:root (644)"
+      SUDO_CONF_FIX_NEEDED=false
+    fi
+  else
+    echo "  ✓ /etc/sudo.conf OK (root:root, 644)"
+  fi
+else
+  echo "  ℹ /etc/sudo.conf saknas — sudo använder kompilerade defaults (OK)"
+fi
+
+# Snabbtest: går sudo att köra alls?
+if ! sudo -n true 2>/dev/null && ! sudo -v 2>/dev/null; then
+  if [ "$SUDO_CONF_FIX_NEEDED" = true ]; then
+    echo "  ⚠ sudo verkar trasigt — fortsätter ändå (BLE behöver inte sudo tack vare CAP_NET_RAW/ADMIN)"
+  fi
+fi
+
 # ─── 1. System dependencies ──────────────────────────────
 echo ""
 echo "[1/5] Installerar systempaket..."
