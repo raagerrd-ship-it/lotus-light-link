@@ -1,89 +1,36 @@
 /**
- * BLE scanning — ren noble.
+ * BLE scanning — ren noble, ingen destruktiv HCI-rebind.
  *
- * Använder noble.startScanningAsync/stopScanningAsync. Ingen hcitool, ingen
- * shell-exec. Noble äger HCI-socketen genom hela scan+connect-flödet.
+ * VIKTIGT: tidigare versioner anropade `hci.stop()` + `hci.start()` för att
+ * tvinga noble att re-initiera bindings när raw `_state` var `unknown`. Det
+ * river HCI-socketen på Pi:s BlueZ-stack och stänger ner adaptern
+ * (poweredOn → poweredOff). Vi gör det INTE längre.
  *
- * VIKTIGT: Vi cachear hela peripheral-objektet (inte bara id/name/rssi) så att
- * connect.ts kan använda samma peripheral direkt — exakt som den gamla
- * fungerande monoliten. noble.connectAsync(address) är opålitlig på Pi, men
- * peripheral.connectAsync() från ett scan-resultat är robust.
+ * Strategi:
+ *  1. `ensureAdapterUp()` (rfkill unblock + hciconfig hci0 up — säkert).
+ *  2. Vänta på poweredOn via stateChange-event (upp till 6s).
+ *  3. Försök `noble.startScanningAsync`. Om noble fortfarande tror state är
+ *     unknown, returnera tom lista med tydlig felflagga — UI kan trigga
+ *     manuell `/api/ble/reset` om det fastnar.
+ *
+ * Vi cachear hela peripheral-objektet (inte bara id/name/rssi) så att
+ * connect.ts kan använda samma peripheral direkt.
  */
 
-import { noble, getAdapterState, processHasBtCaps, logConnectionEvent, bumpWorkaround } from './state.js';
+import { noble, getAdapterState, processHasBtCaps, logConnectionEvent } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
-import { ensureAdapterUp, restartNobleHci } from './adapter.js';
+import { ensureAdapterUp } from './adapter.js';
 
-/**
- * Reads noble's INTERNAL bindings state (not the caps-aware override).
- * This is what noble.startScanningAsync() checks internally — and it's
- * what returns `unknown` even when our exposed state says `poweredOn`.
- */
 function getNobleRawBindingsState(): string | undefined {
   const n = noble as any;
   return n?._bindings?._state ?? n?._state ?? n?.state;
 }
 
-/**
- * When noble's internal _state is `unknown` but our caps-override says
- * poweredOn, noble.startScanningAsync() will throw synchronously with
- * "state is unknown". Force noble to re-init its HCI bindings and wait
- * for a real `stateChange` → `poweredOn` event before proceeding.
- *
- * Returns true if noble's raw internal state ended up poweredOn.
- */
-async function ensureNobleReallyPoweredOn(timeoutMs: number): Promise<boolean> {
-  const raw0 = getNobleRawBindingsState();
-  if (raw0 === 'poweredOn') return true;
-
-  logConnectionEvent({
-    type: 'scan_start',
-    detail: `noble raw=${raw0 ?? 'null'} — forcing HCI rebind`,
-  });
-  bumpWorkaround('restartNobleHci_invoked');
-
-  // Attach stateChange listener BEFORE rebinding so we don't miss the event
-  const waitForEvent = new Promise<boolean>((resolve) => {
-    const n = noble as any;
-    let done = false;
-    const onState = (s: string) => {
-      if (s === 'poweredOn' && !done) { done = true; cleanup(); resolve(true); }
-    };
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      cleanup();
-      resolve(getNobleRawBindingsState() === 'poweredOn');
-    }, timeoutMs);
-    const cleanup = () => {
-      clearTimeout(timer);
-      try { n.removeListener?.('stateChange', onState); } catch {}
-    };
-    try { n.on?.('stateChange', onState); } catch {}
-  });
-
-  try {
-    const bindings = (noble as any)._bindings;
-    const hci = bindings?._hci;
-    if (typeof hci?.stop === 'function') { try { hci.stop(); } catch {} }
-    await new Promise(r => setTimeout(r, 150));
-    if (typeof hci?.start === 'function') { try { hci.start(); } catch {} }
-  } catch {}
-
-  const ok = await waitForEvent;
-  logConnectionEvent({
-    type: 'scan_start',
-    detail: `noble rebind done — raw=${getNobleRawBindingsState() ?? 'null'}, ok=${ok}`,
-  });
-  return ok;
-}
-
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
 
-// Cache av peripheral-objekt indexerat på normaliserat id (MAC utan kolon, lowercase).
-// Connect-flödet hämtar peripheral härifrån istället för att starta egen scan.
+// Cache av peripheral-objekt indexerat på normaliserat id (lowercase, utan kolon).
 const discoveredPeripherals = new Map<string, any>();
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
@@ -95,10 +42,8 @@ export function getDiscoveredPeripheral(id: string): any | undefined {
 function peripheralToDevice(p: any): DiscoveredDevice | null {
   const id: string | undefined = p?.id ?? p?.uuid ?? p?.address?.replace(/:/g, '').toLowerCase();
   if (!id) return null;
-  const mac: string = (p?.address ?? '').toUpperCase();
   const adv = p?.advertisement ?? {};
   const rawName: string | undefined = adv?.localName ?? p?.name;
-  // Filtrera bort enheter helt utan namn (matchar gamla monoliten — minskar brus)
   const name = (rawName && String(rawName).trim()) || '';
   if (!name) return null;
   const rssi = typeof p?.rssi === 'number' ? p.rssi : -100;
@@ -135,7 +80,6 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   }
 
   scanning = true;
-  // Töm cachen vid varje ny scan så vi inte refererar till stale peripheral-objekt
   discoveredPeripherals.clear();
   const found = new Map<string, DiscoveredDevice>();
 
@@ -146,9 +90,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     if (!prev) {
       logConnectionEvent({ type: 'scan_start', detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi}` });
     }
-    // Spara peripheral-objektet — connect.ts behöver det
     discoveredPeripherals.set(dev.id, p);
-    // Behåll bästa (högsta) rssi
     if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
   };
 
@@ -161,33 +103,17 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, rawNoble=${rawNoble ?? 'null'}, caps=${hasCaps}`,
     });
 
+    // Säker adapter-init (rfkill unblock + hciconfig hci0 up). Ingen hci.stop().
     try { await ensureAdapterUp(); } catch {}
 
-    // Vänta längre på poweredOn — gamla monoliten väntade via stateChange under hela scan-fönstret.
-    // 6s ger noble tid att initiera HCI även efter en kall start.
     const ready = await waitForPoweredOn(6000);
     if (!ready) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `Adapter inte poweredOn (state=${getAdapterState()}) — kan inte scanna med noble`,
+        detail: `Adapter inte poweredOn (state=${getAdapterState()}, raw=${getNobleRawBindingsState() ?? 'null'}) — kan inte scanna`,
       });
       lastScanResults = [];
       return lastScanResults;
-    }
-
-    // KRITISK: även om caps-override säger poweredOn kan noble:s interna
-    // _state fortfarande vara 'unknown'. startScanningAsync() kollar rå
-    // internal state och kastar "state is unknown". Tvinga rebind här.
-    if (getNobleRawBindingsState() !== 'poweredOn') {
-      const rebindOk = await ensureNobleReallyPoweredOn(4000);
-      if (!rebindOk) {
-        logConnectionEvent({
-          type: 'scan_done',
-          detail: `noble raw-state still ${getNobleRawBindingsState() ?? 'null'} after rebind — aborting`,
-        });
-        lastScanResults = [];
-        return lastScanResults;
-      }
     }
 
     (noble as any).on('discover', onDiscover);
@@ -195,13 +121,14 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     try {
       await (noble as any).startScanningAsync([], true);
     } catch (scanErr: any) {
-      // Fallback: noble fortfarande inte redo — gör en sista rebind och försök igen
+      // Inga rebinds — bara rapportera felet och bail. Användaren kan trycka
+      // "Återställ BLE-stack" i UI om noble:s interna state är desynkat.
       logConnectionEvent({
-        type: 'scan_start',
-        detail: `startScanning threw "${scanErr?.message ?? scanErr}" — retrying after rebind`,
+        type: 'scan_done',
+        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawBindingsState() ?? 'null'}). Tryck "Återställ BLE-stack" om problemet kvarstår.`,
       });
-      await ensureNobleReallyPoweredOn(4000);
-      await (noble as any).startScanningAsync([], true);
+      lastScanResults = [];
+      return lastScanResults;
     }
 
     await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
