@@ -278,12 +278,14 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
     throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
   }
 
+  logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
+
   const char = characteristics[0] as PiCharacteristic;
   char.deviceName = name;
   char.deviceId = peripheral.id;
 
   // Write brightness max — same as early monolith
-  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write');
+  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write', 'write');
 
   // Step 3: Request minimum connection interval
   requestConnectionInterval(peripheral, name);
