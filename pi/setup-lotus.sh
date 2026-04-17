@@ -159,38 +159,22 @@ BLE_FIXED=false
 if [ -f "$SVC_FILE" ]; then
   SVC_CONTENT=$(cat "$SVC_FILE")
 
-  # Säkerställ att noble startar först när bluetooth.service är uppe
-  if ! grep -Eq '^After=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])' "$SVC_FILE"; then
-    if grep -q '^\[Unit\]' "$SVC_FILE"; then
-      sed -i '/^\[Unit\]/a After=bluetooth.service' "$SVC_FILE"
-    else
-      TMP_SVC=$(mktemp)
-      printf '[Unit]\nAfter=bluetooth.service\n' > "$TMP_SVC"
-      cat "$SVC_FILE" >> "$TMP_SVC"
-      mv "$TMP_SVC" "$SVC_FILE"
-    fi
-    echo "  Lade till After=bluetooth.service ✓"
+  # User-services kan inte depend:a på system-units som bluetooth.service.
+  # Vänta istället kort innan start så HCI hinner bli redo.
+  sed -i '/^After=.*bluetooth\.service/d' "$SVC_FILE"
+  sed -i '/^Requires=.*bluetooth\.service/d' "$SVC_FILE"
+
+  if echo "$SVC_CONTENT" | grep -Eq '^After=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])'; then
+    echo "  Tog bort ogiltig After=bluetooth.service för user-service ✓"
     BLE_FIXED=true
-  else
-    echo "  After=bluetooth.service ✓"
   fi
 
-  if ! grep -Eq '^Requires=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])' "$SVC_FILE"; then
-    if grep -q '^\[Unit\]' "$SVC_FILE"; then
-      sed -i '/^\[Unit\]/a Requires=bluetooth.service' "$SVC_FILE"
-    else
-      TMP_SVC=$(mktemp)
-      printf '[Unit]\nRequires=bluetooth.service\n' > "$TMP_SVC"
-      cat "$SVC_FILE" >> "$TMP_SVC"
-      mv "$TMP_SVC" "$SVC_FILE"
-    fi
-    echo "  Lade till Requires=bluetooth.service ✓"
+  if echo "$SVC_CONTENT" | grep -Eq '^Requires=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])'; then
+    echo "  Tog bort ogiltig Requires=bluetooth.service för user-service ✓"
     BLE_FIXED=true
-  else
-    echo "  Requires=bluetooth.service ✓"
   fi
 
-  # Ge bluetooth.service lite tid att exponera HCI innan node-processen startar
+  # Ge bluetoothd/HCI lite tid att bli redo innan node-processen startar
   if ! grep -q '^ExecStartPre=/bin/sleep 2$' "$SVC_FILE"; then
     sed -i '/^ExecStartPre=\/bin\/sleep 2$/d' "$SVC_FILE"
     if grep -q '^\[Service\]' "$SVC_FILE"; then
