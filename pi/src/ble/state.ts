@@ -157,6 +157,90 @@ export function processHasBtCaps(): boolean {
   return false;
 }
 
+/**
+ * Boot-time self-check of BLE capabilities. Logs a clear ✓/✗ banner so
+ * misconfigured systemd services are obvious in the engine logs and in
+ * /api/ble/diagnostics. Safe to call multiple times (idempotent).
+ */
+let _capsSelfCheckRan = false;
+export function runBleCapsSelfCheck(): {
+  hasCaps: boolean;
+  capEff: string | null;
+  uid: number | null;
+  missing: string[];
+} {
+  let capEff: string | null = null;
+  let uid: number | null = null;
+  const missing: string[] = [];
+
+  try {
+    const status = readFileSync('/proc/self/status', 'utf8');
+    const m = status.match(/^CapEff:\s*([0-9a-fA-F]+)$/m);
+    if (m) capEff = m[1];
+    const u = status.match(/^Uid:\s*(\d+)/m);
+    if (u) uid = Number(u[1]);
+  } catch {
+    // not Linux
+  }
+
+  let hasCaps = false;
+  if (capEff != null) {
+    const caps = BigInt('0x' + capEff);
+    const hasNetRaw = (caps & (1n << 13n)) !== 0n;
+    const hasNetAdmin = (caps & (1n << 12n)) !== 0n;
+    if (!hasNetRaw) missing.push('CAP_NET_RAW');
+    if (!hasNetAdmin) missing.push('CAP_NET_ADMIN');
+    hasCaps = hasNetRaw && hasNetAdmin;
+  }
+
+  if (_capsSelfCheckRan) return { hasCaps, capEff, uid, missing };
+  _capsSelfCheckRan = true;
+
+  if (capEff == null) {
+    console.log('[BLE:caps-check] ⚠ /proc/self/status unavailable — kan inte verifiera capabilities (icke-Linux?)');
+    logConnectionEvent({ type: 'connect_start', detail: 'caps-check: /proc unavailable' });
+    return { hasCaps, capEff, uid, missing };
+  }
+
+  if (hasCaps) {
+    console.log(`[BLE:caps-check] ✓ CAP_NET_RAW + CAP_NET_ADMIN OK (CapEff=${capEff}, uid=${uid})`);
+    logConnectionEvent({ type: 'connect_start', detail: `caps-check OK: CapEff=${capEff}` });
+  } else {
+    const isRoot = uid === 0;
+    const banner = [
+      '',
+      '╔════════════════════════════════════════════════════════════════════╗',
+      '║ [BLE:caps-check] ✗ SAKNAR BLE-CAPABILITIES                         ║',
+      `║   Saknar: ${missing.join(' + ').padEnd(56)}║`,
+      `║   CapEff=${(capEff ?? 'n/a').padEnd(58)}║`,
+      `║   uid=${String(uid).padEnd(61)}║`,
+      '║                                                                    ║',
+      '║ Fix: kontrollera systemd user-service:                             ║',
+      '║   ~/.config/systemd/user/lotus-light-engine.service                ║',
+      '║                                                                    ║',
+      '║   [Service]                                                        ║',
+      '║   NoNewPrivileges=false                                            ║',
+      '║   AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN                    ║',
+      '║   CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN                  ║',
+      '║                                                                    ║',
+      '║ Sedan: systemctl --user daemon-reload &&                           ║',
+      '║        systemctl --user restart lotus-light-engine                 ║',
+      '╚════════════════════════════════════════════════════════════════════╝',
+      '',
+    ].join('\n');
+    console.error(banner);
+    if (isRoot) {
+      console.error('[BLE:caps-check] (kör som root men saknar ändå caps — ovanligt; kontrollera CapBnd)');
+    }
+    logConnectionEvent({
+      type: 'connect_fail',
+      detail: `caps-check FAIL: saknar ${missing.join('+')} (CapEff=${capEff}, uid=${uid}) — fixa systemd-service`,
+    });
+  }
+
+  return { hasCaps, capEff, uid, missing };
+}
+
 let _capsOverrideLogged = false;
 
 export function getAdapterState(): string | undefined {

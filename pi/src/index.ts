@@ -86,6 +86,13 @@ async function main() {
 
   console.log('');
 
+  // BLE capabilities self-check — varnar tydligt om systemd-tjänsten saknar
+  // CAP_NET_RAW/CAP_NET_ADMIN så vi inte gissar på "varför funkar inte BLE?".
+  const { runBleCapsSelfCheck } = await import('./ble/state.js');
+  runBleCapsSelfCheck();
+
+  console.log('');
+
   // 2. Create engine
   const engine = new PiLightEngine(effectiveTickMs);
 
