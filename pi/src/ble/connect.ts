@@ -528,22 +528,31 @@ function requestConnectionInterval(peripheral: any, name: string): void {
     const hci = (noble as any)._bindings?._hci;
     const handle = peripheral._handle ?? peripheral.handle;
     if (hci && handle != null && typeof hci.writeLeConnectionUpdate === 'function') {
-      hci.writeLeConnectionUpdate(handle, 6, 8, 0, 200);
+      // Capture handle in a const for strict comparison inside the listener.
+      const expectedHandle = handle;
+      hci.writeLeConnectionUpdate(expectedHandle, 6, 8, 0, 200);
       bleStats.requestedIntervalMs = '7.5–10';
       console.log(`[BLE] Requested connection interval 7.5–10ms for ${name}`);
 
       if (typeof hci.on === 'function') {
-        const onLeConnUpdateComplete = (status: number, connHandle: number, interval: number, latency: number, supervisionTimeout: number) => {
-          if (connHandle !== handle) return;
+        let settled = false;
+        let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+        const onLeConnUpdateComplete = (_status: number, connHandle: number, interval: number, latency: number, supervisionTimeout: number) => {
+          if (connHandle !== expectedHandle) return;     // strict — ignore other handles
+          if (settled) return;
+          settled = true;
+          if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
+          try { hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete); } catch {}
           const actualMs = (interval * 1.25).toFixed(1);
           bleStats.actualIntervalMs = actualMs;
           bleStats.intervalSource = 'hci_event';
           console.log(`[BLE] Connection interval accepted: ${actualMs}ms (latency=${latency}, timeout=${supervisionTimeout * 10}ms)`);
-          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
         };
         hci.on('leConnUpdateComplete', onLeConnUpdateComplete);
-        setTimeout(() => {
-          hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete);
+        timeoutTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          try { hci.removeListener('leConnUpdateComplete', onLeConnUpdateComplete); } catch {}
           if (bleStats.intervalSource === 'unknown') {
             bleStats.intervalSource = 'estimated';
           }
