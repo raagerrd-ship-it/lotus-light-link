@@ -1,13 +1,11 @@
 /**
- * BLE scanning — hybrid discovery via hcitool temp-file capture.
+ * BLE scanning — ren noble.
  *
- * Noble remains the GATT/connect transport, but Raspberry Pi discovery is more
- * reliable through `hcitool lescan` as documented in project memory.
+ * Använder noble.startScanningAsync/stopScanningAsync. Ingen hcitool, ingen
+ * shell-exec. Noble äger HCI-socketen genom hela scan+connect-flödet.
  */
 
-import { execFileSync } from 'child_process';
-import { readFileSync, unlinkSync } from 'fs';
-import { getAdapterState, processHasBtCaps, logConnectionEvent } from './state.js';
+import { noble, getAdapterState, processHasBtCaps, logConnectionEvent } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { ensureAdapterUp } from './adapter.js';
@@ -18,31 +16,34 @@ let scanning = false;
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
 
-function parseHcitoolScan(raw: string): DiscoveredDevice[] {
-  const seen = new Map<string, DiscoveredDevice>();
+function peripheralToDevice(p: any): DiscoveredDevice | null {
+  const id: string | undefined = p?.id ?? p?.uuid ?? p?.address?.replace(/:/g, '').toLowerCase();
+  if (!id) return null;
+  const mac: string = (p?.address ?? '').toUpperCase();
+  const adv = p?.advertisement ?? {};
+  const rawName: string | undefined = adv?.localName ?? p?.name;
+  const name = (rawName && String(rawName).trim()) || (mac ? `Okänd enhet (${mac})` : `Okänd enhet (${id})`);
+  const rssi = typeof p?.rssi === 'number' ? p.rssi : -100;
+  return { id: String(id).toLowerCase(), name, rssi };
+}
 
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed === 'LE Scan ...') continue;
-    if (/^Set scan parameters failed/i.test(trimmed)) continue;
-    if (/^Could not start scanning/i.test(trimmed)) continue;
-    if (/^Interrupted system call/i.test(trimmed)) continue;
-
-    const match = trimmed.match(/^([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s*(.*)$/i);
-    if (!match) continue;
-
-    const mac = match[1].toUpperCase();
-    const id = mac.replace(/:/g, '').toLowerCase();
-    const rawName = (match[2] ?? '').trim();
-    const name = rawName && rawName !== '(unknown)' ? rawName : `Okänd enhet (${mac})`;
-
-    if (!seen.has(id)) {
-      logConnectionEvent({ type: 'scan_start', detail: `Found: ${name} (${mac}) via hcitool` });
-    }
-    seen.set(id, { id, name, rssi: -100 });
-  }
-
-  return Array.from(seen.values());
+async function waitForPoweredOn(timeoutMs: number): Promise<boolean> {
+  if (getAdapterState() === 'poweredOn') return true;
+  return await new Promise<boolean>((resolve) => {
+    const onState = (s: string) => {
+      if (s === 'poweredOn') { cleanup(); resolve(true); }
+    };
+    const poll = setInterval(() => {
+      if (getAdapterState() === 'poweredOn') { cleanup(); resolve(true); }
+    }, 200);
+    const timer = setTimeout(() => { cleanup(); resolve(getAdapterState() === 'poweredOn'); }, timeoutMs);
+    const cleanup = () => {
+      clearInterval(poll);
+      clearTimeout(timer);
+      try { (noble as any).removeListener?.('stateChange', onState); } catch {}
+    };
+    try { (noble as any).on?.('stateChange', onState); } catch {}
+  });
 }
 
 export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
@@ -56,48 +57,67 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   }
 
   scanning = true;
-  lastScanResults = [];
+  const found = new Map<string, DiscoveredDevice>();
 
-  const tmpPath = `/tmp/lotus-ble-scan-${process.pid}-${Date.now()}.txt`;
+  const onDiscover = (p: any) => {
+    const dev = peripheralToDevice(p);
+    if (!dev) return;
+    const prev = found.get(dev.id);
+    if (!prev) {
+      logConnectionEvent({ type: 'scan_start', detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi}` });
+    }
+    // keep best (highest) rssi
+    if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
+  };
 
   try {
     const adapterState = getAdapterState();
     const hasCaps = processHasBtCaps();
     logConnectionEvent({
       type: 'scan_start',
-      detail: `hcitool scan, timeout=${timeoutMs}ms, adapter=${adapterState}, caps=${hasCaps}`,
+      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, caps=${hasCaps}`,
     });
 
     try { await ensureAdapterUp(); } catch {}
 
-    const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-    execFileSync('bash', ['-lc',
-      `rfkill unblock bluetooth >/dev/null 2>&1 || true; ` +
-      `((command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true); ` +
-      `timeout ${timeoutSeconds}s hcitool lescan --duplicates > '${tmpPath}' 2>&1 || true; ` +
-      `pkill -f "hcitool lescan" >/dev/null 2>&1 || true`
-    ], { timeout: timeoutMs + 4000, stdio: 'ignore' });
+    const ready = await waitForPoweredOn(2500);
+    if (!ready) {
+      logConnectionEvent({
+        type: 'scan_done',
+        detail: `Adapter inte poweredOn (state=${getAdapterState()}) — kan inte scanna med noble`,
+      });
+      lastScanResults = [];
+      return lastScanResults;
+    }
 
-    const raw = readFileSync(tmpPath, 'utf8');
-    lastScanResults = parseHcitoolScan(raw);
+    (noble as any).on('discover', onDiscover);
+
+    await (noble as any).startScanningAsync([], true);
+
+    await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+
+    try { await (noble as any).stopScanningAsync(); } catch {}
+
+    lastScanResults = Array.from(found.values()).sort((a, b) => b.rssi - a.rssi);
 
     if (lastScanResults.length === 0) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `0 devices via hcitool — är BLEDOM på och i närheten? Adapter=${getAdapterState()}`,
+        detail: `0 devices via noble — är BLEDOM på och i närheten? Adapter=${getAdapterState()}`,
       });
     } else {
-      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found via hcitool` });
+      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found via noble` });
     }
 
     return lastScanResults;
   } catch (e: any) {
     lastScanResults = [];
-    logConnectionEvent({ type: 'scan_done', detail: `Error: ${e.message}` });
-    console.error(`[BLE] scan error: ${e.message}`);
+    logConnectionEvent({ type: 'scan_done', detail: `Error: ${e?.message ?? e}` });
+    console.error(`[BLE] scan error: ${e?.message ?? e}`);
+    try { await (noble as any).stopScanningAsync(); } catch {}
     return lastScanResults;
   } finally {
-    try { unlinkSync(tmpPath); } catch {}
+    try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
     scanning = false;
   }
 }
