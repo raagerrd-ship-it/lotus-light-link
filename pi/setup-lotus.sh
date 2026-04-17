@@ -152,6 +152,23 @@ echo "[BLE] Verifierar och fixar Bluetooth-tillgång..."
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
 
+# 1b. Sätt capabilities på hcitool-binären (krävs för lescan utan sudo)
+HCITOOL_BIN="$(command -v hcitool 2>/dev/null || echo /usr/bin/hcitool)"
+if [ -x "$HCITOOL_BIN" ]; then
+  CURRENT_CAPS="$(getcap "$HCITOOL_BIN" 2>/dev/null || true)"
+  if echo "$CURRENT_CAPS" | grep -q "cap_net_raw" && echo "$CURRENT_CAPS" | grep -q "cap_net_admin"; then
+    echo "  hcitool capabilities ✓ ($CURRENT_CAPS)"
+  else
+    if sudo -n setcap 'cap_net_raw,cap_net_admin+eip' "$HCITOOL_BIN" 2>/dev/null; then
+      echo "  Satte cap_net_raw,cap_net_admin+eip på $HCITOOL_BIN ✓"
+    else
+      echo "  ⚠️  Kunde inte setcap på $HCITOOL_BIN (behöver: sudo setcap 'cap_net_raw,cap_net_admin+eip' $HCITOOL_BIN)"
+    fi
+  fi
+else
+  echo "  ⚠️  hcitool inte installerat — installera bluez: sudo apt install -y bluez"
+fi
+
 # 2-4. Auto-fixa systemd-tjänsten om capabilities saknas
 SVC_FILE="$HOME/.config/systemd/user/lotus-light-engine.service"
 BLE_FIXED=false
