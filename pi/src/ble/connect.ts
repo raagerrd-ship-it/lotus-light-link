@@ -7,7 +7,7 @@
 
 import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
-  getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress,
+  getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
@@ -438,8 +438,52 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
 }
 
 /**
+ * Försök direct-connect via noble.connectAsync(address) — snabbt (~500ms)
+ * när det fungerar, ingen scan behövs. Kräver att vi har sparad addressType.
+ *
+ * Returnerar true om hela kedjan (L2CAP + GATT + write) lyckades.
+ * Vid fel returneras false utan att kasta — caller ska falla tillbaka på scan.
+ */
+async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<boolean> {
+  const address = getSavedDeviceAddress();
+  const addressType = getSavedAddressType();
+  if (!address || !addressType) return false;
+  if (typeof (noble as any).connectAsync !== 'function') return false;
+
+  const directStart = performance.now();
+  logConnectionEvent({
+    type: 'connect_start',
+    device: name,
+    detail: `Direct-connect attempt (address=${address}, type=${addressType}, timeout=${timeoutMs}ms)`,
+  });
+
+  try {
+    // noble.connectAsync(address, options) — connectar utan scan.
+    const peripheral = await withTimeout(
+      (noble as any).connectAsync(address.toLowerCase(), { addressType }),
+      'Direct connect',
+      'l2cap',
+    ) as any;
+
+    if (!peripheral) {
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: 'Direct-connect returned no peripheral' });
+      return false;
+    }
+
+    // Peripheral är redan ansluten på L2CAP-nivå → skipL2cap=true
+    await connectPeripheral(peripheral, 0, true);
+    const totalMs = Math.round(performance.now() - directStart);
+    logConnectionEvent({ type: 'connect_ok', device: name, detail: `Direct-connect SUCCESS (${totalMs}ms — no scan)`, durationMs: totalMs });
+    return !!getDevice();
+  } catch (e: any) {
+    const totalMs = Math.round(performance.now() - directStart);
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Direct-connect failed in ${totalMs}ms: ${e.message} — falling back to scan` });
+    return false;
+  }
+}
+
+/**
  * @deprecated Kept for backwards compat — delegates to scan-based connect.
- * The @stoprocent/noble noble.connectAsync(address) API is unreliable on Pi.
  */
 export async function nobleDirectConnect(name: string, timeoutMs = 5000): Promise<boolean> {
   const savedAddress = getSavedDeviceAddress() ?? getSavedDeviceId();
@@ -513,7 +557,17 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
 
     ensureAdapterUp();
 
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Scan-connect (mirrors early monolith)' });
+    // Steg 1: Försök direct-connect (snabbt, ~500ms) om vi har sparad addressType.
+    // Hoppar över hela scan-fasen och går rakt på noble.connectAsync(address).
+    if (getSavedAddressType()) {
+      const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 3000));
+      if (directOk) return 1;
+      // Fall through till scan-connect — direct misslyckades men vi räknar
+      // bara failures när hela kedjan inkl. scan-fallback misslyckats.
+    }
+
+    // Steg 2: Fallback till scan-connect (mirrors early monolith — beprövat på Pi)
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Scan-connect fallback (mirrors early monolith)' });
     const ok = await nobleScanConnect(target, savedName, Math.min(timeoutMs, 8000));
     if (ok) return 1;
 
