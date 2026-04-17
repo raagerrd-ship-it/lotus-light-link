@@ -101,7 +101,18 @@ async function main() {
   }
 
   // 5. BLE — don't connect at boot, wait for Sonos to signal playback
-  console.log('[Boot] BLE ready (will connect on demand when music plays)');
+  // 5. BLE — boot-time HCI clean slate, then ready for on-demand connect.
+  // Skyddar mot stale kernel/bluez-state efter strömavbrott, OOM-kill,
+  // git-uppdatering, eller tidigare process som inte hann köra SIGTERM-shutdown.
+  // Billigt (~1s) jämfört med att riskera fastna i `unknown` vid första connect.
+  console.log('[Boot] Cleaning HCI adapter (recovery from previous run)...');
+  try {
+    const { resetHciAdapter } = await import('./ble/connect.js');
+    await resetHciAdapter();
+    console.log('[Boot] ✓ HCI clean — ready for on-demand connect');
+  } catch (e: any) {
+    console.warn('[Boot] HCI clean failed (continuing):', e.message);
+  }
   const reconnectTimer = startReconnectLoop(15000);
 
   // 5. Start Sonos poller (configurable gateway)
