@@ -73,6 +73,37 @@ else
   echo "  ℹ /etc/sudo.conf saknas — sudo använder kompilerade defaults (OK)"
 fi
 
+# Verifiera /usr/bin/sudo setuid-bit (måste vara 4755 root:root för att eskalera till root)
+SUDO_BIN=$(command -v sudo 2>/dev/null || echo /usr/bin/sudo)
+if [ -f "$SUDO_BIN" ]; then
+  SUDO_OWNER=$(stat -c '%U:%G' "$SUDO_BIN" 2>/dev/null || echo "?")
+  SUDO_MODE=$(stat -c '%a' "$SUDO_BIN" 2>/dev/null || echo "?")
+  if [ "$SUDO_OWNER" != "root:root" ] || [ "$SUDO_MODE" != "4755" ]; then
+    echo "  ⚠ $SUDO_BIN har fel ägare/mode: $SUDO_OWNER ($SUDO_MODE) — försöker reparera (förväntat: root:root 4755)"
+    SUDO_CONF_FIX_NEEDED=true
+    if [ "$(id -u)" = "0" ]; then
+      chown root:root "$SUDO_BIN" && chmod 4755 "$SUDO_BIN" && echo "  ✓ Fixade $SUDO_BIN som root"
+    elif command -v pkexec >/dev/null 2>&1; then
+      pkexec sh -c "chown root:root '$SUDO_BIN' && chmod 4755 '$SUDO_BIN'" \
+        && echo "  ✓ Fixade $SUDO_BIN via pkexec" \
+        || echo "  ✗ pkexec misslyckades — kör manuellt: su -c \"chown root:root $SUDO_BIN && chmod 4755 $SUDO_BIN\""
+    else
+      echo "  ✗ Kan inte reparera (kör inte som root och saknar pkexec)"
+      echo "    Kör manuellt: su -c \"chown root:root $SUDO_BIN && chmod 4755 $SUDO_BIN\""
+    fi
+    NEW_SUDO_OWNER=$(stat -c '%U:%G' "$SUDO_BIN" 2>/dev/null || echo "?")
+    NEW_SUDO_MODE=$(stat -c '%a' "$SUDO_BIN" 2>/dev/null || echo "?")
+    if [ "$NEW_SUDO_OWNER" = "root:root" ] && [ "$NEW_SUDO_MODE" = "4755" ]; then
+      echo "  ✓ $SUDO_BIN nu korrekt: root:root (4755)"
+      SUDO_CONF_FIX_NEEDED=false
+    fi
+  else
+    echo "  ✓ $SUDO_BIN OK (root:root, 4755)"
+  fi
+else
+  echo "  ⚠ sudo-binären hittas inte ($SUDO_BIN) — installera med: apt install sudo"
+fi
+
 # Snabbtest: går sudo att köra alls?
 if ! sudo -n true 2>/dev/null && ! sudo -v 2>/dev/null; then
   if [ "$SUDO_CONF_FIX_NEEDED" = true ]; then
