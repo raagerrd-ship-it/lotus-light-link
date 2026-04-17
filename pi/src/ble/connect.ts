@@ -318,16 +318,8 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   // Make sure no stale scan is holding the HCI socket
   try { (noble as any).stopScanning?.(); } catch {}
 
-  // Proactive HCI reset BEFORE first scan attempt — clears any lingering
-  // socket lock from previous hcitool/noble runs. This is critical on Pi:
-  // without it, startScanningAsync often fails with "Could not open HCI socket".
-  logConnectionEvent({ type: 'hci_reset', detail: 'Pre-scan HCI reset (proactive)' });
-  await resetHciAdapter();
-  await new Promise(r => setTimeout(r, 300));
-
-  // Force noble to re-init HCI binding so its internal state goes
-  // unknown → poweredOn. Without this, startScanningAsync fails with
-  // "state is unknown (not poweredOn)" forever.
+  // Only force-reinit noble if it's NOT already poweredOn. Touching the
+  // adapter when noble is healthy is what causes most `unknown` lockups.
   await forceNoblePoweredOn(name);
 
   const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
