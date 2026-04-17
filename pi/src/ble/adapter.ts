@@ -84,7 +84,7 @@ export async function ensureAdapterUp(): Promise<boolean> {
   try { await restartNobleHci('ensure_adapter_up'); } catch {}
   const ok = await waitForNoblePoweredOn(4000);
   if (!ok) {
-    logConnectionEvent({ type: 'connect_start', device: deviceName, detail: `ensureAdapterUp timed out (${getAdapterState() ?? 'unknown'})` });
+    logConnectionEvent({ type: 'connect_start', detail: `ensureAdapterUp timed out (${getAdapterState() ?? 'unknown'})` });
   }
   return ok;
 }
