@@ -13,7 +13,7 @@
 import { noble, getAdapterState, processHasBtCaps, logConnectionEvent } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
-import { ensureAdapterUp } from './adapter.js';
+import { ensureAdapterUp, restartNobleHci } from './adapter.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -28,10 +28,19 @@ export function getDiscoveredPeripheral(id: string): any | undefined {
   return discoveredPeripherals.get(id.toLowerCase());
 }
 
+function getRawNobleState(): string | undefined {
+  const n = noble as typeof noble & {
+    state?: string;
+    _state?: string;
+    adapterState?: string;
+    _adapterState?: string;
+  };
+  return n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+}
+
 function peripheralToDevice(p: any): DiscoveredDevice | null {
   const id: string | undefined = p?.id ?? p?.uuid ?? p?.address?.replace(/:/g, '').toLowerCase();
   if (!id) return null;
-  const mac: string = (p?.address ?? '').toUpperCase();
   const adv = p?.advertisement ?? {};
   const rawName: string | undefined = adv?.localName ?? p?.name;
   // Filtrera bort enheter helt utan namn (matchar gamla monoliten — minskar brus)
@@ -41,16 +50,19 @@ function peripheralToDevice(p: any): DiscoveredDevice | null {
   return { id: String(id).toLowerCase(), name, rssi };
 }
 
-async function waitForPoweredOn(timeoutMs: number): Promise<boolean> {
-  if (getAdapterState() === 'poweredOn') return true;
+async function waitForScanReady(timeoutMs: number): Promise<boolean> {
+  if (getRawNobleState() === 'poweredOn') return true;
   return await new Promise<boolean>((resolve) => {
     const onState = (s: string) => {
       if (s === 'poweredOn') { cleanup(); resolve(true); }
     };
     const poll = setInterval(() => {
-      if (getAdapterState() === 'poweredOn') { cleanup(); resolve(true); }
+      if (getRawNobleState() === 'poweredOn') { cleanup(); resolve(true); }
     }, 200);
-    const timer = setTimeout(() => { cleanup(); resolve(getAdapterState() === 'poweredOn'); }, timeoutMs);
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(getRawNobleState() === 'poweredOn');
+    }, timeoutMs);
     const cleanup = () => {
       clearInterval(poll);
       clearTimeout(timer);
@@ -71,7 +83,6 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   }
 
   scanning = true;
-  // Töm cachen vid varje ny scan så vi inte refererar till stale peripheral-objekt
   discoveredPeripherals.clear();
   const found = new Map<string, DiscoveredDevice>();
 
@@ -82,40 +93,43 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     if (!prev) {
       logConnectionEvent({ type: 'scan_start', detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi}` });
     }
-    // Spara peripheral-objektet — connect.ts behöver det
     discoveredPeripherals.set(dev.id, p);
-    // Behåll bästa (högsta) rssi
     if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
   };
 
   try {
     const adapterState = getAdapterState();
+    const rawStateBefore = getRawNobleState() ?? 'unknown';
     const hasCaps = processHasBtCaps();
     logConnectionEvent({
       type: 'scan_start',
-      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, caps=${hasCaps}`,
+      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, raw=${rawStateBefore}, caps=${hasCaps}`,
     });
 
     try { await ensureAdapterUp(); } catch {}
 
-    // Vänta längre på poweredOn — gamla monoliten väntade via stateChange under hela scan-fönstret.
-    // 6s ger noble tid att initiera HCI även efter en kall start.
-    const ready = await waitForPoweredOn(6000);
+    let ready = await waitForScanReady(6000);
+    if (!ready) {
+      logConnectionEvent({
+        type: 'scan_start',
+        detail: `Raw noble state still ${getRawNobleState() ?? 'unknown'} after warmup — refreshing noble HCI before scan`,
+      });
+      try { await restartNobleHci('scan'); } catch {}
+      ready = await waitForScanReady(3000);
+    }
+
     if (!ready) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `Adapter inte poweredOn (state=${getAdapterState()}) — kan inte scanna med noble`,
+        detail: `Cannot start noble scan: raw=${getRawNobleState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'} (startScanningAsync requires raw poweredOn)`,
       });
       lastScanResults = [];
       return lastScanResults;
     }
 
     (noble as any).on('discover', onDiscover);
-
     await (noble as any).startScanningAsync([], true);
-
     await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
-
     try { await (noble as any).stopScanningAsync(); } catch {}
 
     lastScanResults = Array.from(found.values()).sort((a, b) => b.rssi - a.rssi);
@@ -123,7 +137,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     if (lastScanResults.length === 0) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `0 devices via noble — är BLEDOM på och i närheten? Adapter=${getAdapterState()}`,
+        detail: `0 devices via noble — BLEDOM kanske inte annonserar just nu? raw=${getRawNobleState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}`,
       });
     } else {
       logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found via noble` });
