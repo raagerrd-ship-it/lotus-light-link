@@ -2258,7 +2258,8 @@ export default function PiMobile() {
           </div>
         )}
 
-        {/* Manual MAC entry — only path to add a device. HCI-scan inside the form. */}
+        {/* Manual MAC entry — only shown when no device is saved. Forget the saved device to add a new one. */}
+        {!bleSavedId && (
         <div className="mt-2">
           <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2">
                 <div className="flex items-center justify-between">
