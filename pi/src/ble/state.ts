@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-17/least-invasive-noble-recovery';
+export const BLE_BUILD_TAG = '2026-04-17/lock-safety-timeout';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Single device state ──
