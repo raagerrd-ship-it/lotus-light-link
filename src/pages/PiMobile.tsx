@@ -2332,20 +2332,27 @@ export default function PiMobile() {
                     key={dev.id}
                     onClick={async () => {
                       try {
+                        setSaveError(null);
                         const r = await fetch(`${piBase}/api/ble/select`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ id: dev.id }),
+                          body: JSON.stringify({ deviceId: dev.id }),
                           signal: AbortSignal.timeout(15000),
                         });
                         const data = await r.json();
-                        if (r.ok && data.ok) {
-                          setBleSavedId(data.savedDeviceId ?? dev.id);
-                          setBleSavedName(data.savedDeviceName ?? dev.name);
-                          setBleSavedAddress(data.savedDeviceAddress ?? null);
-                          setBleScanResults([]);
+                        if (!r.ok || !data.ok) {
+                          setSaveError(data.error ?? 'Kunde inte välja BLE-enhet');
+                          return;
                         }
-                      } catch {}
+                        setBleSavedId(dev.id);
+                        setBleSavedName(dev.name);
+                        setBleSavedAddress(null);
+                        setBleScanResults([]);
+                        setBlePreview(true);
+                        setBlePreviewSec(data.previewSeconds ?? 10);
+                      } catch (e: any) {
+                        setSaveError(e?.message ?? 'Nätverksfel vid BLE-val');
+                      }
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-md bg-background/50 active:bg-primary/10 border border-border/40"
                   >
