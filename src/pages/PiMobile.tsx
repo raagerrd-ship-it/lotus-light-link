@@ -1011,8 +1011,15 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const stateColor = a.state === 'poweredOn' ? 'text-green-400' : a.state === 'unauthorized' ? 'text-destructive' : 'text-yellow-400';
   const nobleRaw = a.nobleRaw;
   const nobleStateRaw = nobleRaw?.state ?? nobleRaw?._state ?? nobleRaw?.adapterState ?? nobleRaw?._adapterState ?? 'unknown';
-  const nobleStateColor = nobleStateRaw === 'poweredOn' ? 'text-green-400' : nobleStateRaw === 'unauthorized' ? 'text-destructive' : 'text-yellow-400';
-  const stateMismatch = a.state === 'poweredOn' && nobleStateRaw !== 'poweredOn';
+  const rawStateIgnored = a.state === 'poweredOn' && a.hasCaps && nobleStateRaw !== 'poweredOn';
+  const nobleStateColor = rawStateIgnored
+    ? 'text-muted-foreground'
+    : nobleStateRaw === 'poweredOn'
+      ? 'text-green-400'
+      : nobleStateRaw === 'unauthorized'
+        ? 'text-destructive'
+        : 'text-yellow-400';
+  const rawStateLabel = rawStateIgnored ? 'noble.state (rå, ignoreras på Pi)' : 'noble.state (rå)';
 
   return (
     <div className="space-y-3">
@@ -1023,9 +1030,11 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
           <div className={`font-mono font-bold ${stateColor}`}>{a.state}</div>
         </div>
         <div className="bg-background/50 rounded-lg p-2">
-          <div className="text-muted-foreground text-[10px]">noble.state (raw)</div>
+          <div className="text-muted-foreground text-[10px]">{rawStateLabel}</div>
           <div className={`font-mono font-bold ${nobleStateColor}`}>{nobleStateRaw}</div>
-          {stateMismatch && <span className="text-[9px] text-yellow-400">OS ≠ noble</span>}
+          {rawStateIgnored ? (
+            <span className="text-[9px] text-muted-foreground">Förväntat på Pi — använder caps-aware state</span>
+          ) : null}
         </div>
         <div className="bg-background/50 rounded-lg p-2">
           <div className="text-muted-foreground text-[10px]">Capabilities</div>
