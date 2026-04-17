@@ -1,57 +1,74 @@
 
-Användaren vill att jag tittar tillbaka på äldre versioner av projektet — innan vi delade upp motor och UI — för att se hur BLE-anslutningen fungerade då, och jämföra med dagens implementation som inte fungerar tillförlitligt.
 
-Plan:
-1. Använd `trajectory_observability--get_trajectory_events` för att hitta äldre commits/messages från tiden då BLE fungerade i webbläsaren (Web Bluetooth API i React-appen).
-2. Titta specifikt på:
-   - Hur `navigator.bluetooth.requestDevice` användes
-   - GATT discovery-sekvensen
-   - Vilka services/characteristics som användes (FFF0/FFF3)
-   - Write pipeline (writeWithoutResponse vs write)
-   - Reconnect-strategin
-3. Jämför med dagens `pi/src/ble/connect.ts`, `protocol.ts`, `adapter.ts` för att hitta:
-   - Saknad logik (t.ex. service discovery-ordning, write-typ, timing)
-   - Annorlunda paketformat
-   - Annorlunda connect-sekvens
-4. Sammanställ konkreta lärdomar och föreslå patchar till nuvarande Pi-koden.
+## Granskning av connect-koden — kvarvarande risker
 
-# Vad jag ska göra
+Jag gick igenom `connect.ts`, `reconnect.ts` och `scan.ts`. Den nya lock-säkerhetstimern fixade huvudproblemet, men jag hittade **6 kvarvarande svagheter** av samma karaktär (race conditions, dubbelresolve, oanslutna handlers, eller läckande tillstånd).
 
-**Steg 1 — Arkeologi**
-- Hämta äldre trajectory events för att hitta originalimplementationen av BLE i webbläsaren (Web Bluetooth).
-- Läs gamla versioner av filer som `src/lib/engine/ble.ts` eller liknande som fanns innan uppdelningen.
+### Tankegång — vad är "samma typ av fel"?
 
-**Steg 2 — Jämförelseanalys**
-Jämför följande aspekter mellan gammal (web) och ny (Pi/noble) implementation:
-| Aspekt | Web Bluetooth (gammal) | noble (nu) |
-|---|---|---|
-| Discovery | requestDevice filter | scan/direct connect |
-| Service UUID | fff0 | fff0 |
-| Char UUID | fff3 | fff3 |
-| Write-typ | writeValueWithoutResponse | writeAsync(buf, true) |
-| Connect-sekvens | gatt.connect → getPrimaryService → getCharacteristic | connectAsync → discoverAllServicesAndCharacteristicsAsync |
-| Adapter init | N/A (browser) | initAdapter + waitForPoweredOn |
+Felet vi just fixade var: *en intern Promise/lås kunde aldrig lösas → låste hela connect-vägen för all framtid*. Jag letade efter alla ställen där:
+1. `Promise` resolve/reject inte är garanterad i alla code paths
+2. Globala flaggor sätts utan `try/finally`
+3. Event-listeners adderas utan att tas bort vid alla utgångar
+4. Nestlade lås kan uppstå (en låst funktion kallar en annan låst funktion)
 
-**Steg 3 — Identifiera rotorsaken**
-Baserat på de senaste loggarna (`Adapter not ready: poweredOn`, `Power cycle FAILED`) misstänker jag:
-- `bluetoothctl` är inte tillgängligt eller saknar rättigheter i systemd-sandboxen → Power cycle FAILED
-- noble's interna state-flagga blir aldrig `poweredOn` trots caps-override → `waitForAdapter` returnerar false
-- Vi behöver **helt skippa** `waitForPoweredOnAsync` när caps är OK och bara köra `connectAsync` direkt
+---
 
-**Steg 4 — Föreslå konkreta ändringar i `pi/src/ble/`**
-1. **adapter.ts**: Ta bort `waitForPoweredOnAsync`-anropet helt när `processHasBtCaps()` är true. Lita 100% på caps-overriden.
-2. **connect.ts**: Ta bort `waitForAdapter`-checken före `connectAsync` — låt noble själv felhantera om adaptern inte är redo.
-3. **adapter.ts**: Ta bort hela `bluetoothctl`-power-cycle-logiken (den fungerar inte i sandboxen) och ersätt med `hciconfig hci0 reset` som vi redan vet fungerar (samma som scan-knappen använder).
-4. Eventuellt: använd `writeWithoutResponse` som standard (snabbare, matchar gamla web-implementationen).
+### Hittade problem
 
-# Tekniska detaljer
+**1. Nestlat lås — `nobleConnect` → `nobleScanConnect` → reconnect-handler → `autoConnectSaved`**
+`nobleConnect` håller `withConnectLock`. Inuti `connectPeripheral` registreras `peripheral.once('disconnect', …)` som vid demand kallar `_reconnectWithBackoff` → `autoConnectSaved` → `withConnectLock` igen. Tack vare den nya "skip duplicate"-logiken bailer den nu, men reconnect-loopen hoppar över *första* försöket tyst. Bör vänta tills lock släppts innan reconnect försöker.
 
-- Trajectory-tools låter mig se commit-historik och äldre filinnehåll
-- Jag behöver bekräfta vilka filer som fanns under `src/lib/engine/` eller `src/lib/ble/` innan uppdelningen
-- Det är möjligt att den gamla web-versionen aldrig hade det här caps/poweredOn-problemet eftersom Web Bluetooth API:t hanterar adaptern internt — men vi kan ändå lära oss av paketformat, write-typ och GATT-sekvens
+**2. `nobleScanConnect.attempt()` — `done`-flaggan kan dubbelresolva**
+Inne i `onDiscover` sätts `done = true` *efter* `connectPeripheral` await:en. Om scan-timern går av samtidigt som vi precis hittat enheten, hinner `finish(false)` köras innan `connectPeripheral` returnerar → vi får både `resolve(false)` och senare en lyckad `setDevice()` utan att caller vet. Cleanup måste sätta `done` *före* asynkront arbete.
 
-# Resultat
-Efter utforskningen presenterar jag en kort lista med 2–4 konkreta patchar att applicera på `pi/src/ble/adapter.ts` och `pi/src/ble/connect.ts`, baserat på vad som faktiskt fungerade i den gamla versionen.
+**3. `noble.on('discover', onDiscover)` — listener-läcka vid tidigt fel**
+Om `startScanningAsync` rejectar synchronously eller `onDiscover` kastar (ej-await:ad async), körs `cleanup()` men `removeListener` matchar bara om referensen är intakt. OK i praktiken, men `noble.on` istället för `noble.once` kombinerat med att `nobleScanActive` flaggan bara nollställs i `cleanup()` betyder att en dubbel-discover (BLEDOM annonserar ofta) kan trigga `onDiscover` två gånger innan första `connectPeripheral` är klar.
 
-# Frågor att besvara innan vi kör
-Inga — jag har tillräckligt med kontext för att börja gräva i historiken så snart du godkänner planen.
+**4. `connectPeripheral` recursion — `_retryCount` förlorar `skipL2cap`**
+Vid GATT-fel anropas `connectPeripheral(peripheral, _retryCount + 1)` utan tredje argumentet → defaultar till `false` → försöker `connectAsync()` igen på en redan ansluten peripheral. På @stoprocent/noble kastar detta "already connected" och retry-strategin bränns.
+
+**5. `requestConnectionInterval` — listener-läcka**
+`hci.on('leConnUpdateComplete', …)` registreras alltid, tas bort efter 3s ELLER när rätt handle svarat. Om peripheralen disconnectar inom 3s och en *annan* peripheral connectar med samma handle, fångar listenern fel event. Mindre allvarligt men samma kategori.
+
+**6. `STEP_TIMEOUT_MS = 3000` för GATT discovery**
+BLEDOM tog i ditt REPL-test ~680ms för GATT, men på dålig länk har vi sett 2–4s. 3s är på gränsen. Bör vara 5s för GATT (L2CAP kan stå kvar på 3s).
+
+---
+
+### Plan — minimala, kirurgiska fixar i `pi/src/ble/connect.ts`
+
+**Fix A** (problem 2+3): I `attempt()`, sätt `done = true` *innan* `connectPeripheral`-await så timern inte kan racea. Använd `noble.once`-mönster genom att tidigt `removeListener` när vi matchar target.
+
+**Fix B** (problem 4): Skicka `skipL2cap = true` i recursion-anropet — peripheralen *är* ansluten när vi gör GATT-retry.
+
+**Fix C** (problem 1): I `reconnectWithBackoff`, vänta lite extra om `activeConnectPromise` är non-null (exponera en `isConnectInProgress()` getter från connect.ts) så reconnect inte slösar sitt första attempt på en skip.
+
+**Fix D** (problem 5): Spara handle-referensen i closure, jämför strikt, och använd `once` istället för `on` + `removeListener` i timern.
+
+**Fix E** (problem 6): Gör `STEP_TIMEOUT_MS` per-steg konfigurerbart — `L2CAP=3000`, `GATT=5000`, `WRITE=2000`.
+
+**Fix F** (säkerhet, problem 3): Lägg till `nobleScanActive = false` i `attempt()`-promise-konstruktorn ovillkorligt vid `finish()`, även om cleanup skulle kasta.
+
+**Fix G** (BLE_BUILD_TAG): Bump till `2026-04-17/connect-hardening`.
+
+---
+
+### Tekniska detaljer (för referens)
+
+```text
+connect.ts ändringar (alla i samma fil):
+─ rad ~341: omstrukturera attempt() — done=true före await
+─ rad ~260: connectPeripheral(peripheral, _retryCount + 1, true)
+─ rad ~174: STEP_TIMEOUT_MS → byt till TIMEOUTS = { l2cap, gatt, write }
+─ rad ~507: requestConnectionInterval — once + handle-jämförelse
+─ rad ~22:  ny export isConnectInProgress()
+
+reconnect.ts ändring:
+─ rad ~26: vänta ut pågående lock innan första attempt
+```
+
+Inga schema- eller API-förändringar. Diagnostics-endpoint påverkas inte. Build-tag bumpas så vi kan verifiera att Pi:n fått nya koden via `/api/ble/diagnostics`.
+
+Efter implementation: trigga release via GitHub Actions, kör samma SSH-test som tidigare och bekräfta att flowet `Scan-connect → Found via scan → L2CAP → GATT OK → Fully ready` är reproducerbart utan några `Connect already in progress`-loops eller GATT-retry-failures.
+
