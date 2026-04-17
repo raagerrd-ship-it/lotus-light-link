@@ -8,7 +8,7 @@
 import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
-  setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID,
+  setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 import { waitForAdapter, ensureAdapterUp, normalizeBleKey, restartNobleHci } from './adapter.js';
