@@ -3,6 +3,11 @@
  *
  * Använder noble.startScanningAsync/stopScanningAsync. Ingen hcitool, ingen
  * shell-exec. Noble äger HCI-socketen genom hela scan+connect-flödet.
+ *
+ * VIKTIGT: Vi cachear hela peripheral-objektet (inte bara id/name/rssi) så att
+ * connect.ts kan använda samma peripheral direkt — exakt som den gamla
+ * fungerande monoliten. noble.connectAsync(address) är opålitlig på Pi, men
+ * peripheral.connectAsync() från ett scan-resultat är robust.
  */
 
 import { noble, getAdapterState, processHasBtCaps, logConnectionEvent } from './state.js';
@@ -13,8 +18,15 @@ import { ensureAdapterUp } from './adapter.js';
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
 
+// Cache av peripheral-objekt indexerat på normaliserat id (MAC utan kolon, lowercase).
+// Connect-flödet hämtar peripheral härifrån istället för att starta egen scan.
+const discoveredPeripherals = new Map<string, any>();
+
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
+export function getDiscoveredPeripheral(id: string): any | undefined {
+  return discoveredPeripherals.get(id.toLowerCase());
+}
 
 function peripheralToDevice(p: any): DiscoveredDevice | null {
   const id: string | undefined = p?.id ?? p?.uuid ?? p?.address?.replace(/:/g, '').toLowerCase();
@@ -22,7 +34,9 @@ function peripheralToDevice(p: any): DiscoveredDevice | null {
   const mac: string = (p?.address ?? '').toUpperCase();
   const adv = p?.advertisement ?? {};
   const rawName: string | undefined = adv?.localName ?? p?.name;
-  const name = (rawName && String(rawName).trim()) || (mac ? `Okänd enhet (${mac})` : `Okänd enhet (${id})`);
+  // Filtrera bort enheter helt utan namn (matchar gamla monoliten — minskar brus)
+  const name = (rawName && String(rawName).trim()) || '';
+  if (!name) return null;
   const rssi = typeof p?.rssi === 'number' ? p.rssi : -100;
   return { id: String(id).toLowerCase(), name, rssi };
 }
@@ -46,7 +60,7 @@ async function waitForPoweredOn(timeoutMs: number): Promise<boolean> {
   });
 }
 
-export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice[]> {
+export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
     return lastScanResults;
@@ -57,6 +71,8 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
   }
 
   scanning = true;
+  // Töm cachen vid varje ny scan så vi inte refererar till stale peripheral-objekt
+  discoveredPeripherals.clear();
   const found = new Map<string, DiscoveredDevice>();
 
   const onDiscover = (p: any) => {
@@ -66,7 +82,9 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
     if (!prev) {
       logConnectionEvent({ type: 'scan_start', detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi}` });
     }
-    // keep best (highest) rssi
+    // Spara peripheral-objektet — connect.ts behöver det
+    discoveredPeripherals.set(dev.id, p);
+    // Behåll bästa (högsta) rssi
     if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
   };
 
@@ -80,7 +98,9 @@ export async function scanForDevices(timeoutMs = 5000): Promise<DiscoveredDevice
 
     try { await ensureAdapterUp(); } catch {}
 
-    const ready = await waitForPoweredOn(2500);
+    // Vänta längre på poweredOn — gamla monoliten väntade via stateChange under hela scan-fönstret.
+    // 6s ger noble tid att initiera HCI även efter en kall start.
+    const ready = await waitForPoweredOn(6000);
     if (!ready) {
       logConnectionEvent({
         type: 'scan_done',
