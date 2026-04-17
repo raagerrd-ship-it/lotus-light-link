@@ -50,5 +50,6 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
 - [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — hcitool for lescan, noble for GATT
+- [fix-sudo ownership](mem://pi/deployment/fix-sudo-ownership) — fix-sudo.sh ägs av PCC; Lotus har bara thin wrapper
 - [HCI release policy](mem://pi/ble/hci-release-policy) — När HCI-socketen släpps vs hålls (forget/shutdown/scan släpper)
 - [Noble unknown recovery](mem://pi/ble/noble-unknown-recovery) — Up to 5 hciconfig down/up + restartNobleHci attempts when noble.state stuck
