@@ -56,14 +56,41 @@ export async function waitForAdapter(deviceName?: string): Promise<boolean> {
 
 /**
  * Make sure Bluetooth is unblocked and the adapter is up.
- * Avoid hciconfig reset here — resetting under a live noble instance is what
- * tends to strand raw noble.state in `unknown` on Raspberry Pi.
+ * Always runs `rfkill unblock bluetooth` BEFORE `hciconfig hci0 up` so a
+ * soft-blocked adapter can come back online. Avoid hciconfig reset here —
+ * resetting under a live noble instance is what tends to strand raw
+ * noble.state in `unknown` on Raspberry Pi.
+ *
+ * Synchronous part runs the OS commands; caller can then await
+ * `waitForNoblePoweredOn(timeoutMs)` to confirm noble sees the adapter.
  */
 export function ensureAdapterUp(): void {
   try {
     const { execFileSync } = require('child_process');
-    execFileSync('bash', ['-lc', 'rfkill unblock bluetooth >/dev/null 2>&1 || true; (command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'], { timeout: 6000, stdio: 'ignore' });
+    execFileSync('bash', ['-lc',
+      // 1) unblock rfkill (soft block) FIRST
+      'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
+      // 2) bring hci0 up
+      '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'
+    ], { timeout: 6000, stdio: 'ignore' });
   } catch {}
+}
+
+/**
+ * Wait for noble (or caps-aware adapter state) to report poweredOn.
+ * Polls every 200ms up to `timeoutMs`. Returns true if ready.
+ */
+export async function waitForNoblePoweredOn(timeoutMs = 4000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (getAdapterState() === 'poweredOn') return true;
+    try {
+      await (noble as any).waitForPoweredOnAsync?.(Math.min(500, timeoutMs - (Date.now() - start)));
+      if (getAdapterState() === 'poweredOn') return true;
+    } catch {}
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return getAdapterState() === 'poweredOn';
 }
 
 /** Normalize a BLE identifier (MAC, UUID, id) to lowercase hex without colons */
