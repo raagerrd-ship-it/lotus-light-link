@@ -557,7 +557,17 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
 
     ensureAdapterUp();
 
-    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Scan-connect (mirrors early monolith)' });
+    // Steg 1: Försök direct-connect (snabbt, ~500ms) om vi har sparad addressType.
+    // Hoppar över hela scan-fasen och går rakt på noble.connectAsync(address).
+    if (getSavedAddressType()) {
+      const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 3000));
+      if (directOk) return 1;
+      // Fall through till scan-connect — direct misslyckades men vi räknar
+      // bara failures när hela kedjan inkl. scan-fallback misslyckats.
+    }
+
+    // Steg 2: Fallback till scan-connect (mirrors early monolith — beprövat på Pi)
+    logConnectionEvent({ type: 'connect_start', device: savedName, detail: 'Scan-connect fallback (mirrors early monolith)' });
     const ok = await nobleScanConnect(target, savedName, Math.min(timeoutMs, 8000));
     if (ok) return 1;
 
