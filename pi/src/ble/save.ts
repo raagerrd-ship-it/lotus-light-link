@@ -8,9 +8,9 @@
  */
 
 import { getDevice, setDevice, getSavedDeviceId, setSavedDevice, logConnectionEvent } from './state.js';
-import { resetLastSent } from './protocol.js';
+import { resetLastSent, stopKeepAlive } from './protocol.js';
 import { getLastScanResults } from './scan.js';
-import { nobleConnect } from './connect.js';
+import { nobleConnect, resetHciAdapter } from './connect.js';
 
 /**
  * Extract and persist metadata from a noble peripheral object.
