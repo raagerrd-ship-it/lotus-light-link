@@ -971,6 +971,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       hci?: { raw: string; error: string | null };
       rfkill?: string;
     };
+    build?: { bleTag?: string };
     // transport toggle removed (gatttool fallback eliminated)
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
@@ -1102,6 +1103,12 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         <div className="text-[10px] text-muted-foreground bg-background/30 rounded px-2 py-1">
           Senaste frånkoppling: <span className="font-mono text-destructive">{s.lastDisconnectReason}</span>
           {s.lastDisconnectAt && <span className="ml-1">({new Date(s.lastDisconnectAt).toLocaleTimeString('sv-SE')})</span>}
+        </div>
+      )}
+
+      {diag.build?.bleTag && (
+        <div className="text-[10px] text-muted-foreground/70 font-mono px-1">
+          build: <span className="text-foreground/70">{diag.build.bleTag}</span>
         </div>
       )}
 
