@@ -152,12 +152,57 @@ echo "[BLE] Verifierar och fixar Bluetooth-tillgång..."
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
 
-# 2-4. Auto-fixa systemd-tjänsten om capabilities saknas
+# 2-4. Auto-fixa systemd-tjänsten om capabilities eller startup-order saknas
 SVC_FILE="$HOME/.config/systemd/user/lotus-light-engine.service"
 BLE_FIXED=false
 
 if [ -f "$SVC_FILE" ]; then
   SVC_CONTENT=$(cat "$SVC_FILE")
+
+  # Säkerställ att noble startar först när bluetooth.service är uppe
+  if ! grep -Eq '^After=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])' "$SVC_FILE"; then
+    if grep -q '^\[Unit\]' "$SVC_FILE"; then
+      sed -i '/^\[Unit\]/a After=bluetooth.service' "$SVC_FILE"
+    else
+      TMP_SVC=$(mktemp)
+      printf '[Unit]\nAfter=bluetooth.service\n' > "$TMP_SVC"
+      cat "$SVC_FILE" >> "$TMP_SVC"
+      mv "$TMP_SVC" "$SVC_FILE"
+    fi
+    echo "  Lade till After=bluetooth.service ✓"
+    BLE_FIXED=true
+  else
+    echo "  After=bluetooth.service ✓"
+  fi
+
+  if ! grep -Eq '^Requires=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])' "$SVC_FILE"; then
+    if grep -q '^\[Unit\]' "$SVC_FILE"; then
+      sed -i '/^\[Unit\]/a Requires=bluetooth.service' "$SVC_FILE"
+    else
+      TMP_SVC=$(mktemp)
+      printf '[Unit]\nRequires=bluetooth.service\n' > "$TMP_SVC"
+      cat "$SVC_FILE" >> "$TMP_SVC"
+      mv "$TMP_SVC" "$SVC_FILE"
+    fi
+    echo "  Lade till Requires=bluetooth.service ✓"
+    BLE_FIXED=true
+  else
+    echo "  Requires=bluetooth.service ✓"
+  fi
+
+  # Ge bluetooth.service lite tid att exponera HCI innan node-processen startar
+  if ! grep -q '^ExecStartPre=/bin/sleep 2$' "$SVC_FILE"; then
+    sed -i '/^ExecStartPre=\/bin\/sleep 2$/d' "$SVC_FILE"
+    if grep -q '^\[Service\]' "$SVC_FILE"; then
+      sed -i '/^\[Service\]/a ExecStartPre=/bin/sleep 2' "$SVC_FILE"
+    else
+      printf '\n[Service]\nExecStartPre=/bin/sleep 2\n' >> "$SVC_FILE"
+    fi
+    echo "  Lade till ExecStartPre=/bin/sleep 2 ✓"
+    BLE_FIXED=true
+  else
+    echo "  ExecStartPre=/bin/sleep 2 ✓"
+  fi
 
   # NoNewPrivileges=false (krävs för AmbientCapabilities)
   if echo "$SVC_CONTENT" | grep -q "NoNewPrivileges=true"; then
@@ -165,8 +210,9 @@ if [ -f "$SVC_FILE" ]; then
     echo "  Fixade NoNewPrivileges=false ✓"
     BLE_FIXED=true
   elif ! echo "$SVC_CONTENT" | grep -q "NoNewPrivileges="; then
-    # Lägg till efter [Service] eller efter sista Environment=
-    if echo "$SVC_CONTENT" | grep -q "PrivateTmp="; then
+    if grep -q '^ExecStartPre=/bin/sleep 2$' "$SVC_FILE"; then
+      sed -i '/^ExecStartPre=\/bin\/sleep 2$/a NoNewPrivileges=false' "$SVC_FILE"
+    elif echo "$SVC_CONTENT" | grep -q "PrivateTmp="; then
       sed -i '/PrivateTmp=/a NoNewPrivileges=false' "$SVC_FILE"
     else
       sed -i '/^\[Service\]/a NoNewPrivileges=false' "$SVC_FILE"
@@ -179,7 +225,6 @@ if [ -f "$SVC_FILE" ]; then
 
   # AmbientCapabilities
   if ! grep -q "AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN" "$SVC_FILE"; then
-    # Ta bort eventuell gammal rad
     sed -i '/^AmbientCapabilities=/d' "$SVC_FILE"
     sed -i '/NoNewPrivileges=/a AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN' "$SVC_FILE"
     echo "  Lade till AmbientCapabilities ✓"
@@ -203,7 +248,7 @@ if [ -f "$SVC_FILE" ]; then
     echo "  Laddar om systemd och startar om tjänsten..."
     systemctl --user daemon-reload 2>/dev/null || true
     systemctl --user restart lotus-light-engine 2>/dev/null || true
-    echo "  Tjänsten omstartad med BLE-rättigheter ✓"
+    echo "  Tjänsten omstartad med BLE-startordning + rättigheter ✓"
   fi
 else
   echo "  ℹ️  Systemd-tjänstfil inte hittad — förutsätter att Pi Control Center skapar den"
