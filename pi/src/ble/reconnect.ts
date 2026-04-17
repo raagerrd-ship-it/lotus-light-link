@@ -6,7 +6,7 @@
  */
 
 import { getDevice, isDemandActive, setDemand, getSavedDeviceId, logConnectionEvent } from './state.js';
-import { setReconnectHandler, autoConnectSaved } from './connect.js';
+import { setReconnectHandler, autoConnectSaved, isConnectInProgress, waitForConnectIdle } from './connect.js';
 import { setReconnectTrigger } from './protocol.js';
 
 /** Reconnect with exponential backoff using fresh connections only */
@@ -26,6 +26,14 @@ async function reconnectWithBackoff(_peripheral: any, name: string, attempt = 0)
   await new Promise(r => setTimeout(r, delay));
 
   if (getDevice() || !isDemandActive()) return;
+
+  // Avoid wasting our first attempt on a "skip duplicate" if a connect
+  // (e.g. user-triggered) is already running. Wait it out first.
+  if (isConnectInProgress()) {
+    logConnectionEvent({ type: 'reconnect_start', device: name, detail: 'Waiting for in-flight connect to settle' });
+    await waitForConnectIdle(12_000);
+    if (getDevice() || !isDemandActive()) return;
+  }
 
   try {
     await autoConnectSaved(10000);
