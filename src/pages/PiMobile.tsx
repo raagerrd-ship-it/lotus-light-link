@@ -2293,6 +2293,79 @@ export default function PiMobile() {
           </div>
         )}
 
+        {/* Scan for nearby BLE devices — only shown when no device is saved. */}
+        {!bleSavedId && (
+          <div className="bg-secondary/40 rounded-xl p-3 border border-border/60 space-y-2 mb-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-foreground">Sök efter enheter i närheten</span>
+              <button
+                onClick={async () => {
+                  setBleScanning(true);
+                  setBleScanResults([]);
+                  try {
+                    const r = await fetch(`${piBase}/api/ble/scan`, {
+                      method: 'POST',
+                      signal: AbortSignal.timeout(15000),
+                    });
+                    const data = await r.json();
+                    if (r.ok && Array.isArray(data.devices)) {
+                      setBleScanResults(data.devices);
+                    }
+                  } catch {} finally {
+                    setBleScanning(false);
+                  }
+                }}
+                disabled={bleScanning}
+                className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground active:bg-primary/80 disabled:opacity-50"
+              >
+                {bleScanning ? (
+                  <><Loader2 size={12} className="animate-spin" /> Söker…</>
+                ) : (
+                  <><Search size={12} /> Sök</>
+                )}
+              </button>
+            </div>
+            {bleScanResults.length > 0 && (
+              <div className="space-y-1 max-h-56 overflow-y-auto">
+                {bleScanResults.map(dev => (
+                  <button
+                    key={dev.id}
+                    onClick={async () => {
+                      try {
+                        const r = await fetch(`${piBase}/api/ble/select`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: dev.id }),
+                          signal: AbortSignal.timeout(15000),
+                        });
+                        const data = await r.json();
+                        if (r.ok && data.ok) {
+                          setBleSavedId(data.savedDeviceId ?? dev.id);
+                          setBleSavedName(data.savedDeviceName ?? dev.name);
+                          setBleSavedAddress(data.savedDeviceAddress ?? null);
+                          setBleScanResults([]);
+                        }
+                      } catch {}
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md bg-background/50 active:bg-primary/10 border border-border/40"
+                  >
+                    <div className="flex flex-col items-start min-w-0">
+                      <span className="text-xs font-medium truncate">{dev.name}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono">{dev.id}</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{dev.rssi} dBm</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!bleScanning && bleScanResults.length === 0 && (
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                Tryck på <span className="font-medium">Sök</span> för att hitta BLEDOM-enheter i närheten. Saknas din enhet kan du lägga till MAC-adressen manuellt nedan.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Manual MAC entry — only shown when no device is saved. Forget the saved device to add a new one. */}
         {!bleSavedId && (
         <div className="mt-2">
