@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect } from './nobleBle.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -240,6 +240,17 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       res.json({ ok: true, message: 'Connect requested' });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Manual HCI/noble reset — only used as recovery if noble wedges.
+  // In normal operation noble owns the HCI socket from boot to shutdown.
+  app.post('/api/ble/reset', async (_req, res) => {
+    try {
+      await disconnect(true); // disconnect + release HCI
+      res.json({ ok: true, message: 'BLE-stacken återställd. Anslut igen vid behov.' });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? 'reset failed' });
     }
   });
 
