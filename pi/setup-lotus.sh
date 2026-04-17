@@ -104,6 +104,61 @@ else
   echo "  ⚠ sudo-binären hittas inte ($SUDO_BIN) — installera med: apt install sudo"
 fi
 
+# Verifiera /etc/sudoers (måste vara root:root 440) och /etc/sudoers.d/*
+# (filer måste vara root:root 440, katalogen root:root 750). Fel permissions
+# här gör att sudo vägrar starta med "/etc/sudoers is mode 0xxx, should be 0440".
+fix_perms() {
+  # $1 = path, $2 = expected owner, $3 = expected mode
+  local path="$1" exp_owner="$2" exp_mode="$3"
+  [ -e "$path" ] || return 0
+  local owner mode
+  owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo "?")
+  mode=$(stat -c '%a' "$path" 2>/dev/null || echo "?")
+  if [ "$owner" = "$exp_owner" ] && [ "$mode" = "$exp_mode" ]; then
+    echo "  ✓ $path OK ($exp_owner, $exp_mode)"
+    return 0
+  fi
+  echo "  ⚠ $path har fel ägare/mode: $owner ($mode) — försöker reparera (förväntat: $exp_owner $exp_mode)"
+  SUDO_CONF_FIX_NEEDED=true
+  if [ "$(id -u)" = "0" ]; then
+    chown "$exp_owner" "$path" && chmod "$exp_mode" "$path" && echo "  ✓ Fixade $path som root"
+  elif command -v pkexec >/dev/null 2>&1; then
+    pkexec sh -c "chown '$exp_owner' '$path' && chmod '$exp_mode' '$path'" \
+      && echo "  ✓ Fixade $path via pkexec" \
+      || echo "  ✗ pkexec misslyckades — kör manuellt: su -c \"chown $exp_owner $path && chmod $exp_mode $path\""
+  else
+    echo "  ✗ Kan inte reparera (kör inte som root och saknar pkexec)"
+    echo "    Kör manuellt: su -c \"chown $exp_owner $path && chmod $exp_mode $path\""
+  fi
+  local new_owner new_mode
+  new_owner=$(stat -c '%U:%G' "$path" 2>/dev/null || echo "?")
+  new_mode=$(stat -c '%a' "$path" 2>/dev/null || echo "?")
+  if [ "$new_owner" = "$exp_owner" ] && [ "$new_mode" = "$exp_mode" ]; then
+    echo "  ✓ $path nu korrekt ($exp_owner, $exp_mode)"
+    SUDO_CONF_FIX_NEEDED=false
+  fi
+}
+
+# /etc/sudoers — måste vara root:root 440
+if [ -f /etc/sudoers ]; then
+  fix_perms /etc/sudoers root:root 440
+else
+  echo "  ⚠ /etc/sudoers saknas — sudo kommer inte fungera"
+fi
+
+# /etc/sudoers.d/ — katalog 750, filer 440
+if [ -d /etc/sudoers.d ]; then
+  fix_perms /etc/sudoers.d root:root 750
+  # Iterera över filer (visa endast om de existerar)
+  for f in /etc/sudoers.d/*; do
+    [ -e "$f" ] || continue
+    # Hoppa över README (ofta 444, accepteras av visudo men vi normaliserar)
+    fix_perms "$f" root:root 440
+  done
+else
+  echo "  ℹ /etc/sudoers.d/ saknas — endast /etc/sudoers används (OK)"
+fi
+
 # Snabbtest: går sudo att köra alls?
 if ! sudo -n true 2>/dev/null && ! sudo -v 2>/dev/null; then
   if [ "$SUDO_CONF_FIX_NEEDED" = true ]; then
