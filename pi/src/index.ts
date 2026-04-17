@@ -186,7 +186,9 @@ async function main() {
     stopSonosPoller();
     clearInterval(reconnectTimer);
     clearInterval(statsTimer);
-    await disconnectAll();
+    // releaseHci=true → tvinga full HCI-release även om demand fortfarande är på.
+    // Adaptern ska vara helt ren när processen avslutas (PCC-restart, OS-shutdown).
+    await disconnectAll(true);
     process.exit(0);
   };
 
