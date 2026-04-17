@@ -1045,7 +1045,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         <div className="bg-background/50 rounded-lg p-2">
           <div className="text-muted-foreground text-[10px]">Status</div>
           <div className="font-mono font-bold">
-            {s.connected > 0 ? '🟢 Ansluten' : s.demand && bleSavedId ? '🟡 Ansluter' : s.scanning ? '🔵 Söker' : '⚪ Vilar'}
+            {s.connected > 0 ? '🟢 Ansluten' : s.demand && s.savedDeviceId ? '🟡 Ansluter' : s.scanning ? '🔵 Söker' : '⚪ Vilar'}
           </div>
         </div>
       </div>
