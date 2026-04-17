@@ -231,7 +231,7 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   // Step 1: L2CAP connect
   if (!skipL2cap) {
     try {
-      await withTimeout(peripheral.connectAsync(), 'BLE connect');
+      await withTimeout(peripheral.connectAsync(), 'BLE connect', 'l2cap');
     } catch (e: any) {
       logConnectionEvent({ type: 'connect_fail', device: name, detail: `Connect failed: ${e.message}`, durationMs: Math.round(performance.now() - connectStart) });
       throw e;
@@ -247,7 +247,8 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
     logConnectionEvent({ type: 'gatt_discovery', device: name, detail: 'discoverSomeServicesAndCharacteristicsAsync...' });
     const result = await withTimeout(
       peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
-      'GATT discovery'
+      'GATT discovery',
+      'gatt'
     ) as any;
     // @stoprocent/noble returns { services, characteristics } object;
     // @abandonware/noble returned [services, characteristics] array.
@@ -264,18 +265,18 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   const gattDuration = Math.round(performance.now() - gattStart);
 
   if (!characteristics?.length) {
-    try { await peripheral.disconnectAsync(); } catch {}
     if (_retryCount < MAX_DISCOVERY_RETRIES) {
+      // Keep L2CAP up between GATT retries — disconnecting and reconnecting
+      // on @stoprocent/noble often triggers "already connected" errors.
       const delay = 500 * (_retryCount + 1);
-      logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms`, durationMs: gattDuration });
+      logConnectionEvent({ type: 'gatt_retry', device: name, detail: `No characteristic — retry ${_retryCount + 1}/${MAX_DISCOVERY_RETRIES} in ${delay}ms (L2CAP kept)`, durationMs: gattDuration });
       await new Promise(r => setTimeout(r, delay));
-      return connectPeripheral(peripheral, _retryCount + 1);
+      return connectPeripheral(peripheral, _retryCount + 1, true);
     }
+    try { await peripheral.disconnectAsync(); } catch {}
     logConnectionEvent({ type: 'connect_fail', device: name, detail: `No characteristic after ${MAX_DISCOVERY_RETRIES} retries`, durationMs: gattDuration });
     throw new Error(`No characteristic found on ${name} after ${MAX_DISCOVERY_RETRIES} retries`);
   }
-
-  logConnectionEvent({ type: 'gatt_discovery', device: name, detail: `GATT OK — ${characteristics.length} characteristic(s)`, durationMs: gattDuration });
 
   const char = characteristics[0] as PiCharacteristic;
   char.deviceName = name;
