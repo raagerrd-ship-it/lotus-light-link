@@ -110,63 +110,58 @@ async function hardBluetoothRestart(deviceName?: string): Promise<void> {
  */
 async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
   const readState = () => (noble as any).state ?? (noble as any)._state;
+  const effectiveState = () => getAdapterState();
 
-  // Step 0: if noble already OK, do nothing — touching the adapter
-  // when it's healthy is what causes most of our `unknown` lockups.
-  if (readState() === 'poweredOn') return;
+  // If the caps-aware adapter state is already good, do not touch the kernel
+  // adapter. On Pi, that is the exact path that tends to wedge raw noble state.
+  if (effectiveState() === 'poweredOn') {
+    logConnectionEvent({
+      type: 'hci_reset',
+      device: deviceName,
+      detail: `Skipping noble reset — effective adapter state is poweredOn (raw=${readState() ?? 'unknown'})`,
+    });
+    return;
+  }
 
-  // Step 1: give noble up to 3s to come up on its own (common at boot)
   try {
     await (noble as any).waitForPoweredOnAsync?.(3000);
-    if (readState() === 'poweredOn') {
+    if (readState() === 'poweredOn' || effectiveState() === 'poweredOn') {
       logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓ (no reset needed)' });
       return;
     }
   } catch {}
 
-  // Step 2: soft retry loop — hciconfig down/up/reset + noble HCI bounce
-  const SOFT_ATTEMPTS = 3;
+  const SOFT_ATTEMPTS = 2;
   for (let i = 1; i <= SOFT_ATTEMPTS; i++) {
     const before = readState();
     logConnectionEvent({
       type: 'hci_reset',
       device: deviceName,
-      detail: `noble state=${before ?? 'unknown'} — soft reinit ${i}/${SOFT_ATTEMPTS}`,
+      detail: `noble state=${before ?? 'unknown'} — listener refresh ${i}/${SOFT_ATTEMPTS}`,
     });
 
-    try { await resetHciAdapter(); } catch {}
     try { await restartNobleHci(deviceName); } catch {}
 
     try {
       await (noble as any).waitForPoweredOnAsync?.(2000);
-      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble poweredOn ✓ (after soft attempt ${i})` });
-      return;
-    } catch {
-      const after = readState();
-      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `noble still ${after ?? 'unknown'} after soft ${i}` });
-      if (after === 'poweredOn') return;
-      if (after === 'unauthorized' || after === 'poweredOff') {
-        logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `Hard fail (${after}) — abort` });
-        return;
-      }
-    }
-    await new Promise(r => setTimeout(r, 500));
-  }
+    } catch {}
 
-  // Step 3: last resort — full bluetoothd restart
-  logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'soft resets exhausted — escalating to bluetooth service restart' });
-  await hardBluetoothRestart(deviceName);
-  try { await restartNobleHci(deviceName); } catch {}
-  try {
-    await (noble as any).waitForPoweredOnAsync?.(3000);
-    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓ (after bluetoothd restart)' });
-    return;
-  } catch {}
+    const after = readState();
+    if (after === 'poweredOn' || effectiveState() === 'poweredOn') {
+      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `adapter ready ✓ (after refresh ${i})` });
+      return;
+    }
+    if (after === 'unauthorized' || after === 'poweredOff') {
+      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `Hard fail (${after}) — abort` });
+      return;
+    }
+    await new Promise(r => setTimeout(r, 400));
+  }
 
   logConnectionEvent({
     type: 'hci_reset',
     device: deviceName,
-    detail: `noble still ${readState() ?? 'unknown'} after all recovery — proceeding anyway`,
+    detail: `noble still ${readState() ?? 'unknown'} after safe refresh — proceeding with caps-aware adapter state=${effectiveState() ?? 'unknown'}`,
   });
 }
 
@@ -424,14 +419,17 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   let ok = await attempt();
   if (ok) return true;
 
-  // If first attempt failed quickly (most likely startScanning rejected because
-  // HCI socket was busy/locked from a previous scan or hcitool), do a single
-  // hciconfig reset + short wait and retry once. This is the missing piece
-  // that previously caused us to hammer "startScanning failed" forever.
-  logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — resetting HCI before retry' });
-  try { (noble as any).stopScanning?.(); } catch {}
-  await resetHciAdapter();
-  await new Promise(r => setTimeout(r, 400));
+  // Retry once, but only with a destructive HCI reset if the effective adapter
+  // state is actually bad. If caps-aware state already says poweredOn, another
+  // hciconfig reset tends to make noble even more stuck on Pi.
+  if (getAdapterState() !== 'poweredOn') {
+    logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — effective adapter not ready, resetting HCI before retry' });
+    try { (noble as any).stopScanning?.(); } catch {}
+    await resetHciAdapter();
+    await new Promise(r => setTimeout(r, 400));
+  } else {
+    logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — skipping HCI reset because effective adapter is already poweredOn' });
+  }
 
   ok = await attempt();
   return ok;
@@ -573,7 +571,7 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     incrementConsecutiveFailures();
     const fails = getConsecutiveFailures();
     logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct-connect misslyckades — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
-    if (fails >= HCI_RESET_THRESHOLD) {
+    if (fails >= HCI_RESET_THRESHOLD && getAdapterState() !== 'poweredOn') {
       await resetHciAdapter();
       resetConsecutiveFailures();
     }
