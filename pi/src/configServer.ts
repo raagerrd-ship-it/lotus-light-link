@@ -267,10 +267,19 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   // Returns raw output so user can copy MAC into manual save form.
   app.post('/api/ble/hci-scan', async (_req, res) => {
     try {
-      // Reset adapter, then run lescan with a 2s timeout.
-      // `timeout` exits 124 on success (kill after timeout) — that's expected.
+      // Avoid HCI contention with an active connect — would lock the adapter.
+      if (isConnectInProgress()) {
+        return res.status(409).json({ error: 'Connect in progress — vänta tills den är klar innan HCI-scan' });
+      }
+      if (isScanning()) {
+        return res.status(409).json({ error: 'Scan already in progress' });
+      }
+      // Steg 1: rfkill unblock + hciconfig reset (matchar exakt det som funkar manuellt via SSH).
+      // Steg 2: 500ms paus så kärnan hinner ta upp adaptern igen.
+      // Steg 3: timeout 3 hcitool lescan --duplicates (timeout exits 124 — det är OK).
       let resetOut = '';
       try {
+        execSync('sudo rfkill unblock bluetooth 2>&1 || true', { encoding: 'utf8', timeout: 3000 });
         resetOut = execSync('sudo hciconfig hci0 reset 2>&1', { encoding: 'utf8', timeout: 5000 });
       } catch (e: any) {
         resetOut = `(reset failed: ${e.message})`;
