@@ -93,13 +93,10 @@ export async function saveManualDevice(address: string, name: string): Promise<b
   console.log(`[BLE] Manually saved device: ${cleanName} (${mac})`);
   logConnectionEvent({ type: 'connect_ok', device: cleanName, detail: `Manually saved (${mac})` });
 
-  // Try to connect immediately
-  try {
-    return await nobleConnect(id, cleanName, 8000);
-  } catch (e: any) {
-    console.warn(`[BLE] Initial manual connect failed: ${e.message} — will retry on demand`);
-    return true; // saved successfully, even if connect failed
-  }
+  // Don't auto-connect — return immediately so the API responds fast.
+  // The engine's reconnect loop picks it up on next demand cycle, or the
+  // user can call /api/ble/connect explicitly.
+  return true;
 }
 
 /** Forget saved device and disconnect */
