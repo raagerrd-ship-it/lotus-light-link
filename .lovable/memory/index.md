@@ -1,3 +1,6 @@
+# Memory: index.md
+Updated: today
+
 # Project Memory
 
 ## Core
@@ -6,6 +9,7 @@ Audio capture requires OS routing. Uses native alsa-capture binding.
 Offline-first: localStorage syncs to Supabase user_settings on login.
 Engine decoupled from UI. API URLs use port + 50.
 Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
+BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatttool fallback removed (too slow + WriteWithoutResponse not exposed via CLI).
 
 ## Memories
 - [Hardware limitations](mem://constraints/hardware-limitations) — BLEDOM forces color change on mic mode, use mobile mic
@@ -45,6 +49,5 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [PCC alignment](mem://pi/runtime/pcc-alignment) — Pi Control Center integration and runInstallOnRelease
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
-- [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — bluetoothctl scan for discovery, noble for GATT. ANSI-strip required.
-- [Release pipeline](mem://pi/deployment/release-via-github-actions) — Pi builds via GitHub Actions, deploy via PCC (never build on Pi)
-- [Hybrid BLE transport](mem://pi/ble/hybrid-transport) — Manual gatttool fallback toggle when noble.state stays unknown
+- [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — hcitool for lescan, noble for GATT
+- [Noble unknown recovery](mem://pi/ble/noble-unknown-recovery) — Up to 5 hciconfig down/up + restartNobleHci attempts when noble.state stuck
