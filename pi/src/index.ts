@@ -112,18 +112,16 @@ async function main() {
   // Loopen tickar var 15s och anropar autoConnectSaved när demand är aktiv.
   const reconnectTimer = startReconnectLoop(15000);
 
-  // Boot-time HCI clean slate — skyddar mot stale kernel/bluez-state efter
-  // strömavbrott, OOM-kill, git-uppdatering eller process som inte hann köra
-  // SIGTERM-shutdown. Billigt (~1s) jämfört med att riskera fastna i `unknown`
-  // vid första connect. Reconnect-loopen är redan registrerad så event-flow
-  // som kommer in samtidigt fungerar.
-  console.log('[Boot] Cleaning HCI adapter (recovery from previous run)...');
+  // Boot-time adapter prep must be non-destructive. A full hciconfig reset
+  // during process startup often wedges noble in raw `unknown` on Pi even
+  // though the kernel adapter is healthy. Only make sure bluetooth is up here.
+  console.log('[Boot] Preparing Bluetooth adapter (non-destructive)...');
   try {
-    const { resetHciAdapter } = await import('./ble/connect.js');
-    await resetHciAdapter();
-    console.log('[Boot] ✓ HCI clean — ready for on-demand connect');
+    const { ensureAdapterUp } = await import('./ble/adapter.js');
+    ensureAdapterUp();
+    console.log('[Boot] ✓ Bluetooth adapter prepared');
   } catch (e: any) {
-    console.warn('[Boot] HCI clean failed (continuing):', e.message);
+    console.warn('[Boot] Bluetooth prep failed (continuing):', e.message);
   }
 
   // 5. Start Sonos poller (configurable gateway)
