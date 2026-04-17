@@ -1,74 +1,49 @@
 
+## Plan: Flytta fix-sudo.sh till PCC och städa upp Lotus
 
-## Granskning av connect-koden — kvarvarande risker
+### Steg 1: Prompt att klistra in i Pi Control Center
 
-Jag gick igenom `connect.ts`, `reconnect.ts` och `scan.ts`. Den nya lock-säkerhetstimern fixade huvudproblemet, men jag hittade **6 kvarvarande svagheter** av samma karaktär (race conditions, dubbelresolve, oanslutna handlers, eller läckande tillstånd).
-
-### Tankegång — vad är "samma typ av fel"?
-
-Felet vi just fixade var: *en intern Promise/lås kunde aldrig lösas → låste hela connect-vägen för all framtid*. Jag letade efter alla ställen där:
-1. `Promise` resolve/reject inte är garanterad i alla code paths
-2. Globala flaggor sätts utan `try/finally`
-3. Event-listeners adderas utan att tas bort vid alla utgångar
-4. Nestlade lås kan uppstå (en låst funktion kallar en annan låst funktion)
+Kopiera följande text och skicka som meddelande i PCC-projektet:
 
 ---
 
-### Hittade problem
+**Skapa `public/pi-scripts/fix-sudo.sh` — OS-nivå sudo-health-reparation**
 
-**1. Nestlat lås — `nobleConnect` → `nobleScanConnect` → reconnect-handler → `autoConnectSaved`**
-`nobleConnect` håller `withConnectLock`. Inuti `connectPeripheral` registreras `peripheral.once('disconnect', …)` som vid demand kallar `_reconnectWithBackoff` → `autoConnectSaved` → `withConnectLock` igen. Tack vare den nya "skip duplicate"-logiken bailer den nu, men reconnect-loopen hoppar över *första* försöket tyst. Bör vänta tills lock släppts innan reconnect försöker.
+Lotus (och framöver Cast Away, Brew Monitor) förlitar sig på att PCC äger sudo-health på Pi:n. Skapa scriptet `public/pi-scripts/fix-sudo.sh` med följande innehåll, gör det körbart (`chmod +x`), och anropa det tidigt i `first-boot-setup.sh` (innan första `apt`-anropet) så att sudo garanterat fungerar.
 
-**2. `nobleScanConnect.attempt()` — `done`-flaggan kan dubbelresolva**
-Inne i `onDiscover` sätts `done = true` *efter* `connectPeripheral` await:en. Om scan-timern går av samtidigt som vi precis hittat enheten, hinner `finish(false)` köras innan `connectPeripheral` returnerar → vi får både `resolve(false)` och senare en lyckad `setDevice()` utan att caller vet. Cleanup måste sätta `done` *före* asynkront arbete.
+Scriptet ska:
+- Verifiera och reparera ägare/permissions för:
+  - `/etc/sudo.conf` → `root:root` `644` (om filen finns)
+  - `/usr/bin/sudo` → `root:root` `4755` (setuid)
+  - `/etc/sudoers` → `root:root` `440`
+  - `/etc/sudoers.d/` → `root:root` `750` (dir), `440` (filer)
+- Försöka reparera som root direkt, eller via `pkexec` om vanlig användare
+- Skriva manuell fallback (`su -c "..."`) om båda misslyckas
+- Exit 0 om OK eller reparerat, exit 1 om kvarstående problem
 
-**3. `noble.on('discover', onDiscover)` — listener-läcka vid tidigt fel**
-Om `startScanningAsync` rejectar synchronously eller `onDiscover` kastar (ej-await:ad async), körs `cleanup()` men `removeListener` matchar bara om referensen är intakt. OK i praktiken, men `noble.on` istället för `noble.once` kombinerat med att `nobleScanActive` flaggan bara nollställs i `cleanup()` betyder att en dubbel-discover (BLEDOM annonserar ofta) kan trigga `onDiscover` två gånger innan första `connectPeripheral` är klar.
+Innehållet är förberett som artifact: `fix-sudo.sh` (se nedan).
 
-**4. `connectPeripheral` recursion — `_retryCount` förlorar `skipL2cap`**
-Vid GATT-fel anropas `connectPeripheral(peripheral, _retryCount + 1)` utan tredje argumentet → defaultar till `false` → försöker `connectAsync()` igen på en redan ansluten peripheral. På @stoprocent/noble kastar detta "already connected" och retry-strategin bränns.
+Lotus har redan en thin wrapper i `pi/scripts/fix-sudo.sh` som letar efter scriptet på dessa sökvägar (i ordning):
+1. `/opt/pi-dashboard/public/pi-scripts/fix-sudo.sh`
+2. `/var/www/pi-dashboard/pi-scripts/fix-sudo.sh`
+3. `/var/www/html/pi-scripts/fix-sudo.sh`
 
-**5. `requestConnectionInterval` — listener-läcka**
-`hci.on('leConnUpdateComplete', …)` registreras alltid, tas bort efter 3s ELLER när rätt handle svarat. Om peripheralen disconnectar inom 3s och en *annan* peripheral connectar med samma handle, fångar listenern fel event. Mindre allvarligt men samma kategori.
-
-**6. `STEP_TIMEOUT_MS = 3000` för GATT discovery**
-BLEDOM tog i ditt REPL-test ~680ms för GATT, men på dålig länk har vi sett 2–4s. 3s är på gränsen. Bör vara 5s för GATT (L2CAP kan stå kvar på 3s).
-
----
-
-### Plan — minimala, kirurgiska fixar i `pi/src/ble/connect.ts`
-
-**Fix A** (problem 2+3): I `attempt()`, sätt `done = true` *innan* `connectPeripheral`-await så timern inte kan racea. Använd `noble.once`-mönster genom att tidigt `removeListener` när vi matchar target.
-
-**Fix B** (problem 4): Skicka `skipL2cap = true` i recursion-anropet — peripheralen *är* ansluten när vi gör GATT-retry.
-
-**Fix C** (problem 1): I `reconnectWithBackoff`, vänta lite extra om `activeConnectPromise` är non-null (exponera en `isConnectInProgress()` getter från connect.ts) så reconnect inte slösar sitt första attempt på en skip.
-
-**Fix D** (problem 5): Spara handle-referensen i closure, jämför strikt, och använd `once` istället för `on` + `removeListener` i timern.
-
-**Fix E** (problem 6): Gör `STEP_TIMEOUT_MS` per-steg konfigurerbart — `L2CAP=3000`, `GATT=5000`, `WRITE=2000`.
-
-**Fix F** (säkerhet, problem 3): Lägg till `nobleScanActive = false` i `attempt()`-promise-konstruktorn ovillkorligt vid `finish()`, även om cleanup skulle kasta.
-
-**Fix G** (BLE_BUILD_TAG): Bump till `2026-04-17/connect-hardening`.
+Bekräfta att PCC installerar `pi-scripts/` till en av dessa sökvägar — annars uppdatera Lotus-wrappern.
 
 ---
 
-### Tekniska detaljer (för referens)
+### Steg 2: Producera scriptet som nedladdningsbar artifact
 
-```text
-connect.ts ändringar (alla i samma fil):
-─ rad ~341: omstrukturera attempt() — done=true före await
-─ rad ~260: connectPeripheral(peripheral, _retryCount + 1, true)
-─ rad ~174: STEP_TIMEOUT_MS → byt till TIMEOUTS = { l2cap, gatt, write }
-─ rad ~507: requestConnectionInterval — once + handle-jämförelse
-─ rad ~22:  ny export isConnectInProgress()
+Skapa `/mnt/documents/fix-sudo.sh` med exakt samma innehåll som ligger i `Pi Control Center:public/pi-scripts/fix-sudo.sh` idag, så du kan ladda ner och bifoga/klistra in i PCC-prompten.
 
-reconnect.ts ändring:
-─ rad ~26: vänta ut pågående lock innan första attempt
-```
+### Steg 3: Städa Lotus
 
-Inga schema- eller API-förändringar. Diagnostics-endpoint påverkas inte. Build-tag bumpas så vi kan verifiera att Pi:n fått nya koden via `/api/ble/diagnostics`.
+Efter att du bekräftat att filen finns i PCC:
+- Ta bort `Pi Control Center:public/pi-scripts/fix-sudo.sh` från detta projekt (felplacerad — ligger i Lotus-repot under en mapp som heter "Pi Control Center", inte i det faktiska PCC-projektet).
+- Behåll `pi/scripts/fix-sudo.sh` (thin wrapper) — den ska vara kvar enligt vald flyttstrategi.
+- Behåll `.lovable/memory/pi/deployment/fix-sudo-ownership.md` — dokumenterar ägarskapet.
 
-Efter implementation: trigga release via GitHub Actions, kör samma SSH-test som tidigare och bekräfta att flowet `Scan-connect → Found via scan → L2CAP → GATT OK → Fully ready` är reproducerbart utan några `Connect already in progress`-loops eller GATT-retry-failures.
+### Frågor
 
+Innan jag kör steg 2+3, bekräfta:
+1. Vill du att jag städar bort den felplacerade filen **direkt efter** att artifact är genererad, eller **väntar** tills du bekräftat att PCC-projektet har tagit emot den?
