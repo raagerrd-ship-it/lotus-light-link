@@ -82,14 +82,31 @@ export async function resetHciAdapter(): Promise<void> {
       'rfkill unblock bluetooth >/dev/null 2>&1 || true'
     ], { timeout: 6000, stdio: 'ignore' });
     bleStats.lastDisconnectReason = 'hci_reset';
-    logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig reset complete ✓ — waiting for poweredOn' });
+    logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig reset complete ✓ — refreshing noble HCI listeners' });
+
+    // Give the kernel a moment after rfkill+up before noble re-binds
+    await new Promise(r => setTimeout(r, 400));
+
+    // Force noble to re-attach its HCI listeners — without this, noble keeps
+    // reporting poweredOff even though hciconfig shows UP RUNNING.
+    try { await restartNobleHci('hci_reset'); } catch {}
 
     // Wait for noble to actually see the adapter as poweredOn
     const ok = await waitForNoblePoweredOn(5000);
     if (ok) {
       logConnectionEvent({ type: 'hci_reset', detail: 'adapter poweredOn ✓ (post-reset)' });
     } else {
-      logConnectionEvent({ type: 'hci_reset', detail: `adapter still ${getAdapterState() ?? 'unknown'} after 5s — manual investigation needed` });
+      // Last resort: hard-restart bluetoothd, which always re-arms the mgmt socket
+      logConnectionEvent({ type: 'hci_reset', detail: `adapter still ${getAdapterState() ?? 'unknown'} after 5s — trying systemctl restart bluetooth` });
+      await hardBluetoothRestart('hci_reset');
+      try { await restartNobleHci('hci_reset'); } catch {}
+      const ok2 = await waitForNoblePoweredOn(5000);
+      logConnectionEvent({
+        type: 'hci_reset',
+        detail: ok2
+          ? 'adapter poweredOn ✓ (after bluetoothd restart)'
+          : `adapter STILL ${getAdapterState() ?? 'unknown'} — manual reboot may be needed`,
+      });
     }
   } catch (e: any) {
     logConnectionEvent({ type: 'hci_reset', detail: `hciconfig reset failed: ${e.message}` });
