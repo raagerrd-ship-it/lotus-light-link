@@ -355,40 +355,44 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
     let done = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let onDiscover: ((peripheral: any) => void) | null = null;
 
     const cleanup = () => {
       if (timer) { clearTimeout(timer); timer = null; }
-      noble.removeListener('discover', onDiscover);
+      if (onDiscover) { try { noble.removeListener('discover', onDiscover); } catch {} onDiscover = null; }
       try { noble.stopScanning(); } catch {}
+      // Always clear the active flag — even if listener removal threw.
       nobleScanActive = false;
     };
 
     const finish = (ok: boolean) => {
       if (done) return;
-      done = true;
-      cleanup();
+      done = true;          // set BEFORE cleanup so re-entrant events bail
+      try { cleanup(); } catch {}
       resolve(ok);
     };
 
-    const onDiscover = async (peripheral: any) => {
+    onDiscover = (peripheral: any) => {
+      if (done) return;     // duplicate advertisement after match — ignore
       const pid = normalizeBleKey(peripheral.id);
       const pmac = normalizeBleKey(peripheral.address);
       if (pid !== targetNorm && pmac !== targetNorm) return;
 
-      cleanup();
+      // Mark done + tear down the listener BEFORE awaiting connect, so the
+      // scan timer can't fire finish(false) while we're mid-connect, and a
+      // second discover event for the same peripheral can't re-enter.
+      done = true;
+      try { cleanup(); } catch {}
+
       logConnectionEvent({ type: 'connect_start', device: name, detail: `Found via scan, connecting (addressType=${peripheral.addressType ?? 'unknown'})` });
 
-      try {
-        await connectPeripheral(peripheral, 0, false);
-        if (done) return;
-        done = true;
-        resolve(true);
-      } catch (e: any) {
-        if (done) return;
-        done = true;
-        logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect failed: ${e.message}` });
-        resolve(false);
-      }
+      connectPeripheral(peripheral, 0, false).then(
+        () => resolve(true),
+        (e: any) => {
+          logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect failed: ${e.message}` });
+          resolve(false);
+        }
+      );
     };
 
     noble.on('discover', onDiscover);
