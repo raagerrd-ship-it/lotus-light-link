@@ -61,19 +61,32 @@ export async function waitForAdapter(deviceName?: string): Promise<boolean> {
  * resetting under a live noble instance is what tends to strand raw
  * noble.state in `unknown` on Raspberry Pi.
  *
- * Synchronous part runs the OS commands; caller can then await
- * `waitForNoblePoweredOn(timeoutMs)` to confirm noble sees the adapter.
+ * Runs the OS commands, then waits for noble to observe `poweredOn`
+ * before returning so callers don't continue while the adapter is still
+ * soft-blocked or DOWN.
  */
-export function ensureAdapterUp(): void {
+export async function ensureAdapterUp(): Promise<boolean> {
   try {
     const { execFileSync } = require('child_process');
     execFileSync('bash', ['-lc',
       // 1) unblock rfkill (soft block) FIRST
       'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
       // 2) bring hci0 up
-      '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true'
+      '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
+      // 3) re-assert unblock in case the kernel re-blocked during wake-up
+      'rfkill unblock bluetooth >/dev/null 2>&1 || true'
     ], { timeout: 6000, stdio: 'ignore' });
   } catch {}
+
+  await new Promise(r => setTimeout(r, 300));
+  if (await waitForNoblePoweredOn(2500)) return true;
+
+  try { await restartNobleHci('ensure_adapter_up'); } catch {}
+  const ok = await waitForNoblePoweredOn(4000);
+  if (!ok) {
+    logConnectionEvent({ type: 'connect_start', detail: `ensureAdapterUp timed out (${getAdapterState() ?? 'unknown'})` });
+  }
+  return ok;
 }
 
 /**
@@ -99,8 +112,7 @@ export function normalizeBleKey(value: string | null | undefined): string {
 }
 
 async function initAdapter(): Promise<void> {
-  ensureAdapterUp();
-  await new Promise(r => setTimeout(r, 500));
+  await ensureAdapterUp();
 
   if (getAdapterState() === 'poweredOn') {
     console.log('[BLE] Adapter state: poweredOn ✓');
