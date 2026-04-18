@@ -245,6 +245,8 @@ export const workaroundCounters = {
   // force-mutation. Indikerar att noble självskriver över våra ändringar
   // (t.ex. internt event från HCI-bindningen som nollställer state).
   forceMutationReverted: 0,
+  // Noble's HCI-binding stoppades innan subprocess-scan-helper kördes
+  noble_hci_stopped_for_scan: 0,
   // Sista gång varje workaround triggades
   lastInvocationAt: {} as Record<string, string>,
 };
