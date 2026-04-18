@@ -485,10 +485,12 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
 
   try {
     // noble.connectAsync(address, options) — connectar utan scan.
+    // overrideMs=timeoutMs så autoConnectSaved kan skala per försök.
     const peripheral = await withTimeout(
       (noble as any).connectAsync(address.toLowerCase(), { addressType }),
       'Direct connect',
       'l2cap',
+      timeoutMs,
     ) as any;
 
     if (!peripheral) {
