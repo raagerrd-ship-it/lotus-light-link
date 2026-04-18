@@ -58,6 +58,22 @@ export function setHciProbeSnapshot(s: Omit<HciProbeSnapshot, 'ranAt'>): void {
 }
 export function getHciProbeSnapshot(): HciProbeSnapshot | null { return _hciProbeSnapshot; }
 
+// ── Force-mutation snapshot (last forceNoblePoweredOn() result) ──
+// Visas som ett steg i pipeline-checklistan i UI:t så användaren ser
+// om mutation faktiskt fastnar eller om noble har read-only getters.
+export interface ForceMutationSnapshot {
+  stuck: boolean;
+  after: string | undefined;
+  attempts: string[];
+  failures: string[];
+  ranAt: string;
+}
+let _forceMutationSnapshot: ForceMutationSnapshot | null = null;
+export function getForceMutationSnapshot(): ForceMutationSnapshot | null { return _forceMutationSnapshot; }
+function setForceMutationSnapshot(s: Omit<ForceMutationSnapshot, 'ranAt'>): void {
+  _forceMutationSnapshot = { ...s, ranAt: new Date().toISOString() };
+}
+
 try {
   (noble as any).on?.('stateChange', (s: string) => {
     _cachedNobleState = s;
