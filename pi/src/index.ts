@@ -273,15 +273,12 @@ async function main() {
   let wasTvMode = false;
   onSonosChange((state) => {
     const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
-    const needsBle = isPlaying || state.isTvMode;
-    
-    // Demand-based BLE: connect when needed, stop reconnecting when idle
-    if (needsBle) {
-      requestConnect();
-    } else {
-      releaseDemand();
-    }
-    
+
+    // INGEN automatisk BLE-anslutning baserat på Sonos-state. Användaren
+    // styr själv via "Anslut"-knappen. Engine fortsätter dock reagera på
+    // play/pause/volym/färg som vanligt — om en BLE-enhet är ansluten
+    // skickas paket dit, annars är det no-op.
+
     if (state.isTvMode) {
       engine.setPlaying(true);
       if (!wasTvMode) {
