@@ -87,14 +87,32 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   discoveredPeripherals.clear();
   const found = new Map<string, DiscoveredDevice>();
   let rawDiscoverCount = 0;
+  const scanStartedAt = Date.now();
+  const scanId = ++_scanSeq;
+  scanMetrics.phase = 'starting';
+  scanMetrics.active = true;
+  scanMetrics.activeSince = new Date(scanStartedAt).toISOString();
+  scanMetrics.lastScanId = scanId;
+  scanMetrics.lastStartedAt = new Date(scanStartedAt).toISOString();
+  scanMetrics.lastStartOkAt = null;
+  scanMetrics.lastStoppedAt = null;
+  scanMetrics.lastDurationMs = null;
+  scanMetrics.lastRawDiscoverCount = 0;
+  scanMetrics.lastResultCount = 0;
+  scanMetrics.lastStartError = null;
+  scanMetrics.lastStopError = null;
 
-  // Hård watchdog: garantera att `scanning`-flaggan släpps även om
-  // stopScanningAsync() eller startScanningAsync() hänger oändligt.
-  // Annars fastnar UI:t i "🔵 Söker" för evigt eftersom /api/diag
-  // returnerar scanning=true.
   const watchdog = setTimeout(() => {
     if (scanning) {
       scanning = false;
+      scanMetrics.phase = 'idle';
+      scanMetrics.active = false;
+      scanMetrics.activeSince = null;
+      scanMetrics.lastStoppedAt = new Date().toISOString();
+      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+      scanMetrics.lastRawDiscoverCount = rawDiscoverCount;
+      scanMetrics.lastResultCount = found.size;
+      scanMetrics.lastWatchdogAt = new Date().toISOString();
       logConnectionEvent({
         type: 'scan_done',
         detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms (noble hängde i start/stop)`,
