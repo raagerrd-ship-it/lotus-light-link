@@ -769,18 +769,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     };
   };
 
-  // Detect Sonos gateway on any PCC core (port 3050–3052 = engine ports for core 0–2)
+  // Detect Sonos gateway på alla PCC-cores (port 3050–3053 = motor-portar för core 0–3).
+  // Kräver att service-namnet innehåller "sonos" — cast-away/buddy ensamt räcker inte
+  // längre eftersom andra tjänster också kan matcha de namnen.
   app.get('/api/sonos-gateway/detect', async (_req, res) => {
-    const CORE_PORTS = [3050, 3051, 3052];
+    const CORE_PORTS = [3050, 3051, 3052, 3053];
     const probes = CORE_PORTS.map(async (port) => {
       try {
         const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1500) });
         if (!r.ok) return null;
         const data = await r.json();
-        // Check if this service has a Sonos-related endpoint (sonos status in health or service name)
-        const name = data?.service ?? '';
-        const isSonosGateway = name.includes('sonos') || name.includes('cast-away') || name.includes('buddy');
-        if (!isSonosGateway) return null;
+        const name = String(data?.service ?? '').toLowerCase();
+        if (!name.includes('sonos')) return null;
         return { port, url: `http://127.0.0.1:${port}/api/sonos`, name: data.service, version: data.version ?? null, core: port - 3050 };
       } catch { return null; }
     });
