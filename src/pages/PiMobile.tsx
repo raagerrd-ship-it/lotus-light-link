@@ -973,6 +973,11 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
     };
     build?: { bleTag?: string };
     enabled?: boolean;
+    enabledMeta?: {
+      source?: 'boot-default' | 'manual-toggle' | 'auto-restore';
+      changedAt?: string;
+      wasEnabledBeforeRestart?: boolean;
+    };
     boot?: {
       startedAt?: string;
       elapsedMs?: number;
