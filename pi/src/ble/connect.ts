@@ -193,8 +193,8 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
 const TIMEOUTS = { l2cap: 8000, gatt: 5000, write: 2000 } as const;
 type StepKind = keyof typeof TIMEOUTS;
 
-function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
-  const ms = TIMEOUTS[kind];
+function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap', overrideMs?: number): Promise<T> {
+  const ms = overrideMs ?? TIMEOUTS[kind];
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     promise.then(v => { clearTimeout(timer); return v; }),
@@ -202,6 +202,17 @@ function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2
       timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     }),
   ]);
+}
+
+/**
+ * Skala timeout per försök: 1=8s, 2=12s, 3+=16s (cap).
+ * Lampan kanske vaknar ur sleep mellan försöken — då hjälper extra tid.
+ * Cap vid 16s eftersom BLEDOM ändå inte svarar längre om den är riktigt borta.
+ */
+function timeoutForAttempt(failCount: number): { l2cap: number; scan: number } {
+  if (failCount <= 0) return { l2cap: 8000, scan: 10000 };
+  if (failCount === 1) return { l2cap: 12000, scan: 14000 };
+  return { l2cap: 16000, scan: 18000 };
 }
 
 /** Exposed so reconnect.ts can wait out an in-flight connect before its first attempt. */
