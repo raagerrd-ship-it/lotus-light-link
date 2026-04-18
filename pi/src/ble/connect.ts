@@ -186,9 +186,11 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
 }
 
 // ── Timeout helper — per-step budgets ──
-// L2CAP and write are quick; GATT discovery on BLEDOM has been observed
-// up to ~4s on a marginal link, so give it more headroom.
-const TIMEOUTS = { l2cap: 3000, gatt: 5000, write: 2000 } as const;
+// L2CAP raised 3000→8000ms: BLEDOM på svag länk (RSSI < −75) hinner inte
+// genom L2CAP-handshake på 3s — varje retransmission tar ~750ms och vi
+// behöver flera. GATT discovery på BLEDOM kan också ta upp till ~4s på
+// marginell länk.
+const TIMEOUTS = { l2cap: 8000, gatt: 5000, write: 2000 } as const;
 type StepKind = keyof typeof TIMEOUTS;
 
 function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
@@ -606,24 +608,32 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
       return 0;
     }
 
-    // Direct-connect ONLY. Scan-fallback borttagen — den kraschar noble-state
-    // och är onödig för redan-sparade enheter (vi har MAC + addressType).
-    // Om addressType saknas måste användaren parna om via UI:ts scan-flöde.
-    if (!getSavedAddressType()) {
+    // Hybrid: direct-connect first (snabb när lampan är nära), fall back
+    // till scan-then-connect på svag länk. Memory mem://pi/ble/hybrid-discovery-strategy
+    // beskriver exakt detta. Scan-fallback togs bort tidigare som defensiv
+    // åtgärd mot noble-state-krasch — men noble är nu bevisligen friskt
+    // poweredOn (se diagnostics) och nobleScanConnect har egna stopScanning-
+    // skydd, så det är säkert att återinföra.
+    if (getSavedAddressType()) {
+      const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 8000));
+      if (directOk) return 1;
+    } else {
       logConnectionEvent({
-        type: 'connect_fail',
+        type: 'connect_start',
         device: savedName,
-        detail: 'Saknar addressType — parna om enheten via Scan i UI',
+        detail: 'Saknar addressType — hoppar direct-connect, går direkt till scan',
       });
-      return 0;
     }
 
-    const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 3000));
-    if (directOk) return 1;
+    // Scan-fallback: nobleScanConnect tittar efter MAC:en i ~10s och
+    // connectar via peripheral-objektet (samma flöde som fungerade i
+    // monoliten). Klarar svaga länkar bättre än direct-connect.
+    const scanOk = await nobleScanConnect(savedId, savedName, 10000);
+    if (scanOk) return 1;
 
     incrementConsecutiveFailures();
     const fails = getConsecutiveFailures();
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct-connect misslyckades — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Connect misslyckades (direct + scan) — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
     // Ingen automatisk HCI-reset. Användaren trycker "Återställ BLE-stack" vid behov.
     return 0;
   });

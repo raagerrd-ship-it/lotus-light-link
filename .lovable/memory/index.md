@@ -57,3 +57,4 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [bluetoothd required](mem://pi/ble/bluetoothd-required) — Utan BlueZ daemon stannar noble.state på "unknown" för evigt
 - [Node setcap krav](mem://pi/ble/node-setcap-required) — node-binären behöver setcap CAP_NET_RAW för noble; AmbientCapabilities räcker inte
 - [BLE workaround counters](mem://pi/ble/workaround-counters) — Mät defensiva fallbacks i /api/ble/diagnostics
+- [Connect flow hybrid](mem://pi/ble/connect-flow-hybrid) — autoConnectSaved måste ha direct + scan-fallback, L2CAP 8s
