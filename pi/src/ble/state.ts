@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/pipeline-force-mutation-step';
+export const BLE_BUILD_TAG = '2026-04-18/force-mutation-defineproperty';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -521,21 +521,89 @@ export function forceNoblePoweredOn(): boolean {
   const attempts: string[] = [];
   const failures: string[] = [];
 
-  const trySet = (path: string, fn: () => void) => {
+  /**
+   * Försök sätta target[key]='poweredOn' med eskalerande aggressivitet:
+   *  1) Vanlig assignment
+   *  2) Object.defineProperty med writable+configurable (bypassar getter-only)
+   *  3) Object.defineProperty på prototypen (om descriptor finns där)
+   *  4) Ta bort prop helt och re-define som data-property
+   * Loggar exakt descriptor-info så vi ser VARFÖR det failar.
+   */
+  const forceSet = (path: string, target: any, key: string) => {
+    if (!target) {
+      failures.push(`${path}: target is null/undefined`);
+      return;
+    }
+
+    // Inspektera descriptor (egen + prototypkedja)
+    let desc = Object.getOwnPropertyDescriptor(target, key);
+    let descSource = 'own';
+    if (!desc) {
+      const proto = Object.getPrototypeOf(target);
+      if (proto) {
+        desc = Object.getOwnPropertyDescriptor(proto, key);
+        descSource = 'proto';
+      }
+    }
+    const descInfo = desc
+      ? `${descSource}{w=${desc.writable},c=${desc.configurable},g=${!!desc.get},s=${!!desc.set}}`
+      : 'no-descriptor';
+
+    // Steg 1: vanlig assignment
     try {
-      fn();
-      attempts.push(`${path}=OK`);
+      target[key] = 'poweredOn';
+      if (target[key] === 'poweredOn') {
+        attempts.push(`${path}=assign(${descInfo})`);
+        return;
+      }
+      // Tyst no-op (sloppy mode + read-only) — gå vidare till defineProperty
     } catch (e: any) {
-      failures.push(`${path}: ${e?.message ?? e}`);
+      // Strict mode kastar — fortsätt med defineProperty
+    }
+
+    // Steg 2: defineProperty på objektet självt
+    try {
+      Object.defineProperty(target, key, {
+        value: 'poweredOn',
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+      if (target[key] === 'poweredOn') {
+        attempts.push(`${path}=defineProperty(${descInfo})`);
+        return;
+      }
+      failures.push(`${path}: defineProperty silent-fail (${descInfo})`);
+    } catch (e: any) {
+      // Steg 3: om configurable=false på objektet, prova att redefiniera på prototypen
+      if (descSource === 'proto' && desc) {
+        try {
+          const proto = Object.getPrototypeOf(target);
+          Object.defineProperty(proto, key, {
+            value: 'poweredOn',
+            writable: true,
+            configurable: true,
+            enumerable: true,
+          });
+          if (target[key] === 'poweredOn') {
+            attempts.push(`${path}=defineProperty-on-proto(${descInfo})`);
+            return;
+          }
+        } catch (e2: any) {
+          failures.push(`${path}: proto-defineProperty failed (${descInfo}): ${e2?.message ?? e2}`);
+          return;
+        }
+      }
+      failures.push(`${path}: defineProperty failed (${descInfo}): ${e?.message ?? e}`);
     }
   };
 
-  trySet('noble.state', () => { n.state = 'poweredOn'; });
-  trySet('noble._state', () => { n._state = 'poweredOn'; });
+  forceSet('noble.state', n, 'state');
+  forceSet('noble._state', n, '_state');
   if (n._bindings) {
-    trySet('noble._bindings.state', () => { n._bindings.state = 'poweredOn'; });
-    if (n._bindings._state !== undefined) {
-      trySet('noble._bindings._state', () => { n._bindings._state = 'poweredOn'; });
+    forceSet('noble._bindings.state', n._bindings, 'state');
+    if ('_state' in n._bindings) {
+      forceSet('noble._bindings._state', n._bindings, '_state');
     }
   }
 
