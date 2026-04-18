@@ -94,6 +94,10 @@ export async function waitForAdapter(deviceName?: string): Promise<boolean> {
  * before returning so callers don't continue while noble is still settling.
  */
 export async function ensureAdapterUp(): Promise<boolean> {
+  // Step 1: unblock rfkill + bring hci0 up (idempotent, non-destructive).
+  // We deliberately do NOT touch hciconfig down — that races noble's raw
+  // socket and tends to leave noble.state stuck in `poweredOff` even after
+  // the adapter comes back up.
   try {
     const { execFileSync } = require('child_process');
     execFileSync('bash', ['-lc',
@@ -106,40 +110,17 @@ export async function ensureAdapterUp(): Promise<boolean> {
   await new Promise(r => setTimeout(r, 300));
   if (await waitForNoblePoweredOn(2500)) return true;
 
-  // Noble didn't pick up poweredOn even though hciconfig says UP.
-  // Refresh noble's HCI listeners so it re-reads the adapter state from
-  // the kernel without us toggling hciconfig (which would race noble's
-  // own raw socket and often leave it wedged in `unknown`).
+  // Step 2: ask noble to refresh its HCI listeners. Non-destructive — only
+  // pokes noble's own bindings, doesn't toggle the kernel device.
   try { await restartNobleHci('ensure_adapter_up'); } catch {}
-  if (await waitForNoblePoweredOn(2500)) return true;
+  if (await waitForNoblePoweredOn(3000)) return true;
 
-  // Last resort: ask the kernel to re-emit adapter state by toggling the
-  // HCI device. This is the canonical fix when noble's stateChange handler
-  // missed the initial poweredOn event at boot. We do NOT touch the
-  // bluetooth.service — only the HCI device — so noble's socket stays alive.
-  const rawBefore = getNobleRawState();
-  if (rawBefore === 'poweredOff' || rawBefore == null || rawBefore === 'unknown') {
-    bumpWorkaround('resetHciAdapter_invoked');
-    logConnectionEvent({
-      type: 'connect_start',
-      detail: `Toggling hci0 to force noble stateChange (raw=${rawBefore ?? 'unknown'})`,
-    });
-    try {
-      const { execFileSync } = require('child_process');
-      execFileSync('bash', ['-lc',
-        'hciconfig hci0 down >/dev/null 2>&1 || true; ' +
-        'sleep 0.4; ' +
-        'hciconfig hci0 up >/dev/null 2>&1 || true'
-      ], { timeout: 6000, stdio: 'ignore' });
-    } catch {}
-    await new Promise(r => setTimeout(r, 500));
-    try { await restartNobleHci('after_hci_toggle'); } catch {}
-    if (await waitForNoblePoweredOn(4000)) return true;
-  }
-
+  // Give up — surface the failure instead of fighting noble. The user can
+  // press the manual "Reset BLE stack" button which does a full HCI reset
+  // out-of-band, or fix the underlying OS issue (rfkill block, missing caps).
   logConnectionEvent({
     type: 'connect_start',
-    detail: `ensureAdapterUp timed out (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'})`,
+    detail: `ensureAdapterUp gav upp utan att toggla hci0 (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}). Tryck "Återställ BLE-stack" om det inte löser sig.`,
   });
   return false;
 }
