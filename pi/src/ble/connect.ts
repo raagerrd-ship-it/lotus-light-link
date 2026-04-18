@@ -10,6 +10,7 @@ import {
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
   getNobleRawState, bumpWorkaround, forceNoblePoweredOn as forceNobleStateMutate,
+  hasNobleEverFiredStateChange,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
@@ -17,6 +18,25 @@ import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import { triggerNobleRespawn } from './watchdog.js';
 import type { PiCharacteristic } from './types.js';
+
+/**
+ * Vänta på poweredOn — men SKIPPA om noble redan har fyrat sin stateChange
+ * vid boot. waitForPoweredOnAsync hänger annars eftersom det missade eventet.
+ * SSH-bevis: en fresh noble-process får stateChange på ~250ms; service-processen
+ * hade redan eventet vid boot, så vi behöver inte vänta igen.
+ */
+async function waitNobleReady(timeoutMs: number, label: string, deviceName?: string): Promise<boolean> {
+  if (hasNobleEverFiredStateChange()) {
+    return true; // noble redan vaken — kör direkt
+  }
+  try {
+    await (noble as any).waitForPoweredOnAsync?.(timeoutMs);
+    return true;
+  } catch (e: any) {
+    logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `${label}: waitForPoweredOn failed: ${e.message}` });
+    return false;
+  }
+}
 
 // ── HCI reset tracking ──
 let consecutiveConnectFailures = 0;
