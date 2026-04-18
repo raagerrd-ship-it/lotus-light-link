@@ -1,84 +1,24 @@
 /**
- * BLE scanning — ren noble, ingen destruktiv HCI-rebind.
+ * BLE scanning — ren noble.
  *
- * VIKTIGT: tidigare versioner anropade `hci.stop()` + `hci.start()` för att
- * tvinga noble att re-initiera bindings när raw `_state` var `unknown`. Det
- * river HCI-socketen på Pi:s BlueZ-stack och stänger ner adaptern
- * (poweredOn → poweredOff). Vi gör det INTE längre.
+ * Förutsättning: node-binären har CAP_NET_RAW + CAP_NET_ADMIN via setcap
+ * (sätts av setup-lotus.sh). Med korrekta caps fungerar noble pålitligt:
+ * state → poweredOn, discover-events strömmar in. Ingen hcitool-fallback
+ * behövs längre.
  *
  * Strategi:
  *  1. `ensureAdapterUp()` (rfkill unblock + hciconfig hci0 up — säkert).
  *  2. Vänta på poweredOn via stateChange-event (upp till 6s).
- *  3. Försök `noble.startScanningAsync`. Om noble fortfarande tror state är
- *     unknown, returnera tom lista med tydlig felflagga — UI kan trigga
- *     manuell `/api/ble/reset` om det fastnar.
+ *  3. `noble.startScanningAsync` → samla discover-events under timeout → stopScanningAsync.
  *
  * Vi cachear hela peripheral-objektet (inte bara id/name/rssi) så att
  * connect.ts kan använda samma peripheral direkt.
  */
 
-import { noble, getAdapterState, processHasBtCaps, logConnectionEvent } from './state.js';
+import { noble, getAdapterState, logConnectionEvent } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { ensureAdapterUp } from './adapter.js';
-
-async function scanViaHcitool(timeoutMs: number): Promise<DiscoveredDevice[]> {
-  const tmpFile = `/tmp/lotus-ble-lescan-${process.pid}-${Date.now()}.txt`;
-  const timeoutSec = Math.max(2, Math.ceil(timeoutMs / 1000));
-
-  try {
-    const { execFileSync } = await import('child_process');
-    const { readFile, unlink } = await import('fs/promises');
-
-    execFileSync(
-      'bash',
-      [
-        '-lc',
-        'tmp="$1"; secs="$2"; ' +
-          'rm -f "$tmp"; ' +
-          'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
-          'timeout "$secs" hcitool lescan --duplicates > "$tmp" 2>&1 || true; ' +
-          'killall -9 hcitool >/dev/null 2>&1 || true',
-        'bash',
-        tmpFile,
-        String(timeoutSec),
-      ],
-      { timeout: timeoutMs + 3000, stdio: 'ignore' },
-    );
-
-    const raw = await readFile(tmpFile, 'utf8').catch(() => '');
-    await unlink(tmpFile).catch(() => {});
-
-    const found = new Map<string, DiscoveredDevice>();
-    for (const line of raw.split(/\r?\n/)) {
-      const match = line.match(/^\s*([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s+(.+?)\s*$/i);
-      if (!match) continue;
-
-      const id = match[1].replace(/:/g, '').toLowerCase();
-      const name = match[2].trim();
-      if (!name || /^LE Scan/i.test(name)) continue;
-
-      if (!found.has(id)) found.set(id, { id, name, rssi: -100 });
-    }
-
-    const results = Array.from(found.values());
-    logConnectionEvent({
-      type: 'scan_done',
-      detail: results.length > 0
-        ? `${results.length} device(s) found via hcitool fallback`
-        : '0 devices via hcitool fallback',
-    });
-    return results;
-  } catch (e: any) {
-    logConnectionEvent({ type: 'scan_done', detail: `hcitool fallback failed: ${e?.message ?? e}` });
-    return [];
-  }
-}
-
-function getNobleRawBindingsState(): string | undefined {
-  const n = noble as any;
-  return n?._bindings?._state ?? n?._state ?? n?.state;
-}
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -148,12 +88,9 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   };
 
   try {
-    const adapterState = getAdapterState();
-    const rawNoble = getNobleRawBindingsState();
-    const hasCaps = processHasBtCaps();
     logConnectionEvent({
       type: 'scan_start',
-      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${adapterState}, rawNoble=${rawNoble ?? 'null'}, caps=${hasCaps}`,
+      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${getAdapterState()}`,
     });
 
     // Säker adapter-init (rfkill unblock + hciconfig hci0 up). Ingen hci.stop().
@@ -163,7 +100,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     if (!ready) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `Adapter inte poweredOn (state=${getAdapterState()}, raw=${getNobleRawBindingsState() ?? 'null'}) — kan inte scanna`,
+        detail: `Adapter inte poweredOn (state=${getAdapterState()}) — kan inte scanna. Kontrollera att node har CAP_NET_RAW (getcap $(which node)).`,
       });
       lastScanResults = [];
       return lastScanResults;
@@ -171,24 +108,14 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
     (noble as any).on('discover', onDiscover);
 
-    const rawBeforeScan = getNobleRawBindingsState();
-    if (rawBeforeScan !== 'poweredOn' && hasCaps) {
-      logConnectionEvent({
-        type: 'scan_start',
-        detail: `raw noble=${rawBeforeScan ?? 'null'} while adapter is poweredOn — using hcitool fallback`,
-      });
-      lastScanResults = await scanViaHcitool(timeoutMs);
-      return lastScanResults;
-    }
-
     try {
       await (noble as any).startScanningAsync([], true);
     } catch (scanErr: any) {
       logConnectionEvent({
-        type: 'scan_start',
-        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawBindingsState() ?? 'null'}) — trying hcitool fallback`,
+        type: 'scan_done',
+        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" — kontrollera caps på node-binären`,
       });
-      lastScanResults = await scanViaHcitool(timeoutMs);
+      lastScanResults = [];
       return lastScanResults;
     }
 
