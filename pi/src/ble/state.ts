@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/hcitool-early-exit-bledom';
+export const BLE_BUILD_TAG = '2026-04-18/scan-helper-subprocess';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -245,6 +245,8 @@ export const workaroundCounters = {
   // force-mutation. Indikerar att noble självskriver över våra ändringar
   // (t.ex. internt event från HCI-bindningen som nollställer state).
   forceMutationReverted: 0,
+  // Noble's HCI-binding stoppades innan subprocess-scan-helper kördes
+  noble_hci_stopped_for_scan: 0,
   // Sista gång varje workaround triggades
   lastInvocationAt: {} as Record<string, string>,
 };
