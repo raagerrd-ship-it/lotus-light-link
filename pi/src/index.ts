@@ -122,8 +122,8 @@ async function main() {
   const nobleBle = await import('./nobleBle.js');
   bt('STEP B: nobleBle.js import done');
   const {
-    scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount,
-    setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand,
+    scanAndConnect, disconnectAll, getConnectedCount,
+    setDimmingGamma, setExpectedDeviceCount,
     BLE_BUILD_TAG, waitForFirstStateChange, noble,
   } = nobleBle;
 
@@ -164,7 +164,7 @@ async function main() {
   // Auto-restore BLE master switch om användaren hade radion PÅ före senaste
   // restart OCH noble faktiskt är poweredOn nu. Annars håller vi den OFF —
   // användaren får trycka på knappen manuellt så de ser felmeddelandet.
-  const { wasEnabledBeforeRestart, setBleEnabled, ensureAdapterUp, autoConnectSaved, getAdapterState } = nobleBle;
+  const { wasEnabledBeforeRestart, setBleEnabled, getAdapterState } = nobleBle;
   // På Pi blir rå noble.state ofta aldrig poweredOn (fastnar i `unknown`).
   // Effektiv adapter-state (caps-aware) är det som verkligen räknas — om
   // den rapporterar poweredOn så ÄR adaptern användbar oavsett rå-state.
@@ -172,20 +172,7 @@ async function main() {
   const canEnable = firstState === 'poweredOn' || effectiveState === 'poweredOn';
   if (wasEnabledBeforeRestart() && canEnable) {
     setBleEnabled(true, false); // persist=false → vi rör inte storage vid auto-restore
-    console.log(`[Boot] ✓ BLE master switch auto-restored till ON (raw=${firstState}, eff=${effectiveState})`);
-    // Förbered adaptern + starta auto-connect i bakgrunden så sparad enhet
-    // kopplas upp utan att användaren behöver röra UI:t.
-    void (async () => {
-      try {
-        const ready = await ensureAdapterUp();
-        if (ready) {
-          const n = await autoConnectSaved(10000);
-          console.log(`[Boot] auto-restore connect: ${n > 0 ? 'connected' : 'no saved device or failed'}`);
-        }
-      } catch (e: any) {
-        console.error('[Boot] auto-restore connect failed:', e?.message ?? e);
-      }
-    })();
+    console.log(`[Boot] ✓ BLE master switch auto-restored till ON (raw=${firstState}, eff=${effectiveState}) — ingen auto-connect, väntar på manuell anslut`);
   } else if (wasEnabledBeforeRestart()) {
     console.log(`[Boot] ⚠ BLE var PÅ före restart men adapter ej redo (raw=${firstState}, eff=${effectiveState}) — väntar på manuell aktivering`);
   }
@@ -251,11 +238,9 @@ async function main() {
     console.error('[Boot] Mic failed (continuing without):', e.message);
   }
 
-  // 5. BLE — start reconnect-loop FIRST so any demand-event under boot
-  // (Sonos already playing) blir uppfångat även om första connect missar.
-  // Loopen tickar var 15s och anropar autoConnectSaved när demand är aktiv.
-  const reconnectTimer = startReconnectLoop(15000);
-
+  // 5. BLE — INGEN auto-connect och INGEN reconnect-loop. Användaren styr
+  // helt manuellt via UI:t (knapp "Anslut till sparad enhet"). Sonos-events
+  // ändrar bara engine-state (play/pause/volym/färg), aldrig BLE-anslutning.
   // Do NOT touch BLE during boot. The isolated noble one-liner works because
   // it simply loads noble and waits for stateChange. Boot-time adapter prep
   // races that startup path on Raspberry Pi and can wedge noble in poweredOff.
@@ -288,15 +273,12 @@ async function main() {
   let wasTvMode = false;
   onSonosChange((state) => {
     const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
-    const needsBle = isPlaying || state.isTvMode;
-    
-    // Demand-based BLE: connect when needed, stop reconnecting when idle
-    if (needsBle) {
-      requestConnect();
-    } else {
-      releaseDemand();
-    }
-    
+
+    // INGEN automatisk BLE-anslutning baserat på Sonos-state. Användaren
+    // styr själv via "Anslut"-knappen. Engine fortsätter dock reagera på
+    // play/pause/volym/färg som vanligt — om en BLE-enhet är ansluten
+    // skickas paket dit, annars är det no-op.
+
     if (state.isTvMode) {
       engine.setPlaying(true);
       if (!wasTvMode) {
@@ -341,7 +323,6 @@ async function main() {
     engine.stop();
     stopMic();
     stopSonosPoller();
-    clearInterval(reconnectTimer);
     clearInterval(statsTimer);
     // releaseHci=true → tvinga full HCI-release även om demand fortfarande är på.
     // Adaptern ska vara helt ren när processen avslutas (PCC-restart, OS-shutdown).
