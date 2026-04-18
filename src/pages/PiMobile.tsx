@@ -972,6 +972,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       rfkill?: string;
     };
     build?: { bleTag?: string };
+    enabled?: boolean;
     // transport toggle removed (gatttool fallback eliminated)
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
@@ -982,6 +983,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
     events: { type: string; device?: string; detail?: string; timestamp: string; durationMs?: number }[];
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
