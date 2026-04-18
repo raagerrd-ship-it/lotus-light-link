@@ -35,8 +35,9 @@ try {
   (noble as any).on?.('stateChange', (s: string) => {
     _cachedNobleState = s;
     console.log(`[BLE:stateChange] ${s}`);
-    if (_firstStateChangeResolve) {
-      _firstStateChangeResolve(s);
+    const r = _firstStateChangeResolve as ((s: string) => void) | null;
+    if (r) {
+      r(s);
       _firstStateChangeResolve = null;
     }
   });
@@ -44,8 +45,9 @@ try {
   const initial = (noble as any).state ?? (noble as any)._state;
   if (initial && initial !== 'unknown') {
     _cachedNobleState = initial;
-    if (_firstStateChangeResolve) {
-      _firstStateChangeResolve(initial);
+    const r = _firstStateChangeResolve as ((s: string) => void) | null;
+    if (r) {
+      r(initial);
       _firstStateChangeResolve = null;
     }
   }
