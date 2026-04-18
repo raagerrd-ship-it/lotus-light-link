@@ -275,14 +275,17 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     let connected = !!getConnectedDeviceId();
     const hasSaved = !!getSavedDeviceId();
     if (adapterReady && hasSaved && !getConnectedDeviceId()) {
-      // Startflödet: adapter + auto-connect till sparad enhet (om sådan finns),
-      // utan att gå via demand-logiken som Sonos får styra separat.
+      // Startflödet ska INTE blockera HTTP-svaret. Den manuella BLE-knappen i UI
+      // ska slå på radion direkt och sedan låta auto-connect fortsätta i bakgrunden.
+      // Annars ser det ut som att togglen "hänger" i upp till 10s.
       connectStarted = true;
-      try {
-        connected = (await autoConnectSaved(10000)) > 0;
-      } catch (e: any) {
-        console.error('[BLE] start auto-connect failed:', e?.message ?? e);
-      }
+      void autoConnectSaved(10000)
+        .then((count) => {
+          console.log(`[BLE] start auto-connect finished: ${count > 0 ? 'connected' : 'not found / failed'}`);
+        })
+        .catch((e: any) => {
+          console.error('[BLE] start auto-connect failed:', e?.message ?? e);
+        });
     }
     res.json({ ok: true, enabled: true, adapterReady, autoConnect: connectStarted, connected, hasSaved });
   });
