@@ -35,25 +35,6 @@ function peripheralToDevice(p: any): DiscoveredDevice | null {
   return { id: String(id).toLowerCase(), name, rssi };
 }
 
-async function waitForPoweredOn(timeoutMs: number): Promise<boolean> {
-  if (getNobleRawState() === 'poweredOn') return true;
-  return await new Promise<boolean>((resolve) => {
-    const onState = (s: string) => {
-      if (s === 'poweredOn') { cleanup(); resolve(true); }
-    };
-    const poll = setInterval(() => {
-      if (getNobleRawState() === 'poweredOn') { cleanup(); resolve(true); }
-    }, 200);
-    const timer = setTimeout(() => { cleanup(); resolve(getNobleRawState() === 'poweredOn'); }, timeoutMs);
-    const cleanup = () => {
-      clearInterval(poll);
-      clearTimeout(timer);
-      try { (noble as any).removeListener?.('stateChange', onState); } catch {}
-    };
-    try { (noble as any).on?.('stateChange', onState); } catch {}
-  });
-}
-
 export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
   if (!isBleEnabled()) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — BLE master switch is OFF' });
@@ -75,6 +56,14 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   const onDiscover = (p: any) => {
     const dev = peripheralToDevice(p);
     if (!dev) return;
+    const prev = found.get(dev.id);
+    if (!prev) {
+      logConnectionEvent({ type: 'scan_start', detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi}` });
+    }
+    discoveredPeripherals.set(dev.id, p);
+    if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
+  };
+
   try {
     logConnectionEvent({
       type: 'scan_start',
@@ -83,13 +72,17 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
     // Master-switchen ska redan ha väckt adaptern. Vi rör inte HCI här —
     // bara verifierar att noble är klar. Korta väntan om noble fortfarande
-    // settlar efter en nyss avslutad start.
+    // settlar precis efter master-switch ON.
     const ready = getNobleRawState() === 'poweredOn'
       ? true
       : await new Promise<boolean>((resolve) => {
           const t = setTimeout(() => resolve(getNobleRawState() === 'poweredOn'), 1500);
           const onState = (s: string) => {
-            if (s === 'poweredOn') { clearTimeout(t); try { (noble as any).removeListener?.('stateChange', onState); } catch {} resolve(true); }
+            if (s === 'poweredOn') {
+              clearTimeout(t);
+              try { (noble as any).removeListener?.('stateChange', onState); } catch {}
+              resolve(true);
+            }
           };
           try { (noble as any).on?.('stateChange', onState); } catch {}
         });
