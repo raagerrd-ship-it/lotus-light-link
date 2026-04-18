@@ -2576,7 +2576,15 @@ export default function PiMobile() {
                 ))}
               </div>
             )}
-            {!bleScanning && bleScanResults.length === 0 && (
+            {!bleScanning && bleScanResults.length === 0 && bleScanCompletedEmpty && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2">
+                <p className="text-[11px] font-medium text-destructive">Inga BLE-enheter hittades</p>
+                <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                  Säkerställ att BLEDOM-lampan är på och i närheten (max ~5m). Om den fortfarande saknas — lägg till MAC-adressen manuellt nedan.
+                </p>
+              </div>
+            )}
+            {!bleScanning && bleScanResults.length === 0 && !bleScanCompletedEmpty && (
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Tryck på <span className="font-medium">Sök</span> för att hitta BLEDOM-enheter i närheten. Saknas din enhet kan du lägga till MAC-adressen manuellt nedan.
               </p>
