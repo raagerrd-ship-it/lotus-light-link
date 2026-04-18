@@ -186,6 +186,44 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       restartNobleHci('post-subprocess-scan').catch(() => {});
     } catch {}
 
+    // Steg 5: Watchdog — vänta 5s; om noble's raw state inte återgått till
+    // poweredOn, kör aggressiv recovery (resetHciAdapter + restartNobleHci).
+    // Bakgrundskörs så scan-svaret inte blockeras. Kritiskt för att reconnect-
+    // loopen ska kunna använda adaptern efter scan.
+    void (async () => {
+      await new Promise(r => setTimeout(r, 5000));
+      const raw = getNobleRawState();
+      if (raw === 'poweredOn') {
+        logConnectionEvent({ type: 'scan_done', detail: 'post-scan watchdog: noble poweredOn ✓' });
+        return;
+      }
+      bumpWorkaround('post_scan_noble_recovery_invoked');
+      logConnectionEvent({
+        type: 'scan_done',
+        detail: `post-scan watchdog: noble raw=${raw ?? 'unknown'} efter 5s — kör recovery`,
+      });
+      try {
+        const { resetHciAdapter } = await import('./connect.js');
+        await resetHciAdapter();
+      } catch (e: any) {
+        logConnectionEvent({ type: 'scan_done', detail: `watchdog resetHciAdapter fel: ${e?.message ?? e}` });
+      }
+      try {
+        const { restartNobleHci, waitForNoblePoweredOn } = await import('./adapter.js');
+        await restartNobleHci('post-scan-watchdog');
+        const ok = await waitForNoblePoweredOn(4000);
+        logConnectionEvent({
+          type: 'scan_done',
+          detail: ok
+            ? 'post-scan watchdog: recovery lyckades — noble poweredOn ✓'
+            : `post-scan watchdog: recovery misslyckades — raw=${getNobleRawState() ?? 'unknown'}`,
+        });
+        if (!ok) bumpWorkaround('post_scan_noble_recovery_failed');
+      } catch (e: any) {
+        logConnectionEvent({ type: 'scan_done', detail: `watchdog restartNobleHci fel: ${e?.message ?? e}` });
+      }
+    })();
+
     // Merge results into found-map.
     for (const d of hres.devices) {
       found.set(d.id, { ...d, source: 'hcitool' });
