@@ -181,6 +181,25 @@ else
   echo "  ⚠ hcitool saknas — installera bluez-paketet"
 fi
 
+# 1c. Sätt file capabilities direkt på node-binären.
+#     Verifierat: med `sudo node` fungerar noble perfekt (state=poweredOn,
+#     discover-events strömmar in). Med systemd AmbientCapabilities fastnar
+#     state på "unknown" — Node.js native bindings (@stoprocent/noble) verkar
+#     inte alltid plocka upp ambient caps. setcap på själva binären är
+#     den robusta lösningen.
+NODE_BIN="$(readlink -f "$(command -v node)")"
+if [ -n "$NODE_BIN" ] && [ -f "$NODE_BIN" ]; then
+  if ! getcap "$NODE_BIN" 2>/dev/null | grep -q "cap_net_raw"; then
+    sudo setcap 'cap_net_raw,cap_net_admin+eip' "$NODE_BIN" \
+      && echo "  Satte CAP_NET_RAW på node ($NODE_BIN) ✓" \
+      || echo "  ⚠ Kunde inte sätta caps på node"
+  else
+    echo "  node har redan CAP_NET_RAW ✓"
+  fi
+else
+  echo "  ⚠ node-binär hittades inte"
+fi
+
 # 2-4. Auto-fixa systemd-tjänsten om capabilities eller startup-order saknas
 SVC_FILE="$HOME/.config/systemd/user/lotus-light-engine.service"
 BLE_FIXED=false
