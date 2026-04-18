@@ -67,8 +67,6 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       });
     }
   }, timeoutMs + 5000);
-  let rawDiscoverCount = 0;
-
   const onDiscover = (p: any) => {
     rawDiscoverCount++;
     const dev = peripheralToDevice(p);
