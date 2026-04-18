@@ -12,7 +12,7 @@ import {
   getNobleRawState, bumpWorkaround,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
+import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
@@ -360,12 +360,13 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   const targetNorm = normalizeBleKey(targetMacOrId);
 
   // Master-switchen äger adaptern. Vi rör inte HCI här — bara verifierar
-  // att noble är poweredOn. Om inte: misslyckas tydligt.
-  if (getNobleRawState() !== 'poweredOn') {
+  // att adaptern är redo. Acceptera caps-aware effective state om noble
+  // raw fastnat i `unknown` (vanligt på Pi Zero 2W). Se isAdapterReadyForBleOps.
+  if (!isAdapterReadyForBleOps()) {
     logConnectionEvent({
       type: 'connect_fail',
       device: name,
-      detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+      detail: `Adaptern är inte redo (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}) — slå på BLE-radio i UI`,
     });
     return false;
   }
@@ -597,13 +598,14 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   return withConnectLock(savedName, () => 1, async () => {
     if (getDevice()) return 1;
 
-    // Master-switchen äger adaptern. Om noble inte är poweredOn här,
-    // misslyckas vi tydligt — utan att försöka väcka HCI själv.
-    if (getNobleRawState() !== 'poweredOn') {
+    // Master-switchen äger adaptern. Acceptera caps-aware effective state
+    // om noble raw fastnat i `unknown` — då fungerar scan/connect ändå
+    // eftersom HCI-socketen är frisk. Se isAdapterReadyForBleOps.
+    if (!isAdapterReadyForBleOps()) {
       logConnectionEvent({
         type: 'connect_fail',
         device: savedName,
-        detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+        detail: `Adaptern är inte redo (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}) — slå på BLE-radio i UI`,
       });
       return 0;
     }

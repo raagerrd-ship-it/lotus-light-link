@@ -8,6 +8,7 @@
  */
 
 import { noble, getAdapterState, logConnectionEvent, getNobleRawState } from './state.js';
+import { isAdapterReadyForBleOps } from './adapter.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
