@@ -408,6 +408,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     // ── Pipeline-checklista — ett steg-för-steg "vad är online?"-svar
     // som UI:t kan rendera som bockrutor istället för att gräva i loggar.
     const probe = getHciProbeSnapshot();
+    const forceMut = getForceMutationSnapshot();
     const hciUpRunning = /UP\s+RUNNING/.test(hciRaw);
     const rfkillUnblocked = !/Soft blocked: yes|Hard blocked: yes/i.test(rfkill);
     const nobleStateOk = nobleRaw.state === 'poweredOn' || nobleRaw._state === 'poweredOn';
