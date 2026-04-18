@@ -1382,9 +1382,43 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
           <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
             Eventlogg ({diag.events.length})
           </span>
-          <button onClick={refresh} disabled={loading} className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50">
-            {loading ? <Loader2 size={10} className="animate-spin" /> : '↻'}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const text = diag.events.slice().reverse().map((ev) => {
+                  const parsed = new Date(ev.timestamp);
+                  const time = isNaN(parsed.getTime()) ? '??:??:??' : parsed.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  const parts = [time, ev.type];
+                  if (ev.device) parts.push(ev.device);
+                  if (ev.durationMs != null) parts.push(`${ev.durationMs}ms`);
+                  if (ev.detail) parts.push(ev.detail);
+                  return parts.join('\t');
+                }).join('\n');
+                const fallback = () => {
+                  const ta = document.createElement('textarea');
+                  ta.value = text;
+                  ta.style.position = 'fixed';
+                  ta.style.opacity = '0';
+                  document.body.appendChild(ta);
+                  ta.select();
+                  try { document.execCommand('copy'); } catch {}
+                  document.body.removeChild(ta);
+                };
+                if (navigator.clipboard?.writeText) {
+                  navigator.clipboard.writeText(text).catch(fallback);
+                } else {
+                  fallback();
+                }
+              }}
+              className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50"
+              title="Kopiera hela loggen"
+            >
+              📋 Kopiera
+            </button>
+            <button onClick={refresh} disabled={loading} className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50">
+              {loading ? <Loader2 size={10} className="animate-spin" /> : '↻'}
+            </button>
+          </div>
         </div>
         {diag.events.length > 0 ? (
           <div className="bg-background/40 rounded-lg border border-border/50 p-2 max-h-56 overflow-y-auto text-[10px] font-mono space-y-0.5">
