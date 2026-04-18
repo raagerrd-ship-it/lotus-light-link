@@ -1022,14 +1022,12 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Adaptiv auto-poll: 2s när noble inte är poweredOn (snabb feedback under boot/recovery),
-  // 5s i normalt läge.
+  // Adaptiv auto-poll: 2s under boot/recovery, annars 5s.
   useEffect(() => {
-    const nobleStateRaw = diag?.adapter?.nobleRaw?.state ?? 'unknown';
-    const fast = nobleStateRaw !== 'poweredOn' || diag?.boot?.stillBooting === true;
+    const fast = diag?.boot?.stillBooting === true || diag?.adapter?.state !== 'poweredOn';
     const iv = setInterval(refresh, fast ? 2000 : 5000);
     return () => clearInterval(iv);
-  }, [refresh, diag?.adapter?.nobleRaw?.state, diag?.boot?.stillBooting]);
+  }, [refresh, diag?.boot?.stillBooting, diag?.adapter?.state]);
 
   // Tick varje sek så "Xs sedan"-text uppdateras live
   useEffect(() => {
@@ -1048,7 +1046,8 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const stateColor = a.state === 'poweredOn' ? 'text-green-400' : a.state === 'unauthorized' ? 'text-destructive' : 'text-yellow-400';
   const nobleRaw = a.nobleRaw;
   const nobleStateRaw = nobleRaw?.state ?? nobleRaw?._state ?? nobleRaw?.adapterState ?? nobleRaw?._adapterState ?? 'unknown';
-  const rawStateIgnored = a.state === 'poweredOn' && a.hasCaps && nobleStateRaw !== 'poweredOn';
+  const hadEarlyStateChange = diag.boot?.everPoweredOn === true;
+  const rawStateIgnored = (a.state === 'poweredOn' && a.hasCaps) || hadEarlyStateChange;
   const nobleStateColor = rawStateIgnored
     ? 'text-muted-foreground'
     : nobleStateRaw === 'poweredOn'
@@ -1056,7 +1055,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       : nobleStateRaw === 'unauthorized'
         ? 'text-destructive'
         : 'text-yellow-400';
-  const rawStateLabel = rawStateIgnored ? 'noble.state (rå, ignoreras på Pi)' : 'noble.state (rå)';
+  const rawStateLabel = rawStateIgnored ? 'noble.state (rå, endast referens på Pi)' : 'noble.state (rå)';
 
   const enabled = diag.enabled === true;
   const stillBooting = diag.boot?.stillBooting === true;
