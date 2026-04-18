@@ -450,46 +450,36 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       },
       {
         id: 'noble-state',
-        label: 'noble.state = poweredOn (rå)',
-        status: nobleStateOk ? 'ok' : (stillBooting ? 'pending' : 'fail'),
-        detail: nobleStateOk
-          ? 'OK'
+        label: 'Tidig noble stateChange fångad',
+        status: everPoweredOn ? 'ok' : (stillBooting ? 'pending' : 'fail'),
+        detail: everPoweredOn
+          ? `OK${firstStateChangeAt ? ` — första stateChange ${Math.round((firstStateChangeAt - bootStartedAt) / 1000)}s efter boot` : ''}`
           : stillBooting
-            ? `Väntar på stateChange (${Math.round(bootElapsedMs / 1000)}s av ${NOBLE_BOOT_GRACE_MS / 1000}s)`
-            : 'unknown — libuv-race vid boot, force-mutation används som fallback',
+            ? `Väntar på första stateChange (${Math.round(bootElapsedMs / 1000)}s av ${NOBLE_BOOT_GRACE_MS / 1000}s)`
+            : 'Ingen stateChange fångad ännu — kontrollera boot/import-ordning',
+      },
+      {
+        id: 'noble-raw-reference',
+        label: 'noble.state (rå, endast referens på Pi)',
+        status: rawStateIgnored ? 'ok' : (nobleStateOk ? 'ok' : 'pending'),
+        detail: rawStateIgnored
+          ? `Rå state är ${nobleRaw.state ?? nobleRaw._state ?? 'unknown'} — ignoreras eftersom tidig stateChange/adaptern redan visar redo läge`
+          : nobleStateOk
+            ? 'OK'
+            : 'Kan ligga kvar på unknown på Pi trots att BLE fungerar',
       },
       {
         id: 'force-mutation',
-        label: 'Force-mutation av noble.state lyckas',
-        status: forceMut ? stepStatus(forceMut.stuck) : (nobleStateOk ? 'ok' : 'pending'),
-        detail: forceMut
-          ? forceMut.stuck
-            ? `OK — fastnade (after=${forceMut.after}, ok=[${forceMut.attempts.join(',')}])`
-            : `FAIL — after=${forceMut.after}, fail=[${forceMut.failures.join(';') || 'none'}]`
-          : nobleStateOk
-            ? 'Behövs ej (noble.state redan OK)'
-            : 'Inte körd ännu — triggas vid scan/connect',
+        label: 'Ingen force-mutation av noble.state används',
+        status: 'ok',
+        detail: 'Korrekt strategi: vänta på riktig stateChange vid boot; mutera aldrig _state manuellt',
       },
-      (() => {
-        const guard = getNobleGuardPatchResult();
-        const needed = forceMut && !forceMut.stuck;
-        return {
-          id: 'noble-guard-patch',
-          label: 'Noble scan/connect-guard bypassad (runtime-patch)',
-          status: guard
-            ? stepStatus(guard.ok)
-            : needed
-              ? 'pending'
-              : 'ok',
-          detail: guard
-            ? guard.ok
-              ? `OK — patched [${guard.methods.join(',')}]${guard.error ? ` (warn: ${guard.error})` : ''}`
-              : `FAIL — ${guard.error ?? 'no methods patched'}`
-            : needed
-              ? 'Behövs men inte körd än'
-              : 'Behövs ej (force-mutation fastnade)',
-        };
-      })(),
+      {
+        id: 'noble-guard-patch',
+        label: 'Ingen runtime-bypass av noble scan/connect-guard behövs',
+        status: 'ok',
+        detail: 'Använder tidig stateChange-cache + effektiv adapterstatus i stället för patchar',
+      },
       {
         id: 'adapter-effective',
         label: 'Effektiv adapter-state poweredOn',
