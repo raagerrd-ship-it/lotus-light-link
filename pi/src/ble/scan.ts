@@ -12,6 +12,7 @@ import { isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
+import { hcitoolLescan, type HcitoolScanResult } from './hcitool-scan.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -33,6 +34,16 @@ export interface BleScanMetrics {
   lastStartError: string | null;
   lastStopError: string | null;
   lastWatchdogAt: string | null;
+  /** Hybrid hcitool lescan stats from the most recent scan */
+  hcitool: {
+    enabled: boolean;
+    deviceCount: number;
+    rawLineCount: number;
+    exitCode: number | null;
+    startError: string | null;
+    stderr: string;
+    durationMs: number;
+  } | null;
 }
 
 let _scanSeq = 0;
@@ -50,6 +61,7 @@ const scanMetrics: BleScanMetrics = {
   lastStartError: null,
   lastStopError: null,
   lastWatchdogAt: null,
+  hcitool: null,
 };
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
