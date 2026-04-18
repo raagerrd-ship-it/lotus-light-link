@@ -184,18 +184,20 @@ fi
 # 1b. Ge hcitool CAP_NET_RAW så att vår scan-fallback fungerar utan sudo.
 #     Noble håller HCI-socketen, men hcitool kan ändå köra LE-scan parallellt
 #     när det har caps. Utan detta failar fallbacken med "Operation not permitted".
-HCITOOL_BIN="$(command -v hcitool 2>/dev/null || true)"
-if [ -n "$HCITOOL_BIN" ]; then
-  if ! getcap "$HCITOOL_BIN" 2>/dev/null | grep -q "cap_net_raw"; then
-    sudo setcap 'cap_net_raw,cap_net_admin+eip' "$HCITOOL_BIN" \
-      && echo "  Satte CAP_NET_RAW på hcitool ✓" \
-      || echo "  ⚠ Kunde inte sätta caps på hcitool"
-  else
-    echo "  hcitool har redan CAP_NET_RAW ✓"
+for SCAN_BIN_NAME in hcitool btmgmt bluetoothctl; do
+  SCAN_BIN_PATH="$(command -v "$SCAN_BIN_NAME" 2>/dev/null || true)"
+  if [ -z "$SCAN_BIN_PATH" ]; then
+    echo "  ⚠ $SCAN_BIN_NAME saknas — installera bluez-paketet"
+    continue
   fi
-else
-  echo "  ⚠ hcitool saknas — installera bluez-paketet"
-fi
+  if ! getcap "$SCAN_BIN_PATH" 2>/dev/null | grep -q "cap_net_raw"; then
+    sudo setcap 'cap_net_raw,cap_net_admin+eip' "$SCAN_BIN_PATH" \
+      && echo "  Satte CAP_NET_RAW på $SCAN_BIN_NAME ✓" \
+      || echo "  ⚠ Kunde inte sätta caps på $SCAN_BIN_NAME"
+  else
+    echo "  $SCAN_BIN_NAME har redan CAP_NET_RAW ✓"
+  fi
+done
 
 # 1c. Sätt file capabilities direkt på node-binären.
 #     Verifierat: med `sudo node` fungerar noble perfekt (state=poweredOn,

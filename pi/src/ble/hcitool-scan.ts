@@ -26,6 +26,8 @@ export interface HcitoolScanResult {
   startError: string | null;
   stderr: string;
   durationMs: number;
+  /** Vilket scan-verktyg som faktiskt användes (btmgmt/bluetoothctl/hcitool/none) */
+  tool?: string;
 }
 
 const __filename = fileURLToPath(import.meta.url);
