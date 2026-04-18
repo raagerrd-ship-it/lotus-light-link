@@ -537,14 +537,19 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
   });
 
   try {
-    // Tvinga noble.state ovillkorligt precis innan connectAsync (samma libuv-race som scan).
-    const rawBeforeForce = getNobleRawState() ?? 'unknown';
+    // Vänta på RIKTIG noble.state=poweredOn (inte force-mutate, som är no-op).
+    const rawBeforeWait = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
-    const forced = forceNobleStateMutate();
+    try {
+      await (noble as any).waitForPoweredOnAsync?.(10_000);
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: `direct: waitForPoweredOn failed: ${e.message}` });
+      return false;
+    }
     logConnectionEvent({
       type: 'connect_start',
       device: name,
-      detail: `direct: forceNoblePoweredOn → ${forced ? 'OK' : 'SKIPPED'} (raw_before=${rawBeforeForce}, hci_up=${hciUp})`,
+      detail: `direct: waitForPoweredOn OK (raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
     });
     // noble.connectAsync(address, options) — connectar utan scan.
     const peripheral = await withTimeout(
