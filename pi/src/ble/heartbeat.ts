@@ -96,7 +96,7 @@ function tick(): void {
   // Eventlog ringbuffer: bara om något ändrats vs förra eller var 6:e tick
   // (annars fyller vi 50-event-bufferten på 10 minuter med samma rad).
   if (_tickCount === 1 || _tickCount % 6 === 0 || msg !== _lastLoggedMsg) {
-    logConnectionEvent({ type: 'connect_start', detail: `hb: ${msg}` });
+    logConnectionEvent({ type: 'heartbeat', detail: `hb: ${msg}` });
     _lastLoggedMsg = msg;
   }
   // Schemalägg nästa tick med dynamisk intervall

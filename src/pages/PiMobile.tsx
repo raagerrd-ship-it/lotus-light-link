@@ -1336,6 +1336,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
               const parsed = new Date(ev.timestamp);
               const time = isNaN(parsed.getTime()) ? '??:??:??' : parsed.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
               const typeColor = ev.type.includes('fail') || ev.type === 'disconnect' ? 'text-destructive'
+                : ev.type === 'heartbeat' ? 'text-muted-foreground/50'
                 : ev.type.includes('ok') || ev.type.includes('connect_start') ? 'text-green-400'
                 : ev.type.includes('scan') ? 'text-blue-400'
                 : ev.type.includes('hci') ? 'text-yellow-400'
