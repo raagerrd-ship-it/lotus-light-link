@@ -186,7 +186,7 @@ async function main() {
 
   // BLE capabilities self-check — varnar tydligt om systemd-tjänsten saknar
   // CAP_NET_RAW/CAP_NET_ADMIN så vi inte gissar på "varför funkar inte BLE?".
-  const { runBleCapsSelfCheck, logConnectionEvent } = await import('./ble/state.js');
+  const { runBleCapsSelfCheck, logConnectionEvent, setHciProbeSnapshot } = await import('./ble/state.js');
   const capsCheck = runBleCapsSelfCheck();
 
   // HCI raw socket probe — ground truth-test som gör samma syscall som
@@ -196,6 +196,13 @@ async function main() {
   try {
     const { probeHciSocket } = await import('./ble/hci-socket-probe.js');
     const probe = probeHciSocket();
+    setHciProbeSnapshot({
+      ok: probe.ok,
+      method: probe.method,
+      errno: probe.errno,
+      error: probe.error,
+      details: probe.details,
+    });
     if (probe.ok) {
       console.log(`[BLE:hci-probe] ✓ HCI raw socket OK (${probe.method})`);
       logConnectionEvent({ type: 'connect_start', detail: `hci-probe OK: ${probe.details ?? probe.method}` });
