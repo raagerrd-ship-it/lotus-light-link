@@ -100,41 +100,53 @@ async function main() {
 
   console.log('');
 
+  // ── BOOT TIMING DIAGNOSTIC ──
+  // Logga exakt hur lång tid varje steg tar så vi kan se var libuv blockeras.
+  const bootT0 = Date.now();
+  const bt = (label: string) => console.log(`[BootTime +${(Date.now() - bootT0).toString().padStart(5, ' ')}ms] ${label}`);
+
   // STEP A: Wait for hci0 BEFORE loading anything that touches noble.
-  // adapter-hci-check.ts is standalone (no noble import) so this poll runs
-  // without triggering noble's HCI bindings init.
+  bt('STEP A: importing adapter-hci-check.js...');
   const { waitForHci0Up, isHci0Up } = await import('./ble/adapter-hci-check.js');
+  bt('STEP A: import done, checking hci0...');
   if (!isHci0Up()) {
-    console.log('[Boot] Väntar på att hci0 ska bli UP RUNNING (max 10s)...');
+    bt('STEP A: hci0 DOWN — waiting up to 10s for UP RUNNING...');
     const up = await waitForHci0Up(10000);
-    console.log(up
-      ? '[Boot] ✓ hci0 UP RUNNING — laddar noble nu'
-      : '[Boot] ⚠ hci0 fortfarande nere efter 10s — laddar noble ändå (BLE kan kräva manuell "Återställ BLE-stack")');
+    bt(up ? 'STEP A: ✓ hci0 UP RUNNING' : 'STEP A: ⚠ hci0 still down after 10s');
   } else {
-    console.log('[Boot] ✓ hci0 redan UP RUNNING');
+    bt('STEP A: ✓ hci0 already UP RUNNING');
   }
 
-  // STEP B: NOW it's safe to import noble + everything that depends on it.
-  // These dynamic imports cause noble to init in a process where hci0 is up.
+  // STEP B: import noble. This is when @stoprocent/noble's HCI binding fires up.
+  bt('STEP B: importing nobleBle.js (this triggers noble HCI init)...');
   const nobleBle = await import('./nobleBle.js');
+  bt('STEP B: nobleBle.js import done');
   const {
     scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount,
     setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand,
     BLE_BUILD_TAG, waitForFirstStateChange,
   } = nobleBle;
 
-  // STEP B.1 — CRITICAL: await noble's first `stateChange` BEFORE we boot
-  // anything that blocks the event loop (Express, Sonos poller, alsa-mic).
-  // noble emits `stateChange` exactly once via libuv. If we sync-block the
-  // event loop before it fires, the event is lost and noble.state stays
-  // `unknown` forever (proven by SSH test: 3s busy-loop after require →
-  // stateChange only arrives after loop frees).
-  //
-  // Timeout: 30s. På Pi Zero 2W tar noble 30–90s att vakna när bluetoothd
-  // precis startat (post-install/restart), men <5s vid normal boot. Att
-  // blockera boot här är OK — det körs en gång per process-start.
-  const firstState = await waitForFirstStateChange(30000);
-  console.log(`[Boot] ✓ noble first stateChange = ${firstState}`);
+  // STEP B.1 — Wait for noble to actually power on. We use TWO mechanisms in parallel:
+  //   (a) our cached stateChange listener (set up at top of state.ts)
+  //   (b) noble's own waitForPoweredOnAsync — proven working in SSH replica test
+  // Whichever resolves first wins. This eliminates the case where our listener
+  // missed the event but noble's internal promise still works.
+  bt('STEP B.1: awaiting noble stateChange (cached + waitForPoweredOnAsync race, 30s)...');
+  const noble = (await import('@stoprocent/noble')).default as any;
+  const firstState = await Promise.race([
+    waitForFirstStateChange(30000),
+    (async () => {
+      try {
+        await noble.waitForPoweredOnAsync(30000);
+        return 'poweredOn';
+      } catch (e: any) {
+        return 'wait-timeout';
+      }
+    })(),
+  ]);
+  bt(`STEP B.1: ✓ first stateChange resolved = ${firstState}`);
+  console.log(`[Boot] noble.state after wait = ${noble.state}`);
 
   // STEP B.2 — NU är det säkert att ladda alsaMic. Native ALSA-bindningen
   // gör synkron init som annars hade blockerat libuv och ätit noble's
