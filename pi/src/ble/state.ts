@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/force-mutation-isolated';
+export const BLE_BUILD_TAG = '2026-04-18/pipeline-force-mutation-step';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -57,6 +57,22 @@ export function setHciProbeSnapshot(s: Omit<HciProbeSnapshot, 'ranAt'>): void {
   _hciProbeSnapshot = { ...s, ranAt: new Date().toISOString() };
 }
 export function getHciProbeSnapshot(): HciProbeSnapshot | null { return _hciProbeSnapshot; }
+
+// ── Force-mutation snapshot (last forceNoblePoweredOn() result) ──
+// Visas som ett steg i pipeline-checklistan i UI:t så användaren ser
+// om mutation faktiskt fastnar eller om noble har read-only getters.
+export interface ForceMutationSnapshot {
+  stuck: boolean;
+  after: string | undefined;
+  attempts: string[];
+  failures: string[];
+  ranAt: string;
+}
+let _forceMutationSnapshot: ForceMutationSnapshot | null = null;
+export function getForceMutationSnapshot(): ForceMutationSnapshot | null { return _forceMutationSnapshot; }
+function setForceMutationSnapshot(s: Omit<ForceMutationSnapshot, 'ranAt'>): void {
+  _forceMutationSnapshot = { ...s, ranAt: new Date().toISOString() };
+}
 
 try {
   (noble as any).on?.('stateChange', (s: string) => {
@@ -533,6 +549,8 @@ export function forceNoblePoweredOn(): boolean {
     _firstStateChangeResolve('poweredOn');
     _firstStateChangeResolve = null;
   }
+
+  setForceMutationSnapshot({ stuck, after, attempts, failures });
 
   if (!_forcePoweredOnLogged) {
     console.log(`[BLE] forceNoblePoweredOn: attempts=${attempts.join(',')} failures=${failures.join(';') || 'none'} stuck=${stuck} after=${after}`);

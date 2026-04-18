@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getEnabledSource, getEnabledChangedAt } from './nobleBle.js';
-import { bumpWorkaround, getHciProbeSnapshot } from './ble/state.js';
+import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
 import { scheduleNobleStuckWatchdog, getWatchdogGiveUpReason } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
@@ -408,6 +408,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     // ── Pipeline-checklista — ett steg-för-steg "vad är online?"-svar
     // som UI:t kan rendera som bockrutor istället för att gräva i loggar.
     const probe = getHciProbeSnapshot();
+    const forceMut = getForceMutationSnapshot();
     const hciUpRunning = /UP\s+RUNNING/.test(hciRaw);
     const rfkillUnblocked = !/Soft blocked: yes|Hard blocked: yes/i.test(rfkill);
     const nobleStateOk = nobleRaw.state === 'poweredOn' || nobleRaw._state === 'poweredOn';
@@ -456,6 +457,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
           : stillBooting
             ? `Väntar på stateChange (${Math.round(bootElapsedMs / 1000)}s av ${NOBLE_BOOT_GRACE_MS / 1000}s)`
             : 'unknown — libuv-race vid boot, force-mutation används som fallback',
+      },
+      {
+        id: 'force-mutation',
+        label: 'Force-mutation av noble.state lyckas',
+        status: forceMut ? stepStatus(forceMut.stuck) : (nobleStateOk ? 'ok' : 'pending'),
+        detail: forceMut
+          ? forceMut.stuck
+            ? `OK — fastnade (after=${forceMut.after}, ok=[${forceMut.attempts.join(',')}])`
+            : `FAIL — after=${forceMut.after}, fail=[${forceMut.failures.join(';') || 'none'}]`
+          : nobleStateOk
+            ? 'Behövs ej (noble.state redan OK)'
+            : 'Inte körd ännu — triggas vid scan/connect',
       },
       {
         id: 'adapter-effective',
