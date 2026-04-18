@@ -377,15 +377,19 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
 export async function nobleScanConnect(targetMacOrId: string, name: string, timeoutMs = 6000): Promise<boolean> {
   const targetNorm = normalizeBleKey(targetMacOrId);
 
-  // Trust caps — don't gate on adapter state
-  if (!await waitForAdapter(name)) return false;
+  // Master-switchen äger adaptern. Vi rör inte HCI här — bara verifierar
+  // att noble är poweredOn. Om inte: misslyckas tydligt.
+  if (getNobleRawState() !== 'poweredOn') {
+    logConnectionEvent({
+      type: 'connect_fail',
+      device: name,
+      detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+    });
+    return false;
+  }
 
   // Make sure no stale scan is holding the HCI socket
   try { (noble as any).stopScanning?.(); } catch {}
-
-  // Only force-reinit noble if it's NOT already poweredOn. Touching the
-  // adapter when noble is healthy is what causes most `unknown` lockups.
-  await forceNoblePoweredOn(name);
 
   const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
     let done = false;
