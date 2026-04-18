@@ -190,7 +190,11 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
 // genom L2CAP-handshake på 3s — varje retransmission tar ~750ms och vi
 // behöver flera. GATT discovery på BLEDOM kan också ta upp till ~4s på
 // marginell länk.
-const TIMEOUTS = { l2cap: 8000, gatt: 5000, write: 2000 } as const;
+// gatt 5000→3000: BLEDOM idle-timeout är ~2s efter ServicesResolved.
+// Bekräftat via bluetoothctl: connect_ok → ServicesResolved:yes → reason 1
+// inom 1-2s om vi inte writeat något. Snabb fail + retry är bättre än
+// att vänta 5s på en redan död länk.
+const TIMEOUTS = { l2cap: 8000, gatt: 3000, write: 1500 } as const;
 type StepKind = keyof typeof TIMEOUTS;
 
 function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
