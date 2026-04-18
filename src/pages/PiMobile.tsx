@@ -1078,13 +1078,40 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
             <span className="text-sm font-semibold flex items-center gap-2">
               BLE-radio
               {stillBooting && <Loader2 size={12} className="animate-spin text-yellow-400" />}
+              {(() => {
+                const src = diag.enabledMeta?.source;
+                if (!src || src === 'boot-default') return null;
+                const label =
+                  src === 'auto-restore' ? 'auto-återställd' :
+                  src === 'manual-toggle' ? 'manuellt vald' :
+                  src;
+                const cls =
+                  src === 'auto-restore'
+                    ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                    : 'bg-primary/15 text-primary border-primary/30';
+                const ts = diag.enabledMeta?.changedAt
+                  ? new Date(diag.enabledMeta.changedAt).toLocaleTimeString()
+                  : undefined;
+                return (
+                  <span
+                    className={`text-[9px] font-mono uppercase tracking-wide rounded-full px-1.5 py-0.5 border ${cls}`}
+                    title={ts ? `Ändrad ${ts}${diag.enabledMeta?.wasEnabledBeforeRestart ? ' • storage: ON' : ' • storage: OFF'}` : undefined}
+                  >
+                    {label}
+                  </span>
+                );
+              })()}
             </span>
             <span className="text-[10px] text-muted-foreground">
               {stillBooting
                 ? `Initialiserar BLE-adaptern… (${bootElapsedSec ?? '?'}s) — kan ta upp till 90s vid kall boot`
                 : enabled
-                  ? 'På — söker / ansluter sparad enhet'
-                  : 'Av — adaptern är fri (default vid uppstart)'}
+                  ? diag.enabledMeta?.source === 'auto-restore'
+                    ? 'På — auto-återställd från senaste session'
+                    : 'På — söker / ansluter sparad enhet'
+                  : diag.enabledMeta?.wasEnabledBeforeRestart
+                    ? 'Av — var PÅ före restart men noble vaknade inte i tid'
+                    : 'Av — adaptern är fri (default vid uppstart)'}
             </span>
           </div>
           <button
