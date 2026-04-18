@@ -186,8 +186,29 @@ async function main() {
 
   // BLE capabilities self-check — varnar tydligt om systemd-tjänsten saknar
   // CAP_NET_RAW/CAP_NET_ADMIN så vi inte gissar på "varför funkar inte BLE?".
-  const { runBleCapsSelfCheck } = await import('./ble/state.js');
-  runBleCapsSelfCheck();
+  const { runBleCapsSelfCheck, logConnectionEvent } = await import('./ble/state.js');
+  const capsCheck = runBleCapsSelfCheck();
+
+  // HCI raw socket probe — ground truth-test som gör samma syscall som
+  // noble's native binding. Om denna failar med EPERM så hjälper inte
+  // ens setcap på node-binären, och vi vet att problemet sitter på
+  // kernel-/LSM-/AppArmor-nivå (inte i vår caps-config).
+  try {
+    const { probeHciSocket } = await import('./ble/hci-socket-probe.js');
+    const probe = probeHciSocket();
+    if (probe.ok) {
+      console.log(`[BLE:hci-probe] ✓ HCI raw socket OK (${probe.method})`);
+      logConnectionEvent({ type: 'connect_start', detail: `hci-probe OK: ${probe.details ?? probe.method}` });
+    } else {
+      console.error(`[BLE:hci-probe] ✗ HCI raw socket FAILED: ${probe.error}`);
+      logConnectionEvent({
+        type: 'connect_fail',
+        detail: `hci-probe FAIL (${probe.method}): ${probe.error}${capsCheck.hasCaps ? ' — CapEff säger OK men socket() failar ändå' : ''}`,
+      });
+    }
+  } catch (e: any) {
+    console.error('[BLE:hci-probe] probe crashed:', e?.message ?? e);
+  }
 
   // Starta heartbeat-loggning så UI:t alltid har löpande status att visa
   // även när noble fastnat eller ingen connect-aktivitet pågår.
