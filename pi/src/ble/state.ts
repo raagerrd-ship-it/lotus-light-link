@@ -27,27 +27,24 @@ console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 // We MUST attach the listener synchronously here, on the very first import
 // of noble, and cache the latest state for everyone else to read.
 let _cachedNobleState: string | undefined = undefined;
-let _firstStateChangeResolve: ((s: string) => void) | null = null;
-const _firstStateChangePromise: Promise<string> = new Promise((resolve) => {
+let _firstStateChangeResolve: any = null;
+const _firstStateChangePromise: Promise<string> = new Promise<string>((resolve) => {
   _firstStateChangeResolve = resolve;
 });
 try {
   (noble as any).on?.('stateChange', (s: string) => {
     _cachedNobleState = s;
     console.log(`[BLE:stateChange] ${s}`);
-    const r = _firstStateChangeResolve as ((s: string) => void) | null;
-    if (r) {
-      r(s);
+    if (_firstStateChangeResolve) {
+      _firstStateChangeResolve(s);
       _firstStateChangeResolve = null;
     }
   });
-  // Pick up state if it was already set before we attached.
   const initial = (noble as any).state ?? (noble as any)._state;
   if (initial && initial !== 'unknown') {
     _cachedNobleState = initial;
-    const r = _firstStateChangeResolve as ((s: string) => void) | null;
-    if (r) {
-      r(initial);
+    if (_firstStateChangeResolve) {
+      _firstStateChangeResolve(initial);
       _firstStateChangeResolve = null;
     }
   }
