@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/boot-timing-and-waitForPoweredOnAsync-race';
+export const BLE_BUILD_TAG = '2026-04-18/record-observed-statechange-from-fallback';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -42,6 +42,24 @@ let _firstStateChangeAt: number | null = null;
 export function getBleBootStartedAt(): number { return _bootStartedAt; }
 export function getFirstStateChangeAt(): number | null { return _firstStateChangeAt; }
 export function hasNobleEverFiredStateChange(): boolean { return _firstStateChangeAt != null; }
+
+/**
+ * Markera att noble HAR fyrat stateChange — kallas från fallback-vägar
+ * (waitForPoweredOnAsync race i index.ts, eller getNobleRawState när vi
+ * läser noble.state direkt). Idempotent — sätter bara första gången.
+ */
+export function recordObservedNobleState(state: string): void {
+  if (!state || state === 'unknown') return;
+  if (!_cachedNobleState) _cachedNobleState = state;
+  if (_firstStateChangeAt == null) {
+    _firstStateChangeAt = Date.now();
+    console.log(`[BLE:stateChange:observed] ${state} (via fallback path, not early listener)`);
+  }
+  if (_firstStateChangeResolve) {
+    _firstStateChangeResolve(state);
+    _firstStateChangeResolve = null;
+  }
+}
 
 // ── HCI socket probe result (persisted from boot for diagnostics UI) ──
 export interface HciProbeSnapshot {
@@ -395,7 +413,13 @@ export function getNobleRawState(): string | undefined {
     adapterState?: string;
     _adapterState?: string;
   };
-  return n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+  const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+  // Om noble's egen property säger något annat än `unknown` så HAR
+  // stateChange fyrats någon gång — vår early-listener missade bara eventet
+  // (event-loop blockerad vid emit-ögonblicket). Markera observationen så
+  // hasNobleEverFiredStateChange() blir korrekt.
+  if (raw && raw !== 'unknown') recordObservedNobleState(raw);
+  return raw;
 }
 
 export function getAdapterState(): string | undefined {
