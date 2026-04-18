@@ -268,6 +268,21 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       scanMetrics.lastStopError = stopErr?.message ?? String(stopErr);
     }
 
+    // Wait for hcitool (parallel) to finish — it has its own timeoutMs.
+    if (hcitoolPromise) {
+      try {
+        const hres = await Promise.race([
+          hcitoolPromise,
+          new Promise<HcitoolScanResult>((resolve) =>
+            setTimeout(() => resolve({ devices: [], rawLineCount: 0, exitCode: null, startError: 'await-timeout', stderr: '', durationMs: 0 }), 3000)
+          ),
+        ]);
+        mergeHcitoolResults(hres);
+      } catch (e: any) {
+        scanMetrics.hcitool = { enabled: true, deviceCount: 0, rawLineCount: 0, exitCode: null, startError: e?.message ?? String(e), stderr: '', durationMs: 0 };
+      }
+    }
+
     lastScanResults = Array.from(found.values()).sort((a, b) => b.rssi - a.rssi);
     scanMetrics.phase = 'idle';
     scanMetrics.active = false;
@@ -277,13 +292,15 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     scanMetrics.lastRawDiscoverCount = rawDiscoverCount;
     scanMetrics.lastResultCount = lastScanResults.length;
 
+    const nobleCount = lastScanResults.filter(d => d.source === 'noble' || d.source === 'both').length;
+    const hcitoolCount = lastScanResults.filter(d => d.source === 'hcitool' || d.source === 'both').length;
     if (lastScanResults.length === 0) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `0 devices via noble — raw_discover_events=${rawDiscoverCount}. ${rawDiscoverCount === 0 ? 'INGA events alls från noble — HCI scan startar inte (kolla hcitool lescan manuellt)' : 'Events kom in men filtrerades bort'}. Adapter=${getAdapterState()}`,
+        detail: `0 devices total — noble_raw=${rawDiscoverCount}, hcitool_raw=${scanMetrics.hcitool?.rawLineCount ?? 0}, hcitool_err="${scanMetrics.hcitool?.startError ?? 'none'}". Adapter=${getAdapterState()}`,
       });
     } else {
-      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found via noble (raw_events=${rawDiscoverCount})` });
+      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) (noble=${nobleCount}, hcitool=${hcitoolCount}, noble_raw=${rawDiscoverCount})` });
     }
 
     return lastScanResults;
