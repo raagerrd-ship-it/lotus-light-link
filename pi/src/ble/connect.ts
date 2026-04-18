@@ -13,7 +13,7 @@ import {
   hasNobleEverFiredStateChange,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent, getKeepAliveSentCount } from './protocol.js';
-import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
+import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up, processHasBtCaps } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import { triggerNobleRespawn } from './watchdog.js';
@@ -26,14 +26,44 @@ import type { PiCharacteristic } from './types.js';
  * hade redan eventet vid boot, så vi behöver inte vänta igen.
  */
 async function waitNobleReady(timeoutMs: number, label: string, deviceName?: string): Promise<boolean> {
-  if (hasNobleEverFiredStateChange()) {
-    return true; // noble redan vaken — kör direkt
+  // Fast-path 1: vår early-listener fångade noble's stateChange.
+  if (hasNobleEverFiredStateChange()) return true;
+
+  // Fast-path 2: noble's libuv-event åts upp (race med native module init,
+  // se mem://pi/ble/noble-statechange-event-loop-race), MEN HCI-socket är
+  // frisk: caps OK + hci0 UP RUNNING. Empiriskt (mem://adapter.ts kommentar
+  // + ble-diag.mjs SSH-test) lyckas startScanningAsync/connectAsync ändå.
+  // Acceptera detta som "redo" istället för att vänta på ett event som
+  // aldrig kommer.
+  if (isAdapterReadyForBleOps() && processHasBtCaps() && isHci0Up()) {
+    logConnectionEvent({
+      type: 'connect_start',
+      device: deviceName,
+      detail: `${label}: waitNobleReady fast-path (raw=unknown men caps+hci0 OK — kör ändå)`,
+    });
+    return true;
   }
+
+  // Slow-path: vänta på faktisk stateChange (med kortare timeout — om
+  // noble inte vaknat på 1.5s händer det inte alls).
   try {
-    await (noble as any).waitForPoweredOnAsync?.(timeoutMs);
+    await (noble as any).waitForPoweredOnAsync?.(Math.min(timeoutMs, 1500));
     return true;
   } catch (e: any) {
-    logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `${label}: waitForPoweredOn failed: ${e.message}` });
+    // Sista chans: kolla caps+hci0 igen efter wait — något kan ha hunnit komma upp.
+    if (isAdapterReadyForBleOps() && processHasBtCaps() && isHci0Up()) {
+      logConnectionEvent({
+        type: 'connect_start',
+        device: deviceName,
+        detail: `${label}: waitForPoweredOn timeout men caps+hci0 OK — kör ändå`,
+      });
+      return true;
+    }
+    logConnectionEvent({
+      type: 'connect_fail',
+      device: deviceName,
+      detail: `${label}: waitForPoweredOn failed: ${e.message} (raw=${getNobleRawState() ?? 'unknown'}, hci_up=${isHci0Up()}, caps=${processHasBtCaps()})`,
+    });
     return false;
   }
 }
