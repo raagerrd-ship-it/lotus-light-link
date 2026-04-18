@@ -124,29 +124,27 @@ async function main() {
   const {
     scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount,
     setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand,
-    BLE_BUILD_TAG, waitForFirstStateChange,
+    BLE_BUILD_TAG, waitForFirstStateChange, noble,
   } = nobleBle;
 
-  // STEP B.1 — Wait for noble to actually power on. We use TWO mechanisms in parallel:
-  //   (a) our cached stateChange listener (set up at top of state.ts)
+  // STEP B.1 — Wait for noble to actually power on. Two mechanisms in parallel:
+  //   (a) cached stateChange listener (set up at top of state.ts)
   //   (b) noble's own waitForPoweredOnAsync — proven working in SSH replica test
-  // Whichever resolves first wins. This eliminates the case where our listener
-  // missed the event but noble's internal promise still works.
+  // Whichever resolves first wins.
   bt('STEP B.1: awaiting noble stateChange (cached + waitForPoweredOnAsync race, 30s)...');
-  const noble = (await import('@stoprocent/noble')).default as any;
   const firstState = await Promise.race([
     waitForFirstStateChange(30000),
     (async () => {
       try {
-        await noble.waitForPoweredOnAsync(30000);
+        await (noble as any).waitForPoweredOnAsync(30000);
         return 'poweredOn';
-      } catch (e: any) {
+      } catch {
         return 'wait-timeout';
       }
     })(),
   ]);
   bt(`STEP B.1: ✓ first stateChange resolved = ${firstState}`);
-  console.log(`[Boot] noble.state after wait = ${noble.state}`);
+  console.log(`[Boot] noble.state after wait = ${(noble as any).state}`);
 
   // STEP B.2 — NU är det säkert att ladda alsaMic. Native ALSA-bindningen
   // gör synkron init som annars hade blockerat libuv och ätit noble's

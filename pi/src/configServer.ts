@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getEnabledSource, getEnabledChangedAt, getScanMetrics } from './nobleBle.js';
-import { bumpWorkaround, getHciProbeSnapshot } from './ble/state.js';
+import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
 import { scheduleNobleStuckWatchdog, getWatchdogGiveUpReason } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
@@ -412,6 +412,10 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     const hciUpRunning = /UP\s+RUNNING/.test(hciRaw);
     const rfkillUnblocked = !/Soft blocked: yes|Hard blocked: yes/i.test(rfkill);
     const nobleStateOk = nobleRaw.state === 'poweredOn' || nobleRaw._state === 'poweredOn';
+    // På Pi förblir rå noble.state ofta `unknown` även när BLE fungerar perfekt.
+    // Vi flaggar rå-state som "ignorerad" så fort tidig stateChange fångats
+    // ELLER effektiv adapter-state är redo — då är rå-värdet bara referens.
+    const rawStateIgnored = (everPoweredOn || adapterReady) && !nobleStateOk;
     const radioOn = isBleEnabled();
     const savedDevice = !!getSavedDeviceId();
     const connected = getConnectedCount() > 0;
