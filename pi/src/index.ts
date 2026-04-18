@@ -14,13 +14,14 @@ import { installLocalStorageShim } from './storage.js';
 // Install shims before any engine imports
 installLocalStorageShim();
 
+// IMPORTANT: noble (via nobleBle.js / ble/state.ts) must NOT be imported at
+// top level. noble runs its HCI init synchronously on first require(), and if
+// hci0 is still DOWN at that moment it caches `poweredOff` forever in this
+// process. We therefore import everything that touches noble lazily inside
+// main(), AFTER waitForHci0Up() has confirmed the adapter is UP RUNNING.
 import { startMic, stopMic, setAlsaDevice, setMicGain, setAutoGainFromVolume } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
-import { PiLightEngine } from './piEngine.js';
-import { startConfigServer } from './configServer.js';
 import { getItem, setItem } from './storage.js';
-import { BLE_BUILD_TAG } from './nobleBle.js';
 // Palette now comes from Sonos Gateway response (no cloud call needed)
 
 // --- Config ---
@@ -62,8 +63,9 @@ async function main() {
   const savedAlsaDevice = getItem('alsa-device');
   if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
 
+  // dimming-gamma restore moved below — needs setDimmingGamma which is
+  // imported lazily after hci0 is up (avoids early noble init).
   const savedGamma = getItem('dimming-gamma');
-  if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
 
   // Restore auto TV-mode setting
   const savedAutoTv = getItem('auto-tv-mode');
@@ -82,8 +84,35 @@ async function main() {
   console.log(`  Bridge: ${SONOS_BUDDY_API_URL}`);
   console.log(`  SSE: ${DISABLE_SSE ? 'disabled' : SSE_PATH} | Poll: ${POLL_INTERVAL}ms`);
   console.log(`  Config API: :${CONFIG_PORT} (backend)${process.env.PORT ? ' [from env PORT]' : process.env.BACKEND_PORT ? ' [from env BACKEND_PORT]' : ' [default]'}`);
-  console.log(`  BLE build: ${BLE_BUILD_TAG}`);
 
+  console.log('');
+
+  // STEP A: Wait for hci0 BEFORE loading anything that touches noble.
+  // adapter-hci-check.ts is standalone (no noble import) so this poll runs
+  // without triggering noble's HCI bindings init.
+  const { waitForHci0Up, isHci0Up } = await import('./ble/adapter-hci-check.js');
+  if (!isHci0Up()) {
+    console.log('[Boot] Väntar på att hci0 ska bli UP RUNNING (max 10s)...');
+    const up = await waitForHci0Up(10000);
+    console.log(up
+      ? '[Boot] ✓ hci0 UP RUNNING — laddar noble nu'
+      : '[Boot] ⚠ hci0 fortfarande nere efter 10s — laddar noble ändå (BLE kan kräva manuell "Återställ BLE-stack")');
+  } else {
+    console.log('[Boot] ✓ hci0 redan UP RUNNING');
+  }
+
+  // STEP B: NOW it's safe to import noble + everything that depends on it.
+  // These dynamic imports cause noble to init in a process where hci0 is up.
+  const nobleBle = await import('./nobleBle.js');
+  const {
+    scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount,
+    setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand,
+    BLE_BUILD_TAG,
+  } = nobleBle;
+  const { PiLightEngine } = await import('./piEngine.js');
+  const { startConfigServer } = await import('./configServer.js');
+
+  console.log(`  BLE build: ${BLE_BUILD_TAG}`);
   console.log('');
 
   // BLE capabilities self-check — varnar tydligt om systemd-tjänsten saknar
@@ -91,29 +120,16 @@ async function main() {
   const { runBleCapsSelfCheck } = await import('./ble/state.js');
   runBleCapsSelfCheck();
 
-  // Vänta tills hci0 är UP RUNNING innan något BLE-anrop. PCC (root-service)
-  // ansvarar för att bringa upp adaptern via ExecStartPre. Vi pollar bara —
-  // user-service har inte root och kan inte köra `hciconfig hci0 up` själv.
-  const { waitForHci0Up, isHci0Up } = await import('./ble/adapter.js');
-  if (!isHci0Up()) {
-    console.log('[Boot] Väntar på att hci0 ska bli UP RUNNING (max 10s)...');
-    const up = await waitForHci0Up(10000);
-    console.log(up
-      ? '[Boot] ✓ hci0 UP RUNNING — noble kan initieras vid första BLE-anrop'
-      : '[Boot] ⚠ hci0 fortfarande nere efter 10s — BLE kommer kräva manuell "Återställ BLE-stack"');
-  } else {
-    console.log('[Boot] ✓ hci0 redan UP RUNNING');
-  }
+  // Apply dimming-gamma now that setDimmingGamma is available.
+  if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
 
   console.log('');
 
-  // 2. Create engine
   const engine = new PiLightEngine(effectiveTickMs);
 
   // 3. Start config server EARLY (so API is available during BLE/Sonos init)
   startConfigServer(engine, CONFIG_PORT);
 
-  // 4. Start microphone
   console.log('[Boot] Starting ALSA microphone...');
   try {
     startMic();
