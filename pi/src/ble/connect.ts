@@ -9,10 +9,10 @@ import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
-  getNobleRawState, bumpWorkaround,
+  getNobleRawState, bumpWorkaround, forceNoblePoweredOn,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps } from './adapter.js';
+import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
@@ -427,6 +427,13 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
 
     logConnectionEvent({ type: 'connect_start', device: name, detail: `Scanning for ${targetNorm} (timeout=${timeoutMs}ms)` });
 
+    // Tvinga noble.state=poweredOn innan startScanning — annars kastar
+    // noble's interna guard "Could not start scanning, state is unknown"
+    // även om HCI är UP och caps är OK (libuv-race på Pi Zero 2W).
+    if (getNobleRawState() !== 'poweredOn' && isHci0Up()) {
+      forceNoblePoweredOn();
+    }
+
     try {
       // Allow duplicates — BLEDOM advertises infrequently
       const startPromise = (noble as any).startScanningAsync?.([], true);
@@ -474,6 +481,10 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
   });
 
   try {
+    // Tvinga noble.state innan connectAsync (samma libuv-race som scan).
+    if (getNobleRawState() !== 'poweredOn' && isHci0Up()) {
+      forceNoblePoweredOn();
+    }
     // noble.connectAsync(address, options) — connectar utan scan.
     const peripheral = await withTimeout(
       (noble as any).connectAsync(address.toLowerCase(), { addressType }),
