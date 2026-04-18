@@ -549,19 +549,16 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
   });
 
   try {
-    // Vänta på RIKTIG noble.state=poweredOn (inte force-mutate, som är no-op).
+    // Skippa wait om noble redan har fyrat stateChange vid boot — annars vänta 5s.
     const rawBeforeWait = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
-    try {
-      await (noble as any).waitForPoweredOnAsync?.(10_000);
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `direct: waitForPoweredOn failed: ${e.message}` });
-      return false;
-    }
+    const everFired = hasNobleEverFiredStateChange();
+    const ok = await waitNobleReady(5_000, 'direct', name);
+    if (!ok) return false;
     logConnectionEvent({
       type: 'connect_start',
       device: name,
-      detail: `direct: waitForPoweredOn OK (raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
+      detail: `direct: noble ready (everFired=${everFired}, raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
     });
     // noble.connectAsync(address, options) — connectar utan scan.
     const peripheral = await withTimeout(
