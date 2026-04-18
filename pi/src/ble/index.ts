@@ -39,7 +39,8 @@ export { selectDevice, forgetDevice, saveManualDevice } from './save.js';
 export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.js';
 
 // Master switch
-export { isBleEnabled, setBleEnabled, wasEnabledBeforeRestart } from './enabled.js';
+export { isBleEnabled, setBleEnabled, wasEnabledBeforeRestart, getEnabledSource, getEnabledChangedAt } from './enabled.js';
+export type { EnabledSource } from './enabled.js';
 
 // Adapter wake-up (used by master switch ON)
 export { ensureAdapterUp, waitForNoblePoweredOn } from './adapter.js';

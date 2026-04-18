@@ -21,7 +21,11 @@ import { getItem, setItem } from '../storage.js';
 
 const STORAGE_KEY = 'ble-master-enabled';
 
+export type EnabledSource = 'boot-default' | 'manual-toggle' | 'auto-restore';
+
 let _enabled = false;
+let _source: EnabledSource = 'boot-default';
+let _changedAt: string = new Date().toISOString();
 
 /** True om användaren senast hade BLE-radion PÅ före omstart. */
 export function wasEnabledBeforeRestart(): boolean {
@@ -32,6 +36,15 @@ export function isBleEnabled(): boolean {
   return _enabled;
 }
 
+/** Var kommer nuvarande enabled-state ifrån? För felsökning i diagnostik. */
+export function getEnabledSource(): EnabledSource {
+  return _source;
+}
+
+export function getEnabledChangedAt(): string {
+  return _changedAt;
+}
+
 /**
  * @param value      ny state
  * @param persist    true (default) → spara i storage så det överlever
@@ -39,15 +52,25 @@ export function isBleEnabled(): boolean {
  *                   undvika onödiga skrivningar.
  */
 export function setBleEnabled(value: boolean, persist: boolean = true): void {
+  // persist=true betyder att det är ett aktivt val (UI-toggle / API-anrop);
+  // persist=false används bara för auto-restore vid boot.
+  const source: EnabledSource = persist ? 'manual-toggle' : 'auto-restore';
+
   if (_enabled === value) {
-    if (persist) setItem(STORAGE_KEY, value ? 'true' : 'false');
+    if (persist) {
+      setItem(STORAGE_KEY, value ? 'true' : 'false');
+      _source = source;
+      _changedAt = new Date().toISOString();
+    }
     return;
   }
   _enabled = value;
+  _source = source;
+  _changedAt = new Date().toISOString();
   if (persist) setItem(STORAGE_KEY, value ? 'true' : 'false');
   logConnectionEvent({
     type: 'connect_start',
-    detail: `BLE master switch → ${value ? 'ON' : 'OFF'}${persist ? '' : ' (auto-restore)'}`,
+    detail: `BLE master switch → ${value ? 'ON' : 'OFF'} (${source})`,
   });
-  console.log(`[BLE] master switch: ${value ? 'ON' : 'OFF'}${persist ? '' : ' (auto-restore vid boot)'}`);
+  console.log(`[BLE] master switch: ${value ? 'ON' : 'OFF'} (${source})`);
 }
