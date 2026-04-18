@@ -487,23 +487,18 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
 
     logConnectionEvent({ type: 'connect_start', device: name, detail: `Scanning for ${targetNorm} (timeout=${timeoutMs}ms)` });
 
-    // KRITISKT: vänta på RIKTIG stateChange från noble (upp till 10s).
-    // SSH-test 2026-04-18 bevisade: force-mutate _state är en lögn — noble's
-    // interna HCI-init körde aldrig klart, så startScanningAsync blir no-op
-    // och 0 discover-events kommer in. Däremot om vi väntar på riktig
-    // stateChange → poweredOn (tar typiskt 250ms) flödar discover direkt.
+    // Skippa wait om noble redan har fyrat stateChange vid boot — annars vänta 5s.
     const rawBeforeScan = getNobleRawState() ?? 'unknown';
+    const everFiredScan = hasNobleEverFiredStateChange();
     logConnectionEvent({
       type: 'connect_start',
       device: name,
-      detail: `scan: waitForPoweredOnAsync(10s) (raw_before=${rawBeforeScan}, hci_up=${isHci0Up()})`,
+      detail: `scan: waitNobleReady (everFired=${everFiredScan}, raw_before=${rawBeforeScan}, hci_up=${isHci0Up()})`,
     });
 
     (async () => {
-      try {
-        await (noble as any).waitForPoweredOnAsync?.(10_000);
-      } catch (e: any) {
-        logConnectionEvent({ type: 'connect_fail', device: name, detail: `waitForPoweredOn failed: ${e.message}` });
+      const ok = await waitNobleReady(5_000, 'scan', name);
+      if (!ok) {
         finish(false);
         return;
       }
