@@ -1,17 +1,21 @@
 /**
- * Hybrid discovery via `hcitool lescan`.
+ * Hybrid discovery via fristående `hcitool lescan` i en SUBPROCESS.
  *
- * noble's startScanningAsync sometimes hangs forever on Raspberry Pi even when
- * the adapter reports poweredOn. As a fallback we spawn `hcitool lescan` in
- * parallel and parse its line-based output ("MAC  NAME"). This bypasses noble
- * entirely for discovery — peripherals found via hcitool can later be connected
- * with the manual MAC flow.
+ * Noble håller HCI-socketen i huvudprocessen, vilket gör att hcitool i samma
+ * process får "Set scan parameters failed: I/O error". Lösningen: spawn:a en
+ * fristående Node-helper (`pi/scripts/ble-scan-helper.mjs`) som INTE importerar
+ * noble — då släpps inte socketen från noble, men helpern kan inte heller
+ * konkurrera med någon noble-binding eftersom den inte har en. Innan vi spawnar
+ * stoppar vi noble's HCI-binding via `hci.stop()` så hcitool får exklusiv
+ * tillgång till adaptern. Efter scan startar vi noble igen via `restartNobleHci`.
  *
- * Requires `hcitool` to be installed and the process to have CAP_NET_RAW
- * (already granted via systemd AmbientCapabilities).
+ * Helpern returnerar JSON via stdout med devices, raw-linjer, exit-kod osv.
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+import { existsSync } from 'fs';
 import { logConnectionEvent } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 
@@ -24,99 +28,110 @@ export interface HcitoolScanResult {
   durationMs: number;
 }
 
-const MAC_LINE = /^([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s*(.*)$/i;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+/** Hitta scan-helper. dist/ble/hcitool-scan.js → ../../scripts/ble-scan-helper.mjs */
+function resolveHelperPath(): string {
+  const candidates = [
+    resolve(__dirname, '../../scripts/ble-scan-helper.mjs'),       // från dist/ble
+    resolve(__dirname, '../../../scripts/ble-scan-helper.mjs'),    // fallback
+    resolve(process.cwd(), 'pi/scripts/ble-scan-helper.mjs'),      // dev
+    resolve(process.cwd(), 'scripts/ble-scan-helper.mjs'),         // pi-cwd
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return candidates[0]; // bästa gissning för fel-rapport
+}
 
 export async function hcitoolLescan(timeoutMs: number, earlyExitOnPattern?: RegExp): Promise<HcitoolScanResult> {
   const startedAt = Date.now();
-  const found = new Map<string, DiscoveredDevice>();
-  let rawLineCount = 0;
-  let stderr = '';
-  let proc: ChildProcess | null = null;
-  let startError: string | null = null;
-  let earlyExit = false;
+  const helperPath = resolveHelperPath();
 
-  try {
-    proc = spawn('hcitool', ['-i', 'hci0', 'lescan', '--duplicates'], { stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (e: any) {
-    startError = e?.message ?? String(e);
-    logConnectionEvent({ type: 'scan_start', detail: `hcitool spawn failed: ${startError}` });
-    return { devices: [], rawLineCount: 0, exitCode: null, startError, stderr: '', durationMs: 0 };
+  if (!existsSync(helperPath)) {
+    const err = `scan-helper saknas på disk: ${helperPath}`;
+    logConnectionEvent({ type: 'scan_start', detail: err });
+    return { devices: [], rawLineCount: 0, exitCode: null, startError: err, stderr: '', durationMs: 0 };
   }
 
+  const earlyArg = earlyExitOnPattern ? earlyExitOnPattern.source : '';
+  const args = [helperPath, String(timeoutMs), earlyArg];
+
+  let proc;
+  try {
+    proc = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e: any) {
+    const err = e?.message ?? String(e);
+    logConnectionEvent({ type: 'scan_start', detail: `scan-helper spawn failed: ${err}` });
+    return { devices: [], rawLineCount: 0, exitCode: null, startError: err, stderr: '', durationMs: 0 };
+  }
+
+  let stdoutBuf = '';
+  let stderrBuf = '';
   proc.stdout?.setEncoding('utf8');
   proc.stderr?.setEncoding('utf8');
+  proc.stdout?.on('data', (c: string) => { stdoutBuf += c; });
+  proc.stderr?.on('data', (c: string) => { stderrBuf += c; });
 
-  const killProc = () => {
-    try { proc?.kill('SIGINT'); } catch {}
-    setTimeout(() => { try { proc?.kill('SIGKILL'); } catch {} }, 500);
-  };
+  // Hård timeout: helpern ska vara klar inom timeoutMs + 3s buffert.
+  const hardKillMs = timeoutMs + 3000;
+  let killed = false;
+  const killTimer = setTimeout(() => {
+    killed = true;
+    try { proc.kill('SIGINT'); } catch {}
+    setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} }, 500);
+  }, hardKillMs);
 
-  proc.stdout?.on('data', (chunk: string) => {
-    for (const line of chunk.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      rawLineCount++;
-      const m = trimmed.match(MAC_LINE);
-      if (!m) continue;
-      const mac = m[1].toUpperCase();
-      const id = mac.replace(/:/g, '').toLowerCase();
-      const rawName = (m[2] ?? '').trim();
-      const name = rawName && rawName !== '(unknown)' ? rawName : `(no-name) ${mac}`;
-      const prev = found.get(id);
-      if (!prev || (rawName && rawName !== '(unknown)' && prev.name.startsWith('(no-name)'))) {
-        found.set(id, { id, name, rssi: -100 });
-        // Early-exit om vi hittar en intressant enhet (t.ex. BLEDOM).
-        if (!earlyExit && earlyExitOnPattern && rawName && earlyExitOnPattern.test(rawName)) {
-          earlyExit = true;
-          logConnectionEvent({ type: 'scan_start', detail: `hcitool early-exit: hittade ${rawName} (${mac}) — stoppar scan` });
-          killProc();
-        }
-      }
-    }
-  });
-
-  proc.stderr?.on('data', (chunk: string) => {
-    stderr += chunk;
-  });
-
-  const exitCode = await new Promise<number | null>((resolve) => {
-    let settled = false;
-    const settle = (code: number | null) => {
-      if (settled) return;
-      settled = true;
-      resolve(code);
-    };
-    const killTimer = setTimeout(killProc, timeoutMs);
-    proc!.once('exit', (code) => {
-      clearTimeout(killTimer);
-      settle(code);
-    });
-    proc!.once('error', (e: any) => {
-      clearTimeout(killTimer);
-      startError = e?.message ?? String(e);
-      settle(null);
-    });
+  const exitCode = await new Promise<number | null>((resolveExit) => {
+    proc.once('exit', (code) => { clearTimeout(killTimer); resolveExit(code); });
+    proc.once('error', () => { clearTimeout(killTimer); resolveExit(null); });
   });
 
   const durationMs = Date.now() - startedAt;
-  const devices = Array.from(found.values());
 
-  if (devices.length === 0 && stderr) {
+  // Plocka sista non-empty raden i stdout — det är JSON-payloaden.
+  const lines = stdoutBuf.split('\n').map(l => l.trim()).filter(Boolean);
+  const lastLine = lines[lines.length - 1];
+
+  if (!lastLine) {
+    const err = killed ? 'scan-helper hard-killed (timeout)' : 'scan-helper gav inget JSON-svar';
+    logConnectionEvent({ type: 'scan_done', detail: `${err} stderr="${stderrBuf.trim().slice(0, 200)}"` });
+    return { devices: [], rawLineCount: 0, exitCode, startError: err, stderr: stderrBuf.trim(), durationMs };
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(lastLine);
+  } catch (e: any) {
+    const err = `scan-helper JSON-parse fel: ${e?.message ?? e}`;
+    logConnectionEvent({ type: 'scan_done', detail: `${err} payload="${lastLine.slice(0, 160)}"` });
+    return { devices: [], rawLineCount: 0, exitCode, startError: err, stderr: stderrBuf.trim(), durationMs };
+  }
+
+  const devices: DiscoveredDevice[] = Array.isArray(parsed.devices) ? parsed.devices : [];
+  const rawLineCount: number = parsed.rawLineCount ?? 0;
+  const helperStderr: string = parsed.stderr ?? '';
+  const startError: string | null = parsed.startError ?? null;
+
+  if (devices.length === 0) {
     logConnectionEvent({
       type: 'scan_done',
-      detail: `hcitool: 0 devices, stderr="${stderr.trim().slice(0, 160)}"`,
-    });
-  } else if (devices.length > 0) {
-    logConnectionEvent({
-      type: 'scan_done',
-      detail: `hcitool: ${devices.length} device(s) found (raw_lines=${rawLineCount})`,
+      detail: `scan-helper: 0 devices, raw_lines=${rawLineCount}, exit=${exitCode}, stderr="${helperStderr.slice(0, 160) || stderrBuf.slice(0, 160)}"`,
     });
   } else {
     logConnectionEvent({
       type: 'scan_done',
-      detail: `hcitool: 0 devices, raw_lines=${rawLineCount}, exit=${exitCode}`,
+      detail: `scan-helper: ${devices.length} device(s) (raw_lines=${rawLineCount}, dur=${durationMs}ms)`,
     });
   }
 
-  return { devices, rawLineCount, exitCode, startError, stderr: stderr.trim(), durationMs };
+  return {
+    devices,
+    rawLineCount,
+    exitCode,
+    startError,
+    stderr: helperStderr || stderrBuf.trim(),
+    durationMs,
+  };
 }
