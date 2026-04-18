@@ -122,8 +122,8 @@ async function main() {
   const nobleBle = await import('./nobleBle.js');
   bt('STEP B: nobleBle.js import done');
   const {
-    scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount,
-    setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand,
+    scanAndConnect, disconnectAll, getConnectedCount,
+    setDimmingGamma, setExpectedDeviceCount,
     BLE_BUILD_TAG, waitForFirstStateChange, noble,
   } = nobleBle;
 
