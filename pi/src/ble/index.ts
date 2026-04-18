@@ -30,7 +30,7 @@ export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamm
 export { connectPeripheral, resetHciAdapter, autoConnectSaved, isConnectInProgress, waitForConnectIdle } from './connect.js';
 
 // Scanning (noble async discovery)
-export { scanForDevices, getLastScanResults, isScanning } from './scan.js';
+export { scanForDevices, getLastScanResults, isScanning, getScanMetrics } from './scan.js';
 
 // Device persistence (save / forget)
 export { selectDevice, forgetDevice, saveManualDevice } from './save.js';

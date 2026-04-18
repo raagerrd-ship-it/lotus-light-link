@@ -19,6 +19,39 @@ let scanning = false;
 // Cache av peripheral-objekt indexerat på normaliserat id (lowercase, utan kolon).
 const discoveredPeripherals = new Map<string, any>();
 
+export interface BleScanMetrics {
+  phase: 'idle' | 'starting' | 'scanning' | 'stopping';
+  active: boolean;
+  activeSince: string | null;
+  lastScanId: number;
+  lastStartedAt: string | null;
+  lastStartOkAt: string | null;
+  lastStoppedAt: string | null;
+  lastDurationMs: number | null;
+  lastRawDiscoverCount: number;
+  lastResultCount: number;
+  lastStartError: string | null;
+  lastStopError: string | null;
+  lastWatchdogAt: string | null;
+}
+
+let _scanSeq = 0;
+const scanMetrics: BleScanMetrics = {
+  phase: 'idle',
+  active: false,
+  activeSince: null,
+  lastScanId: 0,
+  lastStartedAt: null,
+  lastStartOkAt: null,
+  lastStoppedAt: null,
+  lastDurationMs: null,
+  lastRawDiscoverCount: 0,
+  lastResultCount: 0,
+  lastStartError: null,
+  lastStopError: null,
+  lastWatchdogAt: null,
+};
+
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
 export function getDiscoveredPeripheral(id: string): any | undefined {
