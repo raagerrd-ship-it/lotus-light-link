@@ -32,7 +32,8 @@ export function incrementConsecutiveFailures(): void { consecutiveConnectFailure
 // Hard ceiling for any single connect attempt. If the inner fn() never
 // settles (e.g. noble's discover listener got wedged), we still release the
 // lock so the next /api/ble/connect doesn't queue forever.
-const CONNECT_LOCK_HARD_TIMEOUT_MS = 12_000;
+// Hard ceiling: räcker för 16s direct + 18s scan-fallback + lite slack.
+const CONNECT_LOCK_HARD_TIMEOUT_MS = 40_000;
 
 async function withConnectLock<T>(deviceName: string | undefined, successResult: () => T, fn: () => Promise<T>): Promise<T> {
   // Don't queue: if a connect is already running, just bail with a no-op.
