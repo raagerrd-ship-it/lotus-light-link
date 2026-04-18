@@ -19,7 +19,17 @@ installLocalStorageShim();
 // hci0 is still DOWN at that moment it caches `poweredOff` forever in this
 // process. We therefore import everything that touches noble lazily inside
 // main(), AFTER waitForHci0Up() has confirmed the adapter is UP RUNNING.
-import { startMic, stopMic, setAlsaDevice, setMicGain, setAutoGainFromVolume } from './alsaMic.js';
+// alsaMic importeras LAZY inuti main() — top-level import drar igång den
+// native C++ ALSA-bindningen synkront, vilket blockerar libuv-event-loopen
+// och äter noble's första `stateChange`-event (verifierat i SSH-test:
+// fristående script → state=poweredOn på 1.5s; med native-bindning laddad
+// tidigt → fastnar i `unknown` för alltid).
+import type { startMic as StartMicT, stopMic as StopMicT, setAlsaDevice as SetAlsaDeviceT, setMicGain as SetMicGainT, setAutoGainFromVolume as SetAutoGainFromVolumeT } from './alsaMic.js';
+let startMic!: typeof StartMicT;
+let stopMic!: typeof StopMicT;
+let setAlsaDevice!: typeof SetAlsaDeviceT;
+let setMicGain!: typeof SetMicGainT;
+let setAutoGainFromVolume!: typeof SetAutoGainFromVolumeT;
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 import { getItem, setItem } from './storage.js';
 // Palette now comes from Sonos Gateway response (no cloud call needed)
@@ -60,8 +70,9 @@ function normalizeSonosConfig(config: Partial<SonosPollerConfig> | null | undefi
 
 async function main() {
   // 1. Restore persisted global settings (before banner so we can show effective values)
+  // OBS: setAlsaDevice/setMicGain anropas LÄNGRE NER, efter alsaMic lazy-importeras.
+  // De ROHA värdena läses här så de inte går förlorade.
   const savedAlsaDevice = getItem('alsa-device');
-  if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
 
   // dimming-gamma restore moved below — needs setDimmingGamma which is
   // imported lazily after hci0 is up (avoids early noble init).
@@ -72,7 +83,9 @@ async function main() {
   if (savedAutoTv === 'true') setSonosAutoTvMode(true);
 
   const savedMicGain = getItem('mic-gain');
-  if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
+  // savedMicGain tillämpas tillsammans med savedAlsaDevice EFTER
+  // waitForFirstStateChange — annars laddas alsaMic native-bindningen för
+  // tidigt och blockerar noble's libuv-stateChange.
 
   const savedTickMs = getItem('tick-ms');
   const effectiveTickMs = savedTickMs ? Math.max(10, Math.min(50, Number(savedTickMs))) : TICK_MS;
@@ -122,6 +135,19 @@ async function main() {
   // blockera boot här är OK — det körs en gång per process-start.
   const firstState = await waitForFirstStateChange(30000);
   console.log(`[Boot] ✓ noble first stateChange = ${firstState}`);
+
+  // STEP B.2 — NU är det säkert att ladda alsaMic. Native ALSA-bindningen
+  // gör synkron init som annars hade blockerat libuv och ätit noble's
+  // stateChange (verifierat i SSH-test).
+  const alsaMic = await import('./alsaMic.js');
+  startMic = alsaMic.startMic;
+  stopMic = alsaMic.stopMic;
+  setAlsaDevice = alsaMic.setAlsaDevice;
+  setMicGain = alsaMic.setMicGain;
+  setAutoGainFromVolume = alsaMic.setAutoGainFromVolume;
+  if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
+  if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
+  console.log('[Boot] ✓ alsaMic loaded (efter noble stateChange)');
 
   // Auto-restore BLE master switch om användaren hade radion PÅ före senaste
   // restart OCH noble faktiskt är poweredOn nu. Annars håller vi den OFF —
