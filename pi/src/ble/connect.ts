@@ -9,10 +9,10 @@ import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
-  bumpWorkaround,
+  getNobleRawState, bumpWorkaround,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { waitForAdapter, ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
+import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
