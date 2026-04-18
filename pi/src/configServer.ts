@@ -258,7 +258,24 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     }
   });
 
-  // ── BLE master switch ──
+  // Hard respawn — för fall när noble är helt wedged och en mjuk reset inte räcker.
+  // Svarar 200 FÖRST, sen process.exit(1) efter 200ms så systemd respawnar tjänsten.
+  // Kräver att tjänsten körs under systemd med Restart=on-failure (eller always).
+  app.post('/api/ble/respawn', async (_req, res) => {
+    console.warn('[API] /api/ble/respawn → process.exit(1) om 200ms (systemd ska respawna)');
+    try { await disconnect(true); } catch {}
+    res.json({
+      ok: true,
+      message: 'Process avslutas — systemd startar om tjänsten inom några sekunder.',
+      pid: process.pid,
+      uptimeSec: Math.round(process.uptime()),
+    });
+    // Liten fördröjning så HTTP-svaret hinner skickas
+    setTimeout(() => {
+      console.warn('[API] respawn: process.exit(1) NU');
+      process.exit(1);
+    }, 200);
+  });
   // Default OFF after every boot. Frontend toggle calls these.
   app.post('/api/ble/start', async (_req, res) => {
     // Master-switchen är användarens avsikt — slå på den först och behåll
