@@ -10,6 +10,7 @@ import {
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
   getNobleRawState, bumpWorkaround, forceNoblePoweredOn as forceNobleStateMutate,
+  hasNobleEverFiredStateChange,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
@@ -17,6 +18,25 @@ import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import { triggerNobleRespawn } from './watchdog.js';
 import type { PiCharacteristic } from './types.js';
+
+/**
+ * Vänta på poweredOn — men SKIPPA om noble redan har fyrat sin stateChange
+ * vid boot. waitForPoweredOnAsync hänger annars eftersom det missade eventet.
+ * SSH-bevis: en fresh noble-process får stateChange på ~250ms; service-processen
+ * hade redan eventet vid boot, så vi behöver inte vänta igen.
+ */
+async function waitNobleReady(timeoutMs: number, label: string, deviceName?: string): Promise<boolean> {
+  if (hasNobleEverFiredStateChange()) {
+    return true; // noble redan vaken — kör direkt
+  }
+  try {
+    await (noble as any).waitForPoweredOnAsync?.(timeoutMs);
+    return true;
+  } catch (e: any) {
+    logConnectionEvent({ type: 'connect_fail', device: deviceName, detail: `${label}: waitForPoweredOn failed: ${e.message}` });
+    return false;
+  }
+}
 
 // ── HCI reset tracking ──
 let consecutiveConnectFailures = 0;
@@ -252,22 +272,19 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
 
   // Step 1: L2CAP connect
   if (!skipL2cap) {
-    // Vänta på RIKTIG noble.state=poweredOn (upp till 10s) — INTE force-mutate.
-    // SSH-test 2026-04-18: force-mutate ger noop-scan/connect; riktig stateChange
-    // tar typiskt 250ms och allt funkar därefter.
+    // Skippa wait om noble redan har fyrat stateChange vid boot — annars vänta 5s.
     const rawBeforeWait = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
-    try {
-      await (noble as any).waitForPoweredOnAsync?.(10_000);
-      logConnectionEvent({
-        type: 'connect_start',
-        device: name,
-        detail: `waitForPoweredOn OK (raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
-      });
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `waitForPoweredOn failed: ${e.message} (raw=${rawBeforeWait}, hci_up=${hciUp})` });
-      throw e;
+    const everFired = hasNobleEverFiredStateChange();
+    const ok = await waitNobleReady(5_000, 'l2cap', name);
+    if (!ok) {
+      throw new Error(`waitForPoweredOn timeout (everFired=${everFired}, raw=${rawBeforeWait}, hci_up=${hciUp})`);
     }
+    logConnectionEvent({
+      type: 'connect_start',
+      device: name,
+      detail: `noble ready (everFired=${everFired}, raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
+    });
 
     try {
       await withTimeout(peripheral.connectAsync(), 'BLE connect', 'l2cap');
@@ -470,23 +487,18 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
 
     logConnectionEvent({ type: 'connect_start', device: name, detail: `Scanning for ${targetNorm} (timeout=${timeoutMs}ms)` });
 
-    // KRITISKT: vänta på RIKTIG stateChange från noble (upp till 10s).
-    // SSH-test 2026-04-18 bevisade: force-mutate _state är en lögn — noble's
-    // interna HCI-init körde aldrig klart, så startScanningAsync blir no-op
-    // och 0 discover-events kommer in. Däremot om vi väntar på riktig
-    // stateChange → poweredOn (tar typiskt 250ms) flödar discover direkt.
+    // Skippa wait om noble redan har fyrat stateChange vid boot — annars vänta 5s.
     const rawBeforeScan = getNobleRawState() ?? 'unknown';
+    const everFiredScan = hasNobleEverFiredStateChange();
     logConnectionEvent({
       type: 'connect_start',
       device: name,
-      detail: `scan: waitForPoweredOnAsync(10s) (raw_before=${rawBeforeScan}, hci_up=${isHci0Up()})`,
+      detail: `scan: waitNobleReady (everFired=${everFiredScan}, raw_before=${rawBeforeScan}, hci_up=${isHci0Up()})`,
     });
 
     (async () => {
-      try {
-        await (noble as any).waitForPoweredOnAsync?.(10_000);
-      } catch (e: any) {
-        logConnectionEvent({ type: 'connect_fail', device: name, detail: `waitForPoweredOn failed: ${e.message}` });
+      const ok = await waitNobleReady(5_000, 'scan', name);
+      if (!ok) {
         finish(false);
         return;
       }
@@ -537,19 +549,16 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
   });
 
   try {
-    // Vänta på RIKTIG noble.state=poweredOn (inte force-mutate, som är no-op).
+    // Skippa wait om noble redan har fyrat stateChange vid boot — annars vänta 5s.
     const rawBeforeWait = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
-    try {
-      await (noble as any).waitForPoweredOnAsync?.(10_000);
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `direct: waitForPoweredOn failed: ${e.message}` });
-      return false;
-    }
+    const everFired = hasNobleEverFiredStateChange();
+    const ok = await waitNobleReady(5_000, 'direct', name);
+    if (!ok) return false;
     logConnectionEvent({
       type: 'connect_start',
       device: name,
-      detail: `direct: waitForPoweredOn OK (raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
+      detail: `direct: noble ready (everFired=${everFired}, raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
     });
     // noble.connectAsync(address, options) — connectar utan scan.
     const peripheral = await withTimeout(
