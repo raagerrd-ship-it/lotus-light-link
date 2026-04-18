@@ -66,14 +66,27 @@ taskset -c "$CORE" sudo apt-get install -y -qq \
   libasound2-dev alsa-utils \
   curl
 
-# ─── 2. Node.js (LTS) ────────────────────────────────────
+# ─── 2. Node.js 24 LTS ───────────────────────────────────
+# Måste matcha GitHub Actions release-bygget (Node 24 ARM64), annars
+# misslyckas native ABI för @stoprocent/noble (state fastnar på "unknown").
 echo ""
-echo "[2/5] Kontrollerar Node.js..."
+echo "[2/5] Kontrollerar Node.js (kräver v24+)..."
 NODE_MAJOR=$(node -v 2>/dev/null | cut -d. -f1 | tr -d v || echo 0)
-if ! command -v node &>/dev/null || [ "$NODE_MAJOR" -lt 20 ]; then
-  echo "  Installerar Node.js 22 LTS..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | taskset -c "$CORE" sudo -E bash -
+if ! command -v node &>/dev/null || [ "$NODE_MAJOR" -lt 24 ]; then
+  if command -v node &>/dev/null; then
+    echo "  Hittade Node v$(node -v) — uppgraderar till v24 (ABI-match med native noble)..."
+    taskset -c "$CORE" sudo apt-get remove -y -qq nodejs 2>/dev/null || true
+    sudo rm -f /etc/apt/sources.list.d/nodesource.list /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
+  fi
+  echo "  Installerar Node.js 24 LTS..."
+  curl -fsSL https://deb.nodesource.com/setup_24.x | taskset -c "$CORE" sudo -E bash -
   taskset -c "$CORE" sudo apt-get install -y -qq nodejs
+  echo "  ✓ Node.js $(node -v) installerad"
+  # Native moduler måste byggas om mot nya Node-ABI
+  if [ -d "$PI_DIR/node_modules" ]; then
+    echo "  Bygger om native-moduler mot ny Node-ABI..."
+    cd "$PI_DIR" && nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
+  fi
 else
   echo "  ✓ Node.js $(node -v) ($(uname -m))"
 fi
