@@ -54,6 +54,7 @@ const scanMetrics: BleScanMetrics = {
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
+export function getScanMetrics(): BleScanMetrics { return { ...scanMetrics }; }
 export function getDiscoveredPeripheral(id: string): any | undefined {
   return discoveredPeripherals.get(id.toLowerCase());
 }
