@@ -998,23 +998,37 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [startMsg, setStartMsg] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
+  const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
+  const [, forceTick] = useState(0); // re-render varje sek så "Xs sedan" tickar
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const r = await fetch(`${piBase}/api/ble/diagnostics`, { signal: AbortSignal.timeout(4000) });
-      if (r.ok) setDiag(await r.json());
+      if (r.ok) {
+        setDiag(await r.json());
+        setLastFetchAt(Date.now());
+      }
     } catch {}
     setLoading(false);
   }, [piBase]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Auto-poll every 5s
+  // Adaptiv auto-poll: 2s när noble inte är poweredOn (snabb feedback under boot/recovery),
+  // 5s i normalt läge.
   useEffect(() => {
-    const iv = setInterval(refresh, 5000);
+    const nobleStateRaw = diag?.adapter?.nobleRaw?.state ?? 'unknown';
+    const fast = nobleStateRaw !== 'poweredOn' || diag?.boot?.stillBooting === true;
+    const iv = setInterval(refresh, fast ? 2000 : 5000);
     return () => clearInterval(iv);
-  }, [refresh]);
+  }, [refresh, diag?.adapter?.nobleRaw?.state, diag?.boot?.stillBooting]);
+
+  // Tick varje sek så "Xs sedan"-text uppdateras live
+  useEffect(() => {
+    const iv = setInterval(() => forceTick(t => (t + 1) % 1000), 1000);
+    return () => clearInterval(iv);
+  }, []);
 
   if (!diag) return (
     <div className="text-center py-4 text-sm text-muted-foreground">
