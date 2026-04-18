@@ -2378,6 +2378,37 @@ export default function PiMobile() {
         </div>
       </div>
 
+      {/* Pipeline-checklista — steg-för-steg vad som är online */}
+      {diag.pipeline && diag.pipeline.length > 0 && (
+        <div className="bg-background/40 rounded-lg border border-border/50 p-2 space-y-1">
+          <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-1.5 px-1">
+            Pipeline — vad är online?
+          </div>
+          {diag.pipeline.map((step) => {
+            const icon = step.status === 'ok' ? '✓' : step.status === 'pending' ? '⏳' : '✗';
+            const colorClass =
+              step.status === 'ok'
+                ? 'text-green-400'
+                : step.status === 'pending'
+                  ? 'text-yellow-400'
+                  : 'text-destructive';
+            return (
+              <div key={step.id} className="flex items-start gap-2 px-1 py-0.5 text-[11px]">
+                <span className={`font-mono font-bold ${colorClass} shrink-0 w-4`}>{icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-foreground leading-tight">{step.label}</div>
+                  {step.detail && (
+                    <div className="text-muted-foreground text-[10px] font-mono leading-tight truncate">
+                      {step.detail}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
