@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/noble-stuck-watchdog';
+export const BLE_BUILD_TAG = '2026-04-18/watchdog-cooldown';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -163,6 +163,8 @@ export const workaroundCounters = {
   capsSelfCheck_failed: 0,
   // Watchdog: noble fastnade i `unknown` trots UP RUNNING + caps OK → process.exit(1)
   nobleStuckRespawn_invoked: 0,
+  // Watchdog ville respawna men cooldown blockerade (skydd mot loop)
+  nobleStuckRespawn_cooldownBlocked: 0,
   // Sista gång varje workaround triggades
   lastInvocationAt: {} as Record<string, string>,
 };
