@@ -295,6 +295,10 @@ export function runBleCapsSelfCheck(): {
 let _capsOverrideLogged = false;
 
 export function getNobleRawState(): string | undefined {
+  // Prefer our cached value from the early stateChange listener — that's
+  // the only source of truth that survives noble's "fire once at startup"
+  // semantics. Fall back to noble's own properties.
+  if (_cachedNobleState) return _cachedNobleState;
   const n = noble as typeof noble & {
     state?: string;
     _state?: string;
