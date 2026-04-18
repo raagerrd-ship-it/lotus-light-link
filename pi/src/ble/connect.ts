@@ -621,6 +621,16 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
       return 0;
     }
 
+    // Skala timeouts per försök: 8s → 12s → 16s. Lampan kanske vaknar
+    // mellan försöken (BLEDOM går i sleep efter ~30s utan trafik), så
+    // ge mer tid när vi redan har misslyckats.
+    const budgets = timeoutForAttempt(getConsecutiveFailures());
+    logConnectionEvent({
+      type: 'connect_start',
+      device: savedName,
+      detail: `Connect-försök (failCount=${getConsecutiveFailures()}, l2cap=${budgets.l2cap}ms, scan=${budgets.scan}ms)`,
+    });
+
     // Hybrid: direct-connect first (snabb när lampan är nära), fall back
     // till scan-then-connect på svag länk. Memory mem://pi/ble/hybrid-discovery-strategy
     // beskriver exakt detta. Scan-fallback togs bort tidigare som defensiv
@@ -628,7 +638,7 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     // poweredOn (se diagnostics) och nobleScanConnect har egna stopScanning-
     // skydd, så det är säkert att återinföra.
     if (getSavedAddressType()) {
-      const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 8000));
+      const directOk = await tryDirectConnectAsync(savedName, budgets.l2cap);
       if (directOk) return 1;
     } else {
       logConnectionEvent({
@@ -638,10 +648,10 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
       });
     }
 
-    // Scan-fallback: nobleScanConnect tittar efter MAC:en i ~10s och
+    // Scan-fallback: nobleScanConnect tittar efter MAC:en och
     // connectar via peripheral-objektet (samma flöde som fungerade i
     // monoliten). Klarar svaga länkar bättre än direct-connect.
-    const scanOk = await nobleScanConnect(savedId, savedName, 10000);
+    const scanOk = await nobleScanConnect(savedId, savedName, budgets.scan);
     if (scanOk) return 1;
 
     incrementConsecutiveFailures();
