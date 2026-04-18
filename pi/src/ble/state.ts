@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/force-noble-always-on-connect';
+export const BLE_BUILD_TAG = '2026-04-18/force-revert-watchdog';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -210,6 +210,10 @@ export const workaroundCounters = {
   nobleStuckRespawn_invoked: 0,
   // Watchdog ville respawna men cooldown blockerade (skydd mot loop)
   nobleStuckRespawn_cooldownBlocked: 0,
+  // Force-revert watchdog: noble.state återgick till `unknown` efter en lyckad
+  // force-mutation. Indikerar att noble självskriver över våra ändringar
+  // (t.ex. internt event från HCI-bindningen som nollställer state).
+  forceMutationReverted: 0,
   // Sista gång varje workaround triggades
   lastInvocationAt: {} as Record<string, string>,
 };
@@ -385,6 +389,79 @@ export function getAdapterState(): string | undefined {
  * Only call when caps OK + hci0 UP. Idempotent + cheap.
  */
 let _forcePoweredOnLogged = false;
+// Watchdog-state: undvik flera samtidiga pollers + cooldown så loggen inte
+// flödas över om noble revertar varje sekund.
+let _revertWatchdogActive = false;
+let _lastRevertLogAt = 0;
+
+/**
+ * Pollar noble.state under WATCH_MS ms efter en lyckad force-mutation.
+ * Om raw state hoppar tillbaka till `unknown`/`poweredOff`/null:
+ *   - bumpar `forceMutationReverted`-counter
+ *   - loggar event i connection-log (max 1/15s för att undvika spam)
+ *   - mut­erar tillbaka till poweredOn igen (best effort)
+ * Detta ger oss data: revertar noble en gång (libuv-event efter setup) eller
+ * konstant (då måste vi hooka in djupare i noble-bindings)?
+ */
+function startForceRevertWatchdog(): void {
+  if (_revertWatchdogActive) return;
+  _revertWatchdogActive = true;
+
+  const WATCH_MS = 8000;
+  const POLL_MS = 250;
+  const startedAt = Date.now();
+  let revertCount = 0;
+
+  const tick = () => {
+    if (Date.now() - startedAt >= WATCH_MS) {
+      _revertWatchdogActive = false;
+      if (revertCount > 0) {
+        logConnectionEvent({
+          type: 'connect_fail',
+          detail: `force-revert-watchdog: noble.state revertade ${revertCount}x under ${WATCH_MS}ms — noble självskriver över mutationen`,
+        });
+      }
+      return;
+    }
+
+    const n = noble as any;
+    const raw = n.state ?? n._state;
+    if (raw && raw !== 'poweredOn') {
+      revertCount++;
+      workaroundCounters.forceMutationReverted++;
+      workaroundCounters.lastInvocationAt['forceMutationReverted'] = new Date().toISOString();
+
+      // Logga max 1/15s för att skydda eventloggen från spam
+      const now = Date.now();
+      if (now - _lastRevertLogAt > 15000) {
+        _lastRevertLogAt = now;
+        logConnectionEvent({
+          type: 'connect_fail',
+          detail: `force-revert: noble.state=${raw} (${Math.round((now - startedAt) / 1000)}s efter mutation) — re-mutating`,
+        });
+      }
+
+      // Re-mutate så vi håller noble sövd. Om detta också misslyckas
+      // ser vi det som extra revertCount-bumpar.
+      try {
+        n.state = 'poweredOn';
+        n._state = 'poweredOn';
+        if (n._bindings) {
+          n._bindings.state = 'poweredOn';
+          if (n._bindings._state !== undefined) n._bindings._state = 'poweredOn';
+        }
+        _cachedNobleState = 'poweredOn';
+      } catch {
+        // best effort
+      }
+    }
+
+    setTimeout(tick, POLL_MS);
+  };
+
+  setTimeout(tick, POLL_MS);
+}
+
 export function forceNoblePoweredOn(): boolean {
   const raw = getNobleRawState();
   if (raw === 'poweredOn') {
@@ -417,6 +494,11 @@ export function forceNoblePoweredOn(): boolean {
       console.log('[BLE] forceNoblePoweredOn: muterade noble.state=poweredOn (caps OK, libuv-race kringgången)');
       _forcePoweredOnLogged = true;
     }
+
+    // Starta revert-watchdog så vi vet om noble självskriver över ändringen
+    // de kommande sekunderna (t.ex. internt HCI-event som triggar stateChange).
+    startForceRevertWatchdog();
+
     return true;
   } catch (e) {
     console.error('[BLE] forceNoblePoweredOn failed:', e);
