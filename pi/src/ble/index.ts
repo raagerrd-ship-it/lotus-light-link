@@ -40,6 +40,9 @@ export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.j
 // Master switch
 export { isBleEnabled, setBleEnabled } from './enabled.js';
 
+// Adapter wake-up (used by master switch ON)
+export { ensureAdapterUp, waitForNoblePoweredOn } from './adapter.js';
+
 // ── Convenience / legacy aliases ──
 import { getDevice, setDevice, isDemandActive } from './state.js';
 import { stopKeepAlive, resetLastSent } from './protocol.js';
