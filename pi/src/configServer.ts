@@ -259,6 +259,11 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   // ── BLE master switch ──
   // Default OFF after every boot. Frontend toggle calls these.
   app.post('/api/ble/start', async (_req, res) => {
+    // Master-switchen är användarens avsikt — slå på den först och behåll
+    // den på även om adaptern inte vaknar direkt. Då kan användaren se
+    // adapter-state i UI och trycka "Återställ BLE-stack" vid behov.
+    setBleEnabled(true);
+
     let adapterReady = false;
     try {
       adapterReady = await ensureAdapterUp();
@@ -266,21 +271,12 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
 
-    // Exponera inte master-switchen som ON förrän själva startsteget lyckats.
-    // Annars kan demand/reconnect-logik börja reagera medan adaptern fortfarande
-    // är poweredOff, vilket gör startflödet icke-deterministiskt.
-    if (!adapterReady) {
-      setBleEnabled(false);
-      return res.status(503).json({ ok: false, enabled: false, adapterReady: false, autoConnect: false });
-    }
-
-    setBleEnabled(true);
-
     let connectStarted = false;
     let connected = !!getConnectedDeviceId();
-    if (adapterReady && getSavedDeviceId() && !getConnectedDeviceId()) {
-      // Startflödet ska vara adapter + auto-connect till sparad enhet, utan att
-      // gå via demand-logiken som Sonos senare får styra separat.
+    const hasSaved = !!getSavedDeviceId();
+    if (adapterReady && hasSaved && !getConnectedDeviceId()) {
+      // Startflödet: adapter + auto-connect till sparad enhet (om sådan finns),
+      // utan att gå via demand-logiken som Sonos får styra separat.
       connectStarted = true;
       try {
         connected = (await autoConnectSaved(10000)) > 0;
@@ -288,7 +284,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         console.error('[BLE] start auto-connect failed:', e?.message ?? e);
       }
     }
-    res.json({ ok: true, enabled: true, adapterReady: true, autoConnect: connectStarted, connected });
+    res.json({ ok: true, enabled: true, adapterReady, autoConnect: connectStarted, connected, hasSaved });
   });
 
   app.post('/api/ble/stop', async (_req, res) => {
