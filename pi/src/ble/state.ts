@@ -27,16 +27,48 @@ console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 // We MUST attach the listener synchronously here, on the very first import
 // of noble, and cache the latest state for everyone else to read.
 let _cachedNobleState: string | undefined = undefined;
+let _firstStateChangeResolve: ((s: string) => void) | null = null;
+const _firstStateChangePromise: Promise<string> = new Promise((resolve) => {
+  _firstStateChangeResolve = resolve;
+});
 try {
   (noble as any).on?.('stateChange', (s: string) => {
     _cachedNobleState = s;
     console.log(`[BLE:stateChange] ${s}`);
+    if (_firstStateChangeResolve) {
+      _firstStateChangeResolve(s);
+      _firstStateChangeResolve = null;
+    }
   });
   // Pick up state if it was already set before we attached.
   const initial = (noble as any).state ?? (noble as any)._state;
-  if (initial && initial !== 'unknown') _cachedNobleState = initial;
+  if (initial && initial !== 'unknown') {
+    _cachedNobleState = initial;
+    if (_firstStateChangeResolve) {
+      _firstStateChangeResolve(initial);
+      _firstStateChangeResolve = null;
+    }
+  }
 } catch (e) {
   console.error('[BLE] failed to attach early stateChange listener:', e);
+}
+
+/**
+ * Wait for noble's first `stateChange` event (or already-cached state).
+ * Resolves to the state string ('poweredOn', 'poweredOff', 'unauthorized', ...).
+ * Resolves to 'timeout' if no event fires within `timeoutMs`.
+ *
+ * MUST be awaited at boot before any other code blocks the event loop —
+ * noble emits `stateChange` exactly once via libuv, and if we busy-loop or
+ * sync-block before it fires, the event is silently lost and noble.state
+ * stays `unknown` for the rest of the process lifetime.
+ */
+export function waitForFirstStateChange(timeoutMs = 5000): Promise<string> {
+  if (_cachedNobleState) return Promise.resolve(_cachedNobleState);
+  return Promise.race([
+    _firstStateChangePromise,
+    new Promise<string>((resolve) => setTimeout(() => resolve('timeout'), timeoutMs)),
+  ]);
 }
 
 // ── Single device state ──
