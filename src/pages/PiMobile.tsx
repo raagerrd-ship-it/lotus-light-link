@@ -1285,8 +1285,38 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         >
           🔄 Återställ BLE-stack
         </button>
-        <div className="text-[9px] text-muted-foreground/70 mt-1">
+        <div className="text-[9px] text-muted-foreground/70 mt-1 mb-2">
           I normal drift äger noble HCI hela tiden. Använd bara om scan/anslutning hänger.
+        </div>
+
+        <button
+          onClick={async () => {
+            if (!confirm('Starta om Lotus-tjänsten? Processen avslutas och systemd startar om den inom några sekunder. Använd bara om noble är helt wedged och "Återställ BLE-stack" inte hjälpt.')) return;
+            setLoading(true);
+            try {
+              const r = await fetch(`${piBase}/api/ble/respawn`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(j?.error ?? 'respawn failed');
+              // Tjänsten är nere ~3-10s — visa nedräkning och pollra tills den svarar igen
+              setStartMsg({ kind: 'info', text: 'Tjänsten startas om… (väntar 3s innan poll återupptas)' });
+              setTimeout(() => { void refresh(); }, 4000);
+              setTimeout(() => { void refresh(); }, 8000);
+              setTimeout(() => { void refresh(); }, 12000);
+            } catch (e: any) {
+              // Fetch kan misslyckas mid-shutdown — det är förväntat
+              setStartMsg({ kind: 'info', text: `Respawn-signal skickad (${e?.message ?? 'avbruten'}). Tjänsten startas om…` });
+              setTimeout(() => { void refresh(); }, 5000);
+            } finally {
+              setTimeout(() => setLoading(false), 1000);
+            }
+          }}
+          disabled={loading}
+          className="w-full text-xs px-3 py-2 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30 active:bg-orange-500/25 disabled:opacity-50 font-medium"
+        >
+          ⚡ Starta om tjänsten (hard respawn)
+        </button>
+        <div className="text-[9px] text-muted-foreground/70 mt-1">
+          Sista utvägen — process.exit(1) → systemd respawnar. ~5–10s nedtid.
         </div>
       </div>
 
