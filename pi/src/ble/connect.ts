@@ -186,9 +186,11 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
 }
 
 // ── Timeout helper — per-step budgets ──
-// L2CAP and write are quick; GATT discovery on BLEDOM has been observed
-// up to ~4s on a marginal link, so give it more headroom.
-const TIMEOUTS = { l2cap: 3000, gatt: 5000, write: 2000 } as const;
+// L2CAP raised 3000→8000ms: BLEDOM på svag länk (RSSI < −75) hinner inte
+// genom L2CAP-handshake på 3s — varje retransmission tar ~750ms och vi
+// behöver flera. GATT discovery på BLEDOM kan också ta upp till ~4s på
+// marginell länk.
+const TIMEOUTS = { l2cap: 8000, gatt: 5000, write: 2000 } as const;
 type StepKind = keyof typeof TIMEOUTS;
 
 function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
