@@ -2,7 +2,7 @@
  * BLE adapter management — noble HCI helpers and adapter init.
  */
 
-import { noble, getAdapterState, logConnectionEvent, processHasBtCaps, bumpWorkaround } from './state.js';
+import { noble, getAdapterState, logConnectionEvent, processHasBtCaps, bumpWorkaround, getNobleRawState } from './state.js';
 export { processHasBtCaps };
 
 /** Stop noble scanning (no HCI release — noble keeps the socket) */
@@ -33,24 +33,33 @@ export async function restartNobleHci(deviceName?: string): Promise<void> {
 }
 
 /**
- * Wait for adapter to be ready.
- * Like the old browser Web Bluetooth implementation, we don't gate on adapter state —
- * we just trust noble.connectAsync to handle adapter readiness internally.
- * If process has BT caps OR noble reports poweredOn, we proceed.
+ * Internal BLE flows must NOT trust the caps-aware adapter override.
+ * It is only for UI/diagnostics so the Pi can show "effectively poweredOn"
+ * even when noble is still settling. For scan/connect readiness we require raw
+ * noble state to actually be poweredOn, otherwise startScanningAsync/connectAsync
+ * will still fail with "state is unknown".
+ */
+function isNobleRawPoweredOn(): boolean {
+  return getNobleRawState() === 'poweredOn';
+}
+
+/**
+ * Wait for adapter to be ready for actual BLE operations.
+ * Requires raw noble state, not the caps-aware effective state.
  */
 export async function waitForAdapter(deviceName?: string): Promise<boolean> {
-  // If caps-aware state says poweredOn, trust it
-  if (getAdapterState() === 'poweredOn') return true;
-  if (processHasBtCaps()) return true;
+  if (isNobleRawPoweredOn()) return true;
 
-  // Last resort: brief wait for noble to confirm
   try {
     await (noble as any).waitForPoweredOnAsync(2000);
-    return true;
+    return isNobleRawPoweredOn();
   } catch {
-    // Don't block — let connectAsync try and fail with a real error
-    logConnectionEvent({ type: 'connect_start', device: deviceName, detail: `Adapter state unclear (${getAdapterState()}) — proceeding anyway` });
-    return true;
+    logConnectionEvent({
+      type: 'connect_start',
+      device: deviceName,
+      detail: `Adapter raw state still ${getNobleRawState() ?? 'unknown'} (effective=${getAdapterState() ?? 'unknown'})`,
+    });
+    return isNobleRawPoweredOn();
   }
 }
 
@@ -61,19 +70,15 @@ export async function waitForAdapter(deviceName?: string): Promise<boolean> {
  * resetting under a live noble instance is what tends to strand raw
  * noble.state in `unknown` on Raspberry Pi.
  *
- * Runs the OS commands, then waits for noble to observe `poweredOn`
- * before returning so callers don't continue while the adapter is still
- * soft-blocked or DOWN.
+ * Runs the OS commands, then waits for noble to observe raw `poweredOn`
+ * before returning so callers don't continue while noble is still settling.
  */
 export async function ensureAdapterUp(): Promise<boolean> {
   try {
     const { execFileSync } = require('child_process');
     execFileSync('bash', ['-lc',
-      // 1) unblock rfkill (soft block) FIRST
       'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
-      // 2) bring hci0 up
       '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
-      // 3) re-assert unblock in case the kernel re-blocked during wake-up
       'rfkill unblock bluetooth >/dev/null 2>&1 || true'
     ], { timeout: 6000, stdio: 'ignore' });
   } catch {}
@@ -84,26 +89,29 @@ export async function ensureAdapterUp(): Promise<boolean> {
   try { await restartNobleHci('ensure_adapter_up'); } catch {}
   const ok = await waitForNoblePoweredOn(4000);
   if (!ok) {
-    logConnectionEvent({ type: 'connect_start', detail: `ensureAdapterUp timed out (${getAdapterState() ?? 'unknown'})` });
+    logConnectionEvent({
+      type: 'connect_start',
+      detail: `ensureAdapterUp timed out (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'})`,
+    });
   }
   return ok;
 }
 
 /**
- * Wait for noble (or caps-aware adapter state) to report poweredOn.
+ * Wait for RAW noble state to report poweredOn.
  * Polls every 200ms up to `timeoutMs`. Returns true if ready.
  */
 export async function waitForNoblePoweredOn(timeoutMs = 4000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (getAdapterState() === 'poweredOn') return true;
+    if (isNobleRawPoweredOn()) return true;
     try {
       await (noble as any).waitForPoweredOnAsync?.(Math.min(500, timeoutMs - (Date.now() - start)));
-      if (getAdapterState() === 'poweredOn') return true;
+      if (isNobleRawPoweredOn()) return true;
     } catch {}
     await new Promise(r => setTimeout(r, 200));
   }
-  return getAdapterState() === 'poweredOn';
+  return isNobleRawPoweredOn();
 }
 
 /** Normalize a BLE identifier (MAC, UUID, id) to lowercase hex without colons */
@@ -114,33 +122,36 @@ export function normalizeBleKey(value: string | null | undefined): string {
 async function initAdapter(): Promise<void> {
   await ensureAdapterUp();
 
-  if (getAdapterState() === 'poweredOn') {
-    console.log('[BLE] Adapter state: poweredOn ✓');
-    logConnectionEvent({ type: 'connect_start', detail: 'Adapter ready (caps/state)' });
+  if (isNobleRawPoweredOn()) {
+    console.log('[BLE] Adapter state: poweredOn ✓ (raw noble)');
+    logConnectionEvent({ type: 'connect_start', detail: 'Adapter ready (raw noble poweredOn)' });
     return;
   }
 
   try {
     console.log('[BLE] initAdapter: waitForPoweredOnAsync...');
     await (noble as any).waitForPoweredOnAsync(5000);
-    console.log('[BLE] Adapter state: poweredOn ✓ (noble confirmed)');
-    logConnectionEvent({ type: 'connect_start', detail: 'Adapter ready (noble confirmed)' });
-    return;
+    if (isNobleRawPoweredOn()) {
+      console.log('[BLE] Adapter state: poweredOn ✓ (noble confirmed)');
+      logConnectionEvent({ type: 'connect_start', detail: 'Adapter ready (noble confirmed)' });
+      return;
+    }
   } catch {}
 
-  const state = getAdapterState();
-  if (state === 'unauthorized') {
+  const rawState = getNobleRawState();
+  const effectiveState = getAdapterState();
+  if (rawState === 'unauthorized') {
     console.error('[BLE] Adapter state: unauthorized — saknar CAP_NET_RAW + CAP_NET_ADMIN.');
     logConnectionEvent({ type: 'connect_start', detail: 'unauthorized — caps missing' });
     return;
   }
-  if (state === 'poweredOff') {
+  if (rawState === 'poweredOff') {
     console.warn('[BLE] Adapter state: poweredOff — Bluetooth är avstängt eller rfkill-blockerat.');
     return;
   }
 
-  console.log(`[BLE] Adapter state at init: ${state ?? 'unknown'} — continuing without reset loop`);
-  logConnectionEvent({ type: 'connect_start', detail: `Adapter init state: ${state ?? 'unknown'}` });
+  console.log(`[BLE] Adapter raw state at init: ${rawState ?? 'unknown'} (effective=${effectiveState ?? 'unknown'})`);
+  logConnectionEvent({ type: 'connect_start', detail: `Adapter init raw=${rawState ?? 'unknown'}, effective=${effectiveState ?? 'unknown'}` });
 }
 
 // Fire and forget — don't block module loading

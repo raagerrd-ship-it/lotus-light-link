@@ -15,7 +15,7 @@
  * connect.ts kan använda samma peripheral direkt.
  */
 
-import { noble, getAdapterState, logConnectionEvent } from './state.js';
+import { noble, getAdapterState, logConnectionEvent, getNobleRawState } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { ensureAdapterUp } from './adapter.js';

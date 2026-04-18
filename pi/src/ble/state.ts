@@ -274,14 +274,18 @@ export function runBleCapsSelfCheck(): {
 
 let _capsOverrideLogged = false;
 
-export function getAdapterState(): string | undefined {
+export function getNobleRawState(): string | undefined {
   const n = noble as typeof noble & {
     state?: string;
     _state?: string;
     adapterState?: string;
     _adapterState?: string;
   };
-  const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+  return n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+}
+
+export function getAdapterState(): string | undefined {
+  const raw = getNobleRawState();
 
   if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
     bumpWorkaround('capsOverride_applied');
