@@ -6,49 +6,38 @@
  * call still fails with EPERM in some edge cases (kernel LSM, AppArmor,
  * NoNewPrivileges quirks, ambient-vs-effective mismatch). This probe gives
  * us the ground truth instead of trusting CapEff bits.
- *
- * Strategy: shell out to `hcitool dev` (cheap, no permissions needed for
- * just listing) AND attempt a `hcitool lescan --duration=0` style call
- * which fails with "Set scan parameters failed: Operation not permitted"
- * if caps are missing. We don't actually run lescan — we use python3 with
- * a minimal socket() attempt, falling back to interpreting hcitool errors.
- *
- * Output: structured result that boot can log + expose via diagnostics.
  */
 
 import { execFileSync } from 'child_process';
 
 export interface HciSocketProbeResult {
   ok: boolean;
-  method: 'python-socket' | 'hcitool-lescan' | 'skipped';
+  method: 'python-socket' | 'skipped';
   error?: string;
+  errno?: string;
   details?: string;
 }
 
 /**
- * Try to open an HCI raw socket via python3. This is the exact syscall
- * noble does internally. Returns ok:true iff socket() + bind() succeed.
+ * Try to open an HCI raw socket via python3. Just socket() — vi skippar
+ * bind() helt eftersom det kräver mer komplex sockaddr-struct än Pythons
+ * stdlib exponerar enkelt. socket() själv triggar EPERM-checken i kerneln
+ * när CAP_NET_RAW saknas, så det räcker som ground truth-test.
  *
- * Requires python3 (always present on Pi OS). Falls back gracefully if
- * python3 is missing.
+ * AF_BLUETOOTH=31, SOCK_RAW=3, BTPROTO_HCI=1.
  */
 export function probeHciSocket(): HciSocketProbeResult {
-  // Python one-liner: open AF_BLUETOOTH SOCK_RAW BTPROTO_HCI and bind to hci0.
-  // This is exactly what @stoprocent/noble does in its native binding.
-  // socket.AF_BLUETOOTH=31, SOCK_RAW=3, BTPROTO_HCI=1.
   const py = `
-import socket, sys, struct
+import socket, sys
 try:
     s = socket.socket(31, 3, 1)
-    # bind to hci0 (dev_id=0). HCI_CHANNEL_RAW=0.
-    s.bind((0, 0))
     s.close()
     print("OK")
-except PermissionError as e:
-    print("EPERM:" + str(e))
+except OSError as e:
+    print("ERR:" + (e.errno and __import__("errno").errorcode.get(e.errno, str(e.errno)) or "?") + ":" + str(e))
     sys.exit(1)
 except Exception as e:
-    print(type(e).__name__ + ":" + str(e))
+    print("EXC:" + type(e).__name__ + ":" + str(e))
     sys.exit(2)
 `.trim();
 
@@ -60,7 +49,7 @@ except Exception as e:
     }).trim();
 
     if (out === 'OK') {
-      return { ok: true, method: 'python-socket', details: 'AF_BLUETOOTH SOCK_RAW bind OK' };
+      return { ok: true, method: 'python-socket', details: 'AF_BLUETOOTH SOCK_RAW socket() OK' };
     }
     return { ok: false, method: 'python-socket', error: out };
   } catch (e: any) {
@@ -68,16 +57,25 @@ except Exception as e:
     const stdout = (e?.stdout ?? '').toString().trim();
     const msg = stdout || stderr || e?.message || String(e);
 
-    // Distinguish "python3 missing" from real EPERM
     if (/ENOENT|not found|command not found/i.test(msg) && !stdout) {
       return { ok: false, method: 'skipped', error: 'python3 not available' };
     }
 
+    // Parsa "ERR:EPERM:..." eller "ERR:EAFNOSUPPORT:..."
+    const errnoMatch = stdout.match(/^ERR:([A-Z]+):/);
+    const errno = errnoMatch ? errnoMatch[1] : undefined;
+
+    let friendly = msg;
+    if (errno === 'EPERM') friendly = 'EPERM — saknar CAP_NET_RAW (caps trasiga på kernel-nivå)';
+    else if (errno === 'EAFNOSUPPORT') friendly = 'EAFNOSUPPORT — AF_BLUETOOTH inte kompilerat in i kerneln (ovanligt på Pi OS)';
+    else if (errno === 'EPROTONOSUPPORT') friendly = 'EPROTONOSUPPORT — BTPROTO_HCI inte tillgängligt';
+
     return {
       ok: false,
       method: 'python-socket',
-      error: msg.includes('EPERM') ? 'EPERM — saknar CAP_NET_RAW på processen' : msg,
-      details: stderr || undefined,
+      errno,
+      error: friendly,
+      details: stdout || stderr || undefined,
     };
   }
 }
