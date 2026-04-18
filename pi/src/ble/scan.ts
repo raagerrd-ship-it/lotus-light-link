@@ -44,15 +44,15 @@ function peripheralToDevice(p: any): DiscoveredDevice | null {
 }
 
 async function waitForPoweredOn(timeoutMs: number): Promise<boolean> {
-  if (getAdapterState() === 'poweredOn') return true;
+  if (getNobleRawState() === 'poweredOn') return true;
   return await new Promise<boolean>((resolve) => {
     const onState = (s: string) => {
       if (s === 'poweredOn') { cleanup(); resolve(true); }
     };
     const poll = setInterval(() => {
-      if (getAdapterState() === 'poweredOn') { cleanup(); resolve(true); }
+      if (getNobleRawState() === 'poweredOn') { cleanup(); resolve(true); }
     }, 200);
-    const timer = setTimeout(() => { cleanup(); resolve(getAdapterState() === 'poweredOn'); }, timeoutMs);
+    const timer = setTimeout(() => { cleanup(); resolve(getNobleRawState() === 'poweredOn'); }, timeoutMs);
     const cleanup = () => {
       clearInterval(poll);
       clearTimeout(timer);
@@ -90,7 +90,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   try {
     logConnectionEvent({
       type: 'scan_start',
-      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${getAdapterState()}`,
+      detail: `noble scan, timeout=${timeoutMs}ms, adapter=${getAdapterState()}, raw=${getNobleRawState() ?? 'unknown'}`,
     });
 
     // Säker adapter-init (rfkill unblock + hciconfig hci0 up). Ingen hci.stop().
@@ -100,7 +100,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     if (!ready) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `Adapter inte poweredOn (state=${getAdapterState()}) — kan inte scanna. Kontrollera att node har CAP_NET_RAW (getcap $(which node)).`,
+        detail: `Raw noble inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}) — kan inte scanna`,
       });
       lastScanResults = [];
       return lastScanResults;
@@ -113,7 +113,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     } catch (scanErr: any) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" — kontrollera caps på node-binären`,
+        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawState() ?? 'unknown'})`,
       });
       lastScanResults = [];
       return lastScanResults;
