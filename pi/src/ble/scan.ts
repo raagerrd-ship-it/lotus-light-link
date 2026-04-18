@@ -101,14 +101,17 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     // Noble's startScanningAsync har en INTERN guard som kastar
     // "Could not start scanning, state is unknown" innan den ens rör HCI.
     // Vår caps-aware effective state hjälper inte mot den. Tvinga noble's
-    // interna state till poweredOn när caps + hci0 är OK.
-    if (getNobleRawState() !== 'poweredOn' && isHci0Up()) {
-      const forced = forceNoblePoweredOn();
-      logConnectionEvent({
-        type: 'scan_start',
-        detail: `forceNoblePoweredOn → ${forced ? 'OK (mutated noble.state)' : 'SKIPPED (caps missing)'}`,
-      });
-    }
+    // interna state till poweredOn ALLTID precis innan vi startar scan.
+    // Idempotent + cheap — `forceNoblePoweredOn` skippar internt om raw redan
+    // är poweredOn (bumpar då bara `_skippedHealthy`-counter). Vi loggar
+    // ovillkorligt så vi alltid ser om grenen körs i eventloggen.
+    const rawBeforeForce = getNobleRawState() ?? 'unknown';
+    const hciUp = isHci0Up();
+    const forced = forceNoblePoweredOn();
+    logConnectionEvent({
+      type: 'scan_start',
+      detail: `forceNoblePoweredOn → ${forced ? 'OK' : 'SKIPPED (caps missing)'} (raw_before=${rawBeforeForce}, hci_up=${hciUp})`,
+    });
 
     try {
       await (noble as any).startScanningAsync([], true);
