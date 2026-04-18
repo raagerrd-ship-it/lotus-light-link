@@ -53,23 +53,35 @@ export function getLastWriteTime(): number { return lastWriteTime; }
 export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 
 // ── Keepalive ──
-const KEEPALIVE_MS = 1000;
+// 400ms is well under BLEDOM's empirical supervision timeout (~1.5–2s on
+// Pi when "Connection interval update not available — HCI access limited").
+// Previously 1000ms → reason=8 disconnects within 7s on idle links.
+const KEEPALIVE_MS = 400;
 const KEEPALIVE_FAIL_THRESHOLD = 5;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
+let keepAliveSentCount = 0;
+
+export function getKeepAliveSentCount(): number { return keepAliveSentCount; }
 
 export function startKeepAlive(): void {
   stopKeepAlive();
   keepAliveFailCount = 0;
+  keepAliveSentCount = 0;
+  // Seed lastWriteTime so the first keep-alive fires on schedule rather
+  // than skipping because (now - 0) is huge but elapsed-vs-threshold logic
+  // sees a stale 0. Anchor writes already happened — count from now.
+  lastWriteTime = performance.now();
   keepAliveTimer = setInterval(async () => {
     const device = getDevice();
     if (!device) return;
     const elapsed = performance.now() - lastWriteTime;
-    if (lastWriteTime > 0 && elapsed < KEEPALIVE_MS * 0.8) return;
+    if (elapsed < KEEPALIVE_MS * 0.8) return;
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     try {
       await device.characteristic.writeAsync(buf, true);
       lastWriteTime = performance.now();
+      keepAliveSentCount++;
       if (keepAliveFailCount > 0) {
         console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
         keepAliveFailCount = 0;
