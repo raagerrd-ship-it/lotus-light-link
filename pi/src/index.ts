@@ -107,8 +107,18 @@ async function main() {
   const {
     scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount,
     setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand,
-    BLE_BUILD_TAG,
+    BLE_BUILD_TAG, waitForFirstStateChange,
   } = nobleBle;
+
+  // STEP B.1 — CRITICAL: await noble's first `stateChange` BEFORE we boot
+  // anything that blocks the event loop (Express, Sonos poller, alsa-mic).
+  // noble emits `stateChange` exactly once via libuv. If we sync-block the
+  // event loop before it fires, the event is lost and noble.state stays
+  // `unknown` forever (proven by SSH test: 3s busy-loop after require →
+  // stateChange only arrives after loop frees).
+  const firstState = await waitForFirstStateChange(5000);
+  console.log(`[Boot] ✓ noble first stateChange = ${firstState}`);
+
   const { PiLightEngine } = await import('./piEngine.js');
   const { startConfigServer } = await import('./configServer.js');
 
