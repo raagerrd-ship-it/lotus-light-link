@@ -112,17 +112,10 @@ async function main() {
   // Loopen tickar var 15s och anropar autoConnectSaved när demand är aktiv.
   const reconnectTimer = startReconnectLoop(15000);
 
-  // Boot-time adapter prep must be non-destructive. A full hciconfig reset
-  // during process startup often wedges noble in raw `unknown` on Pi even
-  // though the kernel adapter is healthy. Only make sure bluetooth is up here.
-  console.log('[Boot] Preparing Bluetooth adapter (non-destructive)...');
-  try {
-    const { ensureAdapterUp } = await import('./ble/adapter.js');
-    const ready = await ensureAdapterUp();
-    console.log(ready ? '[Boot] ✓ Bluetooth adapter prepared' : '[Boot] ⚠ Bluetooth adapter prep timed out');
-  } catch (e: any) {
-    console.warn('[Boot] Bluetooth prep failed (continuing):', e.message);
-  }
+  // Do NOT touch BLE during boot. The isolated noble one-liner works because
+  // it simply loads noble and waits for stateChange. Boot-time adapter prep
+  // races that startup path on Raspberry Pi and can wedge noble in poweredOff.
+  console.log('[Boot] Leaving Bluetooth adapter untouched until first BLE action');
 
   // 5. Start Sonos poller (configurable gateway)
   let sonosConfig = normalizeSonosConfig({});

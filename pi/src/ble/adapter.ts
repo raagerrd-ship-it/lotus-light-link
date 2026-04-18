@@ -166,7 +166,7 @@ export function normalizeBleKey(value: string | null | undefined): string {
   return (value ?? '').replace(/:/g, '').toLowerCase();
 }
 
-async function initAdapter(): Promise<void> {
+export async function initAdapter(): Promise<void> {
   await ensureAdapterUp();
 
   if (isNobleRawPoweredOn()) {
@@ -201,5 +201,7 @@ async function initAdapter(): Promise<void> {
   logConnectionEvent({ type: 'connect_start', detail: `Adapter init raw=${rawState ?? 'unknown'}, effective=${effectiveState ?? 'unknown'}` });
 }
 
-// Fire and forget — don't block module loading
-initAdapter().catch((e) => console.error('[BLE] initAdapter error:', e));
+// IMPORTANT: do NOT auto-init BLE on module import.
+// On Raspberry Pi, touching HCI during process startup can race noble's own
+// startup path and strand state at poweredOff/unknown. BLE should stay idle
+// until an actual scan/connect request needs it.
