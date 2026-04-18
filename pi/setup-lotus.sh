@@ -152,6 +152,22 @@ echo "[BLE] Verifierar och fixar Bluetooth-tillgång..."
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
 
+# 1b. Ge hcitool CAP_NET_RAW så att vår scan-fallback fungerar utan sudo.
+#     Noble håller HCI-socketen, men hcitool kan ändå köra LE-scan parallellt
+#     när det har caps. Utan detta failar fallbacken med "Operation not permitted".
+HCITOOL_BIN="$(command -v hcitool 2>/dev/null || true)"
+if [ -n "$HCITOOL_BIN" ]; then
+  if ! getcap "$HCITOOL_BIN" 2>/dev/null | grep -q "cap_net_raw"; then
+    sudo setcap 'cap_net_raw,cap_net_admin+eip' "$HCITOOL_BIN" \
+      && echo "  Satte CAP_NET_RAW på hcitool ✓" \
+      || echo "  ⚠ Kunde inte sätta caps på hcitool"
+  else
+    echo "  hcitool har redan CAP_NET_RAW ✓"
+  fi
+else
+  echo "  ⚠ hcitool saknas — installera bluez-paketet"
+fi
+
 # 2-4. Auto-fixa systemd-tjänsten om capabilities eller startup-order saknas
 SVC_FILE="$HOME/.config/systemd/user/lotus-light-engine.service"
 BLE_FIXED=false
