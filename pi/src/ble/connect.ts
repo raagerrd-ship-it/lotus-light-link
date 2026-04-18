@@ -12,7 +12,7 @@ import {
   getNobleRawState, bumpWorkaround, forceNoblePoweredOn as forceNobleStateMutate,
   hasNobleEverFiredStateChange,
 } from './state.js';
-import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
+import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent, getKeepAliveSentCount } from './protocol.js';
 import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
@@ -369,7 +369,7 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
     logConnectionEvent({
       type: 'disconnect',
       device: name,
-      detail: `reason=${reason ?? 'unknown'}, uptime=${uptime}s, sent=${bleStats.sentCount}, avgLat=${bleStats.writeLatAvgMs}ms`,
+      detail: `reason=${reason ?? 'unknown'}, uptime=${uptime}s, sent=${bleStats.sentCount}, ka=${getKeepAliveSentCount()}, avgLat=${bleStats.writeLatAvgMs}ms`,
     });
 
     stopKeepAlive();
