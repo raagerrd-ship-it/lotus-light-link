@@ -291,6 +291,23 @@ if [ -f "$SVC_FILE" ]; then
     echo "  CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN ✓"
   fi
 
+  # MemoryMax — PCC sätter default 27M vilket OOM-killar Node + noble + alsa.
+  # Höj till 150M (Pi Zero 2W har 512MB RAM, gott om plats).
+  if grep -qE "^MemoryMax=" "$SVC_FILE"; then
+    CURRENT_MEM=$(grep -E "^MemoryMax=" "$SVC_FILE" | head -1 | cut -d= -f2)
+    if [ "$CURRENT_MEM" != "150M" ]; then
+      sed -i 's/^MemoryMax=.*/MemoryMax=150M/' "$SVC_FILE"
+      echo "  Höjde MemoryMax från $CURRENT_MEM till 150M ✓"
+      BLE_FIXED=true
+    else
+      echo "  MemoryMax=150M ✓"
+    fi
+  else
+    sed -i '/^\[Service\]/a MemoryMax=150M' "$SVC_FILE"
+    echo "  Lade till MemoryMax=150M ✓"
+    BLE_FIXED=true
+  fi
+
   # Ladda om och starta om tjänsten om vi ändrade något
   if [ "$BLE_FIXED" = true ]; then
     echo "  Laddar om systemd och startar om tjänsten..."
