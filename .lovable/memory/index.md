@@ -9,6 +9,7 @@ Audio capture requires OS routing. Uses native alsa-capture binding.
 Offline-first: localStorage syncs to Supabase user_settings on login.
 Engine decoupled from UI. API URLs use port + 50.
 Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
+journalctl fungerar INTE på Pi:n — använd curl /api/ble/diagnostics, UI eventlog, eller manuell node-körning.
 BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatttool fallback removed (too slow + WriteWithoutResponse not exposed via CLI).
 
 ## Memories
@@ -40,6 +41,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [BLE optimization](mem://pi/ble/connection-optimization) — 7.5-10ms connection interval via HCI
 - [API routing](mem://pi/ui/api-routing) — API URLs generated as window.location.port + 50
 - [Pi port allocation](mem://pi/runtime/port-allocation) — Lotus engine på 3051, Sonos Gateway på 3050, Pi #2 på 3052
+- [journalctl saknas](mem://pi/runtime/journalctl-not-available) — journalctl --user fungerar inte; använd curl /api/ble/diagnostics istället
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
 - [Signal processing chain](mem://pi/audio/signal-processing-chain) — Pipeline order from Mic to Gamma
