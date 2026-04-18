@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled } from './nobleBle.js';
 import { bumpWorkaround } from './ble/state.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
@@ -256,6 +256,40 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     }
   });
 
+  // ── BLE master switch ──
+  // Default OFF after every boot. Frontend toggle calls these.
+  app.post('/api/ble/start', async (_req, res) => {
+    setBleEnabled(true);
+    let connectStarted = false;
+    if (getSavedDeviceId() && !getConnectedDeviceId()) {
+      // Fire and forget — UI polls /api/ble/diagnostics for status updates.
+      requestConnect().catch(e => console.error('[BLE] start auto-connect failed:', e?.message ?? e));
+      connectStarted = true;
+    }
+    res.json({ ok: true, enabled: true, autoConnect: connectStarted });
+  });
+
+  app.post('/api/ble/stop', async (_req, res) => {
+    setBleEnabled(false);
+    releaseDemand();
+    try {
+      await disconnect(true); // disconnect device + release HCI socket
+      res.json({ ok: true, enabled: false, message: 'BLE av — adapter frisläppt' });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? 'stop failed' });
+    }
+  });
+
+  app.get('/api/ble/state', (_req, res) => {
+    res.json({
+      enabled: isBleEnabled(),
+      connected: getConnectedCount() > 0,
+      connectedDeviceId: getConnectedDeviceId(),
+      savedDeviceId: getSavedDeviceId(),
+      demand: isDemandActive(),
+    });
+  });
+
   // BLE connection diagnostics log
   app.get('/api/ble/log', (_req, res) => {
     res.json({ events: getConnectionLog() });
@@ -311,6 +345,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       build: {
         bleTag: BLE_BUILD_TAG,
       },
+      enabled: isBleEnabled(),
       workarounds: workaroundCounters,
       stats: {
         connected: getConnectedCount(),
