@@ -123,6 +123,30 @@ async function main() {
   const firstState = await waitForFirstStateChange(30000);
   console.log(`[Boot] ✓ noble first stateChange = ${firstState}`);
 
+  // Auto-restore BLE master switch om användaren hade radion PÅ före senaste
+  // restart OCH noble faktiskt är poweredOn nu. Annars håller vi den OFF —
+  // användaren får trycka på knappen manuellt så de ser felmeddelandet.
+  const { wasEnabledBeforeRestart, setBleEnabled, ensureAdapterUp, autoConnectSaved } = nobleBle;
+  if (wasEnabledBeforeRestart() && firstState === 'poweredOn') {
+    setBleEnabled(true, false); // persist=false → vi rör inte storage vid auto-restore
+    console.log('[Boot] ✓ BLE master switch auto-restored till ON (var PÅ före restart)');
+    // Förbered adaptern + starta auto-connect i bakgrunden så sparad enhet
+    // kopplas upp utan att användaren behöver röra UI:t.
+    void (async () => {
+      try {
+        const ready = await ensureAdapterUp();
+        if (ready) {
+          const n = await autoConnectSaved(10000);
+          console.log(`[Boot] auto-restore connect: ${n > 0 ? 'connected' : 'no saved device or failed'}`);
+        }
+      } catch (e: any) {
+        console.error('[Boot] auto-restore connect failed:', e?.message ?? e);
+      }
+    })();
+  } else if (wasEnabledBeforeRestart()) {
+    console.log(`[Boot] ⚠ BLE var PÅ före restart men noble är ${firstState} — väntar på manuell aktivering`);
+  }
+
   const { PiLightEngine } = await import('./piEngine.js');
   const { startConfigServer } = await import('./configServer.js');
 
