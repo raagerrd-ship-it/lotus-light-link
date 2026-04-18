@@ -998,23 +998,37 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [startMsg, setStartMsg] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
+  const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
+  const [, forceTick] = useState(0); // re-render varje sek så "Xs sedan" tickar
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const r = await fetch(`${piBase}/api/ble/diagnostics`, { signal: AbortSignal.timeout(4000) });
-      if (r.ok) setDiag(await r.json());
+      if (r.ok) {
+        setDiag(await r.json());
+        setLastFetchAt(Date.now());
+      }
     } catch {}
     setLoading(false);
   }, [piBase]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Auto-poll every 5s
+  // Adaptiv auto-poll: 2s när noble inte är poweredOn (snabb feedback under boot/recovery),
+  // 5s i normalt läge.
   useEffect(() => {
-    const iv = setInterval(refresh, 5000);
+    const nobleStateRaw = diag?.adapter?.nobleRaw?.state ?? 'unknown';
+    const fast = nobleStateRaw !== 'poweredOn' || diag?.boot?.stillBooting === true;
+    const iv = setInterval(refresh, fast ? 2000 : 5000);
     return () => clearInterval(iv);
-  }, [refresh]);
+  }, [refresh, diag?.adapter?.nobleRaw?.state, diag?.boot?.stillBooting]);
+
+  // Tick varje sek så "Xs sedan"-text uppdateras live
+  useEffect(() => {
+    const iv = setInterval(() => forceTick(t => (t + 1) % 1000), 1000);
+    return () => clearInterval(iv);
+  }, []);
 
   if (!diag) return (
     <div className="text-center py-4 text-sm text-muted-foreground">
@@ -1234,11 +1248,17 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         </div>
       )}
 
-      {diag.build?.bleTag && (
-        <div className="text-[10px] text-muted-foreground/70 font-mono px-1">
-          build: <span className="text-foreground/70">{diag.build.bleTag}</span>
-        </div>
-      )}
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 font-mono px-1">
+        {diag.build?.bleTag ? (
+          <span>build: <span className="text-foreground/70">{diag.build.bleTag}</span></span>
+        ) : <span />}
+        {lastFetchAt && (
+          <span className="flex items-center gap-1">
+            {loading && <Loader2 size={10} className="animate-spin" />}
+            <span>poll: {Math.max(0, Math.floor((Date.now() - lastFetchAt) / 1000))}s sedan</span>
+          </span>
+        )}
+      </div>
 
       {/* Manual recovery — only needed if noble wedges */}
       <div className="bg-background/30 rounded-lg p-2 border border-border/40">

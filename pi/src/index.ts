@@ -158,6 +158,11 @@ async function main() {
   const { runBleCapsSelfCheck } = await import('./ble/state.js');
   runBleCapsSelfCheck();
 
+  // Starta heartbeat-loggning så UI:t alltid har löpande status att visa
+  // även när noble fastnat eller ingen connect-aktivitet pågår.
+  const { startBleHeartbeat } = await import('./ble/heartbeat.js');
+  startBleHeartbeat();
+
   // Apply dimming-gamma now that setDimmingGamma is available.
   if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
 
