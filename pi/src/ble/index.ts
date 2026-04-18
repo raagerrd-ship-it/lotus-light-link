@@ -45,6 +45,9 @@ export type { EnabledSource } from './enabled.js';
 // Adapter wake-up (used by master switch ON)
 export { ensureAdapterUp, waitForNoblePoweredOn } from './adapter.js';
 
+// Heartbeat — löpande statusloggning
+export { startBleHeartbeat, stopBleHeartbeat } from './heartbeat.js';
+
 // ── Convenience / legacy aliases ──
 import { getDevice, setDevice, isDemandActive } from './state.js';
 import { stopKeepAlive, resetLastSent } from './protocol.js';
