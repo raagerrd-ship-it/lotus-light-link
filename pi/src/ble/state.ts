@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/pure-noble-no-fallback';
+export const BLE_BUILD_TAG = '2026-04-18/raw-noble-readiness';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Single device state ──
@@ -274,14 +274,18 @@ export function runBleCapsSelfCheck(): {
 
 let _capsOverrideLogged = false;
 
-export function getAdapterState(): string | undefined {
+export function getNobleRawState(): string | undefined {
   const n = noble as typeof noble & {
     state?: string;
     _state?: string;
     adapterState?: string;
     _adapterState?: string;
   };
-  const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+  return n.state ?? n._state ?? n.adapterState ?? n._adapterState;
+}
+
+export function getAdapterState(): string | undefined {
+  const raw = getNobleRawState();
 
   if ((raw === 'unauthorized' || raw === 'unknown' || raw == null) && processHasBtCaps()) {
     bumpWorkaround('capsOverride_applied');
