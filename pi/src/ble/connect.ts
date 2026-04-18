@@ -247,6 +247,19 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
 
   // Step 1: L2CAP connect
   if (!skipL2cap) {
+    // Tvinga noble.state till poweredOn ovillkorligt precis innan connectAsync.
+    // Idempotent + cheap — `forceNobleStateMutate` skippar internt om raw redan
+    // är poweredOn (bumpar då bara `_skippedHealthy`-counter). Vi loggar
+    // ovillkorligt så vi alltid ser om grenen körs i eventloggen.
+    const rawBeforeForce = getNobleRawState() ?? 'unknown';
+    const hciUp = isHci0Up();
+    const forced = forceNobleStateMutate();
+    logConnectionEvent({
+      type: 'connect_start',
+      device: name,
+      detail: `forceNoblePoweredOn → ${forced ? 'OK' : 'SKIPPED (caps missing)'} (raw_before=${rawBeforeForce}, hci_up=${hciUp})`,
+    });
+
     try {
       await withTimeout(peripheral.connectAsync(), 'BLE connect', 'l2cap');
     } catch (e: any) {
