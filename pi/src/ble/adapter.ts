@@ -21,15 +21,35 @@ export async function restartNobleHci(deviceName?: string): Promise<void> {
     const bindings = (noble as any)._bindings;
     const hci = bindings?._hci;
 
+    // Try every "kick noble to re-read adapter state" hook this build of
+    // @stoprocent/noble might expose. Each one is best-effort.
+    const tried: string[] = [];
+
+    if (typeof hci?.pollIsDevUp === 'function') {
+      try { hci.pollIsDevUp(); tried.push('pollIsDevUp'); } catch {}
+    }
+    if (typeof hci?.setSocketFilter === 'function') {
+      try { hci.setSocketFilter(); tried.push('setSocketFilter'); } catch {}
+    }
     if (typeof hci?.stop === 'function') {
-      try { hci.stop(); } catch {}
+      try { hci.stop(); tried.push('stop'); } catch {}
     }
-    if (typeof hci?.start === 'function') {
-      hci.start();
-      logConnectionEvent({ type: 'connect_start', device: deviceName, detail: 'noble HCI listeners refreshed' });
+    if (typeof hci?.init === 'function') {
+      try { hci.init(); tried.push('init'); } catch {}
+    } else if (typeof hci?.start === 'function') {
+      try { hci.start(); tried.push('start'); } catch {}
     }
+    if (typeof bindings?.init === 'function') {
+      try { bindings.init(); tried.push('bindings.init'); } catch {}
+    }
+
+    logConnectionEvent({
+      type: 'connect_start',
+      device: deviceName,
+      detail: `noble HCI refresh: ${tried.join(',') || 'no hooks available'}`,
+    });
   } catch {}
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 400));
 }
 
 /**
