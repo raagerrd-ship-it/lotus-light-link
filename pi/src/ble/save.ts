@@ -47,6 +47,19 @@ export async function selectDevice(deviceId: string): Promise<boolean> {
     resetLastSent();
   }
 
+  // hcitool-only devices have no noble peripheral cached, so nobleConnect
+  // would fail with "could not find peripheral". Auto-route through the
+  // manual save flow instead — direct-connect will look up the peripheral
+  // on first connect attempt using the saved MAC.
+  if (entry.source === 'hcitool') {
+    logConnectionEvent({
+      type: 'connect_start',
+      device: entry.name,
+      detail: `hcitool-only device — auto-routing via save-manual (${mac})`,
+    });
+    return saveManualDevice(mac, entry.name);
+  }
+
   // Save basic info first — nobleConnect will update with peripheral metadata
   setSavedDevice(deviceId, entry.name, mac);
   console.log(`[BLE] Saved device: ${entry.name} (${mac})`);
