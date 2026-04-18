@@ -986,6 +986,8 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       stillBooting?: boolean;
       graceMs?: number;
     };
+    pipeline?: { id: string; label: string; status: 'ok' | 'fail' | 'pending'; detail?: string }[];
+    hciProbe?: { ok: boolean; method: string; errno?: string; error?: string; details?: string; ranAt?: string } | null;
     // transport toggle removed (gatttool fallback eliminated)
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
