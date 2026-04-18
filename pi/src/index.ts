@@ -132,11 +132,13 @@ async function main() {
   //   (b) noble's own waitForPoweredOnAsync — proven working in SSH replica test
   // Whichever resolves first wins.
   bt('STEP B.1: awaiting noble stateChange (cached + waitForPoweredOnAsync race, 30s)...');
+  const { recordObservedNobleState } = await import('./ble/state.js');
   const firstState = await Promise.race([
     waitForFirstStateChange(30000),
     (async () => {
       try {
         await (noble as any).waitForPoweredOnAsync(30000);
+        recordObservedNobleState('poweredOn');
         return 'poweredOn';
       } catch {
         return 'wait-timeout';
