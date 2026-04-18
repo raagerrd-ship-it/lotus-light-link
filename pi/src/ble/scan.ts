@@ -7,7 +7,7 @@
  * så hcitool får tillgång till sockeln.
  */
 
-import { getAdapterState, logConnectionEvent, getNobleRawState, noble } from './state.js';
+import { getAdapterState, logConnectionEvent, getNobleRawState, noble, bumpWorkaround } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
@@ -129,10 +129,26 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       detail: `hcitool-only discovery, timeout=${timeoutMs}ms, adapter=${getAdapterState()}, raw=${getNobleRawState() ?? 'unknown'}`,
     });
 
-    // Steg 1: Cycla HCI så hcitool får exklusiv tillgång till adaptern.
-    // Noble håller annars en kernel-socket bunden till hci0 även när vi inte
-    // scannar aktivt → "Set scan parameters failed: I/O error" från hcitool.
-    // hciconfig down/up river ner ALLA bindningar, inkl noble's.
+    // Steg 1: Stoppa noble's HCI-binding så subprocessen får exklusiv access.
+    // hciconfig down/up räcker INTE — noble's kernel-socket håller adaptern
+    // även när hci0 är "down". Vi måste explicit stänga noble's binding,
+    // sen cycla HCI, sen spawna helper. Helpern importerar inte noble alls.
+    let nobleStopped = false;
+    try {
+      const bindings = (noble as any)._bindings;
+      const hci = bindings?._hci;
+      if (typeof hci?.stop === 'function') {
+        try { hci.stop(); nobleStopped = true; bumpWorkaround('noble_hci_stopped_for_scan'); } catch {}
+      }
+      logConnectionEvent({
+        type: 'scan_start',
+        detail: nobleStopped ? 'noble HCI stoppad — släpper socket åt hcitool' : 'noble._hci.stop() ej tillgänglig',
+      });
+    } catch (e: any) {
+      logConnectionEvent({ type: 'scan_start', detail: `noble stop warning: ${e?.message ?? e}` });
+    }
+
+    // Steg 2: Cycla HCI så subprocessen ärver en ren adapter.
     try {
       const { execFileSync } = await import('child_process');
       execFileSync('bash', ['-lc',
@@ -143,9 +159,8 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         'hciconfig hci0 up >/dev/null 2>&1 || true; ' +
         'rfkill unblock bluetooth >/dev/null 2>&1 || true'
       ], { timeout: 5000, stdio: 'ignore' });
-      // Ge kernel + radio en kort stund att stabilisera innan hcitool startar.
       await new Promise(r => setTimeout(r, 300));
-      logConnectionEvent({ type: 'scan_start', detail: 'HCI cycled (down/up) — adapter klar för hcitool' });
+      logConnectionEvent({ type: 'scan_start', detail: 'HCI cycled — adapter klar för subprocess-helper' });
     } catch (e: any) {
       logConnectionEvent({ type: 'scan_start', detail: `HCI cycle warning: ${e?.message ?? e}` });
     }
@@ -153,14 +168,22 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     scanMetrics.phase = 'scanning';
     scanMetrics.lastStartOkAt = new Date().toISOString();
 
-    // Steg 2: Kör hcitool lescan.
+    // Steg 3: Kör scan-helper i en SUBPROCESS (utan noble).
     const hres = await hcitoolLescan(timeoutMs, /BLEDOM/i);
 
-    // Steg 3: Återställ noble's HCI-binding så reconnect-loopen kan använda
-    // adaptern efter scan. Bakgrundskörs — vi väntar inte på resultatet.
+    // Steg 4: Cycla HCI igen + återställ noble's binding så reconnect-loopen
+    // kan använda adaptern efter scan. Bakgrundskörs.
+    try {
+      const { execFileSync } = await import('child_process');
+      execFileSync('bash', ['-lc',
+        'hciconfig hci0 down >/dev/null 2>&1 || true; ' +
+        'sleep 0.1; ' +
+        'hciconfig hci0 up >/dev/null 2>&1 || true'
+      ], { timeout: 4000, stdio: 'ignore' });
+    } catch {}
     try {
       const { restartNobleHci } = await import('./adapter.js');
-      restartNobleHci('post-hcitool-scan').catch(() => {});
+      restartNobleHci('post-subprocess-scan').catch(() => {});
     } catch {}
 
     // Merge results into found-map.
