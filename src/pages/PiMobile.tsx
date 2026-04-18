@@ -2507,6 +2507,7 @@ export default function PiMobile() {
                 onClick={async () => {
                   setBleScanning(true);
                   setBleScanResults([]);
+                  setBleScanCompletedEmpty(false);
                   try {
                     const r = await fetch(`${piBase}/api/ble/scan`, {
                       method: 'POST',
@@ -2515,8 +2516,13 @@ export default function PiMobile() {
                     const data = await r.json();
                     if (r.ok && Array.isArray(data.devices)) {
                       setBleScanResults(data.devices);
+                      setBleScanCompletedEmpty(data.devices.length === 0);
+                    } else {
+                      setBleScanCompletedEmpty(true);
                     }
-                  } catch {} finally {
+                  } catch {
+                    setBleScanCompletedEmpty(true);
+                  } finally {
                     setBleScanning(false);
                   }
                 }}
