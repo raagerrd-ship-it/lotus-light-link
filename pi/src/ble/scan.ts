@@ -135,6 +135,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     rawDiscoverCount++;
     const dev = peripheralToDevice(p);
     if (!dev) return;
+    dev.source = 'noble';
     const prev = found.get(dev.id);
     if (!prev) {
       const adv = p?.advertisement ?? {};
@@ -145,7 +146,53 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       });
     }
     discoveredPeripherals.set(dev.id, p);
-    if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
+    if (!prev) {
+      found.set(dev.id, dev);
+    } else {
+      const merged: DiscoveredDevice = {
+        ...prev,
+        rssi: dev.rssi > prev.rssi ? dev.rssi : prev.rssi,
+        name: prev.name.startsWith('(no-name)') && !dev.name.startsWith('(no-name)') ? dev.name : prev.name,
+        source: prev.source === 'hcitool' || prev.source === 'both' ? 'both' : 'noble',
+      };
+      found.set(dev.id, merged);
+    }
+  };
+
+  // Hybrid discovery: kick off hcitool lescan in parallel — noble's
+  // startScanningAsync hangs on some Pis even when poweredOn, so this
+  // gives us a fallback path that talks to HCI directly.
+  let hcitoolPromise: Promise<HcitoolScanResult> | null = null;
+  try {
+    hcitoolPromise = hcitoolLescan(timeoutMs);
+    logConnectionEvent({ type: 'scan_start', detail: `hcitool lescan started (parallel, timeout=${timeoutMs}ms)` });
+  } catch (e: any) {
+    logConnectionEvent({ type: 'scan_start', detail: `hcitool kick-off failed: ${e?.message ?? e}` });
+  }
+
+  const mergeHcitoolResults = (hres: HcitoolScanResult) => {
+    for (const d of hres.devices) {
+      const prev = found.get(d.id);
+      if (!prev) {
+        found.set(d.id, { ...d, source: 'hcitool' });
+        logConnectionEvent({ type: 'scan_start', detail: `hcitool found: ${d.name} (${d.id})` });
+      } else {
+        found.set(d.id, {
+          ...prev,
+          name: prev.name.startsWith('(no-name)') && !d.name.startsWith('(no-name)') ? d.name : prev.name,
+          source: prev.source === 'noble' ? 'both' : prev.source ?? 'hcitool',
+        });
+      }
+    }
+    scanMetrics.hcitool = {
+      enabled: true,
+      deviceCount: hres.devices.length,
+      rawLineCount: hres.rawLineCount,
+      exitCode: hres.exitCode,
+      startError: hres.startError,
+      stderr: hres.stderr.slice(0, 500),
+      durationMs: hres.durationMs,
+    };
   };
 
   try {
