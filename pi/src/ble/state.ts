@@ -31,9 +31,22 @@ let _firstStateChangeResolve: any = null;
 const _firstStateChangePromise: Promise<string> = new Promise<string>((resolve) => {
   _firstStateChangeResolve = resolve;
 });
+
+// Boot-tracking: när processen startade och om noble någonsin hunnit fyra
+// `stateChange`. Används av /api/ble/diagnostics så UI kan visa
+// "Initialiserar BLE…" istället för "Adaptern vaknade inte" under de första
+// 30–90 sekunderna efter en kall boot på Pi Zero 2W.
+const _bootStartedAt = Date.now();
+let _firstStateChangeAt: number | null = null;
+
+export function getBleBootStartedAt(): number { return _bootStartedAt; }
+export function getFirstStateChangeAt(): number | null { return _firstStateChangeAt; }
+export function hasNobleEverFiredStateChange(): boolean { return _firstStateChangeAt != null; }
+
 try {
   (noble as any).on?.('stateChange', (s: string) => {
     _cachedNobleState = s;
+    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
     console.log(`[BLE:stateChange] ${s}`);
     if (_firstStateChangeResolve) {
       _firstStateChangeResolve(s);
@@ -43,6 +56,7 @@ try {
   const initial = (noble as any).state ?? (noble as any)._state;
   if (initial && initial !== 'unknown') {
     _cachedNobleState = initial;
+    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
     if (_firstStateChangeResolve) {
       _firstStateChangeResolve(initial);
       _firstStateChangeResolve = null;
