@@ -54,6 +54,21 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   const found = new Map<string, DiscoveredDevice>();
   let rawDiscoverCount = 0;
 
+  // Hård watchdog: garantera att `scanning`-flaggan släpps även om
+  // stopScanningAsync() eller startScanningAsync() hänger oändligt.
+  // Annars fastnar UI:t i "🔵 Söker" för evigt eftersom /api/diag
+  // returnerar scanning=true.
+  const watchdog = setTimeout(() => {
+    if (scanning) {
+      scanning = false;
+      logConnectionEvent({
+        type: 'scan_done',
+        detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms (noble hängde i start/stop)`,
+      });
+    }
+  }, timeoutMs + 5000);
+  let rawDiscoverCount = 0;
+
   const onDiscover = (p: any) => {
     rawDiscoverCount++;
     const dev = peripheralToDevice(p);
@@ -153,7 +168,15 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     try { await (noble as any).stopScanningAsync(); } catch {}
     return lastScanResults;
   } finally {
+    clearTimeout(watchdog);
     try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
+    // stopScanning med egen 2s timeout så finally aldrig hänger
+    try {
+      await Promise.race([
+        (noble as any).stopScanningAsync?.(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch {}
     scanning = false;
   }
 }
