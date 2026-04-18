@@ -50,6 +50,10 @@ setReconnectTrigger(reconnectWithBackoff);
 
 /** Signal that BLE is needed (e.g. music started playing) */
 export async function requestConnect(): Promise<void> {
+  if (!isBleEnabled()) {
+    // Master switch off — drop demand silently. The user is in control.
+    return;
+  }
   if (isDemandActive() && getDevice()) return;
   setDemand(true);
   if (!getDevice() && getSavedDeviceId()) {
@@ -81,7 +85,7 @@ export function startReconnectLoop(baseIntervalMs = 15000): NodeJS.Timeout {
   // Tickar 1× per sekund — billigt — och beslutar internt om det är dags.
   return setInterval(async () => {
     if (Date.now() < nextAttemptAt) return;
-    if (getDevice() || !getSavedDeviceId() || !isDemandActive()) {
+    if (!isBleEnabled() || getDevice() || !getSavedDeviceId() || !isDemandActive()) {
       // Inget att göra — håll nästa-tid kort så vi reagerar snabbt vid demand.
       nextAttemptAt = Date.now() + baseIntervalMs;
       return;
