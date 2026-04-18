@@ -405,6 +405,88 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     const adapterReady = adapterState === 'poweredOn' || hasCaps;
     const stillBooting = !everPoweredOn && !adapterReady && bootElapsedMs < NOBLE_BOOT_GRACE_MS;
 
+    // ── Pipeline-checklista — ett steg-för-steg "vad är online?"-svar
+    // som UI:t kan rendera som bockrutor istället för att gräva i loggar.
+    const probe = getHciProbeSnapshot();
+    const hciUpRunning = /UP\s+RUNNING/.test(hciRaw);
+    const rfkillUnblocked = !/Soft blocked: yes|Hard blocked: yes/i.test(rfkill);
+    const nobleStateOk = nobleRaw.state === 'poweredOn' || nobleRaw._state === 'poweredOn';
+    const radioOn = isBleEnabled();
+    const savedDevice = !!getSavedDeviceId();
+    const connected = getConnectedCount() > 0;
+
+    const stepStatus = (ok: boolean, pending: boolean = false): 'ok' | 'fail' | 'pending' =>
+      ok ? 'ok' : pending ? 'pending' : 'fail';
+
+    const pipeline = [
+      {
+        id: 'caps',
+        label: 'Process har CAP_NET_RAW + CAP_NET_ADMIN',
+        status: stepStatus(hasCaps),
+        detail: hasCaps ? 'CapEff OK' : 'Saknas — kontrollera setcap på node + AmbientCapabilities',
+      },
+      {
+        id: 'hci-socket',
+        label: 'HCI raw socket öppnar (samma syscall som noble)',
+        status: probe ? stepStatus(probe.ok) : 'pending',
+        detail: probe
+          ? probe.ok
+            ? `OK (${probe.method})`
+            : `${probe.errno ?? 'FAIL'}: ${probe.error}`
+          : 'Probe har inte körts ännu',
+      },
+      {
+        id: 'rfkill',
+        label: 'rfkill bluetooth unblocked',
+        status: stepStatus(rfkillUnblocked),
+        detail: rfkillUnblocked ? 'OK' : 'Blocked — kör sudo rfkill unblock bluetooth',
+      },
+      {
+        id: 'hci-up',
+        label: 'hci0 UP RUNNING',
+        status: stepStatus(hciUpRunning),
+        detail: hciUpRunning ? 'OK' : (hciError ?? 'hci0 nere — sudo hciconfig hci0 up'),
+      },
+      {
+        id: 'noble-state',
+        label: 'noble.state = poweredOn (rå)',
+        status: nobleStateOk ? 'ok' : (stillBooting ? 'pending' : 'fail'),
+        detail: nobleStateOk
+          ? 'OK'
+          : stillBooting
+            ? `Väntar på stateChange (${Math.round(bootElapsedMs / 1000)}s av ${NOBLE_BOOT_GRACE_MS / 1000}s)`
+            : 'unknown — libuv-race vid boot, force-mutation används som fallback',
+      },
+      {
+        id: 'adapter-effective',
+        label: 'Effektiv adapter-state poweredOn',
+        status: stepStatus(adapterReady, stillBooting),
+        detail: adapterReady ? `OK (${adapterState})` : `${adapterState}`,
+      },
+      {
+        id: 'radio',
+        label: 'BLE-radio på (master switch)',
+        status: stepStatus(radioOn),
+        detail: radioOn ? 'ON' : 'OFF — slå på i UI',
+      },
+      {
+        id: 'saved-device',
+        label: 'Sparad enhet finns',
+        status: stepStatus(savedDevice),
+        detail: savedDevice ? (getSavedDeviceName() ?? getSavedDeviceId() ?? 'OK') : 'Ingen — gör en scan + välj enhet',
+      },
+      {
+        id: 'connected',
+        label: 'Ansluten till enhet',
+        status: stepStatus(connected),
+        detail: connected
+          ? `${getConnectedCount()} enhet(er)`
+          : savedDevice
+            ? 'Inte ansluten — auto-connect försöker'
+            : '—',
+      },
+    ];
+
     res.json({
       adapter: {
         state: adapterState,
@@ -413,6 +495,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         hci: { raw: hciRaw, error: hciError },
         rfkill,
       },
+      pipeline,
+      hciProbe: probe,
       boot: {
         startedAt: new Date(bootStartedAt).toISOString(),
         elapsedMs: bootElapsedMs,
