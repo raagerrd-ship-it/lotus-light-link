@@ -550,6 +550,8 @@ export function forceNoblePoweredOn(): boolean {
     _firstStateChangeResolve = null;
   }
 
+  setForceMutationSnapshot({ stuck, after, attempts, failures });
+
   if (!_forcePoweredOnLogged) {
     console.log(`[BLE] forceNoblePoweredOn: attempts=${attempts.join(',')} failures=${failures.join(';') || 'none'} stuck=${stuck} after=${after}`);
     _forcePoweredOnLogged = true;
