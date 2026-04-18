@@ -1,24 +1,15 @@
 /**
  * BLE scanning — ren noble.
  *
- * Förutsättning: node-binären har CAP_NET_RAW + CAP_NET_ADMIN via setcap
- * (sätts av setup-lotus.sh). Med korrekta caps fungerar noble pålitligt:
- * state → poweredOn, discover-events strömmar in. Ingen hcitool-fallback
- * behövs längre.
- *
- * Strategi:
- *  1. `ensureAdapterUp()` (rfkill unblock + hciconfig hci0 up — säkert).
- *  2. Vänta på poweredOn via stateChange-event (upp till 6s).
- *  3. `noble.startScanningAsync` → samla discover-events under timeout → stopScanningAsync.
- *
- * Vi cachear hela peripheral-objektet (inte bara id/name/rssi) så att
- * connect.ts kan använda samma peripheral direkt.
+ * Förutsättning: BLE master switch är PÅ. Master-switchen (POST /api/ble/start)
+ * är det ENDA stället som väcker adaptern. Scan rör inte HCI själv — om noble
+ * inte är poweredOn här så är det användarens jobb att slå på radion eller
+ * trycka "Återställ BLE-stack".
  */
 
 import { noble, getAdapterState, logConnectionEvent, getNobleRawState } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
-import { ensureAdapterUp } from './adapter.js';
 import { isBleEnabled } from './enabled.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
