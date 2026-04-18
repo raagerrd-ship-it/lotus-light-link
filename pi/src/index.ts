@@ -126,10 +126,15 @@ async function main() {
   // Auto-restore BLE master switch om användaren hade radion PÅ före senaste
   // restart OCH noble faktiskt är poweredOn nu. Annars håller vi den OFF —
   // användaren får trycka på knappen manuellt så de ser felmeddelandet.
-  const { wasEnabledBeforeRestart, setBleEnabled, ensureAdapterUp, autoConnectSaved } = nobleBle;
-  if (wasEnabledBeforeRestart() && firstState === 'poweredOn') {
+  const { wasEnabledBeforeRestart, setBleEnabled, ensureAdapterUp, autoConnectSaved, getAdapterState } = nobleBle;
+  // På Pi blir rå noble.state ofta aldrig poweredOn (fastnar i `unknown`).
+  // Effektiv adapter-state (caps-aware) är det som verkligen räknas — om
+  // den rapporterar poweredOn så ÄR adaptern användbar oavsett rå-state.
+  const effectiveState = getAdapterState();
+  const canEnable = firstState === 'poweredOn' || effectiveState === 'poweredOn';
+  if (wasEnabledBeforeRestart() && canEnable) {
     setBleEnabled(true, false); // persist=false → vi rör inte storage vid auto-restore
-    console.log('[Boot] ✓ BLE master switch auto-restored till ON (var PÅ före restart)');
+    console.log(`[Boot] ✓ BLE master switch auto-restored till ON (raw=${firstState}, eff=${effectiveState})`);
     // Förbered adaptern + starta auto-connect i bakgrunden så sparad enhet
     // kopplas upp utan att användaren behöver röra UI:t.
     void (async () => {
@@ -144,7 +149,7 @@ async function main() {
       }
     })();
   } else if (wasEnabledBeforeRestart()) {
-    console.log(`[Boot] ⚠ BLE var PÅ före restart men noble är ${firstState} — väntar på manuell aktivering`);
+    console.log(`[Boot] ⚠ BLE var PÅ före restart men adapter ej redo (raw=${firstState}, eff=${effectiveState}) — väntar på manuell aktivering`);
   }
 
   const { PiLightEngine } = await import('./piEngine.js');
