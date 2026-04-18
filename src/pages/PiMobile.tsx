@@ -1033,7 +1033,11 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const rawStateLabel = rawStateIgnored ? 'noble.state (rå, ignoreras på Pi)' : 'noble.state (rå)';
 
   const enabled = diag.enabled === true;
+  const stillBooting = diag.boot?.stillBooting === true;
+  const bootElapsedSec = diag.boot?.elapsedMs != null ? Math.floor(diag.boot.elapsedMs / 1000) : null;
+  const toggleDisabled = toggling || stillBooting;
   const toggleBle = async () => {
+    if (stillBooting) return;
     setToggling(true);
     setStartMsg(null);
     try {
@@ -1063,19 +1067,28 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   return (
     <div className="space-y-3">
       {/* Master switch */}
-      <div className={`rounded-xl p-3 border ${enabled ? 'bg-primary/10 border-primary/40' : 'bg-secondary/40 border-border/60'}`}>
+      <div className={`rounded-xl p-3 border ${enabled ? 'bg-primary/10 border-primary/40' : stillBooting ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-secondary/40 border-border/60'}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col">
-            <span className="text-sm font-semibold">BLE-radio</span>
+            <span className="text-sm font-semibold flex items-center gap-2">
+              BLE-radio
+              {stillBooting && <Loader2 size={12} className="animate-spin text-yellow-400" />}
+            </span>
             <span className="text-[10px] text-muted-foreground">
-              {enabled ? 'På — söker / ansluter sparad enhet' : 'Av — adaptern är fri (default vid uppstart)'}
+              {stillBooting
+                ? `Initialiserar BLE-adaptern… (${bootElapsedSec ?? '?'}s) — kan ta upp till 90s vid kall boot`
+                : enabled
+                  ? 'På — söker / ansluter sparad enhet'
+                  : 'Av — adaptern är fri (default vid uppstart)'}
             </span>
           </div>
           <button
             onClick={toggleBle}
-            disabled={toggling}
+            disabled={toggleDisabled}
             aria-pressed={enabled}
-            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors disabled:opacity-50 ${enabled ? 'bg-primary' : 'bg-muted'}`}
+            aria-busy={stillBooting}
+            title={stillBooting ? 'Vänta tills BLE-adaptern har initialiserats' : undefined}
+            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${enabled ? 'bg-primary' : 'bg-muted'}`}
           >
             <span
               className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition-transform ${enabled ? 'translate-x-8' : 'translate-x-1'}`}
