@@ -163,7 +163,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       return res.status(409).json({ error: 'Scan already in progress' });
     }
     try {
-      const devices = await scanForDevices(10000);
+      const devices = await scanForDevices(4000);
       res.json({ ok: true, devices, adapterState: getAdapterState(), scan: getScanMetrics() });
     } catch (e: any) {
       res.status(500).json({ error: e?.message ?? 'BLE scan failed', adapterState: getAdapterState(), scan: getScanMetrics() });

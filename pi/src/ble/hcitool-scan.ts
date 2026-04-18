@@ -26,16 +26,16 @@ export interface HcitoolScanResult {
 
 const MAC_LINE = /^([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s*(.*)$/i;
 
-export async function hcitoolLescan(timeoutMs: number): Promise<HcitoolScanResult> {
+export async function hcitoolLescan(timeoutMs: number, earlyExitOnPattern?: RegExp): Promise<HcitoolScanResult> {
   const startedAt = Date.now();
   const found = new Map<string, DiscoveredDevice>();
   let rawLineCount = 0;
   let stderr = '';
   let proc: ChildProcess | null = null;
   let startError: string | null = null;
+  let earlyExit = false;
 
   try {
-    // --duplicates ger upprepade events så vi kan se nya enheter dyka upp.
     proc = spawn('hcitool', ['-i', 'hci0', 'lescan', '--duplicates'], { stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e: any) {
     startError = e?.message ?? String(e);
@@ -45,6 +45,11 @@ export async function hcitoolLescan(timeoutMs: number): Promise<HcitoolScanResul
 
   proc.stdout?.setEncoding('utf8');
   proc.stderr?.setEncoding('utf8');
+
+  const killProc = () => {
+    try { proc?.kill('SIGINT'); } catch {}
+    setTimeout(() => { try { proc?.kill('SIGKILL'); } catch {} }, 500);
+  };
 
   proc.stdout?.on('data', (chunk: string) => {
     for (const line of chunk.split('\n')) {
@@ -60,6 +65,12 @@ export async function hcitoolLescan(timeoutMs: number): Promise<HcitoolScanResul
       const prev = found.get(id);
       if (!prev || (rawName && rawName !== '(unknown)' && prev.name.startsWith('(no-name)'))) {
         found.set(id, { id, name, rssi: -100 });
+        // Early-exit om vi hittar en intressant enhet (t.ex. BLEDOM).
+        if (!earlyExit && earlyExitOnPattern && rawName && earlyExitOnPattern.test(rawName)) {
+          earlyExit = true;
+          logConnectionEvent({ type: 'scan_start', detail: `hcitool early-exit: hittade ${rawName} (${mac}) — stoppar scan` });
+          killProc();
+        }
       }
     }
   });
@@ -75,10 +86,7 @@ export async function hcitoolLescan(timeoutMs: number): Promise<HcitoolScanResul
       settled = true;
       resolve(code);
     };
-    const killTimer = setTimeout(() => {
-      try { proc?.kill('SIGINT'); } catch {}
-      setTimeout(() => { try { proc?.kill('SIGKILL'); } catch {} }, 500);
-    }, timeoutMs);
+    const killTimer = setTimeout(killProc, timeoutMs);
     proc!.once('exit', (code) => {
       clearTimeout(killTimer);
       settle(code);

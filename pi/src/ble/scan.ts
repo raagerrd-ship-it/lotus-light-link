@@ -73,7 +73,7 @@ export function getDiscoveredPeripheral(id: string): any | undefined {
 
 
 
-export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
+export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice[]> {
   if (!isBleEnabled()) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — BLE master switch is OFF' });
     return lastScanResults;
@@ -154,7 +154,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     scanMetrics.lastStartOkAt = new Date().toISOString();
 
     // Steg 2: Kör hcitool lescan.
-    const hres = await hcitoolLescan(timeoutMs);
+    const hres = await hcitoolLescan(timeoutMs, /BLEDOM/i);
 
     // Steg 3: Återställ noble's HCI-binding så reconnect-loopen kan använda
     // adaptern efter scan. Bakgrundskörs — vi väntar inte på resultatet.
