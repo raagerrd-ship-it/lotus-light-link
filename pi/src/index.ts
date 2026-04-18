@@ -14,13 +14,14 @@ import { installLocalStorageShim } from './storage.js';
 // Install shims before any engine imports
 installLocalStorageShim();
 
+// IMPORTANT: noble (via nobleBle.js / ble/state.ts) must NOT be imported at
+// top level. noble runs its HCI init synchronously on first require(), and if
+// hci0 is still DOWN at that moment it caches `poweredOff` forever in this
+// process. We therefore import everything that touches noble lazily inside
+// main(), AFTER waitForHci0Up() has confirmed the adapter is UP RUNNING.
 import { startMic, stopMic, setAlsaDevice, setMicGain, setAutoGainFromVolume } from './alsaMic.js';
-import { scanAndConnect, disconnectAll, startReconnectLoop, getConnectedCount, setDimmingGamma, setExpectedDeviceCount, requestConnect, releaseDemand } from './nobleBle.js';
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
-import { PiLightEngine } from './piEngine.js';
-import { startConfigServer } from './configServer.js';
 import { getItem, setItem } from './storage.js';
-import { BLE_BUILD_TAG } from './nobleBle.js';
 // Palette now comes from Sonos Gateway response (no cloud call needed)
 
 // --- Config ---
