@@ -130,6 +130,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         connectedDeviceId: getConnectedDeviceId(),
         scanning: isScanning(),
         demand: isDemandActive(),
+        watchdogReason: getWatchdogGiveUpReason(),
       },
       commit: GIT_COMMIT_SHORT,
       branch: GIT_BRANCH,
