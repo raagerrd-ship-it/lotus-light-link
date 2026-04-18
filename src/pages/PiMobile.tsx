@@ -1248,11 +1248,17 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         </div>
       )}
 
-      {diag.build?.bleTag && (
-        <div className="text-[10px] text-muted-foreground/70 font-mono px-1">
-          build: <span className="text-foreground/70">{diag.build.bleTag}</span>
-        </div>
-      )}
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 font-mono px-1">
+        {diag.build?.bleTag ? (
+          <span>build: <span className="text-foreground/70">{diag.build.bleTag}</span></span>
+        ) : <span />}
+        {lastFetchAt && (
+          <span className="flex items-center gap-1">
+            {loading && <Loader2 size={10} className="animate-spin" />}
+            <span>poll: {Math.max(0, Math.floor((Date.now() - lastFetchAt) / 1000))}s sedan</span>
+          </span>
+        )}
+      </div>
 
       {/* Manual recovery — only needed if noble wedges */}
       <div className="bg-background/30 rounded-lg p-2 border border-border/40">
