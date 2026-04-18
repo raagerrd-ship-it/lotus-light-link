@@ -116,7 +116,11 @@ async function main() {
   // event loop before it fires, the event is lost and noble.state stays
   // `unknown` forever (proven by SSH test: 3s busy-loop after require →
   // stateChange only arrives after loop frees).
-  const firstState = await waitForFirstStateChange(5000);
+  //
+  // Timeout: 30s. På Pi Zero 2W tar noble 30–90s att vakna när bluetoothd
+  // precis startat (post-install/restart), men <5s vid normal boot. Att
+  // blockera boot här är OK — det körs en gång per process-start.
+  const firstState = await waitForFirstStateChange(30000);
   console.log(`[Boot] ✓ noble first stateChange = ${firstState}`);
 
   const { PiLightEngine } = await import('./piEngine.js');
