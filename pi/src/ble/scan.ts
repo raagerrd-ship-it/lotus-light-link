@@ -22,6 +22,59 @@ import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { ensureAdapterUp } from './adapter.js';
 
+async function scanViaHcitool(timeoutMs: number): Promise<DiscoveredDevice[]> {
+  const tmpFile = `/tmp/lotus-ble-lescan-${process.pid}-${Date.now()}.txt`;
+  const timeoutSec = Math.max(2, Math.ceil(timeoutMs / 1000));
+
+  try {
+    const { execFileSync } = await import('child_process');
+    const { readFile, unlink } = await import('fs/promises');
+
+    execFileSync(
+      'bash',
+      [
+        '-lc',
+        'tmp="$1"; secs="$2"; ' +
+          'rm -f "$tmp"; ' +
+          'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
+          'timeout "$secs" hcitool lescan --duplicates > "$tmp" 2>&1 || true; ' +
+          'killall -9 hcitool >/dev/null 2>&1 || true',
+        'bash',
+        tmpFile,
+        String(timeoutSec),
+      ],
+      { timeout: timeoutMs + 3000, stdio: 'ignore' },
+    );
+
+    const raw = await readFile(tmpFile, 'utf8').catch(() => '');
+    await unlink(tmpFile).catch(() => {});
+
+    const found = new Map<string, DiscoveredDevice>();
+    for (const line of raw.split(/\r?\n/)) {
+      const match = line.match(/^\s*([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s+(.+?)\s*$/i);
+      if (!match) continue;
+
+      const id = match[1].replace(/:/g, '').toLowerCase();
+      const name = match[2].trim();
+      if (!name || /^LE Scan/i.test(name)) continue;
+
+      if (!found.has(id)) found.set(id, { id, name, rssi: -100 });
+    }
+
+    const results = Array.from(found.values());
+    logConnectionEvent({
+      type: 'scan_done',
+      detail: results.length > 0
+        ? `${results.length} device(s) found via hcitool fallback`
+        : '0 devices via hcitool fallback',
+    });
+    return results;
+  } catch (e: any) {
+    logConnectionEvent({ type: 'scan_done', detail: `hcitool fallback failed: ${e?.message ?? e}` });
+    return [];
+  }
+}
+
 function getNobleRawBindingsState(): string | undefined {
   const n = noble as any;
   return n?._bindings?._state ?? n?._state ?? n?.state;
@@ -118,16 +171,24 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
     (noble as any).on('discover', onDiscover);
 
+    const rawBeforeScan = getNobleRawBindingsState();
+    if (rawBeforeScan !== 'poweredOn' && hasCaps) {
+      logConnectionEvent({
+        type: 'scan_start',
+        detail: `raw noble=${rawBeforeScan ?? 'null'} while adapter is poweredOn — using hcitool fallback`,
+      });
+      lastScanResults = await scanViaHcitool(timeoutMs);
+      return lastScanResults;
+    }
+
     try {
       await (noble as any).startScanningAsync([], true);
     } catch (scanErr: any) {
-      // Inga rebinds — bara rapportera felet och bail. Användaren kan trycka
-      // "Återställ BLE-stack" i UI om noble:s interna state är desynkat.
       logConnectionEvent({
-        type: 'scan_done',
-        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawBindingsState() ?? 'null'}). Tryck "Återställ BLE-stack" om problemet kvarstår.`,
+        type: 'scan_start',
+        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawBindingsState() ?? 'null'}) — trying hcitool fallback`,
       });
-      lastScanResults = [];
+      lastScanResults = await scanViaHcitool(timeoutMs);
       return lastScanResults;
     }
 
