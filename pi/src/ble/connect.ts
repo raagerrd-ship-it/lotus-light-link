@@ -15,6 +15,7 @@ import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './pr
 import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
+import { triggerNobleRespawn } from './watchdog.js';
 import type { PiCharacteristic } from './types.js';
 
 // ── HCI reset tracking ──
@@ -451,7 +452,15 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
     nobleScanActive = true;
 
     timer = setTimeout(() => {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect timeout (${timeoutMs}ms) — device not advertising?` });
+      const detail = `Scan-connect timeout (${timeoutMs}ms) — target ${targetNorm} hittades inte i denna noble-instans`;
+      logConnectionEvent({ type: 'connect_fail', device: name, detail });
+      // Om en fresh noble-process (isolated script) ser lampan men den långlivade
+      // service-instansen inte gör det, är noble praktiskt taget blind/wedged.
+      // Då är process-respawn den enda empiriskt stabila recoveryn.
+      const respawned = triggerNobleRespawn(`scan-connect timeout för ${name} (${targetNorm}) trots powered adapter`);
+      if (!respawned) {
+        logConnectionEvent({ type: 'connect_fail', device: name, detail: 'scan-timeout recovery blockerad av respawn-cooldown' });
+      }
       finish(false);
     }, timeoutMs);
 
