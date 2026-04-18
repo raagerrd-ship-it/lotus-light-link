@@ -2023,6 +2023,7 @@ export default function PiMobile() {
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
   const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const [bleScanning, setBleScanning] = useState(false);
+  const [bleScanCompletedEmpty, setBleScanCompletedEmpty] = useState(false);
   const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; timestamp: string }[]>([]);
   const [showBleLog, setShowBleLog] = useState(true);
   const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number }[]>([]);
