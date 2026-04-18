@@ -83,7 +83,9 @@ async function main() {
   if (savedAutoTv === 'true') setSonosAutoTvMode(true);
 
   const savedMicGain = getItem('mic-gain');
-  if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
+  // savedMicGain tillämpas tillsammans med savedAlsaDevice EFTER
+  // waitForFirstStateChange — annars laddas alsaMic native-bindningen för
+  // tidigt och blockerar noble's libuv-stateChange.
 
   const savedTickMs = getItem('tick-ms');
   const effectiveTickMs = savedTickMs ? Math.max(10, Math.min(50, Number(savedTickMs))) : TICK_MS;
@@ -133,6 +135,19 @@ async function main() {
   // blockera boot här är OK — det körs en gång per process-start.
   const firstState = await waitForFirstStateChange(30000);
   console.log(`[Boot] ✓ noble first stateChange = ${firstState}`);
+
+  // STEP B.2 — NU är det säkert att ladda alsaMic. Native ALSA-bindningen
+  // gör synkron init som annars hade blockerat libuv och ätit noble's
+  // stateChange (verifierat i SSH-test).
+  const alsaMic = await import('./alsaMic.js');
+  startMic = alsaMic.startMic;
+  stopMic = alsaMic.stopMic;
+  setAlsaDevice = alsaMic.setAlsaDevice;
+  setMicGain = alsaMic.setMicGain;
+  setAutoGainFromVolume = alsaMic.setAutoGainFromVolume;
+  if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
+  if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
+  console.log('[Boot] ✓ alsaMic loaded (efter noble stateChange)');
 
   // Auto-restore BLE master switch om användaren hade radion PÅ före senaste
   // restart OCH noble faktiskt är poweredOn nu. Annars håller vi den OFF —
