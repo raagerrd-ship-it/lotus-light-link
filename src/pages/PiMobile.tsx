@@ -988,7 +988,12 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
     };
     pipeline?: { id: string; label: string; status: 'ok' | 'fail' | 'pending'; detail?: string }[];
     hciProbe?: { ok: boolean; method: string; errno?: string; error?: string; details?: string; ranAt?: string } | null;
-    // transport toggle removed (gatttool fallback eliminated)
+    scan?: {
+      phase: 'idle' | 'starting' | 'scanning' | 'stopping'; active: boolean; activeSince: string | null;
+      lastScanId: number; lastStartedAt: string | null; lastStartOkAt: string | null; lastStoppedAt: string | null;
+      lastDurationMs: number | null; lastRawDiscoverCount: number; lastResultCount: number;
+      lastStartError: string | null; lastStopError: string | null; lastWatchdogAt: string | null;
+    };
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
       connectedDeviceId: string | null; demand: boolean; scanning: boolean;
@@ -1217,12 +1222,31 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       )}
 
       {/* Noble internals + raw HCI from OS */}
-      {(nobleRaw || a.hci || a.rfkill) && (
+      {(nobleRaw || a.hci || a.rfkill || diag.scan) && (
         <details className="bg-background/40 rounded-lg border border-border/50">
           <summary className="cursor-pointer px-2 py-1.5 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider active:text-foreground">
             OS ↔ noble (hciconfig + rfkill + noble internals)
           </summary>
           <div className="p-2 space-y-2 text-[10px] font-mono">
+            {diag.scan && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">scan metrics</div>
+                <div className="bg-background/60 rounded px-1.5 py-1 leading-tight">
+                  <div>phase:           <span className="text-foreground">{diag.scan.phase}</span></div>
+                  <div>active:          <span className="text-foreground">{String(diag.scan.active)}</span></div>
+                  <div>scanId:          <span className="text-foreground">{diag.scan.lastScanId}</span></div>
+                  <div>startedAt:       <span className="text-foreground">{diag.scan.lastStartedAt ?? '—'}</span></div>
+                  <div>startOkAt:       <span className="text-foreground">{diag.scan.lastStartOkAt ?? '—'}</span></div>
+                  <div>stoppedAt:       <span className="text-foreground">{diag.scan.lastStoppedAt ?? '—'}</span></div>
+                  <div>durationMs:      <span className="text-foreground">{diag.scan.lastDurationMs ?? '—'}</span></div>
+                  <div>rawDiscover:     <span className="text-foreground">{diag.scan.lastRawDiscoverCount}</span></div>
+                  <div>resultCount:     <span className="text-foreground">{diag.scan.lastResultCount}</span></div>
+                  <div>startError:      <span className="text-foreground">{diag.scan.lastStartError ?? '—'}</span></div>
+                  <div>stopError:       <span className="text-foreground">{diag.scan.lastStopError ?? '—'}</span></div>
+                  <div>watchdogAt:      <span className="text-foreground">{diag.scan.lastWatchdogAt ?? '—'}</span></div>
+                </div>
+              </div>
+            )}
             {nobleRaw && (
               <div>
                 <div className="text-muted-foreground mb-0.5">noble internals</div>

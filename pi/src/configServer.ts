@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getEnabledSource, getEnabledChangedAt } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getEnabledSource, getEnabledChangedAt, getScanMetrics } from './nobleBle.js';
 import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot, getNobleGuardPatchResult } from './ble/state.js';
 import { scheduleNobleStuckWatchdog, getWatchdogGiveUpReason } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
@@ -164,9 +164,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     }
     try {
       const devices = await scanForDevices(10000);
-      res.json({ ok: true, devices, adapterState: getAdapterState() });
+      res.json({ ok: true, devices, adapterState: getAdapterState(), scan: getScanMetrics() });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? 'BLE scan failed', adapterState: getAdapterState() });
+      res.status(500).json({ error: e?.message ?? 'BLE scan failed', adapterState: getAdapterState(), scan: getScanMetrics() });
     }
   });
 
@@ -565,6 +565,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         lastDisconnectReason: bleStats.lastDisconnectReason,
         lastDisconnectAt: bleStats.lastDisconnectAt,
       },
+      scan: getScanMetrics(),
       events,
     });
   });

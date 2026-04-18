@@ -19,8 +19,42 @@ let scanning = false;
 // Cache av peripheral-objekt indexerat på normaliserat id (lowercase, utan kolon).
 const discoveredPeripherals = new Map<string, any>();
 
+export interface BleScanMetrics {
+  phase: 'idle' | 'starting' | 'scanning' | 'stopping';
+  active: boolean;
+  activeSince: string | null;
+  lastScanId: number;
+  lastStartedAt: string | null;
+  lastStartOkAt: string | null;
+  lastStoppedAt: string | null;
+  lastDurationMs: number | null;
+  lastRawDiscoverCount: number;
+  lastResultCount: number;
+  lastStartError: string | null;
+  lastStopError: string | null;
+  lastWatchdogAt: string | null;
+}
+
+let _scanSeq = 0;
+const scanMetrics: BleScanMetrics = {
+  phase: 'idle',
+  active: false,
+  activeSince: null,
+  lastScanId: 0,
+  lastStartedAt: null,
+  lastStartOkAt: null,
+  lastStoppedAt: null,
+  lastDurationMs: null,
+  lastRawDiscoverCount: 0,
+  lastResultCount: 0,
+  lastStartError: null,
+  lastStopError: null,
+  lastWatchdogAt: null,
+};
+
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
+export function getScanMetrics(): BleScanMetrics { return { ...scanMetrics }; }
 export function getDiscoveredPeripheral(id: string): any | undefined {
   return discoveredPeripherals.get(id.toLowerCase());
 }
@@ -53,14 +87,32 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   discoveredPeripherals.clear();
   const found = new Map<string, DiscoveredDevice>();
   let rawDiscoverCount = 0;
+  const scanStartedAt = Date.now();
+  const scanId = ++_scanSeq;
+  scanMetrics.phase = 'starting';
+  scanMetrics.active = true;
+  scanMetrics.activeSince = new Date(scanStartedAt).toISOString();
+  scanMetrics.lastScanId = scanId;
+  scanMetrics.lastStartedAt = new Date(scanStartedAt).toISOString();
+  scanMetrics.lastStartOkAt = null;
+  scanMetrics.lastStoppedAt = null;
+  scanMetrics.lastDurationMs = null;
+  scanMetrics.lastRawDiscoverCount = 0;
+  scanMetrics.lastResultCount = 0;
+  scanMetrics.lastStartError = null;
+  scanMetrics.lastStopError = null;
 
-  // Hård watchdog: garantera att `scanning`-flaggan släpps även om
-  // stopScanningAsync() eller startScanningAsync() hänger oändligt.
-  // Annars fastnar UI:t i "🔵 Söker" för evigt eftersom /api/diag
-  // returnerar scanning=true.
   const watchdog = setTimeout(() => {
     if (scanning) {
       scanning = false;
+      scanMetrics.phase = 'idle';
+      scanMetrics.active = false;
+      scanMetrics.activeSince = null;
+      scanMetrics.lastStoppedAt = new Date().toISOString();
+      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+      scanMetrics.lastRawDiscoverCount = rawDiscoverCount;
+      scanMetrics.lastResultCount = found.size;
+      scanMetrics.lastWatchdogAt = new Date().toISOString();
       logConnectionEvent({
         type: 'scan_done',
         detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms (noble hängde i start/stop)`,
@@ -90,8 +142,6 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       detail: `noble scan, timeout=${timeoutMs}ms, adapter=${getAdapterState()}, raw=${getNobleRawState() ?? 'unknown'}`,
     });
 
-    // Master-switchen ska redan ha väckt adaptern. Acceptera caps-aware
-    // effective state om noble raw fastnat i `unknown` (vanligt på Pi Zero 2W).
     const ready = isAdapterReadyForBleOps()
       ? true
       : await new Promise<boolean>((resolve) => {
@@ -107,6 +157,12 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
         });
 
     if (!ready) {
+      scanMetrics.phase = 'idle';
+      scanMetrics.active = false;
+      scanMetrics.activeSince = null;
+      scanMetrics.lastStoppedAt = new Date().toISOString();
+      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+      scanMetrics.lastStartError = `Adapter not ready (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'})`;
       logConnectionEvent({
         type: 'scan_done',
         detail: `Adaptern är inte redo (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}). Slå på BLE-radio i UI eller tryck "Återställ BLE-stack".`,
@@ -117,13 +173,6 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
     (noble as any).on('discover', onDiscover);
 
-    // Noble's startScanningAsync har en INTERN guard som kastar
-    // "Could not start scanning, state is unknown" innan den ens rör HCI.
-    // Vår caps-aware effective state hjälper inte mot den. Tvinga noble's
-    // interna state till poweredOn ALLTID precis innan vi startar scan.
-    // Idempotent + cheap — `forceNoblePoweredOn` skippar internt om raw redan
-    // är poweredOn (bumpar då bara `_skippedHealthy`-counter). Vi loggar
-    // ovillkorligt så vi alltid ser om grenen körs i eventloggen.
     const rawBeforeForce = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
     const forced = forceNoblePoweredOn();
@@ -134,7 +183,15 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
     try {
       await (noble as any).startScanningAsync([], true);
+      scanMetrics.phase = 'scanning';
+      scanMetrics.lastStartOkAt = new Date().toISOString();
     } catch (scanErr: any) {
+      scanMetrics.phase = 'idle';
+      scanMetrics.active = false;
+      scanMetrics.activeSince = null;
+      scanMetrics.lastStoppedAt = new Date().toISOString();
+      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+      scanMetrics.lastStartError = scanErr?.message ?? String(scanErr);
       logConnectionEvent({
         type: 'scan_done',
         detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawState() ?? 'unknown'})`,
@@ -145,9 +202,21 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
     await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
 
-    try { await (noble as any).stopScanningAsync(); } catch {}
+    scanMetrics.phase = 'stopping';
+    try {
+      await (noble as any).stopScanningAsync();
+    } catch (stopErr: any) {
+      scanMetrics.lastStopError = stopErr?.message ?? String(stopErr);
+    }
 
     lastScanResults = Array.from(found.values()).sort((a, b) => b.rssi - a.rssi);
+    scanMetrics.phase = 'idle';
+    scanMetrics.active = false;
+    scanMetrics.activeSince = null;
+    scanMetrics.lastStoppedAt = new Date().toISOString();
+    scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+    scanMetrics.lastRawDiscoverCount = rawDiscoverCount;
+    scanMetrics.lastResultCount = lastScanResults.length;
 
     if (lastScanResults.length === 0) {
       logConnectionEvent({
@@ -160,6 +229,12 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
 
     return lastScanResults;
   } catch (e: any) {
+    scanMetrics.phase = 'idle';
+    scanMetrics.active = false;
+    scanMetrics.activeSince = null;
+    scanMetrics.lastStoppedAt = new Date().toISOString();
+    scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+    scanMetrics.lastStartError = e?.message ?? String(e);
     lastScanResults = [];
     logConnectionEvent({ type: 'scan_done', detail: `Error: ${e?.message ?? e}` });
     console.error(`[BLE] scan error: ${e?.message ?? e}`);
@@ -168,13 +243,21 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   } finally {
     clearTimeout(watchdog);
     try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
-    // stopScanning med egen 2s timeout så finally aldrig hänger
     try {
       await Promise.race([
         (noble as any).stopScanningAsync?.(),
         new Promise((resolve) => setTimeout(resolve, 2000)),
       ]);
-    } catch {}
+    } catch (stopErr: any) {
+      if (!scanMetrics.lastStopError) scanMetrics.lastStopError = stopErr?.message ?? String(stopErr);
+    }
+    scanMetrics.phase = 'idle';
+    scanMetrics.active = false;
+    scanMetrics.activeSince = null;
+    if (!scanMetrics.lastStoppedAt) scanMetrics.lastStoppedAt = new Date().toISOString();
+    if (scanMetrics.lastDurationMs == null) scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+    scanMetrics.lastRawDiscoverCount = rawDiscoverCount;
+    scanMetrics.lastResultCount = lastScanResults.length;
     scanning = false;
   }
 }
