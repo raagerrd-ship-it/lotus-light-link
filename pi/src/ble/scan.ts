@@ -245,18 +245,12 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       scanMetrics.phase = 'scanning';
       scanMetrics.lastStartOkAt = new Date().toISOString();
     } catch (scanErr: any) {
-      scanMetrics.phase = 'idle';
-      scanMetrics.active = false;
-      scanMetrics.activeSince = null;
-      scanMetrics.lastStoppedAt = new Date().toISOString();
-      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
       scanMetrics.lastStartError = scanErr?.message ?? String(scanErr);
       logConnectionEvent({
         type: 'scan_done',
-        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawState() ?? 'unknown'})`,
+        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" — falling back to hcitool only (raw=${getNobleRawState() ?? 'unknown'})`,
       });
-      lastScanResults = [];
-      return lastScanResults;
+      // Fall through — hcitool is still running and may find devices.
     }
 
     await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
