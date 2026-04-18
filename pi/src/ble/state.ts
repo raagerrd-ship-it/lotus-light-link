@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/bluetoothd-required-30s-await';
+export const BLE_BUILD_TAG = '2026-04-18/no-bluetoothd-touch';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -182,7 +182,7 @@ export const workaroundCounters = {
   forceNoblePoweredOn_neededRefresh: 0,
   // hciconfig down/up/reset
   resetHciAdapter_invoked: 0,
-  // systemctl restart bluetooth (last resort)
+  // (DEAD: removed 2026-04-18) systemctl restart bluetooth — Lotus får aldrig röra bluetoothd
   hardBluetoothRestart_invoked: 0,
   // POST /api/ble/reset från UI-knappen
   manualBleReset_invoked: 0,

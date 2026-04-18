@@ -96,40 +96,18 @@ export async function resetHciAdapter(): Promise<void> {
     if (ok) {
       logConnectionEvent({ type: 'hci_reset', detail: 'adapter poweredOn ✓ (post-reset)' });
     } else {
-      // Last resort: hard-restart bluetoothd, which always re-arms the mgmt socket
-      logConnectionEvent({ type: 'hci_reset', detail: `adapter still ${getAdapterState() ?? 'unknown'} after 5s — trying systemctl restart bluetooth` });
-      await hardBluetoothRestart('hci_reset');
-      const ok2 = await ensureAdapterUp();
+      // Lotus får ALDRIG röra bluetoothd — att restart:a den dödar andra
+      // BLE-konsumenter på systemet och har visat sig lämna bluetoothd
+      // disabled efteråt (root cause för "noble.state=unknown för evigt").
+      // Se mem://pi/ble/bluetoothd-required. Om vi hamnar här → användaren
+      // får trycka "Återställ BLE-stack" eller reboota.
       logConnectionEvent({
         type: 'hci_reset',
-        detail: ok2
-          ? 'adapter poweredOn ✓ (after bluetoothd restart)'
-          : `adapter STILL ${getAdapterState() ?? 'unknown'} — manual reboot may be needed`,
+        detail: `adapter still ${getAdapterState() ?? 'unknown'} after 5s — give up (Lotus får inte röra bluetoothd). Tryck "Återställ BLE-stack" eller reboota.`,
       });
     }
   } catch (e: any) {
     logConnectionEvent({ type: 'hci_reset', detail: `hciconfig reset failed: ${e.message}` });
-  }
-}
-
-/**
- * Hard kernel-level Bluetooth stack reset — last resort when noble is
- * permanently stuck in `unknown` after multiple HCI resets.
- *
- * `systemctl restart bluetooth` reloads bluetoothd which holds the management
- * socket. Combined with a brief settle, this almost always unsticks noble.
- */
-async function hardBluetoothRestart(deviceName?: string): Promise<void> {
-  bumpWorkaround('hardBluetoothRestart_invoked');
-  logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'systemctl restart bluetooth (last resort)' });
-  try {
-    const { execFileSync } = await import('child_process');
-    execFileSync('bash', ['-lc', 'systemctl restart bluetooth >/dev/null 2>&1 || sudo systemctl restart bluetooth >/dev/null 2>&1 || true'], { timeout: 8000, stdio: 'ignore' });
-    // bluetoothd needs a moment to re-register the adapter
-    await new Promise(r => setTimeout(r, 2500));
-    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'bluetooth service restarted ✓' });
-  } catch (e: any) {
-    logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `bluetooth restart failed: ${e.message}` });
   }
 }
 
@@ -140,7 +118,9 @@ async function hardBluetoothRestart(deviceName?: string): Promise<void> {
  *  0. If noble is already poweredOn → no-op (don't disturb a healthy adapter).
  *  1. Wait up to 3s for noble to settle on its own (it often just needs time).
  *  2. Up to 3 soft attempts: hciconfig down/up/reset + restartNobleHci + wait 2s.
- *  3. Last resort: systemctl restart bluetooth + restartNobleHci + wait 3s.
+ *
+ * Lotus får ALDRIG röra bluetoothd — den ägs av systemd och delas av andra
+ * BLE-konsumenter. Se mem://pi/ble/bluetoothd-required.
  *
  * Aborts early on `unauthorized` / `poweredOff` (hard fails — no point looping).
  */
