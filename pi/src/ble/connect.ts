@@ -252,18 +252,22 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
 
   // Step 1: L2CAP connect
   if (!skipL2cap) {
-    // Tvinga noble.state till poweredOn ovillkorligt precis innan connectAsync.
-    // Idempotent + cheap — `forceNobleStateMutate` skippar internt om raw redan
-    // är poweredOn (bumpar då bara `_skippedHealthy`-counter). Vi loggar
-    // ovillkorligt så vi alltid ser om grenen körs i eventloggen.
-    const rawBeforeForce = getNobleRawState() ?? 'unknown';
+    // Vänta på RIKTIG noble.state=poweredOn (upp till 10s) — INTE force-mutate.
+    // SSH-test 2026-04-18: force-mutate ger noop-scan/connect; riktig stateChange
+    // tar typiskt 250ms och allt funkar därefter.
+    const rawBeforeWait = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
-    const forced = forceNobleStateMutate();
-    logConnectionEvent({
-      type: 'connect_start',
-      device: name,
-      detail: `forceNoblePoweredOn → ${forced ? 'OK' : 'SKIPPED (caps missing)'} (raw_before=${rawBeforeForce}, hci_up=${hciUp})`,
-    });
+    try {
+      await (noble as any).waitForPoweredOnAsync?.(10_000);
+      logConnectionEvent({
+        type: 'connect_start',
+        device: name,
+        detail: `waitForPoweredOn OK (raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
+      });
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: `waitForPoweredOn failed: ${e.message} (raw=${rawBeforeWait}, hci_up=${hciUp})` });
+      throw e;
+    }
 
     try {
       await withTimeout(peripheral.connectAsync(), 'BLE connect', 'l2cap');
@@ -466,25 +470,26 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
 
     logConnectionEvent({ type: 'connect_start', device: name, detail: `Scanning for ${targetNorm} (timeout=${timeoutMs}ms)` });
 
-    // Tvinga noble.state=poweredOn OVILLKORLIGT precis innan startScanning.
-    // Tidigare villkor (getNobleRawState() !== 'poweredOn') gjorde att vi
-    // hoppade mutationen när raw rapporterade 'poweredOn' falskt — men noble's
-    // INTERNA guard kollar sin egen `_state` som kan vara 'unknown' även då,
-    // vilket triggar "Could not start scanning, state is unknown".
-    // Force-mutationen är idempotent + cheap → kör alltid.
+    // KRITISKT: vänta på RIKTIG stateChange från noble (upp till 10s).
+    // SSH-test 2026-04-18 bevisade: force-mutate _state är en lögn — noble's
+    // interna HCI-init körde aldrig klart, så startScanningAsync blir no-op
+    // och 0 discover-events kommer in. Däremot om vi väntar på riktig
+    // stateChange → poweredOn (tar typiskt 250ms) flödar discover direkt.
     const rawBeforeScan = getNobleRawState() ?? 'unknown';
-    const forcedScan = forceNobleStateMutate();
     logConnectionEvent({
       type: 'connect_start',
       device: name,
-      detail: `scan: forceNoblePoweredOn → ${forcedScan ? 'OK' : 'SKIPPED'} (raw_before=${rawBeforeScan}, hci_up=${isHci0Up()})`,
+      detail: `scan: waitForPoweredOnAsync(10s) (raw_before=${rawBeforeScan}, hci_up=${isHci0Up()})`,
     });
 
-    // Vänta också på waitForPoweredOnAsync — noble's officiella sätt att
-    // synka mot internal state-machine. Löser libuv-race där stateChange
-    // redan fyrats av före vår listener registrerades.
     (async () => {
-      try { await (noble as any).waitForPoweredOnAsync?.(800); } catch {}
+      try {
+        await (noble as any).waitForPoweredOnAsync?.(10_000);
+      } catch (e: any) {
+        logConnectionEvent({ type: 'connect_fail', device: name, detail: `waitForPoweredOn failed: ${e.message}` });
+        finish(false);
+        return;
+      }
       try {
         const startPromise = (noble as any).startScanningAsync?.([], true);
         if (startPromise && typeof startPromise.catch === 'function') {
@@ -532,14 +537,19 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
   });
 
   try {
-    // Tvinga noble.state ovillkorligt precis innan connectAsync (samma libuv-race som scan).
-    const rawBeforeForce = getNobleRawState() ?? 'unknown';
+    // Vänta på RIKTIG noble.state=poweredOn (inte force-mutate, som är no-op).
+    const rawBeforeWait = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
-    const forced = forceNobleStateMutate();
+    try {
+      await (noble as any).waitForPoweredOnAsync?.(10_000);
+    } catch (e: any) {
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: `direct: waitForPoweredOn failed: ${e.message}` });
+      return false;
+    }
     logConnectionEvent({
       type: 'connect_start',
       device: name,
-      detail: `direct: forceNoblePoweredOn → ${forced ? 'OK' : 'SKIPPED'} (raw_before=${rawBeforeForce}, hci_up=${hciUp})`,
+      detail: `direct: waitForPoweredOn OK (raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
     });
     // noble.connectAsync(address, options) — connectar utan scan.
     const peripheral = await withTimeout(
