@@ -138,10 +138,11 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       execFileSync('bash', ['-lc',
         'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
         'hciconfig hci0 down >/dev/null 2>&1 || true; ' +
+        'hciconfig hci0 reset >/dev/null 2>&1 || true; ' +
         'sleep 0.2; ' +
         'hciconfig hci0 up >/dev/null 2>&1 || true; ' +
         'rfkill unblock bluetooth >/dev/null 2>&1 || true'
-      ], { timeout: 4000, stdio: 'ignore' });
+      ], { timeout: 5000, stdio: 'ignore' });
       // Ge kernel + radio en kort stund att stabilisera innan hcitool startar.
       await new Promise(r => setTimeout(r, 300));
       logConnectionEvent({ type: 'scan_start', detail: 'HCI cycled (down/up) — adapter klar för hcitool' });
