@@ -110,7 +110,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     const forced = forceNoblePoweredOn();
     logConnectionEvent({
       type: 'scan_start',
-      detail: `forceNoblePoweredOn → ${forced ? 'OK' : 'SKIPPED (caps missing)'} (raw_before=${rawBeforeForce}, hci_up=${hciUp})`,
+      detail: `forceNoblePoweredOn → ${forced ? 'OK' : 'FAILED'} (raw_before=${rawBeforeForce}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
     });
 
     try {

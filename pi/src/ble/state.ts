@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/force-revert-watchdog';
+export const BLE_BUILD_TAG = '2026-04-18/force-noble-unconditional';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -468,8 +468,20 @@ export function forceNoblePoweredOn(): boolean {
     bumpWorkaround('forceNoblePoweredOn_skippedHealthy');
     return true;
   }
-  if (!processHasBtCaps()) {
-    return false;
+  // OBS: ingen caps-gating här. På Pi körs vi via systemd user-service med
+  // AmbientCapabilities + file-caps på node-binären. processHasBtCaps()
+  // läser /proc/self/status CapEff men returnerar ibland false trots att
+  // noble's HCI-socket fungerar (caps är OK i kärnan men CapEff räknas
+  // annorlunda för user-services). Att skippa mutationen pga den check:en
+  // betyder att noble's interna `state is unknown`-guard alltid blockar
+  // scan/connect — exakt det vi sett i UI-loggen ("SKIPPED (caps missing)"
+  // → "startScanning failed"). Mutera alltid; om HCI-socket failar nedanför
+  // ser vi det som en ärlig EPERM istället för tyst skip.
+  const capsOk = processHasBtCaps();
+  bumpWorkaround('forceNoblePoweredOn_invoked');
+  bumpWorkaround('forceNoblePoweredOn_neededRefresh');
+  if (!capsOk) {
+    bumpWorkaround('capsSelfCheck_failed');
   }
   bumpWorkaround('forceNoblePoweredOn_invoked');
   bumpWorkaround('forceNoblePoweredOn_neededRefresh');
