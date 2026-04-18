@@ -9,7 +9,7 @@ import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved } from './nobleBle.js';
 import { bumpWorkaround } from './ble/state.js';
-import { scheduleNobleStuckWatchdog } from './ble/watchdog.js';
+import { scheduleNobleStuckWatchdog, getWatchdogGiveUpReason } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -130,6 +130,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         connectedDeviceId: getConnectedDeviceId(),
         scanning: isScanning(),
         demand: isDemandActive(),
+        watchdogReason: getWatchdogGiveUpReason(),
       },
       commit: GIT_COMMIT_SHORT,
       branch: GIT_BRANCH,
@@ -370,6 +371,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         nobleRaw,
         hci: { raw: hciRaw, error: hciError },
         rfkill,
+      },
+      watchdog: {
+        giveUpReason: getWatchdogGiveUpReason(),
       },
       build: {
         bleTag: BLE_BUILD_TAG,
