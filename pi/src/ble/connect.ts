@@ -457,26 +457,38 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
 
     logConnectionEvent({ type: 'connect_start', device: name, detail: `Scanning for ${targetNorm} (timeout=${timeoutMs}ms)` });
 
-    // Tvinga noble.state=poweredOn innan startScanning — annars kastar
-    // noble's interna guard "Could not start scanning, state is unknown"
-    // även om HCI är UP och caps är OK (libuv-race på Pi Zero 2W).
-    if (getNobleRawState() !== 'poweredOn' && isHci0Up()) {
-      forceNobleStateMutate();
-    }
+    // Tvinga noble.state=poweredOn OVILLKORLIGT precis innan startScanning.
+    // Tidigare villkor (getNobleRawState() !== 'poweredOn') gjorde att vi
+    // hoppade mutationen när raw rapporterade 'poweredOn' falskt — men noble's
+    // INTERNA guard kollar sin egen `_state` som kan vara 'unknown' även då,
+    // vilket triggar "Could not start scanning, state is unknown".
+    // Force-mutationen är idempotent + cheap → kör alltid.
+    const rawBeforeScan = getNobleRawState() ?? 'unknown';
+    const forcedScan = forceNobleStateMutate();
+    logConnectionEvent({
+      type: 'connect_start',
+      device: name,
+      detail: `scan: forceNoblePoweredOn → ${forcedScan ? 'OK' : 'SKIPPED'} (raw_before=${rawBeforeScan}, hci_up=${isHci0Up()})`,
+    });
 
-    try {
-      // Allow duplicates — BLEDOM advertises infrequently
-      const startPromise = (noble as any).startScanningAsync?.([], true);
-      if (startPromise && typeof startPromise.catch === 'function') {
-        startPromise.catch((e: any) => {
-          logConnectionEvent({ type: 'connect_fail', device: name, detail: `startScanning failed: ${e.message}` });
-          finish(false);
-        });
+    // Vänta också på waitForPoweredOnAsync — noble's officiella sätt att
+    // synka mot internal state-machine. Löser libuv-race där stateChange
+    // redan fyrats av före vår listener registrerades.
+    (async () => {
+      try { await (noble as any).waitForPoweredOnAsync?.(800); } catch {}
+      try {
+        const startPromise = (noble as any).startScanningAsync?.([], true);
+        if (startPromise && typeof startPromise.catch === 'function') {
+          startPromise.catch((e: any) => {
+            logConnectionEvent({ type: 'connect_fail', device: name, detail: `startScanning failed: ${e.message}` });
+            finish(false);
+          });
+        }
+      } catch (e: any) {
+        logConnectionEvent({ type: 'connect_fail', device: name, detail: `startScanning threw: ${e.message}` });
+        finish(false);
       }
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `startScanning threw: ${e.message}` });
-      finish(false);
-    }
+    })();
   });
 
   // First attempt
