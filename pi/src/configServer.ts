@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved } from './nobleBle.js';
 import { bumpWorkaround } from './ble/state.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
@@ -259,11 +259,6 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   // ── BLE master switch ──
   // Default OFF after every boot. Frontend toggle calls these.
   app.post('/api/ble/start', async (_req, res) => {
-    setBleEnabled(true);
-
-    // Wake the adapter so noble.state moves from `unknown` → `poweredOn`.
-    // This is the explicit user signal that mirrors the working isolated
-    // noble one-liner: load noble, then ask it to come online.
     let adapterReady = false;
     try {
       adapterReady = await ensureAdapterUp();
@@ -271,13 +266,29 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
 
-    let connectStarted = false;
-    if (adapterReady && getSavedDeviceId() && !getConnectedDeviceId()) {
-      // Fire and forget — UI polls /api/ble/diagnostics for status updates.
-      requestConnect().catch(e => console.error('[BLE] start auto-connect failed:', e?.message ?? e));
-      connectStarted = true;
+    // Exponera inte master-switchen som ON förrän själva startsteget lyckats.
+    // Annars kan demand/reconnect-logik börja reagera medan adaptern fortfarande
+    // är poweredOff, vilket gör startflödet icke-deterministiskt.
+    if (!adapterReady) {
+      setBleEnabled(false);
+      return res.status(503).json({ ok: false, enabled: false, adapterReady: false, autoConnect: false });
     }
-    res.json({ ok: true, enabled: true, adapterReady, autoConnect: connectStarted });
+
+    setBleEnabled(true);
+
+    let connectStarted = false;
+    let connected = !!getConnectedDeviceId();
+    if (adapterReady && getSavedDeviceId() && !getConnectedDeviceId()) {
+      // Startflödet ska vara adapter + auto-connect till sparad enhet, utan att
+      // gå via demand-logiken som Sonos senare får styra separat.
+      connectStarted = true;
+      try {
+        connected = (await autoConnectSaved(10000)) > 0;
+      } catch (e: any) {
+        console.error('[BLE] start auto-connect failed:', e?.message ?? e);
+      }
+    }
+    res.json({ ok: true, enabled: true, adapterReady: true, autoConnect: connectStarted, connected });
   });
 
   app.post('/api/ble/stop', async (_req, res) => {
