@@ -75,28 +75,29 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   const onDiscover = (p: any) => {
     const dev = peripheralToDevice(p);
     if (!dev) return;
-    const prev = found.get(dev.id);
-    if (!prev) {
-      logConnectionEvent({ type: 'scan_start', detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi}` });
-    }
-    discoveredPeripherals.set(dev.id, p);
-    if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
-  };
-
   try {
     logConnectionEvent({
       type: 'scan_start',
       detail: `noble scan, timeout=${timeoutMs}ms, adapter=${getAdapterState()}, raw=${getNobleRawState() ?? 'unknown'}`,
     });
 
-    // Säker adapter-init (rfkill unblock + hciconfig hci0 up). Ingen hci.stop().
-    try { await ensureAdapterUp(); } catch {}
+    // Master-switchen ska redan ha väckt adaptern. Vi rör inte HCI här —
+    // bara verifierar att noble är klar. Korta väntan om noble fortfarande
+    // settlar efter en nyss avslutad start.
+    const ready = getNobleRawState() === 'poweredOn'
+      ? true
+      : await new Promise<boolean>((resolve) => {
+          const t = setTimeout(() => resolve(getNobleRawState() === 'poweredOn'), 1500);
+          const onState = (s: string) => {
+            if (s === 'poweredOn') { clearTimeout(t); try { (noble as any).removeListener?.('stateChange', onState); } catch {} resolve(true); }
+          };
+          try { (noble as any).on?.('stateChange', onState); } catch {}
+        });
 
-    const ready = await waitForPoweredOn(6000);
     if (!ready) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `Raw noble inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}) — kan inte scanna`,
+        detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}). Slå på BLE-radio i UI eller tryck "Återställ BLE-stack".`,
       });
       lastScanResults = [];
       return lastScanResults;
