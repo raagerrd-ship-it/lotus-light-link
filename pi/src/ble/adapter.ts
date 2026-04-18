@@ -175,12 +175,19 @@ export function normalizeBleKey(value: string | null | undefined): string {
 /**
  * Check if hci0 is UP RUNNING by reading `hciconfig hci0` (no root required).
  * Returns true if adapter is up, false otherwise (incl. command missing).
+ *
+ * IMPORTANT: använder direkt `execSync('hciconfig hci0 2>&1')` — INTE
+ * `bash -lc 'hciconfig...'`. Under systemd user-service med minimal env
+ * startar `bash -lc` en login-shell som kan ha tom PATH → hciconfig hittas
+ * inte → tom output → false. Heartbeat använder execSync direkt och får
+ * korrekt svar; vi måste matcha den för att undvika att UI säger UP medan
+ * connect-loggen säger hci_up=false.
  */
 export function isHci0Up(): boolean {
   try {
-    const { execFileSync } = require('child_process');
-    const out = execFileSync('bash', ['-lc', 'hciconfig hci0 2>/dev/null || true'], {
-      timeout: 2000,
+    const { execSync } = require('child_process');
+    const out = execSync('hciconfig hci0 2>&1', {
+      timeout: 1500,
       encoding: 'utf8',
     }) as string;
     return /UP\s+RUNNING/.test(out);
