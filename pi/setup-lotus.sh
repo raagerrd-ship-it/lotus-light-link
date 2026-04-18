@@ -165,6 +165,22 @@ echo "[BLE] Verifierar och fixar Bluetooth-tillgång..."
 sudo rfkill unblock bluetooth 2>/dev/null || true
 echo "  Bluetooth unblocked ✓"
 
+# 1a. Säkerställ att bluetoothd (BlueZ management daemon) är enabled + igång.
+#     Utan denna stannar noble.state på "unknown" för evigt — hci0 UP RUNNING
+#     på interface-nivå räcker inte. Se mem://pi/ble/bluetoothd-required.
+if ! systemctl is-enabled bluetooth >/dev/null 2>&1; then
+  sudo systemctl enable bluetooth >/dev/null 2>&1 \
+    && echo "  Aktiverade bluetooth.service vid boot ✓" \
+    || echo "  ⚠ Kunde inte enable:a bluetooth.service"
+fi
+if ! systemctl is-active bluetooth >/dev/null 2>&1; then
+  sudo systemctl start bluetooth >/dev/null 2>&1 \
+    && echo "  Startade bluetooth.service ✓" \
+    || echo "  ⚠ Kunde inte starta bluetooth.service"
+else
+  echo "  bluetooth.service redan igång ✓"
+fi
+
 # 1b. Ge hcitool CAP_NET_RAW så att vår scan-fallback fungerar utan sudo.
 #     Noble håller HCI-socketen, men hcitool kan ändå köra LE-scan parallellt
 #     när det har caps. Utan detta failar fallbacken med "Operation not permitted".
