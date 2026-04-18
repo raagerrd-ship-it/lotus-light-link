@@ -150,16 +150,18 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     }
 
     // Steg 2: Cycla HCI så subprocessen ärver en ren adapter.
+    // PATH-safe via runShellScript (mem://no-bash-lc-for-system-tools).
     try {
-      const { execFileSync } = await import('child_process');
-      execFileSync('bash', ['-lc',
+      const { runShellScript } = await import('./sysExec.js');
+      runShellScript(
         'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
         'hciconfig hci0 down >/dev/null 2>&1 || true; ' +
         'hciconfig hci0 reset >/dev/null 2>&1 || true; ' +
         'sleep 0.2; ' +
         'hciconfig hci0 up >/dev/null 2>&1 || true; ' +
-        'rfkill unblock bluetooth >/dev/null 2>&1 || true'
-      ], { timeout: 5000, stdio: 'ignore' });
+        'rfkill unblock bluetooth >/dev/null 2>&1 || true',
+        { timeoutMs: 5000 }
+      );
       await new Promise(r => setTimeout(r, 300));
       logConnectionEvent({ type: 'scan_start', detail: 'HCI cycled — adapter klar för subprocess-helper' });
     } catch (e: any) {
@@ -175,12 +177,13 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     // Steg 4: Cycla HCI igen + återställ noble's binding så reconnect-loopen
     // kan använda adaptern efter scan. Bakgrundskörs.
     try {
-      const { execFileSync } = await import('child_process');
-      execFileSync('bash', ['-lc',
+      const { runShellScript } = await import('./sysExec.js');
+      runShellScript(
         'hciconfig hci0 down >/dev/null 2>&1 || true; ' +
         'sleep 0.1; ' +
-        'hciconfig hci0 up >/dev/null 2>&1 || true'
-      ], { timeout: 4000, stdio: 'ignore' });
+        'hciconfig hci0 up >/dev/null 2>&1 || true',
+        { timeoutMs: 4000 }
+      );
     } catch {}
     try {
       const { restartNobleHci } = await import('./adapter.js');

@@ -121,14 +121,16 @@ export async function ensureAdapterUp(): Promise<boolean> {
   // We deliberately do NOT touch hciconfig down — that races noble's raw
   // socket and tends to leave noble.state stuck in `poweredOff` even after
   // the adapter comes back up.
-  try {
-    const { execFileSync } = require('child_process');
-    execFileSync('bash', ['-lc',
-      'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
-      '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
-      'rfkill unblock bluetooth >/dev/null 2>&1 || true'
-    ], { timeout: 6000, stdio: 'ignore' });
-  } catch {}
+  //
+  // Använder runShellScript (PATH-safe) istället för bash -lc — login-shell
+  // har tom PATH under systemd user-service, se mem://no-bash-lc-for-system-tools.
+  const { runShellScript } = require('./sysExec.js');
+  runShellScript(
+    'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
+    '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
+    'rfkill unblock bluetooth >/dev/null 2>&1 || true',
+    { timeoutMs: 6000 }
+  );
 
   await new Promise(r => setTimeout(r, 300));
   if (await waitForNoblePoweredOn(2500)) return true;
@@ -176,24 +178,14 @@ export function normalizeBleKey(value: string | null | undefined): string {
  * Check if hci0 is UP RUNNING by reading `hciconfig hci0` (no root required).
  * Returns true if adapter is up, false otherwise (incl. command missing).
  *
- * IMPORTANT: använder direkt `execSync('hciconfig hci0 2>&1')` — INTE
- * `bash -lc 'hciconfig...'`. Under systemd user-service med minimal env
- * startar `bash -lc` en login-shell som kan ha tom PATH → hciconfig hittas
- * inte → tom output → false. Heartbeat använder execSync direkt och får
- * korrekt svar; vi måste matcha den för att undvika att UI säger UP medan
- * connect-loggen säger hci_up=false.
+ * Använder runShellRead som garanterar PATH=/usr/sbin etc. — bash -lc
+ * fungerar inte under systemd user-service (tom PATH i login-shell).
+ * Memory: mem://pi/ble/no-bash-lc-for-system-tools
  */
 export function isHci0Up(): boolean {
-  try {
-    const { execSync } = require('child_process');
-    const out = execSync('hciconfig hci0 2>&1', {
-      timeout: 1500,
-      encoding: 'utf8',
-    }) as string;
-    return /UP\s+RUNNING/.test(out);
-  } catch {
-    return false;
-  }
+  const { runShellRead } = require('./sysExec.js');
+  const out = runShellRead('hciconfig hci0', { timeoutMs: 1500 });
+  return /UP\s+RUNNING/.test(out);
 }
 
 /**
