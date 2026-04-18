@@ -1024,14 +1024,29 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const rawStateLabel = rawStateIgnored ? 'noble.state (rå, ignoreras på Pi)' : 'noble.state (rå)';
 
   const enabled = diag.enabled === true;
+  const [startMsg, setStartMsg] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
   const toggleBle = async () => {
     setToggling(true);
+    setStartMsg(null);
     try {
       const path = enabled ? '/api/ble/stop' : '/api/ble/start';
-      await fetch(`${piBase}${path}`, { method: 'POST', signal: AbortSignal.timeout(8000) });
+      const r = await fetch(`${piBase}${path}`, { method: 'POST', signal: AbortSignal.timeout(12000) });
+      const data = await r.json().catch(() => ({} as any));
+      if (!enabled) {
+        // Vi just slog PÅ → tolka start-svaret
+        if (!data.adapterReady) {
+          setStartMsg({ kind: 'error', text: 'Adaptern vaknade inte — tryck "Återställ BLE-stack" om det inte löser sig.' });
+        } else if (!data.hasSaved) {
+          setStartMsg({ kind: 'info', text: 'Ingen sparad enhet — använd Scan för att para.' });
+        } else if (data.connected) {
+          setStartMsg({ kind: 'ok', text: 'Ansluten till sparad enhet ✓' });
+        } else if (data.autoConnect) {
+          setStartMsg({ kind: 'error', text: 'Hittade inte sparad enhet — är den på och i närheten?' });
+        }
+      }
       await refresh();
     } catch (e: any) {
-      alert(`BLE-toggle misslyckades: ${e?.message ?? 'okänt fel'}`);
+      setStartMsg({ kind: 'error', text: `BLE-toggle misslyckades: ${e?.message ?? 'okänt fel'}` });
     } finally {
       setToggling(false);
     }
@@ -1059,6 +1074,19 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
             />
           </button>
         </div>
+        {startMsg && (
+          <div
+            className={`mt-2 text-[11px] rounded-md px-2 py-1.5 ${
+              startMsg.kind === 'ok'
+                ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+                : startMsg.kind === 'info'
+                  ? 'bg-muted text-muted-foreground border border-border/60'
+                  : 'bg-destructive/10 text-destructive border border-destructive/30'
+            }`}
+          >
+            {startMsg.text}
+          </div>
+        )}
       </div>
 
       {/* Adapter status */}
