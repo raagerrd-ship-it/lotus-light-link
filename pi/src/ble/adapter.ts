@@ -147,6 +147,37 @@ export function normalizeBleKey(value: string | null | undefined): string {
   return (value ?? '').replace(/:/g, '').toLowerCase();
 }
 
+/**
+ * Check if hci0 is UP RUNNING by reading `hciconfig hci0` (no root required).
+ * Returns true if adapter is up, false otherwise (incl. command missing).
+ */
+export function isHci0Up(): boolean {
+  try {
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('bash', ['-lc', 'hciconfig hci0 2>/dev/null || true'], {
+      timeout: 2000,
+      encoding: 'utf8',
+    }) as string;
+    return /UP\s+RUNNING/.test(out);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Poll `hciconfig hci0` until it reports UP RUNNING.
+ * Non-destructive — read-only. PCC (root service) is responsible for bringing
+ * the adapter up via ExecStartPre. Lotus user-service just waits.
+ */
+export async function waitForHci0Up(timeoutMs = 10000, intervalMs = 500): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (isHci0Up()) return true;
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return isHci0Up();
+}
+
 export async function initAdapter(): Promise<void> {
   await ensureAdapterUp();
 
