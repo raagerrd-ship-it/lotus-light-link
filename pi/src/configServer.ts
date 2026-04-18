@@ -409,6 +409,11 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         bleTag: BLE_BUILD_TAG,
       },
       enabled: isBleEnabled(),
+      enabledMeta: {
+        source: getEnabledSource(),
+        changedAt: getEnabledChangedAt(),
+        wasEnabledBeforeRestart: getItem('ble-master-enabled') === 'true',
+      },
       workarounds: workaroundCounters,
       stats: {
         connected: getConnectedCount(),
