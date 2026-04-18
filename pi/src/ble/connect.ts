@@ -615,9 +615,14 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   return withConnectLock(savedName, () => 1, async () => {
     if (getDevice()) return 1;
 
-    const adapterReady = await ensureAdapterUp();
-    if (!adapterReady) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after ensureAdapterUp (${getAdapterState() ?? 'unknown'})` });
+    // Master-switchen äger adaptern. Om noble inte är poweredOn här,
+    // misslyckas vi tydligt — utan att försöka väcka HCI själv.
+    if (getNobleRawState() !== 'poweredOn') {
+      logConnectionEvent({
+        type: 'connect_fail',
+        device: savedName,
+        detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+      });
       return 0;
     }
 
@@ -639,10 +644,7 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     incrementConsecutiveFailures();
     const fails = getConsecutiveFailures();
     logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct-connect misslyckades — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
-    if (fails >= HCI_RESET_THRESHOLD && getAdapterState() !== 'poweredOn') {
-      await resetHciAdapter();
-      resetConsecutiveFailures();
-    }
+    // Ingen automatisk HCI-reset. Användaren trycker "Återställ BLE-stack" vid behov.
     return 0;
   });
 }
