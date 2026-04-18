@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/hci-probe-v2-no-bind';
+export const BLE_BUILD_TAG = '2026-04-18/pipeline-checklist';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -42,6 +42,21 @@ let _firstStateChangeAt: number | null = null;
 export function getBleBootStartedAt(): number { return _bootStartedAt; }
 export function getFirstStateChangeAt(): number | null { return _firstStateChangeAt; }
 export function hasNobleEverFiredStateChange(): boolean { return _firstStateChangeAt != null; }
+
+// ── HCI socket probe result (persisted from boot for diagnostics UI) ──
+export interface HciProbeSnapshot {
+  ok: boolean;
+  method: string;
+  errno?: string;
+  error?: string;
+  details?: string;
+  ranAt: string;
+}
+let _hciProbeSnapshot: HciProbeSnapshot | null = null;
+export function setHciProbeSnapshot(s: Omit<HciProbeSnapshot, 'ranAt'>): void {
+  _hciProbeSnapshot = { ...s, ranAt: new Date().toISOString() };
+}
+export function getHciProbeSnapshot(): HciProbeSnapshot | null { return _hciProbeSnapshot; }
 
 try {
   (noble as any).on?.('stateChange', (s: string) => {
