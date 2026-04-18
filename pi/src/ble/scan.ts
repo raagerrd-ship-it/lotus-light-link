@@ -168,7 +168,15 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     try { await (noble as any).stopScanningAsync(); } catch {}
     return lastScanResults;
   } finally {
+    clearTimeout(watchdog);
     try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
+    // stopScanning med egen 2s timeout så finally aldrig hänger
+    try {
+      await Promise.race([
+        (noble as any).stopScanningAsync?.(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch {}
     scanning = false;
   }
 }
