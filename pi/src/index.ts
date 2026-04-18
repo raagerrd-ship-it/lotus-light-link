@@ -333,7 +333,7 @@ async function main() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  console.log('[Boot] ✓ All systems running');
+  console.log('[Boot] ✓ All systems running (manual-connect-only build)');
 }
 
 main().catch((err) => {
