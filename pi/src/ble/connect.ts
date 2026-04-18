@@ -9,10 +9,10 @@ import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
-  bumpWorkaround,
+  getNobleRawState, bumpWorkaround,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { waitForAdapter, ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
+import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
@@ -377,15 +377,19 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
 export async function nobleScanConnect(targetMacOrId: string, name: string, timeoutMs = 6000): Promise<boolean> {
   const targetNorm = normalizeBleKey(targetMacOrId);
 
-  // Trust caps — don't gate on adapter state
-  if (!await waitForAdapter(name)) return false;
+  // Master-switchen äger adaptern. Vi rör inte HCI här — bara verifierar
+  // att noble är poweredOn. Om inte: misslyckas tydligt.
+  if (getNobleRawState() !== 'poweredOn') {
+    logConnectionEvent({
+      type: 'connect_fail',
+      device: name,
+      detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+    });
+    return false;
+  }
 
   // Make sure no stale scan is holding the HCI socket
   try { (noble as any).stopScanning?.(); } catch {}
-
-  // Only force-reinit noble if it's NOT already poweredOn. Touching the
-  // adapter when noble is healthy is what causes most `unknown` lockups.
-  await forceNoblePoweredOn(name);
 
   const attempt = async (): Promise<boolean> => new Promise<boolean>((resolve) => {
     let done = false;
@@ -459,18 +463,9 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   let ok = await attempt();
   if (ok) return true;
 
-  // Retry once, but only with a destructive HCI reset if the effective adapter
-  // state is actually bad. If caps-aware state already says poweredOn, another
-  // hciconfig reset tends to make noble even more stuck on Pi.
-  if (getAdapterState() !== 'poweredOn') {
-    logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — effective adapter not ready, resetting HCI before retry' });
-    try { (noble as any).stopScanning?.(); } catch {}
-    await resetHciAdapter();
-    await new Promise(r => setTimeout(r, 400));
-  } else {
-    logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — skipping HCI reset because effective adapter is already poweredOn' });
-  }
-
+  // Retry once, men UTAN HCI-reset. Master-switchen äger adaptern.
+  // Om scan misslyckas är det användarens jobb att trycka "Återställ BLE-stack".
+  await new Promise(r => setTimeout(r, 400));
   ok = await attempt();
   return ok;
 }
@@ -620,9 +615,14 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   return withConnectLock(savedName, () => 1, async () => {
     if (getDevice()) return 1;
 
-    const adapterReady = await ensureAdapterUp();
-    if (!adapterReady) {
-      logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Adapter not ready after ensureAdapterUp (${getAdapterState() ?? 'unknown'})` });
+    // Master-switchen äger adaptern. Om noble inte är poweredOn här,
+    // misslyckas vi tydligt — utan att försöka väcka HCI själv.
+    if (getNobleRawState() !== 'poweredOn') {
+      logConnectionEvent({
+        type: 'connect_fail',
+        device: savedName,
+        detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+      });
       return 0;
     }
 
@@ -644,10 +644,7 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     incrementConsecutiveFailures();
     const fails = getConsecutiveFailures();
     logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Direct-connect misslyckades — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
-    if (fails >= HCI_RESET_THRESHOLD && getAdapterState() !== 'poweredOn') {
-      await resetHciAdapter();
-      resetConsecutiveFailures();
-    }
+    // Ingen automatisk HCI-reset. Användaren trycker "Återställ BLE-stack" vid behov.
     return 0;
   });
 }
