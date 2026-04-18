@@ -120,9 +120,11 @@ async function main() {
   const { runBleCapsSelfCheck } = await import('./ble/state.js');
   runBleCapsSelfCheck();
 
+  // Apply dimming-gamma now that setDimmingGamma is available.
+  if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
+
   console.log('');
 
-  // 2. Create engine
   const engine = new PiLightEngine(effectiveTickMs);
 
   // 3. Start config server EARLY (so API is available during BLE/Sonos init)
