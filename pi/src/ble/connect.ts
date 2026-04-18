@@ -9,7 +9,7 @@ import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
-  getNobleRawState, bumpWorkaround, forceNoblePoweredOn,
+  getNobleRawState, bumpWorkaround, forceNoblePoweredOn as forceNobleStateMutate,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
@@ -431,7 +431,7 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
     // noble's interna guard "Could not start scanning, state is unknown"
     // även om HCI är UP och caps är OK (libuv-race på Pi Zero 2W).
     if (getNobleRawState() !== 'poweredOn' && isHci0Up()) {
-      forceNoblePoweredOn();
+      forceNobleStateMutate();
     }
 
     try {
@@ -483,7 +483,7 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
   try {
     // Tvinga noble.state innan connectAsync (samma libuv-race som scan).
     if (getNobleRawState() !== 'poweredOn' && isHci0Up()) {
-      forceNoblePoweredOn();
+      forceNobleStateMutate();
     }
     // noble.connectAsync(address, options) — connectar utan scan.
     const peripheral = await withTimeout(
