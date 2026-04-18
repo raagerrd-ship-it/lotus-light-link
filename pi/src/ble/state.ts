@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/accept-effective-poweredOn';
+export const BLE_BUILD_TAG = '2026-04-18/force-noble-state-poweredOn';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -369,6 +369,59 @@ export function getAdapterState(): string | undefined {
     return 'poweredOn';
   }
   return raw;
+}
+
+/**
+ * Force noble's INTERNAL state to 'poweredOn' so its built-in guard in
+ * startScanningAsync/connectAsync stops throwing "state is unknown".
+ *
+ * Background: on Pi Zero 2W noble's first `stateChange` event sometimes
+ * never fires (libuv timing race). hci0 is UP RUNNING and the process has
+ * CAP_NET_RAW + CAP_NET_ADMIN, but noble's internal `_state` stays
+ * `unknown` forever. noble's own scan/connect methods do
+ * `if (this.state !== 'poweredOn') throw ...` BEFORE touching the HCI
+ * socket, so caps-aware accept doesn't help — we must mutate noble itself.
+ *
+ * Only call when caps OK + hci0 UP. Idempotent + cheap.
+ */
+let _forcePoweredOnLogged = false;
+export function forceNoblePoweredOn(): boolean {
+  const raw = getNobleRawState();
+  if (raw === 'poweredOn') {
+    bumpWorkaround('forceNoblePoweredOn_skippedHealthy');
+    return true;
+  }
+  if (!processHasBtCaps()) {
+    return false;
+  }
+  bumpWorkaround('forceNoblePoweredOn_invoked');
+  bumpWorkaround('forceNoblePoweredOn_neededRefresh');
+
+  const n = noble as any;
+  try {
+    // Mutate every place noble's internal guards read from. Different
+    // versions of @stoprocent/noble check different fields.
+    n.state = 'poweredOn';
+    n._state = 'poweredOn';
+    if (n._bindings) {
+      n._bindings.state = 'poweredOn';
+      if (n._bindings._state !== undefined) n._bindings._state = 'poweredOn';
+    }
+    _cachedNobleState = 'poweredOn';
+    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
+    if (_firstStateChangeResolve) {
+      _firstStateChangeResolve('poweredOn');
+      _firstStateChangeResolve = null;
+    }
+    if (!_forcePoweredOnLogged) {
+      console.log('[BLE] forceNoblePoweredOn: muterade noble.state=poweredOn (caps OK, libuv-race kringgången)');
+      _forcePoweredOnLogged = true;
+    }
+    return true;
+  } catch (e) {
+    console.error('[BLE] forceNoblePoweredOn failed:', e);
+    return false;
+  }
 }
 
 export { noble };
