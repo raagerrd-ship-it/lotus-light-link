@@ -7,8 +7,8 @@
  * trycka "Återställ BLE-stack".
  */
 
-import { noble, getAdapterState, logConnectionEvent, getNobleRawState } from './state.js';
-import { isAdapterReadyForBleOps } from './adapter.js';
+import { noble, getAdapterState, logConnectionEvent, getNobleRawState, forceNoblePoweredOn } from './state.js';
+import { isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
@@ -97,6 +97,18 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     }
 
     (noble as any).on('discover', onDiscover);
+
+    // Noble's startScanningAsync har en INTERN guard som kastar
+    // "Could not start scanning, state is unknown" innan den ens rör HCI.
+    // Vår caps-aware effective state hjälper inte mot den. Tvinga noble's
+    // interna state till poweredOn när caps + hci0 är OK.
+    if (getNobleRawState() !== 'poweredOn' && isHci0Up()) {
+      const forced = forceNoblePoweredOn();
+      logConnectionEvent({
+        type: 'scan_start',
+        detail: `forceNoblePoweredOn → ${forced ? 'OK (mutated noble.state)' : 'SKIPPED (caps missing)'}`,
+      });
+    }
 
     try {
       await (noble as any).startScanningAsync([], true);
