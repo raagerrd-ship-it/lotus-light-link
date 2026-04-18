@@ -1041,7 +1041,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         } else if (data.connected) {
           setStartMsg({ kind: 'ok', text: 'Ansluten till sparad enhet ✓' });
         } else if (data.autoConnect) {
-          setStartMsg({ kind: 'error', text: 'Hittade inte sparad enhet — är den på och i närheten?' });
+          setStartMsg({ kind: 'info', text: 'BLE-radio är på — försöker ansluta sparad enhet i bakgrunden…' });
         }
       }
       await refresh();
