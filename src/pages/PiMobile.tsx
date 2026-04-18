@@ -2369,6 +2369,25 @@ export default function PiMobile() {
         </div>
       </div>
 
+      {/* Prominent connect CTA — visible whenever a device is saved but not connected/connecting */}
+      {bleSavedId && !bleConnectedId && !bleDemand && bleAdapterState !== 'unauthorized' && bleAdapterState !== 'poweredOff' && (
+        <button
+          onClick={async () => {
+            try { await fetch(`${piBase}/api/ble/connect`, { method: 'POST' }); } catch {}
+          }}
+          className="w-full mb-4 py-4 rounded-xl bg-primary text-primary-foreground text-base font-bold shadow-lg shadow-primary/30 ring-2 ring-primary/40 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+        >
+          <Bluetooth size={20} />
+          Anslut till {bleSavedName ?? 'sparad enhet'}
+        </button>
+      )}
+      {bleSavedId && bleDemand && !bleConnectedId && (
+        <div className="w-full mb-4 py-4 rounded-xl bg-yellow-500/15 border-2 border-yellow-500/40 text-yellow-400 text-base font-bold flex items-center justify-center gap-2 animate-pulse">
+          <Bluetooth size={20} />
+          Ansluter…
+        </div>
+      )}
+
       {/* BLE capability warning */}
       {bleAdapterState === 'unauthorized' && (
         <div className="mb-3 p-2.5 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-[11px] flex items-start gap-2">
