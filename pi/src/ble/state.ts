@@ -279,13 +279,24 @@ export function bumpWorkaround(key: keyof Omit<typeof workaroundCounters, 'lastI
 }
 
 // ── Connection event log (ring buffer for diagnostics) ──
-const MAX_EVENTS = 50;
+const MAX_EVENTS = 200;
 const _connectionLog: BleConnectionEvent[] = [];
+
+function trimConnectionLog(): void {
+  while (_connectionLog.length > MAX_EVENTS) {
+    const oldestHeartbeatIdx = _connectionLog.findIndex((entry) => entry.type === 'heartbeat');
+    if (oldestHeartbeatIdx >= 0) {
+      _connectionLog.splice(oldestHeartbeatIdx, 1);
+    } else {
+      _connectionLog.shift();
+    }
+  }
+}
 
 export function logConnectionEvent(event: Omit<BleConnectionEvent, 'timestamp'>): void {
   const entry: BleConnectionEvent = { ...event, timestamp: new Date().toISOString() };
   _connectionLog.push(entry);
-  if (_connectionLog.length > MAX_EVENTS) _connectionLog.shift();
+  trimConnectionLog();
 
   // Also console-log with structured prefix for easy grep
   const detail = entry.detail ? ` — ${entry.detail}` : '';
