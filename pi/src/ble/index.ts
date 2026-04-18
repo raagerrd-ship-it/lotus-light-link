@@ -37,6 +37,9 @@ export { selectDevice, forgetDevice, saveManualDevice } from './save.js';
 // Reconnection & demand
 export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.js';
 
+// Master switch
+export { isBleEnabled, setBleEnabled } from './enabled.js';
+
 // ── Convenience / legacy aliases ──
 import { getDevice, setDevice, isDemandActive } from './state.js';
 import { stopKeepAlive, resetLastSent } from './protocol.js';

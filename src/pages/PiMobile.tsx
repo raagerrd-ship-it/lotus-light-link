@@ -972,6 +972,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
       rfkill?: string;
     };
     build?: { bleTag?: string };
+    enabled?: boolean;
     // transport toggle removed (gatttool fallback eliminated)
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
@@ -982,6 +983,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
     events: { type: string; device?: string; detail?: string; timestamp: string; durationMs?: number }[];
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -1021,8 +1023,44 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         : 'text-yellow-400';
   const rawStateLabel = rawStateIgnored ? 'noble.state (rå, ignoreras på Pi)' : 'noble.state (rå)';
 
+  const enabled = diag.enabled === true;
+  const toggleBle = async () => {
+    setToggling(true);
+    try {
+      const path = enabled ? '/api/ble/stop' : '/api/ble/start';
+      await fetch(`${piBase}${path}`, { method: 'POST', signal: AbortSignal.timeout(8000) });
+      await refresh();
+    } catch (e: any) {
+      alert(`BLE-toggle misslyckades: ${e?.message ?? 'okänt fel'}`);
+    } finally {
+      setToggling(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
+      {/* Master switch */}
+      <div className={`rounded-xl p-3 border ${enabled ? 'bg-primary/10 border-primary/40' : 'bg-secondary/40 border-border/60'}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold">BLE-radio</span>
+            <span className="text-[10px] text-muted-foreground">
+              {enabled ? 'På — söker / ansluter sparad enhet' : 'Av — adaptern är fri (default vid uppstart)'}
+            </span>
+          </div>
+          <button
+            onClick={toggleBle}
+            disabled={toggling}
+            aria-pressed={enabled}
+            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors disabled:opacity-50 ${enabled ? 'bg-primary' : 'bg-muted'}`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition-transform ${enabled ? 'translate-x-8' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* Adapter status */}
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-background/50 rounded-lg p-2">
