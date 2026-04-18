@@ -53,14 +53,37 @@ export async function restartNobleHci(deviceName?: string): Promise<void> {
 }
 
 /**
- * Internal BLE flows must NOT trust the caps-aware adapter override.
- * It is only for UI/diagnostics so the Pi can show "effectively poweredOn"
- * even when noble is still settling. For scan/connect readiness we require raw
- * noble state to actually be poweredOn, otherwise startScanningAsync/connectAsync
- * will still fail with "state is unknown".
+ * Strict raw-noble check. Only used by code paths that genuinely need
+ * `noble.state === 'poweredOn'` (e.g. waitForNoblePoweredOn polling).
  */
 function isNobleRawPoweredOn(): boolean {
   return getNobleRawState() === 'poweredOn';
+}
+
+/**
+ * Pragmatic readiness check for BLE ops (scan/connect).
+ *
+ * Background: on Pi Zero 2W noble's first `stateChange` event sometimes
+ * never fires (libuv timing race), even though hci0 is UP RUNNING and the
+ * process has CAP_NET_RAW + CAP_NET_ADMIN. In that wedged-but-functional
+ * state, `getNobleRawState()` returns `unknown` forever — but
+ * `startScanningAsync` and `connectAsync` actually work because the HCI
+ * socket is healthy.
+ *
+ * Empirically: when raw=`unknown` AND caps OK, scan/connect succeed
+ * (verified via pi/scripts/ble-diag.mjs). When raw=`poweredOff` or
+ * `unauthorized`, they always fail. So we treat caps-aware
+ * `getAdapterState() === 'poweredOn'` as "good enough to try".
+ *
+ * Returns true if either raw noble or the caps-aware effective state
+ * reports poweredOn. Returns false on hard fails (poweredOff/unauthorized).
+ */
+export function isAdapterReadyForBleOps(): boolean {
+  const raw = getNobleRawState();
+  if (raw === 'poweredOn') return true;
+  if (raw === 'poweredOff' || raw === 'unauthorized') return false;
+  // raw is unknown/undefined — fall back to caps-aware effective state
+  return getAdapterState() === 'poweredOn';
 }
 
 /**

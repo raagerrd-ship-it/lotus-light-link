@@ -12,7 +12,7 @@ import {
   getNobleRawState, bumpWorkaround,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
-import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci } from './adapter.js';
+import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
 import type { PiCharacteristic } from './types.js';
@@ -32,8 +32,7 @@ export function incrementConsecutiveFailures(): void { consecutiveConnectFailure
 // Hard ceiling for any single connect attempt. If the inner fn() never
 // settles (e.g. noble's discover listener got wedged), we still release the
 // lock so the next /api/ble/connect doesn't queue forever.
-// Hard ceiling: räcker för 16s direct + 18s scan-fallback + lite slack.
-const CONNECT_LOCK_HARD_TIMEOUT_MS = 40_000;
+const CONNECT_LOCK_HARD_TIMEOUT_MS = 12_000;
 
 async function withConnectLock<T>(deviceName: string | undefined, successResult: () => T, fn: () => Promise<T>): Promise<T> {
   // Don't queue: if a connect is already running, just bail with a no-op.
@@ -194,8 +193,8 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
 const TIMEOUTS = { l2cap: 8000, gatt: 5000, write: 2000 } as const;
 type StepKind = keyof typeof TIMEOUTS;
 
-function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap', overrideMs?: number): Promise<T> {
-  const ms = overrideMs ?? TIMEOUTS[kind];
+function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
+  const ms = TIMEOUTS[kind];
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     promise.then(v => { clearTimeout(timer); return v; }),
@@ -203,17 +202,6 @@ function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2
       timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     }),
   ]);
-}
-
-/**
- * Skala timeout per försök: 1=8s, 2=12s, 3+=16s (cap).
- * Lampan kanske vaknar ur sleep mellan försöken — då hjälper extra tid.
- * Cap vid 16s eftersom BLEDOM ändå inte svarar längre om den är riktigt borta.
- */
-function timeoutForAttempt(failCount: number): { l2cap: number; scan: number } {
-  if (failCount <= 0) return { l2cap: 8000, scan: 10000 };
-  if (failCount === 1) return { l2cap: 12000, scan: 14000 };
-  return { l2cap: 16000, scan: 18000 };
 }
 
 /** Exposed so reconnect.ts can wait out an in-flight connect before its first attempt. */
@@ -372,12 +360,13 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   const targetNorm = normalizeBleKey(targetMacOrId);
 
   // Master-switchen äger adaptern. Vi rör inte HCI här — bara verifierar
-  // att noble är poweredOn. Om inte: misslyckas tydligt.
-  if (getNobleRawState() !== 'poweredOn') {
+  // att adaptern är redo. Acceptera caps-aware effective state om noble
+  // raw fastnat i `unknown` (vanligt på Pi Zero 2W). Se isAdapterReadyForBleOps.
+  if (!isAdapterReadyForBleOps()) {
     logConnectionEvent({
       type: 'connect_fail',
       device: name,
-      detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+      detail: `Adaptern är inte redo (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}) — slå på BLE-radio i UI`,
     });
     return false;
   }
@@ -486,12 +475,10 @@ async function tryDirectConnectAsync(name: string, timeoutMs: number): Promise<b
 
   try {
     // noble.connectAsync(address, options) — connectar utan scan.
-    // overrideMs=timeoutMs så autoConnectSaved kan skala per försök.
     const peripheral = await withTimeout(
       (noble as any).connectAsync(address.toLowerCase(), { addressType }),
       'Direct connect',
       'l2cap',
-      timeoutMs,
     ) as any;
 
     if (!peripheral) {
@@ -611,26 +598,17 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
   return withConnectLock(savedName, () => 1, async () => {
     if (getDevice()) return 1;
 
-    // Master-switchen äger adaptern. Om noble inte är poweredOn här,
-    // misslyckas vi tydligt — utan att försöka väcka HCI själv.
-    if (getNobleRawState() !== 'poweredOn') {
+    // Master-switchen äger adaptern. Acceptera caps-aware effective state
+    // om noble raw fastnat i `unknown` — då fungerar scan/connect ändå
+    // eftersom HCI-socketen är frisk. Se isAdapterReadyForBleOps.
+    if (!isAdapterReadyForBleOps()) {
       logConnectionEvent({
         type: 'connect_fail',
         device: savedName,
-        detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}) — slå på BLE-radio i UI`,
+        detail: `Adaptern är inte redo (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}) — slå på BLE-radio i UI`,
       });
       return 0;
     }
-
-    // Skala timeouts per försök: 8s → 12s → 16s. Lampan kanske vaknar
-    // mellan försöken (BLEDOM går i sleep efter ~30s utan trafik), så
-    // ge mer tid när vi redan har misslyckats.
-    const budgets = timeoutForAttempt(getConsecutiveFailures());
-    logConnectionEvent({
-      type: 'connect_start',
-      device: savedName,
-      detail: `Connect-försök (failCount=${getConsecutiveFailures()}, l2cap=${budgets.l2cap}ms, scan=${budgets.scan}ms)`,
-    });
 
     // Hybrid: direct-connect first (snabb när lampan är nära), fall back
     // till scan-then-connect på svag länk. Memory mem://pi/ble/hybrid-discovery-strategy
@@ -639,7 +617,7 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
     // poweredOn (se diagnostics) och nobleScanConnect har egna stopScanning-
     // skydd, så det är säkert att återinföra.
     if (getSavedAddressType()) {
-      const directOk = await tryDirectConnectAsync(savedName, budgets.l2cap);
+      const directOk = await tryDirectConnectAsync(savedName, Math.min(timeoutMs, 8000));
       if (directOk) return 1;
     } else {
       logConnectionEvent({
@@ -649,10 +627,10 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
       });
     }
 
-    // Scan-fallback: nobleScanConnect tittar efter MAC:en och
+    // Scan-fallback: nobleScanConnect tittar efter MAC:en i ~10s och
     // connectar via peripheral-objektet (samma flöde som fungerade i
     // monoliten). Klarar svaga länkar bättre än direct-connect.
-    const scanOk = await nobleScanConnect(savedId, savedName, budgets.scan);
+    const scanOk = await nobleScanConnect(savedId, savedName, 10000);
     if (scanOk) return 1;
 
     incrementConsecutiveFailures();

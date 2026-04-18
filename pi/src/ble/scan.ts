@@ -8,6 +8,7 @@
  */
 
 import { noble, getAdapterState, logConnectionEvent, getNobleRawState } from './state.js';
+import { isAdapterReadyForBleOps } from './adapter.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
@@ -70,13 +71,12 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       detail: `noble scan, timeout=${timeoutMs}ms, adapter=${getAdapterState()}, raw=${getNobleRawState() ?? 'unknown'}`,
     });
 
-    // Master-switchen ska redan ha väckt adaptern. Vi rör inte HCI här —
-    // bara verifierar att noble är klar. Korta väntan om noble fortfarande
-    // settlar precis efter master-switch ON.
-    const ready = getNobleRawState() === 'poweredOn'
+    // Master-switchen ska redan ha väckt adaptern. Acceptera caps-aware
+    // effective state om noble raw fastnat i `unknown` (vanligt på Pi Zero 2W).
+    const ready = isAdapterReadyForBleOps()
       ? true
       : await new Promise<boolean>((resolve) => {
-          const t = setTimeout(() => resolve(getNobleRawState() === 'poweredOn'), 1500);
+          const t = setTimeout(() => resolve(isAdapterReadyForBleOps()), 1500);
           const onState = (s: string) => {
             if (s === 'poweredOn') {
               clearTimeout(t);
@@ -90,7 +90,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     if (!ready) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `Adaptern är inte poweredOn (raw=${getNobleRawState() ?? 'unknown'}). Slå på BLE-radio i UI eller tryck "Återställ BLE-stack".`,
+        detail: `Adaptern är inte redo (raw=${getNobleRawState() ?? 'unknown'}, effective=${getAdapterState() ?? 'unknown'}). Slå på BLE-radio i UI eller tryck "Återställ BLE-stack".`,
       });
       lastScanResults = [];
       return lastScanResults;
