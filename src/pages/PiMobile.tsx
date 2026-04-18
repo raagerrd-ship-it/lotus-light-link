@@ -984,6 +984,7 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [startMsg, setStartMsg] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -1024,7 +1025,6 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
   const rawStateLabel = rawStateIgnored ? 'noble.state (rå, ignoreras på Pi)' : 'noble.state (rå)';
 
   const enabled = diag.enabled === true;
-  const [startMsg, setStartMsg] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
   const toggleBle = async () => {
     setToggling(true);
     setStartMsg(null);
