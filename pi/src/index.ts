@@ -323,7 +323,6 @@ async function main() {
     engine.stop();
     stopMic();
     stopSonosPoller();
-    clearInterval(reconnectTimer);
     clearInterval(statsTimer);
     // releaseHci=true → tvinga full HCI-release även om demand fortfarande är på.
     // Adaptern ska vara helt ren när processen avslutas (PCC-restart, OS-shutdown).
