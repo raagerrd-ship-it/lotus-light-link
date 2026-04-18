@@ -190,7 +190,11 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
 // genom L2CAP-handshake på 3s — varje retransmission tar ~750ms och vi
 // behöver flera. GATT discovery på BLEDOM kan också ta upp till ~4s på
 // marginell länk.
-const TIMEOUTS = { l2cap: 8000, gatt: 5000, write: 2000 } as const;
+// gatt 5000→3000: BLEDOM idle-timeout är ~2s efter ServicesResolved.
+// Bekräftat via bluetoothctl: connect_ok → ServicesResolved:yes → reason 1
+// inom 1-2s om vi inte writeat något. Snabb fail + retry är bättre än
+// att vänta 5s på en redan död länk.
+const TIMEOUTS = { l2cap: 8000, gatt: 3000, write: 1500 } as const;
 type StepKind = keyof typeof TIMEOUTS;
 
 function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
@@ -314,10 +318,23 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   char.deviceName = name;
   char.deviceId = peripheral.id;
 
-  // Write brightness max — same as early monolith
-  await withTimeout(char.writeAsync(brightMaxBuf, true), 'Brightness write', 'write');
+  // CRITICAL: BLEDOM has a ~2s idle-timeout after ServicesResolved.
+  // We MUST write something within that window or the lamp drops the link
+  // with reason=1. Send brightness-max + a second wake-write back-to-back
+  // to firmly anchor the connection before doing anything else.
+  const writeStart = performance.now();
+  try {
+    await withTimeout(char.writeAsync(brightMaxBuf, true), 'Anchor write 1', 'write');
+    // Second write within ~50ms — empirically BLEDOM needs 2 writes to lock
+    await char.writeAsync(brightMaxBuf, true).catch(() => {});
+    logConnectionEvent({ type: 'connect_ok', device: name, detail: `Anchor writes OK (${Math.round(performance.now() - writeStart)}ms)` });
+  } catch (e: any) {
+    logConnectionEvent({ type: 'connect_fail', device: name, detail: `Anchor write failed: ${e.message} — BLEDOM likely dropped link` });
+    try { await peripheral.disconnectAsync(); } catch {}
+    throw e;
+  }
 
-  // Step 3: Request minimum connection interval
+  // Step 3: Request minimum connection interval (after lamp is anchored — safe to take ~50ms now)
   requestConnectionInterval(peripheral, name);
 
   // Step 4: Register disconnect handler BEFORE activating device (prevents race condition)
