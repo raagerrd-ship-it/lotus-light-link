@@ -91,6 +91,20 @@ async function main() {
   const { runBleCapsSelfCheck } = await import('./ble/state.js');
   runBleCapsSelfCheck();
 
+  // Vänta tills hci0 är UP RUNNING innan något BLE-anrop. PCC (root-service)
+  // ansvarar för att bringa upp adaptern via ExecStartPre. Vi pollar bara —
+  // user-service har inte root och kan inte köra `hciconfig hci0 up` själv.
+  const { waitForHci0Up, isHci0Up } = await import('./ble/adapter.js');
+  if (!isHci0Up()) {
+    console.log('[Boot] Väntar på att hci0 ska bli UP RUNNING (max 10s)...');
+    const up = await waitForHci0Up(10000);
+    console.log(up
+      ? '[Boot] ✓ hci0 UP RUNNING — noble kan initieras vid första BLE-anrop'
+      : '[Boot] ⚠ hci0 fortfarande nere efter 10s — BLE kommer kräva manuell "Återställ BLE-stack"');
+  } else {
+    console.log('[Boot] ✓ hci0 redan UP RUNNING');
+  }
+
   console.log('');
 
   // 2. Create engine
