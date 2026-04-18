@@ -61,3 +61,4 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [BLE workaround counters](mem://pi/ble/workaround-counters) — Mät defensiva fallbacks i /api/ble/diagnostics
 - [Connect flow hybrid](mem://pi/ble/connect-flow-hybrid) — autoConnectSaved måste ha direct + scan-fallback, L2CAP 8s
 - [Noble stateChange race](mem://pi/ble/noble-statechange-event-loop-race) — Native modules (alsaMic) får INTE laddas före waitForFirstStateChange — blockerar libuv och äter noble's stateChange
+- [Never force-mutate noble.state](mem://pi/ble/never-force-mutate-noble-state) — Vänta alltid på riktig stateChange via waitForPoweredOnAsync(10000); _state-mutation är no-op
