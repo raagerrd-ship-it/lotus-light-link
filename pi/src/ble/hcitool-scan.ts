@@ -26,6 +26,8 @@ export interface HcitoolScanResult {
   startError: string | null;
   stderr: string;
   durationMs: number;
+  /** Vilket scan-verktyg som faktiskt användes (btmgmt/bluetoothctl/hcitool/none) */
+  tool?: string;
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -113,16 +115,17 @@ export async function hcitoolLescan(timeoutMs: number, earlyExitOnPattern?: RegE
   const rawLineCount: number = parsed.rawLineCount ?? 0;
   const helperStderr: string = parsed.stderr ?? '';
   const startError: string | null = parsed.startError ?? null;
+  const tool: string = parsed.tool ?? 'unknown';
 
   if (devices.length === 0) {
     logConnectionEvent({
       type: 'scan_done',
-      detail: `scan-helper: 0 devices, raw_lines=${rawLineCount}, exit=${exitCode}, stderr="${helperStderr.slice(0, 160) || stderrBuf.slice(0, 160)}"`,
+      detail: `scan-helper(${tool}): 0 devices, raw_lines=${rawLineCount}, exit=${exitCode}, stderr="${helperStderr.slice(0, 160) || stderrBuf.slice(0, 160)}"`,
     });
   } else {
     logConnectionEvent({
       type: 'scan_done',
-      detail: `scan-helper: ${devices.length} device(s) (raw_lines=${rawLineCount}, dur=${durationMs}ms)`,
+      detail: `scan-helper(${tool}): ${devices.length} device(s) (raw_lines=${rawLineCount}, dur=${durationMs}ms)`,
     });
   }
 
@@ -133,5 +136,6 @@ export async function hcitoolLescan(timeoutMs: number, earlyExitOnPattern?: RegE
     startError,
     stderr: helperStderr || stderrBuf.trim(),
     durationMs,
+    tool,
   };
 }
