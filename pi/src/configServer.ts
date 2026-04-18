@@ -9,6 +9,7 @@ import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved } from './nobleBle.js';
 import { bumpWorkaround } from './ble/state.js';
+import { scheduleNobleStuckWatchdog } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -272,6 +273,11 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     } catch (e: any) {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
+
+    // Watchdog: if hci0 is UP RUNNING + caps OK but noble's raw state is
+    // still wedged in `unknown` 3s after the user asked us to start, exit
+    // the process so systemd respawns with a fresh noble instance.
+    scheduleNobleStuckWatchdog(3000);
 
     let connectStarted = false;
     let connected = !!getConnectedDeviceId();
