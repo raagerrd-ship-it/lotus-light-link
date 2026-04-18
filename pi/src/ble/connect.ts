@@ -119,9 +119,11 @@ async function withConnectLock<T>(deviceName: string | undefined, successResult:
 export async function resetHciAdapter(): Promise<void> {
   bumpWorkaround('resetHciAdapter_invoked');
   logConnectionEvent({ type: 'hci_reset', detail: 'rfkill unblock + hciconfig reset/up' });
+  // PATH-safe: runShellScript garanterar /usr/sbin i PATH (bash -lc har tom
+  // PATH under systemd user-service). Memory: no-bash-lc-for-system-tools.
   try {
-    const { execFileSync } = await import('child_process');
-    execFileSync('bash', ['-lc',
+    const { runShellScript } = await import('./sysExec.js');
+    runShellScript(
       // 1) unblock rfkill FIRST — without this hciconfig up is a no-op
       'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
       // 2) cycle the adapter
@@ -130,8 +132,9 @@ export async function resetHciAdapter(): Promise<void> {
       // 3) bring it back up (must come AFTER reset, otherwise reset leaves it DOWN)
       ' command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
       // 4) double-check rfkill in case reset re-blocked it (seen on some kernels)
-      'rfkill unblock bluetooth >/dev/null 2>&1 || true'
-    ], { timeout: 6000, stdio: 'ignore' });
+      'rfkill unblock bluetooth >/dev/null 2>&1 || true',
+      { timeoutMs: 6000 }
+    );
     bleStats.lastDisconnectReason = 'hci_reset';
     logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig reset complete ✓ — refreshing noble HCI listeners' });
 
