@@ -63,8 +63,9 @@ async function main() {
   const savedAlsaDevice = getItem('alsa-device');
   if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
 
+  // dimming-gamma restore moved below — needs setDimmingGamma which is
+  // imported lazily after hci0 is up (avoids early noble init).
   const savedGamma = getItem('dimming-gamma');
-  if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
 
   // Restore auto TV-mode setting
   const savedAutoTv = getItem('auto-tv-mode');
