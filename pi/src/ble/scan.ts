@@ -12,6 +12,7 @@ import { isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
+import { hcitoolLescan, type HcitoolScanResult } from './hcitool-scan.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -33,6 +34,16 @@ export interface BleScanMetrics {
   lastStartError: string | null;
   lastStopError: string | null;
   lastWatchdogAt: string | null;
+  /** Hybrid hcitool lescan stats from the most recent scan */
+  hcitool: {
+    enabled: boolean;
+    deviceCount: number;
+    rawLineCount: number;
+    exitCode: number | null;
+    startError: string | null;
+    stderr: string;
+    durationMs: number;
+  } | null;
 }
 
 let _scanSeq = 0;
@@ -50,6 +61,7 @@ const scanMetrics: BleScanMetrics = {
   lastStartError: null,
   lastStopError: null,
   lastWatchdogAt: null,
+  hcitool: null,
 };
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
@@ -123,6 +135,7 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     rawDiscoverCount++;
     const dev = peripheralToDevice(p);
     if (!dev) return;
+    dev.source = 'noble';
     const prev = found.get(dev.id);
     if (!prev) {
       const adv = p?.advertisement ?? {};
@@ -133,7 +146,53 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       });
     }
     discoveredPeripherals.set(dev.id, p);
-    if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
+    if (!prev) {
+      found.set(dev.id, dev);
+    } else {
+      const merged: DiscoveredDevice = {
+        ...prev,
+        rssi: dev.rssi > prev.rssi ? dev.rssi : prev.rssi,
+        name: prev.name.startsWith('(no-name)') && !dev.name.startsWith('(no-name)') ? dev.name : prev.name,
+        source: prev.source === 'hcitool' || prev.source === 'both' ? 'both' : 'noble',
+      };
+      found.set(dev.id, merged);
+    }
+  };
+
+  // Hybrid discovery: kick off hcitool lescan in parallel — noble's
+  // startScanningAsync hangs on some Pis even when poweredOn, so this
+  // gives us a fallback path that talks to HCI directly.
+  let hcitoolPromise: Promise<HcitoolScanResult> | null = null;
+  try {
+    hcitoolPromise = hcitoolLescan(timeoutMs);
+    logConnectionEvent({ type: 'scan_start', detail: `hcitool lescan started (parallel, timeout=${timeoutMs}ms)` });
+  } catch (e: any) {
+    logConnectionEvent({ type: 'scan_start', detail: `hcitool kick-off failed: ${e?.message ?? e}` });
+  }
+
+  const mergeHcitoolResults = (hres: HcitoolScanResult) => {
+    for (const d of hres.devices) {
+      const prev = found.get(d.id);
+      if (!prev) {
+        found.set(d.id, { ...d, source: 'hcitool' });
+        logConnectionEvent({ type: 'scan_start', detail: `hcitool found: ${d.name} (${d.id})` });
+      } else {
+        found.set(d.id, {
+          ...prev,
+          name: prev.name.startsWith('(no-name)') && !d.name.startsWith('(no-name)') ? d.name : prev.name,
+          source: prev.source === 'noble' ? 'both' : prev.source ?? 'hcitool',
+        });
+      }
+    }
+    scanMetrics.hcitool = {
+      enabled: true,
+      deviceCount: hres.devices.length,
+      rawLineCount: hres.rawLineCount,
+      exitCode: hres.exitCode,
+      startError: hres.startError,
+      stderr: hres.stderr.slice(0, 500),
+      durationMs: hres.durationMs,
+    };
   };
 
   try {
@@ -186,18 +245,12 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       scanMetrics.phase = 'scanning';
       scanMetrics.lastStartOkAt = new Date().toISOString();
     } catch (scanErr: any) {
-      scanMetrics.phase = 'idle';
-      scanMetrics.active = false;
-      scanMetrics.activeSince = null;
-      scanMetrics.lastStoppedAt = new Date().toISOString();
-      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
       scanMetrics.lastStartError = scanErr?.message ?? String(scanErr);
       logConnectionEvent({
         type: 'scan_done',
-        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" (raw=${getNobleRawState() ?? 'unknown'})`,
+        detail: `startScanning failed: "${scanErr?.message ?? scanErr}" — falling back to hcitool only (raw=${getNobleRawState() ?? 'unknown'})`,
       });
-      lastScanResults = [];
-      return lastScanResults;
+      // Fall through — hcitool is still running and may find devices.
     }
 
     await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
@@ -209,6 +262,21 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
       scanMetrics.lastStopError = stopErr?.message ?? String(stopErr);
     }
 
+    // Wait for hcitool (parallel) to finish — it has its own timeoutMs.
+    if (hcitoolPromise) {
+      try {
+        const hres = await Promise.race([
+          hcitoolPromise,
+          new Promise<HcitoolScanResult>((resolve) =>
+            setTimeout(() => resolve({ devices: [], rawLineCount: 0, exitCode: null, startError: 'await-timeout', stderr: '', durationMs: 0 }), 3000)
+          ),
+        ]);
+        mergeHcitoolResults(hres);
+      } catch (e: any) {
+        scanMetrics.hcitool = { enabled: true, deviceCount: 0, rawLineCount: 0, exitCode: null, startError: e?.message ?? String(e), stderr: '', durationMs: 0 };
+      }
+    }
+
     lastScanResults = Array.from(found.values()).sort((a, b) => b.rssi - a.rssi);
     scanMetrics.phase = 'idle';
     scanMetrics.active = false;
@@ -218,13 +286,15 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     scanMetrics.lastRawDiscoverCount = rawDiscoverCount;
     scanMetrics.lastResultCount = lastScanResults.length;
 
+    const nobleCount = lastScanResults.filter(d => d.source === 'noble' || d.source === 'both').length;
+    const hcitoolCount = lastScanResults.filter(d => d.source === 'hcitool' || d.source === 'both').length;
     if (lastScanResults.length === 0) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `0 devices via noble — raw_discover_events=${rawDiscoverCount}. ${rawDiscoverCount === 0 ? 'INGA events alls från noble — HCI scan startar inte (kolla hcitool lescan manuellt)' : 'Events kom in men filtrerades bort'}. Adapter=${getAdapterState()}`,
+        detail: `0 devices total — noble_raw=${rawDiscoverCount}, hcitool_raw=${scanMetrics.hcitool?.rawLineCount ?? 0}, hcitool_err="${scanMetrics.hcitool?.startError ?? 'none'}". Adapter=${getAdapterState()}`,
       });
     } else {
-      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found via noble (raw_events=${rawDiscoverCount})` });
+      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) (noble=${nobleCount}, hcitool=${hcitoolCount}, noble_raw=${rawDiscoverCount})` });
     }
 
     return lastScanResults;

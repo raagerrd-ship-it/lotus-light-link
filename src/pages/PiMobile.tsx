@@ -2050,7 +2050,7 @@ export default function PiMobile() {
   const [bleScanCompletedEmpty, setBleScanCompletedEmpty] = useState(false);
   const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; timestamp: string }[]>([]);
   const [showBleLog, setShowBleLog] = useState(true);
-  const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number }[]>([]);
+  const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[]>([]);
   const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
   const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
   const [bleSavedId, setBleSavedId] = useState<string | null>(null);
@@ -2592,7 +2592,18 @@ export default function PiMobile() {
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-md bg-background/50 active:bg-primary/10 border border-border/40"
                   >
                     <div className="flex flex-col items-start min-w-0">
-                      <span className="text-xs font-medium truncate">{dev.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-medium truncate">{dev.name}</span>
+                        {dev.source && (
+                          <span className={`text-[9px] font-mono px-1 py-0.5 rounded ${
+                            dev.source === 'both' ? 'bg-primary/20 text-primary' :
+                            dev.source === 'hcitool' ? 'bg-orange-500/20 text-orange-500' :
+                            'bg-blue-500/20 text-blue-500'
+                          }`}>
+                            {dev.source}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-muted-foreground font-mono">{dev.id}</span>
                     </div>
                     <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{dev.rssi} dBm</span>

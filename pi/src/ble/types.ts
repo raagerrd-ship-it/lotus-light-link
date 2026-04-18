@@ -16,6 +16,8 @@ export interface DiscoveredDevice {
   id: string;
   name: string;
   rssi: number;
+  /** Where the device was first observed: noble, hcitool, or both */
+  source?: 'noble' | 'hcitool' | 'both';
 }
 
 /** Connected device state */
