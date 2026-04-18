@@ -16,8 +16,28 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/noble-hci-deep-refresh';
+export const BLE_BUILD_TAG = '2026-04-18/early-statechange-listener';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
+
+// ── EARLY stateChange listener ──
+// noble fires `stateChange` exactly ONCE shortly after require(). If any
+// downstream module subscribes a few seconds later (after building HTTP
+// server, loading config etc.) the event is gone and noble.state stays
+// "unknown" forever even though the adapter is perfectly poweredOn.
+// We MUST attach the listener synchronously here, on the very first import
+// of noble, and cache the latest state for everyone else to read.
+let _cachedNobleState: string | undefined = undefined;
+try {
+  (noble as any).on?.('stateChange', (s: string) => {
+    _cachedNobleState = s;
+    console.log(`[BLE:stateChange] ${s}`);
+  });
+  // Pick up state if it was already set before we attached.
+  const initial = (noble as any).state ?? (noble as any)._state;
+  if (initial && initial !== 'unknown') _cachedNobleState = initial;
+} catch (e) {
+  console.error('[BLE] failed to attach early stateChange listener:', e);
+}
 
 // ── Single device state ──
 let _device: ConnectedDevice | null = null;
@@ -275,6 +295,10 @@ export function runBleCapsSelfCheck(): {
 let _capsOverrideLogged = false;
 
 export function getNobleRawState(): string | undefined {
+  // Prefer our cached value from the early stateChange listener — that's
+  // the only source of truth that survives noble's "fire once at startup"
+  // semantics. Fall back to noble's own properties.
+  if (_cachedNobleState) return _cachedNobleState;
   const n = noble as typeof noble & {
     state?: string;
     _state?: string;
