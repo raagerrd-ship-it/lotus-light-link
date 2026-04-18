@@ -210,6 +210,10 @@ export const workaroundCounters = {
   nobleStuckRespawn_invoked: 0,
   // Watchdog ville respawna men cooldown blockerade (skydd mot loop)
   nobleStuckRespawn_cooldownBlocked: 0,
+  // Force-revert watchdog: noble.state återgick till `unknown` efter en lyckad
+  // force-mutation. Indikerar att noble självskriver över våra ändringar
+  // (t.ex. internt event från HCI-bindningen som nollställer state).
+  forceMutationReverted: 0,
   // Sista gång varje workaround triggades
   lastInvocationAt: {} as Record<string, string>,
 };
