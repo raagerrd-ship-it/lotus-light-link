@@ -12,6 +12,7 @@ import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
 import { hcitoolLescan } from './hcitool-scan.js';
+import { triggerNobleRespawn } from './watchdog.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -187,9 +188,9 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     } catch {}
 
     // Steg 5: Watchdog — vänta 5s; om noble's raw state inte återgått till
-    // poweredOn, kör aggressiv recovery (resetHciAdapter + restartNobleHci).
-    // Bakgrundskörs så scan-svaret inte blockeras. Kritiskt för att reconnect-
-    // loopen ska kunna använda adaptern efter scan.
+    // poweredOn så gör vi en REN process-respawn. Loggarna visar att lokal
+    // HCI-recovery här ofta lämnar noble kvar i poweredOff, medan en ny
+    // process ger en frisk noble-instans via systemd.
     void (async () => {
       await new Promise(r => setTimeout(r, 5000));
       const raw = getNobleRawState();
@@ -198,29 +199,12 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         return;
       }
       bumpWorkaround('post_scan_noble_recovery_invoked');
-      logConnectionEvent({
-        type: 'scan_done',
-        detail: `post-scan watchdog: noble raw=${raw ?? 'unknown'} efter 5s — kör recovery`,
-      });
-      try {
-        const { resetHciAdapter } = await import('./connect.js');
-        await resetHciAdapter();
-      } catch (e: any) {
-        logConnectionEvent({ type: 'scan_done', detail: `watchdog resetHciAdapter fel: ${e?.message ?? e}` });
-      }
-      try {
-        const { restartNobleHci, waitForNoblePoweredOn } = await import('./adapter.js');
-        await restartNobleHci('post-scan-watchdog');
-        const ok = await waitForNoblePoweredOn(4000);
-        logConnectionEvent({
-          type: 'scan_done',
-          detail: ok
-            ? 'post-scan watchdog: recovery lyckades — noble poweredOn ✓'
-            : `post-scan watchdog: recovery misslyckades — raw=${getNobleRawState() ?? 'unknown'}`,
-        });
-        if (!ok) bumpWorkaround('post_scan_noble_recovery_failed');
-      } catch (e: any) {
-        logConnectionEvent({ type: 'scan_done', detail: `watchdog restartNobleHci fel: ${e?.message ?? e}` });
+      const reason = `post-scan watchdog: noble raw=${raw ?? 'unknown'} efter 5s`;
+      logConnectionEvent({ type: 'scan_done', detail: `${reason} — triggar hard respawn` });
+      const respawned = triggerNobleRespawn(reason);
+      if (!respawned) {
+        bumpWorkaround('post_scan_noble_recovery_failed');
+        logConnectionEvent({ type: 'scan_done', detail: `${reason} — respawn blockerad av cooldown` });
       }
     })();
 

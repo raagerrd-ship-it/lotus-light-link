@@ -45,6 +45,35 @@ function writeLastRespawnAt(ts: number): void {
 }
 
 /**
+ * Shared respawn path: exit the process so systemd gives us a fresh noble instance.
+ * Returns true if respawn was triggered, false if cooldown blocked it.
+ */
+export function triggerNobleRespawn(reason: string): boolean {
+  const now = Date.now();
+  const last = readLastRespawnAt();
+  const sinceLast = now - last;
+
+  if (last > 0 && sinceLast < RESPAWN_COOLDOWN_MS) {
+    const waitS = Math.ceil((RESPAWN_COOLDOWN_MS - sinceLast) / 1000);
+    const msg = `${reason} — respawn blockerad, senaste respawn för ${Math.floor(sinceLast / 1000)}s sedan (cooldown ${RESPAWN_COOLDOWN_MS / 1000}s). Väntar ${waitS}s.`;
+    _giveUpReason = msg;
+    bumpWorkaround('nobleStuckRespawn_cooldownBlocked');
+    console.error(`[BLE] noble respawn cooldown: ${msg}`);
+    logConnectionEvent({ type: 'connect_fail', detail: `noble respawn cooldown: ${msg}` });
+    return false;
+  }
+
+  writeLastRespawnAt(now);
+  bumpWorkaround('nobleStuckRespawn_invoked');
+  _giveUpReason = null;
+  const msg = `[BLE] noble watchdog: ${reason} → process.exit(1) för systemd-respawn`;
+  console.error(msg);
+  logConnectionEvent({ type: 'connect_fail', detail: msg });
+  setTimeout(() => process.exit(1), 250);
+  return true;
+}
+
+/**
  * Run a one-shot check after `delayMs`. If hci0 is UP RUNNING + caps OK
  * but noble is still `unknown`/`null`, exit the process so systemd respawns —
  * unless we already respawned within the cooldown window, in which case we
@@ -92,16 +121,6 @@ export function scheduleNobleStuckWatchdog(delayMs = 3000): void {
     }
 
     // hci0 is up, caps are fine, noble is wedged, cooldown clear → respawn.
-    writeLastRespawnAt(now);
-    bumpWorkaround('nobleStuckRespawn_invoked');
-    const msg = `[BLE] noble watchdog: hci0 UP RUNNING + caps OK men noble=${raw ?? 'null'} → process.exit(1) för systemd-respawn`;
-    console.error(msg);
-    logConnectionEvent({
-      type: 'connect_fail',
-      detail: msg,
-    });
-
-    // Give the log a chance to flush before exiting.
-    setTimeout(() => process.exit(1), 250);
+    triggerNobleRespawn(`hci0 UP RUNNING + caps OK men noble=${raw ?? 'null'}`);
   }, delayMs);
 }
