@@ -395,13 +395,15 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     const bootStartedAt = getBleBootStartedAt();
     const firstStateChangeAt = getFirstStateChangeAt();
     const everPoweredOn = hasNobleEverFiredStateChange();
-    // På Pi Zero 2W tar noble upp till 90s att fyra första stateChange efter
-    // en kall bluetoothd-start. Innan dess är "unknown" förväntat — inte fel.
     const NOBLE_BOOT_GRACE_MS = 90_000;
     const bootElapsedMs = Date.now() - bootStartedAt;
-    const stillBooting = !everPoweredOn && bootElapsedMs < NOBLE_BOOT_GRACE_MS && !hasCaps
-      ? true
-      : !everPoweredOn && bootElapsedMs < NOBLE_BOOT_GRACE_MS;
+    // VIKTIGT: På Pi blir rå noble.state aldrig poweredOn — den fastnar i
+    // `unknown`. Effektiv adapter-state (caps-aware) är vad som faktiskt
+    // räknas. Om effektiv state redan är poweredOn (eller adaptern har caps
+    // OK) är vi KLARA att aktivera radion — knappen ska INTE blockeras
+    // bara för att vi väntar på en stateChange-event som aldrig kommer.
+    const adapterReady = adapterState === 'poweredOn' || hasCaps;
+    const stillBooting = !everPoweredOn && !adapterReady && bootElapsedMs < NOBLE_BOOT_GRACE_MS;
 
     res.json({
       adapter: {
