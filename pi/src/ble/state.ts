@@ -16,7 +16,7 @@ export const CHAR_UUID = 'fff3';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/force-mutation-defineproperty';
+export const BLE_BUILD_TAG = '2026-04-18/noble-guard-runtime-patch';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -620,6 +620,13 @@ export function forceNoblePoweredOn(): boolean {
 
   setForceMutationSnapshot({ stuck, after, attempts, failures });
 
+  // Om mutationen INTE fastnade — patcha noble's scan/connect-metoder så de
+  // hoppar över sin interna `if (this.state !== 'poweredOn') throw`-guard.
+  // Detta är sista utvägen när noble har frozen/getter-only state-prop.
+  if (!stuck) {
+    patchNobleSkipStateGuard();
+  }
+
   if (!_forcePoweredOnLogged) {
     console.log(`[BLE] forceNoblePoweredOn: attempts=${attempts.join(',')} failures=${failures.join(';') || 'none'} stuck=${stuck} after=${after}`);
     _forcePoweredOnLogged = true;
@@ -636,6 +643,71 @@ export function forceNoblePoweredOn(): boolean {
   }
 
   return stuck;
+}
+
+// ── Runtime-patch: bypass noble's interna state-guard ──
+// Wrappar startScanningAsync/connectAsync så de temporärt sätter
+// this.state='poweredOn' (via lokal scope-variabel) under anropet, oavsett
+// om descriptor är frozen. Vi ersätter metoderna med proxies som anropar
+// originalimplementationen med en patched `this`.
+let _nobleGuardPatched = false;
+let _nobleGuardPatchResult: { ok: boolean; methods: string[]; error?: string } | null = null;
+
+export function getNobleGuardPatchResult() { return _nobleGuardPatchResult; }
+
+function patchNobleSkipStateGuard(): void {
+  if (_nobleGuardPatched) return;
+  _nobleGuardPatched = true;
+
+  const n = noble as any;
+  const patched: string[] = [];
+  const errors: string[] = [];
+
+  const wrap = (methodName: string) => {
+    const original = n[methodName];
+    if (typeof original !== 'function') {
+      errors.push(`${methodName}: not a function (${typeof original})`);
+      return;
+    }
+    try {
+      // Skapa en Proxy som fakerar this.state='poweredOn' under anropet
+      const wrapped = function (this: any, ...args: any[]) {
+        const proxy = new Proxy(n, {
+          get(target, prop, receiver) {
+            if (prop === 'state' || prop === '_state') return 'poweredOn';
+            const v = Reflect.get(target, prop, receiver);
+            return typeof v === 'function' ? v.bind(target) : v;
+          },
+        });
+        return original.apply(proxy, args);
+      };
+      Object.defineProperty(n, methodName, {
+        value: wrapped,
+        writable: true,
+        configurable: true,
+      });
+      patched.push(methodName);
+    } catch (e: any) {
+      errors.push(`${methodName}: ${e?.message ?? e}`);
+    }
+  };
+
+  wrap('startScanningAsync');
+  wrap('startScanning');
+  wrap('connectAsync');
+  wrap('connect');
+
+  _nobleGuardPatchResult = {
+    ok: patched.length > 0,
+    methods: patched,
+    error: errors.length ? errors.join('; ') : undefined,
+  };
+
+  console.log(`[BLE] patchNobleSkipStateGuard: patched=[${patched.join(',')}] errors=[${errors.join(';') || 'none'}]`);
+  logConnectionEvent({
+    type: patched.length > 0 ? 'scan_start' : 'connect_fail',
+    detail: `noble-guard-patch: methods=[${patched.join(',')}] errors=[${errors.join(';') || 'none'}]`,
+  });
 }
 
 export { noble };
