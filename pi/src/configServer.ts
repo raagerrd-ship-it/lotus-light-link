@@ -459,6 +459,18 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
             : 'unknown — libuv-race vid boot, force-mutation används som fallback',
       },
       {
+        id: 'force-mutation',
+        label: 'Force-mutation av noble.state lyckas',
+        status: forceMut ? stepStatus(forceMut.stuck) : (nobleStateOk ? 'ok' : 'pending'),
+        detail: forceMut
+          ? forceMut.stuck
+            ? `OK — fastnade (after=${forceMut.after}, ok=[${forceMut.attempts.join(',')}])`
+            : `FAIL — after=${forceMut.after}, fail=[${forceMut.failures.join(';') || 'none'}]`
+          : nobleStateOk
+            ? 'Behövs ej (noble.state redan OK)'
+            : 'Inte körd ännu — triggas vid scan/connect',
+      },
+      {
         id: 'adapter-effective',
         label: 'Effektiv adapter-state poweredOn',
         status: stepStatus(adapterReady, stillBooting),
