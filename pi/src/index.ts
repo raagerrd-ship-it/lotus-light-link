@@ -238,11 +238,9 @@ async function main() {
     console.error('[Boot] Mic failed (continuing without):', e.message);
   }
 
-  // 5. BLE — start reconnect-loop FIRST so any demand-event under boot
-  // (Sonos already playing) blir uppfångat även om första connect missar.
-  // Loopen tickar var 15s och anropar autoConnectSaved när demand är aktiv.
-  const reconnectTimer = startReconnectLoop(15000);
-
+  // 5. BLE — INGEN auto-connect och INGEN reconnect-loop. Användaren styr
+  // helt manuellt via UI:t (knapp "Anslut till sparad enhet"). Sonos-events
+  // ändrar bara engine-state (play/pause/volym/färg), aldrig BLE-anslutning.
   // Do NOT touch BLE during boot. The isolated noble one-liner works because
   // it simply loads noble and waits for stateChange. Boot-time adapter prep
   // races that startup path on Raspberry Pi and can wedge noble in poweredOff.
