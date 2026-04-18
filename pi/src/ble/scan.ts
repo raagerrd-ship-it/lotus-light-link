@@ -1,18 +1,17 @@
 /**
- * BLE scanning — ren noble.
+ * BLE scanning — hcitool-only discovery.
  *
- * Förutsättning: BLE master switch är PÅ. Master-switchen (POST /api/ble/start)
- * är det ENDA stället som väcker adaptern. Scan rör inte HCI själv — om noble
- * inte är poweredOn här så är det användarens jobb att slå på radion eller
- * trycka "Återställ BLE-stack".
+ * Noble's startScanningAsync hangs on Raspberry Pi (även när poweredOn rapporteras),
+ * så vi använder hcitool lescan direkt mot HCI för discovery. Noble används bara
+ * för connect/GATT efteråt. Innan hcitool startar släpper vi noble's HCI-binding
+ * så hcitool får tillgång till sockeln.
  */
 
-import { noble, getAdapterState, logConnectionEvent, getNobleRawState, forceNoblePoweredOn } from './state.js';
-import { isAdapterReadyForBleOps, isHci0Up } from './adapter.js';
+import { getAdapterState, logConnectionEvent, getNobleRawState, noble } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { isBleEnabled } from './enabled.js';
-import { hcitoolLescan, type HcitoolScanResult } from './hcitool-scan.js';
+import { hcitoolLescan } from './hcitool-scan.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -71,15 +70,8 @@ export function getDiscoveredPeripheral(id: string): any | undefined {
   return discoveredPeripherals.get(id.toLowerCase());
 }
 
-function peripheralToDevice(p: any): DiscoveredDevice | null {
-  const id: string | undefined = p?.id ?? p?.uuid ?? p?.address?.replace(/:/g, '').toLowerCase();
-  if (!id) return null;
-  const adv = p?.advertisement ?? {};
-  const rawName: string | undefined = adv?.localName ?? p?.name;
-  const name = (rawName && String(rawName).trim()) || `(no-name) ${p?.address ?? id}`;
-  const rssi = typeof p?.rssi === 'number' ? p.rssi : -100;
-  return { id: String(id).toLowerCase(), name, rssi };
-}
+
+
 
 export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
   if (!isBleEnabled()) {
