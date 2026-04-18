@@ -121,7 +121,12 @@ async function main() {
 
   console.log('');
 
-  // 4. Start microphone
+  // 2. Create engine
+  const engine = new PiLightEngine(effectiveTickMs);
+
+  // 3. Start config server EARLY (so API is available during BLE/Sonos init)
+  startConfigServer(engine, CONFIG_PORT);
+
   console.log('[Boot] Starting ALSA microphone...');
   try {
     startMic();
