@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange } from './nobleBle.js';
 import { bumpWorkaround } from './ble/state.js';
 import { scheduleNobleStuckWatchdog, getWatchdogGiveUpReason } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
@@ -265,6 +265,15 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     // den på även om adaptern inte vaknar direkt. Då kan användaren se
     // adapter-state i UI och trycka "Återställ BLE-stack" vid behov.
     setBleEnabled(true);
+
+    // Säkerhetsnät: vänta in noble's första stateChange-event innan vi rör
+    // adaptern. Boot-await:en i index.ts är primärfixet, men om eventet av
+    // någon anledning missades (t.ex. boot-timeout) ger detta en sista chans
+    // att fånga det innan vi kallar ensureAdapterUp/scan/connect.
+    try {
+      const firstState = await waitForFirstStateChange(3000);
+      console.log(`[BLE] /start: noble first stateChange = ${firstState}`);
+    } catch {}
 
     let adapterReady = getAdapterState() === 'poweredOn';
     try {
