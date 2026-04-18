@@ -272,22 +272,19 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
 
   // Step 1: L2CAP connect
   if (!skipL2cap) {
-    // Vänta på RIKTIG noble.state=poweredOn (upp till 10s) — INTE force-mutate.
-    // SSH-test 2026-04-18: force-mutate ger noop-scan/connect; riktig stateChange
-    // tar typiskt 250ms och allt funkar därefter.
+    // Skippa wait om noble redan har fyrat stateChange vid boot — annars vänta 5s.
     const rawBeforeWait = getNobleRawState() ?? 'unknown';
     const hciUp = isHci0Up();
-    try {
-      await (noble as any).waitForPoweredOnAsync?.(10_000);
-      logConnectionEvent({
-        type: 'connect_start',
-        device: name,
-        detail: `waitForPoweredOn OK (raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
-      });
-    } catch (e: any) {
-      logConnectionEvent({ type: 'connect_fail', device: name, detail: `waitForPoweredOn failed: ${e.message} (raw=${rawBeforeWait}, hci_up=${hciUp})` });
-      throw e;
+    const everFired = hasNobleEverFiredStateChange();
+    const ok = await waitNobleReady(5_000, 'l2cap', name);
+    if (!ok) {
+      throw new Error(`waitForPoweredOn timeout (everFired=${everFired}, raw=${rawBeforeWait}, hci_up=${hciUp})`);
     }
+    logConnectionEvent({
+      type: 'connect_start',
+      device: name,
+      detail: `noble ready (everFired=${everFired}, raw_before=${rawBeforeWait}, hci_up=${hciUp}, raw_after=${getNobleRawState() ?? 'unknown'})`,
+    });
 
     try {
       await withTimeout(peripheral.connectAsync(), 'BLE connect', 'l2cap');
