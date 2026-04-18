@@ -373,6 +373,19 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       rfkill = execSync('rfkill list bluetooth 2>&1', { encoding: 'utf8', timeout: 2000 }).trim();
     } catch {}
 
+    // Boot-status så UI kan visa "Initialiserar BLE…" istället för
+    // "Adaptern vaknade inte" under de första 30–90s efter kall boot.
+    const bootStartedAt = getBleBootStartedAt();
+    const firstStateChangeAt = getFirstStateChangeAt();
+    const everPoweredOn = hasNobleEverFiredStateChange();
+    // På Pi Zero 2W tar noble upp till 90s att fyra första stateChange efter
+    // en kall bluetoothd-start. Innan dess är "unknown" förväntat — inte fel.
+    const NOBLE_BOOT_GRACE_MS = 90_000;
+    const bootElapsedMs = Date.now() - bootStartedAt;
+    const stillBooting = !everPoweredOn && bootElapsedMs < NOBLE_BOOT_GRACE_MS && !hasCaps
+      ? true
+      : !everPoweredOn && bootElapsedMs < NOBLE_BOOT_GRACE_MS;
+
     res.json({
       adapter: {
         state: adapterState,
@@ -380,6 +393,14 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         nobleRaw,
         hci: { raw: hciRaw, error: hciError },
         rfkill,
+      },
+      boot: {
+        startedAt: new Date(bootStartedAt).toISOString(),
+        elapsedMs: bootElapsedMs,
+        firstStateChangeAt: firstStateChangeAt ? new Date(firstStateChangeAt).toISOString() : null,
+        everPoweredOn,
+        stillBooting,
+        graceMs: NOBLE_BOOT_GRACE_MS,
       },
       watchdog: {
         giveUpReason: getWatchdogGiveUpReason(),
