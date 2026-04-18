@@ -8,6 +8,7 @@
 import { getDevice, isDemandActive, setDemand, getSavedDeviceId, logConnectionEvent } from './state.js';
 import { setReconnectHandler, autoConnectSaved, isConnectInProgress, waitForConnectIdle, getConsecutiveFailures, resetConsecutiveFailures } from './connect.js';
 import { setReconnectTrigger } from './protocol.js';
+import { isBleEnabled } from './enabled.js';
 
 /** Reconnect with exponential backoff using fresh connections only */
 async function reconnectWithBackoff(_peripheral: any, name: string, attempt = 0): Promise<void> {

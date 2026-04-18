@@ -19,6 +19,7 @@ import { noble, getAdapterState, logConnectionEvent, getNobleRawState } from './
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { ensureAdapterUp } from './adapter.js';
+import { isBleEnabled } from './enabled.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -63,6 +64,10 @@ async function waitForPoweredOn(timeoutMs: number): Promise<boolean> {
 }
 
 export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevice[]> {
+  if (!isBleEnabled()) {
+    logConnectionEvent({ type: 'scan_start', detail: 'Skipped — BLE master switch is OFF' });
+    return lastScanResults;
+  }
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
     return lastScanResults;
