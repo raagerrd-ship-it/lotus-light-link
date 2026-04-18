@@ -110,9 +110,11 @@ export async function ensureAdapterUp(): Promise<boolean> {
   await new Promise(r => setTimeout(r, 300));
   if (await waitForNoblePoweredOn(2500)) return true;
 
-  // Step 2: ask noble to refresh its HCI listeners. Non-destructive — only
-  // pokes noble's own bindings, doesn't toggle the kernel device.
-  try { await restartNobleHci('ensure_adapter_up'); } catch {}
+  // Tidigare anropades restartNobleHci() här som "fallback". Den kallar
+  // hci.stop() + hci.init() på en LIVE noble-instans, vilket på Pi sparkar
+  // ner adaptern från poweredOn → poweredOff. Vi gör INGET destruktivt här
+  // längre — om noble inte är poweredOn efter rfkill/hciconfig up så är det
+  // användarens jobb att trycka "Återställ BLE-stack".
   if (await waitForNoblePoweredOn(3000)) return true;
 
   // Give up — surface the failure instead of fighting noble. The user can
