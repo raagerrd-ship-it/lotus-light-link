@@ -470,6 +470,26 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
             ? 'Behövs ej (noble.state redan OK)'
             : 'Inte körd ännu — triggas vid scan/connect',
       },
+      (() => {
+        const guard = getNobleGuardPatchResult();
+        const needed = forceMut && !forceMut.stuck;
+        return {
+          id: 'noble-guard-patch',
+          label: 'Noble scan/connect-guard bypassad (runtime-patch)',
+          status: guard
+            ? stepStatus(guard.ok)
+            : needed
+              ? 'pending'
+              : 'ok',
+          detail: guard
+            ? guard.ok
+              ? `OK — patched [${guard.methods.join(',')}]${guard.error ? ` (warn: ${guard.error})` : ''}`
+              : `FAIL — ${guard.error ?? 'no methods patched'}`
+            : needed
+              ? 'Behövs men inte körd än'
+              : 'Behövs ej (force-mutation fastnade)',
+        };
+      })(),
       {
         id: 'adapter-effective',
         label: 'Effektiv adapter-state poweredOn',
