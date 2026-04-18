@@ -973,6 +973,14 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
     };
     build?: { bleTag?: string };
     enabled?: boolean;
+    boot?: {
+      startedAt?: string;
+      elapsedMs?: number;
+      firstStateChangeAt?: string | null;
+      everPoweredOn?: boolean;
+      stillBooting?: boolean;
+      graceMs?: number;
+    };
     // transport toggle removed (gatttool fallback eliminated)
     stats: {
       connected: number; savedDevice: string | null; savedDeviceId: string | null;
