@@ -30,8 +30,7 @@ function peripheralToDevice(p: any): DiscoveredDevice | null {
   if (!id) return null;
   const adv = p?.advertisement ?? {};
   const rawName: string | undefined = adv?.localName ?? p?.name;
-  const name = (rawName && String(rawName).trim()) || '';
-  if (!name) return null;
+  const name = (rawName && String(rawName).trim()) || `(no-name) ${p?.address ?? id}`;
   const rssi = typeof p?.rssi === 'number' ? p.rssi : -100;
   return { id: String(id).toLowerCase(), name, rssi };
 }
@@ -53,13 +52,20 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
   scanning = true;
   discoveredPeripherals.clear();
   const found = new Map<string, DiscoveredDevice>();
+  let rawDiscoverCount = 0;
 
   const onDiscover = (p: any) => {
+    rawDiscoverCount++;
     const dev = peripheralToDevice(p);
     if (!dev) return;
     const prev = found.get(dev.id);
     if (!prev) {
-      logConnectionEvent({ type: 'scan_start', detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi}` });
+      const adv = p?.advertisement ?? {};
+      const svcs = (adv?.serviceUuids ?? []).join(',') || 'none';
+      logConnectionEvent({
+        type: 'scan_start',
+        detail: `Found: ${dev.name} (${p?.address ?? dev.id}) rssi=${dev.rssi} svcs=[${svcs}]`,
+      });
     }
     discoveredPeripherals.set(dev.id, p);
     if (!prev || dev.rssi > prev.rssi) found.set(dev.id, dev);
@@ -133,10 +139,10 @@ export async function scanForDevices(timeoutMs = 10000): Promise<DiscoveredDevic
     if (lastScanResults.length === 0) {
       logConnectionEvent({
         type: 'scan_done',
-        detail: `0 devices via noble — är BLEDOM på och i närheten? Adapter=${getAdapterState()}`,
+        detail: `0 devices via noble — raw_discover_events=${rawDiscoverCount}. ${rawDiscoverCount === 0 ? 'INGA events alls från noble — HCI scan startar inte (kolla hcitool lescan manuellt)' : 'Events kom in men filtrerades bort'}. Adapter=${getAdapterState()}`,
       });
     } else {
-      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found via noble` });
+      logConnectionEvent({ type: 'scan_done', detail: `${lastScanResults.length} device(s) found via noble (raw_events=${rawDiscoverCount})` });
     }
 
     return lastScanResults;
