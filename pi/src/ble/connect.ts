@@ -463,18 +463,9 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
   let ok = await attempt();
   if (ok) return true;
 
-  // Retry once, but only with a destructive HCI reset if the effective adapter
-  // state is actually bad. If caps-aware state already says poweredOn, another
-  // hciconfig reset tends to make noble even more stuck on Pi.
-  if (getAdapterState() !== 'poweredOn') {
-    logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — effective adapter not ready, resetting HCI before retry' });
-    try { (noble as any).stopScanning?.(); } catch {}
-    await resetHciAdapter();
-    await new Promise(r => setTimeout(r, 400));
-  } else {
-    logConnectionEvent({ type: 'hci_reset', detail: 'scan attempt failed — skipping HCI reset because effective adapter is already poweredOn' });
-  }
-
+  // Retry once, men UTAN HCI-reset. Master-switchen äger adaptern.
+  // Om scan misslyckas är det användarens jobb att trycka "Återställ BLE-stack".
+  await new Promise(r => setTimeout(r, 400));
   ok = await attempt();
   return ok;
 }
