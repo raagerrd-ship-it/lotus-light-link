@@ -264,9 +264,11 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     // adapter-state i UI och trycka "Återställ BLE-stack" vid behov.
     setBleEnabled(true);
 
-    let adapterReady = false;
+    let adapterReady = getAdapterState() === 'poweredOn';
     try {
-      adapterReady = await ensureAdapterUp();
+      if (!adapterReady) {
+        adapterReady = await ensureAdapterUp();
+      }
     } catch (e: any) {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
