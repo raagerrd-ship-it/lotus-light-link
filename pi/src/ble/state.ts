@@ -502,35 +502,54 @@ export function forceNoblePoweredOn(): boolean {
   bumpWorkaround('forceNoblePoweredOn_neededRefresh');
 
   const n = noble as any;
-  try {
-    // Mutate every place noble's internal guards read from. Different
-    // versions of @stoprocent/noble check different fields.
-    n.state = 'poweredOn';
-    n._state = 'poweredOn';
-    if (n._bindings) {
-      n._bindings.state = 'poweredOn';
-      if (n._bindings._state !== undefined) n._bindings._state = 'poweredOn';
-    }
-    _cachedNobleState = 'poweredOn';
-    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
-    if (_firstStateChangeResolve) {
-      _firstStateChangeResolve('poweredOn');
-      _firstStateChangeResolve = null;
-    }
-    if (!_forcePoweredOnLogged) {
-      console.log('[BLE] forceNoblePoweredOn: muterade noble.state=poweredOn (caps OK, libuv-race kringgången)');
-      _forcePoweredOnLogged = true;
-    }
+  const attempts: string[] = [];
+  const failures: string[] = [];
 
-    // Starta revert-watchdog så vi vet om noble självskriver över ändringen
-    // de kommande sekunderna (t.ex. internt HCI-event som triggar stateChange).
-    startForceRevertWatchdog();
+  const trySet = (path: string, fn: () => void) => {
+    try {
+      fn();
+      attempts.push(`${path}=OK`);
+    } catch (e: any) {
+      failures.push(`${path}: ${e?.message ?? e}`);
+    }
+  };
 
-    return true;
-  } catch (e) {
-    console.error('[BLE] forceNoblePoweredOn failed:', e);
-    return false;
+  trySet('noble.state', () => { n.state = 'poweredOn'; });
+  trySet('noble._state', () => { n._state = 'poweredOn'; });
+  if (n._bindings) {
+    trySet('noble._bindings.state', () => { n._bindings.state = 'poweredOn'; });
+    if (n._bindings._state !== undefined) {
+      trySet('noble._bindings._state', () => { n._bindings._state = 'poweredOn'; });
+    }
   }
+
+  // Verifiera om någon mutation faktiskt fastnade
+  const after = n.state ?? n._state;
+  const stuck = after === 'poweredOn';
+
+  _cachedNobleState = 'poweredOn';
+  if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
+  if (_firstStateChangeResolve) {
+    _firstStateChangeResolve('poweredOn');
+    _firstStateChangeResolve = null;
+  }
+
+  if (!_forcePoweredOnLogged) {
+    console.log(`[BLE] forceNoblePoweredOn: attempts=${attempts.join(',')} failures=${failures.join(';') || 'none'} stuck=${stuck} after=${after}`);
+    _forcePoweredOnLogged = true;
+  }
+
+  // Diagnostisk event så vi ser i UI-loggen exakt vad som hände
+  logConnectionEvent({
+    type: stuck ? 'scan_start' : 'connect_fail',
+    detail: `force-mutation: stuck=${stuck} after=${after} ok=[${attempts.join(',')}] fail=[${failures.join(';') || 'none'}]`,
+  });
+
+  if (stuck) {
+    startForceRevertWatchdog();
+  }
+
+  return stuck;
 }
 
 export { noble };
