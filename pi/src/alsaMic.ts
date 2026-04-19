@@ -52,16 +52,38 @@ const hannWindow = new Float64Array(FFT_SIZE);
   }
 }
 
-// Frequency band cuts
-const LO_CUT = Math.floor(150 / BIN_WIDTH);
-const MID_CUT = Math.floor(2000 / BIN_WIDTH);
+// Frequency band cuts (Hz)
+// Bas: 60–150 Hz (~1.32 oktaver) — sub + kick fundamentals
+// Mid+Hi: 150–15000 Hz (~6.64 oktaver) — vocals, snare, hats, cymbals
+// Diskanten dränks tidigare av att vi delade per-bin: hi-bandet hade 466 bins
+// vs basens 3, så samma energi per Hz gav 100x lägre RMS i diskant.
+// Lösning: dela per oktav istället → matchar mänsklig perception.
+const LO_HZ_LOW = 60;
+const LO_HZ_HIGH = 150;
+const HI_HZ_LOW = 150;
+const HI_HZ_HIGH = 15000;
+const LO_BIN_LOW = Math.max(1, Math.floor(LO_HZ_LOW / BIN_WIDTH));
+const LO_BIN_HIGH = Math.floor(LO_HZ_HIGH / BIN_WIDTH);
+const HI_BIN_LOW = LO_BIN_HIGH;
+const HI_BIN_HIGH = Math.min(BIN_COUNT, Math.floor(HI_HZ_HIGH / BIN_WIDTH));
+// Oktav-bredd per band: log2(highHz/lowHz)
+const LO_OCTAVES = Math.log2(LO_HZ_HIGH / LO_HZ_LOW);
+const HI_OCTAVES = Math.log2(HI_HZ_HIGH / HI_HZ_LOW);
+// Normalisera så att RMS = sqrt(totalPower / oktaver) — energi-per-oktav
+const INV_LO_OCT = 1 / LO_OCTAVES;
+const INV_HI_OCT = 1 / HI_OCTAVES;
 
 // Precomputed constants (avoid recomputing every FFT frame)
 const INV_N2 = 1 / (FFT_SIZE * FFT_SIZE);
-const LO_COUNT = LO_CUT;
-const MID_COUNT = MID_CUT - LO_CUT;
-const HI_COUNT = BIN_COUNT - MID_CUT;
+
+// Backward-compat alias för engine-kod som läser LO_CUT/MID_CUT
+const LO_CUT = LO_BIN_HIGH;
+const MID_CUT = HI_BIN_HIGH;
+const LO_COUNT = LO_BIN_HIGH - LO_BIN_LOW;
+const MID_COUNT = HI_BIN_HIGH - HI_BIN_LOW;
+const HI_COUNT = BIN_COUNT - HI_BIN_HIGH;
 const MID_HI_COUNT = MID_COUNT + HI_COUNT;
+
 
 // Spectral flux state
 let prevPower: Float64Array = new Float64Array(BIN_COUNT);
@@ -154,8 +176,8 @@ function processFFT(): void {
 
   const [fftRe, fftIm] = fft1024(windowedBuf);
 
-  // Power spectrum + band sums in single pass (precomputed constants, no counters)
-  let loSum = 0, midSum = 0, hiSum = 0;
+  // Power spectrum + band sums in single pass (oktav-baserade band)
+  let loSum = 0, hiSum = 0;
   let totalSum = 0;
   let flux = 0;
 
@@ -163,19 +185,21 @@ function processFFT(): void {
     const r = fftRe[i], m = fftIm[i];
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
-    if (i < LO_CUT) loSum += power;
-    else if (i < MID_CUT) midSum += power;
-    else hiSum += power;
+    if (i >= LO_BIN_LOW && i < LO_BIN_HIGH) loSum += power;
+    else if (i >= HI_BIN_LOW && i < HI_BIN_HIGH) hiSum += power;
 
     const diff = power - prevPower[i];
     if (diff > 0) flux += diff;
     prevPower[i] = power;
   }
 
-  // ── Pre-smoothing: exponential moving average to kill high-freq jitter ──
-  const rawBass = Math.sqrt(loSum / LO_COUNT);
-  const rawMidHi = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
+  // ── Energy-per-octave: matchar mänsklig perception av frekvensbalans ──
+  // Tidigare delades med antal bins → diskant (466 bins) dränktes vs bas (3 bins).
+  // Nu: total power i bandet / antal oktaver bandet täcker → båda jämförbara.
+  const rawBass = Math.sqrt(loSum * INV_LO_OCT);
+  const rawMidHi = Math.sqrt(hiSum * INV_HI_OCT);
   const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
+
 
   smoothBass = smoothRms(rawBass, smoothBass);
   smoothMidHi = smoothRms(rawMidHi, smoothMidHi);
