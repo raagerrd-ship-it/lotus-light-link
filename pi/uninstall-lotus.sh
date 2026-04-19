@@ -1,7 +1,10 @@
 #!/bin/bash
 # uninstall-lotus.sh — Clean up Lotus Light Link files
 # Called by Pi Control Center. Systemd services are managed by Pi Control Center.
-# This script ONLY removes application files and config.
+# This script:
+#   1. Försöker släcka BLE-lampan rent via /api/ble/disconnect (best effort)
+#   2. Dödar alla körande lotus-light node-processer (även de utanför systemd)
+#   3. Tar bort byggfiler, node_modules, config och legacy-tjänst
 
 set +e
 
@@ -13,19 +16,53 @@ echo "  Lotus Light Link Uninstaller"
 echo "========================================"
 echo ""
 
-# 1. Remove application files (preserve installDir removal to Pi Control Center)
-echo "[1/3] Rensar applikationsfiler..."
+# 0. Försök stänga ner BLE-lampan rent INNAN vi dödar processen.
+#    Engine lyssnar på 3050 (port + 50 mönstret är för UI). Om engine
+#    redan är död är det här en no-op (curl --max-time 2).
+echo "[1/4] Kopplar från BLE-lampor (best effort)..."
+for port in 3050 3051 3052; do
+  curl -s --max-time 2 -X POST "http://127.0.0.1:${port}/api/ble/disconnect" >/dev/null 2>&1
+done
+echo "  ✓ Disconnect-anrop skickade"
+
+# 1. Stoppa systemd-tjänsten OM den finns (Pi Control Center kan ha den)
+echo "[2/4] Stoppar tjänster och dödar node-processer..."
+sudo systemctl stop lotus-light-engine.service 2>/dev/null || true
+sudo systemctl stop lotus-light.service 2>/dev/null || true
+
+# Döda alla node-processer som kör lotus-light, även de utanför systemd.
+# Vanligt scenario: gamla manuellt-startade processer (t.ex. från
+# /home/pi/...) som överlever en systemctl stop.
+sudo pkill -TERM -f "lotus-light" 2>/dev/null || true
+sudo pkill -TERM -f "piEngine" 2>/dev/null || true
+sleep 1
+# Hård kill om de fortfarande lever
+sudo pkill -KILL -f "lotus-light" 2>/dev/null || true
+sudo pkill -KILL -f "piEngine" 2>/dev/null || true
+
+REMAINING=$(pgrep -f "lotus-light|piEngine" | wc -l)
+if [ "$REMAINING" -gt 0 ]; then
+  echo "  ⚠ Varning: $REMAINING node-process(er) lever fortfarande — kontrollera manuellt:"
+  echo "    ps aux | grep -E 'lotus|piEngine' | grep -v grep"
+else
+  echo "  ✓ Alla lotus node-processer dödade"
+fi
+
+# 2. Rensa applikationsfiler
+echo "[3/4] Rensar applikationsfiler..."
 rm -rf "$APP_DIR/dist" 2>/dev/null
 rm -rf "$APP_DIR/pi/dist" 2>/dev/null
 rm -rf "$APP_DIR/pi/node_modules" 2>/dev/null
 rm -rf "$APP_DIR/node_modules" 2>/dev/null
-echo "  ✓ Byggfiler och beroenden borttagna"
+# Konfigurations-/storage-filer (kalibrering, sparad enhet, gain-cal etc.)
+# Pi Control Center äger själva mappen; vi nollar bara innehållet.
+rm -f "$APP_DIR/data/storage.json" 2>/dev/null
+rm -f "$APP_DIR/storage.json" 2>/dev/null
+echo "  ✓ Byggfiler, beroenden och lokal storage borttagna"
 
-# 2. Remove legacy systemd service if still present
-# (BLE permissions are handled by Pi Control Center via AmbientCapabilities)
-echo "[2/2] Rensar legacy systemd-tjänst..."
+# 3. Ta bort legacy systemd-tjänst om den finns kvar från tidigare installation
+echo "[4/4] Rensar legacy systemd-tjänst..."
 if [ -f /etc/systemd/system/lotus-light-engine.service ]; then
-  sudo systemctl stop lotus-light-engine.service 2>/dev/null || true
   sudo systemctl disable lotus-light-engine.service 2>/dev/null || true
   sudo rm -f /etc/systemd/system/lotus-light-engine.service
   sudo systemctl daemon-reload
@@ -40,6 +77,8 @@ echo "  Avinstallation klar!"
 echo "========================================"
 echo ""
 echo "  Pi Control Center hanterar systemd-tjänster."
+echo "  Om ljuset fortsätter blinka: stäng av lampan helt"
+echo "  (BLEDOM kan ha hamnat i internt mic-mode via fjärr)."
 echo ""
 
 exit 0
