@@ -125,13 +125,8 @@ export async function forgetDevice(): Promise<void> {
     setDevice(null);
     resetLastSent();
   }
-  // Frigör noble's mgmt/HCI-socket så btmgmt find fungerar i nästa scan.
-  try {
-    const { releaseNobleResources } = await import('./state.js');
-    await releaseNobleResources('forgetDevice');
-  } catch (e: any) {
-    console.error('[BLE] failed to release noble after forgetDevice:', e?.message ?? e);
-  }
-  logConnectionEvent({ type: 'disconnect', detail: 'Device forgotten by user — noble HCI released' });
-  console.log('[BLE] Device forgotten + noble HCI released');
+  // Noble's HCI/mgmt-socket BEHÅLLS — vi använder noble själv för scan,
+  // så att släppa den skulle göra nästa scan omöjlig.
+  logConnectionEvent({ type: 'disconnect', detail: 'Device forgotten by user' });
+  console.log('[BLE] Device forgotten (noble HCI behålls för nästa scan)');
 }
