@@ -138,12 +138,20 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       return;
     }
   }
-  // Delta-skip avstängd — användaren vill se varje tick på lampan.
-  // Om samma färg skickas igen är det harmlöst (BLEDOM hanterar det).
-  // Vi räknar fortfarande "no-change" för diagnostik.
+
+  // Hard rate-limit: max 15 writes/sek (≥66ms mellan writes).
+  // BLEDOM på Pi (utan möjlighet att sänka conn interval) kraschar
+  // länken med reason=8 vid högre takt. Se mem://pi/ble/keep-alive.
+  const MIN_WRITE_INTERVAL_MS = 66;
+  if (lastWriteTime > 0 && (performance.now() - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
+    bleStats.skipBusyCount++;
+    return;
+  }
+
+  // Delta-skip återställd — om färgen är identisk, ingen write.
   if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
-    // INTE return — fortsätt och skicka ändå
+    return;
   }
 
   writeInFlight = true;
