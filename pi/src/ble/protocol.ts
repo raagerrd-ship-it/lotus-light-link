@@ -138,9 +138,12 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       return;
     }
   }
+  // Delta-skip avstängd — användaren vill se varje tick på lampan.
+  // Om samma färg skickas igen är det harmlöst (BLEDOM hanterar det).
+  // Vi räknar fortfarande "no-change" för diagnostik.
   if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
-    return;
+    // INTE return — fortsätt och skicka ändå
   }
 
   writeInFlight = true;
