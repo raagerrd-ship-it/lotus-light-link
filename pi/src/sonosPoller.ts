@@ -257,6 +257,7 @@ function parseStatus(s: any): void {
 let pollTimer: NodeJS.Timeout | null = null;
 let sseCleanup: (() => void) | null = null;
 let activeConfig: SonosPollerConfig | null = null;
+let lastSuccessfulPollAt: number | null = null;
 
 const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   ssePath: '/events',
