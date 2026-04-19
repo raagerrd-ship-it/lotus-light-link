@@ -960,6 +960,7 @@ export function startConfigServer(port = 3050): void {
       brightness: d.brightnessPct,
       sentCount: bleStats.sentCount,
     });
+  });
 
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
