@@ -78,8 +78,9 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
-    onsetDecay: Math.pow(0.10, secRatio),
-    onsetRiseAlpha: 1 - Math.pow(0.15, ratio),
+    // Snabbare decay → kortare, skarpare puls (matchar trum-attack ~80ms)
+    onsetDecay: Math.pow(0.04, secRatio),
+    onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
     agcDecayNormal: Math.pow(AGC_DECAY_PER_SEC, secRatio),
     agcDecayFast: Math.pow(AGC_FAST_DECAY_PER_SEC, secRatio),
     quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
@@ -278,6 +279,9 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
+  // Refractory period — minimum gap between onsets (ms) to avoid flutter on sustained transients
+  private onsetLastTime = 0;
+  private static readonly ONSET_REFRACTORY_MS = 110;
 
   private agc: AgcState;
   private cal: LightCalibration;
@@ -343,7 +347,9 @@ export class PiLightEngine {
     this.onsetTarget = 0;
   }
 
-  /** Zero-alloc onset detection using precomputed constants */
+  /** Zero-alloc onset detection using precomputed constants.
+   *  Triggers a strong, short pulse on each detected transient (kick/snare),
+   *  with refractory period to avoid flutter on sustained loud passages. */
   private processOnset(flux: number): void {
     const tc = this.tc;
     this.onsetBuffer[this.onsetPos] = flux;
@@ -362,11 +368,17 @@ export class PiLightEngine {
 
     const mid = n >> 1;
     const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
-    const threshold = med * 1.5 + 0.005;
-    const isOnset = flux > threshold && flux >= this.onsetPrevFlux;
+    // Stricter threshold (1.8x median + floor) → only real beats trigger, not noise
+    const threshold = med * 1.8 + 0.008;
+    const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
 
-    if (isOnset) this.onsetTarget = 0.22;
+    // Refractory gate: minimum gap between onsets
+    const now = performance.now();
+    if (isCandidate && (now - this.onsetLastTime) >= PiLightEngine.ONSET_REFRACTORY_MS) {
+      this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
+      this.onsetLastTime = now;
+    }
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
     if (this.onsetBoost < this.onsetTarget) {

@@ -48,6 +48,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
 - [Signal processing chain](mem://pi/audio/signal-processing-chain) — Pipeline order from Mic to Gamma
 - [Oktav-band](mem://pi/audio/oktav-band-normalisering) — Bass/midHi RMS som energy-per-octave för korrekt diskant-respons
+- [Beat-driven puls](mem://pi/audio/beat-driven-pulse) — Spectral flux onset → 0.45 boost + 110ms refractory för ljus i takt med trumslag
 - [FFT resolution](mem://technical/audio-processing/fft-resolution) — 1024 samples, 128 hop-size
 - [Palette integration](mem://pi/sonos/palette-integration) — 4-color palettes consumed directly from Sonos Gateway
 - [Softness slider](mem://pi/ui/softness-slider-curve) — Exponential mapping for releaseAlpha
