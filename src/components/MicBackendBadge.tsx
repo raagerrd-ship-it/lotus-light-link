@@ -110,7 +110,7 @@ export function MicBackendBadge({ piBase }: Props) {
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-primary/15 text-primary border border-primary/30"
         title={`Native ALSA (direct snd_pcm_readi)${latencyTitle}`}
       >
-        <Cpu size={9} /> ALSA{latencySuffix}
+        <Cpu size={9} /> ALSA{latencySuffix}{pktSuffix}
       </span>
     );
   }
@@ -121,7 +121,7 @@ export function MicBackendBadge({ piBase }: Props) {
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-destructive/15 text-destructive border border-destructive/30"
         title={`arecord-subprocess (fallback)${latencyTitle}`}
       >
-        <Terminal size={9} /> ARECORD{latencySuffix}
+        <Terminal size={9} /> ARECORD{latencySuffix}{pktSuffix}
       </span>
     );
   }
