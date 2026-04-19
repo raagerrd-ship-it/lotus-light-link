@@ -80,7 +80,9 @@ export function startKeepAlive(): void {
     if (elapsed < KEEPALIVE_MS * 0.8) return;
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     try {
-      await device.characteristic.writeAsync(buf, false);
+      // Anchor write i connect-hardcoded/connect.ts bevisar att denna stack
+      // faktiskt returnerar på `true`, medan `false` fastnar i timeout-loop.
+      await device.characteristic.writeAsync(buf, true);
       lastWriteTime = performance.now();
       keepAliveSentCount++;
       if (keepAliveFailCount > 0) {
@@ -166,11 +168,10 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
       buf = writeBuf;
     }
-    // withoutResponse=true → fire-and-forget. Paketet skickas i nästa
-    // connection event (~7.5ms median, 0–7.5ms minimum) och vi väntar inte
-    // på ACK. Sparar 1 connection event (~7.5ms) per write jämfört med
-    // acked write. BLEDOM kvitterar inte ändå, så ACK var pure overhead.
-    await device.characteristic.writeAsync(buf, false);
+    // Viktigt: på denna Pi/noble-stack hänger `writeAsync(..., false)` men
+    // anchor write med `true` returnerar direkt och lampan håller länken.
+    // Därför måste drift-writes använda samma flagga som anchor writen.
+    await device.characteristic.writeAsync(buf, true);
 
     lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
     bleStats.sentCount++;
@@ -225,6 +226,6 @@ export async function sendRawColor(r: number, g: number, b: number): Promise<voi
   resetLastSent();
   writeBuf[4] = r; writeBuf[5] = g; writeBuf[6] = b;
   try {
-    await device.characteristic.writeAsync(writeBuf, false);
+    await device.characteristic.writeAsync(writeBuf, true);
   } catch { /* fire-and-forget */ }
 }
