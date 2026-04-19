@@ -40,7 +40,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Event-driven engine](mem://pi/performance/event-driven-architecture) — Engine execution triggered by FFT frames
 - [BLE optimization](mem://pi/ble/connection-optimization) — 7.5-10ms connection interval via HCI
 - [API routing](mem://pi/ui/api-routing) — API URLs generated as window.location.port + 50
-- [Pi port allocation](mem://pi/runtime/port-allocation) — Lotus engine på 3051, Sonos Gateway på 3050, Pi #2 på 3052
+- [Pi port allocation](mem://pi/runtime/port-allocation) — Lotus engine API på 3050 (en port, alla rutter), UI på 3000. Ingen 3051.
 - [journalctl saknas](mem://pi/runtime/journalctl-not-available) — journalctl --user fungerar inte; använd curl /api/ble/diagnostics istället
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
