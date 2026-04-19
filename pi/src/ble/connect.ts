@@ -644,25 +644,32 @@ export async function autoConnectSaved(timeoutMs = 8000): Promise<number> {
       return 0;
     }
 
-    // SCAN-ONLY strategy: noble-isolated-test 2026-04-18 bevisade att
-    // noble.startScanningAsync hittar BE:67:00:15:09:41 (ELK-BLEDOM01) på
-    // ~850ms. tryDirectConnectAsync hängde däremot 8s och låste HCI eftersom
-    // noble.connectAsync(address) kräver att peripheral redan finns i noble's
-    // interna cache — vilket den aldrig gör eftersom vår discovery använder
-    // hcitool-subprocess. Lösning: hoppa direct-connect helt och kör alltid
-    // scan→peripheral.connectAsync (samma flöde som monoliten + isolated test).
-    // Match sker på MAC-adress (normalizeBleKey i nobleScanConnect rad 431).
-    logConnectionEvent({
-      type: 'connect_start',
-      device: savedName,
-      detail: `Scan-only connect (skipping direct-connect — noble cache empty by design)`,
-    });
+    // För manuellt sparade enheter HAR vi redan MAC + addressType. Då ska vi
+    // försöka riktig direct-connect först och bara falla tillbaka på scan om
+    // noble.connectAsync(address) faktiskt misslyckas.
+    const canDirectConnect = !!(getSavedDeviceAddress() && getSavedAddressType());
+    if (canDirectConnect) {
+      logConnectionEvent({
+        type: 'connect_start',
+        device: savedName,
+        detail: 'Saved metadata finns — försöker direct-connect före scan',
+      });
+      const directOk = await tryDirectConnectAsync(savedName, timeoutMs);
+      if (directOk) return 1;
+    } else {
+      logConnectionEvent({
+        type: 'connect_start',
+        device: savedName,
+        detail: 'Ingen sparad addressType/MAC — hoppar över direct-connect och kör scan',
+      });
+    }
+
     const scanOk = await nobleScanConnect(savedId, savedName, 10000);
     if (scanOk) return 1;
 
     incrementConsecutiveFailures();
     const fails = getConsecutiveFailures();
-    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Connect misslyckades (scan) — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
+    logConnectionEvent({ type: 'connect_fail', device: savedName, detail: `Connect misslyckades (${canDirectConnect ? 'direct+scan' : 'scan'}) — enheten ev. avstängd/utom räckhåll [fail#${fails}]` });
     // Ingen automatisk HCI-reset. Användaren trycker "Återställ BLE-stack" vid behov.
     return 0;
   });
