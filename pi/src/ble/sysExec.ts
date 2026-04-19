@@ -73,9 +73,16 @@ export function runShellScript(script: string, opts: RunOptions = {}): boolean {
       timeout: timeoutMs,
       env: safeEnv(),
       stdio: capture ? 'pipe' : 'ignore',
-    });
+      encoding: 'utf8',
+    } as ExecSyncOptionsWithStringEncoding);
     return true;
-  } catch {
+  } catch (error: any) {
+    if (capture) {
+      const stdout = typeof error?.stdout === 'string' ? error.stdout.trim() : '';
+      const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
+      const detail = [stdout, stderr].filter(Boolean).join(' | ');
+      console.error(`[sysExec] runShellScript failed: ${detail || error?.message || error}`);
+    }
     return false;
   }
 }

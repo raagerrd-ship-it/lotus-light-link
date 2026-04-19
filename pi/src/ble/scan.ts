@@ -120,9 +120,9 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
     try {
       const { runShellScript } = await import('./sysExec.js');
       runShellScript(
-        'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
-        'hciconfig hci0 up >/dev/null 2>&1 || true',
-        { timeoutMs: 3000 }
+        'rfkill unblock bluetooth || true; ' +
+        'hciconfig hci0 up || true',
+        { timeoutMs: 3000, capture: true }
       );
       logConnectionEvent({ type: 'scan_start', detail: 'hci0 up (no down/reset, noble untouched)' });
     } catch (e: any) {
