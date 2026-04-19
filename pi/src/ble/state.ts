@@ -160,28 +160,20 @@ function setForceMutationSnapshot(s: Omit<ForceMutationSnapshot, 'ranAt'>): void
   _forceMutationSnapshot = { ...s, ranAt: new Date().toISOString() };
 }
 
-try {
-  (noble as any).on?.('stateChange', (s: string) => {
-    _cachedNobleState = s;
-    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
-    console.log(`[BLE:stateChange] ${s}`);
-    if (_firstStateChangeResolve) {
-      _firstStateChangeResolve(s);
-      _firstStateChangeResolve = null;
-    }
-  });
-  const initial = (noble as any).state ?? (noble as any)._state;
-  if (initial && initial !== 'unknown') {
-    _cachedNobleState = initial;
-    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
-    if (_firstStateChangeResolve) {
-      _firstStateChangeResolve(initial);
-      _firstStateChangeResolve = null;
-    }
+// Hooka in oss på noble-singletons stateChange-stream. Detta REGISTRERAR bara
+// callbacken — det laddar inte noble. Singleton:en levererar event:et hit
+// så fort startBleEngine() faktiskt require:ar noble. Om noble laddats av
+// någon annan kod tidigare och redan har en cachad state replay:as den till
+// oss synkront här.
+onNobleStateChange((s: string) => {
+  _cachedNobleState = s;
+  if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
+  console.log(`[BLE:stateChange] ${s}`);
+  if (_firstStateChangeResolve) {
+    _firstStateChangeResolve(s);
+    _firstStateChangeResolve = null;
   }
-} catch (e) {
-  console.error('[BLE] failed to attach early stateChange listener:', e);
-}
+});
 
 /**
  * Wait for noble's first `stateChange` event (or already-cached state).
