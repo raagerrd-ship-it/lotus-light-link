@@ -284,6 +284,9 @@ export function startConfigServer(port = 3050): void {
     if (!_starters) {
       return res.status(503).json({ ready: false, error: 'subsystem starters inte attachade' });
     }
+    const { resetEngineLogs } = await import('./ble/log-buffer.js');
+    resetEngineLogs();
+    console.log('[engine/start] === Starta motor begärd från UI ===');
     const t0 = Date.now();
     try {
       await _starters.startBleEngine();
@@ -291,10 +294,18 @@ export function startConfigServer(port = 3050): void {
       const { getNoble } = await import('./ble/noble-singleton.js');
       const rawState = hasNobleLoaded() ? (getNoble().state ?? null) : null;
       const ready = rawState === 'poweredOn';
+      console.log(`[engine/start] klart efter ${Date.now() - t0}ms — ready=${ready} rawState=${rawState}`);
       res.json({ ready, durationMs: Date.now() - t0, rawState });
     } catch (e: any) {
+      console.error(`[engine/start] FEL efter ${Date.now() - t0}ms: ${e?.message ?? e}`);
       res.status(500).json({ ready: false, durationMs: Date.now() - t0, error: e?.message ?? String(e) });
     }
+  });
+
+  app.get('/api/ble/engine/logs', async (req, res) => {
+    const since = Number(req.query.since ?? 0) || 0;
+    const { getEngineLogsSince } = await import('./ble/log-buffer.js');
+    res.json(getEngineLogsSince(since));
   });
 
   app.post('/api/ble/connect', async (_req, res) => {

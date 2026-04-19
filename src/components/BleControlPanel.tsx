@@ -9,7 +9,7 @@
  * Pollar /api/ble/state varannan sekund för status.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bluetooth, Loader2, Lightbulb, Play, Power } from "lucide-react";
 
 interface BleStateResp {
@@ -19,11 +19,22 @@ interface BleStateResp {
   rawState?: string;
 }
 
+interface LogEntry {
+  seq: number;
+  t: number;
+  level: "log" | "warn" | "error";
+  text: string;
+}
+
 export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string; onConnectedChange?: (connected: boolean) => void }) {
   const [state, setState] = useState<BleStateResp | null>(null);
   const [engineBusy, setEngineBusy] = useState(false);
   const [connectBusy, setConnectBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const sinceRef = useRef(0);
+  const logPollRef = useRef<number | null>(null);
+  const logBoxRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -42,9 +53,34 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
     return () => clearInterval(id);
   }, [refresh]);
 
+  const pollLogs = useCallback(async () => {
+    try {
+      const r = await fetch(`${piBase}/api/ble/engine/logs?since=${sinceRef.current}`, { signal: AbortSignal.timeout(2500) });
+      if (r.ok) {
+        const data = (await r.json()) as { entries: LogEntry[]; nextSince: number };
+        if (data.entries?.length) {
+          setLogs((prev) => [...prev, ...data.entries].slice(-300));
+        }
+        sinceRef.current = data.nextSince ?? sinceRef.current;
+      }
+    } catch {}
+  }, [piBase]);
+
+  useEffect(() => {
+    if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+  }, [logs]);
+
+  useEffect(() => () => {
+    if (logPollRef.current) window.clearInterval(logPollRef.current);
+  }, []);
+
   const startEngine = async () => {
     setEngineBusy(true);
     setLastError(null);
+    setLogs([]);
+    sinceRef.current = 0;
+    if (logPollRef.current) window.clearInterval(logPollRef.current);
+    logPollRef.current = window.setInterval(pollLogs, 400);
     try {
       const r = await fetch(`${piBase}/api/ble/engine/start`, {
         method: "POST",
@@ -59,6 +95,11 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
       setLastError(e?.message ?? "Nätverksfel");
     } finally {
       setEngineBusy(false);
+      await pollLogs();
+      if (logPollRef.current) {
+        window.clearInterval(logPollRef.current);
+        logPollRef.current = null;
+      }
     }
   };
 
@@ -118,6 +159,32 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
           </button>
         </div>
       </div>
+
+      {/* SSH-style live-logg */}
+      {logs.length > 0 && (
+        <div className="rounded-xl border border-border bg-black/80 p-2">
+          <div className="flex items-center justify-between px-1 pb-1">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Engine-logg</span>
+            <button
+              onClick={() => { setLogs([]); sinceRef.current = 0; }}
+              className="text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              Rensa
+            </button>
+          </div>
+          <div
+            ref={logBoxRef}
+            className="font-mono text-[10px] leading-snug text-green-300 max-h-56 overflow-y-auto whitespace-pre-wrap"
+          >
+            {logs.map((l) => (
+              <div key={l.seq} className={l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-300" : undefined}>
+                <span className="text-muted-foreground">+{String(l.t).padStart(5, " ")}ms</span>{" "}
+                {l.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Lampa (hårdkodad) */}
       <div className={`rounded-xl border p-3 ${connected ? "bg-green-500/10 border-green-500/30" : "bg-secondary/50 border-border"}`}>
