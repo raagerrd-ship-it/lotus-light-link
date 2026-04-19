@@ -395,19 +395,21 @@ export function startMic(): void {
   if (capture) return;
 
   if (useNative && AlsaCapture) {
-    // Native path — direct ALSA snd_pcm_readi(), no subprocess
+    // Native path — direct ALSA snd_pcm_readi(), no subprocess.
+    // Fast period (128 frames ≈ 2.9ms) decoupled from FFT hop. JS ackumulerar
+    // till HOP_SIZE innan FFT körs — ALSA-bufferten är alltid trygg.
     capture = new AlsaCapture({
       channels: 1,
       rate: SAMPLE_RATE,
       format: 'S16_LE',
       device: currentDevice,
-      periodSize: HOP_SIZE,
+      periodSize: 128,
     });
 
     capture.on('audio', onAudioData);
     capture.on('overrun', () => console.warn('[ALSA] Buffer overrun detected'));
     capture.on('error', (err: Error) => console.error('[ALSA] capture error:', err.message));
-    console.log(`[ALSA] Mic started via native ALSA (44.1kHz, S16_LE, mono, period=${HOP_SIZE}, device: ${currentDevice})`);
+    console.log(`[ALSA] Mic started via native ALSA (44.1kHz, S16_LE, mono, period=128, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
 
   } else if (nodeRecord) {
     // Fallback — arecord subprocess + pipe
