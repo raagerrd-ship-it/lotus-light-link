@@ -13,9 +13,10 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, type BandResult } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, getLastAudioTimestamp, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
+import { pipelineTiming } from './pipelineTiming.js';
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
@@ -513,13 +514,19 @@ export class PiLightEngine {
       // Enough time passed — process immediately (zero latency)
       this._lastTickTime = now;
       if (this._pendingTimeout) { clearTimeout(this._pendingTimeout); this._pendingTimeout = null; }
+      // fftToTick = FFT frame complete → engine tick start (event-driven path)
+      const fftTs = getLastFFTTimestamp();
+      if (fftTs > 0) pipelineTiming.recordFftToTick(now - fftTs);
       this.tickInner();
     } else if (!this._pendingTimeout) {
       // FFT arrived too early — schedule for remaining time
       const remaining = this.tickMs - elapsed;
       this._pendingTimeout = setTimeout(() => {
         this._pendingTimeout = null;
-        this._lastTickTime = performance.now();
+        const t = performance.now();
+        this._lastTickTime = t;
+        const fftTs = getLastFFTTimestamp();
+        if (fftTs > 0) pipelineTiming.recordFftToTick(t - fftTs);
         this.tickInner();
       }, remaining);
     }
