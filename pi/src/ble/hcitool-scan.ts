@@ -47,7 +47,7 @@ function resolveHelperPath(): string {
   return candidates[0]; // bästa gissning för fel-rapport
 }
 
-export async function hcitoolLescan(timeoutMs: number, earlyExitOnPattern?: RegExp): Promise<HcitoolScanResult> {
+export async function hcitoolLescan(timeoutMs: number): Promise<HcitoolScanResult> {
   const startedAt = Date.now();
   const helperPath = resolveHelperPath();
 
@@ -57,8 +57,7 @@ export async function hcitoolLescan(timeoutMs: number, earlyExitOnPattern?: RegE
     return { devices: [], rawLineCount: 0, exitCode: null, startError: err, stderr: '', durationMs: 0 };
   }
 
-  const earlyArg = earlyExitOnPattern ? earlyExitOnPattern.source : '';
-  const args = [helperPath, String(timeoutMs), earlyArg];
+  const args = [helperPath, String(timeoutMs)];
 
   let proc;
   try {
