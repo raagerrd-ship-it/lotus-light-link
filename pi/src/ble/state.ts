@@ -45,6 +45,19 @@ export function getBleBootStartedAt(): number { return _bootStartedAt; }
 export function getFirstStateChangeAt(): number | null { return _firstStateChangeAt; }
 export function hasNobleEverFiredStateChange(): boolean { return _firstStateChangeAt != null; }
 
+// ── Boot phase ──
+// 'waiting-for-noble' = engine bootar fortfarande och VÄNTAR på att noble
+// rapporterar poweredOn innan något annat (alsaMic, Sonos, engine.start)
+// startas. 'ready' = noble vaken och alla subsystem laddade.
+export type BootPhase = 'waiting-for-noble' | 'ready';
+let _bootPhase: BootPhase = 'waiting-for-noble';
+export function getBootPhase(): BootPhase { return _bootPhase; }
+export function setBootPhase(phase: BootPhase): void {
+  if (_bootPhase === phase) return;
+  _bootPhase = phase;
+  console.log(`[Boot] phase → ${phase}`);
+}
+
 /**
  * Markera att noble HAR fyrat stateChange — kallas från fallback-vägar
  * (waitForPoweredOnAsync race i index.ts, eller getNobleRawState när vi
