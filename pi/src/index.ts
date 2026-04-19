@@ -233,15 +233,15 @@ async function main() {
   // ändrar bara engine-state (play/pause/volym/färg), aldrig BLE-anslutning.
   console.log('[Boot] Leaving Bluetooth adapter untouched until first BLE action');
 
-  // Om ingen sparad enhet finns → frigör noble's mgmt/HCI-socket så att
-  // `btmgmt find` (scan-helpern) inte får "status 0x0a (Busy)" från
-  // mgmt-API:t. Noble har ingenting att göra utan en sparad enhet.
+  // Noble's mgmt/HCI-socket BEHÅLLS alltid — vi använder noble själv för
+  // scan (noble.startScanningAsync) eftersom alla parallella binärer
+  // (btmgmt, hcitool) får "0x0a Busy" / "Operation not permitted" så länge
+  // noble håller mgmt-kanalen. Bekräftat 2026-04-19 via manuell SSH-test.
   const { getSavedDeviceId } = await import('./ble/state.js');
-  if (!getSavedDeviceId()) {
-    const { releaseNobleResources } = await import('./ble/state.js');
-    await releaseNobleResources('boot — no saved device');
+  if (getSavedDeviceId()) {
+    console.log(`[Boot] Saved device finns (${getSavedDeviceId()}) — noble HCI redo för auto-connect`);
   } else {
-    console.log(`[Boot] Saved device finns (${getSavedDeviceId()}) — noble HCI behålls`);
+    console.log('[Boot] Ingen sparad enhet — noble HCI redo för scan via /api/ble/scan');
   }
 
   // 5. Start Sonos poller (configurable gateway)

@@ -1,14 +1,18 @@
 /**
- * BLE scanning — hcitool-only discovery via separat helper-process.
+ * BLE scanning — noble-baserad scan.
  *
- * Inline `spawn('hcitool')` i samma Node-process som noble gav direkt:
- * `Set scan parameters failed` / exit=1. En separat helper-process är stabil.
+ * Vi använder noble.startScanningAsync() direkt eftersom noble redan äger
+ * mgmt-kanalen i denna process — ingen annan binär (btmgmt, hcitool) kan
+ * scanna parallellt utan att få "0x0a Busy" eller "Operation not permitted".
+ *
+ * Bevis (2026-04-19): manuell test `sudo timeout 4 btmgmt find` medan engine
+ * kör → "Unable to start discovery. status 0x0a (Busy)". Slutsats: noble
+ * måste vara den som scannar i denna process.
  */
 
-import { getAdapterState, logConnectionEvent, getNobleRawState } from './state.js';
+import { noble, getAdapterState, logConnectionEvent, getNobleRawState, hasNobleEverFiredStateChange } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
-import { hcitoolLescan } from './hcitool-scan.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
@@ -29,15 +33,8 @@ export interface BleScanMetrics {
   lastStartError: string | null;
   lastStopError: string | null;
   lastWatchdogAt: string | null;
-  hcitool: {
-    enabled: boolean;
-    deviceCount: number;
-    rawLineCount: number;
-    exitCode: number | null;
-    startError: string | null;
-    stderr: string;
-    durationMs: number;
-  } | null;
+  // Behålls för backward-compat med UI:t men sätts alltid till null nu.
+  hcitool: null;
 }
 
 let _scanSeq = 0;
@@ -65,7 +62,7 @@ export function getDiscoveredPeripheral(id: string): any | undefined {
   return discoveredPeripherals.get(id.toLowerCase());
 }
 
-export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice[]> {
+export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice[]> {
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
     return lastScanResults;
@@ -94,6 +91,10 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
   scanMetrics.lastStopError = null;
   scanMetrics.hcitool = null;
 
+  const n: any = noble;
+  let onDiscover: ((p: any) => void) | null = null;
+
+  // Watchdog — frigör scan-flaggan om något fastnar i noble (ovanpå hård timeout).
   const watchdog = setTimeout(() => {
     if (scanning) {
       scanning = false;
@@ -114,41 +115,75 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
   try {
     logConnectionEvent({
       type: 'scan_start',
-      detail: `btmgmt find ${timeoutMs}ms (helper-process, mgmt-API), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}`,
+      detail: `noble.startScanningAsync ${timeoutMs}ms (allowDuplicates), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
     });
 
+    // Säkerställ att noble inte håller en gammal scan-session öppen.
     try {
-      const { runShellScript } = await import('./sysExec.js');
-      runShellScript(
-        'rfkill unblock bluetooth || true; ' +
-        'hciconfig hci0 up || true',
-        { timeoutMs: 3000, capture: true }
-      );
-      logConnectionEvent({ type: 'scan_start', detail: 'hci0 up (no down/reset, noble untouched)' });
-    } catch (e: any) {
-      logConnectionEvent({ type: 'scan_start', detail: `hci up warning: ${e?.message ?? e}` });
-    }
+      if (typeof n.stopScanningAsync === 'function') await n.stopScanningAsync();
+      else if (typeof n.stopScanning === 'function') n.stopScanning();
+    } catch {}
 
-    scanMetrics.phase = 'scanning';
-    scanMetrics.lastStartOkAt = new Date().toISOString();
+    onDiscover = (peripheral: any) => {
+      try {
+        const idRaw: string = peripheral?.id ?? peripheral?.uuid ?? peripheral?.address ?? '';
+        if (!idRaw) return;
+        const id = String(idRaw).replace(/:/g, '').toLowerCase();
+        scanMetrics.lastRawDiscoverCount++;
 
-    const hres = await hcitoolLescan(timeoutMs);
+        const adv = peripheral?.advertisement ?? {};
+        const rawName: string =
+          adv.localName ||
+          peripheral?.name ||
+          (adv.manufacturerData ? `(mfg) ${peripheral?.address ?? id}` : '') ||
+          `(no-name) ${peripheral?.address ?? id}`;
+        const rssi = typeof peripheral?.rssi === 'number' ? peripheral.rssi : -100;
 
-    for (const d of hres.devices) {
-      found.set(d.id, { ...d, source: 'hcitool' });
-    }
+        discoveredPeripherals.set(id, peripheral);
 
-    scanMetrics.hcitool = {
-      enabled: true,
-      deviceCount: hres.devices.length,
-      rawLineCount: hres.rawLineCount,
-      exitCode: hres.exitCode,
-      startError: hres.startError,
-      stderr: hres.stderr.slice(0, 500),
-      durationMs: hres.durationMs,
+        const prev = found.get(id);
+        if (!prev) {
+          found.set(id, { id, name: String(rawName).trim() || `(no-name) ${id}`, rssi, source: 'noble' });
+        } else {
+          if (rssi > prev.rssi) prev.rssi = rssi;
+          if (prev.name.startsWith('(no-name)') && rawName && !rawName.startsWith('(no-name)')) {
+            prev.name = String(rawName).trim();
+          }
+        }
+      } catch (e: any) {
+        console.error('[BLE:scan] discover handler error:', e?.message ?? e);
+      }
     };
 
+    n.on('discover', onDiscover);
+
+    // Starta scanning. Tomma services + allowDuplicates=true → vi får alla
+    // BLE-enheter och uppdaterad RSSI per advert.
+    try {
+      await n.startScanningAsync([], true);
+      scanMetrics.phase = 'scanning';
+      scanMetrics.lastStartOkAt = new Date().toISOString();
+    } catch (e: any) {
+      scanMetrics.lastStartError = e?.message ?? String(e);
+      logConnectionEvent({
+        type: 'scan_done',
+        detail: `noble.startScanningAsync failed: ${e?.message ?? e}`,
+      });
+      throw e;
+    }
+
+    // Vänta klart timeoutMs.
+    await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+
+    // Stoppa scan.
     scanMetrics.phase = 'stopping';
+    try {
+      if (typeof n.stopScanningAsync === 'function') await n.stopScanningAsync();
+      else if (typeof n.stopScanning === 'function') n.stopScanning();
+    } catch (e: any) {
+      scanMetrics.lastStopError = e?.message ?? String(e);
+    }
+
     lastScanResults = Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name));
     scanMetrics.phase = 'idle';
     scanMetrics.active = false;
@@ -157,26 +192,10 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
     scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
     scanMetrics.lastResultCount = lastScanResults.length;
 
-    if (lastScanResults.length === 0) {
-      // Visa hela helper-payloaden så vi ser vad btmgmt faktiskt skrev.
-      const fullDetail = JSON.stringify({
-        tool: 'btmgmt',
-        rawLines: hres.rawLineCount,
-        exit: hres.exitCode,
-        stderr: hres.stderr || null,
-        startError: hres.startError ?? null,
-        durationMs: hres.durationMs,
-      });
-      logConnectionEvent({
-        type: 'scan_done',
-        detail: `0 devices — ${fullDetail}`,
-      });
-    } else {
-      logConnectionEvent({
-        type: 'scan_done',
-        detail: `${lastScanResults.length} device(s) via hcitool (raw_lines=${hres.rawLineCount})`,
-      });
-    }
+    logConnectionEvent({
+      type: 'scan_done',
+      detail: `${lastScanResults.length} device(s) via noble (raw_discovers=${scanMetrics.lastRawDiscoverCount}, dur=${scanMetrics.lastDurationMs}ms)`,
+    });
 
     return lastScanResults;
   } catch (e: any) {
@@ -185,13 +204,16 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
     scanMetrics.activeSince = null;
     scanMetrics.lastStoppedAt = new Date().toISOString();
     scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
-    scanMetrics.lastStartError = e?.message ?? String(e);
+    if (!scanMetrics.lastStartError) scanMetrics.lastStartError = e?.message ?? String(e);
     lastScanResults = [];
     logConnectionEvent({ type: 'scan_done', detail: `Error: ${e?.message ?? e}` });
     console.error(`[BLE] scan error: ${e?.message ?? e}`);
     return lastScanResults;
   } finally {
     clearTimeout(watchdog);
+    if (onDiscover) {
+      try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
+    }
     scanMetrics.phase = 'idle';
     scanMetrics.active = false;
     scanMetrics.activeSince = null;
