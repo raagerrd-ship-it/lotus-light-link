@@ -51,6 +51,8 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const [bleOutput, setBleOutput] = useState<BleOutput>({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
   const lastSentCountRef = useRef(0);
   const lastSentRateRef = useRef(0);
+  const lastSkipDeltaRateRef = useRef(0);
+  const lastSkipBusyRateRef = useRef(0);
   const sinceRef = useRef(0);
   const logPollRef = useRef<number | null>(null);
   const logBoxRef = useRef<HTMLDivElement | null>(null);
@@ -309,7 +311,13 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
               <div className="flex items-center gap-2 text-[9px] font-mono opacity-60">
                 <span className="w-12">&nbsp;</span>
                 <span>RGB {bleOutput.r},{bleOutput.g},{bleOutput.b}</span>
-                <span className="ml-auto">{lastSentRateRef.current} pkt/s · {bleOutput.sentCount} totalt</span>
+                <span className="ml-auto">
+                  {lastSentRateRef.current} pkt/s
+                  {lastSkipBusyRateRef.current > 0 && <span className="text-destructive"> · b{lastSkipBusyRateRef.current}</span>}
+                  {lastSkipDeltaRateRef.current > 0 && <span className="opacity-70"> · d{lastSkipDeltaRateRef.current}</span>}
+                  {bleOutput.writeLatAvgMs ? <span className="opacity-50"> · {bleOutput.writeLatAvgMs}ms</span> : null}
+                  <span className="opacity-50"> · {bleOutput.sentCount} totalt</span>
+                </span>
               </div>
             </div>
           )}
