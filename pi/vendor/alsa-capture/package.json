@@ -1,0 +1,17 @@
+{
+    "name": "alsa-capture",
+    "version": "0.3.0-lotus.1",
+    "description": "capture alsa pcm packages (lotus-light vendored fork — nan upgraded for Node 24)",
+    "main": "index.js",
+    "scripts": {
+        "install": "node-gyp rebuild"
+    },
+    "dependencies": {
+        "eventemitter3": "^4.0.7",
+        "nan": "^2.26.2"
+    },
+    "license": "MIT",
+    "gypfile": true,
+    "private": true
+}
+

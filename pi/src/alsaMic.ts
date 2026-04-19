@@ -15,18 +15,28 @@ let AlsaCapture: any = null;
 let nodeRecord: any = null;
 let useNative = false;
 
+// Dynamic import — alsa-capture is vendored as a fork in pi/vendor/alsa-capture/
+// (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.
+// Resolution order: vendored fork → upstream npm pkg → arecord subprocess fallback.
 try {
-  AlsaCapture = (await import('alsa-capture')).default;
+  // Resolve relative to compiled dist/ — vendor/ sits at pi/vendor/, dist at pi/dist/
+  AlsaCapture = (await import('../vendor/alsa-capture/index.js')).default;
   useNative = true;
-  console.log('[ALSA] Using native alsa-capture (direct snd_pcm_readi)');
-} catch (e: any) {
-  const reason = e?.message ?? String(e);
-  console.warn(`[ALSA] Native alsa-capture unavailable: ${reason}`);
+  console.log('[ALSA] Using native alsa-capture (vendored fork, direct snd_pcm_readi)');
+} catch (eVendor: any) {
   try {
-    nodeRecord = (await import('node-record-lpcm16')).default;
-    console.log('[ALSA] Falling back to node-record-lpcm16 (arecord subprocess)');
-  } catch (e2: any) {
-    console.warn(`[ALSA] node-record-lpcm16 also unavailable: ${e2?.message ?? e2}`);
+    AlsaCapture = (await import('alsa-capture')).default;
+    useNative = true;
+    console.log('[ALSA] Using native alsa-capture (npm package, direct snd_pcm_readi)');
+  } catch (e: any) {
+    const reason = e?.message ?? String(e);
+    console.warn(`[ALSA] Native alsa-capture unavailable: ${reason}`);
+    try {
+      nodeRecord = (await import('node-record-lpcm16')).default;
+      console.log('[ALSA] Falling back to node-record-lpcm16 (arecord subprocess)');
+    } catch (e2: any) {
+      console.warn(`[ALSA] node-record-lpcm16 also unavailable: ${e2?.message ?? e2}`);
+    }
   }
 }
 
