@@ -33,7 +33,7 @@ import { isNobleScanActive } from './connect.js';
 import { scanMetrics, nextScanId, resetMetricsForNewScan, finalizeMetrics } from './scan-metrics.js';
 import { armScanWatchdog, type ScanWatchdogHandle } from './scan-watchdog.js';
 import { createDiscoverHandler } from './scan-discover.js';
-import { triggerNobleRespawn } from './watchdog.js';
+import { triggerNobleRespawn, getWatchdogGiveUpReason } from './watchdog.js';
 
 export { getScanMetrics, type BleScanMetrics } from './scan-metrics.js';
 
@@ -101,17 +101,23 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         // når poweredOn på ~310ms (SSH-bevis 2026-04-19). Trigga respawn
         // via systemd så användaren får tryck på "Sök efter enheter" igen
         // och då hittar noble enheterna direkt.
+        let respawnTriggered = false;
         logConnectionEvent({
           type: 'scan_start',
           detail: `waitForPoweredOnAsync FAIL: ${e?.message ?? e} (state=${n.state}, _state=${n._state}) — triggar noble respawn via systemd`,
         });
         try {
-          triggerNobleRespawn(`scan-time: noble=${n.state ?? 'null'} efter 10s wait (user clicked Sök)`);
+          respawnTriggered = triggerNobleRespawn(`scan-time: noble=${n.state ?? 'null'} efter 10s wait (user clicked Sök)`);
         } catch (rerr: any) {
           logConnectionEvent({
             type: 'scan_start',
             detail: `triggerNobleRespawn kastade: ${rerr?.message ?? rerr}`,
           });
+        }
+        if (!respawnTriggered) {
+          const cooldownReason = getWatchdogGiveUpReason() ?? 'Respawn blockerad av cooldown — försök igen om en liten stund.';
+          scanMetrics.lastStartError = cooldownReason;
+          throw new Error(cooldownReason);
         }
         throw new Error(`noble inte poweredOn inom 10s: ${e?.message ?? e}`);
       }
