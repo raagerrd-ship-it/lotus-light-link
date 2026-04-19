@@ -9,7 +9,7 @@ import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics } from './nobleBle.js';
 import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
-import { scheduleNobleStuckWatchdog, getWatchdogGiveUpReason } from './ble/watchdog.js';
+import { getWatchdogGiveUpReason } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { invalidateIdleColorCache } from './piEngine.js';
@@ -293,8 +293,10 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
 
-    scheduleNobleStuckWatchdog(3000);
-
+    // OBS: Ingen auto-respawn här. Respawn triggas ENBART från
+    // scan-knappen (pi/src/ble/scan.ts) när waitForPoweredOnAsync(10s)
+    // failar. Att respawna 3s efter /start skulle döda processen innan
+    // noble hunnit ens försöka — och det är inte användarinitierat.
     let connectStarted = false;
     let connected = !!getConnectedDeviceId();
     const hasSaved = !!getSavedDeviceId();
