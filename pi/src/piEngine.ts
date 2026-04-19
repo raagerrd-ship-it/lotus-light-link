@@ -328,6 +328,17 @@ export class PiLightEngine {
     setTickHopMs(ms);
   }
 
+  setColor(rgb: [number, number, number]) {
+    this.color = rgb;
+  }
+
+  setPalette(palette: [number, number, number][]) {
+    this._palette = palette;
+    this._paletteIndex = 0;
+    this._paletteTickCounter = 0;
+    if (palette.length > 0) this.color = palette[0];
+  }
+
   private initOnsetBuffer(tickMs: number): void {
     this.onsetSize = Math.max(3, ((175 / tickMs + 0.5) | 0));
     if (this.onsetBuffer.length < this.onsetSize) {
