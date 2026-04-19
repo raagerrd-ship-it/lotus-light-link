@@ -122,31 +122,14 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
   try {
     logConnectionEvent({
       type: 'scan_start',
-      detail: `hcitool-only discovery, timeout=${timeoutMs}ms, adapter=${getAdapterState()}, raw=${getNobleRawState() ?? 'unknown'}`,
+      detail: `hcitool-only discovery (parallel mode), timeout=${timeoutMs}ms, adapter=${getAdapterState()}, raw=${getNobleRawState() ?? 'unknown'}`,
     });
 
-    // Steg 1: Stoppa noble's HCI-binding så subprocessen får exklusiv access.
-    // hciconfig down/up räcker INTE — noble's kernel-socket håller adaptern
-    // även när hci0 är "down". Vi måste explicit stänga noble's binding,
-    // sen cycla HCI, sen spawna helper. Helpern importerar inte noble alls.
-    let nobleStopped = false;
-    try {
-      const bindings = (noble as any)._bindings;
-      const hci = bindings?._hci;
-      if (typeof hci?.stop === 'function') {
-        try { hci.stop(); nobleStopped = true; bumpWorkaround('noble_hci_stopped_for_scan'); } catch {}
-      }
-      logConnectionEvent({
-        type: 'scan_start',
-        detail: nobleStopped ? 'noble HCI stoppad — släpper socket åt hcitool' : 'noble._hci.stop() ej tillgänglig',
-      });
-    } catch (e: any) {
-      logConnectionEvent({ type: 'scan_start', detail: `noble stop warning: ${e?.message ?? e}` });
-    }
-
-    // Steg 2: Bara säkerställ att adaptern är UP (aldrig down/reset).
-    // Engine-policy 2026-04-19: Lotus får aldrig ta ner hci0. SSH-bevis:
-    // `hciconfig hci0 up` är idempotent och stör inte hcitool.
+    // Steg 1: Bara säkerställ att adaptern är UP. Noble's HCI-binding rörs INTE
+    // — hcitool's lescan kan köra parallellt med noble eftersom båda öppnar
+    // separata raw HCI-socklar (kräver CAP_NET_RAW, vilket vi sätter på båda
+    // i setup-lotus.sh). Att stoppa noble bröt mot hci-up-only-policyn och
+    // gjorde att hcitool fick 0 devices (adaptern fastnade i mellanläge).
     try {
       const { runShellScript } = await import('./sysExec.js');
       runShellScript(
@@ -154,7 +137,7 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         'hciconfig hci0 up >/dev/null 2>&1 || true',
         { timeoutMs: 3000 }
       );
-      logConnectionEvent({ type: 'scan_start', detail: 'hci0 up (no down/reset) — klar för subprocess-helper' });
+      logConnectionEvent({ type: 'scan_start', detail: 'hci0 up (no down/reset, noble untouched)' });
     } catch (e: any) {
       logConnectionEvent({ type: 'scan_start', detail: `hci up warning: ${e?.message ?? e}` });
     }
@@ -162,36 +145,12 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     scanMetrics.phase = 'scanning';
     scanMetrics.lastStartOkAt = new Date().toISOString();
 
-    // Steg 3: Kör scan-helper i en SUBPROCESS (utan noble).
+    // Steg 2: Kör scan-helper i en SUBPROCESS (utan noble).
+    // Helpern öppnar en egen HCI raw socket parallellt med noble.
     const hres = await hcitoolLescan(timeoutMs, /BLEDOM/i);
 
-    // Steg 4: Återställ noble's binding så reconnect-loopen kan använda
-    // adaptern efter scan. INGEN hci down/reset — bara noble-refresh.
-    try {
-      const { restartNobleHci } = await import('./adapter.js');
-      restartNobleHci('post-subprocess-scan').catch(() => {});
-    } catch {}
-
-    // Steg 5: Watchdog — vänta 5s; om noble's raw state inte återgått till
-    // poweredOn så gör vi en REN process-respawn. Loggarna visar att lokal
-    // HCI-recovery här ofta lämnar noble kvar i poweredOff, medan en ny
-    // process ger en frisk noble-instans via systemd.
-    void (async () => {
-      await new Promise(r => setTimeout(r, 5000));
-      const raw = getNobleRawState();
-      if (raw === 'poweredOn') {
-        logConnectionEvent({ type: 'scan_done', detail: 'post-scan watchdog: noble poweredOn ✓' });
-        return;
-      }
-      bumpWorkaround('post_scan_noble_recovery_invoked');
-      const reason = `post-scan watchdog: noble raw=${raw ?? 'unknown'} efter 5s`;
-      logConnectionEvent({ type: 'scan_done', detail: `${reason} — triggar hard respawn` });
-      const respawned = triggerNobleRespawn(reason);
-      if (!respawned) {
-        bumpWorkaround('post_scan_noble_recovery_failed');
-        logConnectionEvent({ type: 'scan_done', detail: `${reason} — respawn blockerad av cooldown` });
-      }
-    })();
+    // Inget post-scan recovery behövs — noble's binding rördes aldrig.
+    bumpWorkaround('post_scan_noble_untouched');
 
     // Merge results into found-map.
     for (const d of hres.devices) {
