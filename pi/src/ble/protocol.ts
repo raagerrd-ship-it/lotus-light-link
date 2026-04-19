@@ -3,6 +3,7 @@
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
+import { pipelineTiming } from '../pipelineTiming.js';
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
