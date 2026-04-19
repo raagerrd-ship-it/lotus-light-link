@@ -93,29 +93,32 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
 
   const n: any = noble;
   let onDiscover: ((p: any) => void) | null = null;
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
 
-  // Watchdog — frigör scan-flaggan om något fastnar i noble (ovanpå hård timeout).
-  const watchdog = setTimeout(() => {
-    if (scanning) {
-      scanning = false;
-      scanMetrics.phase = 'idle';
-      scanMetrics.active = false;
-      scanMetrics.activeSince = null;
-      scanMetrics.lastStoppedAt = new Date().toISOString();
-      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
-      scanMetrics.lastResultCount = found.size;
-      scanMetrics.lastWatchdogAt = new Date().toISOString();
-      logConnectionEvent({
-        type: 'scan_done',
-        detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms`,
-      });
-    }
-  }, timeoutMs + 5000);
+  // Watchdog täcker bara faktisk scan/stop-fas — inte väntan på poweredOn.
+  const armWatchdog = () => {
+    watchdog = setTimeout(() => {
+      if (scanning) {
+        scanning = false;
+        scanMetrics.phase = 'idle';
+        scanMetrics.active = false;
+        scanMetrics.activeSince = null;
+        scanMetrics.lastStoppedAt = new Date().toISOString();
+        scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+        scanMetrics.lastResultCount = found.size;
+        scanMetrics.lastWatchdogAt = new Date().toISOString();
+        logConnectionEvent({
+          type: 'scan_done',
+          detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms`,
+        });
+      }
+    }, timeoutMs + 5000);
+  };
 
   try {
     logConnectionEvent({
       type: 'scan_start',
-      detail: `noble.startScanningAsync ${timeoutMs}ms (allowDuplicates), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
+      detail: `Väntar på poweredOn före scan (scan=${timeoutMs}ms, wait=10000ms), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
     });
 
     // Säkerställ att noble inte håller en gammal scan-session öppen.
@@ -148,6 +151,12 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         throw new Error(`noble inte poweredOn inom 10s: ${e?.message ?? e}`);
       }
     }
+
+    logConnectionEvent({
+      type: 'scan_start',
+      detail: `poweredOn OK — startScanningAsync ${timeoutMs}ms (allowDuplicates), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
+    });
+    armWatchdog();
 
     onDiscover = (peripheral: any) => {
       try {
@@ -235,7 +244,7 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     console.error(`[BLE] scan error: ${e?.message ?? e}`);
     return lastScanResults;
   } finally {
-    clearTimeout(watchdog);
+    if (watchdog) clearTimeout(watchdog);
     if (onDiscover) {
       try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
     }
