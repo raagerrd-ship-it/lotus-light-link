@@ -146,7 +146,7 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
 
     // Steg 2: Kör scan-helper i en SUBPROCESS (utan noble).
     // Helpern öppnar en egen HCI raw socket parallellt med noble.
-    const hres = await hcitoolLescan(timeoutMs, /BLEDOM/i);
+    const hres = await hcitoolLescan(timeoutMs);
 
     // Inget post-scan recovery behövs — noble's binding rördes aldrig.
     bumpWorkaround('post_scan_noble_untouched');
