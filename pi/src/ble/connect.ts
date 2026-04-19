@@ -240,15 +240,14 @@ async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
 }
 
 // ── Timeout helper — per-step budgets ──
-// L2CAP raised 3000→8000ms: BLEDOM på svag länk (RSSI < −75) hinner inte
-// genom L2CAP-handshake på 3s — varje retransmission tar ~750ms och vi
-// behöver flera. GATT discovery på BLEDOM kan också ta upp till ~4s på
-// marginell länk.
-// gatt 5000→3000: BLEDOM idle-timeout är ~2s efter ServicesResolved.
-// Bekräftat via bluetoothctl: connect_ok → ServicesResolved:yes → reason 1
-// inom 1-2s om vi inte writeat något. Snabb fail + retry är bättre än
-// att vänta 5s på en redan död länk.
-const TIMEOUTS = { l2cap: 8000, gatt: 3000, write: 1500 } as const;
+// L2CAP 8000ms: BLEDOM på svag länk (RSSI < −75) hinner inte genom L2CAP-
+// handshake på 3s — varje retransmission tar ~750ms.
+// GATT 8000ms (höjt från 3000): minimala SSH-skriptet (som funkar) sätter
+// ingen timeout alls och discovery tar ofta 4–6s på Pi Zero 2W. 3s var
+// för aggressivt och triggade fail innan discovery hann klart.
+// write 3000ms (höjt från 1500): samma anledning — anchor write på svag
+// länk kan ta >1.5s utan att länken är död.
+const TIMEOUTS = { l2cap: 8000, gatt: 8000, write: 3000 } as const;
 type StepKind = keyof typeof TIMEOUTS;
 
 function withTimeout<T>(promise: Promise<T>, label: string, kind: StepKind = 'l2cap'): Promise<T> {
@@ -374,23 +373,25 @@ export async function connectPeripheral(peripheral: any, _retryCount = 0, skipL2
   char.deviceId = peripheral.id;
 
   // CRITICAL: BLEDOM has a ~2s idle-timeout after ServicesResolved.
-  // We MUST write something within that window or the lamp drops the link
-  // with reason=1. Send brightness-max + a second wake-write back-to-back
-  // to firmly anchor the connection before doing anything else.
+  // EN single anchor write räcker — det minimala SSH-skriptet bevisar att
+  // en write(buf, true) låser länken. Andra back-to-back writen var en
+  // gammal "för säkerhets skull"-kvarleva som kunde dubbel-trigga BLEDOM-
+  // firmware-buggar och försena keep-alive.
   const writeStart = performance.now();
   try {
-    await withTimeout(char.writeAsync(brightMaxBuf, true), 'Anchor write 1', 'write');
-    // Second write within ~50ms — empirically BLEDOM needs 2 writes to lock
-    await char.writeAsync(brightMaxBuf, true).catch(() => {});
-    logConnectionEvent({ type: 'connect_ok', device: name, detail: `Anchor writes OK (${Math.round(performance.now() - writeStart)}ms)` });
+    await withTimeout(char.writeAsync(brightMaxBuf, true), 'Anchor write', 'write');
+    logConnectionEvent({ type: 'connect_ok', device: name, detail: `Anchor write OK (${Math.round(performance.now() - writeStart)}ms)` });
   } catch (e: any) {
     logConnectionEvent({ type: 'connect_fail', device: name, detail: `Anchor write failed: ${e.message} — BLEDOM likely dropped link` });
     try { await peripheral.disconnectAsync(); } catch {}
     throw e;
   }
 
-  // Step 3: Request minimum connection interval (after lamp is anchored — safe to take ~50ms now)
-  requestConnectionInterval(peripheral, name);
+  // Step 3: Request minimum connection interval — fire-and-forget på nästa tick
+  // så HCI-poke aldrig kan blocka connect-flödet eller racea med första writes.
+  setImmediate(() => {
+    try { requestConnectionInterval(peripheral, name); } catch {}
+  });
 
   // Step 4: Register disconnect handler BEFORE activating device (prevents race condition)
   peripheral.once('disconnect', (reason: any) => {
