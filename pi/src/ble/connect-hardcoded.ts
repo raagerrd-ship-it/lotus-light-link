@@ -25,6 +25,9 @@ export function getHardcodedPeripheral(): any | null {
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   if (!_connected) return { disconnected: true };
+  stopKeepAlive();
+  setDevice(null);
+  resetLastSent();
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   return { disconnected: true };
