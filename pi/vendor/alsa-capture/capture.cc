@@ -166,10 +166,10 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     snd_pcm_uframes_t frames = static_cast<snd_pcm_uframes_t>(options_.periodSize);
     snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
 
-    // Buffer = 4× period. Med periodSize styrd av tickMs (default ~551 frames
-    // = 12.5ms @ 25ms tick) ger detta ~50ms headroom — gott om för JS-jitter
-    // utan att kollapsa pipelinen, men inte så mycket att audio släpar efter.
-    snd_pcm_uframes_t bufFrames = frames * 4;
+    // Buffer = 2× period. Med fast periodSize=128 frames (~2.9ms) ger detta
+    // ~5.8ms ALSA-buffer — minimal latens. JS-sidan ackumulerar till FFT-hop
+    // separat, så bufferten behöver inte rymma en hel tick-cykel.
+    snd_pcm_uframes_t bufFrames = frames * 2;
     snd_pcm_hw_params_set_buffer_size_near(handle, params, &bufFrames);
 
     rc = snd_pcm_hw_params(handle, params);
