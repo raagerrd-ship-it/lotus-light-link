@@ -106,6 +106,10 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
   const connect = async () => {
     setConnectBusy(true);
     setLastError(null);
+    setLogs([]);
+    sinceRef.current = 0;
+    if (logPollRef.current) window.clearInterval(logPollRef.current);
+    logPollRef.current = window.setInterval(pollLogs, 400);
     try {
       const r = await fetch(`${piBase}/api/ble/connect`, {
         method: "POST",
@@ -120,6 +124,11 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
       setLastError(e?.message ?? "Nätverksfel");
     } finally {
       setConnectBusy(false);
+      await pollLogs();
+      if (logPollRef.current) {
+        window.clearInterval(logPollRef.current);
+        logPollRef.current = null;
+      }
     }
   };
 

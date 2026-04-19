@@ -38,19 +38,23 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
   }
 
   const t0 = Date.now();
+  const ts = () => `+${(Date.now() - t0).toString().padStart(5, ' ')}ms`;
+
   const inflight = (async (): Promise<{ connected: boolean; error?: string }> => {
     const n = getNoble();
 
-    // 1. Vänta på riktig poweredOn — ALDRIG mutera _state manuellt.
+    console.log(`${ts()} 1. waitForPoweredOnAsync(10s)…`);
     try {
       await (n as any).waitForPoweredOnAsync(10_000);
+      console.log(`${ts()}    poweredOn (state=${n.state})`);
     } catch (e: any) {
+      console.log(`${ts()}    waitForPoweredOnAsync FEL: ${e?.message ?? e}`);
       return { connected: false, error: `waitForPoweredOnAsync failed: ${e?.message ?? e}` };
     }
 
-    // 2. Scan-then-connect — matchar isolated-scriptet
     return await new Promise<{ connected: boolean; error?: string }>((resolve) => {
       let resolved = false;
+      let discoverCount = 0;
       const finish = (r: { connected: boolean; error?: string }) => {
         if (resolved) return;
         resolved = true;
@@ -60,22 +64,30 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
       };
 
       const onDiscover = async (peripheral: any) => {
-        if (!matchesHardcoded(peripheral)) return;
-        console.log(`[connect-hardcoded] discover MATCH: ${peripheral.address} (${peripheral.advertisement?.localName ?? 'no name'}) rssi=${peripheral.rssi}`);
+        discoverCount++;
+        const name = peripheral.advertisement?.localName ?? '(no name)';
+        const isMatch = matchesHardcoded(peripheral);
+        console.log(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi}${isMatch ? ' ← MATCH' : ''}`);
+        if (!isMatch) return;
+        console.log(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
         try {
           await n.stopScanningAsync();
+          console.log(`${ts()}    stopScanningAsync OK`);
         } catch (e: any) {
-          console.warn(`[connect-hardcoded] stopScanningAsync warning: ${e?.message ?? e}`);
+          console.warn(`${ts()}    stopScanningAsync warning: ${e?.message ?? e}`);
         }
+        console.log(`${ts()} 4. peripheral.connectAsync()…`);
         try {
           await peripheral.connectAsync();
           _connected = peripheral;
           peripheral.once?.('disconnect', () => {
-            console.log('[connect-hardcoded] peripheral disconnected');
+            console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
             if (_connected === peripheral) _connected = null;
           });
+          console.log(`${ts()} 5. ANSLUTEN ${peripheral.address}`);
           finish({ connected: true });
         } catch (e: any) {
+          console.log(`${ts()}    connectAsync FEL: ${e?.message ?? e}`);
           finish({ connected: false, error: `connectAsync failed: ${e?.message ?? e}` });
         }
       };
@@ -83,13 +95,18 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
       n.on('discover', onDiscover);
 
       const timer = setTimeout(async () => {
+        console.log(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
         try { await n.stopScanningAsync(); } catch {}
-        finish({ connected: false, error: `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms` });
+        finish({ connected: false, error: `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms (${discoverCount} discover-events)` });
       }, timeoutMs);
 
-      n.startScanningAsync([], true).catch((e: any) => {
-        finish({ connected: false, error: `startScanningAsync failed: ${e?.message ?? e}` });
-      });
+      console.log(`${ts()} 2. startScanningAsync([], true)…`);
+      n.startScanningAsync([], true)
+        .then(() => console.log(`${ts()}    startScanningAsync OK — väntar på match (${HARDCODED_DEVICE.mac})`))
+        .catch((e: any) => {
+          console.log(`${ts()}    startScanningAsync FEL: ${e?.message ?? e}`);
+          finish({ connected: false, error: `startScanningAsync failed: ${e?.message ?? e}` });
+        });
     });
   })();
 
