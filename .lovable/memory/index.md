@@ -49,6 +49,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Signal processing chain](mem://pi/audio/signal-processing-chain) — Pipeline order from Mic to Gamma
 - [Oktav-band](mem://pi/audio/oktav-band-normalisering) — Bass/midHi RMS som energy-per-octave för korrekt diskant-respons
 - [Beat-driven puls](mem://pi/audio/beat-driven-pulse) — Spectral flux onset → 0.45 boost + 110ms refractory för ljus i takt med trumslag
+- [ALSA buffer sizing](mem://pi/audio/alsa-buffer-sizing) — Native alsa-capture buffer = 8× period på Pi Zero 2W, annars overruns + 0 pkt/s
 - [Engine = system-service](mem://pi/runtime/engine-must-be-system-service) — User-service ärver inte netdev/bluetooth-grupper; setup-lotus.sh skriver över med system-service
 - [Native alsa-capture install](mem://pi/audio/native-alsa-capture-install) — Optional dep failar i release-build, måste explicit npm-installas efter prune på Pi:n
 - [FFT resolution](mem://technical/audio-processing/fft-resolution) — 1024 samples, 128 hop-size
