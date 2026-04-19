@@ -107,15 +107,17 @@ async function main() {
   const bootT0 = Date.now();
   const bt = (label: string) => console.log(`[BootTime +${(Date.now() - bootT0).toString().padStart(5, ' ')}ms] ${label}`);
 
-  // STEP A: Läs bara hci0-state innan noble laddas. I manual-only-läget rör vi
-  // inte adaptern automatiskt vid boot; recovery sker via användarens knapp.
+  // STEP A: Aktivera BLE-infrastrukturen (rfkill unblock + hci0 up). Detta är
+  // INTE en anslutning till en lampa — det är att sätta igång motorn så att
+  // noble kan initiera. Idempotent och icke-destruktivt enligt
+  // mem://pi/ble/hci-up-only-policy.
   bt('STEP A: importing adapter-hci-check.js...');
   const { isHci0Up } = await import('./ble/adapter-hci-check.js');
   bt('STEP A: import done, checking hci0...');
   if (!isHci0Up()) {
-    bt('STEP A: ⚠ hci0 DOWN — ingen auto-up vid boot i manual-only-läget');
+    bt('STEP A: hci0 DOWN — kör rfkill unblock + hciconfig up...');
   } else {
-    bt('STEP A: ✓ hci0 already UP RUNNING');
+    bt('STEP A: ✓ hci0 already UP RUNNING (kör ensureAdapterUp ändå för säkerhets skull)');
   }
 
   // STEP B: import noble. This is when @stoprocent/noble's HCI binding fires up.
