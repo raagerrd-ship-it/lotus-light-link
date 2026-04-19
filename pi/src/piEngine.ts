@@ -858,6 +858,15 @@ export class PiLightEngine {
         this._profilePos++;
         if (this._profilePos >= this._profileSize) this.finishProfiling();
       }
+
+      // ── Pipeline timing (always-on, low overhead) ──
+      const tEnd = performance.now();
+      pipelineTiming.recordTickInner(tEnd - _tickStart);
+      // endToEnd = ALSA buffer arrival → all engine work done (BLE write
+      // already enqueued via sendToBLE). Excludes BLE radio air-time which
+      // we can't see from userspace; that's a separate ~5ms tail.
+      const tAudio = getLastAudioTimestamp();
+      if (tAudio > 0) pipelineTiming.recordEndToEnd(tEnd - tAudio);
     } catch (e) {
       console.error('[Engine] tick error (recovering):', e);
       this.sanitizeState();
