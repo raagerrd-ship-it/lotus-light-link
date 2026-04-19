@@ -2438,28 +2438,10 @@ export default function PiMobile() {
         onEngineReadyChange={setBleEngineReady}
       />
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Bluetooth size={14} className={bleAdapterState === 'unauthorized' ? 'text-destructive' : bleAdapterState === 'poweredOff' ? 'text-yellow-400' : (bleHardcodedConnected || bleConnectedId) ? 'text-primary' : bleDemand && bleSavedId ? 'text-yellow-400 animate-pulse' : bleSavedId ? 'text-muted-foreground' : 'text-muted-foreground/50'} />
-          <span>{bleAdapterState === 'unauthorized' ? 'Ej behörig' : bleAdapterState === 'poweredOff' ? 'Avstängd' : bleHardcodedConnected ? 'ELK-BLEDOM01' : bleConnectedId ? (bleConnectedName ?? '1 aktiv') : bleDemand && bleSavedId ? 'Ansluter…' : bleSavedId ? 'Vilar' : 'Ej kopplad'}</span>
-        </div>
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          <Music size={14} className="shrink-0" />
-          <span className="truncate">{liveTrack ? `${sonosPlaying ? '▶' : '⏸'} ${liveTrack}` : 'Ingen låt'}</span>
-        </div>
-        {livePalette.length > 0 && (
-          <div className="flex gap-1 shrink-0">
-            {livePalette.map((c, i) => (
-              <div
-                key={i}
-                className="w-4 h-4 rounded-full border border-border/50"
-                style={{ backgroundColor: `rgb(${c[0]},${c[1]},${c[2]})` }}
-                title={`rgb(${c[0]},${c[1]},${c[2]})`}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Tidigare global BLE/Sonos-statusrad borttagen — sanningen finns nu
+          i lamp-rutan (BLE) respektive sonos-rutan (låt + palette).
+          Att duplicera här ledde till dubbeltydig "ELK-BLEDOM01" även när
+          lampan inte var ansluten. */}
       {saveError && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
           ⚠ Sparning misslyckades: {saveError}
