@@ -1,23 +1,23 @@
 ---
-name: noble mgmt-socket måste släppas för btmgmt find
-description: Noble håller Bluetooth mgmt-kanalen så fort modulen importeras. btmgmt find returnerar då "status 0x0a (Busy)" eftersom mgmt-API tillåter bara en aktiv discovery åt gången. Scan-helpern (ble-scan-helper.mjs) använder btmgmt find via mgmt-kanalen — den hcitool-baserade lescan-vägen ger "Set scan parameters failed: Operation not permitted" av samma underliggande orsak (noble äger HCI raw-socketen).
+name: noble äger mgmt-kanalen — använd noble för scan
+description: Så fort noble importeras i en process håller den Bluetooth mgmt-kanalen. btmgmt find returnerar då "status 0x0a (Busy)" och hcitool lescan ger "Operation not permitted". Försöket att släppa noble (bindings.stop, hci.stop) visade sig INTE frigöra mgmt-kanalen — manuell btmgmt-test bekräftade fortsatt Busy. Slutsats: använd noble.startScanningAsync() för scan i denna process.
 type: feature
 ---
-Regel: När ingen sparad BLE-enhet finns ska noble's mgmt/HCI-resurser släppas så scan-helpern (btmgmt find) fungerar.
+Regel: Använd noble (`startScanningAsync` + `discover`-event) för all BLE-scan i Pi-engine. Försök ALDRIG köra `btmgmt`/`hcitool` parallellt i samma process — de kommer alltid att kollidera med noble's mgmt-socket.
 
 Implementation:
-- `releaseNobleResources(reason)` i `pi/src/ble/state.ts` anropar `noble.stopScanningAsync()` + `bindings.stop()` + `bindings._hci.stop()`. Idempotent.
-- Anropas vid boot i `pi/src/index.ts` om `getSavedDeviceId()` är null.
-- Anropas i `forgetDevice()` (`pi/src/ble/save.ts`) så nästa scan funkar direkt efter att användaren glömt en enhet.
-
-Logik:
-- Ingen sparad enhet → noble inte aktiv → btmgmt har mgmt-kanalen → scan funkar.
-- Sparad enhet finns → noble håller mgmt/HCI för connect/keep-alive → vi behöver inte scanna ändå.
-- `forgetDevice()` → släpp noble → nästa scan funkar.
+- `pi/src/ble/scan.ts` använder `noble.on('discover')` + `noble.startScanningAsync([], true)` med en `setTimeout` för scan-duration.
+- Adapterns mgmt/HCI behålls hela processens livstid — ingen `releaseNobleResources` eller `bindings.stop()`.
+- `forgetDevice` rör inte noble — bara persisted state nollställs.
 
 Bevis (2026-04-19):
-- `sudo timeout 4 btmgmt find` medan engine kör → `Unable to start discovery. status 0x0a (Busy)`.
-- `node ble-scan-helper.mjs` standalone (utan engine) → 23 enheter på 4s.
-- Slutsats: noble själva importen blockerar mgmt, inte scan/connect-anrop.
+- `sudo timeout 4 btmgmt find` medan engine kör (även EFTER bindings.stop+hci.stop) → `Unable to start discovery. status 0x0a (Busy)`.
+- Slutsats: noble's mgmt-socket går inte att stänga utan att unloada hela modulen.
+- Fristående `node ble-scan-helper.mjs` (utan engine) → 23 enheter på 4s — bekräftar att det är noble-importen i engine-processen som blockerar.
 
-Build-tag som införde regeln: `2026-04-19/release-noble-when-no-saved`.
+Alternativ som vi förkastade och varför:
+- Lazy-loada noble vid behov: ~12 filers refaktor, hög regression-risk i fungerande connect/keep-alive. Skippades.
+- Splittra state.ts: samma problem, många nedströms-imports.
+- Använd btmgmt med setcap: lös inte mgmt-konflikten, bara permission-felet.
+
+Build-tag som införde regeln: `2026-04-19/noble-native-scan`.
