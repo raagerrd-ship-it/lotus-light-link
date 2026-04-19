@@ -18,7 +18,7 @@ const CONNECTION_LOG_KEY = 'ble-connection-log';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-19/gate-ble-api-until-boot-ready';
+export const BLE_BUILD_TAG = '2026-04-19/no-execsync-on-status-path';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
