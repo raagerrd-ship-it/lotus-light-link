@@ -10,11 +10,6 @@
 
 import { fft1024, FFT_N } from './fftRadix2.js';
 
-// Dynamic import — alsa-capture is optional (native C++ addon)
-let AlsaCapture: any = null;
-let nodeRecord: any = null;
-let useNative = false;
-
 // Dynamic import — alsa-capture is vendored as a fork in pi/vendor/alsa-capture/
 // (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.
 // Resolution order: vendored fork → upstream npm pkg → arecord subprocess fallback.
@@ -51,8 +46,12 @@ try {
 export function getMicBackend(): 'alsa-vendored' | 'alsa-npm' | 'arecord' | 'none' {
   return micBackend;
 }
-  }
-}
+
+// Timestamp (performance.now) when the last audio buffer arrived from ALSA.
+// Used together with getLastWriteTime() in protocol.ts to compute end-to-end
+// audio→BLE latency for the UI badge.
+let lastAudioTimestamp = 0;
+export function getLastAudioTimestamp(): number { return lastAudioTimestamp; }
 
 export interface BandResult {
   bassRms: number;
@@ -414,6 +413,7 @@ export function startMic(): void {
 
 /** Shared audio data handler for both native and fallback paths */
 function onAudioData(buf: Buffer): void {
+  lastAudioTimestamp = performance.now();
   const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
   const len = samples.length;
 
