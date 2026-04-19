@@ -127,14 +127,17 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
           const data = await r.json();
           const s = data.sonos ?? {};
           const palette = Array.isArray(data.engine?.palette) ? data.engine.palette : [];
-          const trackInfo = s.currentTrack ?? s.track ?? null;
-          const track = typeof trackInfo === "string"
-            ? trackInfo
-            : trackInfo?.title
-              ? `${trackInfo.title}${trackInfo.artist ? ` — ${trackInfo.artist}` : ""}`
-              : null;
+          // Match samma fält som top-level statusraden använder (data.sonos.trackName,
+          // data.sonos.playbackState === 'PLAYBACK_STATE_PLAYING').
+          const track: string | null =
+            (typeof s.trackName === "string" && s.trackName) ||
+            (typeof s.currentTrack === "string" && s.currentTrack) ||
+            (s.currentTrack?.title
+              ? `${s.currentTrack.title}${s.currentTrack.artist ? ` — ${s.currentTrack.artist}` : ""}`
+              : null) ||
+            null;
           setSonos({
-            playing: s.playbackState === "PLAYING" || s.playing === true,
+            playing: s.playbackState === "PLAYBACK_STATE_PLAYING" || s.playbackState === "PLAYING" || s.playing === true,
             track,
             palette,
           });
