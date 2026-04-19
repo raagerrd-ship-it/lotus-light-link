@@ -1,123 +1,45 @@
 
 
-## Vad jag har verifierat i `pi/scripts/noble-scan-isolated.mjs`
+## Mål
+Kortast möjliga latens mic→BLE. Det som spelar roll är inte ALSA vs arecord (5-15ms skillnad är försumbart) — det är pipeline-lagren mellan FFT och BLE-write.
 
-Ja, jag har läst scriptet rad för rad. Här är **exakt** vad det gör som vi måste spegla:
+## Var ligger latensen idag?
 
-### 1. Import-ordning (kritiskt)
-```js
-const noble = (await import('@stoprocent/noble')).default;
+Pipeline (per frame, 128 samples @ 44.1kHz = 2.9ms hop):
 ```
-- **Första** raden i filen som rör något native.
-- Inga andra imports före. Inga andra native-bindningar laddade alls (ingen alsa, inget annat).
-- Event-loopen är **helt ren** när noble require:as → libuv hinner emittera `stateChange` inom ~250-300ms.
-
-### 2. Listeners attach:as OMEDELBART efter import
-```js
-for (const ev of ['stateChange', 'scanStart', 'scanStop', 'discover', ...]) {
-  noble.on(ev, ...);
-}
-```
-- Ingen `await`, ingen annan kod mellan import och `.on('stateChange', ...)`.
-
-### 3. Vänta 1s på initial stateChange
-```js
-await new Promise(r => setTimeout(r, 1000));
-```
-- Ger libuv tid att fyra eventet innan vi gör något annat.
-
-### 4. Försäkra poweredOn
-```js
-if (noble.state !== 'poweredOn') {
-  await noble.waitForPoweredOnAsync(3000);
-}
+Mic → ringbuf → FFT (every 128 samples) → onFFTReady → engine.tickInner → BLE write
+  ~3ms        ~0.5ms                       0ms event   ~1-2ms              ~10-20ms BLE
 ```
 
-### 5. Scan
-```js
-await noble.startScanningAsync([], true);  // [], true = inga filter, allowDuplicates
-// vänta 5s, samla discover-events i listener
-await noble.stopScanningAsync();
-```
+Total: **~15-25ms i bästa fall**. BLE-skrivningen är den enskilt största posten — och styrs av tick-rate-slidern.
 
-### Vad som FÅR den att fungera (och vad vår engine bryter mot)
+## Vad ger faktisk vinst (rangordnat)
 
-| noble-scan-isolated.mjs | Vår engine idag |
-|---|---|
-| `import noble` är allra första native-anropet | `configServer.ts` top-level-importerar `nobleBle.js` → noble laddas medan TS-moduler/alsa fortfarande blockerar event-loopen |
-| Inga andra native-bindningar i processen | alsa-capture native-binding finns med |
-| Listener attach direkt efter import | Listener attachades på olika ställen, ibland för sent |
-| `startScanningAsync([], true)` | Scan-flödet hade watchdogs, retry, force-mutate-state-helpers |
-| Connect via discovered peripheral | Vi har provat connect-by-address utan föregående scan |
+1. **Sänk tick-rate till 25ms** (om inte redan) — ger 40 pkt/s, max throughput innan BLEDOM disconnectar. Detta är redan default enligt minnet.
+2. **Verifiera connection interval 7.5-10ms** via HCI (redan implementerat enligt `connection-optimization`).
+3. **Mät faktisk end-to-end latens** — vi gissar nu. Lägg till mätpunkter: timestamp vid `onAudioData` → timestamp vid `protocol.write` → logga delta var 2:a sekund.
+4. **Hoppa över FFT helt på rena transient-paths** — för "punch white" och flux-driven puls räcker peak-detektion på råa samples (kan göras var 32:a sample = 0.7ms istället för var 128:e). Det är dock en större omskrivning.
 
-### Slutsats för planen
+ALSA vs arecord: arecord-subprocess lägger ~5-15ms via pipe-buffring. Native ALSA tar bort det. Men om bygget failar är det inte värt att jaga — gör mätningen först.
 
-Den nya `startBleEngine()` + `connect`-vägen måste:
-1. **Aldrig** importera noble på top-level någonstans (lazy-singleton finns redan).
-2. När användaren trycker "Starta motor": `await import('@stoprocent/noble')` som **första** native-anrop i den request-handlern, attach `stateChange`-listener i **samma synkrona block**, vänta upp till 5s på `poweredOn`.
-3. För connect mot hårdkodad ELK-BLEDOM01: kör `startScanningAsync([], true)` i 5s, plocka peripheralet med matchande address (`be67001509 41` utan kolon, lowercase), `stopScanningAsync`, sedan `peripheral.connectAsync()` på det objektet. **Inte** connect-by-address utan scan — det är inte det isolerade scriptet bevisar.
-4. Inga watchdogs, ingen reconnect-loop, inga force-mutates av `noble._state`.
+## Förslag (i ordning)
 
-## Plan (uppdaterad)
+**Steg 1 — Mät latensen** (nu, billigt):
+- Lägg till `lastAudioTimestamp` i `alsaMic.ts` (sätts i `onAudioData`)
+- Lägg till `lastBleWriteTimestamp` i `protocol.ts` (sätts precis innan write)
+- Exponera båda via `/api/mic/level` som `audioToBleLatencyMs`
+- Visa i UI bredvid ALSA/ARECORD-badgen: t.ex. `ALSA · 18ms`
 
-### Hårdkodning
-`pi/src/ble/hardcoded-device.ts`:
-```ts
-export const HARDCODED_DEVICE = {
-  name: 'ELK-BLEDOM01',
-  mac: 'BE:67:00:15:09:41',
-  addressLower: 'be:67:00:15:09:41',
-  idNoColon: 'be67001509 41'.replace(/\s/g,''),
-};
-```
+**Steg 2 — Beslut baserat på mätning**:
+- Om latens >30ms och ARECORD aktivt → fixa native ALSA-bygget (vi har redan vendored fork)
+- Om latens >30ms och ALSA aktivt → titta på engine.tickInner / BLE-kö
+- Om latens <25ms → done, det är så snabbt det blir med BLEDOM
 
-### Backend — 4 endpoints
-`pi/src/configServer.ts`:
-- `POST /api/ble/engine/start` → lazy-importera noble-singleton, attach stateChange direkt, vänta `poweredOn` (5s) → `{ ready, durationMs, rawState }`
-- `POST /api/ble/connect` → kör **scan-then-connect** mot HARDCODED_DEVICE (precis som isolated-scriptet) → `{ connected, name, mac }`
-- `POST /api/ble/disconnect` → `{ disconnected }`
-- `GET /api/ble/state` → `{ engineReady, connected, device }`
+## Filer som ändras (steg 1)
+- `pi/src/alsaMic.ts` — exportera `getLastAudioTimestamp()`
+- `pi/src/ble/protocol.ts` — exportera `getLastWriteTimestamp()`
+- `pi/src/configServer.ts` — lägg till latency i `/api/mic/level`
+- `src/components/MicBackendBadge.tsx` — visa `· {ms}ms` efter backend-namnet
 
-**Ta bort:** alla scan-, save-manual-, forget-, select-, diagnostics-, watchdog-endpoints.
-
-### Ny `pi/src/ble/connect-hardcoded.ts`
-Speglar `noble-scan-isolated.mjs` exakt:
-1. Vänta på `poweredOn` om inte redan.
-2. `startScanningAsync([], true)`.
-3. Lyssna på `discover`, matcha på `peripheral.address.toLowerCase() === HARDCODED_DEVICE.addressLower` ELLER `peripheral.id === HARDCODED_DEVICE.idNoColon`.
-4. Vid match: `stopScanningAsync()` → `peripheral.connectAsync()` → spara peripheralet i state.
-5. 8s timeout, returnera fel om ingen match.
-
-### `pi/src/index.ts` `startBleEngine()`
-Endast lazy-importera noble-singleton + vänta på `poweredOn`. Ingen scan, ingen reconnect, inga watchdogs.
-
-### Frontend — minimerad
-
-Ny `src/components/BleControlPanel.tsx`:
-```text
-┌─ BLE-motor ───────────────────────────┐
-│ ● Redo            [Starta motor]      │
-└───────────────────────────────────────┘
-┌─ Lampa ───────────────────────────────┐
-│ ELK-BLEDOM01                          │
-│ BE:67:00:15:09:41                     │
-│ ● Ansluten      [Anslut] [Koppla från]│
-└───────────────────────────────────────┘
-```
-
-`SubsystemStartupPanel.tsx`: banta till mic + sonos. Disabled tills `connected === true`. Inga autostart, inga fel-expanders.
-
-`src/pages/PiMobile.tsx`: rensa bort all felsöknings-UI (raw/effective state, hci-checklists, scan-metrics, workaround-counters, save-manual, scan-list, diagnostik). Montera `BleControlPanel` + bantad `SubsystemStartupPanel`.
-
-## Filer
-- `pi/src/ble/hardcoded-device.ts` — **NY**
-- `pi/src/ble/connect-hardcoded.ts` — **NY**, scan-then-connect mot hårdkodad MAC
-- `pi/src/configServer.ts` — krymp till 4 endpoints
-- `pi/src/index.ts` — förenkla `startBleEngine`
-- `src/components/BleControlPanel.tsx` — **NY**
-- `src/components/SubsystemStartupPanel.tsx` — banta till mic+sonos
-- `src/pages/PiMobile.tsx` — rensa felsöknings-UI
-
-## Tas bort
-Sök-UI, MAC-input, save/forget, diagnostik-paneler, raw state-rader, workaround-counters, autostart, auto-reconnect, scan-watchdog, fel-expanders. Återinförs när grundflödet bevisat fungerar.
+Inga nya beroenden, ingen ombyggnad. ~30 rader kod totalt.
 
