@@ -470,307 +470,32 @@ export function getAdapterState(): string | undefined {
 }
 
 /**
- * Force noble's INTERNAL state to 'poweredOn' so its built-in guard in
- * startScanningAsync/connectAsync stops throwing "state is unknown".
+ * NO-OP — quarantined.
  *
- * Background: on Pi Zero 2W noble's first `stateChange` event sometimes
- * never fires (libuv timing race). hci0 is UP RUNNING and the process has
- * CAP_NET_RAW + CAP_NET_ADMIN, but noble's internal `_state` stays
- * `unknown` forever. noble's own scan/connect methods do
- * `if (this.state !== 'poweredOn') throw ...` BEFORE touching the HCI
- * socket, so caps-aware accept doesn't help — we must mutate noble itself.
+ * Tidigare muterade vi `noble._state = 'poweredOn'` för att kringgå noble's
+ * interna state-guard. Det visade sig vara katastrofalt (mem://pi/ble/never-force-mutate-noble-state):
+ * mutationen byter bara strängvärdet — noble's HCI-init körde aldrig klart,
+ * så `startScanningAsync` returnerar OK men skickar inget HCI-kommando och
+ * inga discover-events kommer någonsin. SSH-bevis: utan force-mutate hittas
+ * BLEDOM01 på +411ms; med force-mutate = 0 events på 5s.
  *
- * Only call when caps OK + hci0 UP. Idempotent + cheap.
+ * Den här funktionen behålls bara för API-kompat med befintliga importer
+ * (connect.ts, configServer.ts diagnostik). Den gör nu absolut INGENTING
+ * förutom att rapportera om noble redan är poweredOn.
+ *
+ * Korrekt mönster: `await noble.waitForPoweredOnAsync(10_000)` före varje
+ * scan/connect — inget annat.
  */
-let _forcePoweredOnLogged = false;
-// Watchdog-state: undvik flera samtidiga pollers + cooldown så loggen inte
-// flödas över om noble revertar varje sekund.
-let _revertWatchdogActive = false;
-let _lastRevertLogAt = 0;
-
-/**
- * Pollar noble.state under WATCH_MS ms efter en lyckad force-mutation.
- * Om raw state hoppar tillbaka till `unknown`/`poweredOff`/null:
- *   - bumpar `forceMutationReverted`-counter
- *   - loggar event i connection-log (max 1/15s för att undvika spam)
- *   - mut­erar tillbaka till poweredOn igen (best effort)
- * Detta ger oss data: revertar noble en gång (libuv-event efter setup) eller
- * konstant (då måste vi hooka in djupare i noble-bindings)?
- */
-function startForceRevertWatchdog(): void {
-  if (_revertWatchdogActive) return;
-  _revertWatchdogActive = true;
-
-  const WATCH_MS = 8000;
-  const POLL_MS = 250;
-  const startedAt = Date.now();
-  let revertCount = 0;
-
-  const tick = () => {
-    if (Date.now() - startedAt >= WATCH_MS) {
-      _revertWatchdogActive = false;
-      if (revertCount > 0) {
-        logConnectionEvent({
-          type: 'connect_fail',
-          detail: `force-revert-watchdog: noble.state revertade ${revertCount}x under ${WATCH_MS}ms — noble självskriver över mutationen`,
-        });
-      }
-      return;
-    }
-
-    const n = noble as any;
-    const raw = n.state ?? n._state;
-    if (raw && raw !== 'poweredOn') {
-      revertCount++;
-      workaroundCounters.forceMutationReverted++;
-      workaroundCounters.lastInvocationAt['forceMutationReverted'] = new Date().toISOString();
-
-      // Logga max 1/15s för att skydda eventloggen från spam
-      const now = Date.now();
-      if (now - _lastRevertLogAt > 15000) {
-        _lastRevertLogAt = now;
-        logConnectionEvent({
-          type: 'connect_fail',
-          detail: `force-revert: noble.state=${raw} (${Math.round((now - startedAt) / 1000)}s efter mutation) — re-mutating`,
-        });
-      }
-
-      // Re-mutate så vi håller noble sövd. Om detta också misslyckas
-      // ser vi det som extra revertCount-bumpar.
-      try {
-        n.state = 'poweredOn';
-        n._state = 'poweredOn';
-        if (n._bindings) {
-          n._bindings.state = 'poweredOn';
-          if (n._bindings._state !== undefined) n._bindings._state = 'poweredOn';
-        }
-        _cachedNobleState = 'poweredOn';
-      } catch {
-        // best effort
-      }
-    }
-
-    setTimeout(tick, POLL_MS);
-  };
-
-  setTimeout(tick, POLL_MS);
-}
-
 export function forceNoblePoweredOn(): boolean {
   const raw = getNobleRawState();
-  if (raw === 'poweredOn') {
-    bumpWorkaround('forceNoblePoweredOn_skippedHealthy');
-    return true;
-  }
-  // OBS: ingen caps-gating här. På Pi körs vi via systemd user-service med
-  // AmbientCapabilities + file-caps på node-binären. processHasBtCaps()
-  // läser /proc/self/status CapEff men returnerar ibland false trots att
-  // noble's HCI-socket fungerar (caps är OK i kärnan men CapEff räknas
-  // annorlunda för user-services). Att skippa mutationen pga den check:en
-  // betyder att noble's interna `state is unknown`-guard alltid blockar
-  // scan/connect — exakt det vi sett i UI-loggen ("SKIPPED (caps missing)"
-  // → "startScanning failed"). Mutera alltid; om HCI-socket failar nedanför
-  // ser vi det som en ärlig EPERM istället för tyst skip.
-  const capsOk = processHasBtCaps();
-  bumpWorkaround('forceNoblePoweredOn_invoked');
-  bumpWorkaround('forceNoblePoweredOn_neededRefresh');
-  if (!capsOk) {
-    bumpWorkaround('capsSelfCheck_failed');
-  }
-  bumpWorkaround('forceNoblePoweredOn_invoked');
-  bumpWorkaround('forceNoblePoweredOn_neededRefresh');
-
-  const n = noble as any;
-  const attempts: string[] = [];
-  const failures: string[] = [];
-
-  /**
-   * Försök sätta target[key]='poweredOn' med eskalerande aggressivitet:
-   *  1) Vanlig assignment
-   *  2) Object.defineProperty med writable+configurable (bypassar getter-only)
-   *  3) Object.defineProperty på prototypen (om descriptor finns där)
-   *  4) Ta bort prop helt och re-define som data-property
-   * Loggar exakt descriptor-info så vi ser VARFÖR det failar.
-   */
-  const forceSet = (path: string, target: any, key: string) => {
-    if (!target) {
-      failures.push(`${path}: target is null/undefined`);
-      return;
-    }
-
-    // Inspektera descriptor (egen + prototypkedja)
-    let desc = Object.getOwnPropertyDescriptor(target, key);
-    let descSource = 'own';
-    if (!desc) {
-      const proto = Object.getPrototypeOf(target);
-      if (proto) {
-        desc = Object.getOwnPropertyDescriptor(proto, key);
-        descSource = 'proto';
-      }
-    }
-    const descInfo = desc
-      ? `${descSource}{w=${desc.writable},c=${desc.configurable},g=${!!desc.get},s=${!!desc.set}}`
-      : 'no-descriptor';
-
-    // Steg 1: vanlig assignment
-    try {
-      target[key] = 'poweredOn';
-      if (target[key] === 'poweredOn') {
-        attempts.push(`${path}=assign(${descInfo})`);
-        return;
-      }
-      // Tyst no-op (sloppy mode + read-only) — gå vidare till defineProperty
-    } catch (e: any) {
-      // Strict mode kastar — fortsätt med defineProperty
-    }
-
-    // Steg 2: defineProperty på objektet självt
-    try {
-      Object.defineProperty(target, key, {
-        value: 'poweredOn',
-        writable: true,
-        configurable: true,
-        enumerable: true,
-      });
-      if (target[key] === 'poweredOn') {
-        attempts.push(`${path}=defineProperty(${descInfo})`);
-        return;
-      }
-      failures.push(`${path}: defineProperty silent-fail (${descInfo})`);
-    } catch (e: any) {
-      // Steg 3: om configurable=false på objektet, prova att redefiniera på prototypen
-      if (descSource === 'proto' && desc) {
-        try {
-          const proto = Object.getPrototypeOf(target);
-          Object.defineProperty(proto, key, {
-            value: 'poweredOn',
-            writable: true,
-            configurable: true,
-            enumerable: true,
-          });
-          if (target[key] === 'poweredOn') {
-            attempts.push(`${path}=defineProperty-on-proto(${descInfo})`);
-            return;
-          }
-        } catch (e2: any) {
-          failures.push(`${path}: proto-defineProperty failed (${descInfo}): ${e2?.message ?? e2}`);
-          return;
-        }
-      }
-      failures.push(`${path}: defineProperty failed (${descInfo}): ${e?.message ?? e}`);
-    }
-  };
-
-  forceSet('noble.state', n, 'state');
-  forceSet('noble._state', n, '_state');
-  if (n._bindings) {
-    forceSet('noble._bindings.state', n._bindings, 'state');
-    if ('_state' in n._bindings) {
-      forceSet('noble._bindings._state', n._bindings, '_state');
-    }
-  }
-
-  // Verifiera om någon mutation faktiskt fastnade
-  const after = n.state ?? n._state;
-  const stuck = after === 'poweredOn';
-
-  _cachedNobleState = 'poweredOn';
-  if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
-  if (_firstStateChangeResolve) {
-    _firstStateChangeResolve('poweredOn');
-    _firstStateChangeResolve = null;
-  }
-
-  setForceMutationSnapshot({ stuck, after, attempts, failures });
-
-  // Om mutationen INTE fastnade — patcha noble's scan/connect-metoder så de
-  // hoppar över sin interna `if (this.state !== 'poweredOn') throw`-guard.
-  // Detta är sista utvägen när noble har frozen/getter-only state-prop.
-  if (!stuck) {
-    patchNobleSkipStateGuard();
-  }
-
-  if (!_forcePoweredOnLogged) {
-    console.log(`[BLE] forceNoblePoweredOn: attempts=${attempts.join(',')} failures=${failures.join(';') || 'none'} stuck=${stuck} after=${after}`);
-    _forcePoweredOnLogged = true;
-  }
-
-  // Diagnostisk event så vi ser i UI-loggen exakt vad som hände
-  logConnectionEvent({
-    type: stuck ? 'scan_start' : 'connect_fail',
-    detail: `force-mutation: stuck=${stuck} after=${after} ok=[${attempts.join(',')}] fail=[${failures.join(';') || 'none'}]`,
-  });
-
-  if (stuck) {
-    startForceRevertWatchdog();
-  }
-
-  return stuck;
+  return raw === 'poweredOn';
 }
 
-// ── Runtime-patch: bypass noble's interna state-guard ──
-// Wrappar startScanningAsync/connectAsync så de temporärt sätter
-// this.state='poweredOn' (via lokal scope-variabel) under anropet, oavsett
-// om descriptor är frozen. Vi ersätter metoderna med proxies som anropar
-// originalimplementationen med en patched `this`.
-let _nobleGuardPatched = false;
-let _nobleGuardPatchResult: { ok: boolean; methods: string[]; error?: string } | null = null;
-
-export function getNobleGuardPatchResult() { return _nobleGuardPatchResult; }
-
-function patchNobleSkipStateGuard(): void {
-  if (_nobleGuardPatched) return;
-  _nobleGuardPatched = true;
-
-  const n = noble as any;
-  const patched: string[] = [];
-  const errors: string[] = [];
-
-  const wrap = (methodName: string) => {
-    const original = n[methodName];
-    if (typeof original !== 'function') {
-      errors.push(`${methodName}: not a function (${typeof original})`);
-      return;
-    }
-    try {
-      // Skapa en Proxy som fakerar this.state='poweredOn' under anropet
-      const wrapped = function (this: any, ...args: any[]) {
-        const proxy = new Proxy(n, {
-          get(target, prop, receiver) {
-            if (prop === 'state' || prop === '_state') return 'poweredOn';
-            const v = Reflect.get(target, prop, receiver);
-            return typeof v === 'function' ? v.bind(target) : v;
-          },
-        });
-        return original.apply(proxy, args);
-      };
-      Object.defineProperty(n, methodName, {
-        value: wrapped,
-        writable: true,
-        configurable: true,
-      });
-      patched.push(methodName);
-    } catch (e: any) {
-      errors.push(`${methodName}: ${e?.message ?? e}`);
-    }
-  };
-
-  wrap('startScanningAsync');
-  wrap('startScanning');
-  wrap('connectAsync');
-  wrap('connect');
-
-  _nobleGuardPatchResult = {
-    ok: patched.length > 0,
-    methods: patched,
-    error: errors.length ? errors.join('; ') : undefined,
-  };
-
-  console.log(`[BLE] patchNobleSkipStateGuard: patched=[${patched.join(',')}] errors=[${errors.join(';') || 'none'}]`);
-  logConnectionEvent({
-    type: patched.length > 0 ? 'scan_start' : 'connect_fail',
-    detail: `noble-guard-patch: methods=[${patched.join(',')}] errors=[${errors.join(';') || 'none'}]`,
-  });
+// patchNobleSkipStateGuard borttagen — samma anti-mönster (lurar noble's guard
+// utan att HCI-socketen är redo). Stub kvar för API-kompat.
+export function getNobleGuardPatchResult(): { ok: boolean; methods: string[]; error?: string } | null {
+  return null;
 }
 
 export { noble };
+
