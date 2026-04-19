@@ -149,23 +149,27 @@ async function main() {
   // STEP B.2 — BLOCKERA tills noble rapporterar poweredOn. Inget annat
   // (alsaMic, Sonos, mic, engine.start) startas innan dess. Heartbeat var
   // 5:e sek så användaren ser att vi inte är hängda.
-  bt('STEP B.2: blockerar boot tills noble.poweredOn (heartbeat var 5:e s)...');
+  bt('STEP B.2: blockerar boot tills noble.poweredOn (max 30s, sen respawn)...');
   const { recordObservedNobleState, getNobleRawState, logConnectionEvent } = await import('./ble/state.js');
+  const { triggerNobleRespawn } = await import('./ble/watchdog.js');
+  const BOOT_NOBLE_DEADLINE_MS = 30_000;
   const waitStart = Date.now();
   let waitIteration = 0;
   let firstState: string = 'unknown';
   // eslint-disable-next-line no-constant-condition
   while (true) {
     waitIteration++;
-    const elapsedSec = Math.round((Date.now() - waitStart) / 1000);
+    const elapsedMs = Date.now() - waitStart;
+    const elapsedSec = Math.round(elapsedMs / 1000);
     console.log(`[Boot] Väntar på noble poweredOn (t+${elapsedSec}s, försök #${waitIteration})...`);
     logConnectionEvent({ type: 'connect_start', detail: `boot: väntar på noble poweredOn (t+${elapsedSec}s, försök #${waitIteration})` });
 
+    const remaining = Math.max(1000, BOOT_NOBLE_DEADLINE_MS - elapsedMs);
     const result = await Promise.race([
-      waitForFirstStateChange(60_000),
+      waitForFirstStateChange(remaining),
       (async () => {
         try {
-          await (noble as any).waitForPoweredOnAsync(60_000);
+          await (noble as any).waitForPoweredOnAsync(remaining);
           recordObservedNobleState('poweredOn');
           return 'poweredOn';
         } catch {
@@ -183,9 +187,28 @@ async function main() {
       break;
     }
 
+    // Hård deadline: respawna istället för att loopa i evighet.
+    if (Date.now() - waitStart >= BOOT_NOBLE_DEADLINE_MS) {
+      const totalSec = Math.round((Date.now() - waitStart) / 1000);
+      bt(`STEP B.2: ✗ noble fortfarande inte poweredOn efter ${totalSec}s — triggar respawn via systemd`);
+      logConnectionEvent({
+        type: 'connect_fail',
+        detail: `boot: noble fastnade i ${raw ?? 'null'} efter ${totalSec}s — triggar respawn via systemd`,
+      });
+      const triggered = triggerNobleRespawn(`boot-deadline ${totalSec}s: noble=${raw ?? 'null'}`);
+      if (!triggered) {
+        // Cooldown blockerade — fortsätt vänta i 30s till och försök igen.
+        bt('STEP B.2: respawn blockerad av cooldown — fortsätter vänta');
+        await new Promise((r) => setTimeout(r, 5000));
+        continue;
+      }
+      // process.exit(1) kommer om 250ms — vänta så systemd hinner ta över.
+      await new Promise((r) => setTimeout(r, 5000));
+      return;
+    }
+
     bt(`STEP B.2: noble fortfarande inte poweredOn (result=${result}, raw=${raw ?? 'null'}) — fortsätter vänta`);
-    // Liten paus innan nästa iteration så vi inte spammar
-    await new Promise((r) => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
   // STEP B.3 — NU är noble redo. Ladda alsaMic (native ALSA-bindning) och
