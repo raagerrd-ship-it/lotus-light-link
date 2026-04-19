@@ -2492,38 +2492,8 @@ export default function PiMobile() {
       {/* BLE-enhet hanteras nu helt av BleControlPanel ovan (hårdkodad ELK-BLEDOM01).
           Sök/manuell-MAC/spara/glöm är medvetet borttaget i denna iteration. */}
 
-      <section className="mb-8">
-        <button
-          onClick={() => setShowDiag(d => !d)}
-          className="w-full py-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          <Activity size={16} />
-          {showDiag ? 'Dölj diagnostik' : 'Visa diagnostik'}
-        </button>
-        {showDiag && (
-          <div className="mt-3 space-y-4">
-            <div className="bg-secondary/50 rounded-xl p-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Bluetooth size={12} /> BLE Adapter & Status
-              </h3>
-              <BleDiagnosticsPanel piBase={piBase} />
-            </div>
-            <BleIntervalDiag piBase={piBase} />
-            <div className="bg-secondary/50 rounded-xl p-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Activity size={12} /> Latens-inspelning
-              </h3>
-              <DiagnosticsPanel piBase={piBase} />
-            </div>
-            <div className="bg-secondary/50 rounded-xl p-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Timer size={12} /> Pipeline-profiler
-              </h3>
-              <ProfilerPanel piBase={piBase} />
-            </div>
-          </div>
-        )}
-      </section>
+      {/* Diagnostik medvetet borttaget — UI är minimalt fokuserat på Starta motor + Anslut.
+          Logg från backend visas live i BleControlPanel via /api/ble/engine/logs. */}
 
     </div>
   );
