@@ -56,7 +56,7 @@ export function MicBackendBadge({ piBase }: Props) {
   if (backend === "arecord") {
     return (
       <span
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/15 text-amber-500 border border-amber-500/30"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-destructive/15 text-destructive border border-destructive/30"
         title="arecord-subprocess (fallback) — högre latens. Bygg native alsa-capture för bättre prestanda."
       >
         <Terminal size={9} /> ARECORD
