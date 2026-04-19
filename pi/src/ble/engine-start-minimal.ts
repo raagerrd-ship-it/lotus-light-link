@@ -23,9 +23,19 @@ let _eventsBound = false;
 function bindEvents(noble: any): void {
   if (_eventsBound) return;
   _eventsBound = true;
-  const events = ['stateChange', 'scanStart', 'scanStop', 'warning', 'error'] as const;
+  const events = ['stateChange', 'scanStart', 'scanStop', 'discover', 'warning', 'error'] as const;
   for (const ev of events) {
     noble.on(ev, (...args: unknown[]) => {
+      const arg0: any = args[0];
+      if (ev === 'discover') {
+        console.log(
+          `[event:${ev}]`,
+          arg0?.address,
+          arg0?.advertisement?.localName ?? '(no name)',
+          `rssi=${arg0?.rssi}`,
+        );
+        return;
+      }
       const parts = args.map(a => {
         if (a == null) return String(a);
         if (typeof a === 'object') {
@@ -36,7 +46,6 @@ function bindEvents(noble: any): void {
       console.log(`[event:${ev}]`, ...parts);
     });
   }
-  // discover loggas separat i connect-flödet (så vi inte spammar här)
 }
 
 export interface MinimalEngineResult {
@@ -62,11 +71,11 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   console.log(`${ts()}    noble.state efter 1s =`, noble.state);
 
   if (noble.state !== 'poweredOn') {
-    console.log(`${ts()} 4. State är inte poweredOn — försöker waitForPoweredOnAsync(8s)...`);
+    console.log(`${ts()} 4. State är inte poweredOn — försöker waitForPoweredOnAsync(3s)...`);
     try {
       await Promise.race([
-        (noble as any).waitForPoweredOnAsync(8000),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('outer timeout 9s')), 9000)),
+        (noble as any).waitForPoweredOnAsync(3000),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('outer timeout 4s')), 4000)),
       ]);
       console.log(`${ts()}    waitForPoweredOnAsync resolved. state =`, noble.state);
     } catch (e: any) {
