@@ -294,9 +294,8 @@ export function startConfigServer(port = 3050): void {
       // Fire-and-forget preview (5s connect+blink+disconnect).
       let previewStarted = false;
       const engineInstance = getEngine();
-      if (requireBleReady({ status: () => ({ json: () => undefined }) } as any) === false) {
-        // BLE inte redo — skippa preview tyst.
-      } else if (engineInstance) {
+      const bleBootReady = getBootPhase() === 'ready';
+      if (bleBootReady && engineInstance) {
         previewStarted = true;
         void (async () => {
           try {
