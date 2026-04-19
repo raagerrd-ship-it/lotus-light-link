@@ -166,10 +166,13 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     snd_pcm_uframes_t frames = static_cast<snd_pcm_uframes_t>(options_.periodSize);
     snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
 
-    // Buffer = 2× period. Med fast periodSize=128 frames (~2.9ms) ger detta
-    // ~5.8ms ALSA-buffer — minimal latens. JS-sidan ackumulerar till FFT-hop
-    // separat, så bufferten behöver inte rymma en hel tick-cykel.
-    snd_pcm_uframes_t bufFrames = frames * 2;
+    // Buffer = 8× period. På Pi Zero 2W är 2× för aggressivt — varje JS GC
+    // eller långsam BLE-write överstiger 5.8ms och vi tappar samples →
+    // [ALSA] Buffer overrun spam → engine får inga FFT-frames → 0% output.
+    // 8× ger ~23ms headroom @ period=128 (~46ms @ period=256). Latens påverkas
+    // INTE — ALSA-tråden läser så fort den kan, bufferten är bara säkerhetsmarginal
+    // mot eventloop-jitter på den lilla CPU:n.
+    snd_pcm_uframes_t bufFrames = frames * 8;
     snd_pcm_hw_params_set_buffer_size_near(handle, params, &bufFrames);
 
     rc = snd_pcm_hw_params(handle, params);
