@@ -662,11 +662,14 @@ function requestConnectionInterval(peripheral: any, name: string): void {
     const hci = (noble as any)._bindings?._hci;
     const handle = peripheral._handle ?? peripheral.handle;
     if (hci && handle != null && typeof hci.writeLeConnectionUpdate === 'function') {
-      // Capture handle in a const for strict comparison inside the listener.
+      // Bluetooth Core Spec 4.0+ tvingar Conn_Interval_Min ≥ 0x0006 (7.5ms).
+      // Vi begär 7.5–7.5ms (min=max=6) för deterministisk latens; slaven får
+      // inte glida upp i intervall. slaveLatency=0 = svara på varje event.
+      // supervisionTimeout=100 (1s) = snabbare disconnect-detektion än 2s.
       const expectedHandle = handle;
-      hci.writeLeConnectionUpdate(expectedHandle, 6, 8, 0, 200);
-      bleStats.requestedIntervalMs = '7.5–10';
-      console.log(`[BLE] Requested connection interval 7.5–10ms for ${name}`);
+      hci.writeLeConnectionUpdate(expectedHandle, 6, 6, 0, 100);
+      bleStats.requestedIntervalMs = '7.5';
+      console.log(`[BLE] Requested fixed 7.5ms interval, slaveLatency=0, supervisionTimeout=1s for ${name}`);
 
       if (typeof hci.on === 'function') {
         let settled = false;
