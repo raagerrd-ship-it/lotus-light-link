@@ -61,36 +61,33 @@ if [ -n "$TOTAL_RAM" ]; then
 fi
 
 taskset -c "$CORE" sudo apt-get update -qq
-# python3.11 + python3.11-distutils krävs för att bygga alsa-capture@0.3.0.
-# Paketet använder gammal node-gyp som importerar `distutils.version.StrictVersion`
-# vilket TOGS BORT i Python 3.12+. På Bookworm/Debian 13 är default python3 = 3.13
-# → bygget kraschar tyst → ingen build/Release/capture.node skapas → arecord-fallback.
-# Lösning: installera python3.11 explicit och peka node-gyp på den vid build.
-taskset -c "$CORE" sudo apt-get install -y -qq \
-  bluez libbluetooth-dev \
-  libasound2-dev alsa-utils \
-  build-essential python3 python3-dev \
-  python3.11 python3.11-dev python3.11-distutils \
-  curl 2>/dev/null || \
+# Python 3.11+ behövs för alsa-capture native build, men ENDAST om vi tvingas
+# använda paketets bundlade node-gyp 9.x. Vår strategi är att uppgradera node-gyp
+# till v10+ globalt, vilket fungerar med Python 3.13 (default på Bookworm).
+# Vi installerar python3.11 om det finns i repo:t som extra säkerhet, men
+# faller tillbaka utan om paketet saknas.
 taskset -c "$CORE" sudo apt-get install -y -qq \
   bluez libbluetooth-dev \
   libasound2-dev alsa-utils \
   build-essential python3 python3-dev \
   curl
+# Försök python3.11 separat (saknas i vissa repos — t.ex. Debian Trixie/13)
+taskset -c "$CORE" sudo apt-get install -y -qq python3.11 python3.11-dev 2>/dev/null || \
+  echo "  ℹ python3.11 saknas i apt — använder global node-gyp 10+ istället"
 
-# Hitta en python <3.12 för node-gyp (alsa-capture). Faller tillbaka på systemets
-# python3 om ingen 3.11 finns — då kommer alsa-capture-bygget failas ändå men
-# resten av installationen fortsätter.
+# Auto-detektera python <3.12 om den finns. Annars använder vi systemets python3
+# tillsammans med uppgraderad node-gyp 10+.
 GYP_PYTHON=""
 for CAND in python3.11 python3.10 python3.9; do
   if command -v "$CAND" >/dev/null 2>&1; then
     GYP_PYTHON="$(command -v "$CAND")"
-    echo "  ✓ node-gyp använder $CAND ($GYP_PYTHON) för native builds"
+    echo "  ✓ Hittade $CAND ($GYP_PYTHON) — använder den för native builds"
     break
   fi
 done
 if [ -z "$GYP_PYTHON" ]; then
-  echo "  ⚠ Hittade inte python3.11 — alsa-capture-bygget kan failas på Python 3.13"
+  GYP_PYTHON="$(command -v python3 || true)"
+  echo "  ℹ Ingen python <3.12 hittad — använder systemets $(python3 --version 2>/dev/null) + node-gyp 10+"
 fi
 
 # ─── 2. Node.js 24 LTS ───────────────────────────────────
@@ -200,12 +197,37 @@ echo "  Native-moduler klara ✓"
 #
 # VIKTIGT: alsa-capture@0.3.0 levereras med node-gyp 9.x som anropar
 # `from distutils.version import StrictVersion`. distutils är BORTTAGEN i
-# Python 3.12+. Default `python3` på Bookworm är 3.13 → bygget kraschar tyst
-# och node_modules/alsa-capture/build/Release/capture.node skapas aldrig.
-# Lösning: peka node-gyp på python3.11 (eller äldre) via env PYTHON + npm-config.
+# Python 3.12+. På Bookworm/Trixie där default `python3` är 3.12/3.13 kraschar
+# bygget tyst → ingen build/Release/capture.node skapas → arecord-fallback.
+#
+# LÖSNING (tvådelad):
+#  A) Installera node-gyp 10+ globalt (har stöd för Python 3.12+ via packaging)
+#     och peka alsa-capture på den via npm_config_node_gyp
+#  B) Som backup: peka på python3.11 om den finns
 echo ""
 echo "[ALSA] Säkerställer native alsa-capture-bindning..."
 
+# A) Säkerställ globalt node-gyp 10+ — fungerar med både Python 3.11 och 3.13
+GLOBAL_NODE_GYP_VER=""
+if command -v node-gyp >/dev/null 2>&1; then
+  GLOBAL_NODE_GYP_VER="$(node-gyp --version 2>/dev/null | head -n1 | tr -d 'v')"
+fi
+GYP_MAJOR="${GLOBAL_NODE_GYP_VER%%.*}"
+if [ -z "$GYP_MAJOR" ] || [ "$GYP_MAJOR" -lt 10 ] 2>/dev/null; then
+  echo "  Installerar node-gyp@10 globalt (krävs för Python 3.12+)..."
+  taskset -c "$CORE" sudo npm install -g node-gyp@^10 --no-audit --no-fund 2>&1 | tail -3
+  GLOBAL_NODE_GYP_VER="$(node-gyp --version 2>/dev/null | head -n1 | tr -d 'v')"
+fi
+GLOBAL_NODE_GYP_PATH="$(command -v node-gyp 2>/dev/null || true)"
+if [ -n "$GLOBAL_NODE_GYP_PATH" ]; then
+  export npm_config_node_gyp="$GLOBAL_NODE_GYP_PATH"
+  (cd "$PI_DIR" && npm config set node-gyp "$GLOBAL_NODE_GYP_PATH" 2>/dev/null) || true
+  echo "  ✓ Använder node-gyp $GLOBAL_NODE_GYP_VER ($GLOBAL_NODE_GYP_PATH)"
+else
+  echo "  ⚠ node-gyp inte tillgängligt globalt — bygget kan failas"
+fi
+
+# B) Sätt python också (node-gyp 10+ funkar med 3.13, men 3.11 är säkrare backup)
 if [ -n "$GYP_PYTHON" ]; then
   export PYTHON="$GYP_PYTHON"
   export npm_config_python="$GYP_PYTHON"
@@ -219,25 +241,28 @@ ALSA_NODE_FILE="$PI_DIR/node_modules/alsa-capture/build/Release/capture.node"
 cd "$PI_DIR"
 rm -rf node_modules/alsa-capture
 echo "  Installerar alsa-capture@^0.3.0 mot Node $NODE_BIN_VER ($(uname -m))..."
-nice -n 15 taskset -c "$CORE" npm install alsa-capture@^0.3.0 \
+nice -n 15 taskset -c "$CORE" \
+  npm_config_node_gyp="$GLOBAL_NODE_GYP_PATH" \
+  ${GYP_PYTHON:+npm_config_python=$GYP_PYTHON} \
+  npm install alsa-capture@^0.3.0 \
   --no-audit --no-fund --no-save 2>&1 | tail -15
 
 if [ -f "$ALSA_NODE_FILE" ]; then
   echo "  ✓ Native alsa-capture byggd (capture.node finns)"
 else
-  echo "  ⚠ capture.node saknas efter install — försöker manuell node-gyp rebuild..."
-  if [ -d "$PI_DIR/node_modules/alsa-capture" ]; then
+  echo "  ⚠ capture.node saknas efter install — försöker manuell node-gyp rebuild med global gyp..."
+  if [ -d "$PI_DIR/node_modules/alsa-capture" ] && [ -n "$GLOBAL_NODE_GYP_PATH" ]; then
     cd "$PI_DIR/node_modules/alsa-capture" && \
       ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
         nice -n 15 taskset -c "$CORE" \
-        "$PI_DIR/node_modules/.bin/node-gyp" rebuild 2>&1 | tail -10 || true
+        "$GLOBAL_NODE_GYP_PATH" rebuild 2>&1 | tail -10 || true
     cd "$PI_DIR"
   fi
   if [ -f "$ALSA_NODE_FILE" ]; then
     echo "  ✓ Native alsa-capture byggd via manuell rebuild"
   else
     echo "  ✗ alsa-capture-build failade — engine använder arecord-fallback"
-    echo "    Felsök: cd $PI_DIR && PYTHON=$GYP_PYTHON npm install alsa-capture --foreground-scripts"
+    echo "    Felsök: cd $PI_DIR && $GLOBAL_NODE_GYP_PATH rebuild --directory=node_modules/alsa-capture --verbose"
   fi
 fi
 
