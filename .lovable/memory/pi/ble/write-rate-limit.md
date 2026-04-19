@@ -1,12 +1,17 @@
 ---
-name: BLEDOM max write rate
-description: BLEDOM på Pi kraschar länken (reason=8) vid >15 writes/s. sendToBLE har hard cap MIN_WRITE_INTERVAL_MS=66ms.
-type: constraint
+name: BLE write rate styrs av tick rate, inte hårdkodad limit
+description: Tick rate-slidern (UI) är ENDA källan för hur ofta BLE-paket skickas. Min 25ms = 40 pkt/s tak. Ingen separat MIN_WRITE_INTERVAL_MS i protocol.ts.
+type: feature
 ---
-BLEDOM-lampor på Pi (utan möjlighet att sänka HCI connection interval — "HCI access limited") tappar BLE-länken med reason=8 supervision timeout om writes skickas snabbare än ~15/s.
+**Tidigare problem (2026-04-19):** `protocol.ts` hade hårdkodad `MIN_WRITE_INTERVAL_MS = 66` som gav max ~15 pkt/s. Tick rate-slidern (UI) kunde sättas till 10ms men paketen skickades ändå max var 66:e ms → slidern ljög, kedjan inte linjär.
 
-**Regel:** `sendToBLE()` i `pi/src/ble/protocol.ts` har en hard rate-limit `MIN_WRITE_INTERVAL_MS = 66` (≥66ms mellan writes = max ~15/s). Sänk inte under detta utan att verifiera mot reason=8.
+**Nuvarande policy:**
+- Tick rate (UI-slider, 25–50ms) styr hela kedjan: mic → FFT → engine tick → BLE write
+- Min 25ms = 40 pkt/s tak (BLEDOM-säker enligt fälttest)
+- INGEN separat rate-limit i `protocol.ts` — bara `writeInFlight`-skydd mot parallella writes
+- Backend-validering: `/api/tick-ms` accepterar 25–50ms
+- Engine + UI default: 25ms
 
-Engine kan tickka snabbare (40 Hz) men BLE-laget throttlar — överskott räknas i `bleStats.skipBusyCount`.
+**Om BLEDOM disconnectar med reason=8:** höj tick rate i UI:t (t.ex. 33ms = 30 pkt/s, 50ms = 20 pkt/s). Aldrig återinför hårdkodad limit i protocol.ts — då ljuger slidern igen.
 
-Build tag: `2026-04-19/ble-write-rate-limit-15hz`
+Build tag: `2026-04-19/tick-rate-single-source-of-truth`
