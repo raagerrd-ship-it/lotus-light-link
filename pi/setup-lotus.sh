@@ -402,7 +402,7 @@ WantedBy=multi-user.target
 EOF
 echo "  System-service skriven till $SYS_SVC_PATH ✓"
 
-# 3. Aktivera + starta
+# 4. Aktivera + starta
 sudo systemctl daemon-reload
 sudo systemctl enable lotus-light-engine 2>/dev/null || true
 sudo systemctl restart lotus-light-engine
