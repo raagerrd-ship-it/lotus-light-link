@@ -79,31 +79,20 @@ jobs:
           npm --version
           python3 --version
           uname -m
-          dpkg -l libasound2-dev 2>&1 | tail -3 || true
 
           echo ""
-          echo "=== Install node-gyp@10 ==="
-          npm install -g node-gyp@10
-          which node-gyp
-          node-gyp --version
-
-          echo ""
-          echo "=== Install vendor deps (nan, eventemitter3) ==="
+          echo "=== Install node-gyp@10 + vendor deps (node-addon-api) ==="
+          npm install -g node-gyp@10 --no-audit --no-fund
           cd pi/vendor/alsa-capture
-          ls -la
           npm install --no-audit --no-fund --ignore-scripts --no-save
-          ls node_modules/ | head -20
 
           echo ""
-          echo "=== node-gyp rebuild ==="
-          node-gyp rebuild --release --verbose 2>&1 || {
+          echo "=== node-gyp rebuild (N-API addon) ==="
+          node-gyp rebuild --release 2>&1 | tail -30 || {
             echo "❌ node-gyp rebuild FAILED"
             exit 1
           }
 
-          echo ""
-          echo "=== Verify output ==="
-          ls -la build/Release/ || true
           if [ -f build/Release/capture.node ]; then
             echo "✓ capture.node byggd ($(stat -c%s build/Release/capture.node) bytes)"
           else

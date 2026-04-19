@@ -222,7 +222,7 @@ if [ ! -f "$ALSA_NODE_FILE" ] && [ -d "$VENDOR_DIR" ]; then
   if [ -z "$GYP_BIN" ]; then
     echo "  ✗ node-gyp kunde inte installeras — engine använder arecord-fallback"
   else
-    echo "  Installerar vendor-deps (nan@^2.26.2, eventemitter3)..."
+    echo "  Installerar vendor-deps (node-addon-api, eventemitter3)..."
     (cd "$VENDOR_DIR" && nice -n 15 taskset -c "$CORE" \
       npm install --no-audit --no-fund --ignore-scripts --no-save 2>&1 | tail -3)
 
