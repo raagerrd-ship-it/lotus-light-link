@@ -62,8 +62,8 @@ proc.stdout.on('data', (chunk) => {
 proc.stderr.on('data', (c) => { stderr += c; });
 
 const killTimer = setTimeout(() => {
-  try { proc.kill('SIGINT'); } catch {}
-  setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} }, 500);
+  // hcitool lescan ignorerar SIGINT — gå direkt på SIGKILL
+  try { proc.kill('SIGKILL'); } catch {}
 }, timeoutMs);
 
 const exitCode = await new Promise((resolve) => {
