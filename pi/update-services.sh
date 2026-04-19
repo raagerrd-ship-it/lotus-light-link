@@ -93,13 +93,25 @@ for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
-# Clean up legacy systemd service if still installed
-if systemctl is-active --quiet lotus-light-engine.service 2>/dev/null; then
-  sudo systemctl stop lotus-light-engine.service
-  sudo systemctl disable lotus-light-engine.service
-  sudo rm -f /etc/systemd/system/lotus-light-engine.service
-  sudo systemctl daemon-reload
-  echo "$LOG_PREFIX Removed legacy systemd service ✓"
+# IMPORTANT: do NOT remove /etc/systemd/system/lotus-light-engine.service here.
+# setup-lotus.sh installerar medvetet engine som SYSTEM-service (inte PCC:s
+# user-service) för att kunna sätta SupplementaryGroups=netdev bluetooth —
+# utan dessa fastnar noble i state=unknown och kräver SSH-restart för att
+# vakna. Se mem://pi/runtime/engine-must-be-system-service.
+#
+# Om system-servicen saknas (t.ex. första update efter en gammal installation
+# som bara hade user-service), återskapa den genom att köra setup-lotus.sh
+# som bara reinstallerar service-blocket — det är idempotent och bygger inte
+# om något om dist/ redan finns.
+if [ ! -f /etc/systemd/system/lotus-light-engine.service ]; then
+  echo "$LOG_PREFIX System-service saknas — kör setup-lotus.sh för att återskapa..."
+  if [ -x "$PI_DIR/setup-lotus.sh" ]; then
+    bash "$PI_DIR/setup-lotus.sh" || echo "$LOG_PREFIX WARN: setup-lotus.sh returnerade fel — kontrollera manuellt"
+  else
+    echo "$LOG_PREFIX WARN: $PI_DIR/setup-lotus.sh saknas eller är inte körbar — engine kan fastna i user-service-läge"
+  fi
+else
+  echo "$LOG_PREFIX System-service intakt ✓ (behåller över update)"
 fi
 
 # BLE permissions (CAP_NET_RAW/CAP_NET_ADMIN) are handled by
