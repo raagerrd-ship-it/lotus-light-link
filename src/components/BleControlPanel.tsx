@@ -201,39 +201,40 @@ export function BleControlPanel({ piBase, onConnectedChange, section = "all" }: 
       )}
 
       {/* Lampa (hårdkodad) */}
-      <div className={`rounded-xl border p-3 ${connected ? "bg-green-500/10 border-green-500/30" : "bg-secondary/50 border-border"}`}>
-        <div className="flex items-center gap-2.5">
-          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${connected ? "bg-green-500" : connectBusy ? "bg-yellow-400 animate-pulse" : "bg-muted-foreground/40"}`} />
-          <Lightbulb size={16} className={connected ? "text-green-400" : "text-muted-foreground"} />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold truncate">{device.name}</div>
-            <div className="text-[10px] text-muted-foreground font-mono">{device.mac}</div>
+      {showLamp && (
+        <div className={`rounded-xl border p-3 ${connected ? "bg-green-500/10 border-green-500/30" : "bg-secondary/50 border-border"}`}>
+          <div className="flex items-center gap-2.5">
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${connected ? "bg-green-500" : connectBusy ? "bg-yellow-400 animate-pulse" : "bg-muted-foreground/40"}`} />
+            <Lightbulb size={16} className={connected ? "text-green-400" : "text-muted-foreground"} />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate">3. {device.name}</div>
+              <div className="text-[10px] text-muted-foreground font-mono">{device.mac}</div>
+            </div>
+            {connected ? (
+              <button
+                onClick={disconnect}
+                disabled={connectBusy}
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-secondary text-foreground active:scale-95 transition-transform disabled:opacity-40"
+              >
+                Koppla från
+              </button>
+            ) : (
+              <button
+                onClick={connect}
+                disabled={connectBusy || !engineReady}
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center gap-1.5"
+                title={!engineReady ? "Starta BLE-motorn först" : undefined}
+              >
+                {connectBusy ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                Anslut
+              </button>
+            )}
           </div>
-          {connected ? (
-            <button
-              onClick={disconnect}
-              disabled={connectBusy}
-              className="px-3 py-2 rounded-lg text-xs font-semibold bg-secondary text-foreground active:scale-95 transition-transform disabled:opacity-40"
-            >
-              Koppla från
-            </button>
-          ) : (
-            <button
-              onClick={connect}
-              disabled={connectBusy || !engineReady}
-              className="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center gap-1.5"
-              title={!engineReady ? "Starta BLE-motorn först" : undefined}
-            >
-              {connectBusy ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-              Anslut
-            </button>
+          {!engineReady && !connected && (
+            <div className="text-[10px] text-muted-foreground mt-2 ml-6">Starta BLE-motorn först.</div>
           )}
         </div>
-        {!engineReady && !connected && (
-          <div className="text-[10px] text-muted-foreground mt-2 ml-6">Starta BLE-motorn först.</div>
-        )}
-      </div>
-
+      )}
       {lastError && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-[11px] p-2.5">
           ⚠ {lastError}
