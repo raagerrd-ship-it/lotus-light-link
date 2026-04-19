@@ -15,7 +15,7 @@
  * ett efterföljande steg om motorn blev redo.
  */
 
-import { getNoble } from './noble-singleton.js';
+import { getNobleAsync } from './noble-singleton.js';
 
 let _started = false;
 let _eventsBound = false;
@@ -60,7 +60,7 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   const ts = () => `+${(Date.now() - t0).toString().padStart(5, ' ')}ms`;
 
   console.log(`${ts()} 1. Importing @stoprocent/noble...`);
-  const noble = getNoble();
+  const noble = await getNobleAsync();
   console.log(`${ts()} 2. Imported. typeof noble.startScanningAsync =`, typeof noble.startScanningAsync);
   console.log(`${ts()}    noble.state =`, noble.state, '| noble._state =', (noble as any)._state);
 
