@@ -281,27 +281,24 @@ export function bumpWorkaround(key: keyof Omit<typeof workaroundCounters, 'lastI
 }
 
 // ── Connection event log (ring buffer for diagnostics) ──
-function loadConnectionLog(): BleConnectionEvent[] {
-  try {
-    const raw = getItem(CONNECTION_LOG_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((entry): entry is BleConnectionEvent => !!entry && typeof entry.timestamp === 'string' && typeof entry.type === 'string')
-      .slice(-MAX_EVENTS);
-  } catch {
-    return [];
-  }
-}
-
+// Loggen rensas vid varje engine-start — gammal historik från en tidigare
+// process är förvirrande efter en deploy/restart eftersom den blandas med
+// nya events utan tydlig markör. Vi behåller ringbufferten i RAM och
+// persisterar den till storage så att en /api/ble/log-request mellan
+// crashes inte tappar context, men vid kallstart börjar vi alltid på 0.
 function persistConnectionLog(): void {
   try {
     setItem(CONNECTION_LOG_KEY, JSON.stringify(_connectionLog));
   } catch {}
 }
 
-const _connectionLog: BleConnectionEvent[] = loadConnectionLog();
+const _connectionLog: BleConnectionEvent[] = [];
+// Skriv tom array till storage direkt så diskstate matchar RAM
+try {
+  setItem(CONNECTION_LOG_KEY, '[]');
+  console.log('[BLE] connection log cleared on engine start');
+} catch {}
+
 
 function trimConnectionLog(): void {
   while (_connectionLog.length > MAX_EVENTS) {
