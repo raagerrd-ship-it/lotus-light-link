@@ -28,7 +28,7 @@ interface LogEntry {
 
 type Section = "engine" | "lamp" | "all";
 
-export function BleControlPanel({ piBase, onConnectedChange, section = "all" }: { piBase: string; onConnectedChange?: (connected: boolean) => void; section?: Section }) {
+export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange, section = "all" }: { piBase: string; onConnectedChange?: (connected: boolean) => void; onEngineReadyChange?: (ready: boolean) => void; section?: Section }) {
   const showEngine = section === "engine" || section === "all";
   const showLamp = section === "lamp" || section === "all";
   const [state, setState] = useState<BleStateResp | null>(null);
