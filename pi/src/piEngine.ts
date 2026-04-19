@@ -316,7 +316,7 @@ export class PiLightEngine {
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
   }
-  // ... keep existing code
+
   getPalette(): [number, number, number][] { return this._palette; }
   setVolume(vol: number | undefined) { this.volume = vol; }
   getTickMs(): number { return this.tickMs; }
