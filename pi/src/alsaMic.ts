@@ -184,6 +184,10 @@ export function onFFTReady(cb: FFTReadyCallback | null): void {
   _onFFTReady = cb;
 }
 
+// ── FFT frame counter (for diagnostics: faktisk frames/s från ALSA → FFT) ──
+let _fftFrameCount = 0;
+export function getFFTFrameCount(): number { return _fftFrameCount; }
+
 function applyHighShelfSample(sample: number): number {
   hsState += HS_ALPHA * (sample - hsState);
   const lo = hsState;
@@ -246,6 +250,7 @@ function processFFT(): void {
 
   // Stamp FFT completion time
   lastFFTTimestamp = performance.now();
+  _fftFrameCount++;
 
   // Fire event immediately — engine can process with zero latency
   if (_onFFTReady) _onFFTReady(latestBands);
