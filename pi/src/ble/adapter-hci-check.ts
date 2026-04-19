@@ -48,14 +48,44 @@ export function isHci0Up(): boolean {
 }
 
 /**
+ * Aktivt försök ta upp hci0 INNAN noble laddas. Kör rfkill unblock + hciconfig
+ * hci0 up (idempotent, icke-destruktivt). Får ALDRIG köra `down` eller `reset`
+ * — det är fortfarande policy att engine inte tar ner adaptern (mem://pi/ble/
+ * hci-up-only-policy).
+ *
+ * Använder execSync med PATH-safe env (inte bash -lc — tom PATH under systemd
+ * user-service). Returnerar true om adaptern är UP RUNNING efteråt.
+ */
+export function bringHci0Up(): boolean {
+  const env = {
+    ...process.env,
+    PATH: process.env.PATH ? `${process.env.PATH}:${SAFE_PATH}` : SAFE_PATH,
+    LC_ALL: 'C',
+  };
+  // 1. unblock rfkill (idempotent)
+  try { execSync('rfkill unblock bluetooth', { timeout: 2000, env }); } catch {}
+  // 2. hciconfig hci0 up (idempotent — returnerar 0 även om redan up)
+  try { execSync('hciconfig hci0 up', { timeout: 3000, env }); } catch {}
+  // 3. unblock igen ifall hciconfig up triggade en ny rfkill-state
+  try { execSync('rfkill unblock bluetooth', { timeout: 2000, env }); } catch {}
+  return isHci0Up();
+}
+
+/**
  * Poll `hciconfig hci0` until it reports UP RUNNING or `timeoutMs` elapses.
- * Read-only — does not toggle the adapter. PCC (root service) is responsible
- * for `rfkill unblock bluetooth` + `hciconfig hci0 up` via ExecStartPre.
+ * Försöker AKTIVT ta upp hci0 var ~2:a sek om den är nere — passiv väntan
+ * räcker inte under user-service där PCC's ExecStartPre kanske inte kört.
  */
 export async function waitForHci0Up(timeoutMs = 10000, intervalMs = 500): Promise<boolean> {
   const start = Date.now();
+  let lastBringUp = 0;
   while (Date.now() - start < timeoutMs) {
     if (isHci0Up()) return true;
+    // Försök aktivt ta upp adaptern var 2:a sek (idempotent)
+    if (Date.now() - lastBringUp > 2000) {
+      lastBringUp = Date.now();
+      if (bringHci0Up()) return true;
+    }
     await new Promise(r => setTimeout(r, intervalMs));
   }
   return isHci0Up();
