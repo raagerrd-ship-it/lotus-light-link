@@ -352,7 +352,10 @@ export function startMic(): void {
     });
     const stream = capture.stream();
     stream.on('data', onAudioData);
-    stream.on('error', (err: Error) => console.error('[ALSA] stream error:', err.message));
+    stream.on('error', (err: any) => {
+      const msg = err?.message ?? err?.code ?? (err === undefined ? '(empty error event from arecord stream — usually harmless EOF)' : String(err));
+      console.error(`[ALSA] stream error: ${msg}`);
+    });
     console.log(`[ALSA] Mic started via arecord (44.1kHz, 16-bit, mono, device: ${currentDevice})`);
 
   } else {
