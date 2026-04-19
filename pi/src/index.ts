@@ -106,13 +106,21 @@ async function main() {
   const bt = (label: string) => console.log(`[BootTime +${(Date.now() - bootT0).toString().padStart(5, ' ')}ms] ${label}`);
 
   // STEP A: Wait for hci0 BEFORE loading anything that touches noble.
+  // VIKTIGT: vi tar AKTIVT upp adaptern (rfkill unblock + hciconfig up) om den
+  // är nere — passiv väntan duger inte eftersom PCC's ExecStartPre kanske inte
+  // har kört innan vår user-service startar. noble cachar `poweredOff` för
+  // evigt om hci0 är DOWN vid första require().
   bt('STEP A: importing adapter-hci-check.js...');
-  const { waitForHci0Up, isHci0Up } = await import('./ble/adapter-hci-check.js');
+  const { waitForHci0Up, isHci0Up, bringHci0Up } = await import('./ble/adapter-hci-check.js');
   bt('STEP A: import done, checking hci0...');
   if (!isHci0Up()) {
-    bt('STEP A: hci0 DOWN — waiting up to 10s for UP RUNNING...');
-    const up = await waitForHci0Up(10000);
-    bt(up ? 'STEP A: ✓ hci0 UP RUNNING' : 'STEP A: ⚠ hci0 still down after 10s');
+    bt('STEP A: hci0 DOWN — kör rfkill unblock + hciconfig hci0 up...');
+    const upNow = bringHci0Up();
+    bt(upNow ? 'STEP A: ✓ hci0 UP RUNNING (efter aktiv up)' : 'STEP A: hci0 fortfarande nere — pollar upp till 10s...');
+    if (!upNow) {
+      const up = await waitForHci0Up(10000);
+      bt(up ? 'STEP A: ✓ hci0 UP RUNNING (efter poll)' : 'STEP A: ⚠ hci0 still down after 10s — fortsätter ändå');
+    }
   } else {
     bt('STEP A: ✓ hci0 already UP RUNNING');
   }
