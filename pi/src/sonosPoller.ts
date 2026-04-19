@@ -257,6 +257,7 @@ function parseStatus(s: any): void {
 let pollTimer: NodeJS.Timeout | null = null;
 let sseCleanup: (() => void) | null = null;
 let activeConfig: SonosPollerConfig | null = null;
+let lastSuccessfulPollAt: number | null = null;
 
 const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   ssePath: '/events',
@@ -309,14 +310,14 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   const statusUrl = `${baseUrl}${statusPath}`;
   try {
     const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-    if (res.ok) parseStatus(await res.json());
+    if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
   } catch {}
 
   // Fallback poll
   pollTimer = setInterval(async () => {
     try {
       const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-      if (res.ok) parseStatus(await res.json());
+      if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
     } catch {}
   }, pollMs);
 
@@ -334,4 +335,8 @@ export function stopSonosPoller(): void {
 
 export function getPollerConfig(): SonosPollerConfig | null {
   return activeConfig;
+}
+
+export function getLastSuccessfulPollAt(): number | null {
+  return lastSuccessfulPollAt;
 }

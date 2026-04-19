@@ -12,7 +12,7 @@ import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from '.
 import { getWatchdogGiveUpReason } from './ble/watchdog.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
-import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
+import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
 
 type AlsaMicModule = typeof import('./alsaMic.js');
 
@@ -491,15 +491,30 @@ export function startConfigServer(port = 3050): void {
     const stepStatus = (ok: boolean, pending: boolean = false): 'ok' | 'fail' | 'pending' =>
       ok ? 'ok' : pending ? 'pending' : 'fail';
 
+    // Mic-status (ALSA)
+    const micDevice = attachedMic?.getAlsaDevice() ?? '';
+    const micHasDevice = !!micDevice;
+    const micLastFFTAt = attachedMic?.getLastFFTTimestamp?.() ?? 0;
+    const micRunning = micLastFFTAt > 0 && (performance.now() - micLastFFTAt) < 5000;
+
+    // Sonos-status
+    const sonosCfg = getPollerConfig();
+    const sonosBaseUrl = sonosCfg?.baseUrl ?? '';
+    const sonosHasGateway = !!sonosBaseUrl;
+    const sonosLastPollAt = getSonosLastPollAt();
+    const sonosReachable = !!sonosLastPollAt && (Date.now() - sonosLastPollAt) < 15_000;
+
     const pipeline = [
       {
         id: 'caps',
+        group: 'engine',
         label: 'Process har CAP_NET_RAW + CAP_NET_ADMIN',
         status: stepStatus(hasCaps),
         detail: hasCaps ? 'CapEff OK' : 'Saknas — kontrollera setcap på node + AmbientCapabilities',
       },
       {
         id: 'hci-socket',
+        group: 'engine',
         label: 'HCI raw socket öppnar (samma syscall som noble)',
         status: probe ? stepStatus(probe.ok) : 'pending',
         detail: probe
@@ -510,18 +525,21 @@ export function startConfigServer(port = 3050): void {
       },
       {
         id: 'rfkill',
+        group: 'engine',
         label: 'rfkill bluetooth unblocked',
         status: stepStatus(rfkillUnblocked),
         detail: rfkillUnblocked ? 'OK' : 'Blocked — kör sudo rfkill unblock bluetooth',
       },
       {
         id: 'hci-up',
+        group: 'engine',
         label: 'hci0 UP RUNNING',
         status: stepStatus(hciUpRunning),
         detail: hciUpRunning ? 'OK' : (hciError ?? 'hci0 nere — sudo hciconfig hci0 up'),
       },
       {
         id: 'noble-state',
+        group: 'engine',
         label: 'Tidig noble stateChange fångad',
         status: everPoweredOn ? 'ok' : (stillBooting ? 'pending' : 'fail'),
         detail: everPoweredOn
@@ -532,6 +550,7 @@ export function startConfigServer(port = 3050): void {
       },
       {
         id: 'noble-raw-reference',
+        group: 'engine',
         label: 'noble.state (rå, endast referens på Pi)',
         status: rawStateIgnored ? 'ok' : (nobleStateOk ? 'ok' : 'pending'),
         detail: rawStateIgnored
@@ -542,36 +561,77 @@ export function startConfigServer(port = 3050): void {
       },
       {
         id: 'force-mutation',
+        group: 'engine',
         label: 'Ingen force-mutation av noble.state används',
         status: 'ok',
         detail: 'Korrekt strategi: vänta på riktig stateChange vid boot; mutera aldrig _state manuellt',
       },
       {
         id: 'noble-guard-patch',
+        group: 'engine',
         label: 'Ingen runtime-bypass av noble scan/connect-guard behövs',
         status: 'ok',
         detail: 'Använder tidig stateChange-cache + effektiv adapterstatus i stället för patchar',
       },
       {
         id: 'adapter-effective',
+        group: 'engine',
         label: 'Effektiv adapter-state poweredOn',
         status: stepStatus(adapterReady, stillBooting),
         detail: adapterReady ? `OK (${adapterState})` : `${adapterState}`,
       },
       {
         id: 'saved-device',
+        group: 'lamp',
         label: 'Sparad enhet finns',
         status: stepStatus(savedDevice),
         detail: savedDevice ? (getSavedDeviceName() ?? getSavedDeviceId() ?? 'OK') : 'Ingen — gör en scan + välj enhet',
       },
       {
         id: 'connected',
+        group: 'lamp',
         label: 'Ansluten till enhet',
         status: stepStatus(connected),
         detail: connected
           ? `${getConnectedCount()} enhet(er)`
           : savedDevice
             ? 'Ej ansluten — tryck Anslut'
+            : '—',
+      },
+      {
+        id: 'mic-device',
+        group: 'mic',
+        label: 'ALSA-enhet vald',
+        status: stepStatus(micHasDevice),
+        detail: micHasDevice ? micDevice : 'Ingen mic-enhet konfigurerad',
+      },
+      {
+        id: 'mic-running',
+        group: 'mic',
+        label: 'Mikrofon samplar (FFT-frames inom 5s)',
+        status: stepStatus(micRunning, micHasDevice && !micRunning),
+        detail: micRunning
+          ? `OK — senaste FFT ${Math.round(performance.now() - micLastFFTAt)}ms sedan`
+          : micHasDevice
+            ? 'Inga FFT-frames på senaste 5s — mic stoppad eller arecord saknas'
+            : '—',
+      },
+      {
+        id: 'sonos-gateway',
+        group: 'sonos',
+        label: 'Sonos gateway konfigurerad',
+        status: stepStatus(sonosHasGateway),
+        detail: sonosHasGateway ? sonosBaseUrl : 'Ingen baseUrl satt — Cast Away ej upptäckt',
+      },
+      {
+        id: 'sonos-reachable',
+        group: 'sonos',
+        label: 'Senaste status-poll lyckades (<15s)',
+        status: stepStatus(sonosReachable, sonosHasGateway && !sonosReachable),
+        detail: sonosLastPollAt
+          ? `Senaste OK ${Math.round((Date.now() - sonosLastPollAt) / 1000)}s sedan`
+          : sonosHasGateway
+            ? 'Ingen lyckad poll ännu'
             : '—',
       },
     ];
