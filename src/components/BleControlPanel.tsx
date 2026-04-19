@@ -91,6 +91,39 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
     if (logPollRef.current) window.clearInterval(logPollRef.current);
   }, []);
 
+  // Poll BLE-output (sista färg + brightness skickad till lampan) — bara
+  // när lampan är ansluten och vi visar lamp-sektionen. ~5 Hz.
+  const lampConnected = !!state?.connected;
+  useEffect(() => {
+    if (!showLamp || !lampConnected) {
+      setBleOutput({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
+      return;
+    }
+    let cancelled = false;
+    let lastCount = 0;
+    let lastT = performance.now();
+    const tick = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/ble/output`, { signal: AbortSignal.timeout(1500) });
+        if (r.ok && !cancelled) {
+          const data = (await r.json()) as BleOutput;
+          const now = performance.now();
+          const dt = (now - lastT) / 1000;
+          if (lastCount > 0 && dt > 0) {
+            lastSentRateRef.current = Math.round((data.sentCount - lastCount) / dt);
+          }
+          lastCount = data.sentCount;
+          lastT = now;
+          lastSentCountRef.current = data.sentCount;
+          setBleOutput(data);
+        }
+      } catch {}
+    };
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [piBase, showLamp, lampConnected]);
+
   const startEngine = async () => {
     setEngineBusy(true);
     setLastError(null);
