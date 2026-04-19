@@ -33,7 +33,7 @@ import { isNobleScanActive } from './connect.js';
 import { scanMetrics, nextScanId, resetMetricsForNewScan, finalizeMetrics } from './scan-metrics.js';
 import { armScanWatchdog, type ScanWatchdogHandle } from './scan-watchdog.js';
 import { createDiscoverHandler } from './scan-discover.js';
-import { triggerNobleRespawn } from './watchdog.js';
+import { triggerNobleRespawn, getWatchdogGiveUpReason } from './watchdog.js';
 
 export { getScanMetrics, type BleScanMetrics } from './scan-metrics.js';
 

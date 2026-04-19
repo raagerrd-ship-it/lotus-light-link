@@ -2018,6 +2018,8 @@ export default function PiMobile() {
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   const isBleRespawnScanError = (message: string | null | undefined) =>
     typeof message === 'string' && /noble inte poweredOn inom 10s|Timeout waiting for Noble to be powered on/i.test(message);
+  const isBleRespawnCooldownError = (message: string | null | undefined) =>
+    typeof message === 'string' && /respawn blockerad|cooldown/i.test(message);
 
   const putJson = async (path: string, body: unknown) => {
     const r = await fetch(`${piBase}${path}`, {
@@ -2075,6 +2077,11 @@ export default function PiMobile() {
       const firstDevices = Array.isArray(first.data?.devices) ? first.data.devices : null;
       const firstError = first.data?.scan?.lastStartError ?? first.data?.error ?? null;
 
+      if (isBleRespawnCooldownError(firstError)) {
+        applyScanResult(firstDevices ?? [], firstError);
+        return;
+      }
+
       if (first.r.ok && firstDevices && (firstDevices.length > 0 || !isBleRespawnScanError(firstError))) {
         applyScanResult(firstDevices, firstError);
         return;
@@ -2091,6 +2098,11 @@ export default function PiMobile() {
         const retry = await requestBleScan();
         const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
         const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
+
+        if (isBleRespawnCooldownError(retryError)) {
+          applyScanResult(retryDevices ?? [], retryError);
+          return;
+        }
 
         if (retry.r.ok && retryDevices) {
           applyScanResult(retryDevices, retryError);
@@ -2114,6 +2126,10 @@ export default function PiMobile() {
         const retry = await requestBleScan();
         const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
         const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
+        if (isBleRespawnCooldownError(retryError)) {
+          applyScanResult(retryDevices ?? [], retryError);
+          return;
+        }
         if (retry.r.ok && retryDevices) {
           setBleScanResults(retryDevices);
           setBleScanCompletedEmpty(retryDevices.length === 0 && !retryError);
