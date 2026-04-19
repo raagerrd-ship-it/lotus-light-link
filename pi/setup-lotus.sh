@@ -218,6 +218,32 @@ else
   echo "  ⚠ node-binär hittades inte"
 fi
 
+# 1d. Lägg till user i bluetooth+netdev-grupperna.
+#     CAP_NET_ADMIN på rfkill-binären räcker inte för att öppna /dev/rfkill —
+#     enheten kräver gruppmedlemskap (netdev). Utan detta failar `rfkill unblock`
+#     med "Permission denied" trots korrekta caps. bluetooth-gruppen behövs för
+#     BlueZ D-Bus-anrop. Kräver logout/reboot för att aktiveras i sessionen.
+TARGET_USER="${SUDO_USER:-$USER}"
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+  ADDED_GROUPS=()
+  for GRP in bluetooth netdev; do
+    if getent group "$GRP" >/dev/null 2>&1; then
+      if ! id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "$GRP"; then
+        sudo usermod -aG "$GRP" "$TARGET_USER" \
+          && ADDED_GROUPS+=("$GRP") \
+          && echo "  Lade $TARGET_USER i $GRP ✓" \
+          || echo "  ⚠ Kunde inte lägga $TARGET_USER i $GRP"
+      else
+        echo "  $TARGET_USER redan i $GRP ✓"
+      fi
+    fi
+  done
+  if [ ${#ADDED_GROUPS[@]} -gt 0 ]; then
+    echo "  ⚠ Logga ut och in (eller reboot) för att gruppändringarna ska aktiveras"
+    BLE_NEEDS_RELOGIN=true
+  fi
+fi
+
 # 2-4. Auto-fixa systemd-tjänsten om capabilities eller startup-order saknas
 SVC_FILE="$HOME/.config/systemd/user/lotus-light-engine.service"
 BLE_FIXED=false
