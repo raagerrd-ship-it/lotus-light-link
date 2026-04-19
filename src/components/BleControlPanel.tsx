@@ -47,9 +47,10 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
         const data = (await r.json()) as BleStateResp;
         setState(data);
         onConnectedChange?.(data.connected);
+        onEngineReadyChange?.(data.engineReady);
       }
     } catch {}
-  }, [piBase, onConnectedChange]);
+  }, [piBase, onConnectedChange, onEngineReadyChange]);
 
   useEffect(() => {
     refresh();
