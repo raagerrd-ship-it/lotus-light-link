@@ -271,6 +271,8 @@ export const workaroundCounters = {
   post_scan_noble_recovery_invoked: 0,
   // Post-scan watchdog: recovery kördes men noble blev fortfarande inte poweredOn
   post_scan_noble_recovery_failed: 0,
+  // Scan kördes med noble's HCI-binding orörd (parallel-mode med hcitool)
+  post_scan_noble_untouched: 0,
   // Sista gång varje workaround triggades
   lastInvocationAt: {} as Record<string, string>,
 };
