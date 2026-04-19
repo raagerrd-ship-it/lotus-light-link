@@ -243,7 +243,7 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     console.error(`[BLE] scan error: ${e?.message ?? e}`);
     return lastScanResults;
   } finally {
-    clearTimeout(watchdog);
+    if (watchdog) clearTimeout(watchdog);
     if (onDiscover) {
       try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
     }
