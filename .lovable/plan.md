@@ -1,44 +1,32 @@
 
+Du har helt rätt — jag drog det för långt. Nuvarande passive-boot rör inte ens hci0/noble, vilket gör att noble fastnar i `unknown` tills användaren trycker "Återställ BLE-stack". Det är fel nivå av "manuellt".
 
-## Problem
-Engine bootar Sonos + alsaMic + configServer även när noble's `stateChange` inte landat. Resultat: 325s innan noble vaknar i engine-processen, och under tiden är allt annat igång "i onödan" eftersom vi inte kan styra lampan ändå.
+**Rätt separation:**
+- **Automatiskt vid boot (BLE-motorn):** rfkill unblock, hciconfig hci0 up, vänta på noble `poweredOn`. Detta är infrastruktur — inte en anslutning till någon lampa.
+- **Manuellt (användaråtgärd):** scan, connect, save-manual preview, disconnect, forget. Allt som rör en specifik lampa.
 
-## Lösning: Block-tills-noble-redo boot
-Ändra `pi/src/index.ts` så att boot **stannar** tills noble faktiskt rapporterar `poweredOn`. Inget annat (alsaMic, Sonos, mic, engine.start) startas innan dess.
+## Plan
 
-### Ändringar i `pi/src/index.ts` (STEP B.1 och framåt)
+**1. `pi/src/index.ts` — återställ aktiv boot, men utan respawn**
+- STEP A: kör `ensureAdapterUp()` igen (rfkill unblock + hciconfig hci0 up). Detta är idempotent och icke-destruktivt enligt hci-up-only-policy.
+- STEP B.2: vänta upp till 15s på noble `poweredOn` via `waitForFirstStateChange` + `waitForPoweredOnAsync`. Logga resultat.
+- Om noble fortfarande `unknown` efter 15s: logga varning, sätt `bootPhase=ready` ändå (engine startar), men logga tydligt att användaren måste trycka "Återställ BLE-stack". **Ingen `triggerNobleRespawn`** — den raden är fortsatt borta.
 
-1. **Förläng noble-väntan från 5s → tills `poweredOn`** (med säkerhets-tak, t.ex. 60s).
-2. **Loopa tills `poweredOn`**: Om första `waitForPoweredOnAsync(60000)` failar, logga tydligt "BLE inte redo — fortsätter vänta" och försök igen. Engine bootar ALDRIG vidare utan noble.
-3. **Heartbeat under väntan**: Logga var 5:e sekund `[Boot] Väntar på noble poweredOn (t+Xs)` så vi ser i UI:t att det inte är hängt.
-4. **Behåll configServer-start TIDIGT** (rad ~210) så `/api/ble/diagnostics` och `/events` fungerar under väntan — UI:t ska kunna visa "Bootar: väntar på BLE…".
-5. **Exposera boot-fas i diagnostics**: Lägg till `bootPhase: 'waiting-for-noble' | 'ready'` i `ble/state.ts` så UI kan visa status.
+**2. `pi/src/configServer.ts` — `/api/ble/start` blir aktiv igen**
+- Återinför `await ensureAdapterUp()` i början av endpointen så användaren kan "väcka" BLE-motorn manuellt om bootens 15s inte räckte.
+- Returnerar fortfarande bara status — ingen auto-connect till sparad enhet (den policyn behålls).
 
-### Ny boot-ordning
-```text
-1. hci0 UP-check (befintligt)
-2. import nobleBle
-3. configServer START (för UI-status under väntan)
-4. VÄNTA på noble.poweredOn (block, ingen timeout för att gå vidare)
-5. import alsaMic + apply settings
-6. start Sonos poller
-7. start mic
-8. engine.start()
-9. Logga "✓ All systems running"
-```
+**3. Ingen ändring av manual-only-policyn för anslutning**
+- `requestConnect`, `autoConnectSaved`, `startReconnectLoop`: oförändrade (single-shot, ingen reconnect-loop).
+- `/api/ble/save-manual`: behåller preview-flow (connect → blink → disconnect).
+- Ingen auto-respawn någonstans.
 
-### UI-bit (PiMobile)
-Visa boot-fas i status-pillen: "Bootar: väntar på Bluetooth…" tills `bootPhase === 'ready'`. Befintlig diagnostics-endpoint räcker.
+**4. Build-tag & memory**
+- `BLE_BUILD_TAG` → `2026-04-19/active-ble-engine-manual-connect`.
+- Uppdatera `mem://pi/ble/manual-only-connection-policy` med klargörande: "BLE-motorn (adapter+noble) startas automatiskt. Anslutning till lampa är manuell."
 
-### Vad detta löser
-- Inget mer "noble unknown" i connect — när engine säger sig vara redo så ÄR noble redo.
-- Sonos/mic/engine slösar inte CPU under boot-racet.
-- Användaren ser tydligt "väntar på BLE" istället för förvirrande connect-fail.
-- Eliminerar libuv-racen permanent eftersom alsaMic (den största native-blockern) laddas EFTER noble vaknat — vilket var hela poängen från första början, men med 5s-timeout som gav upp för tidigt.
+## Vad som INTE ändras
+- Inga auto-reconnects, ingen auto-connect till sparad enhet vid boot, ingen `triggerNobleRespawn`, ingen destruktiv hci-mutering.
 
-### Filer som ändras
-- `pi/src/index.ts` — boot-loop med oändlig väntan + heartbeat
-- `pi/src/ble/state.ts` — `bootPhase` field + getter
-- `pi/src/configServer.ts` — exponera `bootPhase` i `/api/ble/diagnostics` (om inte redan)
-- `src/pages/PiMobile.tsx` — visa "Bootar: väntar på BLE…" pill
-
+## Resultat
+Vid boot: hci0 upp + noble redo → UI visar "Redo, ej ansluten — tryck Anslut". Tryck Anslut → scan/connect körs. Tryck Återställ BLE-stack → manuell HCI-reset om något fastnar.
