@@ -47,6 +47,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
 - [Signal processing chain](mem://pi/audio/signal-processing-chain) — Pipeline order from Mic to Gamma
+- [Oktav-band](mem://pi/audio/oktav-band-normalisering) — Bass/midHi RMS som energy-per-octave för korrekt diskant-respons
 - [FFT resolution](mem://technical/audio-processing/fft-resolution) — 1024 samples, 128 hop-size
 - [Palette integration](mem://pi/sonos/palette-integration) — 4-color palettes consumed directly from Sonos Gateway
 - [Softness slider](mem://pi/ui/softness-slider-curve) — Exponential mapping for releaseAlpha
