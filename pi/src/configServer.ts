@@ -540,24 +540,29 @@ export function startConfigServer(port = 3050): void {
       {
         id: 'noble-state',
         group: 'engine',
-        label: 'Tidig noble stateChange fångad',
-        status: everPoweredOn ? 'ok' : (stillBooting ? 'pending' : 'fail'),
+        label: 'noble stateChange-event fångat (informativt)',
+        // Om BLE-motorn är effektivt redo (caps + hci0 UP) räknas det INTE
+        // som ett fel att noble's JS-state-flagga ligger kvar på 'unknown'.
+        // På Pi händer det normalt och påverkar inte scan/connect.
+        status: everPoweredOn ? 'ok' : (adapterReady ? 'pending' : (stillBooting ? 'pending' : 'fail')),
         detail: everPoweredOn
           ? `OK${firstStateChangeAt ? ` — första stateChange ${Math.round((firstStateChangeAt - bootStartedAt) / 1000)}s efter boot` : ''}`
-          : stillBooting
-            ? `Väntar på första stateChange (${Math.round(bootElapsedMs / 1000)}s av ${NOBLE_BOOT_GRACE_MS / 1000}s)`
-            : 'Ingen stateChange fångad ännu — kontrollera boot/import-ordning',
+          : adapterReady
+            ? 'Inget event fångat — men BLE-motor är operativ via effektiv state. Detta är normalt på Pi.'
+            : stillBooting
+              ? `Väntar på första stateChange (${Math.round(bootElapsedMs / 1000)}s av ${NOBLE_BOOT_GRACE_MS / 1000}s)`
+              : 'Ingen stateChange fångad och adaptern är inte redo — kontrollera boot/import-ordning',
       },
       {
         id: 'noble-raw-reference',
         group: 'engine',
-        label: 'noble.state (rå, endast referens på Pi)',
-        status: rawStateIgnored ? 'ok' : (nobleStateOk ? 'ok' : 'pending'),
-        detail: rawStateIgnored
-          ? `Rå state är ${nobleRaw.state ?? nobleRaw._state ?? 'unknown'} — ignoreras eftersom tidig stateChange/adaptern redan visar redo läge`
-          : nobleStateOk
-            ? 'OK'
-            : 'Kan ligga kvar på unknown på Pi trots att BLE fungerar',
+        label: 'noble.state (rå JS-flagga, endast referens på Pi)',
+        status: nobleStateOk ? 'ok' : (adapterReady ? 'ok' : 'pending'),
+        detail: nobleStateOk
+          ? `OK (${nobleRaw.state ?? nobleRaw._state})`
+          : adapterReady
+            ? `Rå state är ${nobleRaw.state ?? nobleRaw._state ?? 'unknown'} — ignoreras eftersom effektiv adapter redan är poweredOn`
+            : 'Kan ligga kvar på unknown på Pi tills adaptern svarar',
       },
       {
         id: 'force-mutation',
