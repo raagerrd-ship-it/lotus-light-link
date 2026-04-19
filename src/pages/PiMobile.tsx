@@ -2567,31 +2567,53 @@ export default function PiMobile() {
                 )}
                 {bleEngineDiag && !bleEngineDiag._error && (
                   <>
-                    {/* Pipeline-bockrutor — exakt vilka steg som passerats */}
-                    {Array.isArray(bleEngineDiag.pipeline) && bleEngineDiag.pipeline.length > 0 && (
-                      <div className="space-y-1">
-                        {bleEngineDiag.pipeline.map((step: any) => {
-                          const icon = step.status === 'ok' ? '✓' : step.status === 'pending' ? '⏳' : '✗';
-                          const color =
-                            step.status === 'ok'
-                              ? 'text-green-400'
-                              : step.status === 'pending'
-                                ? 'text-yellow-400'
-                                : 'text-destructive';
-                          return (
-                            <div key={step.id} className="flex items-start gap-1.5">
-                              <span className={`shrink-0 w-3 font-bold ${color}`}>{icon}</span>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-foreground/90">{step.label}</div>
-                                {step.detail && (
-                                  <div className="opacity-60 text-[9px] break-words">{step.detail}</div>
-                                )}
+                    {/* Pipeline-bockrutor — grupperade per system */}
+                    {Array.isArray(bleEngineDiag.pipeline) && bleEngineDiag.pipeline.length > 0 && (() => {
+                      const groupOrder: Array<{ key: string; title: string }> = [
+                        { key: 'engine', title: 'BLE-motor' },
+                        { key: 'lamp', title: 'Lampa' },
+                        { key: 'mic', title: 'Mikrofon' },
+                        { key: 'sonos', title: 'Sonos' },
+                      ];
+                      const grouped: Record<string, any[]> = { engine: [], lamp: [], mic: [], sonos: [] };
+                      for (const step of bleEngineDiag.pipeline) {
+                        const g = (step.group as string) || 'engine';
+                        (grouped[g] ?? grouped.engine).push(step);
+                      }
+                      return (
+                        <div className="space-y-2">
+                          {groupOrder.map(({ key, title }) =>
+                            grouped[key]?.length ? (
+                              <div key={key} className="space-y-0.5">
+                                <div className="text-[9px] uppercase tracking-wider opacity-60 font-semibold">{title}</div>
+                                <div className="space-y-1">
+                                  {grouped[key].map((step: any) => {
+                                    const icon = step.status === 'ok' ? '✓' : step.status === 'pending' ? '⏳' : '✗';
+                                    const color =
+                                      step.status === 'ok'
+                                        ? 'text-green-400'
+                                        : step.status === 'pending'
+                                          ? 'text-yellow-400'
+                                          : 'text-destructive';
+                                    return (
+                                      <div key={step.id} className="flex items-start gap-1.5">
+                                        <span className={`shrink-0 w-3 font-bold ${color}`}>{icon}</span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="text-foreground/90">{step.label}</div>
+                                          {step.detail && (
+                                            <div className="opacity-60 text-[9px] break-words">{step.detail}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            ) : null
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Snabb-status (rå värden) */}
                     <div className="pt-1.5 border-t border-current/10 grid grid-cols-[110px_1fr] gap-x-2 gap-y-0.5">
