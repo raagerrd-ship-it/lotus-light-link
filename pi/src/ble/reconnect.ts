@@ -1,103 +1,66 @@
 /**
- * BLE reconnection: backoff strategy, demand-based reconnection loop.
+ * BLE connection — MANUAL ONLY mode.
  *
- * STABILITY: Always uses autoConnectSaved() for reconnection — never reuses
- * stale peripheral objects which may be invalid after disconnect.
+ * Vi separerar engine från BLE-anslutning helt: motorn kör alltid, men
+ * lampan ansluts ENDAST när användaren trycker "Anslut" i UI:t (eller
+ * gör en kort save-preview). Ingen demand-baserad auto-reconnect, ingen
+ * bakgrundsloop, ingen exponential backoff.
+ *
+ * Det här filen behåller export-namnen så resten av koden inte behöver
+ * ändras — men `requestConnect()` blir en explicit single-shot-anslutning
+ * och `releaseDemand()` / `startReconnectLoop()` blir no-ops.
  */
 
-import { getDevice, isDemandActive, setDemand, getSavedDeviceId, logConnectionEvent } from './state.js';
-import { setReconnectHandler, autoConnectSaved, isConnectInProgress, waitForConnectIdle, getConsecutiveFailures, resetConsecutiveFailures } from './connect.js';
+import { isDemandActive, setDemand, getSavedDeviceId, getDevice, logConnectionEvent } from './state.js';
+import { setReconnectHandler, autoConnectSaved } from './connect.js';
 import { setReconnectTrigger } from './protocol.js';
 
-/** Reconnect with exponential backoff using fresh connections only */
-async function reconnectWithBackoff(_peripheral: any, name: string, attempt = 0): Promise<void> {
-  const maxAttempts = 5;
-  const baseDelay = 300;
+// Disable automatic reconnect på disconnect-event. Disconnect-handlern i
+// connect.ts kollar `isDemandActive()` innan den anropar reconnect-fn —
+// men vi sätter ändå handlern till en no-op för att vara säkra.
+setReconnectHandler(() => {
+  /* manual-only: no auto-reconnect */
+});
+setReconnectTrigger(() => {
+  /* manual-only: no auto-reconnect via protocol-write failure */
+});
 
-  if (getDevice() || !isDemandActive()) return;
-
-  if (attempt >= maxAttempts) {
-    logConnectionEvent({ type: 'connect_fail', device: name, detail: 'All reconnect attempts failed — background loop will retry' });
+/**
+ * Explicit, user-triggered single connect attempt.
+ * Triggas från `/api/ble/connect` när användaren klickar Anslut.
+ * Ingen retry, ingen bakgrundsloop — om det failar får användaren trycka igen.
+ */
+export async function requestConnect(): Promise<void> {
+  if (getDevice()) return; // redan ansluten
+  if (!getSavedDeviceId()) {
+    logConnectionEvent({ type: 'connect_fail', detail: 'requestConnect: ingen sparad enhet' });
     return;
   }
-
-  const delay = baseDelay * Math.pow(2, attempt);
-  logConnectionEvent({ type: 'reconnect_start', device: name, detail: `Attempt ${attempt + 1}/${maxAttempts} in ${delay}ms` });
-  await new Promise(r => setTimeout(r, delay));
-
-  if (getDevice() || !isDemandActive()) return;
-
-  // Avoid wasting our first attempt on a "skip duplicate" if a connect
-  // (e.g. user-triggered) is already running. Wait it out first.
-  if (isConnectInProgress()) {
-    logConnectionEvent({ type: 'reconnect_start', device: name, detail: 'Waiting for in-flight connect to settle' });
-    await waitForConnectIdle(12_000);
-    if (getDevice() || !isDemandActive()) return;
-  }
-
+  setDemand(true); // för UI-visning ("connecting…")
   try {
+    console.log('[BLE] Manual connect requested by user');
     await autoConnectSaved(10000);
-    if (getDevice()) return;
-  } catch {}
-
-  return reconnectWithBackoff(_peripheral, name, attempt + 1);
-}
-
-// Wire up cross-module callbacks (breaks circular dependency)
-setReconnectHandler(reconnectWithBackoff);
-setReconnectTrigger(reconnectWithBackoff);
-
-/** Signal that BLE is needed (e.g. music started playing) */
-export async function requestConnect(): Promise<void> {
-  if (isDemandActive() && getDevice()) return;
-  setDemand(true);
-  if (!getDevice() && getSavedDeviceId()) {
-    console.log('[BLE] Demand ON — connecting...');
-    await autoConnectSaved(10000);
+  } finally {
+    // Om connect failade vill vi inte att UI:t ska visa "demand-pending" för evigt.
+    if (!getDevice()) setDemand(false);
   }
-}
-
-/** Signal that BLE is no longer needed */
-export function releaseDemand(): void {
-  if (!isDemandActive()) return;
-  setDemand(false);
-  console.log('[BLE] Demand OFF — will not reconnect on next disconnect');
 }
 
 /**
- * Background reconnect loop — only reconnects when demand is active.
- *
- * Adaptiv backoff baserat på consecutiveConnectFailures:
- *   0–2 fails  → försök varje baseIntervalMs (15s default) — lampa precis offline
- *   3–9 fails  → vart 30s — sannolikt avstängd, mindre intensitet
- *   10+ fails  → var 60s — permanent offline, spara batteri/CPU
- *
- * Counter nollställs av connect.ts vid lyckad anslutning, så fungerande
- * lampor får alltid snabb reconnect även om de tidigare har varit offline.
+ * User-triggered disconnect: släpp demand-flaggan så UI:t inte visar
+ * "connecting…". Faktisk disconnect sker via `disconnect()` i nobleBle.
  */
-export function startReconnectLoop(baseIntervalMs = 15000): NodeJS.Timeout {
-  let nextAttemptAt = Date.now();
-  // Tickar 1× per sekund — billigt — och beslutar internt om det är dags.
-  return setInterval(async () => {
-    if (Date.now() < nextAttemptAt) return;
-    if (getDevice() || !getSavedDeviceId() || !isDemandActive()) {
-      // Inget att göra — håll nästa-tid kort så vi reagerar snabbt vid demand.
-      nextAttemptAt = Date.now() + baseIntervalMs;
-      return;
-    }
+export function releaseDemand(): void {
+  if (!isDemandActive()) return;
+  setDemand(false);
+  console.log('[BLE] Demand released (manual mode)');
+}
 
-    const fails = getConsecutiveFailures();
-    let interval = baseIntervalMs;                       // 15s
-    if (fails >= 10) interval = baseIntervalMs * 4;      // 60s
-    else if (fails >= 3) interval = baseIntervalMs * 2;  // 30s
-
-    nextAttemptAt = Date.now() + interval;
-    if (fails > 0 && fails % 5 === 0) {
-      logConnectionEvent({
-        type: 'reconnect_start',
-        detail: `Adaptiv backoff: ${fails} fails → nästa försök om ${Math.round(interval / 1000)}s`,
-      });
-    }
-    await autoConnectSaved(10000);
-  }, 1000);
+/**
+ * No-op i manual-mode. Vi exporterar funktionen för bakåtkompatibilitet
+ * med index.ts/configServer.ts som tidigare importerade den. Returnerar
+ * en interval som inte gör något så `clearInterval()` fortfarande funkar.
+ */
+export function startReconnectLoop(_baseIntervalMs = 15000): NodeJS.Timeout {
+  return setInterval(() => { /* no-op: manual-only mode */ }, 60_000);
 }
