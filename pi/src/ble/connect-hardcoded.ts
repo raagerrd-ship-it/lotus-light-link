@@ -70,10 +70,12 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
 
       const onDiscover = async (peripheral: any) => {
         discoverCount++;
-        const name = peripheral.advertisement?.localName ?? '(no name)';
         const isMatch = matchesHardcoded(peripheral);
-        console.log(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi}${isMatch ? ' ← MATCH' : ''}`);
+        // Logga BARA matchande enheter — annars spammar varje närliggande
+        // BLE-advertisement loggen och äter CPU på Pi Zero 2W.
         if (!isMatch) return;
+        const name = peripheral.advertisement?.localName ?? '(no name)';
+        console.log(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi} ← MATCH`);
         console.log(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
         try {
           await n.stopScanningAsync();
