@@ -2569,28 +2569,7 @@ export default function PiMobile() {
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-medium text-foreground">Sök efter enheter i närheten</span>
               <button
-                onClick={async () => {
-                  setBleScanning(true);
-                  setBleScanResults([]);
-                  setBleScanCompletedEmpty(false);
-                  try {
-                    const r = await fetch(`${piBase}/api/ble/scan`, {
-                      method: 'POST',
-                      signal: AbortSignal.timeout(15000),
-                    });
-                    const data = await r.json();
-                    if (r.ok && Array.isArray(data.devices)) {
-                      setBleScanResults(data.devices);
-                      setBleScanCompletedEmpty(data.devices.length === 0);
-                    } else {
-                      setBleScanCompletedEmpty(true);
-                    }
-                  } catch {
-                    setBleScanCompletedEmpty(true);
-                  } finally {
-                    setBleScanning(false);
-                  }
-                }}
+                onClick={handleBleScan}
                 disabled={bleScanning}
                 className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground active:bg-primary/80 disabled:opacity-50"
               >
@@ -2601,6 +2580,20 @@ export default function PiMobile() {
                 )}
               </button>
             </div>
+            {bleScanMessage && (
+              <div className={`rounded-md border px-2.5 py-2 ${
+                bleScanMessage.kind === 'info'
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive'
+              }`}>
+                <p className="text-[11px] font-medium">{bleScanMessage.text}</p>
+                {bleScanMessage.kind === 'info' && (
+                  <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                    Vänta några sekunder medan BLE-motorn startar om och sökningen körs igen automatiskt.
+                  </p>
+                )}
+              </div>
+            )}
             {bleScanResults.length > 0 && (
               <div className="space-y-1 max-h-56 overflow-y-auto">
                 {bleScanResults.map(dev => (
@@ -2624,6 +2617,7 @@ export default function PiMobile() {
                         setBleSavedName(dev.name);
                         setBleSavedAddress(null);
                         setBleScanResults([]);
+                        setBleScanMessage(null);
                         setBlePreview(true);
                         setBlePreviewSec(data.previewSeconds ?? 10);
                       } catch (e: any) {
@@ -2652,7 +2646,7 @@ export default function PiMobile() {
                 ))}
               </div>
             )}
-            {!bleScanning && bleScanResults.length === 0 && bleScanCompletedEmpty && (
+            {!bleScanning && bleScanResults.length === 0 && bleScanCompletedEmpty && !bleScanMessage && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2">
                 <p className="text-[11px] font-medium text-destructive">Inga BLE-enheter hittades</p>
                 <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
@@ -2660,7 +2654,7 @@ export default function PiMobile() {
                 </p>
               </div>
             )}
-            {!bleScanning && bleScanResults.length === 0 && !bleScanCompletedEmpty && (
+            {!bleScanning && bleScanResults.length === 0 && !bleScanCompletedEmpty && !bleScanMessage && (
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Tryck på <span className="font-medium">Sök</span> för att hitta BLEDOM-enheter i närheten. Saknas din enhet kan du lägga till MAC-adressen manuellt nedan.
               </p>
