@@ -10,7 +10,7 @@
  * måste vara den som scannar i denna process.
  */
 
-import { noble, getAdapterState, logConnectionEvent, getNobleRawState, hasNobleEverFiredStateChange } from './state.js';
+import { noble, getAdapterState, logConnectionEvent, getNobleRawState, hasNobleEverFiredStateChange, recordObservedNobleState } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 
@@ -124,19 +124,29 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       else if (typeof n.stopScanning === 'function') n.stopScanning();
     } catch {}
 
-    // Force noble's interna _state till poweredOn om den fastnat i `unknown`.
-    // På Pi åts noble's libuv stateChange-event upp av native module-init
-    // (mem://pi/ble/noble-statechange-event-loop-race). HCI-socket är frisk
-    // (caps OK + hci0 UP RUNNING + hci-probe OK), bara noble's interna guard
-    // blockerar startScanningAsync. Vi sätter state direkt så guarden släpper.
-    if (n.state !== 'poweredOn' || n._state !== 'poweredOn') {
-      const before = { state: n.state, _state: n._state };
-      try { n._state = 'poweredOn'; } catch {}
-      try { n.state = 'poweredOn'; } catch {}
-      logConnectionEvent({
-        type: 'scan_start',
-        detail: `forced noble.state poweredOn (was state=${before.state}, _state=${before._state})`,
-      });
+    // Vänta på riktig stateChange — ALDRIG mutera noble.state manuellt.
+    // Se mem://pi/ble/never-force-mutate-noble-state: mutation byter bara
+    // strängvärdet utan att noble's HCI-init körs klart, vilket ger
+    // 0 discover-events (bevisat 2026-04-18 via SSH-test).
+    if (typeof n.waitForPoweredOnAsync === 'function') {
+      const beforeWait = { state: n.state, _state: n._state };
+      try {
+        const t0 = Date.now();
+        await n.waitForPoweredOnAsync(10_000);
+        const dt = Date.now() - t0;
+        // Markera observation så early-listener-missen inte ljuger i UI:t
+        try { recordObservedNobleState('poweredOn'); } catch {}
+        logConnectionEvent({
+          type: 'scan_start',
+          detail: `waitForPoweredOnAsync OK efter ${dt}ms (was state=${beforeWait.state}, _state=${beforeWait._state})`,
+        });
+      } catch (e: any) {
+        logConnectionEvent({
+          type: 'scan_start',
+          detail: `waitForPoweredOnAsync FAIL: ${e?.message ?? e} (state=${n.state}, _state=${n._state}) — avbryter scan`,
+        });
+        throw new Error(`noble inte poweredOn inom 10s: ${e?.message ?? e}`);
+      }
     }
 
     onDiscover = (peripheral: any) => {
