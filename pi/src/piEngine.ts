@@ -278,6 +278,9 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
+  // Refractory period — minimum gap between onsets (ms) to avoid flutter on sustained transients
+  private onsetLastTime = 0;
+  private static readonly ONSET_REFRACTORY_MS = 110;
 
   private agc: AgcState;
   private cal: LightCalibration;
