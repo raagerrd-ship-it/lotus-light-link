@@ -273,11 +273,6 @@ async function main() {
   onSonosChange((state) => {
     const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
 
-    // INGEN automatisk BLE-anslutning baserat på Sonos-state. Användaren
-    // styr själv via "Anslut"-knappen. Engine fortsätter dock reagera på
-    // play/pause/volym/färg som vanligt — om en BLE-enhet är ansluten
-    // skickas paket dit, annars är det no-op.
-
     if (state.isTvMode) {
       engine.setPlaying(true);
       if (!wasTvMode) {
@@ -291,13 +286,12 @@ async function main() {
         wasTvMode = false;
       }
     }
-    
+
     if (state.volume != null) {
       engine.setVolume(state.volume);
       setAutoGainFromVolume(state.volume);
     }
 
-    // Use palette from Sonos Gateway response
     if (!state.isTvMode && state.palette && state.palette.length > 0 &&
         state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {
       lastArtUrl = state.albumArtUrl;
@@ -307,8 +301,17 @@ async function main() {
     }
   });
 
-  // 6. Start engine
+  // Start mic NU (efter noble + Sonos är redo)
+  console.log('[Boot] Starting ALSA microphone...');
+  try {
+    startMic();
+  } catch (e: any) {
+    console.error('[Boot] Mic failed (continuing without):', e.message);
+  }
+
+  // 6. Start engine + markera boot som klar
   engine.start();
+  setBootPhase('ready');
 
   // 7. Stats logging
   const statsTimer = setInterval(() => {
