@@ -50,7 +50,8 @@ function attachStateChangeListener(noble: any): void {
   try {
     noble.on?.('stateChange', (s: string) => {
       _cachedState = s;
-      console.log(`[noble-singleton] stateChange → ${s}`);
+      // Ingen extra console.log här — engine-start-minimal binder ett eget
+      // [event:stateChange]-format som matchar noble-scan-isolated.mjs.
       for (const cb of _stateChangeListeners) {
         try { cb(s); } catch (e) { console.error('[noble-singleton] listener threw:', e); }
       }
@@ -74,7 +75,8 @@ function attachStateChangeListener(noble: any): void {
  */
 export function getNoble(): any {
   if (_nobleInstance) return _nobleInstance;
-  console.log('[noble-singleton] första require av @stoprocent/noble — laddar nu (event-loopen MÅSTE vara ren)');
+  // Tyst laddning — engine-start-minimal speglar noble-scan-isolated.mjs som
+  // inte loggar något extra mellan "1. Importing" och "2. Imported".
   const mod = nodeRequire('@stoprocent/noble');
   _nobleInstance = mod?.default ?? mod;
   _loadedAt = Date.now();
