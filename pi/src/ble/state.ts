@@ -12,11 +12,13 @@ import type { ConnectedDevice, BleConnectionEvent } from './types.js';
 // ── Constants ──
 export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
+const MAX_EVENTS = 200;
+const CONNECTION_LOG_KEY = 'ble-connection-log';
 
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-18/preserve-important-ble-events';
+export const BLE_BUILD_TAG = '2026-04-19/persist-ble-events-across-respawn';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -279,8 +281,27 @@ export function bumpWorkaround(key: keyof Omit<typeof workaroundCounters, 'lastI
 }
 
 // ── Connection event log (ring buffer for diagnostics) ──
-const MAX_EVENTS = 200;
-const _connectionLog: BleConnectionEvent[] = [];
+function loadConnectionLog(): BleConnectionEvent[] {
+  try {
+    const raw = getItem(CONNECTION_LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((entry): entry is BleConnectionEvent => !!entry && typeof entry.timestamp === 'string' && typeof entry.type === 'string')
+      .slice(-MAX_EVENTS);
+  } catch {
+    return [];
+  }
+}
+
+function persistConnectionLog(): void {
+  try {
+    setItem(CONNECTION_LOG_KEY, JSON.stringify(_connectionLog));
+  } catch {}
+}
+
+const _connectionLog: BleConnectionEvent[] = loadConnectionLog();
 
 function trimConnectionLog(): void {
   while (_connectionLog.length > MAX_EVENTS) {
@@ -291,6 +312,7 @@ function trimConnectionLog(): void {
       _connectionLog.shift();
     }
   }
+  persistConnectionLog();
 }
 
 export function logConnectionEvent(event: Omit<BleConnectionEvent, 'timestamp'>): void {
