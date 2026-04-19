@@ -14,7 +14,8 @@
       "type": "node",
       "entrypoint": "pi/dist/index.js",
       "service": "lotus-light-engine",
-      "alwaysOn": true
+      "alwaysOn": true,
+      "manageService": false
     },
     "ui": {
       "type": "static",
