@@ -279,6 +279,37 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
           {!engineReady && !connected && (
             <div className="text-[10px] text-muted-foreground mt-2 ml-6">Starta BLE-motorn först.</div>
           )}
+
+          {/* BLE-output VU-meter — visar att engine faktiskt skickar data till lampan.
+              Brightness-staplen + RGB-prick är ground truth: rör sig prick + stapel
+              så går färgkommandon ut. Står de still betyder det att engine producerar
+              svart/oförändrat → lampan reagerar inte i verkligheten. */}
+          {connected && (
+            <div className="mt-2.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[8px] uppercase opacity-50 w-12">Output</span>
+                <div
+                  className="w-4 h-4 rounded-full border border-border/50 shrink-0 transition-colors"
+                  style={{ backgroundColor: `rgb(${bleOutput.r},${bleOutput.g},${bleOutput.b})` }}
+                  title={`rgb(${bleOutput.r}, ${bleOutput.g}, ${bleOutput.b})`}
+                />
+                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-[width] duration-100"
+                    style={{ width: `${Math.max(0, Math.min(100, bleOutput.brightness))}%` }}
+                  />
+                </div>
+                <span className="text-[8px] font-mono opacity-60 w-9 text-right">
+                  {Math.round(bleOutput.brightness)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] font-mono opacity-60">
+                <span className="w-12">&nbsp;</span>
+                <span>RGB {bleOutput.r},{bleOutput.g},{bleOutput.b}</span>
+                <span className="ml-auto">{lastSentRateRef.current} pkt/s · {bleOutput.sentCount} totalt</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {lastError && (
