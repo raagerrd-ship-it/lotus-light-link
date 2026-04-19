@@ -14,12 +14,16 @@
  * bindningar konkurrerar om event-loopen runt denna första access.
  *
  * API:
- *   - getNoble()        — hämtar noble-instansen (lazy require första gången)
+ *   - getNoble()        — hämtar noble-instansen (lazy createRequire första gången)
  *   - noble             — Proxy som triggar getNoble() vid första property-access
  *   - hasNobleLoaded()  — true om noble redan är laddad (för diagnostik)
  *   - onNobleStateChange(cb) — registrera lyssnare som anropas vid varje stateChange
  *                              (även retroaktivt om state redan är cachad)
  */
+
+import { createRequire } from 'module';
+
+const nodeRequire = createRequire(import.meta.url);
 
 let _nobleInstance: any = null;
 let _loadedAt: number | null = null;
@@ -51,7 +55,6 @@ function attachStateChangeListener(noble: any): void {
         try { cb(s); } catch (e) { console.error('[noble-singleton] listener threw:', e); }
       }
     });
-    // Om noble redan har en initial state (t.ex. från en cachad require)
     const initial = noble.state ?? noble._state;
     if (initial && initial !== 'unknown') {
       _cachedState = initial;
@@ -65,15 +68,14 @@ function attachStateChangeListener(noble: any): void {
 }
 
 /**
- * Hämta noble-instansen. Första anropet require:ar `@stoprocent/noble` och
- * attach:ar omedelbart stateChange-listenern. Efterföljande anrop returnerar
- * samma instans.
+ * Hämta noble-instansen. Första anropet laddar `@stoprocent/noble` via
+ * createRequire(import.meta.url) så det fungerar i Node ESM, och attach:ar
+ * omedelbart stateChange-listenern. Efterföljande anrop returnerar samma instans.
  */
 export function getNoble(): any {
   if (_nobleInstance) return _nobleInstance;
   console.log('[noble-singleton] första require av @stoprocent/noble — laddar nu (event-loopen MÅSTE vara ren)');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require('@stoprocent/noble');
+  const mod = nodeRequire('@stoprocent/noble');
   _nobleInstance = mod?.default ?? mod;
   _loadedAt = Date.now();
   attachStateChangeListener(_nobleInstance);
