@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase, ensureAdapterUp } from './nobleBle.js';
 import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
 import { getWatchdogGiveUpReason } from './ble/watchdog.js';
 import type { GainCalPoint } from './alsaMic.js';
@@ -374,10 +374,15 @@ export function startConfigServer(port = 3050): void {
       process.exit(1);
     }, 200);
   });
-  // Legacy /api/ble/start — INGEN auto-connect i manual-only-läget.
-  // Endpoint:en finns kvar för bakåtkompatibilitet och rapporterar bara
-  // adapter-state. Anslutning sker via /api/ble/connect (knapp i UI:t).
+  // /api/ble/start — användar-trigger för att "väcka" BLE-motorn (rfkill
+  // unblock + hci0 up + vänta på noble.poweredOn). Gör INGEN auto-connect till
+  // sparad enhet — det sker via /api/ble/connect (manual-only-policy).
   app.post('/api/ble/start', async (_req, res) => {
+    try {
+      await ensureAdapterUp();
+    } catch (e: any) {
+      console.warn('[API] /ble/start: ensureAdapterUp failed:', e?.message ?? e);
+    }
     try {
       const firstState = await waitForFirstStateChange(3000);
       console.log(`[BLE] /start: noble first stateChange = ${firstState}`);
