@@ -61,11 +61,37 @@ if [ -n "$TOTAL_RAM" ]; then
 fi
 
 taskset -c "$CORE" sudo apt-get update -qq
+# python3.11 + python3.11-distutils krävs för att bygga alsa-capture@0.3.0.
+# Paketet använder gammal node-gyp som importerar `distutils.version.StrictVersion`
+# vilket TOGS BORT i Python 3.12+. På Bookworm/Debian 13 är default python3 = 3.13
+# → bygget kraschar tyst → ingen build/Release/capture.node skapas → arecord-fallback.
+# Lösning: installera python3.11 explicit och peka node-gyp på den vid build.
+taskset -c "$CORE" sudo apt-get install -y -qq \
+  bluez libbluetooth-dev \
+  libasound2-dev alsa-utils \
+  build-essential python3 python3-dev \
+  python3.11 python3.11-dev python3.11-distutils \
+  curl 2>/dev/null || \
 taskset -c "$CORE" sudo apt-get install -y -qq \
   bluez libbluetooth-dev \
   libasound2-dev alsa-utils \
   build-essential python3 python3-dev \
   curl
+
+# Hitta en python <3.12 för node-gyp (alsa-capture). Faller tillbaka på systemets
+# python3 om ingen 3.11 finns — då kommer alsa-capture-bygget failas ändå men
+# resten av installationen fortsätter.
+GYP_PYTHON=""
+for CAND in python3.11 python3.10 python3.9; do
+  if command -v "$CAND" >/dev/null 2>&1; then
+    GYP_PYTHON="$(command -v "$CAND")"
+    echo "  ✓ node-gyp använder $CAND ($GYP_PYTHON) för native builds"
+    break
+  fi
+done
+if [ -z "$GYP_PYTHON" ]; then
+  echo "  ⚠ Hittade inte python3.11 — alsa-capture-bygget kan failas på Python 3.13"
+fi
 
 # ─── 2. Node.js 24 LTS ───────────────────────────────────
 # Måste matcha GitHub Actions release-bygget (Node 24 ARM64), annars
@@ -171,21 +197,48 @@ echo "  Native-moduler klara ✓"
 # libasound2-dev där) och hoppas över i dist.tar.gz. Vi tvingar install här
 # på Pi:n där libasound2-dev + build-essential finns. Utan detta faller
 # alsaMic.ts tillbaka på arecord-subprocess (högre latens, mer CPU).
+#
+# VIKTIGT: alsa-capture@0.3.0 levereras med node-gyp 9.x som anropar
+# `from distutils.version import StrictVersion`. distutils är BORTTAGEN i
+# Python 3.12+. Default `python3` på Bookworm är 3.13 → bygget kraschar tyst
+# och node_modules/alsa-capture/build/Release/capture.node skapas aldrig.
+# Lösning: peka node-gyp på python3.11 (eller äldre) via env PYTHON + npm-config.
 echo ""
 echo "[ALSA] Säkerställer native alsa-capture-bindning..."
-if [ ! -d "$PI_DIR/node_modules/alsa-capture" ]; then
-  echo "  alsa-capture saknas — installerar mot Node $(node -v) ARM64..."
-  cd "$PI_DIR" && nice -n 15 taskset -c "$CORE" npm install alsa-capture@^0.3.0 --no-audit --no-fund --build-from-source 2>&1 | tail -10
-  if [ -d "$PI_DIR/node_modules/alsa-capture" ]; then
-    echo "  ✓ Native alsa-capture installerad"
-  else
-    echo "  ⚠ alsa-capture-build failade — fortsätter med arecord-fallback"
-  fi
+
+if [ -n "$GYP_PYTHON" ]; then
+  export PYTHON="$GYP_PYTHON"
+  export npm_config_python="$GYP_PYTHON"
+  (cd "$PI_DIR" && npm config set python "$GYP_PYTHON" 2>/dev/null) || true
+  echo "  PYTHON=$GYP_PYTHON exporterad för node-gyp"
+fi
+
+NODE_BIN_VER="$(node -v 2>/dev/null || echo unknown)"
+ALSA_NODE_FILE="$PI_DIR/node_modules/alsa-capture/build/Release/capture.node"
+
+cd "$PI_DIR"
+rm -rf node_modules/alsa-capture
+echo "  Installerar alsa-capture@^0.3.0 mot Node $NODE_BIN_VER ($(uname -m))..."
+nice -n 15 taskset -c "$CORE" npm install alsa-capture@^0.3.0 \
+  --no-audit --no-fund --no-save 2>&1 | tail -15
+
+if [ -f "$ALSA_NODE_FILE" ]; then
+  echo "  ✓ Native alsa-capture byggd (capture.node finns)"
 else
-  # Finns men kanske byggd mot fel ABI — tvinga rebuild
-  echo "  Bygger om alsa-capture mot Node $(node -v) ARM64..."
-  cd "$PI_DIR" && nice -n 15 taskset -c "$CORE" npm rebuild alsa-capture --build-from-source 2>&1 | tail -5
-  echo "  ✓ alsa-capture rebuild klar"
+  echo "  ⚠ capture.node saknas efter install — försöker manuell node-gyp rebuild..."
+  if [ -d "$PI_DIR/node_modules/alsa-capture" ]; then
+    cd "$PI_DIR/node_modules/alsa-capture" && \
+      ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
+        nice -n 15 taskset -c "$CORE" \
+        "$PI_DIR/node_modules/.bin/node-gyp" rebuild 2>&1 | tail -10 || true
+    cd "$PI_DIR"
+  fi
+  if [ -f "$ALSA_NODE_FILE" ]; then
+    echo "  ✓ Native alsa-capture byggd via manuell rebuild"
+  else
+    echo "  ✗ alsa-capture-build failade — engine använder arecord-fallback"
+    echo "    Felsök: cd $PI_DIR && PYTHON=$GYP_PYTHON npm install alsa-capture --foreground-scripts"
+  fi
 fi
 
 # ─── BLE permissions ─────────────────────────────────────────
