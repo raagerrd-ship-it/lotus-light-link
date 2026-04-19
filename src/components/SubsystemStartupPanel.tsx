@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bluetooth, Mic, Music, Loader2, Check, X, Play } from "lucide-react";
+import { Bluetooth, Mic, Music, Loader2, Check, X, Play, ChevronDown, ChevronRight } from "lucide-react";
 
 type SubsystemId = "bleEngine" | "mic" | "sonos";
 type Status = "idle" | "starting" | "ready" | "error";
