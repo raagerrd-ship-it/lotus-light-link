@@ -820,10 +820,13 @@ function GlobalSettingsView({
           <span className="text-muted-foreground font-mono text-xs">{tickMs} ms</span>
         </div>
         <input
-          type="range" min={10} max={50} step={1} value={tickMs}
+          type="range" min={25} max={50} step={1} value={tickMs}
           onChange={(e) => setTickMs(parseInt(e.target.value))}
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Styr hela kedjan: mic→FFT→färg→BLE. {Math.round(1000 / tickMs)} pkt/s. Min 25ms = 40 pkt/s.
+        </p>
 
         <div className="flex justify-between text-sm mb-1 mt-5">
           <span>Dimming gamma</span>
