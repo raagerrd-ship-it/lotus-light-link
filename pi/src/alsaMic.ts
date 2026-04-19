@@ -288,6 +288,19 @@ export function getNoiseGateState(): typeof _ngState {
 let capture: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
+/** Sätt ALSA period-storlek från tickMs (period = tickMs/2 → 2 FFT-frames/tick).
+ *  Auto-restartar capture om aktiv. ~200ms audio-glitch vid omstart. */
+export function setTickHopMs(tickMs: number): void {
+  const newHop = Math.max(64, Math.round((tickMs / 2) * (SAMPLE_RATE / 1000)));
+  if (newHop === HOP_SIZE) return;
+  HOP_SIZE = newHop;
+  console.log(`[ALSA] HOP_SIZE → ${HOP_SIZE} frames (${(HOP_SIZE / SAMPLE_RATE * 1000).toFixed(1)}ms, 2 frames/tick @ ${tickMs}ms)`);
+  if (capture) {
+    stopMic();
+    startMic();
+  }
+}
+
 // Software mic gain — multiplier applied to raw PCM samples before processing
 let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
 let micGainAuto = 1.0;   // Auto-gain multiplier from Sonos volume
