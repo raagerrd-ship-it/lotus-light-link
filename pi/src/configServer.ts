@@ -10,10 +10,35 @@ import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase } from './nobleBle.js';
 import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
 import { getWatchdogGiveUpReason } from './ble/watchdog.js';
-import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
+import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
-import { invalidateIdleColorCache } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
+
+type AlsaMicModule = typeof import('./alsaMic.js');
+
+let attachedEngine: PiLightEngine | null = null;
+let attachedMic: AlsaMicModule | null = null;
+let invalidateIdleColorCacheFn: (() => void) | null = null;
+
+export function attachConfigRuntime(runtime: {
+  engine: PiLightEngine;
+  mic: AlsaMicModule;
+  invalidateIdleColorCache?: () => void;
+}): void {
+  attachedEngine = runtime.engine;
+  attachedMic = runtime.mic;
+  invalidateIdleColorCacheFn = runtime.invalidateIdleColorCache ?? null;
+
+  try {
+    const saved = getItem('gain-cal-points');
+    if (saved) {
+      const { point1, point2 } = JSON.parse(saved);
+      attachedMic.setGainCalPoints(point1 ?? null, point2 ?? null);
+    }
+  } catch {}
+
+  console.log('[Config] Runtime attached (engine + mic)');
+}
 
 // Version info — refresh on demand so UI reflects the latest deployed release
 let SERVICE_VERSION = '1.0.0';
@@ -62,7 +87,19 @@ function refreshVersionInfo(): void {
 
 refreshVersionInfo();
 
-export function startConfigServer(engine: PiLightEngine, port = 3050): void {
+export function startConfigServer(port = 3050): void {
+  const getEngine = () => attachedEngine;
+  const getMic = () => attachedMic;
+  const requireEngine = (res: any): PiLightEngine | null => {
+    if (attachedEngine) return attachedEngine;
+    res.status(503).json({ error: 'Engine bootar fortfarande — vänta på BLE poweredOn' });
+    return null;
+  };
+  const requireMic = (res: any): AlsaMicModule | null => {
+    if (attachedMic) return attachedMic;
+    res.status(503).json({ error: 'Mikrofonmodulen laddas efter BLE-init — försök igen om en stund' });
+    return null;
+  };
 
   const app = express();
   app.use(express.json());
@@ -117,6 +154,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   app.get('/api/status', (_req, res) => {
     refreshVersionInfo();
     const sonos = getSonosState();
+    const engine = getEngine();
     res.json({
       ok: true,
       bootPhase: getBootPhase(),
@@ -137,12 +175,19 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       branch: GIT_BRANCH,
       version: SERVICE_VERSION,
       sonos,
-      engine: {
-        running: true,
-        tickMs: engine.getTickMs(),
-        hz: Math.round(1000 / engine.getTickMs()),
-        palette: engine.getPalette(),
-      },
+      engine: engine
+        ? {
+            running: true,
+            tickMs: engine.getTickMs(),
+            hz: Math.round(1000 / engine.getTickMs()),
+            palette: engine.getPalette(),
+          }
+        : {
+            running: false,
+            tickMs: null,
+            hz: null,
+            palette: [],
+          },
     });
   });
 
@@ -194,6 +239,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     }
 
     // Preview: run engine tick loop for 10s (sends idle color naturally), then stop + disconnect
+    const engine = requireEngine(res);
+    if (!engine) return;
     engine.setPlaying(true);
     setTimeout(() => {
       engine.setPlaying(false);
@@ -554,6 +601,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   });
 
   app.put('/api/calibration', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     const current = getItem('light-calibration');
     const merged = { ...(current ? JSON.parse(current) : {}), ...req.body };
     setItem('light-calibration', JSON.stringify(merged));
@@ -563,17 +612,22 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Raw mode (for gain calibration) ---
   app.put('/api/raw-mode', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     const on = !!req.body.enabled;
     engine.setRawMode(on);
     res.json({ ok: true, rawMode: on });
   });
 
   app.get('/api/raw-mode', (_req, res) => {
-    res.json({ enabled: engine.isRawMode() });
+    const engine = getEngine();
+    res.json({ enabled: engine ? engine.isRawMode() : false });
   });
 
   // --- Color ---
   app.put('/api/color', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     const { r, g, b } = req.body;
     if (typeof r === 'number' && typeof g === 'number' && typeof b === 'number') {
       engine.setColor([r, g, b]);
@@ -593,7 +647,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     const { color } = req.body;
     if (Array.isArray(color) && color.length === 3) {
       setItem('idle-color', JSON.stringify(color));
-      invalidateIdleColorCache(); // clear cache so next heartbeat picks up new color
+      invalidateIdleColorCacheFn?.(); // clear cache when engine runtime has attached
       res.json({ ok: true });
     } else {
       res.status(400).json({ error: 'Need color: [r,g,b]' });
@@ -602,6 +656,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Tick rate ---
   app.put('/api/tick-ms', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     const { tickMs } = req.body;
     if (typeof tickMs === 'number' && tickMs >= 10 && tickMs <= 50) {
       engine.setTickMs(tickMs);
@@ -617,13 +673,16 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Microphone device ---
   app.get('/api/mic-device', (_req, res) => {
-    res.json({ device: getAlsaDevice() });
+    const mic = getMic();
+    res.json({ device: mic ? mic.getAlsaDevice() : (getItem('alsa-device') || 'plughw:0,0') });
   });
 
   app.put('/api/mic-device', (req, res) => {
+    const mic = requireMic(res);
+    if (!mic) return;
     const { device } = req.body;
     if (typeof device === 'string' && device.length > 0) {
-      setAlsaDevice(device);
+      mic.setAlsaDevice(device);
       setItem('alsa-device', device);
       res.json({ ok: true, device });
     } else {
@@ -633,13 +692,17 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
-    res.json({ gain: getMicGain() });
+    const mic = getMic();
+    const saved = Number(getItem('mic-gain') || '15');
+    res.json({ gain: mic ? mic.getMicGain() : saved });
   });
 
   app.put('/api/mic-gain', (req, res) => {
+    const mic = requireMic(res);
+    if (!mic) return;
     const { gain } = req.body;
     if (typeof gain === 'number' && gain >= 0.1 && gain <= 50) {
-      setMicGain(gain);
+      mic.setMicGain(gain);
       setItem('mic-gain', String(gain));
       res.json({ ok: true, gain });
     } else {
@@ -649,44 +712,47 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
  
    // --- Auto-gain toggle ---
    app.get('/api/auto-gain', (_req, res) => {
-     res.json({ enabled: isAutoGainEnabled(), multiplier: getAutoGainMultiplier(), effective: getEffectiveGain() });
+     const mic = getMic();
+     res.json({
+       enabled: mic ? mic.isAutoGainEnabled() : false,
+       multiplier: mic ? mic.getAutoGainMultiplier() : 1,
+       effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
+     });
    });
    app.put('/api/auto-gain', (req, res) => {
+     const mic = requireMic(res);
+     if (!mic) return;
      const { enabled } = req.body;
      if (typeof enabled === 'boolean') {
-       if (enabled) enableAutoGain(); else disableAutoGain();
-       res.json({ ok: true, enabled: isAutoGainEnabled(), multiplier: getAutoGainMultiplier(), effective: getEffectiveGain() });
+       if (enabled) mic.enableAutoGain(); else mic.disableAutoGain();
+       res.json({ ok: true, enabled: mic.isAutoGainEnabled(), multiplier: mic.getAutoGainMultiplier(), effective: mic.getEffectiveGain() });
      } else {
        res.status(400).json({ error: 'enabled must be boolean' });
      }
    });
 
    // --- Gain calibration (two-point) ---
-   // Load saved calibration at startup
-   try {
-     const saved = getItem('gain-cal-points');
-     if (saved) {
-       const { point1, point2 } = JSON.parse(saved);
-       setGainCalPoints(point1 ?? null, point2 ?? null);
-     }
-   } catch {}
+   // Saved gain-cal points appliceras först när alsaMic har attachats efter BLE-init.
 
    app.get('/api/gain-calibration', (_req, res) => {
-     const { point1, point2 } = getGainCalPoints();
-     res.json({ point1, point2 });
+     const mic = getMic();
+     const points = mic ? mic.getGainCalPoints() : { point1: null, point2: null };
+     res.json(points);
    });
 
    app.put('/api/gain-calibration', (req, res) => {
+     const mic = requireMic(res);
+     if (!mic) return;
      const { point1, point2 } = req.body;
-     setGainCalPoints(point1 ?? null, point2 ?? null);
+     mic.setGainCalPoints(point1 ?? null, point2 ?? null);
      setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
-     // Auto-enable auto-gain when calibration is set
-     if (point1 && point2) enableAutoGain();
-     res.json({ ok: true, ...getGainCalPoints() });
+     if (point1 && point2) mic.enableAutoGain();
+     res.json({ ok: true, ...mic.getGainCalPoints() });
    });
 
    app.delete('/api/gain-calibration', (_req, res) => {
-     setGainCalPoints(null, null);
+     const mic = getMic();
+     mic?.setGainCalPoints(null, null);
      setItem('gain-cal-points', JSON.stringify({ point1: null, point2: null }));
      res.json({ ok: true });
    });
@@ -805,6 +871,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   let fadeAbort = false;
 
   app.post('/api/ble-fade-test', async (_req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     if (fadeRunning) {
       return res.status(409).json({ error: 'Test already running' });
     }
@@ -854,10 +922,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   app.post('/api/ble-fade-test/stop', (_req, res) => {
     const lastWps = fadeCurrentWps;
     fadeAbort = true;
-    // Turn off after stop
     sendRawColor(0, 0, 0);
     fadeRunning = false;
-    engine.resume(); // Resume engine on manual stop
+    getEngine()?.resume(); // Resume engine on manual stop if runtime is attached
     res.json({ ok: true, lastWps });
   });
 
@@ -953,19 +1020,21 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Diagnostics recording ---
   app.post('/api/diagnostics/record', async (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     if (engine.isRecording()) {
       return res.status(409).json({ error: 'Recording already in progress' });
     }
     const durationMs = typeof req.body?.durationMs === 'number' ? Math.min(10000, Math.max(1000, req.body.durationMs)) : 5000;
     res.json({ ok: true, durationMs });
-    // Record runs in background; client polls /api/diagnostics/recording
     engine.startRecording(durationMs).then(data => {
-      // Store last recording for retrieval
       (engine as any)._lastRecordingData = data;
     });
   });
 
   app.get('/api/diagnostics/recording', (_req, res) => {
+    const engine = getEngine();
+    if (!engine) return res.json({ status: 'booting' });
     if (engine.isRecording()) {
       return res.json({ status: 'recording' });
     }
@@ -979,6 +1048,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   // --- Profiler ---
   app.post('/api/profile', async (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     if (engine.isProfiling()) {
       return res.status(409).json({ error: 'Profiling already in progress' });
     }
@@ -994,6 +1065,8 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   });
 
   app.get('/api/profile', (_req, res) => {
+    const engine = getEngine();
+    if (!engine) return res.json({ status: 'booting' });
     if (engine.isProfiling()) {
       return res.json({ status: 'profiling' });
     }
@@ -1006,6 +1079,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
   });
 
   app.get('/api/diagnostics', (_req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    const mic = getMic();
     const diag = engine.getDiagnostics();
     const cal = engine.getCalibration();
     res.json({
@@ -1021,10 +1097,10 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         transientBoost: cal.transientBoost,
       },
       micGain: {
-        base: getMicGain(),
-        autoGainEnabled: isAutoGainEnabled(),
-        autoMultiplier: getAutoGainMultiplier(),
-        effective: getEffectiveGain(),
+        base: mic ? mic.getMicGain() : Number(getItem('mic-gain') || '15'),
+        autoGainEnabled: mic ? mic.isAutoGainEnabled() : false,
+        autoMultiplier: mic ? mic.getAutoGainMultiplier() : 1,
+        effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
       },
       ranges: {
         rawRms:        { ok: [0.01, 0.5],  warn: '0 = ingen signal' },
