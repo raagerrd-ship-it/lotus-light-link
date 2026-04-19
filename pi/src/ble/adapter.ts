@@ -3,6 +3,7 @@
  */
 
 import { noble, getAdapterState, logConnectionEvent, processHasBtCaps, bumpWorkaround, getNobleRawState } from './state.js';
+import { runShellScript, runShellRead } from './sysExec.js';
 export { processHasBtCaps };
 
 /** Stop noble scanning (no HCI release — noble keeps the socket) */
@@ -124,7 +125,6 @@ export async function ensureAdapterUp(): Promise<boolean> {
   //
   // Använder runShellScript (PATH-safe) istället för bash -lc — login-shell
   // har tom PATH under systemd user-service, se mem://no-bash-lc-for-system-tools.
-  const { runShellScript } = require('./sysExec.js');
   runShellScript(
     'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
     '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
@@ -183,7 +183,6 @@ export function normalizeBleKey(value: string | null | undefined): string {
  * Memory: mem://pi/ble/no-bash-lc-for-system-tools
  */
 export function isHci0Up(): boolean {
-  const { runShellRead } = require('./sysExec.js');
   const out = runShellRead('hciconfig hci0', { timeoutMs: 1500 });
   return /UP\s+RUNNING/.test(out);
 }
