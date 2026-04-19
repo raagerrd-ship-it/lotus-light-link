@@ -18,7 +18,7 @@ const CONNECTION_LOG_KEY = 'ble-connection-log';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-19/scan-btmgmt-find';
+export const BLE_BUILD_TAG = '2026-04-19/release-noble-when-no-saved';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -497,4 +497,43 @@ export function getNobleGuardPatchResult(): { ok: boolean; methods: string[]; er
 }
 
 export { noble };
+
+// ── Release noble HCI/mgmt resources ──
+// När det inte finns någon sparad enhet behöver noble inte hålla mgmt-/HCI-
+// socketen — den blockerar bara `btmgmt find` (mgmt tillåter en discovery
+// åt gången). Vi anropar noble's interna stop:ar utan att unloada modulen.
+// Idempotent och säker att kalla flera gånger.
+let _nobleReleased = false;
+export function isNobleReleased(): boolean { return _nobleReleased; }
+
+export async function releaseNobleResources(reason: string): Promise<void> {
+  const n: any = noble;
+  const errors: string[] = [];
+  try {
+    if (typeof n.stopScanningAsync === 'function') {
+      try { await n.stopScanningAsync(); } catch (e: any) { errors.push(`stopScanningAsync: ${e?.message ?? e}`); }
+    } else if (typeof n.stopScanning === 'function') {
+      try { n.stopScanning(); } catch (e: any) { errors.push(`stopScanning: ${e?.message ?? e}`); }
+    }
+    // @stoprocent/noble exponerar `_bindings` med både `_hci` (raw HCI-socket)
+    // och en mgmt-binding. `stop()` på bindings frigör båda socketsen.
+    const bindings = n._bindings ?? n.bindings;
+    if (bindings) {
+      if (typeof bindings.stop === 'function') {
+        try { bindings.stop(); } catch (e: any) { errors.push(`bindings.stop: ${e?.message ?? e}`); }
+      }
+      const hci = bindings._hci ?? bindings.hci;
+      if (hci && typeof hci.stop === 'function') {
+        try { hci.stop(); } catch (e: any) { errors.push(`hci.stop: ${e?.message ?? e}`); }
+      }
+    }
+  } catch (e: any) {
+    errors.push(`outer: ${e?.message ?? e}`);
+  }
+
+  _nobleReleased = true;
+  const summary = errors.length ? ` (warnings: ${errors.join('; ')})` : '';
+  console.log(`[BLE] noble HCI/mgmt resources released — ${reason}${summary}`);
+  logConnectionEvent({ type: 'disconnect', detail: `noble released — ${reason}${summary}` });
+}
 
