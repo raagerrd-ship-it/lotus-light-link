@@ -1,68 +1,52 @@
 /**
- * BLE scanning — noble-baserad scan.
+ * BLE scanning — noble-baserad scan-loop.
  *
  * Vi använder noble.startScanningAsync() direkt eftersom noble redan äger
  * mgmt-kanalen i denna process — ingen annan binär (btmgmt, hcitool) kan
  * scanna parallellt utan att få "0x0a Busy" eller "Operation not permitted".
  *
- * Bevis (2026-04-19): manuell test `sudo timeout 4 btmgmt find` medan engine
- * kör → "Unable to start discovery. status 0x0a (Busy)". Slutsats: noble
- * måste vara den som scannar i denna process.
+ * Sekvens (i ordning):
+ *   1. Guards (redan scanning? scan-connect aktivt?)
+ *   2. Init metrics + scanning=true
+ *   3. Logga "Väntar på poweredOn"
+ *   4. await noble.waitForPoweredOnAsync(10s)  ← INGEN watchdog än
+ *   5. Logga "poweredOn OK — startScanningAsync …"
+ *   6. Arma watchdog (timeoutMs + 5s)
+ *   7. Registrera discover-listener
+ *   8. await startScanningAsync → vänta timeoutMs → stopScanningAsync
+ *   9. Logga scan_done, finally: cancel watchdog + remove listener
+ *
+ * Metrics: ./scan-metrics.ts
+ * Watchdog: ./scan-watchdog.ts
  */
 
-import { noble, getAdapterState, logConnectionEvent, getNobleRawState, hasNobleEverFiredStateChange, recordObservedNobleState } from './state.js';
+import {
+  noble,
+  getAdapterState,
+  logConnectionEvent,
+  getNobleRawState,
+  hasNobleEverFiredStateChange,
+  recordObservedNobleState,
+} from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
+import { scanMetrics, nextScanId, resetMetricsForNewScan, finalizeMetrics } from './scan-metrics.js';
+import { armScanWatchdog, type ScanWatchdogHandle } from './scan-watchdog.js';
+
+export { getScanMetrics, type BleScanMetrics } from './scan-metrics.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
-
 const discoveredPeripherals = new Map<string, any>();
-
-export interface BleScanMetrics {
-  phase: 'idle' | 'starting' | 'scanning' | 'stopping';
-  active: boolean;
-  activeSince: string | null;
-  lastScanId: number;
-  lastStartedAt: string | null;
-  lastStartOkAt: string | null;
-  lastStoppedAt: string | null;
-  lastDurationMs: number | null;
-  lastRawDiscoverCount: number;
-  lastResultCount: number;
-  lastStartError: string | null;
-  lastStopError: string | null;
-  lastWatchdogAt: string | null;
-  // Behålls för backward-compat med UI:t men sätts alltid till null nu.
-  hcitool: null;
-}
-
-let _scanSeq = 0;
-const scanMetrics: BleScanMetrics = {
-  phase: 'idle',
-  active: false,
-  activeSince: null,
-  lastScanId: 0,
-  lastStartedAt: null,
-  lastStartOkAt: null,
-  lastStoppedAt: null,
-  lastDurationMs: null,
-  lastRawDiscoverCount: 0,
-  lastResultCount: 0,
-  lastStartError: null,
-  lastStopError: null,
-  lastWatchdogAt: null,
-  hcitool: null,
-};
 
 export function getLastScanResults(): DiscoveredDevice[] { return lastScanResults; }
 export function isScanning(): boolean { return scanning; }
-export function getScanMetrics(): BleScanMetrics { return { ...scanMetrics }; }
 export function getDiscoveredPeripheral(id: string): any | undefined {
   return discoveredPeripherals.get(id.toLowerCase());
 }
 
 export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice[]> {
+  // 1. Guards
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
     return lastScanResults;
@@ -72,50 +56,19 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     return lastScanResults;
   }
 
+  // 2. Init
   scanning = true;
   discoveredPeripherals.clear();
   const found = new Map<string, DiscoveredDevice>();
   const scanStartedAt = Date.now();
-  const scanId = ++_scanSeq;
-  scanMetrics.phase = 'starting';
-  scanMetrics.active = true;
-  scanMetrics.activeSince = new Date(scanStartedAt).toISOString();
-  scanMetrics.lastScanId = scanId;
-  scanMetrics.lastStartedAt = new Date(scanStartedAt).toISOString();
-  scanMetrics.lastStartOkAt = null;
-  scanMetrics.lastStoppedAt = null;
-  scanMetrics.lastDurationMs = null;
-  scanMetrics.lastRawDiscoverCount = 0;
-  scanMetrics.lastResultCount = 0;
-  scanMetrics.lastStartError = null;
-  scanMetrics.lastStopError = null;
-  scanMetrics.hcitool = null;
+  resetMetricsForNewScan(scanStartedAt, nextScanId());
 
   const n: any = noble;
   let onDiscover: ((p: any) => void) | null = null;
-  let watchdog: ReturnType<typeof setTimeout> | null = null;
-
-  // Watchdog täcker bara faktisk scan/stop-fas — inte väntan på poweredOn.
-  const armWatchdog = () => {
-    watchdog = setTimeout(() => {
-      if (scanning) {
-        scanning = false;
-        scanMetrics.phase = 'idle';
-        scanMetrics.active = false;
-        scanMetrics.activeSince = null;
-        scanMetrics.lastStoppedAt = new Date().toISOString();
-        scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
-        scanMetrics.lastResultCount = found.size;
-        scanMetrics.lastWatchdogAt = new Date().toISOString();
-        logConnectionEvent({
-          type: 'scan_done',
-          detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms`,
-        });
-      }
-    }, timeoutMs + 5000);
-  };
+  let watchdog: ScanWatchdogHandle | null = null;
 
   try {
+    // 3. Pre-wait log
     logConnectionEvent({
       type: 'scan_start',
       detail: `Väntar på poweredOn före scan (scan=${timeoutMs}ms, wait=10000ms), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
@@ -127,17 +80,14 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       else if (typeof n.stopScanning === 'function') n.stopScanning();
     } catch {}
 
-    // Vänta på riktig stateChange — ALDRIG mutera noble.state manuellt.
-    // Se mem://pi/ble/never-force-mutate-noble-state: mutation byter bara
-    // strängvärdet utan att noble's HCI-init körs klart, vilket ger
-    // 0 discover-events (bevisat 2026-04-18 via SSH-test).
+    // 4. Vänta på riktig stateChange — ALDRIG mutera noble.state manuellt.
+    // Se mem://pi/ble/never-force-mutate-noble-state.
     if (typeof n.waitForPoweredOnAsync === 'function') {
       const beforeWait = { state: n.state, _state: n._state };
       try {
         const t0 = Date.now();
         await n.waitForPoweredOnAsync(10_000);
         const dt = Date.now() - t0;
-        // Markera observation så early-listener-missen inte ljuger i UI:t
         try { recordObservedNobleState('poweredOn'); } catch {}
         logConnectionEvent({
           type: 'scan_start',
@@ -152,12 +102,22 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       }
     }
 
+    // 5. Scan-start log
     logConnectionEvent({
       type: 'scan_start',
       detail: `poweredOn OK — startScanningAsync ${timeoutMs}ms (allowDuplicates), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
     });
-    armWatchdog();
 
+    // 6. Arma watchdog NU (efter wait, så 10s wait inte räknas in i 9s-fönstret)
+    watchdog = armScanWatchdog({
+      timeoutMs,
+      scanStartedAt,
+      isScanning: () => scanning,
+      releaseScanFlag: () => { scanning = false; },
+      getFoundCount: () => found.size,
+    });
+
+    // 7. Discover listener
     onDiscover = (peripheral: any) => {
       try {
         const idRaw: string = peripheral?.id ?? peripheral?.uuid ?? peripheral?.address ?? '';
@@ -188,11 +148,9 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         console.error('[BLE:scan] discover handler error:', e?.message ?? e);
       }
     };
-
     n.on('discover', onDiscover);
 
-    // Starta scanning. Tomma services + allowDuplicates=true → vi får alla
-    // BLE-enheter och uppdaterad RSSI per advert.
+    // 8. Starta scan
     try {
       await n.startScanningAsync([], true);
       scanMetrics.phase = 'scanning';
@@ -206,10 +164,8 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       throw e;
     }
 
-    // Vänta klart timeoutMs.
     await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
 
-    // Stoppa scan.
     scanMetrics.phase = 'stopping';
     try {
       if (typeof n.stopScanningAsync === 'function') await n.stopScanningAsync();
@@ -219,12 +175,8 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     }
 
     lastScanResults = Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name));
-    scanMetrics.phase = 'idle';
-    scanMetrics.active = false;
-    scanMetrics.activeSince = null;
     scanMetrics.lastStoppedAt = new Date().toISOString();
     scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
-    scanMetrics.lastResultCount = lastScanResults.length;
 
     logConnectionEvent({
       type: 'scan_done',
@@ -233,9 +185,6 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
 
     return lastScanResults;
   } catch (e: any) {
-    scanMetrics.phase = 'idle';
-    scanMetrics.active = false;
-    scanMetrics.activeSince = null;
     scanMetrics.lastStoppedAt = new Date().toISOString();
     scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
     if (!scanMetrics.lastStartError) scanMetrics.lastStartError = e?.message ?? String(e);
@@ -244,16 +193,11 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     console.error(`[BLE] scan error: ${e?.message ?? e}`);
     return lastScanResults;
   } finally {
-    if (watchdog) clearTimeout(watchdog);
+    if (watchdog) watchdog.cancel();
     if (onDiscover) {
       try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
     }
-    scanMetrics.phase = 'idle';
-    scanMetrics.active = false;
-    scanMetrics.activeSince = null;
-    if (!scanMetrics.lastStoppedAt) scanMetrics.lastStoppedAt = new Date().toISOString();
-    if (scanMetrics.lastDurationMs == null) scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
-    scanMetrics.lastResultCount = lastScanResults.length;
+    finalizeMetrics(scanStartedAt, lastScanResults.length);
     scanning = false;
   }
 }
