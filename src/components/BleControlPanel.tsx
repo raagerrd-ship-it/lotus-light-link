@@ -28,6 +28,15 @@ interface LogEntry {
 
 type Section = "engine" | "lamp" | "all";
 
+interface BleOutput {
+  active: boolean;
+  r: number;
+  g: number;
+  b: number;
+  brightness: number;
+  sentCount: number;
+}
+
 export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange, section = "all" }: { piBase: string; onConnectedChange?: (connected: boolean) => void; onEngineReadyChange?: (ready: boolean) => void; section?: Section }) {
   const showEngine = section === "engine" || section === "all";
   const showLamp = section === "lamp" || section === "all";
@@ -36,6 +45,9 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const [connectBusy, setConnectBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [bleOutput, setBleOutput] = useState<BleOutput>({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
+  const lastSentCountRef = useRef(0);
+  const lastSentRateRef = useRef(0);
   const sinceRef = useRef(0);
   const logPollRef = useRef<number | null>(null);
   const logBoxRef = useRef<HTMLDivElement | null>(null);
