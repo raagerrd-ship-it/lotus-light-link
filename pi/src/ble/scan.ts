@@ -7,7 +7,7 @@
  * så hcitool får tillgång till sockeln.
  */
 
-import { getAdapterState, logConnectionEvent, getNobleRawState, noble, bumpWorkaround } from './state.js';
+import { getAdapterState, logConnectionEvent, getNobleRawState, bumpWorkaround } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { hcitoolLescan } from './hcitool-scan.js';
