@@ -314,15 +314,9 @@ export class PiLightEngine {
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
+    setTickHopMs(tickMs);
   }
-
-  onTick(cb: TickCallback): () => void {
-    this.callbacks.push(cb);
-    return () => { this.callbacks = this.callbacks.filter(c => c !== cb); };
-  }
-
-  setColor(rgb: [number, number, number]) { this.color = rgb; }
-  setPalette(palette: [number, number, number][]) { this._palette = palette; this._paletteIndex = 0; }
+  // ... keep existing code
   getPalette(): [number, number, number][] { return this._palette; }
   setVolume(vol: number | undefined) { this.volume = vol; }
   getTickMs(): number { return this.tickMs; }
@@ -331,6 +325,7 @@ export class PiLightEngine {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
+    setTickHopMs(ms);
   }
 
   private initOnsetBuffer(tickMs: number): void {
