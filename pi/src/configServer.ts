@@ -941,6 +941,27 @@ export function startConfigServer(port = 3050): void {
     });
   });
 
+  // --- Live BLE output (sista färg + brightness skickad till lampan) ---
+  // Används av lamp-rutan i UI:t som VU-meter för att verifiera att engine
+  // faktiskt skickar data, och att lampan inte bara är ansluten utan också
+  // får färgkommandon.
+  app.get('/api/ble/output', (_req, res) => {
+    const engine = getEngine();
+    if (!engine) {
+      res.json({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
+      return;
+    }
+    const d = engine.getDiagnostics();
+    res.json({
+      active: true,
+      r: d.finalR,
+      g: d.finalG,
+      b: d.finalB,
+      brightness: d.brightnessPct,
+      sentCount: bleStats.sentCount,
+    });
+  });
+
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
     const mic = getMic();

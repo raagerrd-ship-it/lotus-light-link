@@ -28,6 +28,15 @@ interface LogEntry {
 
 type Section = "engine" | "lamp" | "all";
 
+interface BleOutput {
+  active: boolean;
+  r: number;
+  g: number;
+  b: number;
+  brightness: number;
+  sentCount: number;
+}
+
 export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange, section = "all" }: { piBase: string; onConnectedChange?: (connected: boolean) => void; onEngineReadyChange?: (ready: boolean) => void; section?: Section }) {
   const showEngine = section === "engine" || section === "all";
   const showLamp = section === "lamp" || section === "all";
@@ -36,6 +45,9 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const [connectBusy, setConnectBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [bleOutput, setBleOutput] = useState<BleOutput>({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
+  const lastSentCountRef = useRef(0);
+  const lastSentRateRef = useRef(0);
   const sinceRef = useRef(0);
   const logPollRef = useRef<number | null>(null);
   const logBoxRef = useRef<HTMLDivElement | null>(null);
@@ -78,6 +90,39 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   useEffect(() => () => {
     if (logPollRef.current) window.clearInterval(logPollRef.current);
   }, []);
+
+  // Poll BLE-output (sista färg + brightness skickad till lampan) — bara
+  // när lampan är ansluten och vi visar lamp-sektionen. ~5 Hz.
+  const lampConnected = !!state?.connected;
+  useEffect(() => {
+    if (!showLamp || !lampConnected) {
+      setBleOutput({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
+      return;
+    }
+    let cancelled = false;
+    let lastCount = 0;
+    let lastT = performance.now();
+    const tick = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/ble/output`, { signal: AbortSignal.timeout(1500) });
+        if (r.ok && !cancelled) {
+          const data = (await r.json()) as BleOutput;
+          const now = performance.now();
+          const dt = (now - lastT) / 1000;
+          if (lastCount > 0 && dt > 0) {
+            lastSentRateRef.current = Math.round((data.sentCount - lastCount) / dt);
+          }
+          lastCount = data.sentCount;
+          lastT = now;
+          lastSentCountRef.current = data.sentCount;
+          setBleOutput(data);
+        }
+      } catch {}
+    };
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [piBase, showLamp, lampConnected]);
 
   const startEngine = async () => {
     setEngineBusy(true);
@@ -233,6 +278,37 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
           </div>
           {!engineReady && !connected && (
             <div className="text-[10px] text-muted-foreground mt-2 ml-6">Starta BLE-motorn först.</div>
+          )}
+
+          {/* BLE-output VU-meter — visar att engine faktiskt skickar data till lampan.
+              Brightness-staplen + RGB-prick är ground truth: rör sig prick + stapel
+              så går färgkommandon ut. Står de still betyder det att engine producerar
+              svart/oförändrat → lampan reagerar inte i verkligheten. */}
+          {connected && (
+            <div className="mt-2.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[8px] uppercase opacity-50 w-12">Output</span>
+                <div
+                  className="w-4 h-4 rounded-full border border-border/50 shrink-0 transition-colors"
+                  style={{ backgroundColor: `rgb(${bleOutput.r},${bleOutput.g},${bleOutput.b})` }}
+                  title={`rgb(${bleOutput.r}, ${bleOutput.g}, ${bleOutput.b})`}
+                />
+                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-[width] duration-100"
+                    style={{ width: `${Math.max(0, Math.min(100, bleOutput.brightness))}%` }}
+                  />
+                </div>
+                <span className="text-[8px] font-mono opacity-60 w-9 text-right">
+                  {Math.round(bleOutput.brightness)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] font-mono opacity-60">
+                <span className="w-12">&nbsp;</span>
+                <span>RGB {bleOutput.r},{bleOutput.g},{bleOutput.b}</span>
+                <span className="ml-auto">{lastSentRateRef.current} pkt/s · {bleOutput.sentCount} totalt</span>
+              </div>
+            </div>
           )}
         </div>
       )}
