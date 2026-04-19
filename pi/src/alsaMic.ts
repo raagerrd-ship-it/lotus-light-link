@@ -19,12 +19,14 @@ try {
   AlsaCapture = (await import('alsa-capture')).default;
   useNative = true;
   console.log('[ALSA] Using native alsa-capture (direct snd_pcm_readi)');
-} catch {
+} catch (e: any) {
+  const reason = e?.message ?? String(e);
+  console.warn(`[ALSA] Native alsa-capture unavailable: ${reason}`);
   try {
     nodeRecord = (await import('node-record-lpcm16')).default;
     console.log('[ALSA] Falling back to node-record-lpcm16 (arecord subprocess)');
-  } catch {
-    console.warn('[ALSA] No audio capture module available');
+  } catch (e2: any) {
+    console.warn(`[ALSA] node-record-lpcm16 also unavailable: ${e2?.message ?? e2}`);
   }
 }
 
