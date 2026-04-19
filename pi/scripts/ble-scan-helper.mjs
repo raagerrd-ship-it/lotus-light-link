@@ -110,15 +110,30 @@ async function tryBtmgmt() {
   toolUsed = 'btmgmt';
   process.stderr.write('[scan-helper] försöker btmgmt find -l\n');
   // -l = LE only. btmgmt find blockerar tills SIGINT eller timeout.
+  // Output är multi-line: dev_found-rad följs av AD flags + name på senare rader.
+  // Vi håller pendingMac/pendingRssi tills nästa dev_found eller name kommer.
+  let pendingMac = null;
+  let pendingRssi = -100;
   await runTool('btmgmt', ['find', '-l'], (line) => {
-    const m = line.match(BTMGMT_LINE);
-    if (!m) return false;
-    const mac = m[1].toUpperCase();
-    const rssi = parseInt(m[2], 10);
-    const nameMatch = line.match(BTMGMT_NAME);
-    const name = nameMatch ? nameMatch[1].trim() : '';
-    return recordDevice(mac, name, rssi);
+    const dev = line.match(BTMGMT_DEV);
+    if (dev) {
+      // Flusha föregående utan namn (om något) först
+      if (pendingMac) recordDevice(pendingMac, '', pendingRssi);
+      pendingMac = dev[1].toUpperCase();
+      pendingRssi = parseInt(dev[2], 10);
+      return false;
+    }
+    const nameMatch = line.match(BTMGMT_NAME_LINE);
+    if (nameMatch && pendingMac) {
+      const name = nameMatch[1].trim();
+      const shouldExit = recordDevice(pendingMac, name, pendingRssi);
+      pendingMac = null;
+      return shouldExit;
+    }
+    return false;
   });
+  // Flush sista pending utan namn
+  if (pendingMac) recordDevice(pendingMac, '', pendingRssi);
   return found.size > 0;
 }
 
