@@ -902,6 +902,7 @@ export function startConfigServer(port = 3050): void {
     } else {
       res.status(400).json({ error: 'tickMs must be 10-50' });
     }
+    });
   });
 
 
