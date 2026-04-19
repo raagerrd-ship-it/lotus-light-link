@@ -94,23 +94,28 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
   const n: any = noble;
   let onDiscover: ((p: any) => void) | null = null;
 
-  // Watchdog — frigör scan-flaggan om något fastnar i noble (ovanpå hård timeout).
-  const watchdog = setTimeout(() => {
-    if (scanning) {
-      scanning = false;
-      scanMetrics.phase = 'idle';
-      scanMetrics.active = false;
-      scanMetrics.activeSince = null;
-      scanMetrics.lastStoppedAt = new Date().toISOString();
-      scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
-      scanMetrics.lastResultCount = found.size;
-      scanMetrics.lastWatchdogAt = new Date().toISOString();
-      logConnectionEvent({
-        type: 'scan_done',
-        detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms`,
-      });
-    }
-  }, timeoutMs + 5000);
+  // Watchdog deklareras här men startas EFTER waitForPoweredOnAsync — annars
+  // skulle den (felaktigt) trigga mitt under en legitim 10s-wait på poweredOn.
+  // Efter wait återstår bara scan + stop, så timeoutMs + 5000 räcker som tak.
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+  const armWatchdog = () => {
+    watchdog = setTimeout(() => {
+      if (scanning) {
+        scanning = false;
+        scanMetrics.phase = 'idle';
+        scanMetrics.active = false;
+        scanMetrics.activeSince = null;
+        scanMetrics.lastStoppedAt = new Date().toISOString();
+        scanMetrics.lastDurationMs = Date.now() - scanStartedAt;
+        scanMetrics.lastResultCount = found.size;
+        scanMetrics.lastWatchdogAt = new Date().toISOString();
+        logConnectionEvent({
+          type: 'scan_done',
+          detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms (efter wait)`,
+        });
+      }
+    }, timeoutMs + 5000);
+  };
 
   try {
     logConnectionEvent({
@@ -148,6 +153,9 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         throw new Error(`noble inte poweredOn inom 10s: ${e?.message ?? e}`);
       }
     }
+
+    // Nu — och bara nu — armerar vi watchdog för själva scan-fasen.
+    armWatchdog();
 
     onDiscover = (peripheral: any) => {
       try {
@@ -235,7 +243,7 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     console.error(`[BLE] scan error: ${e?.message ?? e}`);
     return lastScanResults;
   } finally {
-    clearTimeout(watchdog);
+    if (watchdog) clearTimeout(watchdog);
     if (onDiscover) {
       try { (noble as any).removeListener?.('discover', onDiscover); } catch {}
     }
