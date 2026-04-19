@@ -21,9 +21,12 @@ const earlyPatternStr = process.argv[3] ?? 'BLEDOM';
 const earlyPattern = earlyPatternStr ? new RegExp(earlyPatternStr, 'i') : null;
 
 const MAC_LINE = /^([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s*(.*)$/i;
-// btmgmt-format: "hci0 dev_found: AA:BB:CC:DD:EE:FF type LE Public rssi -65 flags 0x0000"
-const BTMGMT_LINE = /dev_found:\s*([0-9A-F]{2}(?::[0-9A-F]{2}){5}).*?rssi\s+(-?\d+)/i;
-const BTMGMT_NAME = /name\s+(.+)$/i;
+// btmgmt-format (multi-line!):
+//   hci0 dev_found: AA:BB:CC:DD:EE:FF type LE Public rssi -65 flags 0x0000
+//   AD flags 0x06
+//   name ELK-BLEDOM01
+const BTMGMT_DEV = /dev_found:\s*([0-9A-F]{2}(?::[0-9A-F]{2}){5}).*?rssi\s+(-?\d+)/i;
+const BTMGMT_NAME_LINE = /^name\s+(.+)$/i;
 // bluetoothctl: "[NEW] Device AA:BB:CC:DD:EE:FF NAME"
 const BCTL_DEV = /Device\s+([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s*(.*)$/i;
 
@@ -107,15 +110,30 @@ async function tryBtmgmt() {
   toolUsed = 'btmgmt';
   process.stderr.write('[scan-helper] försöker btmgmt find -l\n');
   // -l = LE only. btmgmt find blockerar tills SIGINT eller timeout.
+  // Output är multi-line: dev_found-rad följs av AD flags + name på senare rader.
+  // Vi håller pendingMac/pendingRssi tills nästa dev_found eller name kommer.
+  let pendingMac = null;
+  let pendingRssi = -100;
   await runTool('btmgmt', ['find', '-l'], (line) => {
-    const m = line.match(BTMGMT_LINE);
-    if (!m) return false;
-    const mac = m[1].toUpperCase();
-    const rssi = parseInt(m[2], 10);
-    const nameMatch = line.match(BTMGMT_NAME);
-    const name = nameMatch ? nameMatch[1].trim() : '';
-    return recordDevice(mac, name, rssi);
+    const dev = line.match(BTMGMT_DEV);
+    if (dev) {
+      // Flusha föregående utan namn (om något) först
+      if (pendingMac) recordDevice(pendingMac, '', pendingRssi);
+      pendingMac = dev[1].toUpperCase();
+      pendingRssi = parseInt(dev[2], 10);
+      return false;
+    }
+    const nameMatch = line.match(BTMGMT_NAME_LINE);
+    if (nameMatch && pendingMac) {
+      const name = nameMatch[1].trim();
+      const shouldExit = recordDevice(pendingMac, name, pendingRssi);
+      pendingMac = null;
+      return shouldExit;
+    }
+    return false;
   });
+  // Flush sista pending utan namn
+  if (pendingMac) recordDevice(pendingMac, '', pendingRssi);
   return found.size > 0;
 }
 
