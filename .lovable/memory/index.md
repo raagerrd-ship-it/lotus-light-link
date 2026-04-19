@@ -50,6 +50,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Palette integration](mem://pi/sonos/palette-integration) — 4-color palettes consumed directly from Sonos Gateway
 - [Softness slider](mem://pi/ui/softness-slider-curve) — Exponential mapping for releaseAlpha
 - [No blocking syscalls](mem://pi/runtime/no-blocking-syscalls-on-request-path) — Inga execSync i /api/status — blockerar libuv & noble stateChange
+- [BLE manual-only](mem://pi/ble/manual-only-connection-policy) — Anslutning sker ENDAST via Anslut-knapp; ingen auto-connect/reconnect
 - [Native capture](mem://pi/audio/native-capture) — C++ alsa-capture binding with Int16Array
 - [PCC alignment](mem://pi/runtime/pcc-alignment) — Pi Control Center integration and runInstallOnRelease
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration

@@ -276,6 +276,9 @@ export function startConfigServer(port = 3050): void {
 
   // Manually save a device by MAC address (skips scan).
   // Body: { address: "BE:67:00:15:09:41", name: "ELK-BLEDOM01" }
+  // Efter save: kör en kort preview (anslut → 5s blink → disconnect) så
+  // användaren ser direkt att rätt lampa svarar. Preview körs fire-and-forget
+  // — HTTP-svaret returneras direkt med previewStarted=true.
   app.post('/api/ble/save-manual', async (req, res) => {
     const { address, name } = req.body ?? {};
     if (typeof address !== 'string' || !address.trim()) {
@@ -287,12 +290,40 @@ export function startConfigServer(port = 3050): void {
     try {
       const ok = await saveManualDevice(address, name);
       if (!ok) return res.status(400).json({ error: 'Invalid MAC address format' });
+
+      // Fire-and-forget preview (5s connect+blink+disconnect).
+      let previewStarted = false;
+      const engineInstance = getEngine();
+      const bleBootReady = getBootPhase() === 'ready';
+      if (bleBootReady && engineInstance) {
+        previewStarted = true;
+        void (async () => {
+          try {
+            await autoConnectSaved(8000);
+            if (!getConnectedDeviceId()) {
+              console.log('[BLE] save-manual preview: connect failed — skipping blink');
+              return;
+            }
+            engineInstance.setPlaying(true);
+            await new Promise(r => setTimeout(r, 5000));
+            engineInstance.setPlaying(false);
+            const m = await import('./nobleBle.js');
+            await m.disconnect();
+            console.log('[BLE] save-manual preview done — disconnected (saved for later)');
+          } catch (e: any) {
+            console.error('[BLE] save-manual preview error:', e?.message ?? e);
+          }
+        })();
+      }
+
       res.json({
         ok: true,
         savedDeviceId: getSavedDeviceId(),
         savedDeviceName: getSavedDeviceName(),
         savedDeviceAddress: getSavedDeviceAddress(),
         connected: !!getConnectedDeviceId(),
+        previewStarted,
+        previewSeconds: previewStarted ? 5 : 0,
       });
     } catch (e: any) {
       console.error(`[BLE] saveManualDevice error: ${e.message}`);
@@ -343,8 +374,9 @@ export function startConfigServer(port = 3050): void {
       process.exit(1);
     }, 200);
   });
-  // Legacy /api/ble/start — master switch är borttagen, men endpoint:en finns
-  // kvar som "anslut till sparad enhet"-trigger för bakåtkompatibilitet.
+  // Legacy /api/ble/start — INGEN auto-connect i manual-only-läget.
+  // Endpoint:en finns kvar för bakåtkompatibilitet och rapporterar bara
+  // adapter-state. Anslutning sker via /api/ble/connect (knapp i UI:t).
   app.post('/api/ble/start', async (_req, res) => {
     try {
       const firstState = await waitForFirstStateChange(3000);
@@ -353,31 +385,14 @@ export function startConfigServer(port = 3050): void {
 
     let adapterReady = getAdapterState() === 'poweredOn';
     try {
-      if (!adapterReady) {
-        adapterReady = await ensureAdapterUp();
-      }
+      if (!adapterReady) adapterReady = await ensureAdapterUp();
     } catch (e: any) {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
 
-    // OBS: Ingen auto-respawn här. Respawn triggas ENBART från
-    // scan-knappen (pi/src/ble/scan.ts) när waitForPoweredOnAsync(10s)
-    // failar. Att respawna 3s efter /start skulle döda processen innan
-    // noble hunnit ens försöka — och det är inte användarinitierat.
-    let connectStarted = false;
-    let connected = !!getConnectedDeviceId();
+    const connected = !!getConnectedDeviceId();
     const hasSaved = !!getSavedDeviceId();
-    if (adapterReady && hasSaved && !getConnectedDeviceId()) {
-      connectStarted = true;
-      void autoConnectSaved(10000)
-        .then((count) => {
-          console.log(`[BLE] start auto-connect finished: ${count > 0 ? 'connected' : 'not found / failed'}`);
-        })
-        .catch((e: any) => {
-          console.error('[BLE] start auto-connect failed:', e?.message ?? e);
-        });
-    }
-    res.json({ ok: true, enabled: true, adapterReady, autoConnect: connectStarted, connected, hasSaved });
+    res.json({ ok: true, enabled: true, adapterReady, autoConnect: false, connected, hasSaved });
   });
 
   // Legacy /api/ble/stop — disconnectar bara, släpper inte HCI (engine alltid på).
@@ -557,7 +572,7 @@ export function startConfigServer(port = 3050): void {
         detail: connected
           ? `${getConnectedCount()} enhet(er)`
           : savedDevice
-            ? 'Inte ansluten — auto-connect försöker'
+            ? 'Ej ansluten — tryck Anslut'
             : '—',
       },
     ];
