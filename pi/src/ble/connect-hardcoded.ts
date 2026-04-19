@@ -14,6 +14,8 @@ import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './pr
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
+let _lastConnectCallAt = 0;
+let _connectCallCount = 0;
 
 export function getHardcodedConnected(): { connected: boolean; name: string; mac: string } {
   return { connected: !!_connected && _connected.state === 'connected', name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac };
@@ -34,11 +36,22 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
 }
 
 export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
+  _connectCallCount++;
+  const sinceLast = Date.now() - _lastConnectCallAt;
+  _lastConnectCallAt = Date.now();
+  // Diagnostik: om någon hamrar denna endpoint vill vi se det i loggen.
+  // Stack-trace ger oss caller (HTTP-route, intern reconnect, etc).
+  console.log(`[connect-hardcoded] CALL #${_connectCallCount} (${sinceLast}ms sedan förra)`);
+  if (sinceLast < 500 && _connectCallCount > 1) {
+    console.warn(`[connect-hardcoded] ⚠ Hammered: ${sinceLast}ms sedan förra anropet — caller-stack:\n${new Error().stack?.split('\n').slice(2, 6).join('\n')}`);
+  }
   if (_connectInFlight) {
+    console.log(`[connect-hardcoded]   → in-flight, väntar på pågående connect`);
     const r = await _connectInFlight;
     return { ...r, durationMs: 0 };
   }
   if (_connected && _connected.state === 'connected') {
+    console.log(`[connect-hardcoded]   → redan ansluten, returnerar idempotent`);
     return { connected: true, durationMs: 0 };
   }
 
