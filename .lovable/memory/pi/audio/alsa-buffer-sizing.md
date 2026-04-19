@@ -1,12 +1,18 @@
 ---
-name: ALSA period/buffer kopplad till tickMs
-description: Native alsa-capture periodSize = round(tickMs/2 * 44.1) frames → exakt 2 FFT-frames per engine-tick. Buffer = 4× period (~50ms headroom @ 25ms tick). HOP_SIZE uppdateras live via setTickHopMs() som auto-restartar capture.
+name: ALSA period 256 + buffer 8× period
+description: Pi Zero 2W behöver periodSize=256 (~5.8ms) och buffer=8×period (~46ms) i vendor C-bindningen. 128 + 2× orsakade konstanta buffer overruns → 0% engine-output.
 type: constraint
 ---
-**Relation:** `periodSize_frames = round(tickMs / 2 * 44.1)`. Default 25ms tick → ~551 frames = ~12.5ms per audio-frame → 2 FFT/tick (snabbare onset än 1×, halv CPU vs hop=128).
+**Symptom (2026-04-19):** `[ALSA] Buffer overrun detected` spammade var ~5:e log-rad. Engine fick aldrig FFT-frames → output stannade på 0% trots att Sonos PLAYING och mic-mätare visade 6-8% i UI.
 
-**Buffer:** `bufFrames = period × 4` ger ~50ms headroom för JS-eventloop-jitter (FFT + BLE writeAsync på Pi Zero 2W tar 2-4ms per cykel). Tidigare 2× → konstanta overruns → engine kollapsade → 0 BLE pkt/s. 8× testades men onödigt mycket nu när periodSize är stort.
+**Rotorsak:** Vendor-bindingen (pi/vendor/alsa-capture/capture.cc) körde med `periodSize=128` (~2.9ms) och `buffer=2×period` (~5.8ms total). På Pi Zero 2W överstiger varje JS GC-paus eller långsam BLE-write 5.8ms → ringbufferten i ALSA fylls innan vi hinner läsa → samples droppas → FFT körs aldrig.
 
-**Live-omkonfig:** `engine.setTickMs(ms)` kallar `setTickHopMs(ms)` i alsaMic.ts som auto-restartar capture om aktiv (~200ms audio-glitch). Konstruktorn i PiLightEngine kallar setTickHopMs vid init så period är synkad innan startMic.
+**Lösning:**
+- C-binding: `bufFrames = frames * 8` (~23ms @ p=128, ~46ms @ p=256)
+- alsaMic.ts: `periodSize: 256` (~5.8ms) — väcker JS hälften så ofta
 
-**Lärdom:** Period-storleken styr latens-granularitet (hur ofta FFT körs). Buffer × period styr jitter-tolerans. Med tick-styrd period håller vi audio-arrival och engine-tick i fas — annars driver de mot varann och engine processar antingen samma data flera ggr eller missar frames.
+**Latens påverkas INTE** — ALSA-tråden i C läser `snd_pcm_readi` så fort den kan, bufferten är bara säkerhetsmarginal. Total mic→FFT-latens fortfarande <10ms.
+
+**HOP_SIZE-relation oförändrad:** JS ackumulerar `HOP_SIZE = round(tickMs/2 * 44.1)` samples innan `processFFT()`. ALSA-perioden styr bara hur ofta C-tråden levererar audio-buffrar till JS — inte FFT-frekvensen.
+
+**Kräver C-rebuild:** `cd pi/vendor/alsa-capture && npm rebuild` körs automatiskt i setup-lotus.sh / update-services.sh när vendor-mappen syncas.
