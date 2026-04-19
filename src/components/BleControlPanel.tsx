@@ -152,27 +152,28 @@ export function BleControlPanel({ piBase, onConnectedChange, section = "all" }: 
   return (
     <div className="space-y-3 mb-4">
       {/* BLE-motor */}
-      <div className={`rounded-xl border p-3 ${engineReady ? "bg-green-500/10 border-green-500/30" : "bg-secondary/50 border-border"}`}>
-        <div className="flex items-center gap-2.5">
-          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${engineReady ? "bg-green-500" : engineBusy ? "bg-yellow-400 animate-pulse" : "bg-muted-foreground/40"}`} />
-          <Bluetooth size={16} className={engineReady ? "text-green-400" : "text-muted-foreground"} />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold">BLE-motor</div>
-            <div className="text-[10px] text-muted-foreground">
-              {engineReady ? "Redo" : engineBusy ? "Startar…" : "Inte startad"}
+      {showEngine && (
+        <div className={`rounded-xl border p-3 ${engineReady ? "bg-green-500/10 border-green-500/30" : "bg-secondary/50 border-border"}`}>
+          <div className="flex items-center gap-2.5">
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${engineReady ? "bg-green-500" : engineBusy ? "bg-yellow-400 animate-pulse" : "bg-muted-foreground/40"}`} />
+            <Bluetooth size={16} className={engineReady ? "text-green-400" : "text-muted-foreground"} />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold">1. BLE-motor</div>
+              <div className="text-[10px] text-muted-foreground">
+                {engineReady ? "Redo" : engineBusy ? "Startar…" : "Inte startad"}
+              </div>
             </div>
+            <button
+              onClick={startEngine}
+              disabled={engineBusy || engineReady}
+              className="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center gap-1.5"
+            >
+              {engineBusy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
+              {engineReady ? "Klar" : "Starta motor"}
+            </button>
           </div>
-          <button
-            onClick={startEngine}
-            disabled={engineBusy || engineReady}
-            className="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center gap-1.5"
-          >
-            {engineBusy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
-            {engineReady ? "Klar" : "Starta motor"}
-          </button>
         </div>
-      </div>
-
+      )}
       {/* SSH-style live-logg */}
       {logs.length > 0 && (
         <div className="rounded-xl border border-border bg-black/80 p-2">
