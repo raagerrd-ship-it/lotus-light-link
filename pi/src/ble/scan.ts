@@ -158,9 +158,18 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
     scanMetrics.lastResultCount = lastScanResults.length;
 
     if (lastScanResults.length === 0) {
+      // Visa hela helper-payloaden så vi ser vad btmgmt faktiskt skrev.
+      const fullDetail = JSON.stringify({
+        tool: 'btmgmt',
+        rawLines: hres.rawLineCount,
+        exit: hres.exitCode,
+        stderr: hres.stderr || null,
+        startError: hres.startError ?? null,
+        durationMs: hres.durationMs,
+      });
       logConnectionEvent({
         type: 'scan_done',
-        detail: `0 devices via hcitool — raw_lines=${hres.rawLineCount}, exit=${hres.exitCode}, stderr="${hres.stderr.slice(0, 200) || 'none'}", startErr="${hres.startError ?? 'none'}"`,
+        detail: `0 devices — ${fullDetail}`,
       });
     } else {
       logConnectionEvent({
