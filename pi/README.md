@@ -291,14 +291,14 @@ End-to-end latency from sound hitting the microphone to LED color change:
 ┌─────────────────────────────────────────────────────────────────┐
 │  Stage                 │ Latency  │ Notes                      │
 ├────────────────────────┼──────────┼────────────────────────────┤
-│  ALSA capture buffer   │  ~2.9ms  │ 128 samples @ 44.1kHz     │
-│  High-shelf EQ         │  <0.1ms  │ 1-pole IIR, per-sample    │
-│  Blackman window + FFT │  <0.5ms  │ Zero-alloc radix-2, N=512 │
+│  ALSA capture buffer   │  ~0.7ms  │ 32 samples @ 44.1kHz       │
+│  High-shelf EQ         │  <0.1ms  │ 1-pole IIR, per-sample     │
+│  Hann window + FFT     │  <0.5ms  │ Zero-alloc radix-2, N=1024 │
 │  Engine tick           │  <0.3ms  │ AGC + smoothing + onset    │
-│  BLE write             │ ~10ms    │ Write-without-response,    │
-│                        │          │ 7.5ms connection interval  │
+│  BLE write             │  ~7ms    │ Write-without-response,    │
+│                        │          │ 7.5ms fixed conn interval  │
 ├────────────────────────┼──────────┼────────────────────────────┤
-│  TOTAL                 │ ~14ms    │ Sound → light              │
+│  TOTAL                 │  ~8.5ms  │ Sound → light              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
