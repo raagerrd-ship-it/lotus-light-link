@@ -165,80 +165,9 @@ export async function resetHciAdapter(): Promise<void> {
   }
 }
 
-/**
- * Force noble's internal HCI binding to reach poweredOn.
- *
- * Strategy (least-invasive first):
- *  0. If noble is already poweredOn → no-op (don't disturb a healthy adapter).
- *  1. Wait up to 3s for noble to settle on its own (it often just needs time).
- *  2. Up to 3 soft attempts: hciconfig down/up/reset + restartNobleHci + wait 2s.
- *
- * Lotus får ALDRIG röra bluetoothd — den ägs av systemd och delas av andra
- * BLE-konsumenter. Se mem://pi/ble/bluetoothd-required.
- *
- * Aborts early on `unauthorized` / `poweredOff` (hard fails — no point looping).
- */
-async function forceNoblePoweredOn(deviceName?: string): Promise<void> {
-  bumpWorkaround('forceNoblePoweredOn_invoked');
-  const readState = () => (noble as any).state ?? (noble as any)._state;
-  const effectiveState = () => getAdapterState();
-
-  // If the caps-aware adapter state is already good, do not touch the kernel
-  // adapter. On Pi, that is the exact path that tends to wedge raw noble state.
-  if (effectiveState() === 'poweredOn') {
-    bumpWorkaround('forceNoblePoweredOn_skippedHealthy');
-    logConnectionEvent({
-      type: 'hci_reset',
-      device: deviceName,
-      detail: `Skipping noble reset — effective adapter state is poweredOn (raw=${readState() ?? 'unknown'})`,
-    });
-    return;
-  }
-
-  bumpWorkaround('forceNoblePoweredOn_neededRefresh');
-
-  try {
-    await (noble as any).waitForPoweredOnAsync?.(3000);
-    if (readState() === 'poweredOn' || effectiveState() === 'poweredOn') {
-      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: 'noble poweredOn ✓ (no reset needed)' });
-      return;
-    }
-  } catch {}
-
-  const SOFT_ATTEMPTS = 2;
-  for (let i = 1; i <= SOFT_ATTEMPTS; i++) {
-    const before = readState();
-    logConnectionEvent({
-      type: 'hci_reset',
-      device: deviceName,
-      detail: `noble state=${before ?? 'unknown'} — listener refresh ${i}/${SOFT_ATTEMPTS}`,
-    });
-
-    try { await restartNobleHci(deviceName); } catch {}
-
-    try {
-      await (noble as any).waitForPoweredOnAsync?.(2000);
-    } catch {}
-
-    const after = readState();
-    if (after === 'poweredOn' || effectiveState() === 'poweredOn') {
-      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `adapter ready ✓ (after refresh ${i})` });
-      return;
-    }
-    if (after === 'unauthorized' || after === 'poweredOff') {
-      logConnectionEvent({ type: 'hci_reset', device: deviceName, detail: `Hard fail (${after}) — abort` });
-      return;
-    }
-    await new Promise(r => setTimeout(r, 400));
-  }
-
-  logConnectionEvent({
-    type: 'hci_reset',
-    device: deviceName,
-    detail: `noble still ${readState() ?? 'unknown'} after safe refresh — proceeding with caps-aware adapter state=${effectiveState() ?? 'unknown'}`,
-  });
-}
-
+// (Tidigare fanns en intern forceNoblePoweredOn-helper här som muterade
+// noble._state. Borttagen — se mem://pi/ble/never-force-mutate-noble-state.
+// Korrekt mönster är `await noble.waitForPoweredOnAsync(10_000)` i waitNobleReady.)
 // ── Timeout helper — per-step budgets ──
 // L2CAP 8000ms: BLEDOM på svag länk (RSSI < −75) hinner inte genom L2CAP-
 // handshake på 3s — varje retransmission tar ~750ms.
