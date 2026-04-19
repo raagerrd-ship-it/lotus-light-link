@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase, ensureAdapterUp } from './nobleBle.js';
-import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
+import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot, getAllSubsystemStates, getSubsystemState, type SubsystemId } from './ble/state.js';
 import { getWatchdogGiveUpReason } from './ble/watchdog.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
@@ -19,6 +19,17 @@ type AlsaMicModule = typeof import('./alsaMic.js');
 let attachedEngine: PiLightEngine | null = null;
 let attachedMic: AlsaMicModule | null = null;
 let invalidateIdleColorCacheFn: (() => void) | null = null;
+
+export interface SubsystemStarters {
+  startBleEngine: () => Promise<void>;
+  startMic: () => Promise<void>;
+  startSonos: () => Promise<void>;
+}
+let _starters: SubsystemStarters | null = null;
+export function attachSubsystemStarters(s: SubsystemStarters): void {
+  _starters = s;
+  console.log('[Config] subsystem starters attached');
+}
 
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
