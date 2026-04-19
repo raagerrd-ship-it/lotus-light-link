@@ -276,6 +276,9 @@ export function startConfigServer(port = 3050): void {
 
   // Manually save a device by MAC address (skips scan).
   // Body: { address: "BE:67:00:15:09:41", name: "ELK-BLEDOM01" }
+  // Efter save: kör en kort preview (anslut → 5s blink → disconnect) så
+  // användaren ser direkt att rätt lampa svarar. Preview körs fire-and-forget
+  // — HTTP-svaret returneras direkt med previewStarted=true.
   app.post('/api/ble/save-manual', async (req, res) => {
     const { address, name } = req.body ?? {};
     if (typeof address !== 'string' || !address.trim()) {
@@ -287,12 +290,41 @@ export function startConfigServer(port = 3050): void {
     try {
       const ok = await saveManualDevice(address, name);
       if (!ok) return res.status(400).json({ error: 'Invalid MAC address format' });
+
+      // Fire-and-forget preview (5s connect+blink+disconnect).
+      let previewStarted = false;
+      const engineInstance = getEngine();
+      if (requireBleReady({ status: () => ({ json: () => undefined }) } as any) === false) {
+        // BLE inte redo — skippa preview tyst.
+      } else if (engineInstance) {
+        previewStarted = true;
+        void (async () => {
+          try {
+            await autoConnectSaved(8000);
+            if (!getConnectedDeviceId()) {
+              console.log('[BLE] save-manual preview: connect failed — skipping blink');
+              return;
+            }
+            engineInstance.setPlaying(true);
+            await new Promise(r => setTimeout(r, 5000));
+            engineInstance.setPlaying(false);
+            const m = await import('./nobleBle.js');
+            await m.disconnect();
+            console.log('[BLE] save-manual preview done — disconnected (saved for later)');
+          } catch (e: any) {
+            console.error('[BLE] save-manual preview error:', e?.message ?? e);
+          }
+        })();
+      }
+
       res.json({
         ok: true,
         savedDeviceId: getSavedDeviceId(),
         savedDeviceName: getSavedDeviceName(),
         savedDeviceAddress: getSavedDeviceAddress(),
         connected: !!getConnectedDeviceId(),
+        previewStarted,
+        previewSeconds: previewStarted ? 5 : 0,
       });
     } catch (e: any) {
       console.error(`[BLE] saveManualDevice error: ${e.message}`);
