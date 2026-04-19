@@ -9,7 +9,7 @@
  * Pollar /api/ble/state varannan sekund för status.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bluetooth, Loader2, Lightbulb, Play, Power } from "lucide-react";
 
 interface BleStateResp {
@@ -19,11 +19,22 @@ interface BleStateResp {
   rawState?: string;
 }
 
+interface LogEntry {
+  seq: number;
+  t: number;
+  level: "log" | "warn" | "error";
+  text: string;
+}
+
 export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string; onConnectedChange?: (connected: boolean) => void }) {
   const [state, setState] = useState<BleStateResp | null>(null);
   const [engineBusy, setEngineBusy] = useState(false);
   const [connectBusy, setConnectBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const sinceRef = useRef(0);
+  const logPollRef = useRef<number | null>(null);
+  const logBoxRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
