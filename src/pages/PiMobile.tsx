@@ -2452,6 +2452,10 @@ export default function PiMobile() {
         </div>
       )}
 
+      {/* Subsystem-startup-panel — manuell start av BLE-motor, mic, sonos.
+          Med "Auto"-checkbox per rad för sekventiell autostart vid sidladdning. */}
+      <SubsystemStartupPanel piBase={piBase} />
+
       {/* BLE-motor (infrastruktur: hci0 + noble) — separat från lamp-anslutning.
           Visar Redo / Väntar / Behöver återställas. Anslutning till lampan
           hanteras via "Anslut nu"-knappen ovan. */}
