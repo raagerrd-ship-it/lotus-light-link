@@ -9,6 +9,7 @@
  */
 
 import { fft1024, FFT_N } from './fftRadix2.js';
+import { pipelineTiming } from './pipelineTiming.js';
 
 // Dynamic import — alsa-capture is vendored as a fork in pi/vendor/alsa-capture/
 // (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.
@@ -421,7 +422,8 @@ export function startMic(): void {
 
 /** Shared audio data handler for both native and fallback paths */
 function onAudioData(buf: Buffer): void {
-  lastAudioTimestamp = performance.now();
+  const tAudio = performance.now();
+  lastAudioTimestamp = tAudio;
   const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
   const len = samples.length;
 
@@ -439,6 +441,8 @@ function onAudioData(buf: Buffer): void {
 
   if (samplesReceived >= HOP_SIZE) {
     processFFT();
+    // audioToFft = ALSA buffer arrival → FFT frame complete
+    pipelineTiming.recordAudioToFft(performance.now() - tAudio);
     samplesReceived = 0;
   }
 }
