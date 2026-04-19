@@ -2483,33 +2483,135 @@ export default function PiMobile() {
           } catch {}
         };
 
+        const fetchDiag = async () => {
+          setBleEngineDiagLoading(true);
+          try {
+            const [dRes, lRes] = await Promise.all([
+              fetch(`${piBase}/api/ble/diagnostics`, { signal: AbortSignal.timeout(4000) }),
+              fetch(`${piBase}/api/ble/log`, { signal: AbortSignal.timeout(4000) }),
+            ]);
+            const d = dRes.ok ? await dRes.json() : null;
+            const l = lRes.ok ? await lRes.json() : null;
+            setBleEngineDiag({ ...(d ?? {}), _logEvents: l?.events ?? d?.events ?? [] });
+          } catch {
+            setBleEngineDiag({ _error: 'Kunde inte hämta diagnostik' });
+          } finally {
+            setBleEngineDiagLoading(false);
+          }
+        };
+
+        const toggleDiag = () => {
+          const next = !bleEngineDiagOpen;
+          setBleEngineDiagOpen(next);
+          if (next) fetchDiag();
+        };
+
+        const fmtAge = (ts: number | null | undefined) => {
+          if (!ts) return '–';
+          const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+          if (sec < 60) return `${sec}s sedan`;
+          const m = Math.floor(sec / 60);
+          if (m < 60) return `${m}m ${sec % 60}s sedan`;
+          return `${Math.floor(m / 60)}h ${m % 60}m sedan`;
+        };
+
+        const lastEvent = bleEngineDiag?._logEvents?.length
+          ? bleEngineDiag._logEvents[bleEngineDiag._logEvents.length - 1]
+          : null;
+
         return (
-          <div className={`mb-3 p-2.5 rounded-lg border text-[11px] flex items-center gap-2 ${cfg.box}`}>
-            <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
-            <span className="flex-1 font-medium">
-              {cfg.label}
+          <div className={`mb-3 rounded-lg border text-[11px] ${cfg.box}`}>
+            <div className="p-2.5 flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
+              <span className="flex-1 font-medium">
+                {cfg.label}
+                {phase === 'waiting' && (
+                  <span className="ml-1 opacity-70">(rfkill + hci0 + noble poweredOn)</span>
+                )}
+                {phase === 'needs-reset' && bleAdapterState && (
+                  <span className="ml-1 opacity-70">({bleAdapterState})</span>
+                )}
+              </span>
+              <button
+                onClick={toggleDiag}
+                aria-label="Visa diagnostik"
+                className="px-1.5 py-0.5 rounded-md bg-current/10 hover:bg-current/20 text-[10px] font-semibold transition-colors opacity-80 hover:opacity-100"
+              >
+                {bleEngineDiagOpen ? 'Dölj ⓘ' : 'ⓘ Diag'}
+              </button>
               {phase === 'waiting' && (
-                <span className="ml-1 opacity-70">(rfkill + hci0 + noble poweredOn)</span>
+                <button
+                  onClick={wake}
+                  className="px-2 py-1 rounded-md bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-[10px] font-semibold transition-colors"
+                >
+                  Väck
+                </button>
               )}
-              {phase === 'needs-reset' && bleAdapterState && (
-                <span className="ml-1 opacity-70">({bleAdapterState})</span>
+              {phase === 'needs-reset' && (
+                <button
+                  onClick={reset}
+                  className="px-2 py-1 rounded-md bg-destructive/20 hover:bg-destructive/30 text-destructive text-[10px] font-semibold transition-colors"
+                >
+                  Återställ BLE-stack
+                </button>
               )}
-            </span>
-            {phase === 'waiting' && (
-              <button
-                onClick={wake}
-                className="px-2 py-1 rounded-md bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-[10px] font-semibold transition-colors"
-              >
-                Väck
-              </button>
-            )}
-            {phase === 'needs-reset' && (
-              <button
-                onClick={reset}
-                className="px-2 py-1 rounded-md bg-destructive/20 hover:bg-destructive/30 text-destructive text-[10px] font-semibold transition-colors"
-              >
-                Återställ BLE-stack
-              </button>
+            </div>
+
+            {bleEngineDiagOpen && (
+              <div className="border-t border-current/20 p-2.5 space-y-1.5 bg-background/40 text-foreground/90 font-mono text-[10px]">
+                {bleEngineDiagLoading && !bleEngineDiag && (
+                  <div className="opacity-60">Hämtar diagnostik…</div>
+                )}
+                {bleEngineDiag?._error && (
+                  <div className="text-destructive">{bleEngineDiag._error}</div>
+                )}
+                {bleEngineDiag && !bleEngineDiag._error && (
+                  <>
+                    <div className="grid grid-cols-[110px_1fr] gap-x-2 gap-y-0.5">
+                      <span className="opacity-60">noble.state:</span>
+                      <span>{bleEngineDiag.nobleRaw?.state ?? '–'} <span className="opacity-50">(internt: {bleEngineDiag.nobleRaw?._state ?? '–'})</span></span>
+
+                      <span className="opacity-60">adapterState:</span>
+                      <span>{bleEngineDiag.adapterState ?? '–'}</span>
+
+                      <span className="opacity-60">hci0 UP:</span>
+                      <span>{/UP\s+RUNNING/.test(bleEngineDiag.hciRaw ?? '') ? '✓ UP RUNNING' : '✗ DOWN/okänd'}</span>
+
+                      <span className="opacity-60">stateChange:</span>
+                      <span>{fmtAge(bleEngineDiag.firstStateChangeAt)}</span>
+
+                      <span className="opacity-60">boot start:</span>
+                      <span>{fmtAge(bleEngineDiag.bootStartedAt)}</span>
+
+                      <span className="opacity-60">bootPhase:</span>
+                      <span>{bleEngineDiag.bootPhase ?? '–'}</span>
+                    </div>
+
+                    <div className="pt-1.5 border-t border-current/10">
+                      <div className="opacity-60 mb-0.5">Senaste event:</div>
+                      {lastEvent ? (
+                        <div className="break-all">
+                          <span className={lastEvent.type?.includes('fail') ? 'text-destructive' : 'text-foreground'}>
+                            [{lastEvent.type}]
+                          </span>{' '}
+                          <span className="opacity-50">{fmtAge(lastEvent.timestamp)}</span>
+                          <div className="opacity-80 mt-0.5">{lastEvent.detail}</div>
+                        </div>
+                      ) : (
+                        <div className="opacity-50">Inga events ännu</div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={fetchDiag}
+                      disabled={bleEngineDiagLoading}
+                      className="mt-1 px-2 py-1 rounded-md bg-current/10 hover:bg-current/20 text-[10px] font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {bleEngineDiagLoading ? 'Uppdaterar…' : 'Uppdatera'}
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
         );
