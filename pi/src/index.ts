@@ -25,11 +25,13 @@ installLocalStorageShim();
 // fristående script → state=poweredOn på 1.5s; med native-bindning laddad
 // tidigt → fastnar i `unknown` för alltid).
 import type { startMic as StartMicT, stopMic as StopMicT, setAlsaDevice as SetAlsaDeviceT, setMicGain as SetMicGainT, setAutoGainFromVolume as SetAutoGainFromVolumeT } from './alsaMic.js';
+import type { PiLightEngine as PiLightEngineT } from './piEngine.js';
 let startMic!: typeof StartMicT;
 let stopMic!: typeof StopMicT;
 let setAlsaDevice!: typeof SetAlsaDeviceT;
 let setMicGain!: typeof SetMicGainT;
 let setAutoGainFromVolume!: typeof SetAutoGainFromVolumeT;
+let engine!: PiLightEngineT;
 import { startSonosPoller, stopSonosPoller, onSonosChange, setAutoTvMode as setSonosAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 import { getItem, setItem } from './storage.js';
 // Palette now comes from Sonos Gateway response (no cloud call needed)
@@ -138,12 +140,10 @@ async function main() {
   // STEP B.1 — Starta configServer TIDIGT så UI:t kan visa boot-status
   // ("Bootar: väntar på Bluetooth…") medan vi väntar på noble. Engine
   // skapas också här (utan att start()as) så API:t har en referens.
-  bt('STEP B.1: starting configServer + engine (engine NOT started yet)...');
+  bt('STEP B.1: starting configServer ONLY (ingen engine/alsaMic-import ännu)...');
   const { setBootPhase } = await import('./ble/state.js');
-  const { PiLightEngine } = await import('./piEngine.js');
-  const { startConfigServer } = await import('./configServer.js');
-  const engine = new PiLightEngine(effectiveTickMs);
-  startConfigServer(engine, CONFIG_PORT);
+  const configServer = await import('./configServer.js');
+  configServer.startConfigServer(CONFIG_PORT);
   bt('STEP B.1: configServer up — UI kan nu polla /api/status under väntan');
 
   // STEP B.2 — BLOCKERA tills noble rapporterar poweredOn. Inget annat
@@ -199,7 +199,10 @@ async function main() {
   setAutoGainFromVolume = alsaMic.setAutoGainFromVolume;
   if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
   if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
-  console.log('[Boot] ✓ alsaMic loaded');
+  const { PiLightEngine, invalidateIdleColorCache } = await import('./piEngine.js');
+  engine = new PiLightEngine(effectiveTickMs);
+  configServer.attachConfigRuntime({ engine, mic: alsaMic, invalidateIdleColorCache });
+  console.log('[Boot] ✓ alsaMic + engine loaded');
 
   const { getAdapterState } = nobleBle;
   const effectiveState = getAdapterState();
