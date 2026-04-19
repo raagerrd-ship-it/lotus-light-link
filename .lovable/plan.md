@@ -1,32 +1,24 @@
 
-Du har helt rätt — jag drog det för långt. Nuvarande passive-boot rör inte ens hci0/noble, vilket gör att noble fastnar i `unknown` tills användaren trycker "Återställ BLE-stack". Det är fel nivå av "manuellt".
-
-**Rätt separation:**
-- **Automatiskt vid boot (BLE-motorn):** rfkill unblock, hciconfig hci0 up, vänta på noble `poweredOn`. Detta är infrastruktur — inte en anslutning till någon lampa.
-- **Manuellt (användaråtgärd):** scan, connect, save-manual preview, disconnect, forget. Allt som rör en specifik lampa.
+Du vill se pipeline-bockrutorna uppdelade per system: **BLE-motor** (infrastruktur), **Lampa** (BLE-anslutning till specifik enhet), **Mikrofon** (ALSA), **Sonos** (gateway-anslutning), istället för en enda lång lista.
 
 ## Plan
 
-**1. `pi/src/index.ts` — återställ aktiv boot, men utan respawn**
-- STEP A: kör `ensureAdapterUp()` igen (rfkill unblock + hciconfig hci0 up). Detta är idempotent och icke-destruktivt enligt hci-up-only-policy.
-- STEP B.2: vänta upp till 15s på noble `poweredOn` via `waitForFirstStateChange` + `waitForPoweredOnAsync`. Logga resultat.
-- Om noble fortfarande `unknown` efter 15s: logga varning, sätt `bootPhase=ready` ändå (engine startar), men logga tydligt att användaren måste trycka "Återställ BLE-stack". **Ingen `triggerNobleRespawn`** — den raden är fortsatt borta.
+### 1. `pi/src/configServer.ts` — gruppera pipeline + lägg till mic/sonos-steg
+- Lägg till `group` på varje pipeline-steg: `'engine' | 'lamp' | 'mic' | 'sonos'`.
+- Existerande BLE-steg: `caps`, `hci-socket`, `rfkill`, `hci-up`, `noble-state`, `noble-raw-reference`, `force-mutation`, `noble-guard-patch`, `adapter-effective` → `group: 'engine'`.
+- `saved-device`, `connected` → `group: 'lamp'`.
+- Nya **mic**-steg (läs från engine/alsaMic-runtime som redan är attached via `attachConfigRuntime`):
+  - `mic-device` (vald ALSA-enhet finns)
+  - `mic-running` (mic samplar — `engine.getLastFrameAt()` eller mic-status)
+- Nya **sonos**-steg (läs från sonosPoller):
+  - `sonos-gateway` (baseUrl konfigurerad)
+  - `sonos-reachable` (senaste poll lyckades)
 
-**2. `pi/src/configServer.ts` — `/api/ble/start` blir aktiv igen**
-- Återinför `await ensureAdapterUp()` i början av endpointen så användaren kan "väcka" BLE-motorn manuellt om bootens 15s inte räckte.
-- Returnerar fortfarande bara status — ingen auto-connect till sparad enhet (den policyn behålls).
+### 2. `src/pages/PiMobile.tsx` — rendera grupperat
+- I diagnostikpanelen: gruppera `pipeline`-arrayen efter `group`-fältet.
+- Rendera 4 sektioner med rubriker: "BLE-motor", "Lampa", "Mikrofon", "Sonos".
+- Backwards-compat: steg utan `group` hamnar i "BLE-motor".
 
-**3. Ingen ändring av manual-only-policyn för anslutning**
-- `requestConnect`, `autoConnectSaved`, `startReconnectLoop`: oförändrade (single-shot, ingen reconnect-loop).
-- `/api/ble/save-manual`: behåller preview-flow (connect → blink → disconnect).
-- Ingen auto-respawn någonstans.
-
-**4. Build-tag & memory**
-- `BLE_BUILD_TAG` → `2026-04-19/active-ble-engine-manual-connect`.
-- Uppdatera `mem://pi/ble/manual-only-connection-policy` med klargörande: "BLE-motorn (adapter+noble) startas automatiskt. Anslutning till lampa är manuell."
-
-## Vad som INTE ändras
-- Inga auto-reconnects, ingen auto-connect till sparad enhet vid boot, ingen `triggerNobleRespawn`, ingen destruktiv hci-mutering.
-
-## Resultat
-Vid boot: hci0 upp + noble redo → UI visar "Redo, ej ansluten — tryck Anslut". Tryck Anslut → scan/connect körs. Tryck Återställ BLE-stack → manuell HCI-reset om något fastnar.
+### Filer
+- `pi/src/configServer.ts` — utöka pipeline med group + mic/sonos-steg
+- `src/pages/PiMobile.tsx` — gruppera rendering
