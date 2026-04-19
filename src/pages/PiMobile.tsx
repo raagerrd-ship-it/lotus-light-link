@@ -1984,6 +1984,9 @@ export default function PiMobile() {
   const [bootPhase, setBootPhase] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
+  const [bleEngineDiagOpen, setBleEngineDiagOpen] = useState(false);
+  const [bleEngineDiag, setBleEngineDiag] = useState<any>(null);
+  const [bleEngineDiagLoading, setBleEngineDiagLoading] = useState(false);
   const [showManualBle, setShowManualBle] = useState(true);
   const [manualBleMac, setManualBleMac] = useState("");
   const [manualBleName, setManualBleName] = useState("");
