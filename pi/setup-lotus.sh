@@ -368,7 +368,7 @@ if pgrep -f 'lotus-light|piEngine' >/dev/null 2>&1; then
   echo "  Kvarlevande engine-processer dödade ✓"
 fi
 
-# 2. Skriv ny system-service (idempotent — overwrite varje release)
+# 3. Skriv ny system-service (idempotent — overwrite varje release)
 sudo tee "$SYS_SVC_PATH" >/dev/null <<EOF
 [Unit]
 Description=Lotus Light Link engine
