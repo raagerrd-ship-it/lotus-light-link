@@ -106,6 +106,8 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
     }
     let cancelled = false;
     let lastCount = 0;
+    let lastSkipDelta = 0;
+    let lastSkipBusy = 0;
     let lastT = performance.now();
     const tick = async () => {
       try {
@@ -116,8 +118,12 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
           const dt = (now - lastT) / 1000;
           if (lastCount > 0 && dt > 0) {
             lastSentRateRef.current = Math.round((data.sentCount - lastCount) / dt);
+            lastSkipDeltaRateRef.current = Math.round(((data.skipDeltaCount ?? 0) - lastSkipDelta) / dt);
+            lastSkipBusyRateRef.current = Math.round(((data.skipBusyCount ?? 0) - lastSkipBusy) / dt);
           }
           lastCount = data.sentCount;
+          lastSkipDelta = data.skipDeltaCount ?? 0;
+          lastSkipBusy = data.skipBusyCount ?? 0;
           lastT = now;
           lastSentCountRef.current = data.sentCount;
           setBleOutput(data);
