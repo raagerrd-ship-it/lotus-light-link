@@ -184,7 +184,7 @@ fi
 # 1b. Ge hcitool CAP_NET_RAW så att vår scan-fallback fungerar utan sudo.
 #     Noble håller HCI-socketen, men hcitool kan ändå köra LE-scan parallellt
 #     när det har caps. Utan detta failar fallbacken med "Operation not permitted".
-for SCAN_BIN_NAME in hcitool btmgmt bluetoothctl; do
+for SCAN_BIN_NAME in hcitool btmgmt bluetoothctl hciconfig rfkill; do
   SCAN_BIN_PATH="$(command -v "$SCAN_BIN_NAME" 2>/dev/null || true)"
   if [ -z "$SCAN_BIN_PATH" ]; then
     echo "  ⚠ $SCAN_BIN_NAME saknas — installera bluez-paketet"
