@@ -18,7 +18,7 @@ const CONNECTION_LOG_KEY = 'ble-connection-log';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-19/hcitool-only';
+export const BLE_BUILD_TAG = '2026-04-19/scan-parallel-noble-untouched';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
@@ -271,6 +271,8 @@ export const workaroundCounters = {
   post_scan_noble_recovery_invoked: 0,
   // Post-scan watchdog: recovery kördes men noble blev fortfarande inte poweredOn
   post_scan_noble_recovery_failed: 0,
+  // Scan kördes med noble's HCI-binding orörd (parallel-mode med hcitool)
+  post_scan_noble_untouched: 0,
   // Sista gång varje workaround triggades
   lastInvocationAt: {} as Record<string, string>,
 };
