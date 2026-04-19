@@ -145,8 +145,10 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   // Rate-limit: writeAsync(..., true) = withoutResponse returnerar direkt
   // utan att vänta på radio-ACK → ingen naturlig backpressure. Utan denna
   // gate bygger noble/HCI-buffern kö och lampan släpar 1-2s efter musiken.
-  // 20ms = 50 pkt/s tak, väl över BLEDOM:s reella throughput (~30 pkt/s).
-  const MIN_WRITE_INTERVAL_MS = 20;
+  // 35ms = ~28 pkt/s tak, matchar BLEDOM:s reella throughput. Tick 40ms
+  // har visat sig stabilt i fält — håll gaten precis under tick-min så
+  // slidern (UI) är den verkliga begränsaren.
+  const MIN_WRITE_INTERVAL_MS = 35;
   if (lastWriteTime > 0 && (performance.now() - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
     bleStats.skipBusyCount++;
     return;
