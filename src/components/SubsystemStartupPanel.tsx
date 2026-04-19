@@ -176,51 +176,73 @@ export function SubsystemStartupPanel({ piBase }: { piBase: string }) {
                 : "bg-muted-foreground/40";
 
           return (
-            <div key={row.id} className="px-3 py-2.5 flex items-center gap-2.5">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-              <Icon size={14} className="shrink-0 text-muted-foreground" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-foreground/90">{row.label}</div>
-                {sub.status === "ready" && sub.durationMs != null && (
-                  <div className="text-[9px] opacity-50">Redo på {(sub.durationMs / 1000).toFixed(1)}s</div>
-                )}
-                {sub.status === "starting" && (
-                  <div className="text-[9px] opacity-60">Startar…</div>
-                )}
-                {sub.status === "error" && sub.error && (
-                  <div className="text-[9px] text-destructive break-words">{sub.error}</div>
-                )}
-                {sub.status === "idle" && (
-                  <div className="text-[9px] opacity-50">Ej startad</div>
-                )}
+            <div key={row.id} className="flex flex-col">
+              <div className="px-3 py-2.5 flex items-center gap-2.5">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                <Icon size={14} className="shrink-0 text-muted-foreground" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-foreground/90">{row.label}</div>
+                  {sub.status === "ready" && sub.durationMs != null && (
+                    <div className="text-[9px] opacity-50">Redo på {(sub.durationMs / 1000).toFixed(1)}s</div>
+                  )}
+                  {sub.status === "starting" && (
+                    <div className="text-[9px] opacity-60">Startar…</div>
+                  )}
+                  {sub.status === "error" && sub.error && (
+                    <button
+                      onClick={() => setExpandedErrors(p => ({ ...p, [row.id]: !p[row.id] }))}
+                      className="text-[9px] text-destructive hover:text-destructive/80 flex items-center gap-1 truncate max-w-full"
+                      title="Visa feldetaljer"
+                    >
+                      {expandedErrors[row.id] ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                      <span className="truncate">{sub.error.split("\n")[0].slice(0, 60)}{sub.error.length > 60 ? "…" : ""}</span>
+                    </button>
+                  )}
+                  {sub.status === "idle" && (
+                    <div className="text-[9px] opacity-50">Ej startad</div>
+                  )}
+                </div>
+
+                <label className="flex items-center gap-1 cursor-pointer text-[9px] opacity-70 hover:opacity-100 select-none">
+                  <input
+                    type="checkbox"
+                    checked={auto}
+                    onChange={(e) => { writeAutostart(row.id, e.target.checked); setAutostartTick(t => t + 1); }}
+                    className="w-3 h-3 accent-primary"
+                  />
+                  Auto
+                </label>
+
+                <button
+                  onClick={() => startOne(row.id)}
+                  disabled={sub.status === "starting" || sub.status === "ready"}
+                  className="px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-primary/15 hover:bg-primary/25 text-primary flex items-center gap-1"
+                >
+                  {sub.status === "starting" ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : sub.status === "ready" ? (
+                    <Check size={11} />
+                  ) : sub.status === "error" ? (
+                    <X size={11} />
+                  ) : (
+                    <Play size={11} />
+                  )}
+                  {sub.status === "ready" ? "Redo" : sub.status === "starting" ? "Startar" : sub.status === "error" ? "Försök igen" : "Starta"}
+                </button>
               </div>
-
-              <label className="flex items-center gap-1 cursor-pointer text-[9px] opacity-70 hover:opacity-100 select-none">
-                <input
-                  type="checkbox"
-                  checked={auto}
-                  onChange={(e) => { writeAutostart(row.id, e.target.checked); setAutostartTick(t => t + 1); }}
-                  className="w-3 h-3 accent-primary"
-                />
-                Auto
-              </label>
-
-              <button
-                onClick={() => startOne(row.id)}
-                disabled={sub.status === "starting" || sub.status === "ready"}
-                className="px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-primary/15 hover:bg-primary/25 text-primary flex items-center gap-1"
-              >
-                {sub.status === "starting" ? (
-                  <Loader2 size={11} className="animate-spin" />
-                ) : sub.status === "ready" ? (
-                  <Check size={11} />
-                ) : sub.status === "error" ? (
-                  <X size={11} />
-                ) : (
-                  <Play size={11} />
-                )}
-                {sub.status === "ready" ? "Redo" : sub.status === "starting" ? "Startar" : sub.status === "error" ? "Försök igen" : "Starta"}
-              </button>
+              {sub.status === "error" && sub.error && expandedErrors[row.id] && (
+                <div className="px-3 pb-2.5 -mt-1">
+                  <pre className="text-[9px] text-destructive/90 bg-destructive/10 border border-destructive/20 rounded-md p-2 whitespace-pre-wrap break-words font-mono leading-snug max-h-48 overflow-auto">
+{sub.error}
+                  </pre>
+                  {sub.startedAt && (
+                    <div className="text-[8px] opacity-40 mt-1">
+                      Misslyckades {new Date(sub.startedAt).toLocaleTimeString()}
+                      {sub.durationMs != null && ` · efter ${(sub.durationMs / 1000).toFixed(1)}s`}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
