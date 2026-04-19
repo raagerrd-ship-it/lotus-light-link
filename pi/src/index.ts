@@ -127,7 +127,7 @@ async function main() {
   const {
     scanAndConnect, disconnectAll, getConnectedCount,
     setDimmingGamma, setExpectedDeviceCount,
-    BLE_BUILD_TAG, waitForFirstStateChange, noble,
+    BLE_BUILD_TAG, waitForFirstStateChange, noble, ensureAdapterUp,
   } = nobleBle;
 
   // STEP B.1 — Starta configServer TIDIGT så UI:t kan visa boot-status
@@ -139,18 +139,29 @@ async function main() {
   configServer.startConfigServer(CONFIG_PORT);
   bt('STEP B.1: configServer up — UI kan nu polla /api/status under väntan');
 
-  // STEP B.2 — Vänta KORT på poweredOn för att ge noble en chans att initiera
-  // innan vi laddar native ALSA. Men blockera aldrig boot eller respawna.
-  bt('STEP B.2: väntar mjukt på noble.poweredOn (max 5s, ingen respawn)...');
+  // STEP B.1b — Aktivera adaptern aktivt (rfkill unblock + hci0 up). Detta är
+  // BLE-motorn som startas, inte en anslutning till en lampa.
+  bt('STEP B.1b: ensureAdapterUp() — aktiverar BLE-infrastrukturen...');
   const { recordObservedNobleState, getNobleRawState, logConnectionEvent } = await import('./ble/state.js');
+  try {
+    const adapterUp = await ensureAdapterUp();
+    bt(`STEP B.1b: ensureAdapterUp returned ${adapterUp}`);
+  } catch (e: any) {
+    bt(`STEP B.1b: ⚠ ensureAdapterUp kastade: ${e?.message ?? e}`);
+  }
+
+  // STEP B.2 — Vänta upp till 15s på noble.poweredOn. Om det inte händer
+  // fortsätter boot ändå; användaren får trycka "Återställ BLE-stack".
+  // INGEN auto-respawn (mem://pi/ble/manual-only-connection-policy).
+  bt('STEP B.2: väntar på noble.poweredOn (max 15s, ingen respawn)...');
   let firstState: string = getNobleRawState() ?? 'unknown';
   const waitStart = Date.now();
   try {
     const result = await Promise.race([
-      waitForFirstStateChange(5_000),
+      waitForFirstStateChange(15_000),
       (async () => {
         try {
-          await (noble as any).waitForPoweredOnAsync(5_000);
+          await (noble as any).waitForPoweredOnAsync(15_000);
           recordObservedNobleState('poweredOn');
           return 'poweredOn';
         } catch {
@@ -166,10 +177,10 @@ async function main() {
       logConnectionEvent({ type: 'connect_start', detail: `boot: noble poweredOn efter ${totalSec}s` });
     } else {
       firstState = raw ?? String(result ?? 'unknown');
-      bt(`STEP B.2: ⚠ noble inte poweredOn efter 5s (result=${result}, raw=${raw ?? 'null'}) — boot fortsätter ändå`);
+      bt(`STEP B.2: ⚠ noble inte poweredOn efter 15s (result=${result}, raw=${raw ?? 'null'}) — boot fortsätter, tryck "Återställ BLE-stack" i UI:t`);
       logConnectionEvent({
         type: 'connect_fail',
-        detail: `boot: noble ej poweredOn efter 5s (result=${result}, raw=${raw ?? 'null'}) — ingen auto-respawn, UI/engine startas ändå`,
+        detail: `boot: noble ej poweredOn efter 15s (result=${result}, raw=${raw ?? 'null'}) — INGEN auto-respawn. Tryck "Återställ BLE-stack" i UI:t.`,
       });
     }
   } catch (e: any) {
@@ -177,7 +188,7 @@ async function main() {
     bt(`STEP B.2: ⚠ noble wait kastade fel (${e?.message ?? e}) — boot fortsätter ändå`);
     logConnectionEvent({
       type: 'connect_fail',
-      detail: `boot: noble wait error: ${e?.message ?? e} — ingen auto-respawn, UI/engine startas ändå`,
+      detail: `boot: noble wait error: ${e?.message ?? e} — INGEN auto-respawn. Tryck "Återställ BLE-stack" i UI:t.`,
     });
   }
 
