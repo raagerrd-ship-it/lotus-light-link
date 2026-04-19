@@ -15,9 +15,6 @@
     "express": "^4.21.0",
     "node-record-lpcm16": "^1.0.1"
   },
-  "optionalDependencies": {
-    "alsa-capture": "^0.3.0"
-  },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
