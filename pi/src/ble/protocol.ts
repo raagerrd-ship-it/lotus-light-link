@@ -165,7 +165,11 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
       buf = writeBuf;
     }
-    await device.characteristic.writeAsync(buf, true);
+    // withoutResponse=true → fire-and-forget. Paketet skickas i nästa
+    // connection event (~7.5ms median, 0–7.5ms minimum) och vi väntar inte
+    // på ACK. Sparar 1 connection event (~7.5ms) per write jämfört med
+    // acked write. BLEDOM kvitterar inte ändå, så ACK var pure overhead.
+    await device.characteristic.writeAsync(buf, false);
 
     lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
     bleStats.sentCount++;
