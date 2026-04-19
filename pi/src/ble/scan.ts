@@ -114,7 +114,7 @@ export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice
   try {
     logConnectionEvent({
       type: 'scan_start',
-      detail: `hcitool lescan ${timeoutMs}ms (helper-process), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}`,
+      detail: `btmgmt find ${timeoutMs}ms (helper-process, mgmt-API), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}`,
     });
 
     try {

@@ -18,7 +18,7 @@ export interface HcitoolScanResult {
   startError: string | null;
   stderr: string;
   durationMs: number;
-  tool: 'hcitool';
+  tool: 'hcitool' | 'btmgmt';
 }
 
 const __filename = fileURLToPath(import.meta.url);
