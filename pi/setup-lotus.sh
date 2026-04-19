@@ -252,120 +252,70 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   fi
 fi
 
-# 2-4. Auto-fixa systemd-tjänsten om capabilities eller startup-order saknas
-SVC_FILE="$HOME/.config/systemd/user/lotus-light-engine.service"
-BLE_FIXED=false
+# ─── Engine system-service (ersätter PCC:s user-service) ─────────────
+# RATIONALE (2026-04-19): PCC skapar lotus-light-engine som --user-service.
+# User-services i systemd kan INTE ärva login-användarens supplementary groups
+# (netdev, bluetooth) på Raspberry Pi OS. Konsekvens: rfkill + hci0 = "Permission
+# denied" → noble fastnar i state=unknown → UI:t kan inte starta motorn.
+#
+# Lösning: Skapa en parallell SYSTEM-service med User=pi och korrekta
+# SupplementaryGroups. System-services KAN sätta SupplementaryGroups (kräver
+# bara systemd PID 1, vilket de har). Vi disablar PCC:s user-service så
+# de inte konflitar om porten.
+SYS_SVC_PATH="/etc/systemd/system/lotus-light-engine.service"
+USER_SVC_PATH="$HOME/.config/systemd/user/lotus-light-engine.service"
 
-if [ -f "$SVC_FILE" ]; then
-  SVC_CONTENT=$(cat "$SVC_FILE")
+echo ""
+echo "[BLE-fix] Installerar system-service (ersätter user-service)..."
 
-  # User-services kan inte depend:a på system-units som bluetooth.service.
-  # Vänta istället kort innan start så HCI hinner bli redo.
-  sed -i '/^After=.*bluetooth\.service/d' "$SVC_FILE"
-  sed -i '/^Requires=.*bluetooth\.service/d' "$SVC_FILE"
-
-  if echo "$SVC_CONTENT" | grep -Eq '^After=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])'; then
-    echo "  Tog bort ogiltig After=bluetooth.service för user-service ✓"
-    BLE_FIXED=true
-  fi
-
-  if echo "$SVC_CONTENT" | grep -Eq '^Requires=.*(^|[[:space:]])bluetooth\.service($|[[:space:]])'; then
-    echo "  Tog bort ogiltig Requires=bluetooth.service för user-service ✓"
-    BLE_FIXED=true
-  fi
-
-  # Ge bluetoothd/HCI lite tid att bli redo innan node-processen startar
-  if ! grep -q '^ExecStartPre=/bin/sleep 2$' "$SVC_FILE"; then
-    sed -i '/^ExecStartPre=\/bin\/sleep 2$/d' "$SVC_FILE"
-    if grep -q '^\[Service\]' "$SVC_FILE"; then
-      sed -i '/^\[Service\]/a ExecStartPre=/bin/sleep 2' "$SVC_FILE"
-    else
-      printf '\n[Service]\nExecStartPre=/bin/sleep 2\n' >> "$SVC_FILE"
-    fi
-    echo "  Lade till ExecStartPre=/bin/sleep 2 ✓"
-    BLE_FIXED=true
-  else
-    echo "  ExecStartPre=/bin/sleep 2 ✓"
-  fi
-
-  # NoNewPrivileges=false (krävs för AmbientCapabilities)
-  if echo "$SVC_CONTENT" | grep -q "NoNewPrivileges=true"; then
-    sed -i 's/NoNewPrivileges=true/NoNewPrivileges=false/' "$SVC_FILE"
-    echo "  Fixade NoNewPrivileges=false ✓"
-    BLE_FIXED=true
-  elif ! echo "$SVC_CONTENT" | grep -q "NoNewPrivileges="; then
-    if grep -q '^ExecStartPre=/bin/sleep 2$' "$SVC_FILE"; then
-      sed -i '/^ExecStartPre=\/bin\/sleep 2$/a NoNewPrivileges=false' "$SVC_FILE"
-    elif echo "$SVC_CONTENT" | grep -q "PrivateTmp="; then
-      sed -i '/PrivateTmp=/a NoNewPrivileges=false' "$SVC_FILE"
-    else
-      sed -i '/^\[Service\]/a NoNewPrivileges=false' "$SVC_FILE"
-    fi
-    echo "  Lade till NoNewPrivileges=false ✓"
-    BLE_FIXED=true
-  else
-    echo "  NoNewPrivileges=false ✓"
-  fi
-
-  # AmbientCapabilities
-  if ! grep -q "AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN" "$SVC_FILE"; then
-    sed -i '/^AmbientCapabilities=/d' "$SVC_FILE"
-    sed -i '/NoNewPrivileges=/a AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN' "$SVC_FILE"
-    echo "  Lade till AmbientCapabilities ✓"
-    BLE_FIXED=true
-  else
-    echo "  AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN ✓"
-  fi
-
-  # CapabilityBoundingSet
-  if ! grep -q "CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN" "$SVC_FILE"; then
-    sed -i '/^CapabilityBoundingSet=/d' "$SVC_FILE"
-    sed -i '/AmbientCapabilities=/a CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN' "$SVC_FILE"
-    echo "  Lade till CapabilityBoundingSet ✓"
-    BLE_FIXED=true
-  else
-    echo "  CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN ✓"
-  fi
-
-  # SupplementaryGroups — systemd-user-services ärver INTE login-grupper.
-  # Utan detta: /dev/rfkill = "Permission denied" i tjänsten trots
-  # att pi-användaren är med i netdev. Måste sättas explicit här.
-  if ! grep -q "^SupplementaryGroups=.*netdev" "$SVC_FILE" || ! grep -q "^SupplementaryGroups=.*bluetooth" "$SVC_FILE"; then
-    sed -i '/^SupplementaryGroups=/d' "$SVC_FILE"
-    sed -i '/CapabilityBoundingSet=/a SupplementaryGroups=netdev bluetooth' "$SVC_FILE"
-    echo "  Lade till SupplementaryGroups=netdev bluetooth ✓"
-    BLE_FIXED=true
-  else
-    echo "  SupplementaryGroups=netdev bluetooth ✓"
-  fi
-
-  # MemoryMax — PCC sätter default 27M vilket OOM-killar Node + noble + alsa.
-  # Höj till 150M (Pi Zero 2W har 512MB RAM, gott om plats).
-  if grep -qE "^MemoryMax=" "$SVC_FILE"; then
-    CURRENT_MEM=$(grep -E "^MemoryMax=" "$SVC_FILE" | head -1 | cut -d= -f2)
-    if [ "$CURRENT_MEM" != "150M" ]; then
-      sed -i 's/^MemoryMax=.*/MemoryMax=150M/' "$SVC_FILE"
-      echo "  Höjde MemoryMax från $CURRENT_MEM till 150M ✓"
-      BLE_FIXED=true
-    else
-      echo "  MemoryMax=150M ✓"
-    fi
-  else
-    sed -i '/^\[Service\]/a MemoryMax=150M' "$SVC_FILE"
-    echo "  Lade till MemoryMax=150M ✓"
-    BLE_FIXED=true
-  fi
-
-  # Ladda om och starta om tjänsten om vi ändrade något
-  if [ "$BLE_FIXED" = true ]; then
-    echo "  Laddar om systemd och startar om tjänsten..."
-    systemctl --user daemon-reload 2>/dev/null || true
-    systemctl --user restart lotus-light-engine 2>/dev/null || true
-    echo "  Tjänsten omstartad med BLE-startordning + rättigheter ✓"
-  fi
-else
-  echo "  ℹ️  Systemd-tjänstfil inte hittad — förutsätter att Pi Control Center skapar den"
+# 1. Stoppa och disabla user-service om PCC skapat den
+if [ -f "$USER_SVC_PATH" ]; then
+  systemctl --user stop lotus-light-engine 2>/dev/null || true
+  systemctl --user disable lotus-light-engine 2>/dev/null || true
+  echo "  PCC user-service stoppad och disablad ✓"
 fi
+
+# 2. Skriv ny system-service (idempotent — overwrite varje release)
+sudo tee "$SYS_SVC_PATH" >/dev/null <<EOF
+[Unit]
+Description=Lotus Light Link engine
+After=network.target bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+SupplementaryGroups=netdev bluetooth
+WorkingDirectory=$PI_DIR
+ExecStartPre=/bin/sleep 2
+ExecStart=/usr/bin/node $PI_DIR/dist/index.js
+Environment=NPM_CONFIG_CACHE=$APP_DIR/.npm-cache
+Environment=PORT=$ENGINE_PORT
+Environment=ENGINE_PORT=$ENGINE_PORT
+Environment=UI_PORT=$PORT
+Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+CPUAffinity=$CORE
+AllowedCPUs=$CORE
+MemoryMax=200M
+NoNewPrivileges=false
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+echo "  System-service skriven till $SYS_SVC_PATH ✓"
+
+# 3. Aktivera + starta
+sudo systemctl daemon-reload
+sudo systemctl enable lotus-light-engine 2>/dev/null || true
+sudo systemctl restart lotus-light-engine
+echo "  System-service aktiverad och startad ✓"
+echo "  → Verifiera: sudo systemctl status lotus-light-engine"
+echo "  → Loggar: sudo journalctl -u lotus-light-engine -f"
 
 # ─── Done ─────────────────────────────────────────────────
 echo ""
