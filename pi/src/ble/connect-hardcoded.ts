@@ -10,7 +10,7 @@
 import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
-import { startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
+import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
@@ -124,6 +124,21 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
               finish({ connected: true });
               return;
             }
+
+            // CRITICAL: samma anchor write som i vanliga connect.ts.
+            // Utan den kan länken se "connected" ut men första riktiga
+            // färgskrivningen hänga/tyst droppas, vilket ger 0 pkt/s.
+            console.log(`${ts()} 7. anchor write (3s timeout)…`);
+            try {
+              await withTimeout(ch.writeAsync(brightMaxBuf, true), 'anchor write', 3000);
+              console.log(`${ts()}    anchor write OK`);
+            } catch (e: any) {
+              console.warn(`${ts()}    anchor write FEL: ${e?.message ?? e} — disconnectar`);
+              try { await peripheral.disconnectAsync(); } catch {}
+              finish({ connected: false, error: `Anchor write failed: ${e?.message ?? e}` });
+              return;
+            }
+
             setDevice({
               peripheral,
               characteristic: ch,
@@ -132,7 +147,7 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
               id: peripheral.id,
             });
             startKeepAlive();
-            console.log(`${ts()} 7. keep-alive STARTAD (400ms intervall) — lampan håller anslutningen`);
+            console.log(`${ts()} 8. keep-alive STARTAD (400ms intervall) — lampan håller anslutningen`);
             finish({ connected: true });
           } catch (e: any) {
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
