@@ -1969,6 +1969,7 @@ export default function PiMobile() {
   const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const [bleScanning, setBleScanning] = useState(false);
   const [bleScanCompletedEmpty, setBleScanCompletedEmpty] = useState(false);
+  const [bleScanMessage, setBleScanMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; timestamp: string }[]>([]);
   const [showBleLog, setShowBleLog] = useState(true);
   const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[]>([]);
@@ -2014,6 +2015,10 @@ export default function PiMobile() {
   const showBlePicker = !bleSavedId || bleScanning || bleScanResults.length > 0;
   const showBleSavedCard = (bleSavedId || bleConnectedId) && !blePreview && !showBlePicker;
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const isBleRespawnScanError = (message: string | null | undefined) =>
+    typeof message === 'string' && /noble inte poweredOn inom 10s|Timeout waiting for Noble to be powered on/i.test(message);
+
   const putJson = async (path: string, body: unknown) => {
     const r = await fetch(`${piBase}${path}`, {
       method: 'PUT',
@@ -2024,6 +2029,105 @@ export default function PiMobile() {
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return r;
   };
+
+  const requestBleScan = useCallback(async () => {
+    const r = await fetch(`${piBase}/api/ble/scan`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(15000),
+    });
+    let data: any = null;
+    try {
+      data = await r.json();
+    } catch {}
+    return { r, data };
+  }, [piBase]);
+
+  const waitForBleRecovery = useCallback(async () => {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        const r = await fetch(`${piBase}/api/ble/diagnostics`, {
+          signal: AbortSignal.timeout(1500),
+        });
+        if (r.ok) {
+          await sleep(500);
+          return true;
+        }
+      } catch {}
+      await sleep(500);
+    }
+    return false;
+  }, [piBase]);
+
+  const handleBleScan = useCallback(async () => {
+    const applyScanResult = (devices: { id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[], startError?: string | null) => {
+      setBleScanResults(devices);
+      setBleScanCompletedEmpty(devices.length === 0 && !startError);
+      setBleScanMessage(startError ? { kind: 'error', text: startError } : null);
+    };
+
+    setBleScanning(true);
+    setBleScanResults([]);
+    setBleScanCompletedEmpty(false);
+    setBleScanMessage(null);
+
+    try {
+      const first = await requestBleScan();
+      const firstDevices = Array.isArray(first.data?.devices) ? first.data.devices : null;
+      const firstError = first.data?.scan?.lastStartError ?? first.data?.error ?? null;
+
+      if (first.r.ok && firstDevices && (firstDevices.length > 0 || !isBleRespawnScanError(firstError))) {
+        applyScanResult(firstDevices, firstError);
+        return;
+      }
+
+      if (isBleRespawnScanError(firstError) || !first.r.ok) {
+        setBleScanMessage({ kind: 'info', text: 'BLE startar om — försöker igen automatiskt…' });
+        const recovered = await waitForBleRecovery();
+        if (!recovered) {
+          setBleScanMessage({ kind: 'error', text: 'BLE hann inte starta om. Försök igen om några sekunder.' });
+          return;
+        }
+
+        const retry = await requestBleScan();
+        const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
+        const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
+
+        if (retry.r.ok && retryDevices) {
+          applyScanResult(retryDevices, retryError);
+          return;
+        }
+
+        setBleScanMessage({ kind: 'error', text: retryError ?? 'BLE återhämtade sig inte. Försök igen.' });
+        return;
+      }
+
+      applyScanResult([], firstError ?? 'BLE-sökningen misslyckades');
+    } catch {
+      setBleScanMessage({ kind: 'info', text: 'BLE svarade inte direkt — väntar in omstart och försöker igen…' });
+      const recovered = await waitForBleRecovery();
+      if (!recovered) {
+        setBleScanMessage({ kind: 'error', text: 'BLE hann inte starta om. Försök igen om några sekunder.' });
+        return;
+      }
+
+      try {
+        const retry = await requestBleScan();
+        const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
+        const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
+        if (retry.r.ok && retryDevices) {
+          setBleScanResults(retryDevices);
+          setBleScanCompletedEmpty(retryDevices.length === 0 && !retryError);
+          setBleScanMessage(retryError ? { kind: 'error', text: retryError } : null);
+          return;
+        }
+        setBleScanMessage({ kind: 'error', text: retryError ?? 'BLE-sökningen misslyckades.' });
+      } catch {
+        setBleScanMessage({ kind: 'error', text: 'BLE-sökningen misslyckades efter omstart.' });
+      }
+    } finally {
+      setBleScanning(false);
+    }
+  }, [requestBleScan, waitForBleRecovery]);
 
   const handleSave = async () => {
     setSaveError(null);
