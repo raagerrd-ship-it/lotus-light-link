@@ -925,6 +925,22 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
+  // --- Live mic level (poll-friendly, ~5 Hz) ---
+  app.get('/api/mic/level', (_req, res) => {
+    const mic = getMic();
+    if (!mic) {
+      res.json({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0 });
+      return;
+    }
+    const b = mic.getLatestBands();
+    res.json({
+      active: true,
+      totalRms: b.totalRms,
+      bassRms: b.bassRms,
+      midHiRms: b.midHiRms,
+    });
+  });
+
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
     const mic = getMic();

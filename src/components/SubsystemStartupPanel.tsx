@@ -1,14 +1,14 @@
 /**
  * Subsystem startup panel — manuell uppstart av mic + sonos.
  *
- * Avsiktligt MINIMAL i denna iteration: BLE-motor och lamp-anslutning
- * hanteras av BleControlPanel. Här syns bara mic + sonos, och båda är
- * disabled tills BLE-lampan är ansluten (annars saknar de mening).
+ * Mic-raden visar en live VU-meter när mic är ready, så användaren
+ * direkt ser att ljudet kommer in. Sonos-raden visar nuvarande låt +
+ * palette så det är självklart att Sonos-blocket "är" Sonos.
  *
  * Pollar /api/subsystem/status och triggar /api/subsystem/<id>/start på klick.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, Music, Loader2, Check, X, Play } from "lucide-react";
 
 type SubsystemId = "mic" | "sonos";
@@ -27,16 +27,58 @@ interface StatusResp {
   subsystems: Record<string, SubsystemState>;
 }
 
-const ROWS: { id: SubsystemId; label: string; icon: typeof Mic }[] = [
-  { id: "mic",   label: "Mikrofon", icon: Mic },
-  { id: "sonos", label: "Sonos",    icon: Music },
-];
+interface MicLevel {
+  active: boolean;
+  totalRms: number;
+  bassRms: number;
+  midHiRms: number;
+}
+
+interface SonosSnapshot {
+  playing: boolean;
+  track: string | null;
+  palette: [number, number, number][];
+}
 
 const POLL_MS = 2000;
+const MIC_POLL_MS = 200; // ~5 Hz VU-meter
 const START_TIMEOUT_MS = 30_000;
+
+/** Kompakt VU-meter: bas + mid/hi som två staplar med peak-hold. */
+function VuMeter({ level }: { level: MicLevel }) {
+  // Skala upp RMS — typiska värden ligger 0–0.3 efter mic-gain
+  const bassPct = Math.min(100, Math.round(level.bassRms * 400));
+  const midPct = Math.min(100, Math.round(level.midHiRms * 400));
+  return (
+    <div className="flex flex-col gap-1 mt-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[8px] uppercase opacity-50 w-6">Bas</span>
+        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-primary transition-[width] duration-75"
+            style={{ width: `${bassPct}%` }}
+          />
+        </div>
+        <span className="text-[8px] font-mono opacity-60 w-7 text-right">{bassPct}%</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[8px] uppercase opacity-50 w-6">Disk</span>
+        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-accent transition-[width] duration-75"
+            style={{ width: `${midPct}%` }}
+          />
+        </div>
+        <span className="text-[8px] font-mono opacity-60 w-7 text-right">{midPct}%</span>
+      </div>
+    </div>
+  );
+}
 
 export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; enabled: boolean }) {
   const [status, setStatus] = useState<StatusResp | null>(null);
+  const [micLevel, setMicLevel] = useState<MicLevel>({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0 });
+  const [sonos, setSonos] = useState<SonosSnapshot>({ playing: false, track: null, palette: [] });
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -51,6 +93,59 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
     return () => clearInterval(id);
   }, [fetchStatus]);
 
+  // Pollar mic-level OCH sonos-snapshot bara när respektive subsystem är ready
+  const micReady = status?.subsystems.mic?.status === "ready";
+  const sonosReady = status?.subsystems.sonos?.status === "ready";
+
+  useEffect(() => {
+    if (!micReady) {
+      setMicLevel({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0 });
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/mic/level`, { signal: AbortSignal.timeout(1000) });
+        if (r.ok && !cancelled) setMicLevel(await r.json());
+      } catch {}
+    };
+    tick();
+    const id = setInterval(tick, MIC_POLL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [piBase, micReady]);
+
+  useEffect(() => {
+    if (!sonosReady) {
+      setSonos({ playing: false, track: null, palette: [] });
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2500) });
+        if (r.ok && !cancelled) {
+          const data = await r.json();
+          const s = data.sonos ?? {};
+          const palette = Array.isArray(data.engine?.palette) ? data.engine.palette : [];
+          const trackInfo = s.currentTrack ?? s.track ?? null;
+          const track = typeof trackInfo === "string"
+            ? trackInfo
+            : trackInfo?.title
+              ? `${trackInfo.title}${trackInfo.artist ? ` — ${trackInfo.artist}` : ""}`
+              : null;
+          setSonos({
+            playing: s.playbackState === "PLAYING" || s.playing === true,
+            track,
+            palette,
+          });
+        }
+      } catch {}
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [piBase, sonosReady]);
+
   const startOne = useCallback(async (id: SubsystemId) => {
     try {
       await fetch(`${piBase}/api/subsystem/${id}/start`, {
@@ -61,6 +156,56 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
     await fetchStatus();
   }, [piBase, fetchStatus]);
 
+  const renderRow = (
+    id: SubsystemId,
+    label: string,
+    Icon: typeof Mic,
+    extra?: React.ReactNode,
+  ) => {
+    const sub = status?.subsystems[id] ?? { status: "idle" as Status, startedAt: null, readyAt: null, durationMs: null, error: null };
+    const dot = sub.status === "ready"
+      ? "bg-green-500"
+      : sub.status === "starting"
+        ? "bg-yellow-400 animate-pulse"
+        : sub.status === "error"
+          ? "bg-destructive"
+          : "bg-muted-foreground/40";
+    const disabled = !enabled || sub.status === "starting" || sub.status === "ready";
+    return (
+      <div key={id} className="px-3 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+          <Icon size={14} className="shrink-0 text-muted-foreground" />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-foreground/90">{label}</div>
+            {sub.status === "ready" && sub.durationMs != null && (
+              <div className="text-[9px] opacity-50">Redo på {(sub.durationMs / 1000).toFixed(1)}s</div>
+            )}
+            {sub.status === "starting" && <div className="text-[9px] opacity-60">Startar…</div>}
+            {sub.status === "error" && sub.error && (
+              <div className="text-[9px] text-destructive truncate" title={sub.error}>
+                {sub.error.split("\n")[0].slice(0, 60)}
+              </div>
+            )}
+            {sub.status === "idle" && <div className="text-[9px] opacity-50">Ej startad</div>}
+          </div>
+          <button
+            onClick={() => startOne(id)}
+            disabled={disabled}
+            className="px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-primary/15 hover:bg-primary/25 text-primary flex items-center gap-1"
+          >
+            {sub.status === "starting" ? <Loader2 size={11} className="animate-spin" />
+              : sub.status === "ready" ? <Check size={11} />
+              : sub.status === "error" ? <X size={11} />
+              : <Play size={11} />}
+            {sub.status === "ready" ? "Redo" : sub.status === "starting" ? "Startar" : sub.status === "error" ? "Igen" : "Starta"}
+          </button>
+        </div>
+        {sub.status === "ready" && extra}
+      </div>
+    );
+  };
+
   return (
     <div className="mb-4 rounded-xl border border-border bg-secondary/40 text-[11px]">
       <div className="px-3 py-2 border-b border-border flex items-center gap-2">
@@ -68,48 +213,26 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
         {!enabled && <span className="text-[9px] opacity-60">— starta BLE-motorn först</span>}
       </div>
       <div className="divide-y divide-border">
-        {ROWS.map(row => {
-          const Icon = row.icon;
-          const sub = status?.subsystems[row.id] ?? { status: "idle" as Status, startedAt: null, readyAt: null, durationMs: null, error: null };
-          const dot = sub.status === "ready"
-            ? "bg-green-500"
-            : sub.status === "starting"
-              ? "bg-yellow-400 animate-pulse"
-              : sub.status === "error"
-                ? "bg-destructive"
-                : "bg-muted-foreground/40";
-          const disabled = !enabled || sub.status === "starting" || sub.status === "ready";
-          return (
-            <div key={row.id} className="px-3 py-2.5 flex items-center gap-2.5">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-              <Icon size={14} className="shrink-0 text-muted-foreground" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-foreground/90">{row.label}</div>
-                {sub.status === "ready" && sub.durationMs != null && (
-                  <div className="text-[9px] opacity-50">Redo på {(sub.durationMs / 1000).toFixed(1)}s</div>
-                )}
-                {sub.status === "starting" && <div className="text-[9px] opacity-60">Startar…</div>}
-                {sub.status === "error" && sub.error && (
-                  <div className="text-[9px] text-destructive truncate" title={sub.error}>
-                    {sub.error.split("\n")[0].slice(0, 60)}
-                  </div>
-                )}
-                {sub.status === "idle" && <div className="text-[9px] opacity-50">Ej startad</div>}
+        {renderRow("mic", "Mikrofon", Mic, micLevel.active ? <VuMeter level={micLevel} /> : null)}
+        {renderRow("sonos", "Sonos", Music, (
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="text-[10px] opacity-70 truncate flex-1">
+              {sonos.track ? `${sonos.playing ? "▶" : "⏸"} ${sonos.track}` : <span className="opacity-50">Ingen låt</span>}
+            </span>
+            {sonos.palette.length > 0 && (
+              <div className="flex gap-1 shrink-0">
+                {sonos.palette.slice(0, 4).map((c, i) => (
+                  <div
+                    key={i}
+                    className="w-3 h-3 rounded-full border border-border/50"
+                    style={{ backgroundColor: `rgb(${c[0]},${c[1]},${c[2]})` }}
+                    title={`rgb(${c[0]},${c[1]},${c[2]})`}
+                  />
+                ))}
               </div>
-              <button
-                onClick={() => startOne(row.id)}
-                disabled={disabled}
-                className="px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-primary/15 hover:bg-primary/25 text-primary flex items-center gap-1"
-              >
-                {sub.status === "starting" ? <Loader2 size={11} className="animate-spin" />
-                  : sub.status === "ready" ? <Check size={11} />
-                  : sub.status === "error" ? <X size={11} />
-                  : <Play size={11} />}
-                {sub.status === "ready" ? "Redo" : sub.status === "starting" ? "Startar" : sub.status === "error" ? "Igen" : "Starta"}
-              </button>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
