@@ -98,6 +98,14 @@ NEEDS_REBOOT=false
 CONFIG_FILE="/boot/config.txt"
 [ -f /boot/firmware/config.txt ] && CONFIG_FILE="/boot/firmware/config.txt"
 
+if ! grep -q "^dtparam=i2s=on" "$CONFIG_FILE" 2>/dev/null; then
+  echo "dtparam=i2s=on" | sudo tee -a "$CONFIG_FILE" > /dev/null
+  echo "  I²S dtparam tillagd ✓"
+  NEEDS_REBOOT=true
+else
+  echo "  ✓ I²S dtparam redan konfigurerad"
+fi
+
 if ! grep -q "googlevoicehat-soundcard" "$CONFIG_FILE" 2>/dev/null; then
   echo "dtoverlay=googlevoicehat-soundcard" | sudo tee -a "$CONFIG_FILE" > /dev/null
   echo "  I²S overlay tillagd ✓"
