@@ -59,6 +59,18 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   const t0 = Date.now();
   const ts = () => `+${(Date.now() - t0).toString().padStart(5, ' ')}ms`;
 
+  // Steg 0: väck adaptern (idempotent — säkert även om hci0 redan är upp).
+  // Måste köras INNAN noble laddas, eftersom noble cachar HCI-state vid import.
+  console.log(`${ts()} 0. Väcker adaptern: rfkill unblock bluetooth + hciconfig hci0 up...`);
+  try {
+    const { execSync } = await import('child_process');
+    try { execSync('rfkill unblock bluetooth', { timeout: 2000, stdio: 'pipe' }); } catch (e: any) { console.log(`${ts()}    rfkill warning:`, e?.message ?? e); }
+    try { execSync('hciconfig hci0 up', { timeout: 2000, stdio: 'pipe' }); } catch (e: any) { console.log(`${ts()}    hciconfig warning:`, e?.message ?? e); }
+    console.log(`${ts()}    Adapter wake klar`);
+  } catch (e: any) {
+    console.log(`${ts()}    Adapter wake hoppas över:`, e?.message ?? e);
+  }
+
   console.log(`${ts()} 1. Importing @stoprocent/noble...`);
   const noble = await getNobleAsync();
   console.log(`${ts()} 2. Imported. typeof noble.startScanningAsync =`, typeof noble.startScanningAsync);
