@@ -76,10 +76,12 @@ jobs:
       # istället för native ~344 frames/s).
       - name: Build vendored alsa-capture
         run: |
+          set -e
+          npm install -g node-gyp@10
           cd pi/vendor/alsa-capture
           npm install --no-audit --no-fund --ignore-scripts --no-save
-          npx node-gyp rebuild --release
-          ls -la build/Release/capture.node || (echo "❌ capture.node saknas efter build"; exit 1)
+          node-gyp rebuild --release --verbose 2>&1 | tail -50
+          ls -la build/Release/capture.node
           echo "✓ capture.node byggd ($(stat -c%s build/Release/capture.node) bytes)"
 
       # Write VERSION file for non-git installs
