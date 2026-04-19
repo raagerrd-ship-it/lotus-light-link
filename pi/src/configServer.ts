@@ -293,8 +293,10 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
 
-    scheduleNobleStuckWatchdog(3000);
-
+    // OBS: Ingen auto-respawn här. Respawn triggas ENBART från
+    // scan-knappen (pi/src/ble/scan.ts) när waitForPoweredOnAsync(10s)
+    // failar. Att respawna 3s efter /start skulle döda processen innan
+    // noble hunnit ens försöka — och det är inte användarinitierat.
     let connectStarted = false;
     let connected = !!getConnectedDeviceId();
     const hasSaved = !!getSavedDeviceId();
