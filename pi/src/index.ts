@@ -161,21 +161,14 @@ async function main() {
   if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
   console.log('[Boot] ✓ alsaMic loaded (efter noble stateChange)');
 
-  // Auto-restore BLE master switch om användaren hade radion PÅ före senaste
-  // restart OCH noble faktiskt är poweredOn nu. Annars håller vi den OFF —
-  // användaren får trycka på knappen manuellt så de ser felmeddelandet.
-  const { wasEnabledBeforeRestart, setBleEnabled, getAdapterState } = nobleBle;
-  // På Pi blir rå noble.state ofta aldrig poweredOn (fastnar i `unknown`).
-  // Effektiv adapter-state (caps-aware) är det som verkligen räknas — om
-  // den rapporterar poweredOn så ÄR adaptern användbar oavsett rå-state.
+  // Master-switchen är borttagen från UI:t — användaren styr enbart via
+  // "Anslut"-knappen. Vi auto-aktiverar därför bleEnabled vid boot så att
+  // scan/connect/heartbeat-guarderna släpper igenom. Ingen auto-connect
+  // sker ändå (det kräver explicit knapptryck).
+  const { setBleEnabled, getAdapterState } = nobleBle;
   const effectiveState = getAdapterState();
-  const canEnable = firstState === 'poweredOn' || effectiveState === 'poweredOn';
-  if (wasEnabledBeforeRestart() && canEnable) {
-    setBleEnabled(true, false); // persist=false → vi rör inte storage vid auto-restore
-    console.log(`[Boot] ✓ BLE master switch auto-restored till ON (raw=${firstState}, eff=${effectiveState}) — ingen auto-connect, väntar på manuell anslut`);
-  } else if (wasEnabledBeforeRestart()) {
-    console.log(`[Boot] ⚠ BLE var PÅ före restart men adapter ej redo (raw=${firstState}, eff=${effectiveState}) — väntar på manuell aktivering`);
-  }
+  setBleEnabled(true, false); // persist=false → ingen storage-skrivning, bara runtime-flagga
+  console.log(`[Boot] ✓ BLE master switch auto-ON (raw=${firstState}, eff=${effectiveState}) — väntar på manuell "Anslut"`);
 
   const { PiLightEngine } = await import('./piEngine.js');
   const { startConfigServer } = await import('./configServer.js');
