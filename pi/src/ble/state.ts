@@ -566,6 +566,10 @@ let _nobleReleased = false;
 export function isNobleReleased(): boolean { return _nobleReleased; }
 
 export async function releaseNobleResources(reason: string): Promise<void> {
+  if (!hasNobleLoaded()) {
+    console.log(`[BLE] releaseNobleResources skip — noble aldrig laddad (${reason})`);
+    return;
+  }
   const n: any = noble;
   const errors: string[] = [];
   try {
