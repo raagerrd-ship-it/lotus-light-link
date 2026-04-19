@@ -402,7 +402,6 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     // Vi flaggar rå-state som "ignorerad" så fort tidig stateChange fångats
     // ELLER effektiv adapter-state är redo — då är rå-värdet bara referens.
     const rawStateIgnored = (everPoweredOn || adapterReady) && !nobleStateOk;
-    const radioOn = true;
     const savedDevice = !!getSavedDeviceId();
     const connected = getConnectedCount() > 0;
 
@@ -475,12 +474,6 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         label: 'Effektiv adapter-state poweredOn',
         status: stepStatus(adapterReady, stillBooting),
         detail: adapterReady ? `OK (${adapterState})` : `${adapterState}`,
-      },
-      {
-        id: 'radio',
-        label: 'BLE always-on (master switch borttagen)',
-        status: 'ok',
-        detail: 'Engine startar alltid med BLE påslagen — anslut sker manuellt via UI',
       },
       {
         id: 'saved-device',
