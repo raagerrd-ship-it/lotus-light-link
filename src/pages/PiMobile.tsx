@@ -2420,11 +2420,23 @@ export default function PiMobile() {
         </div>
       </div>
 
-      {/* Förenklat BLE-flöde: starta motor + anslut hårdkodad lampa */}
-      <BleControlPanel piBase={piBase} onConnectedChange={setBleHardcodedConnected} />
+      {/* 1. BLE-motor — startas först så noble är poweredOn innan vi gör något annat */}
+      <BleControlPanel
+        piBase={piBase}
+        section="engine"
+        onEngineReadyChange={setBleEngineReady}
+      />
 
-      {/* Subsystem (mic + sonos) — disabled tills BLE-lampan är ansluten */}
-      <SubsystemStartupPanel piBase={piBase} enabled={bleHardcodedConnected} />
+      {/* 2. Subsystem (mic + sonos) — startas när motorn är redo, så ALSA + Sonos hinner upp innan vi börjar skicka färg */}
+      <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
+
+      {/* 3. Lampa — anslut sist, när allt annat är på plats */}
+      <BleControlPanel
+        piBase={piBase}
+        section="lamp"
+        onConnectedChange={setBleHardcodedConnected}
+        onEngineReadyChange={setBleEngineReady}
+      />
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center gap-1.5 shrink-0">
