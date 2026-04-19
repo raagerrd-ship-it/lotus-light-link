@@ -190,53 +190,67 @@ nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
 echo "  Native-moduler klara ✓"
 
 # ─── Native alsa-capture (vendored fork) ──────────────────
-# Vi använder en lokal fork i pi/vendor/alsa-capture/ som har nan uppgraderad
-# till ^2.26.2 (Node 24-kompatibel). Upstream alsa-capture@0.3.0 är övergiven
-# (2022) och dess nan@2.17 misslyckas att kompilera mot V8 i Node 24
-# ("could not convert v8::Undefined from Local<v8::Primitive> to Local<v8::Value>").
-#
-# Bygget kräver global node-gyp@10 (Python 3.12+ saknar distutils som
-# bundlade node-gyp@9 importerar).
+# Primärt byggs detta i CI (ARM64-runner = matchande aarch64-binär ingår i tarball).
+# Här verifierar vi bara att capture.node finns. Om CI-bygget saknas eller
+# misslyckas faller vi tillbaka på lokal build via global node-gyp@10.
 echo ""
-echo "[ALSA] Bygger native alsa-capture från vendor/..."
+echo "[ALSA] Verifierar native alsa-capture..."
 
 VENDOR_DIR="$PI_DIR/vendor/alsa-capture"
 ALSA_NODE_FILE="$VENDOR_DIR/build/Release/capture.node"
 
 if [ ! -d "$VENDOR_DIR" ]; then
   echo "  ✗ $VENDOR_DIR saknas — engine kommer falla tillbaka på arecord"
-elif [ -z "$GLOBAL_NODE_GYP_PATH" ]; then
-  echo "  ✗ Global node-gyp saknas — kan inte bygga capture.node"
-else
-  # Rensa gammalt bygge så vi inte staplar artefakter från olika Node-versioner
-  rm -rf "$VENDOR_DIR/build" "$VENDOR_DIR/node_modules"
-
-  echo "  Installerar vendor-deps (nan@^2.26.2, eventemitter3)..."
-  (
-    cd "$VENDOR_DIR" && \
-    nice -n 15 taskset -c "$CORE" \
-      npm install --no-audit --no-fund --ignore-scripts --no-save 2>&1 | tail -3
-  )
-
-  echo "  Bygger capture.node (node-gyp $GLOBAL_NODE_GYP_VER, Python: ${GYP_PYTHON:-$(command -v python3)})..."
-  ALSA_BUILD_LOG="/tmp/alsa-capture-build.log"
-  (
-    cd "$VENDOR_DIR" && \
-    ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
-    ${GYP_PYTHON:+npm_config_python=$GYP_PYTHON} \
-    nice -n 15 taskset -c "$CORE" \
-      "$GLOBAL_NODE_GYP_PATH" rebuild --release
-  ) > "$ALSA_BUILD_LOG" 2>&1 || true
-
-  if [ -f "$ALSA_NODE_FILE" ]; then
-    echo "  ✓ Native alsa-capture byggd ($(ls -la "$ALSA_NODE_FILE" | awk '{print $5}') bytes)"
-  else
-    echo "  ✗ alsa-capture-build failade — engine använder arecord-fallback"
-    echo "    Sista 25 raderna ur $ALSA_BUILD_LOG:"
-    tail -25 "$ALSA_BUILD_LOG" | sed 's/^/      /'
-    echo "    Manuell felsökning:"
-    echo "      cd $VENDOR_DIR && $GLOBAL_NODE_GYP_PATH rebuild --verbose"
+elif [ -f "$ALSA_NODE_FILE" ]; then
+  ALSA_NODE_SIZE=$(stat -c%s "$ALSA_NODE_FILE" 2>/dev/null || echo 0)
+  echo "  ✓ capture.node finns från CI-bygge (${ALSA_NODE_SIZE} bytes)"
+  # Verifiera att binären faktiskt går att ladda mot installerad Node
+  if ! taskset -c "$CORE" node -e "require('$VENDOR_DIR/index.js')" 2>/tmp/alsa-load-test.err; then
+    echo "  ⚠ capture.node kunde inte laddas — bygger om lokalt"
+    echo "    Fel: $(tail -3 /tmp/alsa-load-test.err)"
+    rm -f "$ALSA_NODE_FILE"
   fi
+fi
+
+if [ ! -f "$ALSA_NODE_FILE" ] && [ -d "$VENDOR_DIR" ]; then
+  # Fallback: lokal build. Kräver node-gyp — installera globalt om saknas.
+  echo "  Installerar global node-gyp@10 för fallback-build..."
+  if ! command -v node-gyp >/dev/null 2>&1; then
+    sudo npm install -g node-gyp@10 --no-audit --no-fund 2>&1 | tail -3 || true
+  fi
+  GYP_BIN="$(command -v node-gyp || true)"
+  if [ -z "$GYP_BIN" ]; then
+    echo "  ✗ node-gyp kunde inte installeras — engine använder arecord-fallback"
+  else
+    echo "  Installerar vendor-deps (nan@^2.26.2, eventemitter3)..."
+    (cd "$VENDOR_DIR" && nice -n 15 taskset -c "$CORE" \
+      npm install --no-audit --no-fund --ignore-scripts --no-save 2>&1 | tail -3)
+
+    echo "  Bygger capture.node lokalt (${GYP_BIN}, Python: ${GYP_PYTHON:-$(command -v python3)})..."
+    ALSA_BUILD_LOG="/tmp/alsa-capture-build.log"
+    (
+      cd "$VENDOR_DIR" && \
+      ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
+      ${GYP_PYTHON:+npm_config_python=$GYP_PYTHON} \
+      nice -n 15 taskset -c "$CORE" \
+        "$GYP_BIN" rebuild --release
+    ) > "$ALSA_BUILD_LOG" 2>&1 || true
+
+    if [ -f "$ALSA_NODE_FILE" ]; then
+      echo "  ✓ Native alsa-capture byggd lokalt ($(stat -c%s "$ALSA_NODE_FILE") bytes)"
+    else
+      echo "  ✗ Lokal build failade — engine använder arecord-fallback"
+      echo "    Sista 25 raderna ur $ALSA_BUILD_LOG:"
+      tail -25 "$ALSA_BUILD_LOG" | sed 's/^/      /'
+    fi
+  fi
+fi
+
+# Installera vendor/node_modules (eventemitter3) om de saknas — krävs för require
+if [ -f "$ALSA_NODE_FILE" ] && [ ! -d "$VENDOR_DIR/node_modules/eventemitter3" ]; then
+  echo "  Installerar vendor runtime-deps (eventemitter3)..."
+  (cd "$VENDOR_DIR" && nice -n 15 taskset -c "$CORE" \
+    npm install --no-audit --no-fund --ignore-scripts --no-save eventemitter3@^4.0.7 2>&1 | tail -3)
 fi
 
 # ─── BLE permissions ─────────────────────────────────────────
