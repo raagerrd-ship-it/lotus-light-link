@@ -100,6 +100,17 @@ export function startConfigServer(port = 3050): void {
     res.status(503).json({ error: 'Mikrofonmodulen laddas efter BLE-init — försök igen om en stund' });
     return null;
   };
+  const requireBleReady = (res: any): boolean => {
+    const bootPhase = getBootPhase();
+    if (bootPhase === 'ready') return true;
+    res.status(503).json({
+      error: 'BLE bootar fortfarande — vänta på noble poweredOn eller automatisk respawn',
+      bootPhase,
+      adapterState: getAdapterState() ?? 'unknown',
+      watchdogReason: getWatchdogGiveUpReason(),
+    });
+    return false;
+  };
 
   const app = express();
   app.use(express.json());
@@ -205,6 +216,7 @@ export function startConfigServer(port = 3050): void {
 
   // --- BLE Device Management ---
   app.post('/api/ble/scan', async (_req, res) => {
+    if (!requireBleReady(res)) return;
     if (isScanning()) {
       return res.status(409).json({ error: 'Scan already in progress' });
     }
@@ -226,6 +238,7 @@ export function startConfigServer(port = 3050): void {
   });
 
   app.post('/api/ble/select', async (req, res) => {
+    if (!requireBleReady(res)) return;
     const { deviceId } = req.body;
     if (typeof deviceId !== 'string') {
       return res.status(400).json({ error: 'Need deviceId' });
@@ -238,7 +251,6 @@ export function startConfigServer(port = 3050): void {
       return res.json({ ok: false, error: e.message });
     }
 
-    // Preview: run engine tick loop for 10s (sends idle color naturally), then stop + disconnect
     const engine = requireEngine(res);
     if (!engine) return;
     engine.setPlaying(true);
@@ -284,6 +296,7 @@ export function startConfigServer(port = 3050): void {
 
   // Manual connect — force BLE connection even without music playing
   app.post('/api/ble/connect', async (_req, res) => {
+    if (!requireBleReady(res)) return;
     if (!getSavedDeviceId()) return res.status(400).json({ error: 'No saved device' });
     if (getConnectedDeviceId()) return res.json({ ok: true, message: 'Already connected' });
     try {
