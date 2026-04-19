@@ -477,12 +477,6 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
         detail: adapterReady ? `OK (${adapterState})` : `${adapterState}`,
       },
       {
-        id: 'radio',
-        label: 'BLE always-on (master switch borttagen)',
-        status: 'ok',
-        detail: 'Engine startar alltid med BLE påslagen — anslut sker manuellt via UI',
-      },
-      {
         id: 'saved-device',
         label: 'Sparad enhet finns',
         status: stepStatus(savedDevice),
