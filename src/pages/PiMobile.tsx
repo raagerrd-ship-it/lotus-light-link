@@ -1977,6 +1977,7 @@ export default function PiMobile() {
   const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[]>([]);
   const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
   const [bleHardcodedConnected, setBleHardcodedConnected] = useState(false);
+  const [bleEngineReady, setBleEngineReady] = useState(false);
   const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
   const [bleSavedId, setBleSavedId] = useState<string | null>(null);
   const [bleSavedName, setBleSavedName] = useState<string | null>(null);
