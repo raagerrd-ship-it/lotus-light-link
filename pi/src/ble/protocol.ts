@@ -184,6 +184,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
     bleStats.writeLatAvgMs = Math.round(
       (bleStats.writeLatAvgMs * 0.9 + elapsed * 0.1) * 10
     ) / 10;
+    pipelineTiming.recordBleWrite(elapsed);
 
     if (lastWriteTime > 0) {
       bleStats.effectiveIntervalMs = Math.round(now - lastWriteTime);
