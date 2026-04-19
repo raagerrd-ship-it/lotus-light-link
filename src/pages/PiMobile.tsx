@@ -1091,76 +1091,21 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
 
   return (
     <div className="space-y-3">
-      {/* Master switch */}
-      <div className={`rounded-xl p-3 border ${enabled ? 'bg-primary/10 border-primary/40' : stillBooting ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-secondary/40 border-border/60'}`}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold flex items-center gap-2">
-              BLE-radio
-              {stillBooting && <Loader2 size={12} className="animate-spin text-yellow-400" />}
-              {(() => {
-                const src = diag.enabledMeta?.source;
-                if (!src || src === 'boot-default') return null;
-                const label =
-                  src === 'auto-restore' ? 'auto-återställd' :
-                  src === 'manual-toggle' ? 'manuellt vald' :
-                  src;
-                const cls =
-                  src === 'auto-restore'
-                    ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-                    : 'bg-primary/15 text-primary border-primary/30';
-                const ts = diag.enabledMeta?.changedAt
-                  ? new Date(diag.enabledMeta.changedAt).toLocaleTimeString()
-                  : undefined;
-                return (
-                  <span
-                    className={`text-[9px] font-mono uppercase tracking-wide rounded-full px-1.5 py-0.5 border ${cls}`}
-                    title={ts ? `Ändrad ${ts}${diag.enabledMeta?.wasEnabledBeforeRestart ? ' • storage: ON' : ' • storage: OFF'}` : undefined}
-                  >
-                    {label}
-                  </span>
-                );
-              })()}
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              {stillBooting
-                ? `Initialiserar BLE-adaptern… (${bootElapsedSec ?? '?'}s) — kan ta upp till 90s vid kall boot`
-                : enabled
-                  ? diag.enabledMeta?.source === 'auto-restore'
-                    ? 'På — auto-återställd från senaste session'
-                    : 'På — söker / ansluter sparad enhet'
-                  : diag.enabledMeta?.wasEnabledBeforeRestart
-                    ? 'Av — var PÅ före restart men noble vaknade inte i tid'
-                    : 'Av — adaptern är fri (default vid uppstart)'}
-            </span>
-          </div>
-          <button
-            onClick={toggleBle}
-            disabled={toggleDisabled}
-            aria-pressed={enabled}
-            aria-busy={stillBooting}
-            title={stillBooting ? 'Vänta tills BLE-adaptern har initialiserats' : undefined}
-            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${enabled ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span
-              className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition-transform ${enabled ? 'translate-x-8' : 'translate-x-1'}`}
-            />
-          </button>
+      {/* Master switch borttagen — använd "Anslut nu"-knappen längst upp istället.
+          BLE-radion styrs nu enbart av direkta connect/disconnect-anrop. */}
+      {startMsg && (
+        <div
+          className={`text-[11px] rounded-md px-2 py-1.5 ${
+            startMsg.kind === 'ok'
+              ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+              : startMsg.kind === 'info'
+                ? 'bg-muted text-muted-foreground border border-border/60'
+                : 'bg-destructive/10 text-destructive border border-destructive/30'
+          }`}
+        >
+          {startMsg.text}
         </div>
-        {startMsg && (
-          <div
-            className={`mt-2 text-[11px] rounded-md px-2 py-1.5 ${
-              startMsg.kind === 'ok'
-                ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                : startMsg.kind === 'info'
-                  ? 'bg-muted text-muted-foreground border border-border/60'
-                  : 'bg-destructive/10 text-destructive border border-destructive/30'
-            }`}
-          >
-            {startMsg.text}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Adapter status */}
       <div className="grid grid-cols-2 gap-2 text-xs">
