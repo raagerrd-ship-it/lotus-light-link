@@ -3,11 +3,15 @@
  * All modules read/write through these accessors to avoid circular imports.
  */
 
-// @ts-ignore — noble types are approximate
-import noble from '@stoprocent/noble';
+// noble laddas LAZY via singleton — får aldrig require:as här på top-level
+// (mem://pi/ble/noble-statechange-event-loop-race). `noble`-proxy:n triggar
+// `require('@stoprocent/noble')` först vid första property-access, vilket
+// sker först när startBleEngine() kör — inte vid module load.
+import { noble, onNobleStateChange, hasNobleLoaded } from './noble-singleton.js';
 import { readFileSync } from 'fs';
 import { getItem, setItem } from '../storage.js';
 import type { ConnectedDevice, BleConnectionEvent } from './types.js';
+export { hasNobleLoaded };
 
 // ── Constants ──
 export const SERVICE_UUID = 'fff0';
@@ -156,28 +160,20 @@ function setForceMutationSnapshot(s: Omit<ForceMutationSnapshot, 'ranAt'>): void
   _forceMutationSnapshot = { ...s, ranAt: new Date().toISOString() };
 }
 
-try {
-  (noble as any).on?.('stateChange', (s: string) => {
-    _cachedNobleState = s;
-    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
-    console.log(`[BLE:stateChange] ${s}`);
-    if (_firstStateChangeResolve) {
-      _firstStateChangeResolve(s);
-      _firstStateChangeResolve = null;
-    }
-  });
-  const initial = (noble as any).state ?? (noble as any)._state;
-  if (initial && initial !== 'unknown') {
-    _cachedNobleState = initial;
-    if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
-    if (_firstStateChangeResolve) {
-      _firstStateChangeResolve(initial);
-      _firstStateChangeResolve = null;
-    }
+// Hooka in oss på noble-singletons stateChange-stream. Detta REGISTRERAR bara
+// callbacken — det laddar inte noble. Singleton:en levererar event:et hit
+// så fort startBleEngine() faktiskt require:ar noble. Om noble laddats av
+// någon annan kod tidigare och redan har en cachad state replay:as den till
+// oss synkront här.
+onNobleStateChange((s: string) => {
+  _cachedNobleState = s;
+  if (_firstStateChangeAt == null) _firstStateChangeAt = Date.now();
+  console.log(`[BLE:stateChange] ${s}`);
+  if (_firstStateChangeResolve) {
+    _firstStateChangeResolve(s);
+    _firstStateChangeResolve = null;
   }
-} catch (e) {
-  console.error('[BLE] failed to attach early stateChange listener:', e);
-}
+});
 
 /**
  * Wait for noble's first `stateChange` event (or already-cached state).
@@ -501,6 +497,11 @@ export function getNobleRawState(): string | undefined {
   // the only source of truth that survives noble's "fire once at startup"
   // semantics. Fall back to noble's own properties.
   if (_cachedNobleState) return _cachedNobleState;
+  // Om noble inte är laddad ännu (t.ex. innan startBleEngine kört) ska vi
+  // INTE accessa proxyn — det skulle trigga lazy-require av @stoprocent/noble
+  // och förstöra hela poängen med lazy-loading. Returnera undefined så att
+  // diagnostik-endpointer rapporterar `unknown` på ett ärligt sätt.
+  if (!hasNobleLoaded()) return undefined;
   const n = noble as typeof noble & {
     state?: string;
     _state?: string;
@@ -508,10 +509,6 @@ export function getNobleRawState(): string | undefined {
     _adapterState?: string;
   };
   const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
-  // Om noble's egen property säger något annat än `unknown` så HAR
-  // stateChange fyrats någon gång — vår early-listener missade bara eventet
-  // (event-loop blockerad vid emit-ögonblicket). Markera observationen så
-  // hasNobleEverFiredStateChange() blir korrekt.
   if (raw && raw !== 'unknown') recordObservedNobleState(raw);
   return raw;
 }
@@ -569,6 +566,10 @@ let _nobleReleased = false;
 export function isNobleReleased(): boolean { return _nobleReleased; }
 
 export async function releaseNobleResources(reason: string): Promise<void> {
+  if (!hasNobleLoaded()) {
+    console.log(`[BLE] releaseNobleResources skip — noble aldrig laddad (${reason})`);
+    return;
+  }
   const n: any = noble;
   const errors: string[] = [];
   try {

@@ -483,19 +483,24 @@ export function startConfigServer(port = 3050): void {
       directConnectReady: !!(getSavedAddressType() && getSavedDeviceAddress()),
     });
   });
-  app.get('/api/ble/diagnostics', (_req, res) => {
+  app.get('/api/ble/diagnostics', async (_req, res) => {
     const adapterState = getAdapterState() ?? 'unknown';
     const hasCaps = processHasBtCaps();
     const events = getConnectionLog();
 
-    // Raw noble internals (before any caps-aware override) — for OS↔noble comparison
-    const n = noble as any;
-    const nobleRaw = {
+    // Raw noble internals (before any caps-aware override) — for OS↔noble comparison.
+    // Endast om noble faktiskt är laddad: annars triggar diagnostik-endpointen
+    // lazy-require av @stoprocent/noble innan användaren startat BLE-motorn,
+    // vilket bryter hela lazy-loading-poängen.
+    const { hasNobleLoaded } = await import('./ble/state.js');
+    const nobleLoaded = hasNobleLoaded();
+    const n: any = nobleLoaded ? noble : null;
+    const nobleRaw = nobleLoaded ? {
       state: n?.state ?? null,
       _state: n?._state ?? null,
       adapterState: n?.adapterState ?? null,
       _adapterState: n?._adapterState ?? null,
-    };
+    } : { state: null, _state: null, adapterState: null, _adapterState: null, notLoaded: true };
 
     // Raw HCI adapter info from the OS (hciconfig hci0)
     let hciRaw = '';
