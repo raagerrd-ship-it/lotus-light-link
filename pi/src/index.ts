@@ -63,6 +63,46 @@ function normalizeSonosBaseUrl(raw: string | null | undefined): string {
   return LEGACY_LOCAL_SONOS_URLS.has(base) ? SONOS_BUDDY_API_URL : base;
 }
 
+function applySonosStateToEngine(state: {
+  playbackState: string;
+  isTvMode: boolean;
+  volume: number | null;
+  palette: [number, number, number][] | null;
+  albumArtUrl: string | null;
+}, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }): void {
+  if (!engineInstance) return;
+  const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
+
+  if (state.isTvMode) {
+    engineInstance.setPlaying(true);
+    if (wasTvModeRef && !wasTvModeRef.current) {
+      console.log('[Engine] → TV-läge');
+      wasTvModeRef.current = true;
+    }
+  } else {
+    engineInstance.setPlaying(isPlaying);
+    if (wasTvModeRef?.current) {
+      console.log('[Engine] TV-läge → Normal');
+      wasTvModeRef.current = false;
+    }
+  }
+
+  if (state.volume != null) {
+    engineInstance.setVolume(state.volume);
+    alsaMic?.setAutoGainFromVolume(state.volume);
+  }
+
+  if (!state.isTvMode && state.palette && state.palette.length > 0) {
+    const artChanged = !lastArtUrlRef || state.albumArtUrl !== lastArtUrlRef.current;
+    if (artChanged) {
+      if (lastArtUrlRef) lastArtUrlRef.current = state.albumArtUrl;
+      engineInstance.setColor(state.palette[0]);
+      engineInstance.setPalette(state.palette);
+      console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
+    }
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Subsystem: BLE-motor (noble + adapter wake-up)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,6 +232,14 @@ async function startMicSubsystem(): Promise<void> {
         invalidateIdleColorCache: engineMod?.invalidateIdleColorCache,
       });
 
+      // Regressionfix: om Sonos redan startat och redan är PLAYING när mic/engine
+      // kommer upp, så måste vi replaya currentState hit direkt. Annars missas
+      // första onSonosChange-eventet och engine blir kvar i idle (0% output)
+      // tills nästa Sonos-förändring.
+      if (sonos?.getSonosState) {
+        applySonosStateToEngine(sonos.getSonosState());
+      }
+
       alsaMic.startMic();
       engineInstance.start();
       markSubsystemReady('mic');
@@ -235,29 +283,10 @@ async function startSonosSubsystem(): Promise<void> {
       await sonos.startSonosPoller(cfg);
 
       // Wire Sonos → engine (om engine redan finns)
-      let lastArtUrl: string | null = null;
-      let wasTvMode = false;
+      const lastArtUrl = { current: null as string | null };
+      const wasTvMode = { current: false };
       sonos.onSonosChange((state) => {
-        if (!engineInstance) return;
-        const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
-        if (state.isTvMode) {
-          engineInstance.setPlaying(true);
-          if (!wasTvMode) { console.log('[Engine] → TV-läge'); wasTvMode = true; }
-        } else {
-          engineInstance.setPlaying(isPlaying);
-          if (wasTvMode) { console.log('[Engine] TV-läge → Normal'); wasTvMode = false; }
-        }
-        if (state.volume != null) {
-          engineInstance.setVolume(state.volume);
-          alsaMic?.setAutoGainFromVolume(state.volume);
-        }
-        if (!state.isTvMode && state.palette && state.palette.length > 0 &&
-            state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {
-          lastArtUrl = state.albumArtUrl;
-          engineInstance.setColor(state.palette[0]);
-          engineInstance.setPalette(state.palette);
-          console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
-        }
+        applySonosStateToEngine(state, lastArtUrl, wasTvMode);
       });
 
       markSubsystemReady('sonos');
