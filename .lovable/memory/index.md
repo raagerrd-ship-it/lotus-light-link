@@ -36,6 +36,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Noble compatibility](mem://pi/runtime/noble-compatibility) — Check state and _state on noble object
 - [Build resources](mem://pi/deployment/build-and-resources) — RAM/swap requirements for building on Pi Zero 2W
 - [BLE keep-alive](mem://pi/ble/keep-alive) — 1s keep-alive packet to prevent BLEDOM timeout
+- [BLE write rate limit](mem://pi/ble/write-rate-limit) — Max ~15 writes/s till BLEDOM, annars reason=8 disconnect
 - [HCI up-only policy](mem://pi/ble/hci-up-only-policy) — Engine får ALDRIG ta ner hci0 (no down/reset/hci.stop)
 - [Pi exclusive focus](mem://architecture/pi-exclusive-focus) — Architecture focused on headless Pi engine
 - [Event-driven engine](mem://pi/performance/event-driven-architecture) — Engine execution triggered by FFT frames
