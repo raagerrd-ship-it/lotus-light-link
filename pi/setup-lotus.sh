@@ -337,16 +337,35 @@ fi
 # bara systemd PID 1, vilket de har). Vi disablar PCC:s user-service så
 # de inte konflitar om porten.
 SYS_SVC_PATH="/etc/systemd/system/lotus-light-engine.service"
-USER_SVC_PATH="$HOME/.config/systemd/user/lotus-light-engine.service"
+# Hitta target-user's home (setup körs ofta via sudo → $HOME = /root)
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+USER_SVC_PATH="$TARGET_HOME/.config/systemd/user/lotus-light-engine.service"
+TARGET_UID="$(id -u "$TARGET_USER")"
 
 echo ""
 echo "[BLE-fix] Installerar system-service (ersätter user-service)..."
 
-# 1. Stoppa och disabla user-service om PCC skapat den
+# 1. Rensa GAMMAL user-service från tidigare versioner (idempotent, alltid)
+#    Vi kör som target-user via systemctl --user med rätt XDG_RUNTIME_DIR,
+#    annars hittar systemctl inte user-bus från sudo-kontext.
+USER_SYSTEMCTL="sudo -u $TARGET_USER XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user"
+$USER_SYSTEMCTL stop lotus-light-engine 2>/dev/null || true
+$USER_SYSTEMCTL disable lotus-light-engine 2>/dev/null || true
 if [ -f "$USER_SVC_PATH" ]; then
-  systemctl --user stop lotus-light-engine 2>/dev/null || true
-  systemctl --user disable lotus-light-engine 2>/dev/null || true
-  echo "  PCC user-service stoppad och disablad ✓"
+  rm -f "$USER_SVC_PATH"
+  $USER_SYSTEMCTL daemon-reload 2>/dev/null || true
+  echo "  Gammal user-service raderad ($USER_SVC_PATH) ✓"
+fi
+
+# 2. Döda kvarlevande node-processer (user-service kan ha startat egna)
+#    så de inte håller BLE-anslutningen eller porten 3051.
+if pgrep -f 'lotus-light|piEngine' >/dev/null 2>&1; then
+  sudo pkill -TERM -f 'lotus-light' 2>/dev/null || true
+  sudo pkill -TERM -f 'piEngine' 2>/dev/null || true
+  sleep 1
+  sudo pkill -KILL -f 'lotus-light' 2>/dev/null || true
+  sudo pkill -KILL -f 'piEngine' 2>/dev/null || true
+  echo "  Kvarlevande engine-processer dödade ✓"
 fi
 
 # 2. Skriv ny system-service (idempotent — overwrite varje release)
