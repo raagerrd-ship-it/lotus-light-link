@@ -124,6 +124,21 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       else if (typeof n.stopScanning === 'function') n.stopScanning();
     } catch {}
 
+    // Force noble's interna _state till poweredOn om den fastnat i `unknown`.
+    // På Pi åts noble's libuv stateChange-event upp av native module-init
+    // (mem://pi/ble/noble-statechange-event-loop-race). HCI-socket är frisk
+    // (caps OK + hci0 UP RUNNING + hci-probe OK), bara noble's interna guard
+    // blockerar startScanningAsync. Vi sätter state direkt så guarden släpper.
+    if (n.state !== 'poweredOn' || n._state !== 'poweredOn') {
+      const before = { state: n.state, _state: n._state };
+      try { n._state = 'poweredOn'; } catch {}
+      try { n.state = 'poweredOn'; } catch {}
+      logConnectionEvent({
+        type: 'scan_start',
+        detail: `forced noble.state poweredOn (was state=${before.state}, _state=${before._state})`,
+      });
+    }
+
     onDiscover = (peripheral: any) => {
       try {
         const idRaw: string = peripheral?.id ?? peripheral?.uuid ?? peripheral?.address ?? '';
