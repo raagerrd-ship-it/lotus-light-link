@@ -98,6 +98,10 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 5000);
           _connected = peripheral;
+          // Rensa ev. gamla disconnect-listeners från tidigare connect-cyklar
+          // mot samma peripheral — annars staplas de och triggar
+          // MaxListenersExceededWarning efter ~10 reconnects.
+          try { peripheral.removeAllListeners?.('disconnect'); } catch {}
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
             stopKeepAlive();
