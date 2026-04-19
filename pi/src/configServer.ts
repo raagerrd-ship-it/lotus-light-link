@@ -928,14 +928,13 @@ export function startConfigServer(port = 3050): void {
   // --- Live mic level (poll-friendly, ~5 Hz) ---
   app.get('/api/mic/level', async (_req, res) => {
     const mic = getMic();
+    const engine = getEngine();
+    const tickMs = engine ? engine.getTickMs() : null;
     if (!mic) {
-      res.json({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0, backend: 'none', audioToBleLatencyMs: null });
+      res.json({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0, backend: 'none', audioToBleLatencyMs: null, tickMs });
       return;
     }
     const b = mic.getLatestBands();
-    // End-to-end latency: time between last audio buffer arriving from ALSA
-    // and last BLE write returning. Negative/huge values mean BLE wrote before
-    // this audio buffer (idle path) — clamp to null in that case.
     let audioToBleLatencyMs: number | null = null;
     try {
       const { getLastWriteTime } = await import('./ble/protocol.js');
@@ -953,6 +952,7 @@ export function startConfigServer(port = 3050): void {
       midHiRms: b.midHiRms,
       backend: mic.getMicBackend(),
       audioToBleLatencyMs,
+      tickMs,
     });
   });
 
