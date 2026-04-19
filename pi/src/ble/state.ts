@@ -497,6 +497,11 @@ export function getNobleRawState(): string | undefined {
   // the only source of truth that survives noble's "fire once at startup"
   // semantics. Fall back to noble's own properties.
   if (_cachedNobleState) return _cachedNobleState;
+  // Om noble inte är laddad ännu (t.ex. innan startBleEngine kört) ska vi
+  // INTE accessa proxyn — det skulle trigga lazy-require av @stoprocent/noble
+  // och förstöra hela poängen med lazy-loading. Returnera undefined så att
+  // diagnostik-endpointer rapporterar `unknown` på ett ärligt sätt.
+  if (!hasNobleLoaded()) return undefined;
   const n = noble as typeof noble & {
     state?: string;
     _state?: string;
@@ -504,10 +509,6 @@ export function getNobleRawState(): string | undefined {
     _adapterState?: string;
   };
   const raw = n.state ?? n._state ?? n.adapterState ?? n._adapterState;
-  // Om noble's egen property säger något annat än `unknown` så HAR
-  // stateChange fyrats någon gång — vår early-listener missade bara eventet
-  // (event-loop blockerad vid emit-ögonblicket). Markera observationen så
-  // hasNobleEverFiredStateChange() blir korrekt.
   if (raw && raw !== 'unknown') recordObservedNobleState(raw);
   return raw;
 }
