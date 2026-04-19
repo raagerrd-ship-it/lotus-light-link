@@ -327,6 +327,18 @@ if [ -f "$SVC_FILE" ]; then
     echo "  CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN ✓"
   fi
 
+  # SupplementaryGroups — systemd-user-services ärver INTE login-grupper.
+  # Utan detta: /dev/rfkill = "Permission denied" i tjänsten trots
+  # att pi-användaren är med i netdev. Måste sättas explicit här.
+  if ! grep -q "^SupplementaryGroups=.*netdev" "$SVC_FILE" || ! grep -q "^SupplementaryGroups=.*bluetooth" "$SVC_FILE"; then
+    sed -i '/^SupplementaryGroups=/d' "$SVC_FILE"
+    sed -i '/CapabilityBoundingSet=/a SupplementaryGroups=netdev bluetooth' "$SVC_FILE"
+    echo "  Lade till SupplementaryGroups=netdev bluetooth ✓"
+    BLE_FIXED=true
+  else
+    echo "  SupplementaryGroups=netdev bluetooth ✓"
+  fi
+
   # MemoryMax — PCC sätter default 27M vilket OOM-killar Node + noble + alsa.
   # Höj till 150M (Pi Zero 2W har 512MB RAM, gott om plats).
   if grep -qE "^MemoryMax=" "$SVC_FILE"; then
