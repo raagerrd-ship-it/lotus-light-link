@@ -27,6 +27,7 @@ import {
   getSavedDeviceId,
   getSavedDeviceName,
   isDemandActive,
+  processHasBtCaps,
 } from './state.js';
 import { isScanning } from './scan.js';
 import { isConnectInProgress } from './connect.js';
@@ -58,11 +59,21 @@ function buildHeartbeat(): string {
   const demand = isDemandActive();
   const hci = hciSummary();
 
+  // Tre olika begrepp som tidigare blandades ihop:
+  //   raw    = vad noble själv rapporterar (kan ligga kvar på 'unknown' på Pi)
+  //   eff    = effektiv BLE-motor-status (caps-aware override → 'poweredOn' om OS+caps OK)
+  //   sc     = stateChange-event observerat ja/nej (oberoende av eff)
+  const engineReady = eff === 'poweredOn' || (processHasBtCaps() && /UP/.test(hci));
+  const eng = engineReady ? 'eng:redo' : 'eng:vänta';
+  const rawLabel = raw === eff ? `raw:${raw}` : `raw:${raw}(eff:${eff})`;
+  const sc = everPow ? 'sc:y' : 'sc:n';
+
   const parts = [
     `t+${elapsed}s`,
-    `noble:${raw}${raw !== eff ? `→${eff}` : ''}`,
+    eng,
+    rawLabel,
+    sc,
     `${hci}`,
-    everPow ? 'pow✓' : 'pow✗',
     saved ? `saved:${savedName ?? saved.slice(0, 8)}` : 'saved:none',
     dev ? 'connected:✓' : connecting ? 'connecting…' : scanning ? 'scanning…' : demand ? 'demand-pending' : 'idle',
   ];
