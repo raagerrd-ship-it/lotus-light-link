@@ -1,25 +1,22 @@
 ---
-name: alsa-capture vendored som lokal fork pga Node 24-inkompatibilitet
-description: alsa-capture@0.3.0 är övergiven (2022) och dess nan@2.17 misslyckas att kompilera mot V8 i Node 24. Lösning: vendora i pi/vendor/alsa-capture/ med nan uppgraderad till ^2.26.2.
+name: alsa-capture omskriven som N-API addon (node-addon-api)
+description: Original alsa-capture@0.3.0 (NAN-baserad) bröts av tre separata Node 24/V8 14-inkompatibiliteter i nan-templates. Lösning: vendora om i pi/vendor/alsa-capture/ ovanpå node-addon-api (N-API v8) — ABI-stabilt över alla Node-versioner.
 type: constraint
 ---
-**Symptom:** På Pi med Node 24 + Python 3.13 failar `npm install alsa-capture@^0.3.0` med två separata fel:
-1. **Python**: `from distutils.version import StrictVersion` → `ModuleNotFoundError` (distutils borttaget i Python 3.12+, alsa-capture bundlar node-gyp@9 som inte stödjer det)
-2. **V8**: `could not convert v8::Undefined((...)->GetIsolate()) from Local<v8::Primitive> to Local<v8::Value>` i `streaming-worker.h:221` — nan@2.17 är inkompatibel med Node 24:s skärpta V8-typer
+**Symptom (Node 24 + nan@2.26.2):** Tre separata kompileringsfel i tredjeparts-headers:
+1. `Nan::Get(options, Nan::New<String>("x"))` — `nan@2.26.2` har bara överlast för `Local<Value>`/`uint32_t` som key, ej `Local<String>`
+2. `new Persistent<Function>(local)` — V8 14 har tagit bort `Persistent(Isolate*, Local<S>)`-konstruktorn som nan använder internt i `nan_persistent_12_inl.h:18`
+3. `info[i]->IsUndefined()` i `streaming-worker.h:221` — V8 14:s `FunctionCallbackInfo::operator[]` returnerar `Local<Primitive>` när out-of-range, vilket nan inte hanterar
 
-**Rotorsak:** alsa-capture är övergiven sen 2022. Ingen kommer fixa upstream.
+**Rotorsak:** Att stapla workarounds på `nan` är en återvändsgränd. NAN exponerar V8-templates direkt och bryts varje gång V8 gör ABI-ändringar.
 
-**Lösning (build 2026-04-19/vendored-alsa-capture):**
-- Forka in upstream-källan till `pi/vendor/alsa-capture/` (capture.cc, streaming-worker.h, macros.h, binding.gyp, index.js, index.d.ts oförändrade)
-- Bytt ut `package.json`: bumpa `nan` till `^2.26.2` (släppt mars 2026, har Node 24-stöd), ta bort `node-gyp` ur deps (bygget använder global node-gyp@10), ta bort övriga metadatafält
-- Bygg via `setup-lotus.sh`: `cd pi/vendor/alsa-capture && npm install --ignore-scripts && node-gyp rebuild --release`
-- `pi/src/alsaMic.ts` importerar med fallback-kedja: `vendor/alsa-capture/index.js` → `npm:alsa-capture` → `node-record-lpcm16` (arecord)
-- Tagit bort `alsa-capture` ur `pi/package.json` `optionalDependencies` — vendor-pathen är primary
+**Lösning (2026-04-19):** Skrev om addon i N-API ovanpå `node-addon-api@^8.3.0`:
+- `pi/vendor/alsa-capture/capture.cc` — ~200 rader, använder `Napi::ObjectWrap<CaptureWorker>` + `Napi::ThreadSafeFunction` för att posta audio-frames från capture-tråden till JS-callbacken utan blockering
+- `binding.gyp` använder `node-addon-api`'s include-path och `defines: ["NAPI_VERSION=8", "NAPI_DISABLE_CPP_EXCEPTIONS=1"]`
+- JS-API:t i `index.js` är **oförändrat** — `new Capture.StreamingWorker(onMessage, onClose, onError, opts)` + `.closeInput()`
+- N-API är ABI-stabilt över Node 18+, så ingen omkompilering krävs vid Node-uppgraderingar och inga V8-fel uppstår
 
-**Krav för bygget på Pi:**
-- node-gyp@10 globalt: `sudo npm install -g node-gyp@^10`
-- libasound2-dev: `sudo apt install -y libasound2-dev`
-- build-essential, python3 (3.11+ funkar, 3.13 funkar med node-gyp@10)
+**Krav för bygget:** node-gyp@10, libasound2-dev, gcc med C++17. Python-versionen spelar ingen roll med node-gyp@10.
 
 **Verifiering:**
 ```bash
@@ -28,4 +25,4 @@ sudo journalctl -u lotus-light-engine -n 30 --no-pager | grep ALSA
 # ska säga: [ALSA] Using native alsa-capture (vendored fork, direct snd_pcm_readi)
 ```
 
-**Lärdom:** När en native-modul har två separata kompatibilitetsproblem (Python + V8) och är övergiven — vendora hellre än att stapla workarounds runt npm-installet. Att äga koden är billigare än att kämpa mot lifecycle-scripts.
+**Lärdom:** För native Node-addons — använd alltid N-API (`node-addon-api`), aldrig NAN. NAN kräver att tredje part jagar V8-ABI per Node-version, N-API är garanterat stabilt.
