@@ -1,64 +1,123 @@
 
-Problemet jag ser är att koden just nu blandar ihop två olika saker:
 
-- `raw noble state` = vad noble själv rapporterar (`unknown` i dina loggar)
-- `effektiv BLE-motor redo` = OS/HCI/caps säger att radion i praktiken är uppe (`poweredOn` via override)
+## Vad jag har verifierat i `pi/scripts/noble-scan-isolated.mjs`
 
-Det är därför du får motsägelsefulla rader som:
-- `noble:unknown→poweredOn`
-- `pow✗`
-- boot-logg som säger att noble inte blev poweredOn, trots att BLE-motorn i praktiken verkar vara uppe
+Ja, jag har läst scriptet rad för rad. Här är **exakt** vad det gör som vi måste spegla:
 
-Dessutom finns en policyglipa kvar: `scan.ts` har fortfarande respawn-logik, trots att ni beslutat manual-only utan auto-respawn.
+### 1. Import-ordning (kritiskt)
+```js
+const noble = (await import('@stoprocent/noble')).default;
+```
+- **Första** raden i filen som rör något native.
+- Inga andra imports före. Inga andra native-bindningar laddade alls (ingen alsa, inget annat).
+- Event-loopen är **helt ren** när noble require:as → libuv hinner emittera `stateChange` inom ~250-300ms.
 
-## Plan
+### 2. Listeners attach:as OMEDELBART efter import
+```js
+for (const ev of ['stateChange', 'scanStart', 'scanStop', 'discover', ...]) {
+  noble.on(ev, ...);
+}
+```
+- Ingen `await`, ingen annan kod mellan import och `.on('stateChange', ...)`.
 
-### 1. Separera statusbegreppen i backend
-Uppdatera `pi/src/ble/state.ts` och `pi/src/ble/heartbeat.ts` så att tre saker hålls isär tydligt:
+### 3. Vänta 1s på initial stateChange
+```js
+await new Promise(r => setTimeout(r, 1000));
+```
+- Ger libuv tid att fyra eventet innan vi gör något annat.
 
-- rå noble-state
-- effektiv BLE-motor redo
-- stateChange observerad ja/nej
+### 4. Försäkra poweredOn
+```js
+if (noble.state !== 'poweredOn') {
+  await noble.waitForPoweredOnAsync(3000);
+}
+```
 
-I stället för dagens otydliga `pow✓/✗` ska heartbeat/loggar använda en tydligare etikett för “noble stateChange sedd” och visa rå/effektiv status sida vid sida utan att se ut som samma sak.
+### 5. Scan
+```js
+await noble.startScanningAsync([], true);  // [], true = inga filter, allowDuplicates
+// vänta 5s, samla discover-events i listener
+await noble.stopScanningAsync();
+```
 
-### 2. Korrigera boot- och diagnostiklogiken
-Uppdatera `pi/src/index.ts` och `pi/src/configServer.ts` så boot inte längre kommunicerar “BLE trasig” när det egentligen bara är raw noble som inte syncat.
+### Vad som FÅR den att fungera (och vad vår engine bryter mot)
 
-Det ska bli två separata diagnoser:
+| noble-scan-isolated.mjs | Vår engine idag |
+|---|---|
+| `import noble` är allra första native-anropet | `configServer.ts` top-level-importerar `nobleBle.js` → noble laddas medan TS-moduler/alsa fortfarande blockerar event-loopen |
+| Inga andra native-bindningar i processen | alsa-capture native-binding finns med |
+| Listener attach direkt efter import | Listener attachades på olika ställen, ibland för sent |
+| `startScanningAsync([], true)` | Scan-flödet hade watchdogs, retry, force-mutate-state-helpers |
+| Connect via discovered peripheral | Vi har provat connect-by-address utan föregående scan |
 
-- “BLE-motor redo”
-- “noble raw/stateChange ej bekräftad ännu”
+### Slutsats för planen
 
-Checklistan i diagnostiken ska fortsätta visa exakta steg, men med tydligare innebörd så användaren ser vad som faktiskt passerats.
+Den nya `startBleEngine()` + `connect`-vägen måste:
+1. **Aldrig** importera noble på top-level någonstans (lazy-singleton finns redan).
+2. När användaren trycker "Starta motor": `await import('@stoprocent/noble')` som **första** native-anrop i den request-handlern, attach `stateChange`-listener i **samma synkrona block**, vänta upp till 5s på `poweredOn`.
+3. För connect mot hårdkodad ELK-BLEDOM01: kör `startScanningAsync([], true)` i 5s, plocka peripheralet med matchande address (`be67001509 41` utan kolon, lowercase), `stopScanningAsync`, sedan `peripheral.connectAsync()` på det objektet. **Inte** connect-by-address utan scan — det är inte det isolerade scriptet bevisar.
+4. Inga watchdogs, ingen reconnect-loop, inga force-mutates av `noble._state`.
 
-### 3. Synka BLE-policy i scan/connect
-Gå igenom `pi/src/ble/scan.ts` och vid behov `pi/src/ble/connect.ts` så BLE-operationer följer samma policy som resten av systemet:
+## Plan (uppdaterad)
 
-- ingen auto-respawn kvar i scan-flödet
-- konsekvent readiness-logik i stället för att vissa delar litar på effektiv state och andra kräver rå `poweredOn`
-- tydligare felmeddelanden om exakt vad som blockerar nästa steg
+### Hårdkodning
+`pi/src/ble/hardcoded-device.ts`:
+```ts
+export const HARDCODED_DEVICE = {
+  name: 'ELK-BLEDOM01',
+  mac: 'BE:67:00:15:09:41',
+  addressLower: 'be:67:00:15:09:41',
+  idNoColon: 'be67001509 41'.replace(/\s/g,''),
+};
+```
 
-### 4. Justera UI-texten, inte layouten
-Uppdatera `src/pages/PiMobile.tsx` men behåll checkbox-layouten.
+### Backend — 4 endpoints
+`pi/src/configServer.ts`:
+- `POST /api/ble/engine/start` → lazy-importera noble-singleton, attach stateChange direkt, vänta `poweredOn` (5s) → `{ ready, durationMs, rawState }`
+- `POST /api/ble/connect` → kör **scan-then-connect** mot HARDCODED_DEVICE (precis som isolated-scriptet) → `{ connected, name, mac }`
+- `POST /api/ble/disconnect` → `{ disconnected }`
+- `GET /api/ble/state` → `{ engineReady, connected, device }`
 
-Målet är att panelen ska visa ungefär detta tydligt:
+**Ta bort:** alla scan-, save-manual-, forget-, select-, diagnostics-, watchdog-endpoints.
 
-- BLE-motor: redo / väntar / behöver åtgärd
-- noble raw state: unknown / poweredOn
-- stateChange fångad: ja / nej
-- lampa/mic/sonos som egna grupper som idag
+### Ny `pi/src/ble/connect-hardcoded.ts`
+Speglar `noble-scan-isolated.mjs` exakt:
+1. Vänta på `poweredOn` om inte redan.
+2. `startScanningAsync([], true)`.
+3. Lyssna på `discover`, matcha på `peripheral.address.toLowerCase() === HARDCODED_DEVICE.addressLower` ELLER `peripheral.id === HARDCODED_DEVICE.idNoColon`.
+4. Vid match: `stopScanningAsync()` → `peripheral.connectAsync()` → spara peripheralet i state.
+5. 8s timeout, returnera fel om ingen match.
 
-Alltså samma visuella modell som du vill ha, men utan att statusorden motsäger varandra.
+### `pi/src/index.ts` `startBleEngine()`
+Endast lazy-importera noble-singleton + vänta på `poweredOn`. Ingen scan, ingen reconnect, inga watchdogs.
 
-## Förväntat resultat
-Efter ändringen ska samma situation inte längre se ut som ett logiskt fel. Om adaptern är uppe men raw noble fortfarande är `unknown`, ska UI och loggar uttryckligen säga just det, i stället för att blanda ihop “motorn redo” med “noble fullt synkad”.
+### Frontend — minimerad
+
+Ny `src/components/BleControlPanel.tsx`:
+```text
+┌─ BLE-motor ───────────────────────────┐
+│ ● Redo            [Starta motor]      │
+└───────────────────────────────────────┘
+┌─ Lampa ───────────────────────────────┐
+│ ELK-BLEDOM01                          │
+│ BE:67:00:15:09:41                     │
+│ ● Ansluten      [Anslut] [Koppla från]│
+└───────────────────────────────────────┘
+```
+
+`SubsystemStartupPanel.tsx`: banta till mic + sonos. Disabled tills `connected === true`. Inga autostart, inga fel-expanders.
+
+`src/pages/PiMobile.tsx`: rensa bort all felsöknings-UI (raw/effective state, hci-checklists, scan-metrics, workaround-counters, save-manual, scan-list, diagnostik). Montera `BleControlPanel` + bantad `SubsystemStartupPanel`.
 
 ## Filer
-- `pi/src/ble/state.ts`
-- `pi/src/ble/heartbeat.ts`
-- `pi/src/index.ts`
-- `pi/src/configServer.ts`
-- `pi/src/ble/scan.ts`
-- eventuellt `pi/src/ble/connect.ts`
-- `src/pages/PiMobile.tsx`
+- `pi/src/ble/hardcoded-device.ts` — **NY**
+- `pi/src/ble/connect-hardcoded.ts` — **NY**, scan-then-connect mot hårdkodad MAC
+- `pi/src/configServer.ts` — krymp till 4 endpoints
+- `pi/src/index.ts` — förenkla `startBleEngine`
+- `src/components/BleControlPanel.tsx` — **NY**
+- `src/components/SubsystemStartupPanel.tsx` — banta till mic+sonos
+- `src/pages/PiMobile.tsx` — rensa felsöknings-UI
+
+## Tas bort
+Sök-UI, MAC-input, save/forget, diagnostik-paneler, raw state-rader, workaround-counters, autostart, auto-reconnect, scan-watchdog, fel-expanders. Återinförs när grundflödet bevisat fungerar.
+
