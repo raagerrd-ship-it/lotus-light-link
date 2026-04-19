@@ -112,9 +112,10 @@ export async function saveManualDevice(address: string, name: string): Promise<b
   return true;
 }
 
-/** Forget saved device + disconnect, but keep noble's HCI socket so the
- *  next scan/parning is instant. The user can manually reset HCI from the
- *  diagnostics panel if noble ever wedges. */
+/** Forget saved device + disconnect + release noble HCI/mgmt resources so
+ *  the next BLE scan (btmgmt find) is not blocked by noble holding the
+ *  mgmt-channel. Noble laddas igen automatiskt vid nästa selectDevice/
+ *  saveManualDevice eftersom modulen redan är importerad i processen. */
 export async function forgetDevice(): Promise<void> {
   setSavedDevice(null, null, null);
   const device = getDevice();
@@ -124,6 +125,13 @@ export async function forgetDevice(): Promise<void> {
     setDevice(null);
     resetLastSent();
   }
-  logConnectionEvent({ type: 'disconnect', detail: 'Device forgotten by user — noble kept live' });
-  console.log('[BLE] Device forgotten (noble HCI kept live)');
+  // Frigör noble's mgmt/HCI-socket så btmgmt find fungerar i nästa scan.
+  try {
+    const { releaseNobleResources } = await import('./state.js');
+    await releaseNobleResources('forgetDevice');
+  } catch (e: any) {
+    console.error('[BLE] failed to release noble after forgetDevice:', e?.message ?? e);
+  }
+  logConnectionEvent({ type: 'disconnect', detail: 'Device forgotten by user — noble HCI released' });
+  console.log('[BLE] Device forgotten + noble HCI released');
 }

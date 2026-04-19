@@ -231,10 +231,18 @@ async function main() {
   // 5. BLE — INGEN auto-connect och INGEN reconnect-loop. Användaren styr
   // helt manuellt via UI:t (knapp "Anslut till sparad enhet"). Sonos-events
   // ändrar bara engine-state (play/pause/volym/färg), aldrig BLE-anslutning.
-  // Do NOT touch BLE during boot. The isolated noble one-liner works because
-  // it simply loads noble and waits for stateChange. Boot-time adapter prep
-  // races that startup path on Raspberry Pi and can wedge noble in poweredOff.
   console.log('[Boot] Leaving Bluetooth adapter untouched until first BLE action');
+
+  // Om ingen sparad enhet finns → frigör noble's mgmt/HCI-socket så att
+  // `btmgmt find` (scan-helpern) inte får "status 0x0a (Busy)" från
+  // mgmt-API:t. Noble har ingenting att göra utan en sparad enhet.
+  const { getSavedDeviceId } = await import('./ble/state.js');
+  if (!getSavedDeviceId()) {
+    const { releaseNobleResources } = await import('./ble/state.js');
+    await releaseNobleResources('boot — no saved device');
+  } else {
+    console.log(`[Boot] Saved device finns (${getSavedDeviceId()}) — noble HCI behålls`);
+  }
 
   // 5. Start Sonos poller (configurable gateway)
   let sonosConfig = normalizeSonosConfig({});
