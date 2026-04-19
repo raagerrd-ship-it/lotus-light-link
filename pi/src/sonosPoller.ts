@@ -309,14 +309,14 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   const statusUrl = `${baseUrl}${statusPath}`;
   try {
     const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-    if (res.ok) parseStatus(await res.json());
+    if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
   } catch {}
 
   // Fallback poll
   pollTimer = setInterval(async () => {
     try {
       const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-      if (res.ok) parseStatus(await res.json());
+      if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
     } catch {}
   }, pollMs);
 
