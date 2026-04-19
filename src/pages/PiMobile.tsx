@@ -1219,10 +1219,6 @@ function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
         </details>
       )}
 
-      {/* Subsystem-startup-panel — manuell start av BLE-motor, mic, sonos.
-          Med "Auto"-checkbox per rad för sekventiell autostart vid sidladdning. */}
-      <SubsystemStartupPanel piBase={piBase} />
-
 
 
       {/* Stats row */}
