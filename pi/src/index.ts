@@ -127,16 +127,12 @@ async function main() {
     BLE_BUILD_TAG, waitForFirstStateChange, noble,
   } = nobleBle;
 
-  // STEP B.1 — Wait for noble to actually power on. Två mekanismer parallellt:
-  //   (a) cached stateChange listener (set up at top of state.ts)
-  //   (b) noble's own waitForPoweredOnAsync — proven working in SSH replica test
-  // Whichever resolves first wins. Kort timeout (5s) — om noble inte vaknat
-  // då har libuv-racen ätit stateChange (mem://pi/ble/noble-statechange-event-loop-race).
-  // Då kör vi triggerNobleRespawn() så systemd ger oss en fresh process där
-  // noble's HCI-init körs klart (SSH-bevis 2026-04-19: fresh process →
-  // poweredOn på 310ms, ELK-BLEDOM01 hittad på 1424ms).
+  // STEP B.1 — Bara LÄTT observation av noble's initial state (5s).
+  // INGEN boot-time respawn — den triggas istället från scan-knappen
+  // (pi/src/ble/scan.ts) när användaren faktiskt vill scanna. Då slipper
+  // vi respawna i onödan om användaren inte tänkt använda BLE just nu.
   const BOOT_NOBLE_WAIT_MS = 5000;
-  bt(`STEP B.1: awaiting noble stateChange (cached + waitForPoweredOnAsync race, ${BOOT_NOBLE_WAIT_MS}ms)...`);
+  bt(`STEP B.1: observing noble stateChange (passive, ${BOOT_NOBLE_WAIT_MS}ms)...`);
   const { recordObservedNobleState, getNobleRawState } = await import('./ble/state.js');
   const firstState = await Promise.race([
     waitForFirstStateChange(BOOT_NOBLE_WAIT_MS),
@@ -150,26 +146,8 @@ async function main() {
       }
     })(),
   ]);
-  bt(`STEP B.1: first stateChange resolved = ${firstState}`);
   const rawAfterWait = getNobleRawState();
-  console.log(`[Boot] noble.state after wait = ${(noble as any).state} (raw=${rawAfterWait ?? 'null'})`);
-
-  // Boot-time respawn: noble är wedged i unknown trots att hci0 är UP RUNNING
-  // och processen har caps. Enda kända lösningen är att exit:a och låta
-  // systemd starta oss igen med en fresh noble-instans.
-  if (rawAfterWait !== 'poweredOn' && firstState !== 'poweredOn') {
-    bt(`STEP B.1: ⚠ noble fastnade i ${rawAfterWait ?? 'null'} efter ${BOOT_NOBLE_WAIT_MS}ms — kör boot-time respawn`);
-    const { triggerNobleRespawn } = await import('./ble/watchdog.js');
-    const triggered = triggerNobleRespawn(`boot-time: noble=${rawAfterWait ?? 'null'} efter ${BOOT_NOBLE_WAIT_MS}ms wait`);
-    if (triggered) {
-      // process.exit(1) schemaläggs i triggerNobleRespawn — vänta så systemd hinner ta över.
-      await new Promise<void>((resolve) => setTimeout(resolve, 5000));
-      return;
-    }
-    // Cooldown blockerade respawn — fortsätt med wedged noble, watchdog-status
-    // visas i UI:t och användaren får trycka "Återställ BLE-stack".
-    bt('STEP B.1: respawn blockerad av cooldown — fortsätter med wedged noble');
-  }
+  bt(`STEP B.1: noble after ${BOOT_NOBLE_WAIT_MS}ms → first=${firstState}, raw=${rawAfterWait ?? 'null'} (respawn deferred to scan)`);
 
   // STEP B.2 — NU är det säkert att ladda alsaMic. Native ALSA-bindningen
   // gör synkron init som annars hade blockerat libuv och ätit noble's
