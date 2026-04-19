@@ -53,9 +53,34 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
     return () => clearInterval(id);
   }, [refresh]);
 
+  const pollLogs = useCallback(async () => {
+    try {
+      const r = await fetch(`${piBase}/api/ble/engine/logs?since=${sinceRef.current}`, { signal: AbortSignal.timeout(2500) });
+      if (r.ok) {
+        const data = (await r.json()) as { entries: LogEntry[]; nextSince: number };
+        if (data.entries?.length) {
+          setLogs((prev) => [...prev, ...data.entries].slice(-300));
+        }
+        sinceRef.current = data.nextSince ?? sinceRef.current;
+      }
+    } catch {}
+  }, [piBase]);
+
+  useEffect(() => {
+    if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+  }, [logs]);
+
+  useEffect(() => () => {
+    if (logPollRef.current) window.clearInterval(logPollRef.current);
+  }, []);
+
   const startEngine = async () => {
     setEngineBusy(true);
     setLastError(null);
+    setLogs([]);
+    sinceRef.current = 0;
+    if (logPollRef.current) window.clearInterval(logPollRef.current);
+    logPollRef.current = window.setInterval(pollLogs, 400);
     try {
       const r = await fetch(`${piBase}/api/ble/engine/start`, {
         method: "POST",
@@ -70,6 +95,11 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
       setLastError(e?.message ?? "Nätverksfel");
     } finally {
       setEngineBusy(false);
+      await pollLogs();
+      if (logPollRef.current) {
+        window.clearInterval(logPollRef.current);
+        logPollRef.current = null;
+      }
     }
   };
 
