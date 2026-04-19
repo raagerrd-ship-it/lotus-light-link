@@ -232,16 +232,15 @@ async function startMicSubsystem(): Promise<void> {
         invalidateIdleColorCache: engineMod?.invalidateIdleColorCache,
       });
 
+      alsaMic.startMic();
+      engineInstance.start();
       // Regressionfix: om Sonos redan startat och redan är PLAYING när mic/engine
-      // kommer upp, så måste vi replaya currentState hit direkt. Annars missas
-      // första onSonosChange-eventet och engine blir kvar i idle (0% output)
-      // tills nästa Sonos-förändring.
+      // kommer upp, så måste vi replaya currentState EFTER engine.start().
+      // Annars missas första onSonosChange-eventet och engine blir kvar i idle
+      // (0% output) tills nästa Sonos-förändring.
       if (sonos?.getSonosState) {
         applySonosStateToEngine(sonos.getSonosState());
       }
-
-      alsaMic.startMic();
-      engineInstance.start();
       markSubsystemReady('mic');
       markSubsystemReady('engine');
     } catch (e: any) {
