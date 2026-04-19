@@ -1957,7 +1957,7 @@ export default function PiMobile() {
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
-  const [tickMs, setTickMs] = useState(10);
+  const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
   const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto'); // auto = detecting
   const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);
