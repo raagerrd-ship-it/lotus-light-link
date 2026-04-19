@@ -35,6 +35,9 @@ interface BleOutput {
   b: number;
   brightness: number;
   sentCount: number;
+  skipDeltaCount?: number;
+  skipBusyCount?: number;
+  writeLatAvgMs?: number;
 }
 
 export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange, section = "all" }: { piBase: string; onConnectedChange?: (connected: boolean) => void; onEngineReadyChange?: (ready: boolean) => void; section?: Section }) {
