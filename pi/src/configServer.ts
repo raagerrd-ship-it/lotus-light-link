@@ -40,21 +40,26 @@ export function attachConfigRuntime(runtime: {
   console.log('[Config] Runtime attached (engine + mic)');
 }
 
-// Version info — refresh on demand so UI reflects the latest deployed release
+// Version info — cached at boot. We NEVER call execSync on a request path
+// because it blocks libuv (verified: 3× 3s git timeouts on every /api/status
+// poll caused noble stateChange events to be missed and the whole API to
+// "hang" for the UI).
 let SERVICE_VERSION = '1.0.0';
 let GIT_COMMIT = 'unknown';
 let GIT_COMMIT_SHORT = 'unknown';
 let GIT_BRANCH = 'unknown';
 const START_TIME = Date.now();
+let lastVersionRefreshAt = 0;
+const VERSION_REFRESH_TTL_MS = 60_000;
+let versionWarningLogged = false;
 
-function refreshVersionInfo(): void {
-  // Try multiple paths for VERSION.json
+/** Read VERSION.json only — never execSync on the hot path. */
+function readVersionFileOnce(): boolean {
   const paths = [
     '/opt/lotus-light/VERSION.json',
     new URL('../VERSION.json', import.meta.url).pathname,
     new URL('../../VERSION.json', import.meta.url).pathname,
   ];
-
   for (const p of paths) {
     try {
       const raw = readFileSync(p, 'utf8');
@@ -64,28 +69,29 @@ function refreshVersionInfo(): void {
         GIT_COMMIT = vf.commit ?? GIT_COMMIT;
         GIT_COMMIT_SHORT = vf.commitShort ?? (typeof vf.commit === 'string' ? vf.commit.substring(0, 7) : GIT_COMMIT_SHORT);
         GIT_BRANCH = vf.branch ?? GIT_BRANCH;
-        return;
+        return true;
       }
     } catch {
       // try next path
     }
   }
-
-  // Fallback: git (dev only)
-  try {
-    GIT_COMMIT = execSync('git rev-parse HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-    GIT_COMMIT_SHORT = GIT_COMMIT.substring(0, 7);
-    GIT_BRANCH = execSync('git rev-parse --abbrev-ref HEAD', { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-    try {
-      const tag = execSync("git tag -l --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n1", { cwd: '/opt/lotus-light', encoding: 'utf8', timeout: 3000 }).trim();
-      if (tag) SERVICE_VERSION = tag.replace(/^v/, '');
-    } catch {}
-  } catch {}
-
-  console.warn(`[Config] VERSION.json not found at any path, using fallback v${SERVICE_VERSION}/${GIT_COMMIT_SHORT}`);
+  return false;
 }
 
-refreshVersionInfo();
+function refreshVersionInfo(): void {
+  const now = Date.now();
+  if (now - lastVersionRefreshAt < VERSION_REFRESH_TTL_MS) return;
+  lastVersionRefreshAt = now;
+  const ok = readVersionFileOnce();
+  if (!ok && !versionWarningLogged) {
+    versionWarningLogged = true;
+    console.warn(`[Config] VERSION.json not found — using fallback v${SERVICE_VERSION}/${GIT_COMMIT_SHORT} (git fallback disabled på request-path för att skydda libuv)`);
+  }
+}
+
+// Boot-time read (synchronous file I/O is fine, only runs once)
+readVersionFileOnce();
+lastVersionRefreshAt = Date.now();
 
 export function startConfigServer(port = 3050): void {
   const getEngine = () => attachedEngine;
