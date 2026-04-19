@@ -8,6 +8,8 @@ interface BleRates {
   skipDeltaPerSec: number;
   skipBusyPerSec: number;
   writeLatAvgMs: number;
+  fftPerSec?: number;
+  tickPerSec?: number;
 }
 
 interface Props {
@@ -102,12 +104,12 @@ export function MicBackendBadge({ piBase }: Props) {
           : "text-destructive";
 
   const pktTitle = ble
-    ? `BLE: ${ble.sentPerSec} pkt/s (mål ${targetPps}) · skipDelta ${ble.skipDeltaPerSec}/s · skipBusy ${ble.skipBusyPerSec}/s · writeLat ${ble.writeLatAvgMs}ms`
+    ? `Kedja: FFT ${ble.fftPerSec ?? "?"}/s → tick ${ble.tickPerSec ?? "?"}/s → BLE ${ble.sentPerSec}/s (mål ${targetPps}) · skipDelta ${ble.skipDeltaPerSec}/s · skipBusy ${ble.skipBusyPerSec}/s · writeLat ${ble.writeLatAvgMs}ms`
     : "";
 
   const pktSuffix = ble ? (
     <span className={`ml-1 ${pktClass}`} title={pktTitle}>
-      · {ble.sentPerSec}p/s
+      · f{ble.fftPerSec ?? "?"}/t{ble.tickPerSec ?? "?"}/p{ble.sentPerSec}
       {ble.skipBusyPerSec > 0 ? <span className="opacity-60"> b{ble.skipBusyPerSec}</span> : null}
       {ble.skipDeltaPerSec > 0 ? <span className="opacity-60"> d{ble.skipDeltaPerSec}</span> : null}
     </span>

@@ -934,6 +934,8 @@ export function startConfigServer(port = 3050): void {
   let _lastSent = 0;
   let _lastSkipDelta = 0;
   let _lastSkipBusy = 0;
+  let _lastFftFrames = 0;
+  let _lastTickCount = 0;
 
   app.get('/api/mic/level', async (_req, res) => {
     const mic = getMic();
@@ -965,15 +967,24 @@ export function startConfigServer(port = 3050): void {
       const sentPerSec = dt > 0 ? Math.round((bleStats.sentCount - _lastSent) / dt) : 0;
       const skipDeltaPerSec = dt > 0 ? Math.round((bleStats.skipDeltaCount - _lastSkipDelta) / dt) : 0;
       const skipBusyPerSec = dt > 0 ? Math.round((bleStats.skipBusyCount - _lastSkipBusy) / dt) : 0;
+      // FFT-frames/s (audio→engine) och engine ticks/s (gating släpper igenom)
+      const fftFrames = mic.getFFTFrameCount?.() ?? 0;
+      const tickCount = engine?.getDiagnostics().tickCount ?? 0;
+      const fftPerSec = dt > 0 ? Math.round((fftFrames - _lastFftFrames) / dt) : 0;
+      const tickPerSec = dt > 0 ? Math.round((tickCount - _lastTickCount) / dt) : 0;
       _lastSampleTs = now;
       _lastSent = bleStats.sentCount;
       _lastSkipDelta = bleStats.skipDeltaCount;
       _lastSkipBusy = bleStats.skipBusyCount;
+      _lastFftFrames = fftFrames;
+      _lastTickCount = tickCount;
       ble = {
         sentPerSec,
         skipDeltaPerSec,
         skipBusyPerSec,
         writeLatAvgMs: bleStats.writeLatAvgMs,
+        fftPerSec,
+        tickPerSec,
       };
     } catch { /* protocol module not loaded yet */ }
     res.json({
