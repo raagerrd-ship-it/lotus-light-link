@@ -20,50 +20,41 @@ import { triggerNobleRespawn } from './watchdog.js';
 import type { PiCharacteristic } from './types.js';
 
 /**
- * Vänta på poweredOn — men SKIPPA om noble redan har fyrat sin stateChange
- * vid boot. waitForPoweredOnAsync hänger annars eftersom det missade eventet.
- * SSH-bevis: en fresh noble-process får stateChange på ~250ms; service-processen
- * hade redan eventet vid boot, så vi behöver inte vänta igen.
+ * Vänta på att noble är RIKTIGT poweredOn innan scan/connect.
+ *
+ * VIKTIGT: vi accepterar ALDRIG `raw=unknown` som "redo", inte ens om
+ * caps+hci0 är OK. startScanningAsync()/connectAsync() kräver att noble's
+ * interna state är 'poweredOn' — annars failar de direkt med
+ * "state is unknown (not poweredOn)". Se mem://pi/ble/never-force-mutate-noble-state.
+ *
+ * Om wait failar → trigga noble-respawn via systemd (samma logik som
+ * scan.ts), istället för att låtsas att vi är redo.
  */
 async function waitNobleReady(timeoutMs: number, label: string, deviceName?: string): Promise<boolean> {
-  // Fast-path 1: vår early-listener fångade noble's stateChange.
-  if (hasNobleEverFiredStateChange()) return true;
+  // Fast-path: vår early-listener fångade noble's stateChange + raw är poweredOn.
+  if (hasNobleEverFiredStateChange() && getNobleRawState() === 'poweredOn') return true;
 
-  // Fast-path 2: noble's libuv-event åts upp (race med native module init,
-  // se mem://pi/ble/noble-statechange-event-loop-race), MEN HCI-socket är
-  // frisk: caps OK + hci0 UP RUNNING. Empiriskt (mem://adapter.ts kommentar
-  // + ble-diag.mjs SSH-test) lyckas startScanningAsync/connectAsync ändå.
-  // Acceptera detta som "redo" istället för att vänta på ett event som
-  // aldrig kommer.
-  if (isAdapterReadyForBleOps() && processHasBtCaps() && isHci0Up()) {
-    logConnectionEvent({
-      type: 'connect_start',
-      device: deviceName,
-      detail: `${label}: waitNobleReady fast-path (raw=unknown men caps+hci0 OK — kör ändå)`,
-    });
-    return true;
-  }
-
-  // Slow-path: vänta på faktisk stateChange (med kortare timeout — om
-  // noble inte vaknat på 1.5s händer det inte alls).
+  // Annars: vänta på riktig stateChange via noble's egen API.
   try {
-    await (noble as any).waitForPoweredOnAsync?.(Math.min(timeoutMs, 1500));
-    return true;
+    await (noble as any).waitForPoweredOnAsync?.(timeoutMs);
+    if (getNobleRawState() === 'poweredOn') return true;
+    throw new Error(`waitForPoweredOnAsync resolved but raw=${getNobleRawState() ?? 'unknown'}`);
   } catch (e: any) {
-    // Sista chans: kolla caps+hci0 igen efter wait — något kan ha hunnit komma upp.
-    if (isAdapterReadyForBleOps() && processHasBtCaps() && isHci0Up()) {
-      logConnectionEvent({
-        type: 'connect_start',
-        device: deviceName,
-        detail: `${label}: waitForPoweredOn timeout men caps+hci0 OK — kör ändå`,
-      });
-      return true;
-    }
     logConnectionEvent({
       type: 'connect_fail',
       device: deviceName,
-      detail: `${label}: waitForPoweredOn failed: ${e.message} (raw=${getNobleRawState() ?? 'unknown'}, hci_up=${isHci0Up()}, caps=${processHasBtCaps()})`,
+      detail: `${label}: waitForPoweredOn FAIL efter ${timeoutMs}ms: ${e?.message ?? e} (raw=${getNobleRawState() ?? 'unknown'}, hci_up=${isHci0Up()}, caps=${processHasBtCaps()}) — triggar noble respawn via systemd`,
     });
+    try {
+      const ok = triggerNobleRespawn(`${label}: noble fastnade i ${getNobleRawState() ?? 'unknown'} efter ${timeoutMs}ms wait`);
+      if (!ok) {
+        logConnectionEvent({
+          type: 'connect_fail',
+          device: deviceName,
+          detail: `${label}: respawn blockerad av cooldown — försök igen om en stund`,
+        });
+      }
+    } catch {}
     return false;
   }
 }
