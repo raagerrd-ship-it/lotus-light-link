@@ -10,7 +10,7 @@
  * måste vara den som scannar i denna process.
  */
 
-import { noble, getAdapterState, logConnectionEvent, getNobleRawState, hasNobleEverFiredStateChange } from './state.js';
+import { noble, getAdapterState, logConnectionEvent, getNobleRawState, hasNobleEverFiredStateChange, recordObservedNobleState } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 
