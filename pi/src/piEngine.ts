@@ -78,8 +78,9 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
-    onsetDecay: Math.pow(0.10, secRatio),
-    onsetRiseAlpha: 1 - Math.pow(0.15, ratio),
+    // Snabbare decay → kortare, skarpare puls (matchar trum-attack ~80ms)
+    onsetDecay: Math.pow(0.04, secRatio),
+    onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
     agcDecayNormal: Math.pow(AGC_DECAY_PER_SEC, secRatio),
     agcDecayFast: Math.pow(AGC_FAST_DECAY_PER_SEC, secRatio),
     quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
