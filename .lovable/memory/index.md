@@ -49,6 +49,7 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [FFT resolution](mem://technical/audio-processing/fft-resolution) — 1024 samples, 128 hop-size
 - [Palette integration](mem://pi/sonos/palette-integration) — 4-color palettes consumed directly from Sonos Gateway
 - [Softness slider](mem://pi/ui/softness-slider-curve) — Exponential mapping for releaseAlpha
+- [Lazy noble singleton](mem://pi/ble/lazy-noble-singleton) — Noble får aldrig require:as top-level; lazy via singleton/Proxy så event-loopen är ren när stateChange fyrar
 - [No blocking syscalls](mem://pi/runtime/no-blocking-syscalls-on-request-path) — Inga execSync i /api/status — blockerar libuv & noble stateChange
 - [BLE manual-only](mem://pi/ble/manual-only-connection-policy) — Anslutning sker ENDAST via Anslut-knapp; ingen auto-connect/reconnect
 - [Native capture](mem://pi/audio/native-capture) — C++ alsa-capture binding with Int16Array
