@@ -93,13 +93,25 @@ for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
-# Clean up legacy systemd service if still installed
-if systemctl is-active --quiet lotus-light-engine.service 2>/dev/null; then
-  sudo systemctl stop lotus-light-engine.service
-  sudo systemctl disable lotus-light-engine.service
-  sudo rm -f /etc/systemd/system/lotus-light-engine.service
-  sudo systemctl daemon-reload
-  echo "$LOG_PREFIX Removed legacy systemd service ✓"
+# IMPORTANT: do NOT remove /etc/systemd/system/lotus-light-engine.service here.
+# setup-lotus.sh installerar medvetet engine som SYSTEM-service (inte PCC:s
+# user-service) för att kunna sätta SupplementaryGroups=netdev bluetooth —
+# utan dessa fastnar noble i state=unknown och kräver SSH-restart för att
+# vakna. Se mem://pi/runtime/engine-must-be-system-service.
+#
+# Om system-servicen saknas (t.ex. första update efter en gammal installation
+# som bara hade user-service), återskapa den genom att köra setup-lotus.sh
+# som bara reinstallerar service-blocket — det är idempotent och bygger inte
+# om något om dist/ redan finns.
+if [ ! -f /etc/systemd/system/lotus-light-engine.service ]; then
+  echo "$LOG_PREFIX System-service saknas — kör setup-lotus.sh för att återskapa..."
+  if [ -x "$PI_DIR/setup-lotus.sh" ]; then
+    bash "$PI_DIR/setup-lotus.sh" || echo "$LOG_PREFIX WARN: setup-lotus.sh returnerade fel — kontrollera manuellt"
+  else
+    echo "$LOG_PREFIX WARN: $PI_DIR/setup-lotus.sh saknas eller är inte körbar — engine kan fastna i user-service-läge"
+  fi
+else
+  echo "$LOG_PREFIX System-service intakt ✓ (behåller över update)"
 fi
 
 # BLE permissions (CAP_NET_RAW/CAP_NET_ADMIN) are handled by
@@ -173,27 +185,20 @@ fi
 
 echo "$LOG_PREFIX Updated to v${NEW_VERSION}${NEW_COMMIT:+ (${NEW_COMMIT:0:7})} ✓"
 
-# Explicit engine restart — PCC's post-update restart är opålitlig och har lett
-# till att engine kör gammal kod i minnet medan UI (static) redan visar nya
-# filer. Vi gör en best-effort restart både som user-service (PCC's standard)
-# och system-service (om någon installerat det så historiskt). Felar tyst om
-# tjänsten inte finns på den nivån.
+# Explicit engine restart — endast system-servicen (setup-lotus.sh installerar
+# bara den varianten; PCC:s user-service är medvetet disablad så den inte
+# konfliktar om porten). Om en gammal user-service-rest finns, stoppa den
+# först så vi inte har två processer på samma port.
 echo "$LOG_PREFIX Forcing engine restart to load new code..."
-RESTART_USER=""
-RESTART_SYSTEM=""
-if systemctl --user list-unit-files lotus-light-engine.service >/dev/null 2>&1; then
-  if systemctl --user restart lotus-light-engine.service 2>/dev/null; then
-    RESTART_USER="user"
-  fi
+TARGET_USER="${SUDO_USER:-${USER:-pi}}"
+TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)"
+if sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user is-active lotus-light-engine >/dev/null 2>&1; then
+  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user stop lotus-light-engine 2>/dev/null || true
+  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user disable lotus-light-engine 2>/dev/null || true
+  echo "$LOG_PREFIX Stoppade kvarlevande user-service (system-service tar över) ✓"
 fi
-if systemctl list-unit-files lotus-light-engine.service >/dev/null 2>&1; then
-  if sudo systemctl restart lotus-light-engine.service 2>/dev/null; then
-    RESTART_SYSTEM="system"
-  fi
-fi
-if [ -n "$RESTART_USER" ] || [ -n "$RESTART_SYSTEM" ]; then
-  echo "$LOG_PREFIX Engine restarted (${RESTART_USER:+user-service }${RESTART_SYSTEM:+system-service}) ✓"
+if sudo systemctl restart lotus-light-engine.service 2>/dev/null; then
+  echo "$LOG_PREFIX Engine restarted (system-service) ✓"
 else
-  echo "$LOG_PREFIX WARN: Could not restart engine — Pi Control Center will retry."
+  echo "$LOG_PREFIX WARN: Could not restart system-service — kontrollera: sudo systemctl status lotus-light-engine"
 fi
-echo "$LOG_PREFIX Pi Control Center will also restart services."
