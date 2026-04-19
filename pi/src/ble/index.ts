@@ -88,5 +88,3 @@ export const disconnectAll = disconnect;
 export const scanAndConnect = autoConnectSaved;
 export function setExpectedDeviceCount(_n: number): void { /* no-op */ }
 
-// Adapter init runs automatically when adapter.ts is imported
-import './adapter.js';
