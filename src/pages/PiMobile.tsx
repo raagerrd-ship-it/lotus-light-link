@@ -2448,13 +2448,69 @@ export default function PiMobile() {
         </div>
       )}
 
-      {/* Boot phase: visa "Bootar: väntar på BLE…" tills noble är poweredOn */}
-      {bootPhase === 'waiting-for-noble' && (
-        <div className="mb-3 p-2.5 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-[11px] flex items-start gap-2">
-          <Bluetooth size={14} className="shrink-0 mt-0.5 animate-pulse" />
-          <span>Bootar: väntar på Bluetooth-adapter… (engine startar inte förrän BLE är redo)</span>
-        </div>
-      )}
+      {/* BLE-motor (infrastruktur: hci0 + noble) — separat från lamp-anslutning.
+          Visar Redo / Väntar / Behöver återställas. Anslutning till lampan
+          hanteras via "Anslut nu"-knappen ovan. */}
+      {(() => {
+        const phase: 'ready' | 'waiting' | 'needs-reset' =
+          bootPhase === 'waiting-for-noble'
+            ? 'waiting'
+            : bleAdapterState === 'poweredOn'
+              ? 'ready'
+              : bleAdapterState === 'unauthorized'
+                ? 'needs-reset'
+                : bootPhase === 'ready' && bleAdapterState && bleAdapterState !== 'poweredOn'
+                  ? 'needs-reset'
+                  : 'waiting';
+
+        const cfg = phase === 'ready'
+          ? { label: 'BLE-motor: Redo', dot: 'bg-green-500', box: 'bg-green-500/10 border-green-500/30 text-green-400', pulse: false }
+          : phase === 'waiting'
+            ? { label: 'BLE-motor: Väntar…', dot: 'bg-yellow-400', box: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400', pulse: true }
+            : { label: 'BLE-motor: Behöver återställas', dot: 'bg-destructive', box: 'bg-destructive/10 border-destructive/30 text-destructive', pulse: false };
+
+        const wake = async () => {
+          try {
+            await fetch(`${piBase}/api/ble/start`, { method: 'POST', signal: AbortSignal.timeout(12000) });
+          } catch {}
+        };
+        const reset = async () => {
+          try {
+            await fetch(`${piBase}/api/ble/reset`, { method: 'POST', signal: AbortSignal.timeout(15000) });
+          } catch {}
+        };
+
+        return (
+          <div className={`mb-3 p-2.5 rounded-lg border text-[11px] flex items-center gap-2 ${cfg.box}`}>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
+            <span className="flex-1 font-medium">
+              {cfg.label}
+              {phase === 'waiting' && (
+                <span className="ml-1 opacity-70">(rfkill + hci0 + noble poweredOn)</span>
+              )}
+              {phase === 'needs-reset' && bleAdapterState && (
+                <span className="ml-1 opacity-70">({bleAdapterState})</span>
+              )}
+            </span>
+            {phase === 'waiting' && (
+              <button
+                onClick={wake}
+                className="px-2 py-1 rounded-md bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-[10px] font-semibold transition-colors"
+              >
+                Väck
+              </button>
+            )}
+            {phase === 'needs-reset' && (
+              <button
+                onClick={reset}
+                className="px-2 py-1 rounded-md bg-destructive/20 hover:bg-destructive/30 text-destructive text-[10px] font-semibold transition-colors"
+              >
+                Återställ BLE-stack
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center gap-1.5 shrink-0">
