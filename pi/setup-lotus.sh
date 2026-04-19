@@ -64,6 +64,7 @@ taskset -c "$CORE" sudo apt-get update -qq
 taskset -c "$CORE" sudo apt-get install -y -qq \
   bluez libbluetooth-dev \
   libasound2-dev alsa-utils \
+  build-essential python3 python3-dev \
   curl
 
 # ─── 2. Node.js 24 LTS ───────────────────────────────────
@@ -164,6 +165,28 @@ fi
 echo "  Bygger om native-moduler för $(uname -m)..."
 nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
 echo "  Native-moduler klara ✓"
+
+# ─── Native alsa-capture (optional dep) ──────────────────
+# Release-pipelinen bygger på x64-runner där alsa-capture failar tyst (ingen
+# libasound2-dev där) och hoppas över i dist.tar.gz. Vi tvingar install här
+# på Pi:n där libasound2-dev + build-essential finns. Utan detta faller
+# alsaMic.ts tillbaka på arecord-subprocess (högre latens, mer CPU).
+echo ""
+echo "[ALSA] Säkerställer native alsa-capture-bindning..."
+if [ ! -d "$PI_DIR/node_modules/alsa-capture" ]; then
+  echo "  alsa-capture saknas — installerar mot Node $(node -v) ARM64..."
+  cd "$PI_DIR" && nice -n 15 taskset -c "$CORE" npm install alsa-capture@^0.3.0 --no-audit --no-fund --build-from-source 2>&1 | tail -10
+  if [ -d "$PI_DIR/node_modules/alsa-capture" ]; then
+    echo "  ✓ Native alsa-capture installerad"
+  else
+    echo "  ⚠ alsa-capture-build failade — fortsätter med arecord-fallback"
+  fi
+else
+  # Finns men kanske byggd mot fel ABI — tvinga rebuild
+  echo "  Bygger om alsa-capture mot Node $(node -v) ARM64..."
+  cd "$PI_DIR" && nice -n 15 taskset -c "$CORE" npm rebuild alsa-capture --build-from-source 2>&1 | tail -5
+  echo "  ✓ alsa-capture rebuild klar"
+fi
 
 # ─── BLE permissions ─────────────────────────────────────────
 echo ""
