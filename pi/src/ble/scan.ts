@@ -10,7 +10,6 @@
 import { getAdapterState, logConnectionEvent, getNobleRawState, noble, bumpWorkaround } from './state.js';
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
-import { isBleEnabled } from './enabled.js';
 import { hcitoolLescan } from './hcitool-scan.js';
 import { triggerNobleRespawn } from './watchdog.js';
 
@@ -75,10 +74,6 @@ export function getDiscoveredPeripheral(id: string): any | undefined {
 
 
 export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice[]> {
-  if (!isBleEnabled()) {
-    logConnectionEvent({ type: 'scan_start', detail: 'Skipped — BLE master switch is OFF' });
-    return lastScanResults;
-  }
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
     return lastScanResults;

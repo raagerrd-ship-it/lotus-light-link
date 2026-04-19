@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, isBleEnabled, setBleEnabled, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getEnabledSource, getEnabledChangedAt, getScanMetrics } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, ensureAdapterUp, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics } from './nobleBle.js';
 import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
 import { scheduleNobleStuckWatchdog, getWatchdogGiveUpReason } from './ble/watchdog.js';
 import { getAlsaDevice, setAlsaDevice, getMicGain, setMicGain, getEffectiveGain, getAutoGainMultiplier, disableAutoGain, enableAutoGain, isAutoGainEnabled, getGainCalPoints, setGainCalPoints, type GainCalPoint } from './alsaMic.js';
@@ -276,17 +276,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       process.exit(1);
     }, 200);
   });
-  // Default OFF after every boot. Frontend toggle calls these.
+  // Legacy /api/ble/start — master switch är borttagen, men endpoint:en finns
+  // kvar som "anslut till sparad enhet"-trigger för bakåtkompatibilitet.
   app.post('/api/ble/start', async (_req, res) => {
-    // Master-switchen är användarens avsikt — slå på den först och behåll
-    // den på även om adaptern inte vaknar direkt. Då kan användaren se
-    // adapter-state i UI och trycka "Återställ BLE-stack" vid behov.
-    setBleEnabled(true);
-
-    // Säkerhetsnät: vänta in noble's första stateChange-event innan vi rör
-    // adaptern. Boot-await:en i index.ts är primärfixet, men om eventet av
-    // någon anledning missades (t.ex. boot-timeout) ger detta en sista chans
-    // att fånga det innan vi kallar ensureAdapterUp/scan/connect.
     try {
       const firstState = await waitForFirstStateChange(3000);
       console.log(`[BLE] /start: noble first stateChange = ${firstState}`);
@@ -301,18 +293,12 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
     }
 
-    // Watchdog: if hci0 is UP RUNNING + caps OK but noble's raw state is
-    // still wedged in `unknown` 3s after the user asked us to start, exit
-    // the process so systemd respawns with a fresh noble instance.
     scheduleNobleStuckWatchdog(3000);
 
     let connectStarted = false;
     let connected = !!getConnectedDeviceId();
     const hasSaved = !!getSavedDeviceId();
     if (adapterReady && hasSaved && !getConnectedDeviceId()) {
-      // Startflödet ska INTE blockera HTTP-svaret. Den manuella BLE-knappen i UI
-      // ska slå på radion direkt och sedan låta auto-connect fortsätta i bakgrunden.
-      // Annars ser det ut som att togglen "hänger" i upp till 10s.
       connectStarted = true;
       void autoConnectSaved(10000)
         .then((count) => {
@@ -325,12 +311,12 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     res.json({ ok: true, enabled: true, adapterReady, autoConnect: connectStarted, connected, hasSaved });
   });
 
+  // Legacy /api/ble/stop — disconnectar bara, släpper inte HCI (engine alltid på).
   app.post('/api/ble/stop', async (_req, res) => {
-    setBleEnabled(false);
     releaseDemand();
     try {
-      await disconnect(true); // disconnect device + release HCI socket
-      res.json({ ok: true, enabled: false, message: 'BLE av — adapter frisläppt' });
+      await disconnect(false);
+      res.json({ ok: true, enabled: true, message: 'Disconnected (BLE engine alltid på)' });
     } catch (e: any) {
       res.status(500).json({ error: e?.message ?? 'stop failed' });
     }
@@ -338,7 +324,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
 
   app.get('/api/ble/state', (_req, res) => {
     res.json({
-      enabled: isBleEnabled(),
+      enabled: true,
       connected: getConnectedCount() > 0,
       connectedDeviceId: getConnectedDeviceId(),
       savedDeviceId: getSavedDeviceId(),
@@ -416,7 +402,7 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
     // Vi flaggar rå-state som "ignorerad" så fort tidig stateChange fångats
     // ELLER effektiv adapter-state är redo — då är rå-värdet bara referens.
     const rawStateIgnored = (everPoweredOn || adapterReady) && !nobleStateOk;
-    const radioOn = isBleEnabled();
+    const radioOn = true;
     const savedDevice = !!getSavedDeviceId();
     const connected = getConnectedCount() > 0;
 
@@ -492,9 +478,9 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       },
       {
         id: 'radio',
-        label: 'BLE-radio på (master switch)',
-        status: stepStatus(radioOn),
-        detail: radioOn ? 'ON' : 'OFF — slå på i UI',
+        label: 'BLE always-on (master switch borttagen)',
+        status: 'ok',
+        detail: 'Engine startar alltid med BLE påslagen — anslut sker manuellt via UI',
       },
       {
         id: 'saved-device',
@@ -538,11 +524,11 @@ export function startConfigServer(engine: PiLightEngine, port = 3050): void {
       build: {
         bleTag: BLE_BUILD_TAG,
       },
-      enabled: isBleEnabled(),
+      enabled: true,
       enabledMeta: {
-        source: getEnabledSource(),
-        changedAt: getEnabledChangedAt(),
-        wasEnabledBeforeRestart: getItem('ble-master-enabled') === 'true',
+        source: 'always-on',
+        changedAt: new Date(getBleBootStartedAt()).toISOString(),
+        wasEnabledBeforeRestart: true,
       },
       workarounds: workaroundCounters,
       stats: {
