@@ -142,11 +142,15 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
     }
   }
 
-  // INGEN hårdkodad write rate-limit här. Tick rate (UI-slidern) är enda
-  // källan till sanning för hur ofta paket skickas. Slidern har min 25ms
-  // (= 40 pkt/s tak). writeInFlight ovan hindrar parallella writes, men
-  // släpper igenom så snabbt föregående write returnerat — linjär kedja:
-  // mic → FFT → engine tick → BLE write. Se mem://pi/ble/write-rate-limit.
+  // Rate-limit: writeAsync(..., true) = withoutResponse returnerar direkt
+  // utan att vänta på radio-ACK → ingen naturlig backpressure. Utan denna
+  // gate bygger noble/HCI-buffern kö och lampan släpar 1-2s efter musiken.
+  // 20ms = 50 pkt/s tak, väl över BLEDOM:s reella throughput (~30 pkt/s).
+  const MIN_WRITE_INTERVAL_MS = 20;
+  if (lastWriteTime > 0 && (performance.now() - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
+    bleStats.skipBusyCount++;
+    return;
+  }
 
   // Delta-skip — kan stängas av via env BLE_NO_DELTA_SKIP=1 för throughput-test.
   if (!process.env.BLE_NO_DELTA_SKIP &&
