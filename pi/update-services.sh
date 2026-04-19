@@ -119,4 +119,28 @@ if [ -f "$APP_DIR/VERSION.json" ]; then
 fi
 
 echo "$LOG_PREFIX Updated to v${NEW_VERSION}${NEW_COMMIT:+ (${NEW_COMMIT:0:7})} ✓"
-echo "$LOG_PREFIX Pi Control Center will restart services."
+
+# Explicit engine restart — PCC's post-update restart är opålitlig och har lett
+# till att engine kör gammal kod i minnet medan UI (static) redan visar nya
+# filer. Vi gör en best-effort restart både som user-service (PCC's standard)
+# och system-service (om någon installerat det så historiskt). Felar tyst om
+# tjänsten inte finns på den nivån.
+echo "$LOG_PREFIX Forcing engine restart to load new code..."
+RESTART_USER=""
+RESTART_SYSTEM=""
+if systemctl --user list-unit-files lotus-light-engine.service >/dev/null 2>&1; then
+  if systemctl --user restart lotus-light-engine.service 2>/dev/null; then
+    RESTART_USER="user"
+  fi
+fi
+if systemctl list-unit-files lotus-light-engine.service >/dev/null 2>&1; then
+  if sudo systemctl restart lotus-light-engine.service 2>/dev/null; then
+    RESTART_SYSTEM="system"
+  fi
+fi
+if [ -n "$RESTART_USER" ] || [ -n "$RESTART_SYSTEM" ]; then
+  echo "$LOG_PREFIX Engine restarted (${RESTART_USER:+user-service }${RESTART_SYSTEM:+system-service}) ✓"
+else
+  echo "$LOG_PREFIX WARN: Could not restart engine — Pi Control Center will retry."
+fi
+echo "$LOG_PREFIX Pi Control Center will also restart services."
