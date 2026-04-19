@@ -60,6 +60,7 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
     return await new Promise<{ connected: boolean; error?: string }>((resolve) => {
       let resolved = false;
       let discoverCount = 0;
+      let matched = false; // sätts när vi hittat target — påverkar timeout-meddelandet
       const finish = (r: { connected: boolean; error?: string }) => {
         if (resolved) return;
         resolved = true;
@@ -68,12 +69,22 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
         resolve(r);
       };
 
+      // Helper: race en promise mot en hård timeout. noble's connectAsync
+      // kan på Pi Zero 2W hänga oändligt om L2CAP-handshake tappas, vilket
+      // tidigare lät yttre 8s-watchdogen fyra "ingen matchade" trots match.
+      const withTimeout = <T,>(p: Promise<T>, label: string, ms: number): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms)),
+        ]);
+
       const onDiscover = async (peripheral: any) => {
         discoverCount++;
         const isMatch = matchesHardcoded(peripheral);
         // Logga BARA matchande enheter — annars spammar varje närliggande
         // BLE-advertisement loggen och äter CPU på Pi Zero 2W.
         if (!isMatch) return;
+        matched = true;
         const name = peripheral.advertisement?.localName ?? '(no name)';
         console.log(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi} ← MATCH`);
         console.log(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
@@ -83,9 +94,9 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
         } catch (e: any) {
           console.warn(`${ts()}    stopScanningAsync warning: ${e?.message ?? e}`);
         }
-        console.log(`${ts()} 4. peripheral.connectAsync()…`);
+        console.log(`${ts()} 4. peripheral.connectAsync() (5s timeout)…`);
         try {
-          await peripheral.connectAsync();
+          await withTimeout(peripheral.connectAsync(), 'connectAsync', 5000);
           _connected = peripheral;
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
@@ -101,10 +112,12 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
           // ── 6. GATT discovery: hitta write-characteristic så vi kan skriva färg + hålla keep-alive ──
           console.log(`${ts()} 6. discoverSomeServicesAndCharacteristicsAsync([${SERVICE_UUID}], [${CHAR_UUID}])…`);
           try {
-            const { characteristics } = await peripheral.discoverSomeServicesAndCharacteristicsAsync(
-              [SERVICE_UUID],
-              [CHAR_UUID]
+            const result = await withTimeout<any>(
+              peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
+              'GATT discovery',
+              8000,
             );
+            const characteristics = Array.isArray(result) ? result[1] : result?.characteristics;
             const ch = characteristics?.[0];
             if (!ch) {
               console.warn(`${ts()}    GATT: ingen ${CHAR_UUID}-characteristic hittad — keep-alive startas EJ`);
@@ -122,11 +135,13 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
             console.log(`${ts()} 7. keep-alive STARTAD (400ms intervall) — lampan håller anslutningen`);
             finish({ connected: true });
           } catch (e: any) {
-            console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — anslutningen kvar men ingen keep-alive`);
-            finish({ connected: true });
+            console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
+            try { await peripheral.disconnectAsync(); } catch {}
+            finish({ connected: false, error: `GATT discovery failed: ${e?.message ?? e}` });
           }
         } catch (e: any) {
-          console.log(`${ts()}    connectAsync FEL: ${e?.message ?? e}`);
+          console.log(`${ts()}    connectAsync FEL: ${e?.message ?? e} — disconnectar och ger upp`);
+          try { await peripheral.disconnectAsync(); } catch {}
           finish({ connected: false, error: `connectAsync failed: ${e?.message ?? e}` });
         }
       };
@@ -134,9 +149,20 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
       n.on('discover', onDiscover);
 
       const timer = setTimeout(async () => {
-        console.log(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
+        if (matched) {
+          // Detta ska aldrig hända nu (connectAsync har egen 5s timeout) —
+          // men om det gör det, säg sanningen istället för "ingen matchade".
+          console.log(`${ts()} TIMEOUT efter ${timeoutMs}ms — match hittades men connect hängde (${discoverCount} discover-events)`);
+        } else {
+          console.log(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
+        }
         try { await n.stopScanningAsync(); } catch {}
-        finish({ connected: false, error: `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms (${discoverCount} discover-events)` });
+        finish({
+          connected: false,
+          error: matched
+            ? `Match hittad men connect hängde efter ${timeoutMs}ms`
+            : `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms (${discoverCount} discover-events)`,
+        });
       }, timeoutMs);
 
       console.log(`${ts()} 2. startScanningAsync([], true)…`);
