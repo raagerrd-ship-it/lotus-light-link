@@ -9,7 +9,7 @@ import {
   noble, getDevice, setDevice, bleStats, isDemandActive,
   getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType,
   setSavedDevice, logConnectionEvent, SERVICE_UUID, CHAR_UUID, getAdapterState,
-  getNobleRawState, bumpWorkaround, forceNoblePoweredOn as forceNobleStateMutate,
+  getNobleRawState, bumpWorkaround,
   hasNobleEverFiredStateChange,
 } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent, getKeepAliveSentCount } from './protocol.js';
