@@ -271,7 +271,82 @@ export function startConfigServer(port = 3050): void {
     });
   });
 
-  // --- BLE Device Management ---
+  // ─────────────────────────────────────────────────────────────────────
+  // Förenklat BLE-flöde (hårdkodad enhet, scan-then-connect).
+  // Speglar pi/scripts/noble-scan-isolated.mjs som verifierat fungerar.
+  //
+  // POST /api/ble/engine/start  → lazy-laddar noble + väntar poweredOn
+  // POST /api/ble/connect        → scan-then-connect mot HARDCODED_DEVICE
+  // POST /api/ble/disconnect     → kopplar från
+  // GET  /api/ble/state          → { engineReady, connected, device }
+  // ─────────────────────────────────────────────────────────────────────
+  app.post('/api/ble/engine/start', async (_req, res) => {
+    if (!_starters) {
+      return res.status(503).json({ ready: false, error: 'subsystem starters inte attachade' });
+    }
+    const t0 = Date.now();
+    try {
+      await _starters.startBleEngine();
+      const { hasNobleLoaded } = await import('./ble/state.js');
+      const { getNoble } = await import('./ble/noble-singleton.js');
+      const rawState = hasNobleLoaded() ? (getNoble().state ?? null) : null;
+      const ready = rawState === 'poweredOn';
+      res.json({ ready, durationMs: Date.now() - t0, rawState });
+    } catch (e: any) {
+      res.status(500).json({ ready: false, durationMs: Date.now() - t0, error: e?.message ?? String(e) });
+    }
+  });
+
+  app.post('/api/ble/connect', async (_req, res) => {
+    try {
+      const { connectHardcoded } = await import('./ble/connect-hardcoded.js');
+      const { HARDCODED_DEVICE } = await import('./ble/hardcoded-device.js');
+      const r = await connectHardcoded(8000);
+      if (r.connected) {
+        res.json({ connected: true, name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac, durationMs: r.durationMs });
+      } else {
+        res.status(500).json({ connected: false, error: r.error, durationMs: r.durationMs });
+      }
+    } catch (e: any) {
+      res.status(500).json({ connected: false, error: e?.message ?? String(e) });
+    }
+  });
+
+  app.post('/api/ble/disconnect', async (_req, res) => {
+    try {
+      const { disconnectHardcoded } = await import('./ble/connect-hardcoded.js');
+      const r = await disconnectHardcoded();
+      res.json(r);
+    } catch (e: any) {
+      res.status(500).json({ disconnected: false, error: e?.message ?? String(e) });
+    }
+  });
+
+  app.get('/api/ble/state', async (_req, res) => {
+    try {
+      const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
+      const { hasNobleLoaded } = await import('./ble/state.js');
+      const { HARDCODED_DEVICE } = await import('./ble/hardcoded-device.js');
+      let rawState: string | null = null;
+      let engineReady = false;
+      if (hasNobleLoaded()) {
+        const { getNoble } = await import('./ble/noble-singleton.js');
+        rawState = getNoble().state ?? null;
+        engineReady = rawState === 'poweredOn';
+      }
+      const c = getHardcodedConnected();
+      res.json({
+        engineReady,
+        connected: c.connected,
+        device: { name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac },
+        rawState,
+      });
+    } catch (e: any) {
+      res.status(500).json({ engineReady: false, connected: false, error: e?.message ?? String(e) });
+    }
+  });
+
+  // --- BLE Device Management (legacy — söka/spara/forget används inte längre av UI) ---
   app.post('/api/ble/scan', async (_req, res) => {
     if (!requireBleReady(res)) return;
     if (isScanning()) {
