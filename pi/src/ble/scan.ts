@@ -32,6 +32,7 @@ import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { scanMetrics, nextScanId, resetMetricsForNewScan, finalizeMetrics } from './scan-metrics.js';
 import { armScanWatchdog, type ScanWatchdogHandle } from './scan-watchdog.js';
+import { createDiscoverHandler } from './scan-discover.js';
 
 export { getScanMetrics, type BleScanMetrics } from './scan-metrics.js';
 
@@ -118,36 +119,7 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     });
 
     // 7. Discover listener
-    onDiscover = (peripheral: any) => {
-      try {
-        const idRaw: string = peripheral?.id ?? peripheral?.uuid ?? peripheral?.address ?? '';
-        if (!idRaw) return;
-        const id = String(idRaw).replace(/:/g, '').toLowerCase();
-        scanMetrics.lastRawDiscoverCount++;
-
-        const adv = peripheral?.advertisement ?? {};
-        const rawName: string =
-          adv.localName ||
-          peripheral?.name ||
-          (adv.manufacturerData ? `(mfg) ${peripheral?.address ?? id}` : '') ||
-          `(no-name) ${peripheral?.address ?? id}`;
-        const rssi = typeof peripheral?.rssi === 'number' ? peripheral.rssi : -100;
-
-        discoveredPeripherals.set(id, peripheral);
-
-        const prev = found.get(id);
-        if (!prev) {
-          found.set(id, { id, name: String(rawName).trim() || `(no-name) ${id}`, rssi, source: 'noble' });
-        } else {
-          if (rssi > prev.rssi) prev.rssi = rssi;
-          if (prev.name.startsWith('(no-name)') && rawName && !rawName.startsWith('(no-name)')) {
-            prev.name = String(rawName).trim();
-          }
-        }
-      } catch (e: any) {
-        console.error('[BLE:scan] discover handler error:', e?.message ?? e);
-      }
-    };
+    onDiscover = createDiscoverHandler({ found, discoveredPeripherals });
     n.on('discover', onDiscover);
 
     // 8. Starta scan
