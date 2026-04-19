@@ -240,29 +240,44 @@ ALSA_NODE_FILE="$PI_DIR/node_modules/alsa-capture/build/Release/capture.node"
 
 cd "$PI_DIR"
 rm -rf node_modules/alsa-capture
-echo "  Installerar alsa-capture@^0.3.0 mot Node $NODE_BIN_VER ($(uname -m))..."
-nice -n 15 taskset -c "$CORE" \
-  npm_config_node_gyp="$GLOBAL_NODE_GYP_PATH" \
-  ${GYP_PYTHON:+npm_config_python=$GYP_PYTHON} \
-  npm install alsa-capture@^0.3.0 \
-  --no-audit --no-fund --no-save 2>&1 | tail -15
 
-if [ -f "$ALSA_NODE_FILE" ]; then
-  echo "  ✓ Native alsa-capture byggd (capture.node finns)"
+# VIKTIGT: alsa-capture har `"install": "node-gyp rebuild"` i sin package.json.
+# Den raden resolvar till `node_modules/.bin/node-gyp` (v9.x bundlad) INNAN vår
+# globala v10 hittas i $PATH. npm_config_node_gyp ignoreras av lifecycle-scripts
+# när scriptet exekveras via `sh -c "node-gyp rebuild"`. Resultat: gyp v9 körs,
+# importerar borttagna distutils, kraschar med ModuleNotFoundError, byggsteget
+# failar — men eftersom paketet är i optionalDependencies sväljer npm felet och
+# rapporterar "added N packages" som om allt gick bra.
+#
+# LÖSNING: installera med --ignore-scripts och bygg manuellt med global node-gyp 10+.
+
+echo "  Hämtar alsa-capture@^0.3.0 utan att köra dess install-script..."
+nice -n 15 taskset -c "$CORE" \
+  npm install alsa-capture@^0.3.0 \
+  --no-audit --no-fund --no-save --ignore-scripts 2>&1 | tail -5
+
+if [ ! -d "$PI_DIR/node_modules/alsa-capture" ]; then
+  echo "  ✗ alsa-capture kunde inte hämtas från npm — engine använder arecord-fallback"
+elif [ -z "$GLOBAL_NODE_GYP_PATH" ]; then
+  echo "  ✗ Global node-gyp saknas — kan inte bygga capture.node"
 else
-  echo "  ⚠ capture.node saknas efter install — försöker manuell node-gyp rebuild med global gyp..."
-  if [ -d "$PI_DIR/node_modules/alsa-capture" ] && [ -n "$GLOBAL_NODE_GYP_PATH" ]; then
+  echo "  Bygger capture.node med global node-gyp $GLOBAL_NODE_GYP_VER (Python: ${GYP_PYTHON:-$(command -v python3)})..."
+  ALSA_BUILD_LOG="/tmp/alsa-capture-build.log"
+  (
     cd "$PI_DIR/node_modules/alsa-capture" && \
-      ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
-        nice -n 15 taskset -c "$CORE" \
-        "$GLOBAL_NODE_GYP_PATH" rebuild 2>&1 | tail -10 || true
-    cd "$PI_DIR"
-  fi
+    ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
+    ${GYP_PYTHON:+npm_config_python=$GYP_PYTHON} \
+    nice -n 15 taskset -c "$CORE" \
+      "$GLOBAL_NODE_GYP_PATH" rebuild --release
+  ) > "$ALSA_BUILD_LOG" 2>&1 || true
+
   if [ -f "$ALSA_NODE_FILE" ]; then
-    echo "  ✓ Native alsa-capture byggd via manuell rebuild"
+    echo "  ✓ Native alsa-capture byggd (capture.node finns)"
   else
     echo "  ✗ alsa-capture-build failade — engine använder arecord-fallback"
-    echo "    Felsök: cd $PI_DIR && $GLOBAL_NODE_GYP_PATH rebuild --directory=node_modules/alsa-capture --verbose"
+    echo "    Sista 20 raderna ur $ALSA_BUILD_LOG:"
+    tail -20 "$ALSA_BUILD_LOG" | sed 's/^/      /'
+    echo "    Manuell felsökning: cd $PI_DIR/node_modules/alsa-capture && $GLOBAL_NODE_GYP_PATH rebuild --verbose"
   fi
 fi
 
