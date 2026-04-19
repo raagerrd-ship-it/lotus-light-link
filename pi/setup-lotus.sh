@@ -189,82 +189,39 @@ echo "  Bygger om native-moduler för $(uname -m)..."
 nice -n 15 taskset -c "$CORE" npm rebuild 2>&1 | tail -5
 echo "  Native-moduler klara ✓"
 
-# ─── Native alsa-capture (optional dep) ──────────────────
-# Release-pipelinen bygger på x64-runner där alsa-capture failar tyst (ingen
-# libasound2-dev där) och hoppas över i dist.tar.gz. Vi tvingar install här
-# på Pi:n där libasound2-dev + build-essential finns. Utan detta faller
-# alsaMic.ts tillbaka på arecord-subprocess (högre latens, mer CPU).
+# ─── Native alsa-capture (vendored fork) ──────────────────
+# Vi använder en lokal fork i pi/vendor/alsa-capture/ som har nan uppgraderad
+# till ^2.26.2 (Node 24-kompatibel). Upstream alsa-capture@0.3.0 är övergiven
+# (2022) och dess nan@2.17 misslyckas att kompilera mot V8 i Node 24
+# ("could not convert v8::Undefined from Local<v8::Primitive> to Local<v8::Value>").
 #
-# VIKTIGT: alsa-capture@0.3.0 levereras med node-gyp 9.x som anropar
-# `from distutils.version import StrictVersion`. distutils är BORTTAGEN i
-# Python 3.12+. På Bookworm/Trixie där default `python3` är 3.12/3.13 kraschar
-# bygget tyst → ingen build/Release/capture.node skapas → arecord-fallback.
-#
-# LÖSNING (tvådelad):
-#  A) Installera node-gyp 10+ globalt (har stöd för Python 3.12+ via packaging)
-#     och peka alsa-capture på den via npm_config_node_gyp
-#  B) Som backup: peka på python3.11 om den finns
+# Bygget kräver global node-gyp@10 (Python 3.12+ saknar distutils som
+# bundlade node-gyp@9 importerar).
 echo ""
-echo "[ALSA] Säkerställer native alsa-capture-bindning..."
+echo "[ALSA] Bygger native alsa-capture från vendor/..."
 
-# A) Säkerställ globalt node-gyp 10+ — fungerar med både Python 3.11 och 3.13
-GLOBAL_NODE_GYP_VER=""
-if command -v node-gyp >/dev/null 2>&1; then
-  GLOBAL_NODE_GYP_VER="$(node-gyp --version 2>/dev/null | head -n1 | tr -d 'v')"
-fi
-GYP_MAJOR="${GLOBAL_NODE_GYP_VER%%.*}"
-if [ -z "$GYP_MAJOR" ] || [ "$GYP_MAJOR" -lt 10 ] 2>/dev/null; then
-  echo "  Installerar node-gyp@10 globalt (krävs för Python 3.12+)..."
-  taskset -c "$CORE" sudo npm install -g node-gyp@^10 --no-audit --no-fund 2>&1 | tail -3
-  GLOBAL_NODE_GYP_VER="$(node-gyp --version 2>/dev/null | head -n1 | tr -d 'v')"
-fi
-GLOBAL_NODE_GYP_PATH="$(command -v node-gyp 2>/dev/null || true)"
-if [ -n "$GLOBAL_NODE_GYP_PATH" ]; then
-  export npm_config_node_gyp="$GLOBAL_NODE_GYP_PATH"
-  (cd "$PI_DIR" && npm config set node-gyp "$GLOBAL_NODE_GYP_PATH" 2>/dev/null) || true
-  echo "  ✓ Använder node-gyp $GLOBAL_NODE_GYP_VER ($GLOBAL_NODE_GYP_PATH)"
-else
-  echo "  ⚠ node-gyp inte tillgängligt globalt — bygget kan failas"
-fi
+VENDOR_DIR="$PI_DIR/vendor/alsa-capture"
+ALSA_NODE_FILE="$VENDOR_DIR/build/Release/capture.node"
 
-# B) Sätt python också (node-gyp 10+ funkar med 3.13, men 3.11 är säkrare backup)
-if [ -n "$GYP_PYTHON" ]; then
-  export PYTHON="$GYP_PYTHON"
-  export npm_config_python="$GYP_PYTHON"
-  (cd "$PI_DIR" && npm config set python "$GYP_PYTHON" 2>/dev/null) || true
-  echo "  PYTHON=$GYP_PYTHON exporterad för node-gyp"
-fi
-
-NODE_BIN_VER="$(node -v 2>/dev/null || echo unknown)"
-ALSA_NODE_FILE="$PI_DIR/node_modules/alsa-capture/build/Release/capture.node"
-
-cd "$PI_DIR"
-rm -rf node_modules/alsa-capture
-
-# VIKTIGT: alsa-capture har `"install": "node-gyp rebuild"` i sin package.json.
-# Den raden resolvar till `node_modules/.bin/node-gyp` (v9.x bundlad) INNAN vår
-# globala v10 hittas i $PATH. npm_config_node_gyp ignoreras av lifecycle-scripts
-# när scriptet exekveras via `sh -c "node-gyp rebuild"`. Resultat: gyp v9 körs,
-# importerar borttagna distutils, kraschar med ModuleNotFoundError, byggsteget
-# failar — men eftersom paketet är i optionalDependencies sväljer npm felet och
-# rapporterar "added N packages" som om allt gick bra.
-#
-# LÖSNING: installera med --ignore-scripts och bygg manuellt med global node-gyp 10+.
-
-echo "  Hämtar alsa-capture@^0.3.0 utan att köra dess install-script..."
-nice -n 15 taskset -c "$CORE" \
-  npm install alsa-capture@^0.3.0 \
-  --no-audit --no-fund --no-save --ignore-scripts 2>&1 | tail -5
-
-if [ ! -d "$PI_DIR/node_modules/alsa-capture" ]; then
-  echo "  ✗ alsa-capture kunde inte hämtas från npm — engine använder arecord-fallback"
+if [ ! -d "$VENDOR_DIR" ]; then
+  echo "  ✗ $VENDOR_DIR saknas — engine kommer falla tillbaka på arecord"
 elif [ -z "$GLOBAL_NODE_GYP_PATH" ]; then
   echo "  ✗ Global node-gyp saknas — kan inte bygga capture.node"
 else
-  echo "  Bygger capture.node med global node-gyp $GLOBAL_NODE_GYP_VER (Python: ${GYP_PYTHON:-$(command -v python3)})..."
+  # Rensa gammalt bygge så vi inte staplar artefakter från olika Node-versioner
+  rm -rf "$VENDOR_DIR/build" "$VENDOR_DIR/node_modules"
+
+  echo "  Installerar vendor-deps (nan@^2.26.2, eventemitter3)..."
+  (
+    cd "$VENDOR_DIR" && \
+    nice -n 15 taskset -c "$CORE" \
+      npm install --no-audit --no-fund --ignore-scripts --no-save 2>&1 | tail -3
+  )
+
+  echo "  Bygger capture.node (node-gyp $GLOBAL_NODE_GYP_VER, Python: ${GYP_PYTHON:-$(command -v python3)})..."
   ALSA_BUILD_LOG="/tmp/alsa-capture-build.log"
   (
-    cd "$PI_DIR/node_modules/alsa-capture" && \
+    cd "$VENDOR_DIR" && \
     ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
     ${GYP_PYTHON:+npm_config_python=$GYP_PYTHON} \
     nice -n 15 taskset -c "$CORE" \
@@ -272,12 +229,13 @@ else
   ) > "$ALSA_BUILD_LOG" 2>&1 || true
 
   if [ -f "$ALSA_NODE_FILE" ]; then
-    echo "  ✓ Native alsa-capture byggd (capture.node finns)"
+    echo "  ✓ Native alsa-capture byggd ($(ls -la "$ALSA_NODE_FILE" | awk '{print $5}') bytes)"
   else
     echo "  ✗ alsa-capture-build failade — engine använder arecord-fallback"
-    echo "    Sista 20 raderna ur $ALSA_BUILD_LOG:"
-    tail -20 "$ALSA_BUILD_LOG" | sed 's/^/      /'
-    echo "    Manuell felsökning: cd $PI_DIR/node_modules/alsa-capture && $GLOBAL_NODE_GYP_PATH rebuild --verbose"
+    echo "    Sista 25 raderna ur $ALSA_BUILD_LOG:"
+    tail -25 "$ALSA_BUILD_LOG" | sed 's/^/      /'
+    echo "    Manuell felsökning:"
+    echo "      cd $VENDOR_DIR && $GLOBAL_NODE_GYP_PATH rebuild --verbose"
   fi
 fi
 
