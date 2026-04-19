@@ -65,3 +65,4 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Never force-mutate noble.state](mem://pi/ble/never-force-mutate-noble-state) — Vänta alltid på riktig stateChange via waitForPoweredOnAsync(10000); _state-mutation är no-op
 - [Early listener miss](mem://pi/ble/early-listener-may-miss-statechange) — recordObservedNobleState från fallback-vägar när early-listener missar event
 - [Inget bash -lc för system-CLI](mem://pi/ble/no-bash-lc-for-system-tools) — bash -lc i systemd user-service har tom PATH → hciconfig hittas inte; använd execSync direkt
+- [Noble mgmt-socket release](mem://pi/ble/noble-mgmt-socket-release) — Släpp noble's mgmt/HCI vid boot utan sparad enhet och i forgetDevice så btmgmt find inte får "Busy"
