@@ -185,27 +185,20 @@ fi
 
 echo "$LOG_PREFIX Updated to v${NEW_VERSION}${NEW_COMMIT:+ (${NEW_COMMIT:0:7})} ✓"
 
-# Explicit engine restart — PCC's post-update restart är opålitlig och har lett
-# till att engine kör gammal kod i minnet medan UI (static) redan visar nya
-# filer. Vi gör en best-effort restart både som user-service (PCC's standard)
-# och system-service (om någon installerat det så historiskt). Felar tyst om
-# tjänsten inte finns på den nivån.
+# Explicit engine restart — endast system-servicen (setup-lotus.sh installerar
+# bara den varianten; PCC:s user-service är medvetet disablad så den inte
+# konfliktar om porten). Om en gammal user-service-rest finns, stoppa den
+# först så vi inte har två processer på samma port.
 echo "$LOG_PREFIX Forcing engine restart to load new code..."
-RESTART_USER=""
-RESTART_SYSTEM=""
-if systemctl --user list-unit-files lotus-light-engine.service >/dev/null 2>&1; then
-  if systemctl --user restart lotus-light-engine.service 2>/dev/null; then
-    RESTART_USER="user"
-  fi
+TARGET_USER="${SUDO_USER:-${USER:-pi}}"
+TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)"
+if sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user is-active lotus-light-engine >/dev/null 2>&1; then
+  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user stop lotus-light-engine 2>/dev/null || true
+  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user disable lotus-light-engine 2>/dev/null || true
+  echo "$LOG_PREFIX Stoppade kvarlevande user-service (system-service tar över) ✓"
 fi
-if systemctl list-unit-files lotus-light-engine.service >/dev/null 2>&1; then
-  if sudo systemctl restart lotus-light-engine.service 2>/dev/null; then
-    RESTART_SYSTEM="system"
-  fi
-fi
-if [ -n "$RESTART_USER" ] || [ -n "$RESTART_SYSTEM" ]; then
-  echo "$LOG_PREFIX Engine restarted (${RESTART_USER:+user-service }${RESTART_SYSTEM:+system-service}) ✓"
+if sudo systemctl restart lotus-light-engine.service 2>/dev/null; then
+  echo "$LOG_PREFIX Engine restarted (system-service) ✓"
 else
-  echo "$LOG_PREFIX WARN: Could not restart engine — Pi Control Center will retry."
+  echo "$LOG_PREFIX WARN: Could not restart system-service — kontrollera: sudo systemctl status lotus-light-engine"
 fi
-echo "$LOG_PREFIX Pi Control Center will also restart services."
