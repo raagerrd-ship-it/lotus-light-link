@@ -93,11 +93,9 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
 
   const n: any = noble;
   let onDiscover: ((p: any) => void) | null = null;
-
-  // Watchdog deklareras här men startas EFTER waitForPoweredOnAsync — annars
-  // skulle den (felaktigt) trigga mitt under en legitim 10s-wait på poweredOn.
-  // Efter wait återstår bara scan + stop, så timeoutMs + 5000 räcker som tak.
   let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+  // Watchdog täcker bara faktisk scan/stop-fas — inte väntan på poweredOn.
   const armWatchdog = () => {
     watchdog = setTimeout(() => {
       if (scanning) {
@@ -111,7 +109,7 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
         scanMetrics.lastWatchdogAt = new Date().toISOString();
         logConnectionEvent({
           type: 'scan_done',
-          detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms (efter wait)`,
+          detail: `Watchdog tvångsfrigjorde scan-flaggan efter ${timeoutMs + 5000}ms`,
         });
       }
     }, timeoutMs + 5000);
@@ -120,7 +118,7 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
   try {
     logConnectionEvent({
       type: 'scan_start',
-      detail: `noble.startScanningAsync ${timeoutMs}ms (allowDuplicates), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
+      detail: `Väntar på poweredOn före scan (scan=${timeoutMs}ms, wait=10000ms), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
     });
 
     // Säkerställ att noble inte håller en gammal scan-session öppen.
@@ -154,7 +152,10 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       }
     }
 
-    // Nu — och bara nu — armerar vi watchdog för själva scan-fasen.
+    logConnectionEvent({
+      type: 'scan_start',
+      detail: `poweredOn OK — startScanningAsync ${timeoutMs}ms (allowDuplicates), adapter=${getAdapterState()}, noble=${getNobleRawState() ?? 'unknown'}, everFired=${hasNobleEverFiredStateChange()}`,
+    });
     armWatchdog();
 
     onDiscover = (peripheral: any) => {
