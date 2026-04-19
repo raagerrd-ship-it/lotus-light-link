@@ -4,10 +4,10 @@
  *
  * Importerar INTE noble — håller därmed inte HCI-socketen öppen.
  *
- * Strategi: prova flera scan-verktyg i ordning tills ett ger resultat:
- *   1. `btmgmt find -l`     — modern BlueZ mgmt-API, samarbetar med bluetoothd
- *   2. `bluetoothctl --timeout N scan le` — interaktiv CLI, använder dbus
- *   3. `hcitool -i hci0 lescan --duplicates` — legacy, kan failure på BlueZ 5.66+
+ * Strategi: kör ENBART `hcitool -i hci0 lescan --duplicates`.
+ * - btmgmt failar med "Busy" när bluetoothd är aktiv (vilket den alltid är).
+ * - bluetoothctl behöver dbus-session och är opålitlig.
+ * - hcitool har CAP_NET_RAW satt via setup-lotus.sh och fungerar utan sudo.
  *
  * Argument: [timeoutMs] [earlyExitPattern]
  *
@@ -21,14 +21,6 @@ const earlyPatternStr = process.argv[3] ?? 'BLEDOM';
 const earlyPattern = earlyPatternStr ? new RegExp(earlyPatternStr, 'i') : null;
 
 const MAC_LINE = /^([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s*(.*)$/i;
-// btmgmt-format (multi-line!):
-//   hci0 dev_found: AA:BB:CC:DD:EE:FF type LE Public rssi -65 flags 0x0000
-//   AD flags 0x06
-//   name ELK-BLEDOM01
-const BTMGMT_DEV = /dev_found:\s*([0-9A-F]{2}(?::[0-9A-F]{2}){5}).*?rssi\s+(-?\d+)/i;
-const BTMGMT_NAME_LINE = /^name\s+(.+)$/i;
-// bluetoothctl: "[NEW] Device AA:BB:CC:DD:EE:FF NAME"
-const BCTL_DEV = /Device\s+([0-9A-F]{2}(?::[0-9A-F]{2}){5})\s*(.*)$/i;
 
 function emit(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
@@ -44,7 +36,6 @@ const found = new Map();
 let rawLineCount = 0;
 let stderr = '';
 let earlyExit = false;
-let toolUsed = 'none';
 
 function recordDevice(mac, rawName, rssi = -100) {
   const id = mac.replace(/:/g, '').toLowerCase();
@@ -63,15 +54,20 @@ function recordDevice(mac, rawName, rssi = -100) {
   return false;
 }
 
-/**
- * Run one scan tool. Returns when it exits, hits timeout, or early-exit triggers.
- */
-async function runTool(cmd, args, parser) {
+async function runHcitool() {
+  const bin = which('hcitool');
+  if (!bin) {
+    return { exitCode: null, startError: 'hcitool saknas i PATH' };
+  }
+  process.stderr.write('[scan-helper] kör hcitool -i hci0 lescan --duplicates\n');
+
   let proc;
   try {
-    proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    proc = spawn('hcitool', ['-i', 'hci0', 'lescan', '--duplicates'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
   } catch (e) {
-    return { startError: e?.message ?? String(e), exitCode: null };
+    return { exitCode: null, startError: e?.message ?? String(e) };
   }
   proc.stdout.setEncoding('utf8');
   proc.stderr.setEncoding('utf8');
@@ -88,8 +84,12 @@ async function runTool(cmd, args, parser) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       rawLineCount++;
+      const m = trimmed.match(MAC_LINE);
+      if (!m) continue;
+      const mac = m[1].toUpperCase();
+      const rawName = (m[2] ?? '').trim();
       try {
-        if (parser(trimmed)) killProc(); // early exit
+        if (recordDevice(mac, rawName)) killProc();
       } catch {}
     }
   });
@@ -105,80 +105,12 @@ async function runTool(cmd, args, parser) {
   return { exitCode, killed, startError: null };
 }
 
-async function tryBtmgmt() {
-  if (!which('btmgmt')) return false;
-  toolUsed = 'btmgmt';
-  process.stderr.write('[scan-helper] försöker btmgmt find -l\n');
-  // -l = LE only. btmgmt find blockerar tills SIGINT eller timeout.
-  // Output är multi-line: dev_found-rad följs av AD flags + name på senare rader.
-  // Vi håller pendingMac/pendingRssi tills nästa dev_found eller name kommer.
-  let pendingMac = null;
-  let pendingRssi = -100;
-  await runTool('btmgmt', ['find', '-l'], (line) => {
-    const dev = line.match(BTMGMT_DEV);
-    if (dev) {
-      // Flusha föregående utan namn (om något) först
-      if (pendingMac) recordDevice(pendingMac, '', pendingRssi);
-      pendingMac = dev[1].toUpperCase();
-      pendingRssi = parseInt(dev[2], 10);
-      return false;
-    }
-    const nameMatch = line.match(BTMGMT_NAME_LINE);
-    if (nameMatch && pendingMac) {
-      const name = nameMatch[1].trim();
-      const shouldExit = recordDevice(pendingMac, name, pendingRssi);
-      pendingMac = null;
-      return shouldExit;
-    }
-    return false;
-  });
-  // Flush sista pending utan namn
-  if (pendingMac) recordDevice(pendingMac, '', pendingRssi);
-  return found.size > 0;
-}
-
-async function tryBluetoothctl() {
-  if (!which('bluetoothctl')) return false;
-  toolUsed = 'bluetoothctl';
-  process.stderr.write('[scan-helper] försöker bluetoothctl --timeout scan le\n');
-  const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-  await runTool('bluetoothctl', ['--timeout', String(seconds), 'scan', 'le'], (line) => {
-    const m = line.match(BCTL_DEV);
-    if (!m) return false;
-    const mac = m[1].toUpperCase();
-    const name = (m[2] ?? '').trim();
-    return recordDevice(mac, name);
-  });
-  return found.size > 0;
-}
-
-async function tryHcitool() {
-  if (!which('hcitool')) return false;
-  toolUsed = 'hcitool';
-  process.stderr.write('[scan-helper] försöker hcitool -i hci0 lescan\n');
-  await runTool('hcitool', ['-i', 'hci0', 'lescan', '--duplicates'], (line) => {
-    const m = line.match(MAC_LINE);
-    if (!m) return false;
-    const mac = m[1].toUpperCase();
-    const rawName = (m[2] ?? '').trim();
-    return recordDevice(mac, rawName);
-  });
-  return found.size > 0;
-}
-
-// Försök verktygen i prioritetsordning. hcitool först eftersom det:
-//   1) Har CAP_NET_RAW satt via setup-lotus.sh (fungerar utan sudo)
-//   2) Inte konfliktar med bluetoothd's mgmt-socket (btmgmt failar med "Busy"
-//      när bluetoothd är aktiv, vilket den alltid är på vår Pi)
-//   3) Har bevisats robust i SSH-tester 2026-04-19
-// btmgmt/bluetoothctl behålls som fallback ifall hcitool en dag tas bort.
 let firstError = null;
 try {
-  const ok = (await tryHcitool())
-        || (await tryBtmgmt())
-        || (await tryBluetoothctl());
-  if (!ok && rawLineCount === 0) {
-    firstError = `inget verktyg producerade scan-output (toolsTried inkluderar hcitool/btmgmt/bluetoothctl, sista=${toolUsed})`;
+  const result = await runHcitool();
+  if (result.startError) firstError = result.startError;
+  else if (found.size === 0 && rawLineCount === 0) {
+    firstError = `hcitool gav ingen output (exit=${result.exitCode}, killed=${result.killed})`;
   }
 } catch (e) {
   firstError = e?.message ?? String(e);
@@ -190,7 +122,7 @@ emit({
   exitCode: 0,
   startError: firstError,
   stderr: stderr.trim(),
-  tool: toolUsed,
+  tool: 'hcitool',
   durationMs: Date.now() - startedAt,
 });
 setTimeout(() => process.exit(0), 50);
