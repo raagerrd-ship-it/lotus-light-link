@@ -16,7 +16,6 @@ import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent, getKeepAliv
 import { ensureAdapterUp, waitForNoblePoweredOn, normalizeBleKey, restartNobleHci, isAdapterReadyForBleOps, isHci0Up, processHasBtCaps } from './adapter.js';
 import { isScanning, getDiscoveredPeripheral } from './scan.js';
 import { savePeripheralMetadata } from './save.js';
-import { triggerNobleRespawn } from './watchdog.js';
 import type { PiCharacteristic } from './types.js';
 
 /**
@@ -27,8 +26,8 @@ import type { PiCharacteristic } from './types.js';
  * interna state är 'poweredOn' — annars failar de direkt med
  * "state is unknown (not poweredOn)". Se mem://pi/ble/never-force-mutate-noble-state.
  *
- * Om wait failar → trigga noble-respawn via systemd (samma logik som
- * scan.ts), istället för att låtsas att vi är redo.
+ * Om wait failar → returnera false och låt användaren försöka igen eller
+ * köra manuell BLE-reset. Ingen auto-respawn i manual-only-läget.
  */
 async function waitNobleReady(timeoutMs: number, label: string, deviceName?: string): Promise<boolean> {
   // Fast-path: vår early-listener fångade noble's stateChange + raw är poweredOn.
@@ -43,18 +42,8 @@ async function waitNobleReady(timeoutMs: number, label: string, deviceName?: str
     logConnectionEvent({
       type: 'connect_fail',
       device: deviceName,
-      detail: `${label}: waitForPoweredOn FAIL efter ${timeoutMs}ms: ${e?.message ?? e} (raw=${getNobleRawState() ?? 'unknown'}, hci_up=${isHci0Up()}, caps=${processHasBtCaps()}) — triggar noble respawn via systemd`,
+      detail: `${label}: waitForPoweredOn FAIL efter ${timeoutMs}ms: ${e?.message ?? e} (raw=${getNobleRawState() ?? 'unknown'}, hci_up=${isHci0Up()}, caps=${processHasBtCaps()}) — ingen auto-respawn, försök igen eller kör manuell BLE-reset`,
     });
-    try {
-      const ok = triggerNobleRespawn(`${label}: noble fastnade i ${getNobleRawState() ?? 'unknown'} efter ${timeoutMs}ms wait`);
-      if (!ok) {
-        logConnectionEvent({
-          type: 'connect_fail',
-          device: deviceName,
-          detail: `${label}: respawn blockerad av cooldown — försök igen om en stund`,
-        });
-      }
-    } catch {}
     return false;
   }
 }
@@ -414,13 +403,7 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
     timer = setTimeout(() => {
       const detail = `Scan-connect timeout (${timeoutMs}ms) — target ${targetNorm} hittades inte i denna noble-instans`;
       logConnectionEvent({ type: 'connect_fail', device: name, detail });
-      // Om en fresh noble-process (isolated script) ser lampan men den långlivade
-      // service-instansen inte gör det, är noble praktiskt taget blind/wedged.
-      // Då är process-respawn den enda empiriskt stabila recoveryn.
-      const respawned = triggerNobleRespawn(`scan-connect timeout för ${name} (${targetNorm}) trots powered adapter`);
-      if (!respawned) {
-        logConnectionEvent({ type: 'connect_fail', device: name, detail: 'scan-timeout recovery blockerad av respawn-cooldown' });
-      }
+      logConnectionEvent({ type: 'connect_fail', device: name, detail: 'scan-timeout — ingen auto-respawn, försök igen eller kör manuell BLE-reset' });
       finish(false);
     }, timeoutMs);
 
