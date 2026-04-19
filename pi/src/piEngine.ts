@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, getLastAudioTimestamp, type BandResult } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, getLastAudioTimestamp, setTickHopMs, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
 import { getItem, setItem } from './storage.js';
 import { pipelineTiming } from './pipelineTiming.js';
