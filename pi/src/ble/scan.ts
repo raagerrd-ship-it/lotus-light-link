@@ -72,7 +72,7 @@ export function getDiscoveredPeripheral(id: string): any | undefined {
 
 
 
-export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice[]> {
+export async function scanForDevices(timeoutMs = 3000): Promise<DiscoveredDevice[]> {
   if (scanning) {
     logConnectionEvent({ type: 'scan_start', detail: 'Skipped — scan already running' });
     return lastScanResults;
