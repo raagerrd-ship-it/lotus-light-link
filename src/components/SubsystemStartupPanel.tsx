@@ -216,7 +216,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
         {!enabled && <span className="text-[9px] opacity-60">— starta BLE-motorn först</span>}
       </div>
       <div className="divide-y divide-border">
-        {renderRow("mic", "Mikrofon", Mic, micLevel.active ? <VuMeter level={micLevel} /> : null)}
+        {renderRow("mic", "Mikrofon", Mic, <VuMeter level={micLevel} />)}
         {renderRow("sonos", "Sonos", Music, (
           <div className="mt-1.5 flex items-center gap-2">
             <span className="text-[10px] opacity-70 truncate flex-1">
