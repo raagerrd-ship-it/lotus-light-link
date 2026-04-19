@@ -18,7 +18,7 @@ const CONNECTION_LOG_KEY = 'ble-connection-log';
 // ── Build tag — bump when BLE behaviour changes so we can verify the Pi
 // is actually running the latest release. Shows up in /api/ble/diagnostics
 // and in the boot log.
-export const BLE_BUILD_TAG = '2026-04-19/scan-helper-restored';
+export const BLE_BUILD_TAG = '2026-04-19/scan-helper-sigkill';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── EARLY stateChange listener ──
