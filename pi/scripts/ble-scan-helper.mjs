@@ -166,15 +166,19 @@ async function tryHcitool() {
   return found.size > 0;
 }
 
-// Försök verktygen i prioritetsordning. Stoppa så fort vi får träffar
-// (eller efter alla har provats om inget gav resultat).
+// Försök verktygen i prioritetsordning. hcitool först eftersom det:
+//   1) Har CAP_NET_RAW satt via setup-lotus.sh (fungerar utan sudo)
+//   2) Inte konfliktar med bluetoothd's mgmt-socket (btmgmt failar med "Busy"
+//      när bluetoothd är aktiv, vilket den alltid är på vår Pi)
+//   3) Har bevisats robust i SSH-tester 2026-04-19
+// btmgmt/bluetoothctl behålls som fallback ifall hcitool en dag tas bort.
 let firstError = null;
 try {
-  const ok = (await tryBtmgmt())
-        || (await tryBluetoothctl())
-        || (await tryHcitool());
+  const ok = (await tryHcitool())
+        || (await tryBtmgmt())
+        || (await tryBluetoothctl());
   if (!ok && rawLineCount === 0) {
-    firstError = `inget verktyg producerade scan-output (toolsTried inkluderar btmgmt/bluetoothctl/hcitool, sista=${toolUsed})`;
+    firstError = `inget verktyg producerade scan-output (toolsTried inkluderar hcitool/btmgmt/bluetoothctl, sista=${toolUsed})`;
   }
 } catch (e) {
   firstError = e?.message ?? String(e);
