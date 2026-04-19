@@ -274,9 +274,9 @@ async function main() {
 
   const { getSavedDeviceId } = await import('./ble/state.js');
   if (getSavedDeviceId()) {
-    console.log(`[Boot] Saved device finns (${getSavedDeviceId()}) — noble HCI redo för auto-connect`);
+    console.log(`[Boot] Sparad enhet finns (${getSavedDeviceId()}) — väntar på Anslut-knapp i UI:t (manual-only)`);
   } else {
-    console.log('[Boot] Ingen sparad enhet — noble HCI redo för scan via /api/ble/scan');
+    console.log('[Boot] Ingen sparad enhet — gör scan + spara via UI:t');
   }
 
   // 5. Start Sonos poller (configurable gateway)

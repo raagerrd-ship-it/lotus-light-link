@@ -106,9 +106,8 @@ export async function saveManualDevice(address: string, name: string): Promise<b
   console.log(`[BLE] Manually saved device: ${cleanName} (${mac})`);
   logConnectionEvent({ type: 'connect_ok', device: cleanName, detail: `Manually saved (${mac})` });
 
-  // Don't auto-connect — return immediately so the API responds fast.
-  // The engine's reconnect loop picks it up on next demand cycle, or the
-  // user can call /api/ble/connect explicitly.
+  // Manual-only mode: ingen auto-connect. Användaren trycker Anslut själv.
+  // (Eventuell preview hanteras av configServer i save-manual-endpointen.)
   return true;
 }
 
