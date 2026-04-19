@@ -64,8 +64,8 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
   return (
     <div className="mb-4 rounded-xl border border-border bg-secondary/40 text-[11px]">
       <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-        <span className="font-semibold uppercase tracking-wider text-[10px] opacity-70">Subsystem</span>
-        {!enabled && <span className="text-[9px] opacity-60">— anslut BLE-lampan först</span>}
+        <span className="font-semibold uppercase tracking-wider text-[10px] opacity-70">2. Subsystem</span>
+        {!enabled && <span className="text-[9px] opacity-60">— starta BLE-motorn först</span>}
       </div>
       <div className="divide-y divide-border">
         {ROWS.map(row => {
