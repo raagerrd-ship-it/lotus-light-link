@@ -406,8 +406,11 @@ CPUAffinity=$CORE
 AllowedCPUs=$CORE
 MemoryMax=200M
 NoNewPrivileges=false
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+# Realtime-prio för ALSA capture-tråden (SCHED_FIFO 80) → minimal jitter
+LimitRTPRIO=99
+LimitNICE=-20
 Restart=always
 RestartSec=5
 
