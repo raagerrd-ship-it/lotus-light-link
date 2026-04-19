@@ -70,15 +70,28 @@ jobs:
       # Production-only deps for Pi (included in tarball)
       - run: cd pi && npm install --omit=dev --package-lock=false
 
+      # Build vendored alsa-capture (native ARM64 addon, matches Pi arch).
+      # CI-runner är ubuntu-24.04-arm vilket matchar Pi:ns aarch64.
+      # Utan detta fastnar Pi:n på arecord-fallback (subprocess + IPC = ~5 frames/s
+      # istället för native ~344 frames/s).
+      - name: Build vendored alsa-capture
+        run: |
+          cd pi/vendor/alsa-capture
+          npm install --no-audit --no-fund --ignore-scripts --no-save
+          npx node-gyp rebuild --release
+          ls -la build/Release/capture.node || (echo "❌ capture.node saknas efter build"; exit 1)
+          echo "✓ capture.node byggd ($(stat -c%s build/Release/capture.node) bytes)"
+
       # Write VERSION file for non-git installs
       - run: |
           echo '{"tag":"${{ steps.version.outputs.tag }}","version":"${{ steps.version.outputs.version }}","commit":"'$(git rev-parse HEAD)'","commitShort":"'$(git rev-parse --short HEAD)'","branch":"'$(git rev-parse --abbrev-ref HEAD)'","nodeVersion":"'$(node -v)'","arch":"'$(uname -m)'"}' > VERSION.json
 
       # Package everything needed for Pi deployment
+      # OBS: pi/vendor/ måste med — innehåller pre-built capture.node för ARM64.
       - run: |
           chmod +x pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh
           chmod +x pi/scripts/*.mjs pi/scripts/*.sh 2>/dev/null || true
-          tar czf dist.tar.gz VERSION.json dist/ pi/dist/ pi/node_modules/ pi/package.json pi/services.json pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh pi/scripts/
+          tar czf dist.tar.gz VERSION.json dist/ pi/dist/ pi/node_modules/ pi/vendor/ pi/package.json pi/services.json pi/setup-lotus.sh pi/uninstall-lotus.sh pi/update-services.sh pi/scripts/
 
       # Create versioned release + update "latest" pointer
       - uses: softprops/action-gh-release@v2.3.2
