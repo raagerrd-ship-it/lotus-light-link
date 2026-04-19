@@ -160,6 +160,32 @@ export function BleControlPanel({ piBase, onConnectedChange }: { piBase: string;
         </div>
       </div>
 
+      {/* SSH-style live-logg */}
+      {logs.length > 0 && (
+        <div className="rounded-xl border border-border bg-black/80 p-2">
+          <div className="flex items-center justify-between px-1 pb-1">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Engine-logg</span>
+            <button
+              onClick={() => { setLogs([]); sinceRef.current = 0; }}
+              className="text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              Rensa
+            </button>
+          </div>
+          <div
+            ref={logBoxRef}
+            className="font-mono text-[10px] leading-snug text-green-300 max-h-56 overflow-y-auto whitespace-pre-wrap"
+          >
+            {logs.map((l) => (
+              <div key={l.seq} className={l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-300" : undefined}>
+                <span className="text-muted-foreground">+{String(l.t).padStart(5, " ")}ms</span>{" "}
+                {l.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Lampa (hårdkodad) */}
       <div className={`rounded-xl border p-3 ${connected ? "bg-green-500/10 border-green-500/30" : "bg-secondary/50 border-border"}`}>
         <div className="flex items-center gap-2.5">
