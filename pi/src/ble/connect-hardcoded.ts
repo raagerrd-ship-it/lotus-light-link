@@ -9,6 +9,8 @@
 
 import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
+import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
+import { startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
@@ -23,6 +25,9 @@ export function getHardcodedPeripheral(): any | null {
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   if (!_connected) return { disconnected: true };
+  stopKeepAlive();
+  setDevice(null);
+  resetLastSent();
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   return { disconnected: true };
@@ -82,10 +87,42 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
           _connected = peripheral;
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
+            stopKeepAlive();
+            setDevice(null);
+            resetLastSent();
+            bleStats.disconnectCount++;
+            bleStats.lastDisconnectAt = new Date().toISOString();
             if (_connected === peripheral) _connected = null;
           });
           console.log(`${ts()} 5. ANSLUTEN ${peripheral.address}`);
-          finish({ connected: true });
+
+          // ── 6. GATT discovery: hitta write-characteristic så vi kan skriva färg + hålla keep-alive ──
+          console.log(`${ts()} 6. discoverSomeServicesAndCharacteristicsAsync([${SERVICE_UUID}], [${CHAR_UUID}])…`);
+          try {
+            const { characteristics } = await peripheral.discoverSomeServicesAndCharacteristicsAsync(
+              [SERVICE_UUID],
+              [CHAR_UUID]
+            );
+            const ch = characteristics?.[0];
+            if (!ch) {
+              console.warn(`${ts()}    GATT: ingen ${CHAR_UUID}-characteristic hittad — keep-alive startas EJ`);
+              finish({ connected: true });
+              return;
+            }
+            setDevice({
+              peripheral,
+              characteristic: ch,
+              mode: 'rgb',
+              name: HARDCODED_DEVICE.name,
+              id: peripheral.id,
+            });
+            startKeepAlive();
+            console.log(`${ts()} 7. keep-alive STARTAD (400ms intervall) — lampan håller anslutningen`);
+            finish({ connected: true });
+          } catch (e: any) {
+            console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — anslutningen kvar men ingen keep-alive`);
+            finish({ connected: true });
+          }
         } catch (e: any) {
           console.log(`${ts()}    connectAsync FEL: ${e?.message ?? e}`);
           finish({ connected: false, error: `connectAsync failed: ${e?.message ?? e}` });
