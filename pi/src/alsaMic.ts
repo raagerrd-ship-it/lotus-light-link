@@ -63,13 +63,14 @@ export interface BandResult {
 
 const SAMPLE_RATE = 44100;
 const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = ALSA-period = 32 frames @ 44.1kHz = ~0.73ms capture latency.
-// FFT triggers var 32:e sample → ~1378 frames/s. Vi prioriterar låg latens
-// över FFT-frekvens-upplösning (sample-storlek 1024 ger 43Hz/bin i alla fall).
-const HOP_SIZE = 32;
+// HOP_SIZE styrs nu av tickMs: hop = round(tickMs/2 * 44.1) → 2 audio-frames per tick.
+// Default 25ms tick → hop≈551 frames (~12.5ms). FFT körs 2×/tick = snabbare
+// onset-detektering utan att dubbla CPU-kostnaden vs hop=128.
+// Sätts via setTickHopMs() — auto-restartar capture om aktiv.
+let HOP_SIZE = 551;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
-const FFT_MASK = FFT_SIZE - 1; // 0x3FF for & bitmask
+const FFT_MASK = FFT_SIZE - 1;
 
 // Pre-computed Hann window (~6% more energy than Blackman, minimal spectral leakage)
 const hannWindow = new Float64Array(FFT_SIZE);
@@ -286,6 +287,19 @@ export function getNoiseGateState(): typeof _ngState {
 
 let capture: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
+
+/** Sätt ALSA period-storlek från tickMs (period = tickMs/2 → 2 FFT-frames/tick).
+ *  Auto-restartar capture om aktiv. ~200ms audio-glitch vid omstart. */
+export function setTickHopMs(tickMs: number): void {
+  const newHop = Math.max(64, Math.round((tickMs / 2) * (SAMPLE_RATE / 1000)));
+  if (newHop === HOP_SIZE) return;
+  HOP_SIZE = newHop;
+  console.log(`[ALSA] HOP_SIZE → ${HOP_SIZE} frames (${(HOP_SIZE / SAMPLE_RATE * 1000).toFixed(1)}ms, 2 frames/tick @ ${tickMs}ms)`);
+  if (capture) {
+    stopMic();
+    startMic();
+  }
+}
 
 // Software mic gain — multiplier applied to raw PCM samples before processing
 let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
