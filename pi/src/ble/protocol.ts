@@ -79,7 +79,7 @@ export function startKeepAlive(): void {
     if (elapsed < KEEPALIVE_MS * 0.8) return;
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     try {
-      await device.characteristic.writeAsync(buf, true);
+      await device.characteristic.writeAsync(buf, false);
       lastWriteTime = performance.now();
       keepAliveSentCount++;
       if (keepAliveFailCount > 0) {
