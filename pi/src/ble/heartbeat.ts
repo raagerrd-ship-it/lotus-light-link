@@ -28,7 +28,6 @@ import {
   getSavedDeviceName,
   isDemandActive,
 } from './state.js';
-import { isBleEnabled, getEnabledSource } from './enabled.js';
 import { isScanning } from './scan.js';
 import { isConnectInProgress } from './connect.js';
 
@@ -51,8 +50,6 @@ function buildHeartbeat(): string {
   const eff = getAdapterState() ?? 'unknown';
   const elapsed = Math.floor((Date.now() - getBleBootStartedAt()) / 1000);
   const everPow = hasNobleEverFiredStateChange();
-  const enabled = isBleEnabled();
-  const src = getEnabledSource();
   const dev = getDevice();
   const saved = getSavedDeviceId();
   const savedName = getSavedDeviceName();
@@ -65,7 +62,6 @@ function buildHeartbeat(): string {
     `t+${elapsed}s`,
     `noble:${raw}${raw !== eff ? `→${eff}` : ''}`,
     `${hci}`,
-    `radio:${enabled ? `ON(${src})` : 'OFF'}`,
     everPow ? 'pow✓' : 'pow✗',
     saved ? `saved:${savedName ?? saved.slice(0, 8)}` : 'saved:none',
     dev ? 'connected:✓' : connecting ? 'connecting…' : scanning ? 'scanning…' : demand ? 'demand-pending' : 'idle',
@@ -83,7 +79,6 @@ function nextInterval(): number {
   const stable =
     getNobleRawState() === 'poweredOn' &&
     !!getDevice() &&
-    isBleEnabled() &&
     _tickCount > 5;
   return stable ? 60_000 : 10_000;
 }
