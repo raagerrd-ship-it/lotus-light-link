@@ -22,7 +22,7 @@ import { getNobleRawState, processHasBtCaps, logConnectionEvent, bumpWorkaround 
 import { isHci0Up } from './adapter-hci-check.js';
 import { getItem, setItem } from '../storage.js';
 
-const RESPAWN_COOLDOWN_MS = 60_000;
+const RESPAWN_COOLDOWN_MS = 15_000;
 const LAST_RESPAWN_KEY = 'ble-last-respawn-at';
 
 let _watchdogTriggered = false;
