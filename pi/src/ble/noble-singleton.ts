@@ -21,10 +21,6 @@
  *                              (även retroaktivt om state redan är cachad)
  */
 
-import { createRequire } from 'module';
-
-const nodeRequire = createRequire(import.meta.url);
-
 let _nobleInstance: any = null;
 let _loadedAt: number | null = null;
 const _stateChangeListeners: Array<(state: string) => void> = [];
@@ -69,15 +65,22 @@ function attachStateChangeListener(noble: any): void {
 }
 
 /**
- * Hämta noble-instansen. Första anropet laddar `@stoprocent/noble` via
- * createRequire(import.meta.url) så det fungerar i Node ESM, och attach:ar
- * omedelbart stateChange-listenern. Efterföljande anrop returnerar samma instans.
+ * Hämta noble-instansen (synkront — kräver att getNobleAsync() har körts en gång).
+ * Detta är för befintlig kod som inte kan vara async.
  */
 export function getNoble(): any {
   if (_nobleInstance) return _nobleInstance;
-  // Tyst laddning — engine-start-minimal speglar noble-scan-isolated.mjs som
-  // inte loggar något extra mellan "1. Importing" och "2. Imported".
-  const mod = nodeRequire('@stoprocent/noble');
+  throw new Error('[noble-singleton] getNoble() called before getNobleAsync() — load noble via dynamic import first');
+}
+
+/**
+ * Ladda noble via dynamic ESM-import — EXAKT som noble-scan-isolated.mjs gör.
+ * Detta är kritiskt: native-init-ordningen skiljer sig mellan CommonJS require
+ * och ESM dynamic import, och stateChange-eventet kan tappas vid require.
+ */
+export async function getNobleAsync(): Promise<any> {
+  if (_nobleInstance) return _nobleInstance;
+  const mod: any = await import('@stoprocent/noble');
   _nobleInstance = mod?.default ?? mod;
   _loadedAt = Date.now();
   attachStateChangeListener(_nobleInstance);
