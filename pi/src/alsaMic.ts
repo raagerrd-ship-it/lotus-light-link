@@ -62,7 +62,10 @@ export interface BandResult {
 
 const SAMPLE_RATE = 44100;
 const FFT_SIZE = FFT_N; // 1024
-const HOP_SIZE = 128;
+// HOP_SIZE = ALSA-period = 32 frames @ 44.1kHz = ~0.73ms capture latency.
+// FFT triggers var 32:e sample → ~1378 frames/s. Vi prioriterar låg latens
+// över FFT-frekvens-upplösning (sample-storlek 1024 ger 43Hz/bin i alla fall).
+const HOP_SIZE = 32;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 const FFT_MASK = FFT_SIZE - 1; // 0x3FF for & bitmask
