@@ -145,8 +145,9 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   // släpper igenom så snabbt föregående write returnerat — linjär kedja:
   // mic → FFT → engine tick → BLE write. Se mem://pi/ble/write-rate-limit.
 
-  // Delta-skip återställd — om färgen är identisk, ingen write.
-  if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
+  // Delta-skip — kan stängas av via env BLE_NO_DELTA_SKIP=1 för throughput-test.
+  if (!process.env.BLE_NO_DELTA_SKIP &&
+      cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
     return;
   }
