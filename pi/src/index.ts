@@ -16,6 +16,9 @@
 import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
+import { installLogCapture } from './ble/log-buffer.js';
+installLogCapture();
+
 import { getItem, setItem } from './storage.js';
 import {
   setBootPhase, markSubsystemStarting, markSubsystemReady, markSubsystemError,
