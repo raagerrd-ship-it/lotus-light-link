@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity, Download, Timer } from "lucide-react";
 import { apiBase } from "@/lib/apiBase";
+import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
@@ -2450,6 +2451,10 @@ export default function PiMobile() {
           <span>Bluetooth-adapter avstängd eller blockerad</span>
         </div>
       )}
+
+      {/* Subsystem-startup-panel — manuell start av BLE-motor, mic, sonos.
+          Med "Auto"-checkbox per rad för sekventiell autostart vid sidladdning. */}
+      <SubsystemStartupPanel piBase={piBase} />
 
       {/* BLE-motor (infrastruktur: hci0 + noble) — separat från lamp-anslutning.
           Visar Redo / Väntar / Behöver återställas. Anslutning till lampan

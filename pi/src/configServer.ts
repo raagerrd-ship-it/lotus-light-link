@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
 import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase, ensureAdapterUp } from './nobleBle.js';
-import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot } from './ble/state.js';
+import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot, getAllSubsystemStates, getSubsystemState, type SubsystemId } from './ble/state.js';
 import { getWatchdogGiveUpReason } from './ble/watchdog.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
@@ -19,6 +19,17 @@ type AlsaMicModule = typeof import('./alsaMic.js');
 let attachedEngine: PiLightEngine | null = null;
 let attachedMic: AlsaMicModule | null = null;
 let invalidateIdleColorCacheFn: (() => void) | null = null;
+
+export interface SubsystemStarters {
+  startBleEngine: () => Promise<void>;
+  startMic: () => Promise<void>;
+  startSonos: () => Promise<void>;
+}
+let _starters: SubsystemStarters | null = null;
+export function attachSubsystemStarters(s: SubsystemStarters): void {
+  _starters = s;
+  console.log('[Config] subsystem starters attached');
+}
 
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
@@ -109,9 +120,17 @@ export function startConfigServer(port = 3050): void {
   const requireBleReady = (res: any): boolean => {
     const bootPhase = getBootPhase();
     if (bootPhase === 'ready') return true;
+    const subsystem = getSubsystemState('bleEngine');
     res.status(503).json({
-      error: 'BLE bootar fortfarande — vänta tills init är klar',
+      error: subsystem.status === 'idle'
+        ? 'BLE-motorn är inte startad — tryck "Starta BLE-motor" i UI:t'
+        : subsystem.status === 'starting'
+          ? 'BLE-motorn startar fortfarande — vänta några sekunder'
+          : subsystem.status === 'error'
+            ? `BLE-motorn fick fel: ${subsystem.error ?? 'okänt'} — tryck "Starta BLE-motor" igen`
+            : 'BLE bootar fortfarande — vänta tills init är klar',
       bootPhase,
+      subsystem,
       adapterState: getAdapterState() ?? 'unknown',
       watchdogReason: getWatchdogGiveUpReason(),
     });
@@ -129,6 +148,38 @@ export function startConfigServer(port = 3050): void {
     if (_req.method === 'OPTIONS') { res.sendStatus(204); return; }
     next();
   });
+
+  // ─── Subsystem manual-start API ───
+  // GET status för alla subsystem (idle/starting/ready/error)
+  app.get('/api/subsystem/status', (_req, res) => {
+    res.json({
+      bootPhase: getBootPhase(),
+      subsystems: getAllSubsystemStates(),
+    });
+  });
+
+  const startSubsystem = async (id: SubsystemId, res: any) => {
+    if (!_starters) {
+      return res.status(503).json({ error: 'Subsystem-starters inte attachade ännu' });
+    }
+    const before = getSubsystemState(id);
+    if (before.status === 'ready') {
+      return res.json({ ok: true, alreadyReady: true, subsystem: before });
+    }
+    try {
+      if (id === 'bleEngine') await _starters.startBleEngine();
+      else if (id === 'mic') await _starters.startMic();
+      else if (id === 'sonos') await _starters.startSonos();
+      else return res.status(400).json({ error: `Okänt subsystem: ${id}` });
+      res.json({ ok: true, subsystem: getSubsystemState(id) });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message ?? String(e), subsystem: getSubsystemState(id) });
+    }
+  };
+
+  app.post('/api/subsystem/ble-engine/start', (_req, res) => startSubsystem('bleEngine', res));
+  app.post('/api/subsystem/mic/start',        (_req, res) => startSubsystem('mic', res));
+  app.post('/api/subsystem/sonos/start',      (_req, res) => startSubsystem('sonos', res));
 
   // --- Health (Pi Control Center standard) ---
   app.get('/api/health', (_req, res) => {
