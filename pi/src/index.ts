@@ -161,14 +161,11 @@ async function main() {
   if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
   console.log('[Boot] ✓ alsaMic loaded (efter noble stateChange)');
 
-  // Master-switchen är borttagen från UI:t — användaren styr enbart via
-  // "Anslut"-knappen. Vi auto-aktiverar därför bleEnabled vid boot så att
-  // scan/connect/heartbeat-guarderna släpper igenom. Ingen auto-connect
-  // sker ändå (det kräver explicit knapptryck).
-  const { setBleEnabled, getAdapterState } = nobleBle;
+  // Master-switchen är borttagen helt — användaren styr enbart via "Anslut"-
+  // knappen. BLE är alltid på från boot, ingen runtime-flagga behövs.
+  const { getAdapterState } = nobleBle;
   const effectiveState = getAdapterState();
-  setBleEnabled(true, false); // persist=false → ingen storage-skrivning, bara runtime-flagga
-  console.log(`[Boot] ✓ BLE master switch auto-ON (raw=${firstState}, eff=${effectiveState}) — väntar på manuell "Anslut"`);
+  console.log(`[Boot] BLE always-on (raw=${firstState}, eff=${effectiveState}) — väntar på manuell "Anslut"`);
 
   const { PiLightEngine } = await import('./piEngine.js');
   const { startConfigServer } = await import('./configServer.js');
