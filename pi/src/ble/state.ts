@@ -46,16 +46,65 @@ export function getFirstStateChangeAt(): number | null { return _firstStateChang
 export function hasNobleEverFiredStateChange(): boolean { return _firstStateChangeAt != null; }
 
 // ── Boot phase ──
-// 'waiting-for-noble' = engine bootar fortfarande och VÄNTAR på att noble
-// rapporterar poweredOn innan något annat (alsaMic, Sonos, engine.start)
-// startas. 'ready' = noble vaken och alla subsystem laddade.
-export type BootPhase = 'waiting-for-noble' | 'ready';
-let _bootPhase: BootPhase = 'waiting-for-noble';
+// 'idle' = process bootad men inga subsystem startade än (manuellt UI-läge).
+// 'waiting-for-noble' = legacy auto-boot väntar på noble.
+// 'ready' = minst BLE-motorn redo (övriga subsystem kan vara separat startade).
+export type BootPhase = 'idle' | 'waiting-for-noble' | 'ready';
+let _bootPhase: BootPhase = 'idle';
 export function getBootPhase(): BootPhase { return _bootPhase; }
 export function setBootPhase(phase: BootPhase): void {
   if (_bootPhase === phase) return;
   _bootPhase = phase;
   console.log(`[Boot] phase → ${phase}`);
+}
+
+// ── Subsystem state ──
+// Lazy-startade subsystem (BLE-motor, mic, Sonos). Engine startas separat
+// efter mic är igång. Status spåras här så configServer + heartbeat ser
+// samma sanning, oavsett vilken modul som triggade starten.
+export type SubsystemId = 'bleEngine' | 'mic' | 'sonos' | 'engine';
+export type SubsystemStatus = 'idle' | 'starting' | 'ready' | 'error';
+export interface SubsystemState {
+  status: SubsystemStatus;
+  startedAt: number | null;
+  readyAt: number | null;
+  durationMs: number | null;
+  error: string | null;
+}
+const _subsystems: Record<SubsystemId, SubsystemState> = {
+  bleEngine: { status: 'idle', startedAt: null, readyAt: null, durationMs: null, error: null },
+  mic:       { status: 'idle', startedAt: null, readyAt: null, durationMs: null, error: null },
+  sonos:     { status: 'idle', startedAt: null, readyAt: null, durationMs: null, error: null },
+  engine:    { status: 'idle', startedAt: null, readyAt: null, durationMs: null, error: null },
+};
+export function getSubsystemState(id: SubsystemId): SubsystemState { return { ..._subsystems[id] }; }
+export function getAllSubsystemStates(): Record<SubsystemId, SubsystemState> {
+  return {
+    bleEngine: { ..._subsystems.bleEngine },
+    mic: { ..._subsystems.mic },
+    sonos: { ..._subsystems.sonos },
+    engine: { ..._subsystems.engine },
+  };
+}
+export function markSubsystemStarting(id: SubsystemId): void {
+  _subsystems[id] = { status: 'starting', startedAt: Date.now(), readyAt: null, durationMs: null, error: null };
+  console.log(`[Subsystem] ${id} → starting`);
+}
+export function markSubsystemReady(id: SubsystemId): void {
+  const s = _subsystems[id];
+  const startedAt = s.startedAt ?? Date.now();
+  const readyAt = Date.now();
+  _subsystems[id] = { status: 'ready', startedAt, readyAt, durationMs: readyAt - startedAt, error: null };
+  console.log(`[Subsystem] ${id} → ready (${_subsystems[id].durationMs}ms)`);
+}
+export function markSubsystemError(id: SubsystemId, error: string): void {
+  const s = _subsystems[id];
+  const startedAt = s.startedAt ?? Date.now();
+  _subsystems[id] = { status: 'error', startedAt, readyAt: null, durationMs: Date.now() - startedAt, error };
+  console.error(`[Subsystem] ${id} → error: ${error}`);
+}
+export function resetSubsystem(id: SubsystemId): void {
+  _subsystems[id] = { status: 'idle', startedAt: null, readyAt: null, durationMs: null, error: null };
 }
 
 /**
