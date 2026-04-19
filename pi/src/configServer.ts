@@ -98,7 +98,7 @@ export function startConfigServer(port = 3050): void {
   const getMic = () => attachedMic;
   const requireEngine = (res: any): PiLightEngine | null => {
     if (attachedEngine) return attachedEngine;
-    res.status(503).json({ error: 'Engine bootar fortfarande — vänta på BLE poweredOn' });
+     res.status(503).json({ error: 'Engine bootar fortfarande — försök igen om en stund' });
     return null;
   };
   const requireMic = (res: any): AlsaMicModule | null => {
@@ -110,7 +110,7 @@ export function startConfigServer(port = 3050): void {
     const bootPhase = getBootPhase();
     if (bootPhase === 'ready') return true;
     res.status(503).json({
-      error: 'BLE bootar fortfarande — vänta på noble poweredOn eller automatisk respawn',
+      error: 'BLE bootar fortfarande — vänta tills init är klar',
       bootPhase,
       adapterState: getAdapterState() ?? 'unknown',
       watchdogReason: getWatchdogGiveUpReason(),
@@ -383,13 +383,7 @@ export function startConfigServer(port = 3050): void {
       console.log(`[BLE] /start: noble first stateChange = ${firstState}`);
     } catch {}
 
-    let adapterReady = getAdapterState() === 'poweredOn';
-    try {
-      if (!adapterReady) adapterReady = await ensureAdapterUp();
-    } catch (e: any) {
-      console.error('[BLE] start: ensureAdapterUp failed:', e?.message ?? e);
-    }
-
+    const adapterReady = getAdapterState() === 'poweredOn';
     const connected = !!getConnectedDeviceId();
     const hasSaved = !!getSavedDeviceId();
     res.json({ ok: true, enabled: true, adapterReady, autoConnect: false, connected, hasSaved });
