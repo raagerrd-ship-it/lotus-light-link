@@ -1,12 +1,12 @@
 ---
-name: ALSA buffer = 8× period (inte 2×) på Pi Zero 2W
-description: Native alsa-capture buffer måste vara minst 8× period-storleken på Pi Zero 2W. 2× ger konstanta overruns eftersom JS-eventloopen (FFT + BLE writeAsync) regelbundet blockerar 2-4ms, vilket är längre än 2×32 frames = 1.4ms.
+name: ALSA period/buffer kopplad till tickMs
+description: Native alsa-capture periodSize = round(tickMs/2 * 44.1) frames → exakt 2 FFT-frames per engine-tick. Buffer = 4× period (~50ms headroom @ 25ms tick). HOP_SIZE uppdateras live via setTickHopMs() som auto-restartar capture.
 type: constraint
 ---
-**Symptom:** `[ALSA] Buffer overrun detected` spammar engine-loggen ~20+ ggr/sek, BLE-write går till 0 pkt/s eftersom audio-pipelinen kollapsar (snd_pcm_prepare-loopen blockerar capture-tråden från att leverera frames till JS).
+**Relation:** `periodSize_frames = round(tickMs / 2 * 44.1)`. Default 25ms tick → ~551 frames = ~12.5ms per audio-frame → 2 FFT/tick (snabbare onset än 1×, halv CPU vs hop=128).
 
-**Rotorsak:** Bufferten var satt till `period × 2` (64 frames = ~1.4ms @ 44.1kHz). På Pi Zero 2W tar JS-eventloopen normalt 2-4ms per cykel pga FFT-beräkning och BLE writeAsync-anrop. När capture-tråden hinner fylla bufferten innan JS plockar upp den → EPIPE → snd_pcm_prepare → loopen kollapsar.
+**Buffer:** `bufFrames = period × 4` ger ~50ms headroom för JS-eventloop-jitter (FFT + BLE writeAsync på Pi Zero 2W tar 2-4ms per cykel). Tidigare 2× → konstanta overruns → engine kollapsade → 0 BLE pkt/s. 8× testades men onödigt mycket nu när periodSize är stort.
 
-**Fix (capture.cc):** `snd_pcm_uframes_t bufFrames = frames * 8;` (256 frames = ~5.8ms). Behåller liten period (32 frames = 0.7ms latency per frame) men ger headroom för JS-jitter.
+**Live-omkonfig:** `engine.setTickMs(ms)` kallar `setTickHopMs(ms)` i alsaMic.ts som auto-restartar capture om aktiv (~200ms audio-glitch). Konstruktorn i PiLightEngine kallar setTickHopMs vid init så period är synkad innan startMic.
 
-**Lärdom:** Period-storleken styr latensen (hur snabbt frames levereras). Buffer-storleken styr hur mycket jitter systemet tål innan overrun. Dessa är ortogonala — minska periodSize för låg latens, öka buffer×period-multiplikator för stabilitet.
+**Lärdom:** Period-storleken styr latens-granularitet (hur ofta FFT körs). Buffer × period styr jitter-tolerans. Med tick-styrd period håller vi audio-arrival och engine-tick i fas — annars driver de mot varann och engine processar antingen samma data flera ggr eller missar frames.
