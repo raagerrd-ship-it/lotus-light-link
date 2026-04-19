@@ -98,9 +98,14 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 5000);
           _connected = peripheral;
-          // Rensa ev. gamla disconnect-listeners från tidigare connect-cyklar
-          // mot samma peripheral — annars staplas de och triggar
-          // MaxListenersExceededWarning efter ~10 reconnects.
+          // Rensa ev. gamla disconnect-listeners från tidigare connect-cyklar.
+          // Noble emittar internt `disconnect:<uuid>` på SIG noble-objektet,
+          // och peripheral.once('disconnect') registreras DÄR — inte på
+          // peripheral självt. Därför måste vi rensa på noble-instansen,
+          // annars staplas listeners → MaxListenersExceededWarning efter ~10
+          // reconnects mot samma MAC.
+          const disconnectEvent = `disconnect:${peripheral.uuid ?? peripheral.id}`;
+          try { (n as any).removeAllListeners?.(disconnectEvent); } catch {}
           try { peripheral.removeAllListeners?.('disconnect'); } catch {}
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
