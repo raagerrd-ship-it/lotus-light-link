@@ -929,7 +929,7 @@ export function startConfigServer(port = 3050): void {
   app.get('/api/mic/level', (_req, res) => {
     const mic = getMic();
     if (!mic) {
-      res.json({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0 });
+      res.json({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0, backend: mic ? mic.getMicBackend() : 'none' });
       return;
     }
     const b = mic.getLatestBands();
@@ -938,6 +938,7 @@ export function startConfigServer(port = 3050): void {
       totalRms: b.totalRms,
       bassRms: b.bassRms,
       midHiRms: b.midHiRms,
+      backend: mic.getMicBackend(),
     });
   });
 

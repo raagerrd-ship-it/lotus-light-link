@@ -18,25 +18,39 @@ let useNative = false;
 // Dynamic import — alsa-capture is vendored as a fork in pi/vendor/alsa-capture/
 // (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.
 // Resolution order: vendored fork → upstream npm pkg → arecord subprocess fallback.
+let AlsaCapture: any = null;
+let nodeRecord: any = null;
+let useNative = false;
+let micBackend: 'alsa-vendored' | 'alsa-npm' | 'arecord' | 'none' = 'none';
+
 try {
-  // Resolve relative to compiled dist/ — vendor/ sits at pi/vendor/, dist at pi/dist/
   AlsaCapture = (await import('../vendor/alsa-capture/index.js')).default;
   useNative = true;
+  micBackend = 'alsa-vendored';
   console.log('[ALSA] Using native alsa-capture (vendored fork, direct snd_pcm_readi)');
 } catch (eVendor: any) {
   try {
     AlsaCapture = (await import('alsa-capture')).default;
     useNative = true;
+    micBackend = 'alsa-npm';
     console.log('[ALSA] Using native alsa-capture (npm package, direct snd_pcm_readi)');
   } catch (e: any) {
     const reason = e?.message ?? String(e);
     console.warn(`[ALSA] Native alsa-capture unavailable: ${reason}`);
     try {
       nodeRecord = (await import('node-record-lpcm16')).default;
+      micBackend = 'arecord';
       console.log('[ALSA] Falling back to node-record-lpcm16 (arecord subprocess)');
     } catch (e2: any) {
       console.warn(`[ALSA] node-record-lpcm16 also unavailable: ${e2?.message ?? e2}`);
     }
+  }
+}
+
+/** Returns which audio capture backend is currently active. */
+export function getMicBackend(): 'alsa-vendored' | 'alsa-npm' | 'arecord' | 'none' {
+  return micBackend;
+}
   }
 }
 
