@@ -1,26 +1,40 @@
-# alsa-capture (vendored fork)
+# alsa-capture (lotus-light N-API rewrite)
 
-Forked from [`alsa-capture@0.3.0`](https://www.npmjs.com/package/alsa-capture) (MIT, © 2020-2022 Bernd Kaiser, feinarbyte GmbH).
+Originally forked from [`alsa-capture@0.3.0`](https://www.npmjs.com/package/alsa-capture)
+(MIT, © 2020-2022 Bernd Kaiser, feinarbyte GmbH). The original NAN-based addon
+stopped compiling on Node 24 (V8 14) due to three independent NAN/V8 ABI breaks
+that even `nan@2.26.2` could not paper over. Rather than chase third-party header
+incompatibilities, this addon was rewritten on top of **`node-addon-api`** (N-API,
+ABI-stable across Node 18+).
 
-## Why vendored?
+## JS API (unchanged)
 
-Upstream `alsa-capture@0.3.0` is unmaintained (last release 2022) and depends on `nan@^2.17.0`, which fails to compile against V8 in Node 24+. The error appears in `streaming-worker.h` as `could not convert v8::Undefined(...) from Local<v8::Primitive> to Local<v8::Value>`.
+```js
+const Capture = require('./build/Release/capture');
+const cap = new Capture.StreamingWorker(
+  (eventName, dataString, binaryBuffer) => { /* ... */ },
+  () => { /* close */ },
+  (err) => { /* error */ },
+  { channels: 1, rate: 44100, format: 'S16_LE', device: 'plughw:0,0', periodSize: 128 }
+);
+cap.closeInput();
+```
 
-This fork bumps the `nan` dependency to `^2.26.2` (2026-03), which restored Node 24 compatibility. **No source-code changes** — just a dependency bump.
+The `index.js` wrapper turns this into an EventEmitter (`'audio'`, `'overrun'`,
+`'shortRead'`, `'readError'`, `'rateDeviating'`, `'periodSizeDeviating'`,
+`'periodTime'`, `'close'`, `'error'`) for drop-in compat with upstream.
 
 ## Build
 
-Built by `pi/setup-lotus.sh` on the Pi using global `node-gyp@10` (required for Python 3.12+).
+Built by `pi/setup-lotus.sh` on the Pi (or by GitHub Actions during release):
 
 ```bash
 cd pi/vendor/alsa-capture
-npm install --ignore-scripts        # install nan + eventemitter3
-node-gyp rebuild --release          # build capture.node
+npm install --ignore-scripts        # installs node-addon-api + eventemitter3
+node-gyp rebuild --release          # builds build/Release/capture.node
 ```
 
 Produces `build/Release/capture.node`, loaded dynamically by `pi/src/alsaMic.ts`.
-
-See full upstream documentation at <https://github.com/meldron/node-alsa-capture>.
 
 ## License
 
