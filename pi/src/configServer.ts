@@ -1050,6 +1050,10 @@ export function startConfigServer(port = 3050): void {
   // Detect Sonos gateway på alla PCC-cores (port 3050–3053 = motor-portar för core 0–3).
   // Kräver att service-namnet innehåller "sonos" — cast-away/buddy ensamt räcker inte
   // längre eftersom andra tjänster också kan matcha de namnen.
+  //
+  // Gateway:n (sonos-buddy-engine) exponerar /api/status och /api/events DIREKT under
+  // /api — INTE under /api/sonos. Vi probar därför båda varianterna och väljer den
+  // som faktiskt svarar OK på {baseUrl}/status.
   app.get('/api/sonos-gateway/detect', async (_req, res) => {
     const CORE_PORTS = [3050, 3051, 3052, 3053];
     const probes = CORE_PORTS.map(async (port) => {
@@ -1059,7 +1063,26 @@ export function startConfigServer(port = 3050): void {
         const data = await r.json();
         const name = String(data?.service ?? '').toLowerCase();
         if (!name.includes('sonos')) return null;
-        return { port, url: `http://127.0.0.1:${port}/api/sonos`, name: data.service, version: data.version ?? null, core: port - 3050 };
+
+        // Hitta rätt base-URL: först /api/sonos (legacy cast-away-bridge),
+        // sen /api (sonos-buddy-engine direkt).
+        const candidates = [`/api/sonos`, `/api`];
+        let chosenBase: string | null = null;
+        for (const suffix of candidates) {
+          try {
+            const probe = await fetch(`http://127.0.0.1:${port}${suffix}/status`, { signal: AbortSignal.timeout(1000) });
+            if (probe.ok) { chosenBase = suffix; break; }
+          } catch {}
+        }
+        if (!chosenBase) return null;
+
+        return {
+          port,
+          url: `http://127.0.0.1:${port}${chosenBase}`,
+          name: data.service,
+          version: data.version ?? null,
+          core: port - 3050,
+        };
       } catch { return null; }
     });
     const results = (await Promise.all(probes)).filter(Boolean);
