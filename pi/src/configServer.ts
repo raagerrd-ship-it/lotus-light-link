@@ -926,24 +926,55 @@ export function startConfigServer(port = 3050): void {
   });
 
   // --- Live mic level (poll-friendly, ~5 Hz) ---
+  // Tracks delta-rate (sent/skip per second) so the UI badge can distinguish:
+  //   - low pkt/s + high skipDelta = same color repeatedly (engine output stable)
+  //   - low pkt/s + high skipBusy  = BLE writeAsync slower than tick (BLEDOM cap)
+  //   - low pkt/s + low skips      = engine not ticking (FFT/audio issue)
+  let _lastSampleTs = 0;
+  let _lastSent = 0;
+  let _lastSkipDelta = 0;
+  let _lastSkipBusy = 0;
+
   app.get('/api/mic/level', async (_req, res) => {
     const mic = getMic();
     const engine = getEngine();
     const tickMs = engine ? engine.getTickMs() : null;
     if (!mic) {
-      res.json({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0, backend: 'none', audioToBleLatencyMs: null, tickMs });
+      res.json({
+        active: false, totalRms: 0, bassRms: 0, midHiRms: 0,
+        backend: 'none', audioToBleLatencyMs: null, tickMs,
+        ble: null,
+      });
       return;
     }
     const b = mic.getLatestBands();
     let audioToBleLatencyMs: number | null = null;
+    let ble: any = null;
     try {
       const { getLastWriteTime } = await import('./ble/protocol.js');
+      const { bleStats } = await import('./ble/state.js');
       const tAudio = mic.getLastAudioTimestamp();
       const tBle = getLastWriteTime();
       if (tAudio > 0 && tBle > 0) {
         const delta = tBle - tAudio;
         if (delta >= 0 && delta < 500) audioToBleLatencyMs = Math.round(delta);
       }
+      // Per-second rates (sample-to-sample delta)
+      const now = performance.now();
+      const dt = _lastSampleTs > 0 ? (now - _lastSampleTs) / 1000 : 0;
+      const sentPerSec = dt > 0 ? Math.round((bleStats.sentCount - _lastSent) / dt) : 0;
+      const skipDeltaPerSec = dt > 0 ? Math.round((bleStats.skipDeltaCount - _lastSkipDelta) / dt) : 0;
+      const skipBusyPerSec = dt > 0 ? Math.round((bleStats.skipBusyCount - _lastSkipBusy) / dt) : 0;
+      _lastSampleTs = now;
+      _lastSent = bleStats.sentCount;
+      _lastSkipDelta = bleStats.skipDeltaCount;
+      _lastSkipBusy = bleStats.skipBusyCount;
+      ble = {
+        sentPerSec,
+        skipDeltaPerSec,
+        skipBusyPerSec,
+        writeLatAvgMs: bleStats.writeLatAvgMs,
+      };
     } catch { /* protocol module not loaded yet */ }
     res.json({
       active: true,
@@ -953,6 +984,7 @@ export function startConfigServer(port = 3050): void {
       backend: mic.getMicBackend(),
       audioToBleLatencyMs,
       tickMs,
+      ble,
     });
   });
 
