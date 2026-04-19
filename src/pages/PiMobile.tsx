@@ -1981,6 +1981,7 @@ export default function PiMobile() {
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const [bleDemand, setBleDemand] = useState(false);
   const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
+  const [bootPhase, setBootPhase] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
   const [showManualBle, setShowManualBle] = useState(true);
@@ -2288,6 +2289,7 @@ export default function PiMobile() {
         setBleSavedAddress(data.ble?.savedDeviceAddress ?? null);
         setBleDemand(data.ble?.demand ?? false);
         setBleAdapterState(data.ble?.adapterState ?? null);
+        setBootPhase(data.bootPhase ?? null);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
         // Always update palette when available (may arrive after track change)
         const palette = data.engine?.palette ?? [];
@@ -2443,6 +2445,14 @@ export default function PiMobile() {
         <div className="mb-3 p-2.5 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-[11px] flex items-start gap-2">
           <Bluetooth size={14} className="shrink-0 mt-0.5" />
           <span>Bluetooth-adapter avstängd eller blockerad</span>
+        </div>
+      )}
+
+      {/* Boot phase: visa "Bootar: väntar på BLE…" tills noble är poweredOn */}
+      {bootPhase === 'waiting-for-noble' && (
+        <div className="mb-3 p-2.5 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-[11px] flex items-start gap-2">
+          <Bluetooth size={14} className="shrink-0 mt-0.5 animate-pulse" />
+          <span>Bootar: väntar på Bluetooth-adapter… (engine startar inte förrän BLE är redo)</span>
         </div>
       )}
 

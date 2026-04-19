@@ -127,31 +127,62 @@ async function main() {
     BLE_BUILD_TAG, waitForFirstStateChange, noble,
   } = nobleBle;
 
-  // STEP B.1 — Bara LÄTT observation av noble's initial state (5s).
-  // INGEN boot-time respawn — den triggas istället från scan-knappen
-  // (pi/src/ble/scan.ts) när användaren faktiskt vill scanna. Då slipper
-  // vi respawna i onödan om användaren inte tänkt använda BLE just nu.
-  const BOOT_NOBLE_WAIT_MS = 5000;
-  bt(`STEP B.1: observing noble stateChange (passive, ${BOOT_NOBLE_WAIT_MS}ms)...`);
-  const { recordObservedNobleState, getNobleRawState } = await import('./ble/state.js');
-  const firstState = await Promise.race([
-    waitForFirstStateChange(BOOT_NOBLE_WAIT_MS),
-    (async () => {
-      try {
-        await (noble as any).waitForPoweredOnAsync(BOOT_NOBLE_WAIT_MS);
-        recordObservedNobleState('poweredOn');
-        return 'poweredOn';
-      } catch {
-        return 'wait-timeout';
-      }
-    })(),
-  ]);
-  const rawAfterWait = getNobleRawState();
-  bt(`STEP B.1: noble after ${BOOT_NOBLE_WAIT_MS}ms → first=${firstState}, raw=${rawAfterWait ?? 'null'} (respawn deferred to scan)`);
+  // STEP B.1 — Starta configServer TIDIGT så UI:t kan visa boot-status
+  // ("Bootar: väntar på Bluetooth…") medan vi väntar på noble. Engine
+  // skapas också här (utan att start()as) så API:t har en referens.
+  bt('STEP B.1: starting configServer + engine (engine NOT started yet)...');
+  const { setBootPhase } = await import('./ble/state.js');
+  const { PiLightEngine } = await import('./piEngine.js');
+  const { startConfigServer } = await import('./configServer.js');
+  const engine = new PiLightEngine(effectiveTickMs);
+  startConfigServer(engine, CONFIG_PORT);
+  bt('STEP B.1: configServer up — UI kan nu polla /api/status under väntan');
 
-  // STEP B.2 — NU är det säkert att ladda alsaMic. Native ALSA-bindningen
-  // gör synkron init som annars hade blockerat libuv och ätit noble's
-  // stateChange (verifierat i SSH-test).
+  // STEP B.2 — BLOCKERA tills noble rapporterar poweredOn. Inget annat
+  // (alsaMic, Sonos, mic, engine.start) startas innan dess. Heartbeat var
+  // 5:e sek så användaren ser att vi inte är hängda.
+  bt('STEP B.2: blockerar boot tills noble.poweredOn (heartbeat var 5:e s)...');
+  const { recordObservedNobleState, getNobleRawState, logConnectionEvent } = await import('./ble/state.js');
+  const waitStart = Date.now();
+  let waitIteration = 0;
+  let firstState: string = 'unknown';
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    waitIteration++;
+    const elapsedSec = Math.round((Date.now() - waitStart) / 1000);
+    console.log(`[Boot] Väntar på noble poweredOn (t+${elapsedSec}s, försök #${waitIteration})...`);
+    logConnectionEvent({ type: 'connect_start', detail: `boot: väntar på noble poweredOn (t+${elapsedSec}s, försök #${waitIteration})` });
+
+    const result = await Promise.race([
+      waitForFirstStateChange(60_000),
+      (async () => {
+        try {
+          await (noble as any).waitForPoweredOnAsync(60_000);
+          recordObservedNobleState('poweredOn');
+          return 'poweredOn';
+        } catch {
+          return 'wait-timeout';
+        }
+      })(),
+    ]);
+
+    const raw = getNobleRawState();
+    if (result === 'poweredOn' || raw === 'poweredOn') {
+      firstState = 'poweredOn';
+      const totalSec = Math.round((Date.now() - waitStart) / 1000);
+      bt(`STEP B.2: ✓ noble poweredOn efter ${totalSec}s (försök #${waitIteration})`);
+      logConnectionEvent({ type: 'connect_start', detail: `boot: noble poweredOn efter ${totalSec}s` });
+      break;
+    }
+
+    bt(`STEP B.2: noble fortfarande inte poweredOn (result=${result}, raw=${raw ?? 'null'}) — fortsätter vänta`);
+    // Liten paus innan nästa iteration så vi inte spammar
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+
+  // STEP B.3 — NU är noble redo. Ladda alsaMic (native ALSA-bindning) och
+  // applicera sparade settings.
+  bt('STEP B.3: importing alsaMic (efter noble poweredOn)...');
   const alsaMic = await import('./alsaMic.js');
   startMic = alsaMic.startMic;
   stopMic = alsaMic.stopMic;
@@ -160,29 +191,20 @@ async function main() {
   setAutoGainFromVolume = alsaMic.setAutoGainFromVolume;
   if (savedAlsaDevice) setAlsaDevice(savedAlsaDevice);
   if (savedMicGain) { const g = parseFloat(savedMicGain); if (g >= 0.1 && g <= 50) setMicGain(g); }
-  console.log('[Boot] ✓ alsaMic loaded (efter noble stateChange)');
+  console.log('[Boot] ✓ alsaMic loaded');
 
-  // Master-switchen är borttagen helt — användaren styr enbart via "Anslut"-
-  // knappen. BLE är alltid på från boot, ingen runtime-flagga behövs.
   const { getAdapterState } = nobleBle;
   const effectiveState = getAdapterState();
-  console.log(`[Boot] BLE always-on (raw=${firstState}, eff=${effectiveState}) — väntar på manuell "Anslut"`);
-
-  const { PiLightEngine } = await import('./piEngine.js');
-  const { startConfigServer } = await import('./configServer.js');
+  console.log(`[Boot] BLE redo (raw=${firstState}, eff=${effectiveState})`);
 
   console.log(`  BLE build: ${BLE_BUILD_TAG}`);
   console.log('');
 
-  // BLE capabilities self-check — varnar tydligt om systemd-tjänsten saknar
-  // CAP_NET_RAW/CAP_NET_ADMIN så vi inte gissar på "varför funkar inte BLE?".
-  const { runBleCapsSelfCheck, logConnectionEvent, setHciProbeSnapshot } = await import('./ble/state.js');
+  // BLE capabilities self-check
+  const { runBleCapsSelfCheck, setHciProbeSnapshot } = await import('./ble/state.js');
   const capsCheck = runBleCapsSelfCheck();
 
-  // HCI raw socket probe — ground truth-test som gör samma syscall som
-  // noble's native binding. Om denna failar med EPERM så hjälper inte
-  // ens setcap på node-binären, och vi vet att problemet sitter på
-  // kernel-/LSM-/AppArmor-nivå (inte i vår caps-config).
+  // HCI raw socket probe
   try {
     const { probeHciSocket } = await import('./ble/hci-socket-probe.js');
     const probe = probeHciSocket();
@@ -207,37 +229,15 @@ async function main() {
     console.error('[BLE:hci-probe] probe crashed:', e?.message ?? e);
   }
 
-  // Starta heartbeat-loggning så UI:t alltid har löpande status att visa
-  // även när noble fastnat eller ingen connect-aktivitet pågår.
+  // Heartbeat-loggning
   const { startBleHeartbeat } = await import('./ble/heartbeat.js');
   startBleHeartbeat();
 
-  // Apply dimming-gamma now that setDimmingGamma is available.
+  // Apply dimming-gamma
   if (savedGamma) { const g = parseFloat(savedGamma); if (g >= 1 && g <= 3) setDimmingGamma(g); }
 
   console.log('');
 
-  const engine = new PiLightEngine(effectiveTickMs);
-
-  // 3. Start config server EARLY (so API is available during BLE/Sonos init)
-  startConfigServer(engine, CONFIG_PORT);
-
-  console.log('[Boot] Starting ALSA microphone...');
-  try {
-    startMic();
-  } catch (e: any) {
-    console.error('[Boot] Mic failed (continuing without):', e.message);
-  }
-
-  // 5. BLE — INGEN auto-connect och INGEN reconnect-loop. Användaren styr
-  // helt manuellt via UI:t (knapp "Anslut till sparad enhet"). Sonos-events
-  // ändrar bara engine-state (play/pause/volym/färg), aldrig BLE-anslutning.
-  console.log('[Boot] Leaving Bluetooth adapter untouched until first BLE action');
-
-  // Noble's mgmt/HCI-socket BEHÅLLS alltid — vi använder noble själv för
-  // scan (noble.startScanningAsync) eftersom alla parallella binärer
-  // (btmgmt, hcitool) får "0x0a Busy" / "Operation not permitted" så länge
-  // noble håller mgmt-kanalen. Bekräftat 2026-04-19 via manuell SSH-test.
   const { getSavedDeviceId } = await import('./ble/state.js');
   if (getSavedDeviceId()) {
     console.log(`[Boot] Saved device finns (${getSavedDeviceId()}) — noble HCI redo för auto-connect`);
@@ -273,11 +273,6 @@ async function main() {
   onSonosChange((state) => {
     const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
 
-    // INGEN automatisk BLE-anslutning baserat på Sonos-state. Användaren
-    // styr själv via "Anslut"-knappen. Engine fortsätter dock reagera på
-    // play/pause/volym/färg som vanligt — om en BLE-enhet är ansluten
-    // skickas paket dit, annars är det no-op.
-
     if (state.isTvMode) {
       engine.setPlaying(true);
       if (!wasTvMode) {
@@ -291,13 +286,12 @@ async function main() {
         wasTvMode = false;
       }
     }
-    
+
     if (state.volume != null) {
       engine.setVolume(state.volume);
       setAutoGainFromVolume(state.volume);
     }
 
-    // Use palette from Sonos Gateway response
     if (!state.isTvMode && state.palette && state.palette.length > 0 &&
         state.albumArtUrl && state.albumArtUrl !== lastArtUrl) {
       lastArtUrl = state.albumArtUrl;
@@ -307,8 +301,17 @@ async function main() {
     }
   });
 
-  // 6. Start engine
+  // Start mic NU (efter noble + Sonos är redo)
+  console.log('[Boot] Starting ALSA microphone...');
+  try {
+    startMic();
+  } catch (e: any) {
+    console.error('[Boot] Mic failed (continuing without):', e.message);
+  }
+
+  // 6. Start engine + markera boot som klar
   engine.start();
+  setBootPhase('ready');
 
   // 7. Stats logging
   const statsTimer = setInterval(() => {
