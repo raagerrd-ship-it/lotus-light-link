@@ -61,36 +61,33 @@ if [ -n "$TOTAL_RAM" ]; then
 fi
 
 taskset -c "$CORE" sudo apt-get update -qq
-# python3.11 + python3.11-distutils krävs för att bygga alsa-capture@0.3.0.
-# Paketet använder gammal node-gyp som importerar `distutils.version.StrictVersion`
-# vilket TOGS BORT i Python 3.12+. På Bookworm/Debian 13 är default python3 = 3.13
-# → bygget kraschar tyst → ingen build/Release/capture.node skapas → arecord-fallback.
-# Lösning: installera python3.11 explicit och peka node-gyp på den vid build.
-taskset -c "$CORE" sudo apt-get install -y -qq \
-  bluez libbluetooth-dev \
-  libasound2-dev alsa-utils \
-  build-essential python3 python3-dev \
-  python3.11 python3.11-dev python3.11-distutils \
-  curl 2>/dev/null || \
+# Python 3.11+ behövs för alsa-capture native build, men ENDAST om vi tvingas
+# använda paketets bundlade node-gyp 9.x. Vår strategi är att uppgradera node-gyp
+# till v10+ globalt, vilket fungerar med Python 3.13 (default på Bookworm).
+# Vi installerar python3.11 om det finns i repo:t som extra säkerhet, men
+# faller tillbaka utan om paketet saknas.
 taskset -c "$CORE" sudo apt-get install -y -qq \
   bluez libbluetooth-dev \
   libasound2-dev alsa-utils \
   build-essential python3 python3-dev \
   curl
+# Försök python3.11 separat (saknas i vissa repos — t.ex. Debian Trixie/13)
+taskset -c "$CORE" sudo apt-get install -y -qq python3.11 python3.11-dev 2>/dev/null || \
+  echo "  ℹ python3.11 saknas i apt — använder global node-gyp 10+ istället"
 
-# Hitta en python <3.12 för node-gyp (alsa-capture). Faller tillbaka på systemets
-# python3 om ingen 3.11 finns — då kommer alsa-capture-bygget failas ändå men
-# resten av installationen fortsätter.
+# Auto-detektera python <3.12 om den finns. Annars använder vi systemets python3
+# tillsammans med uppgraderad node-gyp 10+.
 GYP_PYTHON=""
 for CAND in python3.11 python3.10 python3.9; do
   if command -v "$CAND" >/dev/null 2>&1; then
     GYP_PYTHON="$(command -v "$CAND")"
-    echo "  ✓ node-gyp använder $CAND ($GYP_PYTHON) för native builds"
+    echo "  ✓ Hittade $CAND ($GYP_PYTHON) — använder den för native builds"
     break
   fi
 done
 if [ -z "$GYP_PYTHON" ]; then
-  echo "  ⚠ Hittade inte python3.11 — alsa-capture-bygget kan failas på Python 3.13"
+  GYP_PYTHON="$(command -v python3 || true)"
+  echo "  ℹ Ingen python <3.12 hittad — använder systemets $(python3 --version 2>/dev/null) + node-gyp 10+"
 fi
 
 # ─── 2. Node.js 24 LTS ───────────────────────────────────
