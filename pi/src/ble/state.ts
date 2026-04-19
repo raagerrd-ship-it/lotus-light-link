@@ -3,11 +3,15 @@
  * All modules read/write through these accessors to avoid circular imports.
  */
 
-// @ts-ignore — noble types are approximate
-import noble from '@stoprocent/noble';
+// noble laddas LAZY via singleton — får aldrig require:as här på top-level
+// (mem://pi/ble/noble-statechange-event-loop-race). `noble`-proxy:n triggar
+// `require('@stoprocent/noble')` först vid första property-access, vilket
+// sker först när startBleEngine() kör — inte vid module load.
+import { noble, onNobleStateChange, hasNobleLoaded } from './noble-singleton.js';
 import { readFileSync } from 'fs';
 import { getItem, setItem } from '../storage.js';
 import type { ConnectedDevice, BleConnectionEvent } from './types.js';
+export { hasNobleLoaded };
 
 // ── Constants ──
 export const SERVICE_UUID = 'fff0';
