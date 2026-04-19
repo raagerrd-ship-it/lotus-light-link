@@ -335,3 +335,11 @@ export function stopSonosPoller(): void {
 export function getPollerConfig(): SonosPollerConfig | null {
   return activeConfig;
 }
+
+let lastSuccessfulPollAt: number | null = null;
+export function getLastSuccessfulPollAt(): number | null {
+  return lastSuccessfulPollAt;
+}
+export function _markSonosPollOk(): void {
+  lastSuccessfulPollAt = Date.now();
+}
