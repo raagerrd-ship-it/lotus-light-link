@@ -149,23 +149,19 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
       logConnectionEvent({ type: 'scan_start', detail: `noble stop warning: ${e?.message ?? e}` });
     }
 
-    // Steg 2: Cycla HCI så subprocessen ärver en ren adapter.
-    // PATH-safe via runShellScript (mem://no-bash-lc-for-system-tools).
+    // Steg 2: Bara säkerställ att adaptern är UP (aldrig down/reset).
+    // Engine-policy 2026-04-19: Lotus får aldrig ta ner hci0. SSH-bevis:
+    // `hciconfig hci0 up` är idempotent och stör inte hcitool.
     try {
       const { runShellScript } = await import('./sysExec.js');
       runShellScript(
         'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
-        'hciconfig hci0 down >/dev/null 2>&1 || true; ' +
-        'hciconfig hci0 reset >/dev/null 2>&1 || true; ' +
-        'sleep 0.2; ' +
-        'hciconfig hci0 up >/dev/null 2>&1 || true; ' +
-        'rfkill unblock bluetooth >/dev/null 2>&1 || true',
-        { timeoutMs: 5000 }
+        'hciconfig hci0 up >/dev/null 2>&1 || true',
+        { timeoutMs: 3000 }
       );
-      await new Promise(r => setTimeout(r, 300));
-      logConnectionEvent({ type: 'scan_start', detail: 'HCI cycled — adapter klar för subprocess-helper' });
+      logConnectionEvent({ type: 'scan_start', detail: 'hci0 up (no down/reset) — klar för subprocess-helper' });
     } catch (e: any) {
-      logConnectionEvent({ type: 'scan_start', detail: `HCI cycle warning: ${e?.message ?? e}` });
+      logConnectionEvent({ type: 'scan_start', detail: `hci up warning: ${e?.message ?? e}` });
     }
 
     scanMetrics.phase = 'scanning';
@@ -174,17 +170,8 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
     // Steg 3: Kör scan-helper i en SUBPROCESS (utan noble).
     const hres = await hcitoolLescan(timeoutMs, /BLEDOM/i);
 
-    // Steg 4: Cycla HCI igen + återställ noble's binding så reconnect-loopen
-    // kan använda adaptern efter scan. Bakgrundskörs.
-    try {
-      const { runShellScript } = await import('./sysExec.js');
-      runShellScript(
-        'hciconfig hci0 down >/dev/null 2>&1 || true; ' +
-        'sleep 0.1; ' +
-        'hciconfig hci0 up >/dev/null 2>&1 || true',
-        { timeoutMs: 4000 }
-      );
-    } catch {}
+    // Steg 4: Återställ noble's binding så reconnect-loopen kan använda
+    // adaptern efter scan. INGEN hci down/reset — bara noble-refresh.
     try {
       const { restartNobleHci } = await import('./adapter.js');
       restartNobleHci('post-subprocess-scan').catch(() => {});

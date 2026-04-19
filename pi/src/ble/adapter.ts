@@ -32,9 +32,10 @@ export async function restartNobleHci(deviceName?: string): Promise<void> {
     if (typeof hci?.setSocketFilter === 'function') {
       try { hci.setSocketFilter(); tried.push('setSocketFilter'); } catch {}
     }
-    if (typeof hci?.stop === 'function') {
-      try { hci.stop(); tried.push('stop'); } catch {}
-    }
+    // OBS: hci.stop() borttagen — den stänger noble's HCI-socket vilket
+    // har visat sig lämna noble.state i `poweredOff` permanent. Engine-policy
+    // 2026-04-19/hci-up-only: aldrig destruktiva op:er på adaptern.
+
     if (typeof hci?.init === 'function') {
       try { hci.init(); tried.push('init'); } catch {}
     } else if (typeof hci?.start === 'function') {

@@ -118,50 +118,35 @@ async function withConnectLock<T>(deviceName: string | undefined, successResult:
 
 export async function resetHciAdapter(): Promise<void> {
   bumpWorkaround('resetHciAdapter_invoked');
-  logConnectionEvent({ type: 'hci_reset', detail: 'rfkill unblock + hciconfig reset/up' });
-  // PATH-safe: runShellScript garanterar /usr/sbin i PATH (bash -lc har tom
-  // PATH under systemd user-service). Memory: no-bash-lc-for-system-tools.
+  // POLICY: Engine får ALDRIG ta ner hci0. SSH-test 2026-04-19 visade att
+  // adaptern är stabil UP RUNNING tills något i vår kod kallar `hciconfig
+  // hci0 down/reset`. Då fastnar den DOWN för att efterföljande `up` ofta
+  // failar pga noble's HCI-socket eller rfkill-race.
+  //
+  // Ny strategi: bara unblock + up. Aldrig down. Aldrig reset.
+  logConnectionEvent({ type: 'hci_reset', detail: 'unblock + up only (no down/reset)' });
   try {
     const { runShellScript } = await import('./sysExec.js');
     runShellScript(
-      // 1) unblock rfkill FIRST — without this hciconfig up is a no-op
       'rfkill unblock bluetooth >/dev/null 2>&1 || true; ' +
-      // 2) cycle the adapter
-      '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 down >/dev/null 2>&1; ' +
-      ' command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 reset >/dev/null 2>&1; ' +
-      // 3) bring it back up (must come AFTER reset, otherwise reset leaves it DOWN)
-      ' command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
-      // 4) double-check rfkill in case reset re-blocked it (seen on some kernels)
+      '(command -v hciconfig >/dev/null 2>&1 && hciconfig hci0 up >/dev/null 2>&1) || true; ' +
       'rfkill unblock bluetooth >/dev/null 2>&1 || true',
-      { timeoutMs: 6000 }
+      { timeoutMs: 4000 }
     );
-    bleStats.lastDisconnectReason = 'hci_reset';
-    logConnectionEvent({ type: 'hci_reset', detail: 'hciconfig reset complete ✓ — refreshing noble HCI listeners' });
+    bleStats.lastDisconnectReason = 'hci_up_only';
+    await new Promise(r => setTimeout(r, 300));
 
-    // Give the kernel a moment after rfkill+up before noble re-binds
-    await new Promise(r => setTimeout(r, 400));
-
-    // Force noble to re-attach its HCI listeners — without this, noble keeps
-    // reporting poweredOff even though hciconfig shows UP RUNNING.
-    try { await restartNobleHci('hci_reset'); } catch {}
-
-    // Wait for noble to actually see the adapter as poweredOn
-    const ok = await waitForNoblePoweredOn(5000);
+    const ok = await waitForNoblePoweredOn(3000);
     if (ok) {
-      logConnectionEvent({ type: 'hci_reset', detail: 'adapter poweredOn ✓ (post-reset)' });
+      logConnectionEvent({ type: 'hci_reset', detail: 'adapter poweredOn ✓ (up-only)' });
     } else {
-      // Lotus får ALDRIG röra bluetoothd — att restart:a den dödar andra
-      // BLE-konsumenter på systemet och har visat sig lämna bluetoothd
-      // disabled efteråt (root cause för "noble.state=unknown för evigt").
-      // Se mem://pi/ble/bluetoothd-required. Om vi hamnar här → användaren
-      // får trycka "Återställ BLE-stack" eller reboota.
       logConnectionEvent({
         type: 'hci_reset',
-        detail: `adapter still ${getAdapterState() ?? 'unknown'} after 5s — give up (Lotus får inte röra bluetoothd). Tryck "Återställ BLE-stack" eller reboota.`,
+        detail: `adapter still ${getAdapterState() ?? 'unknown'} after up — Lotus rör inte hci0 mer. Tryck ev. manuellt: sudo hciconfig hci0 up`,
       });
     }
   } catch (e: any) {
-    logConnectionEvent({ type: 'hci_reset', detail: `hciconfig reset failed: ${e.message}` });
+    logConnectionEvent({ type: 'hci_reset', detail: `up-only failed: ${e.message}` });
   }
 }
 
