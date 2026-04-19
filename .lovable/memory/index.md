@@ -69,3 +69,4 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Inget bash -lc för system-CLI](mem://pi/ble/no-bash-lc-for-system-tools) — bash -lc i systemd user-service har tom PATH → hciconfig hittas inte; använd execSync direkt
 - [Noble mgmt-socket release](mem://pi/ble/noble-mgmt-socket-release) — Släpp noble's mgmt/HCI vid boot utan sparad enhet och i forgetDevice så btmgmt find inte får "Busy"
 - [Boot-time noble respawn](mem://pi/ble/boot-time-noble-respawn) — Triggar respawn om noble inte når poweredOn inom 5s vid boot (libuv-race)
+- [Separera raw/eff/stateChange](mem://pi/ble/separate-raw-eff-statechange) — Tre oberoende BLE-statusbegrepp; blanda inte ihop dem i loggar/UI; scan fortsätter på effektiv readiness utan auto-respawn
