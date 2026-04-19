@@ -33,7 +33,7 @@ import { isNobleScanActive } from './connect.js';
 import { scanMetrics, nextScanId, resetMetricsForNewScan, finalizeMetrics } from './scan-metrics.js';
 import { armScanWatchdog, type ScanWatchdogHandle } from './scan-watchdog.js';
 import { createDiscoverHandler } from './scan-discover.js';
-import { triggerNobleRespawn, getWatchdogGiveUpReason } from './watchdog.js';
+import { processHasBtCaps } from './state.js';
 
 export { getScanMetrics, type BleScanMetrics } from './scan-metrics.js';
 
@@ -84,6 +84,11 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
 
     // 4. Vänta på riktig stateChange — ALDRIG mutera noble.state manuellt.
     // Se mem://pi/ble/never-force-mutate-noble-state.
+    // Policy: INGEN auto-respawn (mem://pi/ble/manual-only-connection-policy).
+    // Om noble's interna state-promise inte resolvar inom 10s men effektiv
+    // adapter-state ÄR redo (caps OK + hci0 UP) så fortsätter vi ändå —
+    // noble's HCI-binding fungerar i praktiken även när dess JS-state-flagga
+    // ligger kvar på 'unknown' på Pi.
     if (typeof n.waitForPoweredOnAsync === 'function') {
       const beforeWait = { state: n.state, _state: n._state };
       try {
@@ -96,30 +101,22 @@ export async function scanForDevices(timeoutMs = 4000): Promise<DiscoveredDevice
           detail: `waitForPoweredOnAsync OK efter ${dt}ms (was state=${beforeWait.state}, _state=${beforeWait._state})`,
         });
       } catch (e: any) {
-        // Noble är wedged — libuv-racen vid boot åt stateChange-eventet
-        // (mem://pi/ble/noble-statechange-event-loop-race). Fresh process
-        // når poweredOn på ~310ms (SSH-bevis 2026-04-19). Trigga respawn
-        // via systemd så användaren får tryck på "Sök efter enheter" igen
-        // och då hittar noble enheterna direkt.
-        let respawnTriggered = false;
-        logConnectionEvent({
-          type: 'scan_start',
-          detail: `waitForPoweredOnAsync FAIL: ${e?.message ?? e} (state=${n.state}, _state=${n._state}) — triggar noble respawn via systemd`,
-        });
-        try {
-          respawnTriggered = triggerNobleRespawn(`scan-time: noble=${n.state ?? 'null'} efter 10s wait (user clicked Sök)`);
-        } catch (rerr: any) {
+        const effectiveReady = getAdapterState() === 'poweredOn' && processHasBtCaps();
+        if (effectiveReady) {
           logConnectionEvent({
             type: 'scan_start',
-            detail: `triggerNobleRespawn kastade: ${rerr?.message ?? rerr}`,
+            detail: `waitForPoweredOnAsync timeout men effektiv adapter är redo (eff=poweredOn, caps OK, rå=${n.state ?? 'null'}) — fortsätter scan utan respawn`,
           });
+          // Fortsätt — noble's HCI-binding fungerar trots wedged JS-state.
+        } else {
+          const msg = `BLE-motor ej redo: rå noble=${n.state ?? 'null'}, effektiv adapter=${getAdapterState() ?? 'unknown'}. Tryck "Återställ BLE-stack" i UI:t.`;
+          logConnectionEvent({
+            type: 'scan_start',
+            detail: `waitForPoweredOnAsync FAIL utan effektiv readiness: ${e?.message ?? e} — ingen auto-respawn (manual-only-policy)`,
+          });
+          scanMetrics.lastStartError = msg;
+          throw new Error(msg);
         }
-        if (!respawnTriggered) {
-          const cooldownReason = getWatchdogGiveUpReason() ?? 'Respawn blockerad av cooldown — försök igen om en liten stund.';
-          scanMetrics.lastStartError = cooldownReason;
-          throw new Error(cooldownReason);
-        }
-        throw new Error(`noble inte poweredOn inom 10s: ${e?.message ?? e}`);
       }
     }
 
