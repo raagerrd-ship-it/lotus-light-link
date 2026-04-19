@@ -11,7 +11,6 @@ import { getAdapterState, logConnectionEvent, getNobleRawState, bumpWorkaround }
 import type { DiscoveredDevice } from './types.js';
 import { isNobleScanActive } from './connect.js';
 import { hcitoolLescan } from './hcitool-scan.js';
-import { triggerNobleRespawn } from './watchdog.js';
 
 let lastScanResults: DiscoveredDevice[] = [];
 let scanning = false;
