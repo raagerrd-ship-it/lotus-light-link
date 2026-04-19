@@ -170,17 +170,30 @@ async function main() {
       })(),
     ]);
     const raw = getNobleRawState();
+    const { getAdapterState: _getEff } = nobleBle;
+    const effState = _getEff();
+    const engineReady = effState === 'poweredOn';
+    const totalSec = Math.round((Date.now() - waitStart) / 1000);
     if (result === 'poweredOn' || raw === 'poweredOn') {
       firstState = 'poweredOn';
-      const totalSec = Math.round((Date.now() - waitStart) / 1000);
       bt(`STEP B.2: ✓ noble poweredOn efter ${totalSec}s`);
-      logConnectionEvent({ type: 'connect_start', detail: `boot: noble poweredOn efter ${totalSec}s` });
+      logConnectionEvent({ type: 'connect_start', detail: `boot: noble poweredOn efter ${totalSec}s (eff=${effState})` });
+    } else if (engineReady) {
+      // Effektiv BLE-motor är redo (caps OK + hci0 UP) även om rå noble.state
+      // ligger kvar på 'unknown'. Detta är NORMAL drift på Pi — vi loggar
+      // det som info, inte som fel.
+      firstState = raw ?? 'unknown';
+      bt(`STEP B.2: ℹ BLE-motor redo via effektiv state (rå noble=${raw ?? 'null'}, eff=${effState}) efter ${totalSec}s — ingen åtgärd behövs`);
+      logConnectionEvent({
+        type: 'connect_start',
+        detail: `boot: BLE-motor redo (eff=${effState}, rå noble=${raw ?? 'null'}) efter ${totalSec}s — stateChange-event ej fångat men adaptern är operativ`,
+      });
     } else {
       firstState = raw ?? String(result ?? 'unknown');
-      bt(`STEP B.2: ⚠ noble inte poweredOn efter 15s (result=${result}, raw=${raw ?? 'null'}) — boot fortsätter, tryck "Återställ BLE-stack" i UI:t`);
+      bt(`STEP B.2: ⚠ BLE-motor inte redo efter 15s (result=${result}, rå=${raw ?? 'null'}, eff=${effState}) — boot fortsätter, tryck "Återställ BLE-stack" i UI:t`);
       logConnectionEvent({
         type: 'connect_fail',
-        detail: `boot: noble ej poweredOn efter 15s (result=${result}, raw=${raw ?? 'null'}) — INGEN auto-respawn. Tryck "Återställ BLE-stack" i UI:t.`,
+        detail: `boot: BLE-motor ej redo efter 15s (result=${result}, rå=${raw ?? 'null'}, eff=${effState}) — INGEN auto-respawn. Tryck "Återställ BLE-stack" i UI:t.`,
       });
     }
   } catch (e: any) {
