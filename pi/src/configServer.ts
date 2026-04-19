@@ -894,13 +894,13 @@ export function startConfigServer(port = 3050): void {
     const engine = requireEngine(res);
     if (!engine) return;
     const { tickMs } = req.body;
-    if (typeof tickMs === 'number' && tickMs >= 10 && tickMs <= 50) {
+    if (typeof tickMs === 'number' && tickMs >= 25 && tickMs <= 50) {
       engine.setTickMs(tickMs);
       engine.restartTimer();
       setItem('tick-ms', String(tickMs));
       res.json({ ok: true, tickMs });
     } else {
-      res.status(400).json({ error: 'tickMs must be 10-50' });
+      res.status(400).json({ error: 'tickMs must be 25-50 (BLEDOM-säker)' });
     }
   });
 

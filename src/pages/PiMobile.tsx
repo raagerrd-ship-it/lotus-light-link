@@ -820,10 +820,13 @@ function GlobalSettingsView({
           <span className="text-muted-foreground font-mono text-xs">{tickMs} ms</span>
         </div>
         <input
-          type="range" min={10} max={50} step={1} value={tickMs}
+          type="range" min={25} max={50} step={1} value={tickMs}
           onChange={(e) => setTickMs(parseInt(e.target.value))}
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Styr hela kedjan: mic→FFT→färg→BLE. {Math.round(1000 / tickMs)} pkt/s. Min 25ms = 40 pkt/s.
+        </p>
 
         <div className="flex justify-between text-sm mb-1 mt-5">
           <span>Dimming gamma</span>
@@ -1954,7 +1957,7 @@ export default function PiMobile() {
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
-  const [tickMs, setTickMs] = useState(10);
+  const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
   const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto'); // auto = detecting
   const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);

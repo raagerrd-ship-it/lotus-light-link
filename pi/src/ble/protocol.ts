@@ -139,14 +139,11 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
     }
   }
 
-  // Hard rate-limit: max 15 writes/sek (≥66ms mellan writes).
-  // BLEDOM på Pi (utan möjlighet att sänka conn interval) kraschar
-  // länken med reason=8 vid högre takt. Se mem://pi/ble/keep-alive.
-  const MIN_WRITE_INTERVAL_MS = 66;
-  if (lastWriteTime > 0 && (performance.now() - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
-    bleStats.skipBusyCount++;
-    return;
-  }
+  // INGEN hårdkodad write rate-limit här. Tick rate (UI-slidern) är enda
+  // källan till sanning för hur ofta paket skickas. Slidern har min 25ms
+  // (= 40 pkt/s tak). writeInFlight ovan hindrar parallella writes, men
+  // släpper igenom så snabbt föregående write returnerat — linjär kedja:
+  // mic → FFT → engine tick → BLE write. Se mem://pi/ble/write-rate-limit.
 
   // Delta-skip återställd — om färgen är identisk, ingen write.
   if (cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {

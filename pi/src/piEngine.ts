@@ -305,7 +305,7 @@ export class PiLightEngine {
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
 
-  constructor(tickMs = 10) {
+  constructor(tickMs = 25) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
     this.agc = createAgcState();
