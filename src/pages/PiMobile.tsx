@@ -1981,6 +1981,7 @@ export default function PiMobile() {
   const [bleConnecting, setBleConnecting] = useState<string | null>(null);
   const [bleDemand, setBleDemand] = useState(false);
   const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
+  const [bootPhase, setBootPhase] = useState<string | null>(null);
   const [blePreview, setBlePreview] = useState(false);
   const [blePreviewSec, setBlePreviewSec] = useState(0);
   const [showManualBle, setShowManualBle] = useState(true);
@@ -2288,6 +2289,7 @@ export default function PiMobile() {
         setBleSavedAddress(data.ble?.savedDeviceAddress ?? null);
         setBleDemand(data.ble?.demand ?? false);
         setBleAdapterState(data.ble?.adapterState ?? null);
+        setBootPhase(data.bootPhase ?? null);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
         // Always update palette when available (may arrive after track change)
         const palette = data.engine?.palette ?? [];
