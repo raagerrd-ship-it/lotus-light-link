@@ -176,8 +176,8 @@ function processFFT(): void {
 
   const [fftRe, fftIm] = fft1024(windowedBuf);
 
-  // Power spectrum + band sums in single pass (precomputed constants, no counters)
-  let loSum = 0, midSum = 0, hiSum = 0;
+  // Power spectrum + band sums in single pass (oktav-baserade band)
+  let loSum = 0, hiSum = 0;
   let totalSum = 0;
   let flux = 0;
 
@@ -185,19 +185,21 @@ function processFFT(): void {
     const r = fftRe[i], m = fftIm[i];
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
-    if (i < LO_CUT) loSum += power;
-    else if (i < MID_CUT) midSum += power;
-    else hiSum += power;
+    if (i >= LO_BIN_LOW && i < LO_BIN_HIGH) loSum += power;
+    else if (i >= HI_BIN_LOW && i < HI_BIN_HIGH) hiSum += power;
 
     const diff = power - prevPower[i];
     if (diff > 0) flux += diff;
     prevPower[i] = power;
   }
 
-  // ── Pre-smoothing: exponential moving average to kill high-freq jitter ──
-  const rawBass = Math.sqrt(loSum / LO_COUNT);
-  const rawMidHi = Math.sqrt((midSum + hiSum) / MID_HI_COUNT);
+  // ── Energy-per-octave: matchar mänsklig perception av frekvensbalans ──
+  // Tidigare delades med antal bins → diskant (466 bins) dränktes vs bas (3 bins).
+  // Nu: total power i bandet / antal oktaver bandet täcker → båda jämförbara.
+  const rawBass = Math.sqrt(loSum * INV_LO_OCT);
+  const rawMidHi = Math.sqrt(hiSum * INV_HI_OCT);
   const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
+
 
   smoothBass = smoothRms(rawBass, smoothBass);
   smoothMidHi = smoothRms(rawMidHi, smoothMidHi);
