@@ -9,6 +9,8 @@
 
 import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
+import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
+import { startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
