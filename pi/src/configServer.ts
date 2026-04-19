@@ -1006,6 +1006,9 @@ export function startConfigServer(port = 3050): void {
       b: d.finalB,
       brightness: d.brightnessPct,
       sentCount: bleStats.sentCount,
+      skipDeltaCount: bleStats.skipDeltaCount,
+      skipBusyCount: bleStats.skipBusyCount,
+      writeLatAvgMs: bleStats.writeLatAvgMs,
     });
   });
 
