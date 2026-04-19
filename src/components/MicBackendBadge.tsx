@@ -17,6 +17,7 @@ interface Props {
 export function MicBackendBadge({ piBase }: Props) {
   const [backend, setBackend] = useState<Backend>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [tickMs, setTickMs] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +30,7 @@ export function MicBackendBadge({ piBase }: Props) {
           const d = await r.json();
           setBackend(d.backend ?? "none");
           setLatencyMs(typeof d.audioToBleLatencyMs === "number" ? d.audioToBleLatencyMs : null);
+          setTickMs(typeof d.tickMs === "number" ? d.tickMs : null);
         }
       } catch {
         if (!cancelled) {
@@ -38,7 +40,6 @@ export function MicBackendBadge({ piBase }: Props) {
       }
     };
     tick();
-    // 1s poll — vi vill se latensen ändras i nästan realtid
     const id = setInterval(tick, 1000);
     return () => {
       cancelled = true;
@@ -48,15 +49,25 @@ export function MicBackendBadge({ piBase }: Props) {
 
   if (!backend) return null;
 
-  // Färga latens-siffran efter målet 25ms (BLEDOM teoretiskt minimum)
+  // Latensen JÄMFÖRS MOT TICK-RATE — det är taket för hur snabbt vi kan reagera.
+  // ≤ tick     → vi hänger med (grönt)
+  // ≤ 2× tick  → en frame efter (neutral)
+  // > 2× tick  → vi släpar (rött)
   const latencyClass =
-    latencyMs == null
+    latencyMs == null || tickMs == null
       ? ""
-      : latencyMs <= 25
+      : latencyMs <= tickMs
         ? "text-primary"
-        : latencyMs <= 50
+        : latencyMs <= tickMs * 2
           ? "text-foreground/70"
           : "text-destructive";
+
+  const latencyTitle =
+    latencyMs != null && tickMs != null
+      ? ` — ${latencyMs}ms audio→BLE (tick=${tickMs}ms)`
+      : latencyMs != null
+        ? ` — ${latencyMs}ms audio→BLE`
+        : "";
 
   const latencySuffix =
     latencyMs != null ? (
@@ -67,7 +78,7 @@ export function MicBackendBadge({ piBase }: Props) {
     return (
       <span
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-primary/15 text-primary border border-primary/30"
-        title={`Native ALSA (direct snd_pcm_readi)${latencyMs != null ? ` — ${latencyMs}ms audio→BLE` : ""}`}
+        title={`Native ALSA (direct snd_pcm_readi)${latencyTitle}`}
       >
         <Cpu size={9} /> ALSA{latencySuffix}
       </span>
@@ -78,7 +89,7 @@ export function MicBackendBadge({ piBase }: Props) {
     return (
       <span
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-destructive/15 text-destructive border border-destructive/30"
-        title={`arecord-subprocess (fallback)${latencyMs != null ? ` — ${latencyMs}ms audio→BLE` : ""}`}
+        title={`arecord-subprocess (fallback)${latencyTitle}`}
       >
         <Terminal size={9} /> ARECORD{latencySuffix}
       </span>
