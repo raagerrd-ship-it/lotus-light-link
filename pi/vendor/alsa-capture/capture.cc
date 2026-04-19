@@ -166,9 +166,11 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     snd_pcm_uframes_t frames = static_cast<snd_pcm_uframes_t>(options_.periodSize);
     snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
 
-    // Force minimal buffer = 2× period. Keeps ALSA queue tiny so a stalled
-    // reader can't accumulate >1.4ms of backlog before overrun fires.
-    snd_pcm_uframes_t bufFrames = frames * 2;
+    // Buffer = 8× period (~5.8ms @ 44.1kHz w/ 32-frame periods). Tradeoff:
+    // small enough to keep audio→FFT latency low, large enough to absorb JS
+    // eventloop jitter (FFT + BLE writeAsync routinely block 2-4ms on Pi Zero
+    // 2W). At 2× we got constant overruns → engine stalled → 0 pkt/s.
+    snd_pcm_uframes_t bufFrames = frames * 8;
     snd_pcm_hw_params_set_buffer_size_near(handle, params, &bufFrames);
 
     rc = snd_pcm_hw_params(handle, params);
