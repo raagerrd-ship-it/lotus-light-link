@@ -48,6 +48,7 @@ export function SubsystemStartupPanel({ piBase }: { piBase: string }) {
   const [status, setStatus] = useState<StatusResp | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [autostartTick, setAutostartTick] = useState(0); // re-render on toggle
+  const [expandedErrors, setExpandedErrors] = useState<Record<SubsystemId, boolean>>({ bleEngine: false, mic: false, sonos: false });
   const autostartRanRef = useRef(false);
 
   const fetchStatus = useCallback(async () => {
