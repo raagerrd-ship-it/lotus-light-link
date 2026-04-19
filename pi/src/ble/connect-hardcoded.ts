@@ -112,11 +112,12 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
           // ── 6. GATT discovery: hitta write-characteristic så vi kan skriva färg + hålla keep-alive ──
           console.log(`${ts()} 6. discoverSomeServicesAndCharacteristicsAsync([${SERVICE_UUID}], [${CHAR_UUID}])…`);
           try {
-            const { characteristics } = await withTimeout(
+            const result = await withTimeout<any>(
               peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
               'GATT discovery',
               8000,
             );
+            const characteristics = Array.isArray(result) ? result[1] : result?.characteristics;
             const ch = characteristics?.[0];
             if (!ch) {
               console.warn(`${ts()}    GATT: ingen ${CHAR_UUID}-characteristic hittad — keep-alive startas EJ`);
