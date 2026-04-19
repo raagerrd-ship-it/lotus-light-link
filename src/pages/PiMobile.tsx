@@ -2567,26 +2567,51 @@ export default function PiMobile() {
                 )}
                 {bleEngineDiag && !bleEngineDiag._error && (
                   <>
-                    <div className="grid grid-cols-[110px_1fr] gap-x-2 gap-y-0.5">
+                    {/* Pipeline-bockrutor — exakt vilka steg som passerats */}
+                    {Array.isArray(bleEngineDiag.pipeline) && bleEngineDiag.pipeline.length > 0 && (
+                      <div className="space-y-1">
+                        {bleEngineDiag.pipeline.map((step: any) => {
+                          const icon = step.status === 'ok' ? '✓' : step.status === 'pending' ? '⏳' : '✗';
+                          const color =
+                            step.status === 'ok'
+                              ? 'text-green-400'
+                              : step.status === 'pending'
+                                ? 'text-yellow-400'
+                                : 'text-destructive';
+                          return (
+                            <div key={step.id} className="flex items-start gap-1.5">
+                              <span className={`shrink-0 w-3 font-bold ${color}`}>{icon}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-foreground/90">{step.label}</div>
+                                {step.detail && (
+                                  <div className="opacity-60 text-[9px] break-words">{step.detail}</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Snabb-status (rå värden) */}
+                    <div className="pt-1.5 border-t border-current/10 grid grid-cols-[110px_1fr] gap-x-2 gap-y-0.5">
                       <span className="opacity-60">noble.state:</span>
-                      <span>{bleEngineDiag.nobleRaw?.state ?? '–'} <span className="opacity-50">(internt: {bleEngineDiag.nobleRaw?._state ?? '–'})</span></span>
+                      <span>{bleEngineDiag.adapter?.nobleRaw?.state ?? '–'} <span className="opacity-50">(internt: {bleEngineDiag.adapter?.nobleRaw?._state ?? '–'})</span></span>
 
                       <span className="opacity-60">adapterState:</span>
-                      <span>{bleEngineDiag.adapterState ?? '–'}</span>
-
-                      <span className="opacity-60">hci0 UP:</span>
-                      <span>{/UP\s+RUNNING/.test(bleEngineDiag.hciRaw ?? '') ? '✓ UP RUNNING' : '✗ DOWN/okänd'}</span>
+                      <span>{bleEngineDiag.adapter?.state ?? '–'}</span>
 
                       <span className="opacity-60">stateChange:</span>
-                      <span>{fmtAge(bleEngineDiag.firstStateChangeAt)}</span>
+                      <span>{bleEngineDiag.boot?.firstStateChangeAt ? fmtAge(new Date(bleEngineDiag.boot.firstStateChangeAt).getTime()) : '–'}</span>
 
                       <span className="opacity-60">boot start:</span>
-                      <span>{fmtAge(bleEngineDiag.bootStartedAt)}</span>
+                      <span>{bleEngineDiag.boot?.startedAt ? fmtAge(new Date(bleEngineDiag.boot.startedAt).getTime()) : '–'}</span>
 
                       <span className="opacity-60">bootPhase:</span>
-                      <span>{bleEngineDiag.bootPhase ?? '–'}</span>
+                      <span>{bleEngineDiag.boot?.phase ?? '–'}</span>
                     </div>
 
+                    {/* Senaste event */}
                     <div className="pt-1.5 border-t border-current/10">
                       <div className="opacity-60 mb-0.5">Senaste event:</div>
                       {lastEvent ? (
