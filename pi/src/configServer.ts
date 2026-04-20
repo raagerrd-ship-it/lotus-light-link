@@ -1469,19 +1469,14 @@ export function startConfigServer(port = 3050): void {
     updateLog = '';
     res.json({ ok: true, message: 'Update started' });
 
-    // Run update script in background
+    // update-services.sh hanterar nedladdning + installation OCH avslutar med
+    // `sudo systemctl restart lotus-light-engine` — vi ska INTE starta om själva
+    // efteråt (den restarten dödar ändå denna process; redundant kommando är farligt).
     const { exec } = await import('child_process');
     exec('bash /opt/lotus-light/pi/update-services.sh 2>&1', { timeout: 120000 }, (err, stdout, stderr) => {
       updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
       updateRunning = false;
       console.log('[Update]', updateLog);
-      if (!err) {
-        console.log('[Update] Restarting service...');
-        exec('systemctl --user restart lotus-light-engine', { timeout: 10000 }, (restartErr) => {
-          if (restartErr) console.error('[Update] Restart failed:', restartErr.message);
-          else console.log('[Update] Service restarted ✓');
-        });
-      }
     });
   });
 
@@ -1497,23 +1492,17 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, message: 'Force update started' });
 
     const { exec } = await import('child_process');
-    // Delete VERSION.json so update-services.sh won't skip due to "already up to date"
+    // Delete VERSION.json så update-services.sh inte hoppar över med "already up to date".
+    // Skriptet slutar med `sudo systemctl restart lotus-light-engine` — då dör vi
+    // och ny version startar. Ingen separat restart-kommando behövs.
     const cmds = [
-      'rm -f /opt/lotus-light/VERSION.json',
+      'sudo rm -f /opt/lotus-light/VERSION.json',
       'bash /opt/lotus-light/pi/update-services.sh 2>&1',
     ].join(' && ');
     exec(cmds, { timeout: 180000 }, (err, stdout, stderr) => {
       updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
       updateRunning = false;
       console.log('[Force Update]', updateLog);
-      // Auto-restart service after successful update
-      if (!err) {
-        console.log('[Force Update] Restarting service...');
-        exec('systemctl --user restart lotus-light-engine', { timeout: 10000 }, (restartErr) => {
-          if (restartErr) console.error('[Force Update] Restart failed:', restartErr.message);
-          else console.log('[Force Update] Service restarted ✓');
-        });
-      }
     });
   });
 
