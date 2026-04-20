@@ -2011,6 +2011,9 @@ export default function PiMobile() {
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
             <span>Motor {engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz` : 'Stoppad') : '…'}</span>
+            {engineUptime != null && (
+              <span className="opacity-60 font-mono">· {formatUptime(engineUptime)}</span>
+            )}
           </div>
           {piVersion && (
             <div className="flex flex-col items-end font-mono leading-tight text-right">
