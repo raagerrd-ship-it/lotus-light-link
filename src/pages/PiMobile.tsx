@@ -1063,19 +1063,15 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
-  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto'); // auto = detecting
+  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto');
   const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
   const [micGain, setMicGain] = useState(1.0);
-  const [showDiag, setShowDiag] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [liveTrack, setLiveTrack] = useState<string | null>(null);
-  const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
-  const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const [bleHardcodedConnected, setBleHardcodedConnected] = useState(false);
   const [bleEngineReady, setBleEngineReady] = useState(false);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
@@ -1085,36 +1081,12 @@ export default function PiMobile() {
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const [sonosPlaying, setSonosPlaying] = useState(false);
-  const [liveTrackUnused, setLiveTrackUnused] = useState<string | null>(null);
-  const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
-  const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
-
-    savedName: null,
-    connectedId: null,
-  });
-
-  useEffect(() => {
-    bleIdentityRef.current = {
-      savedId: bleSavedId,
-      savedName: bleSavedName,
-      connectedId: bleConnectedId,
-    };
-  }, [bleSavedId, bleSavedName, bleConnectedId]);
-
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTriggered = useRef(false);
 
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
-  const showBlePicker = !bleSavedId || bleScanning || bleScanResults.length > 0;
-  const showBleSavedCard = (bleSavedId || bleConnectedId) && !blePreview && !showBlePicker;
-
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-  const isBleRespawnScanError = (message: string | null | undefined) =>
-    typeof message === 'string' && /noble inte poweredOn inom 10s|Timeout waiting for Noble to be powered on/i.test(message);
-  const isBleRespawnCooldownError = (message: string | null | undefined) =>
-    typeof message === 'string' && /respawn blockerad|cooldown/i.test(message);
 
   const putJson = async (path: string, body: unknown) => {
     const r = await fetch(`${piBase}${path}`, {
@@ -1127,118 +1099,50 @@ export default function PiMobile() {
     return r;
   };
 
-  const requestBleScan = useCallback(async () => {
-    const r = await fetch(`${piBase}/api/ble/scan`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(15000),
-    });
-    let data: any = null;
+  const handleSave = async () => {
+    setSaveError(null);
     try {
-      data = await r.json();
-    } catch {}
-    return { r, data };
-  }, [piBase]);
-
-  const waitForBleRecovery = useCallback(async () => {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      try {
-        const r = await fetch(`${piBase}/api/ble/diagnostics`, {
-          signal: AbortSignal.timeout(1500),
-        });
-        if (r.ok) {
-          await sleep(500);
-          return true;
-        }
-      } catch {}
-      await sleep(500);
+      const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
+      const results = await Promise.allSettled([
+        putJson('/api/calibration', {
+          bassWeight: cal.bassWeight,
+          releaseAlpha,
+          smoothing,
+          dynamicDamping: cal.dynamicDamping,
+          brightnessFloor: cal.brightnessFloor,
+          punchWhiteThreshold: cal.punchWhiteThreshold,
+          perceptualGamma: cal.perceptualGamma,
+          transientGain: cal.transientGain,
+          dynamicsEnabled: cal.dynamicsEnabled,
+          hiShelfGainDb: 6,
+        }),
+        putJson('/api/tick-ms', { tickMs }),
+        putJson('/api/mic-device', { device: alsaDevice }),
+        putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
+        putJson('/api/idle-color', { color: idleColor }),
+        ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
+        putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
+        putJson('/api/mic-gain', { gain: micGain }),
+      ]);
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        const reasons = failed.map(r => (r as PromiseRejectedResult).reason?.message ?? 'okänt').join(', ');
+        console.error('[PiMobile] Partial save failure:', reasons);
+        setSaveError(`${failed.length}/${results.length} misslyckades: ${reasons}`);
+        clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setSaveError(null), 6000);
+        return;
+      }
+      setSaved(true);
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 1500);
+    } catch (e: any) {
+      console.error('[PiMobile] Save failed', e);
+      setSaveError(e.message ?? 'Kunde inte nå motorn');
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaveError(null), 6000);
     }
-    return false;
-  }, [piBase]);
-
-  const handleBleScan = useCallback(async () => {
-    const applyScanResult = (devices: { id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[], startError?: string | null) => {
-      setBleScanResults(devices);
-      setBleScanCompletedEmpty(devices.length === 0 && !startError);
-      setBleScanMessage(startError ? { kind: 'error', text: startError } : null);
-    };
-
-    setBleScanning(true);
-    setBleScanResults([]);
-    setBleScanCompletedEmpty(false);
-    setBleScanMessage(null);
-
-    try {
-      const first = await requestBleScan();
-      const firstDevices = Array.isArray(first.data?.devices) ? first.data.devices : null;
-      const firstError = first.data?.scan?.lastStartError ?? first.data?.error ?? null;
-
-      if (isBleRespawnCooldownError(firstError)) {
-        applyScanResult(firstDevices ?? [], firstError);
-        return;
-      }
-
-      if (first.r.ok && firstDevices && (firstDevices.length > 0 || !isBleRespawnScanError(firstError))) {
-        applyScanResult(firstDevices, firstError);
-        return;
-      }
-
-      if (isBleRespawnScanError(firstError) || !first.r.ok) {
-        setBleScanMessage({ kind: 'info', text: 'BLE startar om — försöker igen automatiskt…' });
-        const recovered = await waitForBleRecovery();
-        if (!recovered) {
-          setBleScanMessage({ kind: 'error', text: 'BLE hann inte starta om. Försök igen om några sekunder.' });
-          return;
-        }
-
-        const retry = await requestBleScan();
-        const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
-        const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
-
-        if (isBleRespawnCooldownError(retryError)) {
-          applyScanResult(retryDevices ?? [], retryError);
-          return;
-        }
-
-        if (retry.r.ok && retryDevices) {
-          applyScanResult(retryDevices, retryError);
-          return;
-        }
-
-        setBleScanMessage({ kind: 'error', text: retryError ?? 'BLE återhämtade sig inte. Försök igen.' });
-        return;
-      }
-
-      applyScanResult([], firstError ?? 'BLE-sökningen misslyckades');
-    } catch {
-      setBleScanMessage({ kind: 'info', text: 'BLE svarade inte direkt — väntar in omstart och försöker igen…' });
-      const recovered = await waitForBleRecovery();
-      if (!recovered) {
-        setBleScanMessage({ kind: 'error', text: 'BLE hann inte starta om. Försök igen om några sekunder.' });
-        return;
-      }
-
-      try {
-        const retry = await requestBleScan();
-        const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
-        const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
-        if (isBleRespawnCooldownError(retryError)) {
-          applyScanResult(retryDevices ?? [], retryError);
-          return;
-        }
-        if (retry.r.ok && retryDevices) {
-          setBleScanResults(retryDevices);
-          setBleScanCompletedEmpty(retryDevices.length === 0 && !retryError);
-          setBleScanMessage(retryError ? { kind: 'error', text: retryError } : null);
-          return;
-        }
-        setBleScanMessage({ kind: 'error', text: retryError ?? 'BLE-sökningen misslyckades.' });
-      } catch {
-        setBleScanMessage({ kind: 'error', text: 'BLE-sökningen misslyckades efter omstart.' });
-      }
-    } finally {
-      setBleScanning(false);
-    }
-  }, [requestBleScan, waitForBleRecovery]);
+  };
 
   const handleSave = async () => {
     setSaveError(null);
