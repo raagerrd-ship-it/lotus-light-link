@@ -318,6 +318,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
+    setMinWriteIntervalMs(Math.max(5, tickMs - 2));
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
