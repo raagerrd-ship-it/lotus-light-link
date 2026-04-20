@@ -9,12 +9,12 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualCurve: boolean; transientBoost: boolean; agcEnabled: boolean; dynamicsEnabled: boolean };
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualCurve: boolean; transientBoost: boolean; dynamicsEnabled: boolean };
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualCurve: true, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualCurve: true, transientBoost: true, dynamicsEnabled: true },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualCurve: false, transientBoost: true, dynamicsEnabled: true },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualCurve: false, transientBoost: true, dynamicsEnabled: true },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualCurve: false, transientBoost: true, dynamicsEnabled: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -443,7 +443,6 @@ function ProfileSettingsView({
         {/* Toggles */}
         <div className="space-y-3">
           {([
-            { key: 'agcEnabled' as const, label: 'AGC', desc: 'Enkel peak-normalisering av insignalen' },
             { key: 'dynamicsEnabled' as const, label: 'Dynamik', desc: 'Expanderar/komprimerar signalen' },
             
           ]).map(({ key, label, desc }) => (
@@ -1650,7 +1649,6 @@ export default function PiMobile() {
           
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
-          agcEnabled: cal.agcEnabled,
           dynamicsEnabled: cal.dynamicsEnabled,
           hiShelfGainDb: 6,
         }),
@@ -1720,7 +1718,6 @@ export default function PiMobile() {
           
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
-          agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
           dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
         });
       }
