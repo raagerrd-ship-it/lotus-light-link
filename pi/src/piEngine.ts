@@ -642,76 +642,11 @@ export class PiLightEngine {
     }
   }
 
-  // ── Inline micro-profiler ──
-  // When active, records per-stage timing for N ticks into static arrays (zero-alloc during profiling).
-  private _profiling = false;
-  private _profileSize = 0;
-  private _profilePos = 0;
-  private _profileStages = [
-    'agc', 'normalize', 'mix', 'smooth', 'dynamics', 'onset', 'curve', 'palette', 'colorCal', 'bleWrite', 'diag', 'total'
-  ] as const;
-  // Pre-allocated Float64Arrays for each stage (reused across profiling sessions)
-  private _profileData: Record<string, Float64Array> = {};
-  private _profileResolve: ((result: ProfileResult) => void) | null = null;
-
-  /** Start profiling for N ticks. Returns promise with results. */
-  startProfiling(ticks = 1000): Promise<ProfileResult> {
-    if (this._profiling) return Promise.reject(new Error('Already profiling'));
-    this._profileSize = ticks;
-    this._profilePos = 0;
-    // Allocate/reuse buffers
-    for (const stage of this._profileStages) {
-      if (!this._profileData[stage] || this._profileData[stage].length < ticks) {
-        this._profileData[stage] = new Float64Array(ticks);
-      } else {
-        this._profileData[stage].fill(0);
-      }
-    }
-    this._profiling = true;
-    return new Promise(resolve => { this._profileResolve = resolve; });
-  }
-
-  isProfiling(): boolean { return this._profiling; }
-
-  private finishProfiling(): void {
-    this._profiling = false;
-    const n = this._profilePos;
-    const result: ProfileResult = { ticks: n, stages: {} };
-    for (const stage of this._profileStages) {
-      const arr = this._profileData[stage];
-      let sum = 0, max = 0, min = Infinity;
-      for (let i = 0; i < n; i++) {
-        const v = arr[i];
-        sum += v;
-        if (v > max) max = v;
-        if (v < min) min = v;
-      }
-      const avg = n > 0 ? sum / n : 0;
-      // P99: sort a copy
-      const sorted = arr.slice(0, n).sort();
-      const p99 = n > 0 ? sorted[Math.min(n - 1, (n * 0.99) | 0)] : 0;
-      const p50 = n > 0 ? sorted[(n * 0.5) | 0] : 0;
-      result.stages[stage] = {
-        avgUs: Math.round(avg * 1000 * 100) / 100,
-        p50Us: Math.round(p50 * 1000 * 100) / 100,
-        p99Us: Math.round(p99 * 1000 * 100) / 100,
-        maxUs: Math.round(max * 1000 * 100) / 100,
-        minUs: Math.round(min * 1000 * 100) / 100,
-      };
-    }
-    if (this._profileResolve) {
-      this._profileResolve(result);
-      this._profileResolve = null;
-    }
-  }
-
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
     // Skip processing when not playing — idle heartbeat handles BLE output
     if (!this.playing) return;
     const _tickStart = performance.now();
-    const profiling = this._profiling;
-    let _t0 = _tickStart; // stage timer
     try {
       const cal = this.cal;
       const tc = this.tc;
@@ -726,24 +661,20 @@ export class PiLightEngine {
       if (cal.agcEnabled !== false) {
         updatePeakAgc(this.agc, bands.totalRms, bands.bassRms, bands.midHiRms, tc);
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.agc[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 2. Normalize via peak ──
       const peakMax = this.agc.peakMax;
       const bassNorm = cal.agcEnabled !== false ? normalizeSimple(bands.bassRms, peakMax) : Math.min(1, bands.bassRms * 5);
       const midHiNorm = cal.agcEnabled !== false ? normalizeSimple(bands.midHiRms, peakMax) : Math.min(1, bands.midHiRms * 5);
       const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
-      if (profiling) { const _t1 = performance.now(); this._profileData.normalize[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 3. Bas/Disk mix ──
       let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
-      if (profiling) { const _t1 = performance.now(); this._profileData.mix[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 4. Release smoothing (Mjukhet) ──
       const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
       this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
       energyNorm = this.smoothed;
-      if (profiling) { const _t1 = performance.now(); this._profileData.smooth[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       const preDynamics = energyNorm;
 
@@ -754,14 +685,12 @@ export class PiLightEngine {
         if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.dynamics[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 6. Transient boost ──
       this.processOnset(bands.flux);
       const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
-      if (profiling) { const _t1 = performance.now(); this._profileData.onset[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 7. Floor + Perceptual curve ──
       const floor = cal.brightnessFloor ?? 0;
@@ -777,7 +706,6 @@ export class PiLightEngine {
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
-      if (profiling) { const _t1 = performance.now(); this._profileData.curve[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── Palette mode ──
       const pm = cal.paletteMode ?? 'off';
@@ -817,12 +745,10 @@ export class PiLightEngine {
           this.color = _blendColor;
         }
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.palette[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
-      if (profiling) { const _t1 = performance.now(); this._profileData.colorCal[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── BLE output (synkron hard-fail) ──
       // sendToBLE returnerar direkt med WriteResult — engine räknar utfallet
@@ -837,7 +763,6 @@ export class PiLightEngine {
         case 'no-change':    bleStatsState.tickAbortNoChangeCount++; break;
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.bleWrite[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── Diagnostics ──
       _diag.rawRms = bands.totalRms;
@@ -880,29 +805,10 @@ export class PiLightEngine {
       td.paletteIndex = this._paletteIndex;
       const cbs = this.callbacks;
       for (let i = 0, len = cbs.length; i < len; i++) cbs[i](td);
-      if (profiling) {
-        this._profileData.diag[this._profilePos] = performance.now() - _t0;
-        this._profileData.total[this._profilePos] = performance.now() - _tickStart;
-        this._profilePos++;
-        if (this._profilePos >= this._profileSize) this.finishProfiling();
-      }
 
     } catch (e) {
       console.error('[Engine] tick error (recovering):', e);
       this.sanitizeState();
     }
   }
-}
-
-export interface ProfileStageResult {
-  avgUs: number;
-  p50Us: number;
-  p99Us: number;
-  maxUs: number;
-  minUs: number;
-}
-
-export interface ProfileResult {
-  ticks: number;
-  stages: Record<string, ProfileStageResult>;
 }

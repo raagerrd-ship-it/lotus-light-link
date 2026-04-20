@@ -1545,38 +1545,6 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
-  // --- Profiler ---
-  app.post('/api/profile', async (req, res) => {
-    const engine = requireEngine(res);
-    if (!engine) return;
-    if (engine.isProfiling()) {
-      return res.status(409).json({ error: 'Profiling already in progress' });
-    }
-    const ticks = typeof req.body?.ticks === 'number' ? Math.min(5000, Math.max(100, req.body.ticks)) : 1000;
-    res.json({ ok: true, ticks, message: 'Profiling started — poll GET /api/profile for results' });
-    engine.startProfiling(ticks).then(result => {
-      (engine as any)._lastProfileResult = result;
-      console.log(`[Profile] Done — ${result.ticks} ticks captured`);
-      for (const [stage, stats] of Object.entries(result.stages)) {
-        console.log(`  ${stage.padEnd(10)} avg=${stats.avgUs.toFixed(1)}µs  p50=${stats.p50Us.toFixed(1)}µs  p99=${stats.p99Us.toFixed(1)}µs  max=${stats.maxUs.toFixed(1)}µs`);
-      }
-    });
-  });
-
-  app.get('/api/profile', (_req, res) => {
-    const engine = getEngine();
-    if (!engine) return res.json({ status: 'booting' });
-    if (engine.isProfiling()) {
-      return res.json({ status: 'profiling' });
-    }
-    const data = (engine as any)._lastProfileResult;
-    if (data) {
-      res.json({ status: 'done', ...data });
-    } else {
-      res.json({ status: 'idle' });
-    }
-  });
-
   app.get('/api/diagnostics', (_req, res) => {
     const engine = requireEngine(res);
     if (!engine) return;
