@@ -206,10 +206,15 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
         }
         continue;
       }
-      // Move bytes into a sized vector for the JS hop. Allocation is the
-      // cost of safe ownership transfer across the thread boundary.
-      std::vector<char> out(readBuf.data(),
-                            readBuf.data() + (static_cast<size_t>(got) * bytesPerFrame));
+      // Defensive clamp: a misbehaving driver returning more frames than
+      // requested would overflow readBuf and corrupt the heap (observed:
+      // SIGABRT "malloc(): invalid size (unsorted)" on Pi Zero 2W).
+      if (static_cast<snd_pcm_uframes_t>(got) > actualFrames) {
+        got = static_cast<snd_pcm_sframes_t>(actualFrames);
+      }
+      const size_t copyBytes = static_cast<size_t>(got) * bytesPerFrame;
+      if (copyBytes == 0 || copyBytes > readBuf.size()) continue;
+      std::vector<char> out(readBuf.data(), readBuf.data() + copyBytes);
       EmitAudio(std::move(out));
     }
 
