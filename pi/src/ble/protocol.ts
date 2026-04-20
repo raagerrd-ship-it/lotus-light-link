@@ -282,15 +282,34 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   return 'sent';
 }
 
-/** Raw color write — bypasses dedup and brightness scaling. For test tools only. */
-export async function sendRawColor(r: number, g: number, b: number): Promise<void> {
+/** Raw color write — bypasses dedup and brightness scaling. For test tools only.
+ *  Går genom samma single-slot-mekanism: hard-fail om sloten är upptagen. */
+export function sendRawColor(r: number, g: number, b: number): void {
   const device = getDevice();
   if (!device) return;
+  if (writeSlot) return; // Hard-fail — caller (fade-test) loopar ändå
   resetLastSent();
   writeBuf[4] = r; writeBuf[5] = g; writeBuf[6] = b;
-  try {
-    await device.characteristic.writeAsync(writeBuf, true);
-  } catch { /* fire-and-forget */ }
+  const startedAt = performance.now();
+  lastWriteTime = startedAt;
+  const p: Promise<void> = device.characteristic.writeAsync(writeBuf, true)
+    .then(() => { bleStats.sentCount++; })
+    .catch(() => { /* fire-and-forget */ })
+    .finally(() => {
+      if (writeSlot === p) {
+        writeSlot = null;
+        if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
+      }
+    });
+  writeSlot = p;
+  if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
+  writeSlotWatchdog = setTimeout(() => {
+    if (writeSlot === p) {
+      bleStats.writeStuckCount++;
+      writeSlot = null;
+      writeSlotWatchdog = null;
+    }
+  }, WRITE_SLOT_TIMEOUT_MS);
 }
 
 /**
