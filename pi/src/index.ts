@@ -2,23 +2,20 @@
 /**
  * Lotus Light Link — Headless Pi runtime (lazy-subsystem variant).
  *
- * Boot startar BARA configServer + heartbeat. Inga native-bindningar,
- * inga subsystem (BLE, mic, sonos) laddas förrän användaren explicit
- * triggar dem via /api/subsystem/<id>/start. Detta:
- *   - eliminerar libuv-racen där alsa-capture åt noble's stateChange-event
- *   - gör boot-tiden konsekvent (ingen 15s noble-vänta)
- *   - matchar mental modell: BLE-motor, lampa, mic och Sonos är separata system
- *
- * Autostart hanteras klient-sidigt: PiMobile pollar localStorage-flaggor och
- * triggar /api/subsystem/<id>/start sekventiellt (väntar på 'ready' innan nästa).
+ * Boot startar BARA configServer. Inga native-bindningar, inga subsystem
+ * laddas förrän användaren explicit triggar dem:
+ *   - BLE-motor:  POST /api/ble/engine/start (engine-start-minimal.ts)
+ *   - Lampa:      POST /api/ble/connect      (connect-hardcoded.ts)
+ *   - Mic:        POST /api/subsystem/mic/start
+ *   - Sonos:      POST /api/subsystem/sonos/start
  */
 
 import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
-import { getItem, setItem } from './storage.js';
+import { getItem } from './storage.js';
 import {
-  setBootPhase, markSubsystemStarting, markSubsystemReady, markSubsystemError,
+  markSubsystemStarting, markSubsystemReady, markSubsystemError,
   getSubsystemState, type SubsystemId,
 } from './ble/state.js';
 
@@ -40,18 +37,15 @@ const TICK_MS = 25;
 
 // --- Lazy module references (filled by starters) ---
 type AlsaMicModule = typeof import('./alsaMic.js');
-type NobleBleModule = typeof import('./nobleBle.js');
 type SonosModule = typeof import('./sonosPoller.js');
 type EngineModule = typeof import('./piEngine.js');
 
 let alsaMic: AlsaMicModule | null = null;
-let nobleBle: NobleBleModule | null = null;
 let sonos: SonosModule | null = null;
 let engineMod: EngineModule | null = null;
 let engineInstance: import('./piEngine.js').PiLightEngine | null = null;
 let configServer: typeof import('./configServer.js') | null = null;
 
-// --- In-flight guards (don't start the same subsystem twice) ---
 const _inflight: Partial<Record<SubsystemId, Promise<void>>> = {};
 
 function normalizeSonosBaseUrl(raw: string | null | undefined): string {
@@ -101,99 +95,7 @@ function applySonosStateToEngine(state: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Subsystem: BLE-motor (noble + adapter wake-up)
-// ─────────────────────────────────────────────────────────────────────────────
-async function startBleEngine(): Promise<void> {
-  if (_inflight.bleEngine) return _inflight.bleEngine;
-  if (getSubsystemState('bleEngine').status === 'ready') return;
-
-  _inflight.bleEngine = (async () => {
-    markSubsystemStarting('bleEngine');
-    try {
-      const { isHci0Up } = await import('./ble/adapter-hci-check.js');
-      if (!isHci0Up()) console.log('[Subsystem:bleEngine] hci0 DOWN — kommer aktivera via ensureAdapterUp');
-
-      console.log('[Subsystem:bleEngine] importing nobleBle (triggar noble HCI-init)…');
-      nobleBle = await import('./nobleBle.js');
-      const { ensureAdapterUp, waitForFirstStateChange, getAdapterState } = nobleBle;
-
-      const { runBleCapsSelfCheck, setHciProbeSnapshot, logConnectionEvent, recordObservedNobleState, getNobleRawState } = await import('./ble/state.js');
-      runBleCapsSelfCheck();
-
-      try {
-        const probe = (await import('./ble/hci-socket-probe.js')).probeHciSocket();
-        setHciProbeSnapshot({ ok: probe.ok, method: probe.method, errno: probe.errno, error: probe.error, details: probe.details });
-        if (!probe.ok) console.error(`[Subsystem:bleEngine] HCI probe FAIL: ${probe.error}`);
-      } catch (e: any) { console.error('[Subsystem:bleEngine] hci-probe crashed:', e?.message ?? e); }
-
-      try { await ensureAdapterUp(); } catch (e: any) { console.warn('[Subsystem:bleEngine] ensureAdapterUp warning:', e?.message ?? e); }
-
-      // Vänta upp till 10s på noble.poweredOn — men acceptera "effective ready"
-      // (caps + hci0 UP) även om raw stannar i unknown.
-      const waitStart = Date.now();
-      try {
-        const result = await Promise.race([
-          waitForFirstStateChange(10_000),
-          (async () => {
-            try { await (nobleBle!.noble as any).waitForPoweredOnAsync(10_000); recordObservedNobleState('poweredOn'); return 'poweredOn'; }
-            catch { return 'wait-timeout'; }
-          })(),
-        ]);
-        const raw = getNobleRawState();
-        const eff = getAdapterState();
-        const sec = Math.round((Date.now() - waitStart) / 1000);
-        if (result === 'poweredOn' || raw === 'poweredOn' || eff === 'poweredOn') {
-          logConnectionEvent({ type: 'connect_start', detail: `subsystem:bleEngine redo efter ${sec}s (raw=${raw ?? '-'}, eff=${eff ?? '-'})` });
-        } else {
-          throw new Error(`BLE-motor inte redo efter ${sec}s (raw=${raw ?? '-'}, eff=${eff ?? '-'})`);
-        }
-      } catch (e: any) {
-        markSubsystemError('bleEngine', e?.message ?? String(e));
-        throw e;
-      }
-
-      // Heartbeat startas nu (en gång) — säker att starta även om subsystem startas om
-      const { startBleHeartbeat } = await import('./ble/heartbeat.js');
-      startBleHeartbeat();
-
-      // Återställ dimming-gamma (kräver protocol som dras in via nobleBle)
-      const savedGamma = getItem('dimming-gamma');
-      if (savedGamma) {
-        const g = parseFloat(savedGamma);
-        if (g >= 1 && g <= 3) nobleBle.setDimmingGamma(g);
-      }
-
-      // Återställ BLE write rate-limit (live-tweakbar via /api/ble/rate-limit)
-      const savedMinWrite = getItem('ble-min-write-interval-ms');
-      if (savedMinWrite) {
-        const v = parseFloat(savedMinWrite);
-        if (Number.isFinite(v) && v >= 5 && v <= 100) nobleBle.setMinWriteIntervalMs(v);
-      }
-
-      setBootPhase('ready');
-      markSubsystemReady('bleEngine');
-
-      // Push referenser till configServer om den redan attachat engine
-      configServer?.attachConfigRuntime?.({
-        engine: engineInstance!,
-        mic: alsaMic!,
-        invalidateIdleColorCache: engineMod?.invalidateIdleColorCache,
-      });
-    } catch (e) {
-      // markSubsystemError redan satt om vi nådde dit; annars sätt nu
-      if (getSubsystemState('bleEngine').status !== 'error') {
-        markSubsystemError('bleEngine', (e as any)?.message ?? String(e));
-      }
-      throw e;
-    } finally {
-      delete _inflight.bleEngine;
-    }
-  })();
-  return _inflight.bleEngine;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Subsystem: Mikrofon (alsa-capture native)
+// Subsystem: Mikrofon (alsa-capture native) — engine startas implicit här
 // ─────────────────────────────────────────────────────────────────────────────
 async function startMicSubsystem(): Promise<void> {
   if (_inflight.mic) return _inflight.mic;
@@ -213,7 +115,6 @@ async function startMicSubsystem(): Promise<void> {
         if (g >= 0.1 && g <= 50) alsaMic.setMicGain(g);
       }
 
-      // Skapa engine om den inte finns ännu
       if (!engineInstance) {
         engineMod = await import('./piEngine.js');
         const savedTickMs = getItem('tick-ms');
@@ -221,7 +122,6 @@ async function startMicSubsystem(): Promise<void> {
         engineInstance = new engineMod.PiLightEngine(tick);
       }
 
-      // Försök applicera gain-cal från storage
       try {
         const saved = getItem('gain-cal-points');
         if (saved) {
@@ -246,10 +146,6 @@ async function startMicSubsystem(): Promise<void> {
         throw e;
       }
 
-      // Regressionfix: om Sonos redan startat och redan är PLAYING när mic/engine
-      // kommer upp, så måste vi replaya currentState EFTER engine.start().
-      // Annars missas första onSonosChange-eventet och engine blir kvar i idle
-      // (0% output) tills nästa Sonos-förändring.
       if (sonos?.getSonosState) {
         applySonosStateToEngine(sonos.getSonosState());
       }
@@ -293,7 +189,6 @@ async function startSonosSubsystem(): Promise<void> {
       const cfg = { baseUrl, ssePath: SSE_PATH, statusPath: STATUS_PATH, pollIntervalMs: POLL_INTERVAL, disableSSE: DISABLE_SSE };
       await sonos.startSonosPoller(cfg);
 
-      // Wire Sonos → engine (om engine redan finns)
       const lastArtUrl = { current: null as string | null };
       const wasTvMode = { current: false };
       sonos.onSonosChange((state) => {
@@ -315,8 +210,6 @@ async function startSonosSubsystem(): Promise<void> {
 // Boot
 // ─────────────────────────────────────────────────────────────────────────────
 async function logRuntimePermissions(): Promise<void> {
-  // Logga EXAKT vilka groups + caps engine-processen kör med, så det syns i UI:t
-  // utan SSH. Hjälper diagnosticera "rfkill: Permission denied"-loop:en.
   try {
     const fs = await import('node:fs');
     const uid = process.getuid?.() ?? -1;
@@ -362,19 +255,18 @@ async function main() {
 
   console.log('');
   console.log('  Boot startar INTE BLE/mic/sonos automatiskt.');
-  console.log('  Använd UI:t (Subsystem-startup-panelen) eller');
-  console.log('  POST /api/subsystem/<bleEngine|mic|sonos>/start');
+  console.log('  BLE-motor:  POST /api/ble/engine/start');
+  console.log('  Lampa:      POST /api/ble/connect');
+  console.log('  Mic/Sonos:  POST /api/subsystem/<mic|sonos>/start');
   console.log('');
 
   configServer = await import('./configServer.js');
   configServer.startConfigServer(CONFIG_PORT);
   configServer.attachSubsystemStarters({
-    startBleEngine,
     startMic: startMicSubsystem,
     startSonos: startSonosSubsystem,
   });
 
-  setBootPhase('idle');
   console.log('[Boot] ✓ configServer up — väntar på subsystem-start från UI/API');
 
   // Graceful shutdown
@@ -383,7 +275,10 @@ async function main() {
     try { engineInstance?.stop(); } catch {}
     try { alsaMic?.stopMic(); } catch {}
     try { sonos?.stopSonosPoller(); } catch {}
-    try { if (nobleBle) await nobleBle.disconnectAll(true); } catch {}
+    try {
+      const { disconnectHardcoded } = await import('./ble/connect-hardcoded.js');
+      await disconnectHardcoded();
+    } catch {}
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
