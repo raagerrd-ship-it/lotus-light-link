@@ -1,14 +1,10 @@
 /**
  * Subsystem startup panel — manuell uppstart av mic + sonos.
  *
- * Mic-raden visar en live VU-meter när mic är ready, så användaren
- * direkt ser att ljudet kommer in. Sonos-raden visar nuvarande låt +
- * palette så det är självklart att Sonos-blocket "är" Sonos.
- *
- * Pollar /api/subsystem/status och triggar /api/subsystem/<id>/start på klick.
+ * (BLE-motorn startas separat via BleControlPanel "Starta motor".)
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Mic, Music, Loader2, Check, X, Play } from "lucide-react";
 import { MicBackendBadge } from "@/components/MicBackendBadge";
 
@@ -42,12 +38,10 @@ interface SonosSnapshot {
 }
 
 const POLL_MS = 2000;
-const MIC_POLL_MS = 200; // ~5 Hz VU-meter
+const MIC_POLL_MS = 200;
 const START_TIMEOUT_MS = 30_000;
 
-/** Kompakt VU-meter: bas + mid/hi som två staplar med peak-hold. */
 function VuMeter({ level }: { level: MicLevel }) {
-  // Skala upp RMS — typiska värden ligger 0–0.3 efter mic-gain
   const bassPct = Math.min(100, Math.round(level.bassRms * 400));
   const midPct = Math.min(100, Math.round(level.midHiRms * 400));
   return (
@@ -55,20 +49,14 @@ function VuMeter({ level }: { level: MicLevel }) {
       <div className="flex items-center gap-1.5">
         <span className="text-[8px] uppercase opacity-50 w-6">Bas</span>
         <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-          <div
-            className="h-full bg-primary transition-[width] duration-75"
-            style={{ width: `${bassPct}%` }}
-          />
+          <div className="h-full bg-primary transition-[width] duration-75" style={{ width: `${bassPct}%` }} />
         </div>
         <span className="text-[8px] font-mono opacity-60 w-7 text-right">{bassPct}%</span>
       </div>
       <div className="flex items-center gap-1.5">
         <span className="text-[8px] uppercase opacity-50 w-6">Disk</span>
         <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-          <div
-            className="h-full bg-accent transition-[width] duration-75"
-            style={{ width: `${midPct}%` }}
-          />
+          <div className="h-full bg-accent transition-[width] duration-75" style={{ width: `${midPct}%` }} />
         </div>
         <span className="text-[8px] font-mono opacity-60 w-7 text-right">{midPct}%</span>
       </div>
@@ -94,7 +82,6 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
     return () => clearInterval(id);
   }, [fetchStatus]);
 
-  // Pollar mic-level OCH sonos-snapshot bara när respektive subsystem är ready
   const micReady = status?.subsystems.mic?.status === "ready";
   const sonosReady = status?.subsystems.sonos?.status === "ready";
 
@@ -128,8 +115,6 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
           const data = await r.json();
           const s = data.sonos ?? {};
           const palette = Array.isArray(data.engine?.palette) ? data.engine.palette : [];
-          // Match samma fält som top-level statusraden använder (data.sonos.trackName,
-          // data.sonos.playbackState === 'PLAYBACK_STATE_PLAYING').
           const track: string | null =
             (typeof s.trackName === "string" && s.trackName) ||
             (typeof s.currentTrack === "string" && s.currentTrack) ||

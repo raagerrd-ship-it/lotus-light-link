@@ -1,90 +1,29 @@
 /**
- * BLE module — public API re-exports.
+ * BLE module — public API re-exports for the hardcoded-only flow.
  *
- * File structure:
- *   scan.ts      — noble async scan → device list
- *   save.ts      — selectDevice, forgetDevice, savePeripheralMetadata
- *   connect.ts   — direct connect + GATT discovery + autoConnectSaved
- *   protocol.ts  — BLEDOM packet format, write pipeline, keep-alive
- *   reconnect.ts — reconnect loop, demand-based connection
- *   adapter.ts   — adapter init, HCI helpers
- *   state.ts     — shared mutable state, stats, noble reference
+ * Quarantined files (connect, scan, save, reconnect, adapter, heartbeat,
+ * watchdog, sysExec, scan-*) are deleted. Allt scan/select/forget/demand/
+ * watchdog är borta. UI:t använder bara:
+ *   POST /api/ble/engine/start  → engine-start-minimal.ts
+ *   POST /api/ble/connect       → connect-hardcoded.ts
+ *   POST /api/ble/disconnect    → connect-hardcoded.ts
+ *   GET  /api/ble/state         → connect-hardcoded.ts
  */
 
-// Types
 export type { DeviceMode, PiCharacteristic, DiscoveredDevice, BleConnectionEvent } from './types.js';
 
-// State & adapter
-export { bleStats, getAdapterState, isDemandActive, getConnectionLog } from './state.js';
-export { getDevice, getSavedDeviceId, getSavedDeviceName } from './state.js';
-export { getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, processHasBtCaps } from './state.js';
-export { BLE_BUILD_TAG } from './state.js';
-export { workaroundCounters } from './state.js';
-export { waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getBootPhase, setBootPhase, getSubsystemState, getAllSubsystemStates, markSubsystemStarting, markSubsystemReady, markSubsystemError, resetSubsystem } from './state.js';
-export type { BootPhase, SubsystemId, SubsystemStatus, SubsystemState } from './state.js';
-export { noble } from './state.js';
+// State & subsystem
+export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID } from './state.js';
+export { getDevice, setDevice, isDemandActive, logConnectionEvent } from './state.js';
+export { getSubsystemState, getAllSubsystemStates, markSubsystemStarting, markSubsystemReady, markSubsystemError, resetSubsystem } from './state.js';
+export type { SubsystemId, SubsystemStatus, SubsystemState } from './state.js';
+export { noble, hasNobleLoaded } from './state.js';
 
 // Protocol (write pipeline)
-export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma, getMinWriteIntervalMs, setMinWriteIntervalMs } from './protocol.js';
+export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma, getMinWriteIntervalMs, setMinWriteIntervalMs, stopKeepAlive } from './protocol.js';
 
-// Connection (direct connect + GATT)
-export { connectPeripheral, resetHciAdapter, autoConnectSaved, isConnectInProgress, waitForConnectIdle } from './connect.js';
-
-// Scanning (noble async discovery)
-export { scanForDevices, getLastScanResults, isScanning, getScanMetrics } from './scan.js';
-
-// Device persistence (save / forget)
-export { selectDevice, forgetDevice, saveManualDevice } from './save.js';
-
-// Reconnection & demand
-export { requestConnect, releaseDemand, startReconnectLoop } from './reconnect.js';
-
-// Adapter wake-up
-export { ensureAdapterUp, waitForNoblePoweredOn } from './adapter.js';
-
-// Heartbeat — löpande statusloggning
-export { startBleHeartbeat, stopBleHeartbeat } from './heartbeat.js';
-
-// ── Convenience / legacy aliases ──
-import { getDevice, setDevice, isDemandActive } from './state.js';
-import { stopKeepAlive, resetLastSent } from './protocol.js';
-import { autoConnectSaved, resetHciAdapter } from './connect.js';
-
-export function getConnectedCount(): number {
-  return getDevice() ? 1 : 0;
-}
-
-export function getConnectedNames(): string[] {
-  const d = getDevice();
-  return d ? [d.name] : [];
-}
-
-export function getConnectedDeviceId(): string | null {
-  return getDevice()?.id ?? null;
-}
-
-/**
- * Disconnect current BLE device.
- * @param releaseHci  When true, also reset the HCI adapter (manual recovery
- *                    from a wedged noble state). Default: false — noble keeps
- *                    its HCI socket so the next scan/connect is instant.
- */
-export async function disconnect(releaseHci: boolean = false): Promise<void> {
-  stopKeepAlive();
-  const d = getDevice();
-  if (d) {
-    try { await d.peripheral.disconnectAsync(); } catch {}
-    setDevice(null);
-    resetLastSent();
-    console.log('[BLE] Disconnected');
-  }
-  if (releaseHci) {
-    try { await resetHciAdapter(); } catch {}
-    console.log('[BLE] HCI socket released (manual)');
-  }
-}
-
-export const disconnectAll = disconnect;
-export const scanAndConnect = autoConnectSaved;
-export function setExpectedDeviceCount(_n: number): void { /* no-op */ }
-
+// Hardcoded connect flow
+export { connectHardcoded, disconnectHardcoded, getHardcodedConnected, getHardcodedPeripheral } from './connect-hardcoded.js';
+export { startBleEngineMinimal, isMinimalEngineStarted } from './engine-start-minimal.js';
+export { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
+export { isHci0Up } from './adapter-hci-check.js';
