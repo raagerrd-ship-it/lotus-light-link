@@ -15,6 +15,7 @@
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, getLastAudioTimestamp, setTickHopMs, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
+import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
 import { pipelineTiming } from './pipelineTiming.js';
@@ -717,6 +718,11 @@ export class PiLightEngine {
       const cal = this.cal;
       const tc = this.tc;
       const bands = getLatestBands();
+      // Steg 1 i hard-fail-pipelinen: har vi en mic-frame att jobba med?
+      if (!bands || !Number.isFinite(bands.totalRms)) {
+        bleStatsState.tickAbortNoMicCount++;
+        return;
+      }
 
       // ── 1. Simple peak AGC ──
       if (cal.agcEnabled !== false) {
@@ -820,9 +826,19 @@ export class PiLightEngine {
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
       if (profiling) { const _t1 = performance.now(); this._profileData.colorCal[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
-      // ── BLE output ──
-      if (isPunch) sendToBLE(255, 255, 255, pct);
-      else sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], pct);
+      // ── BLE output (synkron hard-fail) ──
+      // sendToBLE returnerar direkt med WriteResult — engine räknar utfallet
+      // per tick istället för att blockera på writeAsync.
+      const writeResult: WriteResult = isPunch
+        ? sendToBLE(255, 255, 255, pct)
+        : sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], pct);
+      switch (writeResult) {
+        case 'sent':         bleStatsState.tickOkCount++; break;
+        case 'busy':         bleStatsState.tickAbortBleBusyCount++; break;
+        case 'rate-limited': bleStatsState.tickAbortBleRateLimitCount++; break;
+        case 'no-change':    bleStatsState.tickAbortNoChangeCount++; break;
+        case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
+      }
       if (profiling) { const _t1 = performance.now(); this._profileData.bleWrite[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── Diagnostics ──

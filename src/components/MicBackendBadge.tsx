@@ -11,9 +11,15 @@ interface BleRates {
   skipRateLimitPerSec?: number;
   fftDroppedPerSec?: number;
   writeFailPerSec?: number;
+  writeStuckPerSec?: number;
   writeLatAvgMs: number;
+  writeLatMaxMs?: number;
   fftPerSec?: number;
   tickPerSec?: number;
+  tickOkPerSec?: number;
+  tickAbortNoMicPerSec?: number;
+  tickAbortNoChangePerSec?: number;
+  tickAbortNoDevicePerSec?: number;
 }
 
 interface Props {
@@ -110,8 +116,9 @@ export function MicBackendBadge({ piBase }: Props) {
 
   const skipInFlight = ble?.skipInFlightPerSec ?? 0;
   const writeFail = ble?.writeFailPerSec ?? 0;
+  const writeStuck = ble?.writeStuckPerSec ?? 0;
   const fftDropped = ble?.fftDroppedPerSec ?? 0;
-  const hasBadSkip = skipInFlight > 0 || writeFail > 0;
+  const hasBadSkip = skipInFlight > 0 || writeFail > 0 || writeStuck > 0;
 
   const Bar = ({ height, colorClass, label }: { height: number; colorClass: string; label: string }) => (
     <div className="flex flex-col items-center justify-end h-3 w-[5px]" title={label}>
@@ -131,17 +138,22 @@ export function MicBackendBadge({ piBase }: Props) {
         `  TICK ${ble.tickPerSec ?? "?"}/s  (${Math.round(tckRatio * 100)}% av mål)`,
         `  PKT  ${ble.sentPerSec}/s    (${Math.round(pktRatio * 100)}% av mål)`,
         ``,
-        `FÖRVÄNTADE SKIPS:`,
-        `  delta (oförändrad färg): ${ble.skipDeltaPerSec}/s`,
-        `  rate-limit (35ms gate):  ${ble.skipRateLimitPerSec ?? 0}/s`,
+        `TICK-AVBROTT (per sekund):`,
+        `  no-mic:    ${ble.tickAbortNoMicPerSec ?? 0}/s   (mic-frame saknades)`,
+        `  busy:      ${skipInFlight}/s   (BLE-slot upptagen)`,
+        `  rate-lim:  ${ble.skipRateLimitPerSec ?? 0}/s   (35ms-gate)`,
+        `  no-change: ${ble.tickAbortNoChangePerSec ?? 0}/s   (samma färg)`,
+        `  no-device: ${ble.tickAbortNoDevicePerSec ?? 0}/s   (ingen lampa)`,
         ``,
-        `OND SKIPS (kö/förlust):`,
-        `  in-flight (write hänger): ${skipInFlight}/s`,
-        `  writeFail (BLE-error):    ${writeFail}/s`,
-        `  fftDropped (mic-overflow): ${fftDropped}/s`,
+        `BLE-FEL:`,
+        `  writeFail:  ${writeFail}/s`,
+        `  writeStuck: ${writeStuck}/s   (>500ms watchdog tvångs-släppte slot)`,
+        `  fftDropped: ${fftDropped}/s   (mic-frame innan tick-fönster)`,
         ``,
-        `writeLat avg: ${ble.writeLatAvgMs}ms`,
-        latencyMs != null ? `audio→BLE latens: ${latencyMs}ms` : "",
+        `WRITE-LATENS:`,
+        `  avg: ${ble.writeLatAvgMs}ms`,
+        `  max (senaste s): ${ble.writeLatMaxMs ?? 0}ms`,
+        latencyMs != null ? `audio→BLE: ${latencyMs}ms` : "",
       ]
         .filter(Boolean)
         .join("\n")
