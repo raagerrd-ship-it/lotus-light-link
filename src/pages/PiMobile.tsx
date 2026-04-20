@@ -841,384 +841,8 @@ function GlobalSettingsView({
   );
 }
 
-/* ── BLE Adapter Diagnostics Panel ── */
-function BleDiagnosticsPanel({ piBase }: { piBase: string }) {
-  const [diag, setDiag] = useState<{
-    adapter: {
-      state: string;
-      hciReleased?: boolean;
-      hasCaps: boolean;
-      mode?: string;
-      nobleRaw?: { state: string | null; _state: string | null; adapterState: string | null; _adapterState: string | null };
-      hci?: { raw: string; error: string | null };
-      rfkill?: string;
-    };
-    build?: { bleTag?: string };
-    enabled?: boolean;
-    enabledMeta?: {
-      source?: 'boot-default' | 'manual-toggle' | 'auto-restore';
-      changedAt?: string;
-      wasEnabledBeforeRestart?: boolean;
-    };
-    boot?: {
-      startedAt?: string;
-      elapsedMs?: number;
-      firstStateChangeAt?: string | null;
-      everPoweredOn?: boolean;
-      stillBooting?: boolean;
-      graceMs?: number;
-    };
-    pipeline?: { id: string; label: string; status: 'ok' | 'fail' | 'pending'; detail?: string }[];
-    hciProbe?: { ok: boolean; method: string; errno?: string; error?: string; details?: string; ranAt?: string } | null;
-    scan?: {
-      phase: 'idle' | 'starting' | 'scanning' | 'stopping'; active: boolean; activeSince: string | null;
-      lastScanId: number; lastStartedAt: string | null; lastStartOkAt: string | null; lastStoppedAt: string | null;
-      lastDurationMs: number | null; lastRawDiscoverCount: number; lastResultCount: number;
-      lastStartError: string | null; lastStopError: string | null; lastWatchdogAt: string | null;
-    };
-    stats: {
-      connected: number; savedDevice: string | null; savedDeviceId: string | null;
-      connectedDeviceId: string | null; demand: boolean; scanning: boolean;
-      sentCount: number; writeFailCount: number; disconnectCount: number;
-      reconnectCount: number; lastDisconnectReason: string | null; lastDisconnectAt: string | null;
-    };
-    events: { type: string; device?: string; detail?: string; timestamp: string; durationMs?: number }[];
-  } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const [startMsg, setStartMsg] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
-  const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
-  const [, forceTick] = useState(0); // re-render varje sek så "Xs sedan" tickar
+/* BleDiagnosticsPanel borttagen — diagnostik-pipeline + scan/save är inte längre del av flödet. */
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await fetch(`${piBase}/api/ble/diagnostics`, { signal: AbortSignal.timeout(4000) });
-      if (r.ok) {
-        setDiag(await r.json());
-        setLastFetchAt(Date.now());
-      }
-    } catch {}
-    setLoading(false);
-  }, [piBase]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  // Adaptiv auto-poll: 2s under boot/recovery, annars 5s.
-  useEffect(() => {
-    const fast = diag?.boot?.stillBooting === true || diag?.adapter?.state !== 'poweredOn';
-    const iv = setInterval(refresh, fast ? 2000 : 5000);
-    return () => clearInterval(iv);
-  }, [refresh, diag?.boot?.stillBooting, diag?.adapter?.state]);
-
-  // Tick varje sek så "Xs sedan"-text uppdateras live
-  useEffect(() => {
-    const iv = setInterval(() => forceTick(t => (t + 1) % 1000), 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  if (!diag) return (
-    <div className="text-center py-4 text-sm text-muted-foreground">
-      {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Kunde inte hämta diagnostik'}
-    </div>
-  );
-
-  const a = diag.adapter;
-  const s = diag.stats;
-  const stateColor = a.state === 'poweredOn' ? 'text-green-400' : a.state === 'unauthorized' ? 'text-destructive' : 'text-yellow-400';
-  const nobleRaw = a.nobleRaw;
-  const nobleStateRaw = nobleRaw?.state ?? nobleRaw?._state ?? nobleRaw?.adapterState ?? nobleRaw?._adapterState ?? 'unknown';
-  const hadEarlyStateChange = diag.boot?.everPoweredOn === true;
-  const rawStateIgnored = (a.state === 'poweredOn' && a.hasCaps) || hadEarlyStateChange;
-  const nobleStateColor = rawStateIgnored
-    ? 'text-muted-foreground'
-    : nobleStateRaw === 'poweredOn'
-      ? 'text-green-400'
-      : nobleStateRaw === 'unauthorized'
-        ? 'text-destructive'
-        : 'text-yellow-400';
-  const rawStateLabel = rawStateIgnored ? 'noble.state (rå, endast referens på Pi)' : 'noble.state (rå)';
-
-  const enabled = diag.enabled === true;
-  const stillBooting = diag.boot?.stillBooting === true;
-  const bootElapsedSec = diag.boot?.elapsedMs != null ? Math.floor(diag.boot.elapsedMs / 1000) : null;
-  const toggleDisabled = toggling || stillBooting;
-  const toggleBle = async () => {
-    if (stillBooting) return;
-    setToggling(true);
-    setStartMsg(null);
-    try {
-      const path = enabled ? '/api/ble/stop' : '/api/ble/start';
-      const r = await fetch(`${piBase}${path}`, { method: 'POST', signal: AbortSignal.timeout(12000) });
-      const data = await r.json().catch(() => ({} as any));
-      if (!enabled) {
-        // Vi just slog PÅ → tolka start-svaret
-        if (!data.adapterReady) {
-          setStartMsg({ kind: 'error', text: 'Adaptern vaknade inte — tryck "Återställ BLE-stack" om det inte löser sig.' });
-        } else if (!data.hasSaved) {
-          setStartMsg({ kind: 'info', text: 'Ingen sparad enhet — använd Scan för att para.' });
-        } else if (data.connected) {
-          setStartMsg({ kind: 'ok', text: 'Ansluten till sparad enhet ✓' });
-        } else if (data.autoConnect) {
-          setStartMsg({ kind: 'info', text: 'BLE-radio är på — försöker ansluta sparad enhet i bakgrunden…' });
-        }
-      }
-      await refresh();
-    } catch (e: any) {
-      setStartMsg({ kind: 'error', text: `BLE-toggle misslyckades: ${e?.message ?? 'okänt fel'}` });
-    } finally {
-      setToggling(false);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      {/* Master switch borttagen — använd "Anslut nu"-knappen längst upp istället.
-          BLE-radion styrs nu enbart av direkta connect/disconnect-anrop. */}
-      {startMsg && (
-        <div
-          className={`text-[11px] rounded-md px-2 py-1.5 ${
-            startMsg.kind === 'ok'
-              ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-              : startMsg.kind === 'info'
-                ? 'bg-muted text-muted-foreground border border-border/60'
-                : 'bg-destructive/10 text-destructive border border-destructive/30'
-          }`}
-        >
-          {startMsg.text}
-        </div>
-      )}
-
-      {/* Adapter status */}
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="bg-background/50 rounded-lg p-2">
-          <div className="text-muted-foreground text-[10px]">Adapter (effektiv)</div>
-          <div className={`font-mono font-bold ${stateColor}`}>{a.state}</div>
-        </div>
-        <div className="bg-background/50 rounded-lg p-2">
-          <div className="text-muted-foreground text-[10px]">{rawStateLabel}</div>
-          <div className={`font-mono font-bold ${nobleStateColor}`}>{nobleStateRaw}</div>
-          {rawStateIgnored ? (
-            <span className="text-[9px] text-muted-foreground">Förväntat på Pi — använder caps-aware state</span>
-          ) : null}
-        </div>
-        <div className="bg-background/50 rounded-lg p-2">
-          <div className="text-muted-foreground text-[10px]">Capabilities</div>
-          <div className={`font-mono font-bold ${a.hasCaps ? 'text-green-400' : 'text-destructive'}`}>
-            {a.hasCaps ? 'OK ✓' : 'Saknas ✗'}
-          </div>
-        </div>
-        <div className="bg-background/50 rounded-lg p-2">
-          <div className="text-muted-foreground text-[10px]">Status</div>
-          <div className="font-mono font-bold">
-            {s.connected > 0 ? '🟢 Ansluten' : s.demand && s.savedDeviceId ? '🟡 Ansluter' : s.scanning ? '🔵 Söker' : '⚪ Vilar'}
-          </div>
-        </div>
-      </div>
-
-      {/* Pipeline-checklista — steg-för-steg vad som är online */}
-      {diag.pipeline && diag.pipeline.length > 0 && (
-        <div className="bg-background/40 rounded-lg border border-border/50 p-2 space-y-1">
-          <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-1.5 px-1">
-            Pipeline — vad är online?
-          </div>
-          {diag.pipeline.map((step) => {
-            const icon = step.status === 'ok' ? '✓' : step.status === 'pending' ? '⏳' : '✗';
-            const colorClass =
-              step.status === 'ok'
-                ? 'text-green-400'
-                : step.status === 'pending'
-                  ? 'text-yellow-400'
-                  : 'text-destructive';
-            return (
-              <div key={step.id} className="flex items-start gap-2 px-1 py-0.5 text-[11px]">
-                <span className={`font-mono font-bold ${colorClass} shrink-0 w-4`}>{icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-foreground leading-tight">{step.label}</div>
-                  {step.detail && (
-                    <div className="text-muted-foreground text-[10px] font-mono leading-tight truncate">
-                      {step.detail}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Noble internals + raw HCI from OS */}
-      {(nobleRaw || a.hci || a.rfkill || diag.scan) && (
-        <details className="bg-background/40 rounded-lg border border-border/50">
-          <summary className="cursor-pointer px-2 py-1.5 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider active:text-foreground">
-            OS ↔ noble (hciconfig + rfkill + noble internals)
-          </summary>
-          <div className="p-2 space-y-2 text-[10px] font-mono">
-            {diag.scan && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">scan metrics</div>
-                <div className="bg-background/60 rounded px-1.5 py-1 leading-tight">
-                  <div>phase:           <span className="text-foreground">{diag.scan.phase}</span></div>
-                  <div>active:          <span className="text-foreground">{String(diag.scan.active)}</span></div>
-                  <div>scanId:          <span className="text-foreground">{diag.scan.lastScanId}</span></div>
-                  <div>startedAt:       <span className="text-foreground">{diag.scan.lastStartedAt ?? '—'}</span></div>
-                  <div>startOkAt:       <span className="text-foreground">{diag.scan.lastStartOkAt ?? '—'}</span></div>
-                  <div>stoppedAt:       <span className="text-foreground">{diag.scan.lastStoppedAt ?? '—'}</span></div>
-                  <div>durationMs:      <span className="text-foreground">{diag.scan.lastDurationMs ?? '—'}</span></div>
-                  <div>rawDiscover:     <span className="text-foreground">{diag.scan.lastRawDiscoverCount}</span></div>
-                  <div>resultCount:     <span className="text-foreground">{diag.scan.lastResultCount}</span></div>
-                  <div>startError:      <span className="text-foreground">{diag.scan.lastStartError ?? '—'}</span></div>
-                  <div>stopError:       <span className="text-foreground">{diag.scan.lastStopError ?? '—'}</span></div>
-                  <div>watchdogAt:      <span className="text-foreground">{diag.scan.lastWatchdogAt ?? '—'}</span></div>
-                </div>
-              </div>
-            )}
-            {nobleRaw && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">noble internals</div>
-                <div className="bg-background/60 rounded px-1.5 py-1 leading-tight">
-                  <div>state:         <span className="text-foreground">{String(nobleRaw.state)}</span></div>
-                  <div>_state:        <span className="text-foreground">{String(nobleRaw._state)}</span></div>
-                  <div>adapterState:  <span className="text-foreground">{String(nobleRaw.adapterState)}</span></div>
-                  <div>_adapterState: <span className="text-foreground">{String(nobleRaw._adapterState)}</span></div>
-                </div>
-              </div>
-            )}
-            {a.hci && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">hciconfig hci0 {a.hci.error && <span className="text-destructive">({a.hci.error})</span>}</div>
-                <pre className="bg-background/60 rounded px-1.5 py-1 whitespace-pre-wrap break-all text-foreground/80">{a.hci.raw || '(no output)'}</pre>
-              </div>
-            )}
-            {a.rfkill && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">rfkill list bluetooth</div>
-                <pre className="bg-background/60 rounded px-1.5 py-1 whitespace-pre-wrap break-all text-foreground/80">{a.rfkill}</pre>
-              </div>
-            )}
-          </div>
-        </details>
-      )}
-
-
-
-      {/* Stats row */}
-      <div className="flex flex-wrap gap-2 text-[10px]">
-        <span className="bg-background/50 rounded px-2 py-1 font-mono">
-          📤 {s.sentCount} skickade
-        </span>
-        {s.writeFailCount > 0 && (
-          <span className="bg-destructive/20 text-destructive rounded px-2 py-1 font-mono">
-            ❌ {s.writeFailCount} misslyckade
-          </span>
-        )}
-        {s.disconnectCount > 0 && (
-          <span className="bg-yellow-500/20 text-yellow-400 rounded px-2 py-1 font-mono">
-            🔌 {s.disconnectCount} frånkopplingar
-          </span>
-        )}
-        {s.reconnectCount > 0 && (
-          <span className="bg-green-500/20 text-green-400 rounded px-2 py-1 font-mono">
-            🔄 {s.reconnectCount} återanslutningar
-          </span>
-        )}
-      </div>
-
-      {s.lastDisconnectReason && (
-        <div className="text-[10px] text-muted-foreground bg-background/30 rounded px-2 py-1">
-          Senaste frånkoppling: <span className="font-mono text-destructive">{s.lastDisconnectReason}</span>
-          {s.lastDisconnectAt && <span className="ml-1">({new Date(s.lastDisconnectAt).toLocaleTimeString('sv-SE')})</span>}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 font-mono px-1">
-        {diag.build?.bleTag ? (
-          <span>build: <span className="text-foreground/70">{diag.build.bleTag}</span></span>
-        ) : <span />}
-        {lastFetchAt && (
-          <span className="flex items-center gap-1">
-            {loading && <Loader2 size={10} className="animate-spin" />}
-            <span>poll: {Math.max(0, Math.floor((Date.now() - lastFetchAt) / 1000))}s sedan</span>
-          </span>
-        )}
-      </div>
-
-      {/* Återställ-knapparna borttagna — de fungerade ändå inte i praktiken.
-          Vid problem: kör `sudo systemctl --user restart lotus-light-engine` via SSH. */}
-
-      {/* Event log */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
-            Eventlogg ({diag.events.length})
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                const text = diag.events.slice().reverse().map((ev) => {
-                  const parsed = new Date(ev.timestamp);
-                  const time = isNaN(parsed.getTime()) ? '??:??:??' : parsed.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                  const parts = [time, ev.type];
-                  if (ev.device) parts.push(ev.device);
-                  if (ev.durationMs != null) parts.push(`${ev.durationMs}ms`);
-                  if (ev.detail) parts.push(ev.detail);
-                  return parts.join('\t');
-                }).join('\n');
-                const fallback = () => {
-                  const ta = document.createElement('textarea');
-                  ta.value = text;
-                  ta.style.position = 'fixed';
-                  ta.style.opacity = '0';
-                  document.body.appendChild(ta);
-                  ta.select();
-                  try { document.execCommand('copy'); } catch {}
-                  document.body.removeChild(ta);
-                };
-                if (navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(text).catch(fallback);
-                } else {
-                  fallback();
-                }
-              }}
-              className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50"
-              title="Kopiera hela loggen"
-            >
-              📋 Kopiera
-            </button>
-            <button onClick={refresh} disabled={loading} className="text-[10px] text-muted-foreground active:text-foreground px-1.5 py-0.5 rounded border border-border/50">
-              {loading ? <Loader2 size={10} className="animate-spin" /> : '↻'}
-            </button>
-          </div>
-        </div>
-        {diag.events.length > 0 ? (
-          <div className="bg-background/40 rounded-lg border border-border/50 p-2 max-h-56 overflow-y-auto text-[10px] font-mono space-y-0.5">
-            {diag.events.slice().reverse().map((ev, i) => {
-              const parsed = new Date(ev.timestamp);
-              const time = isNaN(parsed.getTime()) ? '??:??:??' : parsed.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-              const typeColor = ev.type.includes('fail') || ev.type === 'disconnect' ? 'text-destructive'
-                : ev.type === 'heartbeat' ? 'text-muted-foreground/50'
-                : ev.type.includes('ok') || ev.type.includes('connect_start') ? 'text-green-400'
-                : ev.type.includes('scan') ? 'text-blue-400'
-                : ev.type.includes('hci') ? 'text-yellow-400'
-                : 'text-muted-foreground';
-              return (
-                <div key={i} className="flex gap-1.5 leading-tight">
-                  <span className="text-muted-foreground/60 shrink-0">{time}</span>
-                  <span className={`shrink-0 ${typeColor}`}>{ev.type}</span>
-                  {ev.device && <span className="text-foreground/70">{ev.device}</span>}
-                  {ev.durationMs != null && <span className="text-muted-foreground">{ev.durationMs}ms</span>}
-                  {ev.detail && <span className="text-muted-foreground truncate">{ev.detail}</span>}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-[10px] text-muted-foreground italic">Inga events ännu.</p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 
 const BLE_LATENCY_HISTORY_LEN = 60; // ~3 min at 3s poll
@@ -1439,46 +1063,17 @@ export default function PiMobile() {
   const [cal, setCal] = useState({ ...DEFAULT_CAL });
   const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
-  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto'); // auto = detecting
+  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto');
   const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
   const [micGain, setMicGain] = useState(1.0);
-  const [showDiag, setShowDiag] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [liveTrack, setLiveTrack] = useState<string | null>(null);
-  const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
-  const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
-  const [bleScanning, setBleScanning] = useState(false);
-  const [bleScanCompletedEmpty, setBleScanCompletedEmpty] = useState(false);
-  const [bleScanMessage, setBleScanMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
-  const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; timestamp: string }[]>([]);
-  const [showBleLog, setShowBleLog] = useState(true);
-  const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[]>([]);
-  const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
   const [bleHardcodedConnected, setBleHardcodedConnected] = useState(false);
   const [bleEngineReady, setBleEngineReady] = useState(false);
-  const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
-  const [bleSavedId, setBleSavedId] = useState<string | null>(null);
-  const [bleSavedName, setBleSavedName] = useState<string | null>(null);
-  const [bleSavedAddress, setBleSavedAddress] = useState<string | null>(null);
-  const [bleConnecting, setBleConnecting] = useState<string | null>(null);
-  const [bleDemand, setBleDemand] = useState(false);
-  const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
-  const [bootPhase, setBootPhase] = useState<string | null>(null);
-  const [blePreview, setBlePreview] = useState(false);
-  const [blePreviewSec, setBlePreviewSec] = useState(0);
-  const [bleEngineDiagOpen, setBleEngineDiagOpen] = useState(false);
-  const [bleEngineDiag, setBleEngineDiag] = useState<any>(null);
-  const [bleEngineDiagLoading, setBleEngineDiagLoading] = useState(false);
-  const [showManualBle, setShowManualBle] = useState(true);
-  const [manualBleMac, setManualBleMac] = useState("");
-  const [manualBleName, setManualBleName] = useState("");
-  const [manualBleSaving, setManualBleSaving] = useState(false);
-  const [manualBleError, setManualBleError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [engineUptime, setEngineUptime] = useState<number | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
@@ -1487,33 +1082,11 @@ export default function PiMobile() {
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
-  const bleIdentityRef = useRef<{ savedId: string | null; savedName: string | null; connectedId: string | null }>({
-    savedId: null,
-    savedName: null,
-    connectedId: null,
-  });
-
-  useEffect(() => {
-    bleIdentityRef.current = {
-      savedId: bleSavedId,
-      savedName: bleSavedName,
-      connectedId: bleConnectedId,
-    };
-  }, [bleSavedId, bleSavedName, bleConnectedId]);
-
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTriggered = useRef(false);
 
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
-  const showBlePicker = !bleSavedId || bleScanning || bleScanResults.length > 0;
-  const showBleSavedCard = (bleSavedId || bleConnectedId) && !blePreview && !showBlePicker;
-
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-  const isBleRespawnScanError = (message: string | null | undefined) =>
-    typeof message === 'string' && /noble inte poweredOn inom 10s|Timeout waiting for Noble to be powered on/i.test(message);
-  const isBleRespawnCooldownError = (message: string | null | undefined) =>
-    typeof message === 'string' && /respawn blockerad|cooldown/i.test(message);
 
   const putJson = async (path: string, body: unknown) => {
     const r = await fetch(`${piBase}${path}`, {
@@ -1525,119 +1098,6 @@ export default function PiMobile() {
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return r;
   };
-
-  const requestBleScan = useCallback(async () => {
-    const r = await fetch(`${piBase}/api/ble/scan`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(15000),
-    });
-    let data: any = null;
-    try {
-      data = await r.json();
-    } catch {}
-    return { r, data };
-  }, [piBase]);
-
-  const waitForBleRecovery = useCallback(async () => {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      try {
-        const r = await fetch(`${piBase}/api/ble/diagnostics`, {
-          signal: AbortSignal.timeout(1500),
-        });
-        if (r.ok) {
-          await sleep(500);
-          return true;
-        }
-      } catch {}
-      await sleep(500);
-    }
-    return false;
-  }, [piBase]);
-
-  const handleBleScan = useCallback(async () => {
-    const applyScanResult = (devices: { id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[], startError?: string | null) => {
-      setBleScanResults(devices);
-      setBleScanCompletedEmpty(devices.length === 0 && !startError);
-      setBleScanMessage(startError ? { kind: 'error', text: startError } : null);
-    };
-
-    setBleScanning(true);
-    setBleScanResults([]);
-    setBleScanCompletedEmpty(false);
-    setBleScanMessage(null);
-
-    try {
-      const first = await requestBleScan();
-      const firstDevices = Array.isArray(first.data?.devices) ? first.data.devices : null;
-      const firstError = first.data?.scan?.lastStartError ?? first.data?.error ?? null;
-
-      if (isBleRespawnCooldownError(firstError)) {
-        applyScanResult(firstDevices ?? [], firstError);
-        return;
-      }
-
-      if (first.r.ok && firstDevices && (firstDevices.length > 0 || !isBleRespawnScanError(firstError))) {
-        applyScanResult(firstDevices, firstError);
-        return;
-      }
-
-      if (isBleRespawnScanError(firstError) || !first.r.ok) {
-        setBleScanMessage({ kind: 'info', text: 'BLE startar om — försöker igen automatiskt…' });
-        const recovered = await waitForBleRecovery();
-        if (!recovered) {
-          setBleScanMessage({ kind: 'error', text: 'BLE hann inte starta om. Försök igen om några sekunder.' });
-          return;
-        }
-
-        const retry = await requestBleScan();
-        const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
-        const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
-
-        if (isBleRespawnCooldownError(retryError)) {
-          applyScanResult(retryDevices ?? [], retryError);
-          return;
-        }
-
-        if (retry.r.ok && retryDevices) {
-          applyScanResult(retryDevices, retryError);
-          return;
-        }
-
-        setBleScanMessage({ kind: 'error', text: retryError ?? 'BLE återhämtade sig inte. Försök igen.' });
-        return;
-      }
-
-      applyScanResult([], firstError ?? 'BLE-sökningen misslyckades');
-    } catch {
-      setBleScanMessage({ kind: 'info', text: 'BLE svarade inte direkt — väntar in omstart och försöker igen…' });
-      const recovered = await waitForBleRecovery();
-      if (!recovered) {
-        setBleScanMessage({ kind: 'error', text: 'BLE hann inte starta om. Försök igen om några sekunder.' });
-        return;
-      }
-
-      try {
-        const retry = await requestBleScan();
-        const retryDevices = Array.isArray(retry.data?.devices) ? retry.data.devices : null;
-        const retryError = retry.data?.scan?.lastStartError ?? retry.data?.error ?? null;
-        if (isBleRespawnCooldownError(retryError)) {
-          applyScanResult(retryDevices ?? [], retryError);
-          return;
-        }
-        if (retry.r.ok && retryDevices) {
-          setBleScanResults(retryDevices);
-          setBleScanCompletedEmpty(retryDevices.length === 0 && !retryError);
-          setBleScanMessage(retryError ? { kind: 'error', text: retryError } : null);
-          return;
-        }
-        setBleScanMessage({ kind: 'error', text: retryError ?? 'BLE-sökningen misslyckades.' });
-      } catch {
-        setBleScanMessage({ kind: 'error', text: 'BLE-sökningen misslyckades efter omstart.' });
-      }
-    } finally {
-      setBleScanning(false);
-    }
-  }, [requestBleScan, waitForBleRecovery]);
 
   const handleSave = async () => {
     setSaveError(null);
@@ -1651,7 +1111,6 @@ export default function PiMobile() {
           dynamicDamping: cal.dynamicDamping,
           brightnessFloor: cal.brightnessFloor,
           punchWhiteThreshold: cal.punchWhiteThreshold,
-          
           perceptualGamma: cal.perceptualGamma,
           transientGain: cal.transientGain,
           dynamicsEnabled: cal.dynamicsEnabled,
@@ -1684,6 +1143,8 @@ export default function PiMobile() {
       savedTimer.current = setTimeout(() => setSaveError(null), 6000);
     }
   };
+
+  // (handleSave defined above)
 
   // Load current settings from Pi on mount
   useEffect(() => {
@@ -1771,23 +1232,8 @@ export default function PiMobile() {
         setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
         if (typeof data.uptime === 'number') setEngineUptime(data.uptime);
         if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
-        const track = data.sonos?.trackName ?? null;
-        setLiveTrack(track);
-        setLiveBleCount(data.ble?.connected ?? null);
-        setBleConnectedId(data.ble?.connectedDeviceId ?? null);
-        setBleConnectedName(data.ble?.devices?.[0] ?? null);
-        setBleSavedId(data.ble?.savedDeviceId ?? null);
-        setBleSavedName(data.ble?.savedDeviceName ?? null);
-        setBleSavedAddress(data.ble?.savedDeviceAddress ?? null);
-        setBleDemand(data.ble?.demand ?? false);
-        setBleAdapterState(data.ble?.adapterState ?? null);
-        setBootPhase(data.bootPhase ?? null);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
-        // Always update palette when available (may arrive after track change)
-        const palette = data.engine?.palette ?? [];
-        if (palette.length > 0) {
-          setLivePalette(palette);
-        }
+
       } catch {
         if (!cancelled) setPiOnline(false);
       }
