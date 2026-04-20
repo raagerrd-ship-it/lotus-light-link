@@ -3,7 +3,7 @@ import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap
 import { apiBase } from "@/lib/apiBase";
 import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 import { BleControlPanel } from "@/components/BleControlPanel";
-import { MicBackendBadge } from "@/components/MicBackendBadge";
+
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
@@ -847,7 +847,6 @@ function GlobalSettingsView({
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
           <Mic size={14} /> Mikrofon
-          <MicBackendBadge piBase={piBase} />
         </h2>
         <input
           type="text" value={alsaDevice} onChange={(e) => setAlsaDevice(e.target.value)}

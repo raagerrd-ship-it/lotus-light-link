@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, Music, Loader2, Check, X, Play } from "lucide-react";
+import { MicBackendBadge } from "@/components/MicBackendBadge";
 
 type SubsystemId = "mic" | "sonos";
 type Status = "idle" | "starting" | "ready" | "error";
@@ -164,6 +165,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
     label: string,
     Icon: typeof Mic,
     extra?: React.ReactNode,
+    badge?: React.ReactNode,
   ) => {
     const sub = status?.subsystems[id] ?? { status: "idle" as Status, startedAt: null, readyAt: null, durationMs: null, error: null };
     const dot = sub.status === "ready"
@@ -180,7 +182,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
           <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
           <Icon size={14} className="shrink-0 text-muted-foreground" />
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-foreground/90">{label}</div>
+            <div className="font-medium text-foreground/90 flex items-center gap-1.5 flex-wrap">{label}{badge}</div>
             {sub.status === "ready" && sub.durationMs != null && (
               <div className="text-[9px] opacity-50">Redo på {(sub.durationMs / 1000).toFixed(1)}s</div>
             )}
@@ -216,7 +218,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
         {!enabled && <span className="text-[9px] opacity-60">— starta BLE-motorn först</span>}
       </div>
       <div className="divide-y divide-border">
-        {renderRow("mic", "Mikrofon", Mic, <VuMeter level={micLevel} />)}
+        {renderRow("mic", "Mikrofon", Mic, <VuMeter level={micLevel} />, <MicBackendBadge piBase={piBase} />)}
         {renderRow("sonos", "Sonos", Music, (
           <div className="mt-1.5 flex items-center gap-2">
             <span className="text-[10px] opacity-70 truncate flex-1">
