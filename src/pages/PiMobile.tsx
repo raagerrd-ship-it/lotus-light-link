@@ -578,9 +578,24 @@ function GainCalibrationPanel({
     return () => { cancelled = true; clearInterval(id); };
   }, [piBase]);
 
+  /** PUT båda kalibreringspunkterna live till motorn när en slider ändras. */
+  const pushCalibration = (lowGain: number, highGain: number) => {
+    fetch(`${piBase}/api/gain-calibration`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        point1: { vol: AUTO_VOL_LOW, gain: lowGain },
+        point2: { vol: AUTO_VOL_HIGH, gain: highGain },
+      }),
+    }).catch(() => {});
+  };
+
   const setMode = (auto: boolean) => {
     if (auto === enabled) return;
     setEnabled(auto);
+    // Säkerställ kalibreringspunkter finns innan Auto aktiveras
+    // (motorn returnerar 1.0× utan punkter).
+    if (auto) pushCalibration(gainLow, gainHigh);
     fetch(`${piBase}/api/auto-gain`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
