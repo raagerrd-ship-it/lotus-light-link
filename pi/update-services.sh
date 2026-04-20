@@ -53,9 +53,9 @@ if [ -n "$CURRENT_VERSION" ] && [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
   if [ ! -f /etc/systemd/system/lotus-light-engine.service ]; then
     HEALTH_OK=0
     HEALTH_REASONS="$HEALTH_REASONS\n  - /etc/systemd/system/lotus-light-engine.service saknas"
-  elif ! grep -q "SupplementaryGroups=netdev bluetooth" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
+  elif ! grep -q "SupplementaryGroups=netdev bluetooth audio" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
     HEALTH_OK=0
-    HEALTH_REASONS="$HEALTH_REASONS\n  - System-service saknar SupplementaryGroups=netdev bluetooth"
+    HEALTH_REASONS="$HEALTH_REASONS\n  - System-service saknar SupplementaryGroups=netdev bluetooth audio"
   fi
 
   # 2. Engine-bundle måste finnas
@@ -154,8 +154,8 @@ SETUP_NEEDED=0
 if [ ! -f /etc/systemd/system/lotus-light-engine.service ]; then
   echo "$LOG_PREFIX System-service saknas — kör setup-lotus.sh för att skapa..."
   SETUP_NEEDED=1
-elif ! grep -q "SupplementaryGroups=netdev bluetooth" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
-  echo "$LOG_PREFIX System-service saknar SupplementaryGroups — kör setup-lotus.sh för att fixa..."
+elif ! grep -q "SupplementaryGroups=netdev bluetooth audio" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
+  echo "$LOG_PREFIX System-service saknar SupplementaryGroups=netdev bluetooth audio — kör setup-lotus.sh för att fixa..."
   SETUP_NEEDED=1
 else
   # Service-filen ser OK ut. Verifiera ändå att node-binären har caps + user är i grupperna —
@@ -166,7 +166,7 @@ else
     echo "$LOG_PREFIX node-binären saknar CAP_NET_RAW — sätter caps..."
     sudo setcap 'cap_net_raw,cap_net_admin+eip' "$NODE_BIN_VERIFY" 2>/dev/null || true
   fi
-  for GRP in netdev bluetooth; do
+  for GRP in netdev bluetooth audio; do
     if getent group "$GRP" >/dev/null 2>&1 && ! id -nG "$TARGET_USER_VERIFY" 2>/dev/null | tr ' ' '\n' | grep -qx "$GRP"; then
       echo "$LOG_PREFIX $TARGET_USER_VERIFY saknas i $GRP — lägger till (kräver service-restart för att aktiveras)..."
       sudo usermod -aG "$GRP" "$TARGET_USER_VERIFY" 2>/dev/null || true
