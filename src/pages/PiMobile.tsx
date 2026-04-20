@@ -39,7 +39,7 @@ type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessF
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = diskant, 0.5 = lika, 1.0 = bas" },
   { key: "softness", label: "Mjukhet", min: 0, max: 100, step: 1, description: "0 = rått, 100 = mycket mjukt" },
-  { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "Positivt = kontrast, negativt = utjämnad" },
+  { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
   { key: "brightnessFloor", label: "Golv", min: 0, max: 25, step: 1, unit: "%", description: "Lägsta ljusstyrka" },
   { key: "punchWhiteThreshold", label: "Punch White", min: 90, max: 100, step: 0.5, unit: "%", description: "100 = av. Över detta → vit" },
 ];
@@ -434,40 +434,35 @@ function ProfileSettingsView({
         
         <SignalPreview cal={cal} height={180} showLegend={false} />
         
-        {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => (
-          <div key={key}>
-            <div className="flex justify-between text-sm mb-0.5">
-              <span>{label}</span>
-              <span className="text-muted-foreground font-mono text-xs">{cal[key]}{unit ?? ''}</span>
+        {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
+          const isDyn = key === 'dynamicDamping';
+          const displayValue = isDyn && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
+          return (
+            <div key={key}>
+              <div className="flex justify-between text-sm mb-0.5">
+                <span>{label}</span>
+                <span className="text-muted-foreground font-mono text-xs">{displayValue}</span>
+              </div>
+              <input
+                type="range" min={min} max={max} step={step} value={cal[key]}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (isDyn) {
+                    // Slider = enda kontrollen: 0 = av, ≠0 = på
+                    setCal({ ...cal, dynamicDamping: v, dynamicsEnabled: v !== 0 });
+                  } else {
+                    setCal({ ...cal, [key]: v });
+                  }
+                }}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
             </div>
-            <input
-              type="range" min={min} max={max} step={step} value={cal[key]}
-              onChange={(e) => setCal({ ...cal, [key]: parseFloat(e.target.value) })}
-              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-            />
-            <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Toggles */}
         <div className="space-y-3">
-          {([
-            { key: 'dynamicsEnabled' as const, label: 'Dynamik', desc: 'Expanderar/komprimerar signalen' },
-            
-          ]).map(({ key, label, desc }) => (
-            <label key={key} className="flex items-center justify-between">
-              <div>
-                <div className="text-sm">{label}</div>
-                <p className="text-[10px] text-muted-foreground">{desc}</p>
-              </div>
-              <button
-                onClick={() => setCal({ ...cal, [key]: !cal[key] })}
-                className={`w-12 h-7 rounded-full transition-colors relative ${cal[key] ? 'bg-green-500' : 'bg-secondary border border-border'}`}
-              >
-                <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${cal[key] ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
-              </button>
-            </label>
-          ))}
           <label className="flex items-center justify-between">
             <div>
               <div className="text-sm">Perceptuell kurva</div>
