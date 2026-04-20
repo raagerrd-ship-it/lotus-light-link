@@ -98,8 +98,10 @@ interface LightCalibration {
   hiShelfGainDb: number;
   punchWhiteThreshold: number;
   brightnessFloor: number;
-  transientBoost: boolean;
-  perceptualCurve: boolean;
+  /** 0 = av (ingen boost), 1.0 = nuvarande default, upp till ~2.0 = överdrivna transienter */
+  transientGain: number;
+  /** 0 = av (linjärt, kurvan hoppas helt över), 1.0 = linjärt via math, 1.8 = tidigare default, upp till 3.0 = kraftig mörkkomprimering */
+  perceptualGamma: number;
   dynamicsEnabled: boolean;
   [key: string]: any;
 }
@@ -111,11 +113,28 @@ const DEFAULT_CAL: LightCalibration = {
   bassWeight: 0.7, hiShelfGainDb: 6,
   punchWhiteThreshold: 100,
   brightnessFloor: 0,
-  transientBoost: true,
-  perceptualCurve: false,
+  transientGain: 1.0,
+  perceptualGamma: 0,
   dynamicsEnabled: true,
   
 };
+
+/** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
+function migrateLegacyCalibration(cal: any): any {
+  if (!cal || typeof cal !== 'object') return cal;
+  const out = { ...cal };
+  // transientBoost: true → 1.0, false → 0
+  if (typeof out.transientBoost === 'boolean' && out.transientGain == null) {
+    out.transientGain = out.transientBoost ? 1.0 : 0;
+  }
+  delete out.transientBoost;
+  // perceptualCurve: true → 1.8 (tidigare hårdkodad gamma), false → 0
+  if (typeof out.perceptualCurve === 'boolean' && out.perceptualGamma == null) {
+    out.perceptualGamma = out.perceptualCurve ? 1.8 : 0;
+  }
+  delete out.perceptualCurve;
+  return out;
+}
 
 function loadCalibration(): LightCalibration {
   try {
