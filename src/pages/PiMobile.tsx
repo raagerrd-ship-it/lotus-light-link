@@ -1990,7 +1990,7 @@ export default function PiMobile() {
       )}
 
       {/* Version / Status */}
-      <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-1">
+      <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
@@ -2007,6 +2007,42 @@ export default function PiMobile() {
             </div>
           )}
         </div>
+
+        {/* Update available row — visas bara om backend rapporterat en nyare version */}
+        {piVersion && latestVersion && latestVersion !== piVersion.version && updatePhase === 'idle' && updateStatus !== 'running' && (
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+            <div className="flex items-center gap-2 min-w-0">
+              <Download size={12} className="text-primary shrink-0" />
+              <span className="font-mono truncate">v{piVersion.version} → <span className="text-primary font-bold">v{latestVersion}</span></span>
+            </div>
+            <button
+              onClick={runForceUpdate}
+              className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold active:scale-95 transition-transform shrink-0"
+            >
+              Uppdatera
+            </button>
+          </div>
+        )}
+
+        {/* Update progress — vilken fas vi är i */}
+        {updatePhase !== 'idle' && (
+          <div className="flex items-center gap-2 pt-2 border-t border-border/40">
+            <Loader2 size={12} className="text-primary animate-spin shrink-0" />
+            <span className="text-foreground">
+              {updatePhase === 'stopping' && 'Stänger ner motorn…'}
+              {updatePhase === 'downloading' && 'Hämtar ny version…'}
+              {updatePhase === 'starting' && 'Startar motorn igen…'}
+            </span>
+          </div>
+        )}
+
+        {/* Up-to-date confirmation */}
+        {piVersion && latestVersion && latestVersion === piVersion.version && updatePhase === 'idle' && (
+          <div className="flex items-center gap-1.5 pt-1 border-t border-border/40">
+            <Check size={11} className="text-green-500" />
+            <span>Senaste versionen</span>
+          </div>
+        )}
       </div>
 
       <section className="mb-8">
