@@ -281,20 +281,14 @@ export async function sendRawColor(r: number, g: number, b: number): Promise<voi
 }
 
 /**
- * Forced idle write — används vid pause för att tvinga lampan till idle-färg
- * direkt, även om writeSlot är upptagen av en sista musik-write eller om
- * delta-/rate-limit-gaten skulle dedupa bort den.
+ * Forced idle sync — används vid pause för att tvinga keep-alive att bära
+ * idle-färgen direkt utan att skapa någon köad write.
  *
- * Bakgrund: vid pause stoppar engine sina ticks (sentCount fryses → UI visar
- * 0 pkt/s), men keep-alive (var 400ms) fortsätter skicka senast lagrade
- * `writeBuf`. Om idle-write fastnar i 'busy'/'rate-limited' uppdateras inte
- * writeBuf → keep-alive fortsätter måla MUSIC-färgen tills nästa lyckade
- * idle-tick (upp till 2s senare). Synligt som "lampan blinkar vidare flera
- * sekunder efter pause".
- *
- * Lösning: skriv idle-färgen direkt i writeBuf så keep-alive omedelbart
- * skickar rätt färg vid nästa 400ms-tick, synka dedup-state, och fire-and-
- * forget en write så snart sloten släpps.
+ * Viktigt: vi får INTE vänta på `writeSlot.finally(...)` här, för då skapas en
+ * eftersläpande write som kan landa hundratals millisekunder senare och ge
+ * synligt "svans-blink" / dålig takt. I stället uppdaterar vi bara writeBuf +
+ * dedup-state synkront. Nästa keep-alive (max 400ms) eller vanliga idle-tick
+ * skickar då rätt färg, utan att något backloggas.
  */
 export function sendIdleForce(r: number, g: number, b: number): void {
   const device = getDevice();
@@ -307,20 +301,6 @@ export function sendIdleForce(r: number, g: number, b: number): void {
   brightBuf[3] = 0xff;
   lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff;
 
-  const mode = device.mode ?? 'rgb';
-  const buf = mode === 'brightness' ? brightBuf : writeBuf;
-  const dev = device;
-
-  const fire = () => {
-    lastWriteTime = performance.now();
-    dev.characteristic.writeAsync(buf, true).then(() => {
-      bleStats.sentCount++;
-    }).catch(() => { /* keep-alive följer upp */ });
-  };
-
-  if (writeSlot) {
-    writeSlot.finally(fire);
-  } else {
-    fire();
-  }
+  // Reservér tidpunkten så keep-alive inte omedelbart race:ar samma tick.
+  lastWriteTime = performance.now();
 }
