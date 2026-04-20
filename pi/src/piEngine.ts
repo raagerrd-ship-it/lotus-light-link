@@ -14,7 +14,7 @@
  */
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, type BandResult } from './alsaMic.js';
-import { sendToBLE, sendIdleForce, getDimmingGamma, setMinWriteIntervalMs } from './ble/protocol.js';
+import { sendToBLE, sendIdleForce, getDimmingGamma, setMinWriteIntervalMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
@@ -408,12 +408,17 @@ export class PiLightEngine {
       this.smoothed = 0;
       this.onsetBoost = 0;
       this.onsetTarget = 0;
-      // Keep loop running (CPU is negligible) but add idle heartbeat
+      // Idle: starta keep-alive (mic-writes är borta, länken behöver heartbeat)
+      // + en omedelbar idle-frame så lampan släpper sista musik-färgen direkt.
+      startKeepAlive();
       this.startIdleHeartbeat();
-      console.log('[Engine] → idle mode (loop + heartbeat every 2s)');
+      console.log('[Engine] → idle mode (keep-alive + heartbeat aktiva)');
     } else if (playing && !wasPlaying) {
+      // Active: mic→BLE-writes (~25-40ms) håller länken vid liv. Stoppa
+      // keep-alive helt så vi aldrig riskerar parallella writes.
       this.stopIdleHeartbeat();
-      console.log('[Engine] → active mode');
+      stopKeepAlive();
+      console.log('[Engine] → active mode (keep-alive STOPPAD, mic-writes håller länken)');
     }
   }
 
@@ -465,7 +470,8 @@ export class PiLightEngine {
     onFFTReady((bands) => this.onFFTFrame(bands));
     // Always start the loop — CPU is negligible
     this.startLoop();
-    // Start in idle heartbeat until Sonos says playing
+    // Start in idle: heartbeat + keep-alive (mic-writes finns inte ännu)
+    startKeepAlive();
     this.startIdleHeartbeat();
 
     this.saveTimer = setInterval(() => {

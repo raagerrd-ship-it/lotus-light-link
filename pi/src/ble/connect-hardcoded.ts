@@ -168,8 +168,9 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
               name: HARDCODED_DEVICE.name,
               id: peripheral.id,
             });
-            startKeepAlive();
-            console.log(`${ts()} 8. keep-alive STARTAD (400ms intervall) — lampan håller anslutningen`);
+            // Keep-alive ägs av piEngine — startas i engine.start() / setPlaying(false).
+            // Connect ska INTE starta egen keep-alive (skulle ge parallella writes).
+            console.log(`${ts()} 8. anslutning klar — engine sköter keep-alive vid idle`);
             finish({ connected: true });
           } catch (e: any) {
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
