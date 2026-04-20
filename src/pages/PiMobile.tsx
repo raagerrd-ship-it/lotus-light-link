@@ -478,33 +478,7 @@ function ProfileSettingsView({
           );
         })}
 
-        {/* Toggles */}
-        <div className="space-y-3">
-          <label className="flex items-center justify-between">
-            <div>
-              <div className="text-sm">Perceptuell kurva</div>
-              <p className="text-[10px] text-muted-foreground">Anpassar ljusstyrka till ögats uppfattning</p>
-            </div>
-            <button
-              onClick={() => setCal({ ...cal, perceptualCurve: !cal.perceptualCurve })}
-              className={`w-12 h-7 rounded-full transition-colors relative ${cal.perceptualCurve ? 'bg-green-500' : 'bg-secondary border border-border'}`}
-            >
-              <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${cal.perceptualCurve ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
-            </button>
-          </label>
-          <label className="flex items-center justify-between">
-            <div>
-              <div className="text-sm">Transient boost</div>
-              <p className="text-[10px] text-muted-foreground">Extra lyft vid trumslag och attacker</p>
-            </div>
-            <button
-              onClick={() => setCal({ ...cal, transientBoost: !cal.transientBoost })}
-              className={`w-12 h-7 rounded-full transition-colors relative ${cal.transientBoost ? 'bg-green-500' : 'bg-secondary border border-border'}`}
-            >
-              <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${cal.transientBoost ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
-            </button>
-          </label>
-        </div>
+        {/* Togglar borttagna — Perceptuell kurva & Transient boost är nu sliders i SLIDER_CONFIG ovan */}
       </section>
     </div>
   );
@@ -1676,8 +1650,8 @@ export default function PiMobile() {
           brightnessFloor: cal.brightnessFloor,
           punchWhiteThreshold: cal.punchWhiteThreshold,
           
-          perceptualCurve: cal.perceptualCurve,
-          transientBoost: cal.transientBoost,
+          perceptualGamma: cal.perceptualGamma,
+          transientGain: cal.transientGain,
           dynamicsEnabled: cal.dynamicsEnabled,
           hiShelfGainDb: 6,
         }),
@@ -1745,8 +1719,8 @@ export default function PiMobile() {
           brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
           punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
           
-          perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
-          transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
+          perceptualGamma: c.perceptualGamma ?? (typeof c.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
+          transientGain: c.transientGain ?? (typeof c.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
           dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
         });
       }
