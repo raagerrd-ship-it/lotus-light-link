@@ -1469,16 +1469,22 @@ export function startConfigServer(port = 3050): void {
     if (updateRunning) return res.status(409).json({ error: 'Update already running' });
     updateRunning = true;
     updateLog = '';
-    res.json({ ok: true, message: 'Update started' });
+    res.json({ ok: true, message: 'Update started — process will exit after install' });
 
-    // update-services.sh hanterar nedladdning + installation OCH avslutar med
-    // `sudo systemctl restart lotus-light-engine` — vi ska INTE starta om själva
-    // efteråt (den restarten dödar ändå denna process; redundant kommando är farligt).
+    // Self-exit-strategi: skriptet installerar nya filer, sedan dör vi och
+    // systemd Restart=always startar oss på ny kod. Se /api/update/force för
+    // detaljerad rationale.
     const { exec } = await import('child_process');
     exec('bash /opt/lotus-light/pi/update-services.sh 2>&1', { timeout: 120000 }, (err, stdout, stderr) => {
       updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
       updateRunning = false;
       console.log('[Update]', updateLog);
+      if (err) {
+        console.error('[Update] Skript misslyckades — INTE exit:', err.message);
+        return;
+      }
+      console.log('[Update] ✓ Klart — exit(0) om 1s');
+      setTimeout(() => process.exit(0), 1000);
     });
   });
 
