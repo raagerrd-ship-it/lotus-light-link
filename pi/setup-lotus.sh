@@ -371,14 +371,15 @@ if [ -f "$USER_SVC_PATH" ]; then
   echo "  Gammal user-service raderad ($USER_SVC_PATH) ✓"
 fi
 
-# 2. Döda kvarlevande node-processer (user-service kan ha startat egna)
-#    så de inte håller BLE-anslutningen eller porten 3051.
-if pgrep -f 'lotus-light|piEngine' >/dev/null 2>&1; then
-  sudo pkill -TERM -f 'lotus-light' 2>/dev/null || true
-  sudo pkill -TERM -f 'piEngine' 2>/dev/null || true
+# 2. Döda kvarlevande ENGINE-processer — men matcha bara själva engine-entryn.
+#    Tidigare användes `pkill -f 'lotus-light'`, vilket även matchade detta
+#    setup-script eftersom sökvägen innehåller /opt/lotus-light/... Resultat:
+#    scriptet terminerade sig självt precis vid "Installerar system-service".
+ENGINE_PROC_PATTERN="$PI_DIR/dist/index.js"
+if pgrep -f "$ENGINE_PROC_PATTERN" >/dev/null 2>&1; then
+  sudo pkill -TERM -f "$ENGINE_PROC_PATTERN" 2>/dev/null || true
   sleep 1
-  sudo pkill -KILL -f 'lotus-light' 2>/dev/null || true
-  sudo pkill -KILL -f 'piEngine' 2>/dev/null || true
+  sudo pkill -KILL -f "$ENGINE_PROC_PATTERN" 2>/dev/null || true
   echo "  Kvarlevande engine-processer dödade ✓"
 fi
 
