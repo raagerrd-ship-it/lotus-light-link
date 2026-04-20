@@ -389,7 +389,7 @@ fi
 
 # 3. Skriv ny system-service (idempotent — overwrite varje release)
 TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
-echo "  Service kommer köra som: User=$TARGET_USER, Group=$TARGET_GROUP, SupplementaryGroups=netdev bluetooth"
+echo "  Service kommer köra som: User=$TARGET_USER, Group=$TARGET_GROUP, SupplementaryGroups=netdev bluetooth audio"
 
 # 3a. Säkerställ att $PI_DIR + data/ ägs av TARGET_USER så storage-shimmen
 #     kan göra mkdir/writeFile (annars kraschar engine direkt med EACCES).
@@ -401,7 +401,7 @@ echo "  Ägarskap satt: $APP_DIR → $TARGET_USER:$TARGET_GROUP ✓"
 #     Krävs eftersom systemd's AmbientCapabilities clearar SupplementaryGroups
 #     vid setuid/setgid-switchen → SupplementaryGroups= i unit-filen ignoreras.
 #     Att vara medlem i grupperna i /etc/group överlever capability-clear.
-for grp in netdev bluetooth; do
+for grp in netdev bluetooth audio; do
   if getent group "$grp" >/dev/null 2>&1; then
     if id -nG "$TARGET_USER" | tr ' ' '\n' | grep -qx "$grp"; then
       echo "  $TARGET_USER redan i $grp ✓"
@@ -437,7 +437,7 @@ Wants=bluetooth.service
 Type=simple
 User=$TARGET_USER
 Group=$TARGET_GROUP
-SupplementaryGroups=netdev bluetooth
+SupplementaryGroups=netdev bluetooth audio
 WorkingDirectory=$PI_DIR
 ExecStartPre=/bin/sleep 2
 ExecStart=/usr/bin/node $PI_DIR/dist/index.js
