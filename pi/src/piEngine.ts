@@ -14,7 +14,7 @@
  */
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, type BandResult } from './alsaMic.js';
-import { sendToBLE, getDimmingGamma, setMinWriteIntervalMs } from './ble/protocol.js';
+import { sendToBLE, sendIdleForce, getDimmingGamma, setMinWriteIntervalMs } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
@@ -385,14 +385,21 @@ export class PiLightEngine {
 
   private startIdleHeartbeat(): void {
     this.stopIdleHeartbeat();
-    // Send immediately
-    this.sendIdleColor();
-    // Then repeat every 2s
+    // Tvinga idle-färgen direkt vid pause — bypassar busy/rate-limit/delta-gates
+    // så lampan inte fortsätter måla senaste musik-frame via keep-alive.
+    this.forceIdleNow();
+    // Then repeat every 2s (via vanlig pipeline — keep-alive håller ändå
+    // writeBuf uppdaterad mellan dessa)
     this._idleTimer = setInterval(() => this.sendIdleColor(), PiLightEngine.IDLE_HEARTBEAT_MS);
   }
 
   private stopIdleHeartbeat(): void {
     if (this._idleTimer) { clearInterval(this._idleTimer); this._idleTimer = null; }
+  }
+
+  private forceIdleNow(): void {
+    const idle = loadIdleColor();
+    sendIdleForce(idle[0] | 0, idle[1] | 0, idle[2] | 0);
   }
 
   private sendIdleColor(): void {
