@@ -830,8 +830,6 @@ export function startConfigServer(port = 3050): void {
     });
   });
 
-  // --- Pipeline timing (live latency p50/p95/p99 per stage) ---
-  // Stages:
   app.get('/api/calibration', (_req, res) => {
     const raw = getItem('light-calibration');
     res.json(raw ? JSON.parse(raw) : {});
@@ -1067,27 +1065,9 @@ export function startConfigServer(port = 3050): void {
       return;
     }
     const b = mic.getLatestBands();
-    let audioToBleLatencyMs: number | null = null;
-    let audioToBleP95Ms: number | null = null;
-    let stageBreakdown: { audioToFftMs: number; fftToTickMs: number; tickInnerMs: number; bleWriteMs: number } | null = null;
     let ble: any = null;
     try {
       const { bleStats } = await import('./ble/state.js');
-      // Korrekt audio→BLE latens från pipelineTiming (paret matchat per tick).
-      // Tidigare diff = getLastWriteTime - getLastAudioTimestamp gav negativa
-      // värden när ny mic-frame kom mellan senaste BLE-paket och sample-tillfället
-      // → audioToBleLatencyMs = null → ingen ms-siffra i UI-badgen.
-      const pt = getPipelineTimingSnapshot();
-      if (pt.endToEnd.samples > 0) {
-        audioToBleLatencyMs = Math.round(pt.endToEnd.p50Ms);
-        audioToBleP95Ms = Math.round(pt.endToEnd.p95Ms);
-        stageBreakdown = {
-          audioToFftMs: pt.audioToFft.p50Ms,
-          fftToTickMs: pt.fftToTick.p50Ms,
-          tickInnerMs: pt.tickInner.p50Ms,
-          bleWriteMs: pt.bleWrite.p50Ms,
-        };
-      }
 
       const now = performance.now();
       const dt = _lastSampleTs > 0 ? (now - _lastSampleTs) / 1000 : 0;
@@ -1157,9 +1137,6 @@ export function startConfigServer(port = 3050): void {
       bassRms: b.bassRms,
       midHiRms: b.midHiRms,
       backend: mic.getMicBackend(),
-      audioToBleLatencyMs,
-      audioToBleP95Ms,
-      stageBreakdown,
       tickMs,
       ble,
     });
