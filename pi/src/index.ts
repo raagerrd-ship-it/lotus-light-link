@@ -241,6 +241,14 @@ async function startMicSubsystem(): Promise<void> {
 
       alsaMic.startMic();
       engineInstance.start();
+      try {
+        await alsaMic.waitForFirstAudio(3000);
+      } catch (e: any) {
+        try { engineInstance.stop(); } catch {}
+        try { alsaMic.stopMic(); } catch {}
+        throw e;
+      }
+
       // Regressionfix: om Sonos redan startat och redan är PLAYING när mic/engine
       // kommer upp, så måste vi replaya currentState EFTER engine.start().
       // Annars missas första onSonosChange-eventet och engine blir kvar i idle

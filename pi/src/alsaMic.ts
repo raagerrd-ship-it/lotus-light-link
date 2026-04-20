@@ -54,6 +54,55 @@ export function getMicBackend(): 'alsa-vendored' | 'alsa-npm' | 'arecord' | 'non
 let lastAudioTimestamp = 0;
 export function getLastAudioTimestamp(): number { return lastAudioTimestamp; }
 
+type MicReadyWaiter = {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+};
+
+let micStartError: string | null = null;
+let micReadyWaiters: MicReadyWaiter[] = [];
+
+function clearMicReadyWaiters(): MicReadyWaiter[] {
+  const waiters = micReadyWaiters;
+  micReadyWaiters = [];
+  return waiters;
+}
+
+function resolveMicReadyWaiters(): void {
+  for (const waiter of clearMicReadyWaiters()) {
+    clearTimeout(waiter.timer);
+    waiter.resolve();
+  }
+}
+
+function rejectMicReadyWaiters(message: string): void {
+  micStartError = message;
+  const error = new Error(message);
+  for (const waiter of clearMicReadyWaiters()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(error);
+  }
+}
+
+/** Resolves when the first audio callback arrives, rejects on capture error/timeout. */
+export function waitForFirstAudio(timeoutMs = 2500): Promise<void> {
+  if (_audioCbCount > 0) return Promise.resolve();
+  if (micStartError) return Promise.reject(new Error(micStartError));
+
+  return new Promise<void>((resolve, reject) => {
+    const waiter: MicReadyWaiter = {
+      resolve,
+      reject,
+      timer: setTimeout(() => {
+        micReadyWaiters = micReadyWaiters.filter((entry) => entry !== waiter);
+        reject(new Error(`[ALSA] No audio callback within ${timeoutMs}ms (backend=${micBackend}, device=${currentDevice}, format=${currentFormat})`));
+      }, timeoutMs),
+    };
+    micReadyWaiters.push(waiter);
+  });
+}
+
 export interface BandResult {
   bassRms: number;
   midHiRms: number;
@@ -398,6 +447,19 @@ export function setAlsaDevice(device: string): void {
 export function startMic(): void {
   if (capture) return;
 
+  micStartError = null;
+  _audioCbCount = 0;
+  _audioCbBytes = 0;
+  _audioCbFirstAt = 0;
+  lastAudioTimestamp = 0;
+  lastFFTTimestamp = 0;
+  _fftFrameCount = 0;
+
+  const handleStartFailure = (message: string) => {
+    console.error(message);
+    rejectMicReadyWaiters(message);
+  };
+
   if (useNative && AlsaCapture) {
     // Native path — direct ALSA snd_pcm_readi(), no subprocess.
     // periodSize=256 frames (~5.8ms) på Pi Zero 2W. 128 var för aggressivt:
@@ -414,7 +476,14 @@ export function startMic(): void {
 
     capture.on('audio', onAudioData);
     capture.on('overrun', () => console.warn('[ALSA] Buffer overrun detected'));
-    capture.on('error', (err: Error) => console.error('[ALSA] capture error:', err.message));
+    capture.on('readError', (message: string) => handleStartFailure(`[ALSA] readError: ${message}`));
+    capture.on('error', (err: Error | string) => {
+      const msg = typeof err === 'string' ? err : err?.message ?? String(err);
+      handleStartFailure(`[ALSA] capture error: ${msg}`);
+    });
+    capture.on('close', () => {
+      if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
+    });
     console.log(`[ALSA] Mic started via native ALSA (44.1kHz, ${currentFormat}, mono, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
 
   } else if (nodeRecord) {
@@ -430,13 +499,12 @@ export function startMic(): void {
     stream.on('data', onAudioData);
     stream.on('error', (err: any) => {
       const msg = err?.message ?? err?.code ?? (err === undefined ? '(empty error event from arecord stream — usually harmless EOF)' : String(err));
-      console.error(`[ALSA] stream error: ${msg}`);
+      handleStartFailure(`[ALSA] stream error: ${msg}`);
     });
     console.log(`[ALSA] Mic started via arecord (44.1kHz, 16-bit, mono, device: ${currentDevice})`);
 
   } else {
-    console.error('[ALSA] No audio capture module available — mic disabled');
-    return;
+    handleStartFailure('[ALSA] No audio capture module available — mic disabled');
   }
 }
 
@@ -455,6 +523,7 @@ function onAudioData(buf: Buffer): void {
   if (_audioCbFirstAt === 0) {
     _audioCbFirstAt = tAudio;
     console.log(`[ALSA] FIRST audio callback fired at t=${tAudio.toFixed(1)}ms, ${buf.byteLength} bytes`);
+    resolveMicReadyWaiters();
   }
   if (_audioCbCount === 50 || _audioCbCount === 200 || _audioCbCount % 1000 === 0) {
     console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
@@ -496,20 +565,37 @@ function onAudioData(buf: Buffer): void {
 }
 
 export function stopMic(): void {
-  if (capture) {
-    if (useNative) {
-      capture.close();
-    } else {
-      capture.stop();
-    }
-    capture = null;
-    hsState = 0;
-    samplesReceived = 0;
-    ringPos = 0;
-    ringBuf.fill(0);
-    prevPower.fill(0);
-    smoothBass = 0; smoothMidHi = 0; smoothTotal = 0;
-    noiseFloor = 0.001;
-    console.log('[ALSA] Microphone stopped');
+  if (!capture) return;
+
+  if (_audioCbCount === 0) {
+    rejectMicReadyWaiters('[ALSA] Microphone stopped before first audio callback');
+  } else {
+    resolveMicReadyWaiters();
   }
+
+  if (useNative) {
+    capture.close();
+  } else {
+    capture.stop();
+  }
+  capture = null;
+  hsState = 0;
+  samplesReceived = 0;
+  ringPos = 0;
+  ringBuf.fill(0);
+  prevPower.fill(0);
+  smoothBass = 0; smoothMidHi = 0; smoothTotal = 0;
+  noiseFloor = 0.001;
+  latestBands.bassRms = 0;
+  latestBands.midHiRms = 0;
+  latestBands.totalRms = 0;
+  latestBands.flux = 0;
+  _audioCbCount = 0;
+  _audioCbBytes = 0;
+  _audioCbFirstAt = 0;
+  lastAudioTimestamp = 0;
+  lastFFTTimestamp = 0;
+  _fftFrameCount = 0;
+  micStartError = null;
+  console.log('[ALSA] Microphone stopped');
 }
