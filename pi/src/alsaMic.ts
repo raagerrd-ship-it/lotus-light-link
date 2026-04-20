@@ -467,7 +467,7 @@ export function startMic(): void {
     // konstant → engine fick inga FFT-frames → 0% output.
     // Bindningen sätter buffer = period × 8 = ~46ms headroom mot eventloop-jitter.
     capture = new AlsaCapture({
-      channels: 1,
+      channels: 2,
       rate: SAMPLE_RATE,
       format: currentFormat,
       device: currentDevice,
@@ -484,7 +484,7 @@ export function startMic(): void {
     capture.on('close', () => {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
-    console.log(`[ALSA] Mic started via native ALSA (44.1kHz, ${currentFormat}, mono, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
+    console.log(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
 
   } else if (nodeRecord) {
     // Fallback — arecord subprocess + pipe
