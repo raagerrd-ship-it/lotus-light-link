@@ -16,6 +16,7 @@
  */
 
 import { getNobleAsync } from './noble-singleton.js';
+import { bringHci0Up, isHci0Up } from './adapter-hci-check.js';
 
 let _started = false;
 let _eventsBound = false;
@@ -63,12 +64,28 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   // Måste köras INNAN noble laddas, eftersom noble cachar HCI-state vid import.
   console.log(`${ts()} 0. Väcker adaptern: rfkill unblock bluetooth + hciconfig hci0 up...`);
   try {
-    const { execSync } = await import('child_process');
-    try { execSync('rfkill unblock bluetooth', { timeout: 2000, stdio: 'pipe' }); } catch (e: any) { console.log(`${ts()}    rfkill warning:`, e?.message ?? e); }
-    try { execSync('hciconfig hci0 up', { timeout: 2000, stdio: 'pipe' }); } catch (e: any) { console.log(`${ts()}    hciconfig warning:`, e?.message ?? e); }
-    console.log(`${ts()}    Adapter wake klar`);
+    const alreadyUp = isHci0Up();
+    const woke = alreadyUp || bringHci0Up();
+    if (!woke) {
+      const error = 'hci0 kunde inte väckas till UP RUNNING';
+      console.log(`${ts()}    Adapter wake FEL: ${error}`);
+      return {
+        ready: false,
+        rawState: null,
+        durationMs: Date.now() - t0,
+        error,
+      };
+    }
+    console.log(`${ts()}    Adapter wake klar (${alreadyUp ? 'redan UP' : 'UP RUNNING'})`);
   } catch (e: any) {
-    console.log(`${ts()}    Adapter wake hoppas över:`, e?.message ?? e);
+    const error = `Adapter wake FEL: ${e?.message ?? e}`;
+    console.log(`${ts()}    ${error}`);
+    return {
+      ready: false,
+      rawState: null,
+      durationMs: Date.now() - t0,
+      error,
+    };
   }
 
   console.log(`${ts()} 1. Importing @stoprocent/noble...`);
