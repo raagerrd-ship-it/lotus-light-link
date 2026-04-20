@@ -279,3 +279,48 @@ export async function sendRawColor(r: number, g: number, b: number): Promise<voi
     await device.characteristic.writeAsync(writeBuf, true);
   } catch { /* fire-and-forget */ }
 }
+
+/**
+ * Forced idle write — används vid pause för att tvinga lampan till idle-färg
+ * direkt, även om writeSlot är upptagen av en sista musik-write eller om
+ * delta-/rate-limit-gaten skulle dedupa bort den.
+ *
+ * Bakgrund: vid pause stoppar engine sina ticks (sentCount fryses → UI visar
+ * 0 pkt/s), men keep-alive (var 400ms) fortsätter skicka senast lagrade
+ * `writeBuf`. Om idle-write fastnar i 'busy'/'rate-limited' uppdateras inte
+ * writeBuf → keep-alive fortsätter måla MUSIC-färgen tills nästa lyckade
+ * idle-tick (upp till 2s senare). Synligt som "lampan blinkar vidare flera
+ * sekunder efter pause".
+ *
+ * Lösning: skriv idle-färgen direkt i writeBuf så keep-alive omedelbart
+ * skickar rätt färg vid nästa 400ms-tick, synka dedup-state, och fire-and-
+ * forget en write så snart sloten släpps.
+ */
+export function sendIdleForce(r: number, g: number, b: number): void {
+  const device = getDevice();
+  if (!device) return;
+  const cr = Math.max(0, Math.min(255, r | 0));
+  const cg = Math.max(0, Math.min(255, g | 0));
+  const cb = Math.max(0, Math.min(255, b | 0));
+
+  writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
+  brightBuf[3] = 0xff;
+  lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff;
+
+  const mode = device.mode ?? 'rgb';
+  const buf = mode === 'brightness' ? brightBuf : writeBuf;
+  const dev = device;
+
+  const fire = () => {
+    lastWriteTime = performance.now();
+    dev.characteristic.writeAsync(buf, true).then(() => {
+      bleStats.sentCount++;
+    }).catch(() => { /* keep-alive följer upp */ });
+  };
+
+  if (writeSlot) {
+    writeSlot.finally(fire);
+  } else {
+    fire();
+  }
+}
