@@ -15,6 +15,7 @@
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, getLastAudioTimestamp, setTickHopMs, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
+import { setMinWriteIntervalMs } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
@@ -317,6 +318,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
+    setMinWriteIntervalMs(Math.max(5, tickMs - 2));
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -328,6 +330,10 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
+    // Auto-koppla BLE rate-limit till tick: lampans gate måste vara ≤ tickMs,
+    // annars rate-limitas varannan tick. -2ms slack mot timing-jitter.
+    // Override via PUT /api/ble/rate-limit fungerar fortfarande som debug.
+    setMinWriteIntervalMs(Math.max(5, ms - 2));
   }
 
   setColor(rgb: [number, number, number]) {
