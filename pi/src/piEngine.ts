@@ -15,6 +15,7 @@
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, getLastAudioTimestamp, setTickHopMs, type BandResult } from './alsaMic.js';
 import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
+import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
 import { pipelineTiming } from './pipelineTiming.js';
 
@@ -525,7 +526,11 @@ export class PiLightEngine {
       if (fftTs > 0) pipelineTiming.recordFftToTick(now - fftTs);
       this.tickInner();
     } else if (!this._pendingTimeout) {
-      // FFT arrived too early — schedule for remaining time
+      // FFT arrived too early — schedule for remaining time.
+      // Räkna detta som "förkastad" mic-input ur output-perspektiv: framen
+      // uppdaterar fortfarande FFT-state (smoothing/peak), men driver inte
+      // en BLE-write. Synliggörs i UI så vi vet hur mycket capacity vi har kvar.
+      bleStatsState.fftDroppedCount++;
       const remaining = this.tickMs - elapsed;
       this._pendingTimeout = setTimeout(() => {
         this._pendingTimeout = null;
@@ -535,6 +540,9 @@ export class PiLightEngine {
         if (fftTs > 0) pipelineTiming.recordFftToTick(t - fftTs);
         this.tickInner();
       }, remaining);
+    } else {
+      // Already a tick scheduled — this FFT-frame is also "dropped" for output.
+      bleStatsState.fftDroppedCount++;
     }
     // If _pendingTimeout already set, skip (tick is already scheduled)
   }

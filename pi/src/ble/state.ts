@@ -275,7 +275,10 @@ export function setDemand(v: boolean): void { _demandConnect = v; }
 export const bleStats = {
   sentCount: 0,
   skipDeltaCount: 0,
-  skipBusyCount: 0,
+  skipBusyCount: 0,        // legacy total — = skipInFlightCount + skipRateLimitCount
+  skipInFlightCount: 0,    // write redan pågår (verklig kö om ihållande)
+  skipRateLimitCount: 0,   // 35ms-gate triggade (förväntat vid hög aktivitet)
+  fftDroppedCount: 0,      // FFT-frame anlände innan tick-fönstret öppnat
   writeFailCount: 0,
 
   writeLatMs: 0,
