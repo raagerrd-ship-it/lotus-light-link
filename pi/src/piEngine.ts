@@ -293,7 +293,6 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
-    setMinWriteIntervalMs(Math.max(5, Math.floor(tickMs * 0.6)));
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -305,11 +304,8 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    // Auto-koppla BLE rate-limit till tick: gate sätts till 60% av tickMs.
-    // Tillräckligt brett för Pi Zero 2W timer-jitter (±3-5ms) utan att
-    // överbelasta BLEDOM. Vid tick=25 → gate=15ms (66 Hz tak, faktisk ~40 Hz).
-    // Override via PUT /api/ble/rate-limit fungerar fortfarande som debug.
-    setMinWriteIntervalMs(Math.max(5, Math.floor(ms * 0.6)));
+    // Ingen rate-limit längre — single-slot hard-fail i protocol.ts + tickMs
+    // är hela backpressure-kontraktet.
   }
 
   setColor(rgb: [number, number, number]) {
