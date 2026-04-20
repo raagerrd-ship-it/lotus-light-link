@@ -661,24 +661,20 @@ export class PiLightEngine {
       if (cal.agcEnabled !== false) {
         updatePeakAgc(this.agc, bands.totalRms, bands.bassRms, bands.midHiRms, tc);
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.agc[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 2. Normalize via peak ──
       const peakMax = this.agc.peakMax;
       const bassNorm = cal.agcEnabled !== false ? normalizeSimple(bands.bassRms, peakMax) : Math.min(1, bands.bassRms * 5);
       const midHiNorm = cal.agcEnabled !== false ? normalizeSimple(bands.midHiRms, peakMax) : Math.min(1, bands.midHiRms * 5);
       const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
-      if (profiling) { const _t1 = performance.now(); this._profileData.normalize[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 3. Bas/Disk mix ──
       let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
-      if (profiling) { const _t1 = performance.now(); this._profileData.mix[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 4. Release smoothing (Mjukhet) ──
       const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
       this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
       energyNorm = this.smoothed;
-      if (profiling) { const _t1 = performance.now(); this._profileData.smooth[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       const preDynamics = energyNorm;
 
@@ -689,14 +685,12 @@ export class PiLightEngine {
         if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.dynamics[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 6. Transient boost ──
       this.processOnset(bands.flux);
       const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
-      if (profiling) { const _t1 = performance.now(); this._profileData.onset[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── 7. Floor + Perceptual curve ──
       const floor = cal.brightnessFloor ?? 0;
@@ -712,7 +706,6 @@ export class PiLightEngine {
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
-      if (profiling) { const _t1 = performance.now(); this._profileData.curve[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── Palette mode ──
       const pm = cal.paletteMode ?? 'off';
@@ -752,12 +745,10 @@ export class PiLightEngine {
           this.color = _blendColor;
         }
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.palette[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
-      if (profiling) { const _t1 = performance.now(); this._profileData.colorCal[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── BLE output (synkron hard-fail) ──
       // sendToBLE returnerar direkt med WriteResult — engine räknar utfallet
@@ -772,7 +763,6 @@ export class PiLightEngine {
         case 'no-change':    bleStatsState.tickAbortNoChangeCount++; break;
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
       }
-      if (profiling) { const _t1 = performance.now(); this._profileData.bleWrite[this._profilePos] = _t1 - _t0; _t0 = _t1; }
 
       // ── Diagnostics ──
       _diag.rawRms = bands.totalRms;
