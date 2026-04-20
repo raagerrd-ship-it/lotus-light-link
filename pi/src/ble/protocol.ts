@@ -52,18 +52,11 @@ export type WriteResult =
 
 // ── Write state ──
 const WRITE_SLOT_TIMEOUT_MS = 500;
-// Runtime-konfigurerbar via setMinWriteIntervalMs() / GET-PUT /api/ble/rate-limit.
-// Default 35ms — empiriskt säker för BLEDOM. Sänk för att hitta lampans tak:
-//   30ms → 33Hz, 20ms → 50Hz, 10ms → 100Hz, 7.5ms → 133Hz (= 1 per conn-event).
-// Tillåtet intervall: 5–100ms. Övervaka writeFail/writeStuck/writeLatMax i UI.
-let MIN_WRITE_INTERVAL_MS = 35;
-export function getMinWriteIntervalMs(): number { return MIN_WRITE_INTERVAL_MS; }
-export function setMinWriteIntervalMs(ms: number): void {
-  const clamped = Math.max(5, Math.min(100, ms));
-  if (clamped === MIN_WRITE_INTERVAL_MS) return;
-  MIN_WRITE_INTERVAL_MS = clamped;
-  console.log(`[BLE] MIN_WRITE_INTERVAL_MS → ${clamped}ms (${(1000 / clamped).toFixed(1)} Hz tak)`);
-}
+// LEGACY: rate-limit-gaten är borta. Single-slot hard-fail (writeSlot)
+// tillsammans med engine.tickMs är hela backpressure-kontraktet.
+// Funktionerna behålls som no-op för att inte bryta /api/ble/rate-limit.
+export function getMinWriteIntervalMs(): number { return 0; }
+export function setMinWriteIntervalMs(_ms: number): void { /* no-op */ }
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
 let writeSlot: Promise<void> | null = null;
 let writeSlotWatchdog: ReturnType<typeof setTimeout> | null = null;
@@ -183,20 +176,16 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const device = getDevice();
   if (!device) return 'no-device';
 
-  // Steg 1: BLE-slot ledig?
+  // Steg 1: BLE-slot ledig? (Single-slot hard-fail = vårt enda backpressure-skydd.
+  // Ingen separat rate-limit — engine.tickMs styr maxtakten in, slot-checken
+  // fångar om noble fortfarande håller på med förra writen.)
   if (writeSlot) {
     bleStats.skipInFlightCount++;
     bleStats.skipBusyCount++;
     return 'busy';
   }
 
-  // Steg 2: Rate-limit-gate (35ms)
   const now = performance.now();
-  if (lastWriteTime > 0 && (now - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
-    bleStats.skipRateLimitCount++;
-    bleStats.skipBusyCount++;
-    return 'rate-limited';
-  }
 
   // Steg 3: Brightness-skala + delta-check
   const scale = brightnessToScale(brightness);
