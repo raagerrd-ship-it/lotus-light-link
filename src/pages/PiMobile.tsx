@@ -1836,6 +1836,11 @@ export default function PiMobile() {
               const v = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) });
               if (v.ok) {
                 clearInterval(poll);
+                // Tvinga ny version-hämtning så v-raden uppdateras direkt
+                try {
+                  const fresh = await v.json();
+                  if (fresh?.version) setPiVersion({ version: fresh.version, commitShort: fresh.commit ?? '?', branch: fresh.branch ?? '?' });
+                } catch {}
                 setUpdatePhase('idle');
                 setUpdateStatus('done');
                 setTimeout(() => setUpdateStatus(null), 4000);
