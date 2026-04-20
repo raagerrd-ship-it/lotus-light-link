@@ -1,49 +1,40 @@
 
+## Ta bort palettläge (färgrotation under låt)
 
-## Mål
-1. Visuella staplar i `MicBackendBadge` istället för flimrande siffror.
-2. Räkna **alla** skip-typer separat så inget göms.
+Behåller: albumart-färgen sätts som lampans grundfärg vid varje låtbyte (palette[0] från Sonos Gateway).
+Tar bort: hela mekanismen som cyklar/blandar mellan paletten under låtens gång (lägena Av/Tid/Bas/Energi/Blend).
 
-## Räknare vi ska visa (alla per sekund)
+### Ändringar
 
-Backend redan har eller behöver:
-- `fftPerSec` — FFT-frames producerade
-- `tickPerSec` — engine-ticks körda
-- `sentPerSec` — BLE-paket faktiskt skickade
-- `skipDeltaPerSec` — skippade pga oförändrad färg (förväntat)
-- `skipRateLimitPerSec` — skippade pga 35ms-gate (BLE cap nådd, förväntat)
-- `skipInFlightPerSec` — skippade pga write hänger (verklig kö — onormalt) **[NY]**
-- `writeFailPerSec` — writeAsync kastade error **[NY: derive från writeFailCount]**
-- `fftDroppedPerSec` — FFT-frames som kom innan tick-fönstret öppnat (extra mic-input som bara uppdaterar FFT-state) **[NY]**
+**`pi/src/piEngine.ts`**
+- Ta bort typen `PaletteMode` och fälten `paletteMode`, `paletteRotationSpeed` från `LightCalibration` + `DEFAULT_CAL`.
+- Ta bort `paletteTimedSpeed` från `TickConsts` + beräkningen i `computeTickConsts`.
+- Ta bort state: `_paletteTickCounter`, `_bassWasHigh`, `_paletteIndex` (men behåll `_palette` och `setPalette`/`getPalette` så Sonos kan skicka in färgen).
+- Ta bort hela "Palette mode"-blocket (rader ~666–703) i `tickInner`. Färgen styrs nu enbart av `setColor` (anropad vid låtbyte) + bas/disk-blendning som redan sker i color calibration.
+- Ta bort `paletteIndex` från `TickData` + `_tickData` (eller behåll fältet tomt = 0 om det är jobbigt att ändra typen — föredrar att ta bort helt).
+- Förenkla `setPalette`: spara bara paletten internt om någon vill läsa den; sätt `this.color = palette[0]` (albumart-grundfärg). Ingen index-reset behövs.
 
-Backend-ändring: splitta `skipBusyCount` i `skipInFlightCount` + `skipRateLimitCount` (i `pi/src/ble/protocol.ts` + `state.ts`), räkna `fftDroppedCount` i `piEngine.ts`, exponera alla via `/api/mic/level`.
+**`pi/src/configServer.ts`**
+- `engine.palette` i `/api/status`: behåll (UI visar swatches), eller ta bort om inget UI längre behöver listan. Förslag: behåll — den visar fortfarande "låtens palett" som info.
 
-## UI-design (kompakt, inom befintlig badge-höjd)
+**`pi/src/sonosPoller.ts`**
+- Ingen ändring. Palette levereras fortsatt och `pi/src/index.ts` anropar `setColor(palette[0])` vid art-byte.
 
-```
-[ALSA · 18ms]  ▮▮▮ ▮▮▮ ▮▮▮ · ░░▮ ▮▮░ · ●
-                FFT TCK PKT   DLT RLM   ↑ skip-LED (in-flight/fail)
-```
+**`src/pages/PiMobile.tsx`**
+- Ta bort `PaletteMode`-typen, `PALETTE_MODES`-arrayen och `paletteMode`-fältet från `Cal`-typen.
+- Ta bort `paletteMode` ur alla `PRESET_CALS`-poster och ur `DEFAULT_CAL`.
+- Ta bort hela "Palettläge"-sektionen i UI:t (raderna ~453–470 — `<div>Palettläge</div>` + chip-knapparna).
+- Ta bort `paletteMode` ur `setCal`-payload som skickas till backend (raderna kring 1677 och 1747).
+- Behåll `livePalette`-state och swatch-visningen (om sådan finns) — den visar fortfarande låtens färgpalett som info.
 
-Tre **gröna staplar** = produktiva: FFT / TICK / PKT, var och en normaliserad mot sitt mål (`fftMål = 2000/tickMs`, `tickMål = pktMål = 1000/tickMs`).
+**Memory**
+- Radera `mem://pi/sonos/palette-integration` (beskriver det borttagna läget).
+- Uppdatera `mem://index.md`: ta bort raden "Palette integration".
 
-Två **grå/blå staplar** = förväntade skips: DLT (delta) och RLM (rate-limit). Höjd = `skipPerSec / pktMål` (visar hur stor andel av tick-budgeten som "sparades").
+### Verifiering
+1. `npx tsc` i `pi/` och root → båda ska kompilera rent.
+2. `grep -rn "paletteMode\|PaletteMode\|PALETTE_MODES" pi/src src` → ska returnera noll träffar.
+3. Vid låtbyte ska lampans grundfärg fortfarande hoppa till albumartens dominanta färg (palette[0]). Färgen ska sedan stå still under låten (modulerad av bas/disk-vikt), inte rotera.
 
-En **röd LED-prick** lyser bara när `skipInFlight > 0` ELLER `writeFail > 0` ELLER `fftDropped > 0` under senaste sekunden — det är de OND skipsen som betyder verklig kö eller missad capacity.
-
-Färglogik per stapel:
-- ≥80% av mål → primary (grön/blå)
-- 40–80% → foreground/70
-- <40% → destructive
-
-Tooltip: full siffer-readout för alla räknare, plus förklaring (hold-to-read).
-
-CSS-baserade staplar (`<div>` med `height: %`), ingen ny dep. ~60 rader total.
-
-## Filer
-- `pi/src/ble/state.ts` — lägg `skipInFlightCount`, `skipRateLimitCount`, `fftDroppedCount`
-- `pi/src/ble/protocol.ts` — bumpa rätt räknare i båda gates
-- `pi/src/piEngine.ts` — bumpa `fftDroppedCount` när FFT kommer för tidigt
-- `pi/src/configServer.ts` — exponera nya `*PerSec`-fält i `/api/mic/level`
-- `src/components/MicBackendBadge.tsx` — byt textraden mot stapel-rad + skip-LED, behåll latens-suffix och tooltip
-
+### Risker
+Inga DB-ändringar. Settings-payloaden blir bakåtkompatibel: backend ignorerar okänt `paletteMode`-fält om gammal klient skickar det. Ingen migration krävs.
