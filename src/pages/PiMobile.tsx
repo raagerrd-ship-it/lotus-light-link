@@ -1794,6 +1794,65 @@ export default function PiMobile() {
     return () => { cancelled = true; clearInterval(id); };
   }, [view, piBase]);
 
+  // Poll latest available version every 5 min (and once at mount when online)
+  useEffect(() => {
+    if (view !== 'home' || piOnline !== true) return;
+    let cancelled = false;
+    const checkLatest = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/update/check`, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        if (cancelled || data.error) return;
+        if (data.latestVersion) setLatestVersion(data.latestVersion);
+      } catch { /* nätverksfel — försök igen nästa intervall */ }
+    };
+    checkLatest();
+    const id = setInterval(checkLatest, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [view, piBase, piOnline]);
+
+  // "Tvångs-uppdatera": stoppa engine → kör force-update → backend startar om service
+  const runForceUpdate = async () => {
+    if (updatePhase !== 'idle') return;
+    setUpdatePhase('stopping');
+    setUpdateStatus('running');
+    try {
+      // Step 1: Be engine stoppa snyggt (releaseDemand släpper BLE-lås)
+      try { await fetch(`${piBase}/api/ble/engine/stop`, { method: 'POST', signal: AbortSignal.timeout(3000) }); } catch {}
+      setUpdatePhase('downloading');
+      // Step 2: Kör update (PCC startar om service efter)
+      await fetch(`${piBase}/api/update/force`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+      setUpdatePhase('starting');
+      // Step 3: Polla tills update done OCH service tillbaka online
+      const poll = setInterval(async () => {
+        try {
+          const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
+          const sd = await s.json();
+          if (!sd.running) {
+            // Verifiera att engine svarar igen
+            try {
+              const v = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) });
+              if (v.ok) {
+                clearInterval(poll);
+                setUpdatePhase('idle');
+                setUpdateStatus('done');
+                setTimeout(() => setUpdateStatus(null), 4000);
+              }
+            } catch { /* engine ännu inte uppe — fortsätt polla */ }
+          }
+        } catch { /* service kanske startar om — fortsätt polla */ }
+      }, 2500);
+      // Säkerhetsstopp efter 3 min
+      setTimeout(() => { clearInterval(poll); if (updatePhase !== 'idle') { setUpdatePhase('idle'); setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 4000); } }, 180000);
+    } catch {
+      setUpdatePhase('idle');
+      setUpdateStatus('error');
+      setTimeout(() => setUpdateStatus(null), 4000);
+    }
+  };
+
+
   if (view === "profile") {
     return (
       <ProfileSettingsView
