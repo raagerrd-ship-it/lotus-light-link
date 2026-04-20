@@ -642,76 +642,11 @@ export class PiLightEngine {
     }
   }
 
-  // ── Inline micro-profiler ──
-  // When active, records per-stage timing for N ticks into static arrays (zero-alloc during profiling).
-  private _profiling = false;
-  private _profileSize = 0;
-  private _profilePos = 0;
-  private _profileStages = [
-    'agc', 'normalize', 'mix', 'smooth', 'dynamics', 'onset', 'curve', 'palette', 'colorCal', 'bleWrite', 'diag', 'total'
-  ] as const;
-  // Pre-allocated Float64Arrays for each stage (reused across profiling sessions)
-  private _profileData: Record<string, Float64Array> = {};
-  private _profileResolve: ((result: ProfileResult) => void) | null = null;
-
-  /** Start profiling for N ticks. Returns promise with results. */
-  startProfiling(ticks = 1000): Promise<ProfileResult> {
-    if (this._profiling) return Promise.reject(new Error('Already profiling'));
-    this._profileSize = ticks;
-    this._profilePos = 0;
-    // Allocate/reuse buffers
-    for (const stage of this._profileStages) {
-      if (!this._profileData[stage] || this._profileData[stage].length < ticks) {
-        this._profileData[stage] = new Float64Array(ticks);
-      } else {
-        this._profileData[stage].fill(0);
-      }
-    }
-    this._profiling = true;
-    return new Promise(resolve => { this._profileResolve = resolve; });
-  }
-
-  isProfiling(): boolean { return this._profiling; }
-
-  private finishProfiling(): void {
-    this._profiling = false;
-    const n = this._profilePos;
-    const result: ProfileResult = { ticks: n, stages: {} };
-    for (const stage of this._profileStages) {
-      const arr = this._profileData[stage];
-      let sum = 0, max = 0, min = Infinity;
-      for (let i = 0; i < n; i++) {
-        const v = arr[i];
-        sum += v;
-        if (v > max) max = v;
-        if (v < min) min = v;
-      }
-      const avg = n > 0 ? sum / n : 0;
-      // P99: sort a copy
-      const sorted = arr.slice(0, n).sort();
-      const p99 = n > 0 ? sorted[Math.min(n - 1, (n * 0.99) | 0)] : 0;
-      const p50 = n > 0 ? sorted[(n * 0.5) | 0] : 0;
-      result.stages[stage] = {
-        avgUs: Math.round(avg * 1000 * 100) / 100,
-        p50Us: Math.round(p50 * 1000 * 100) / 100,
-        p99Us: Math.round(p99 * 1000 * 100) / 100,
-        maxUs: Math.round(max * 1000 * 100) / 100,
-        minUs: Math.round(min * 1000 * 100) / 100,
-      };
-    }
-    if (this._profileResolve) {
-      this._profileResolve(result);
-      this._profileResolve = null;
-    }
-  }
-
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
     // Skip processing when not playing — idle heartbeat handles BLE output
     if (!this.playing) return;
     const _tickStart = performance.now();
-    const profiling = this._profiling;
-    let _t0 = _tickStart; // stage timer
     try {
       const cal = this.cal;
       const tc = this.tc;
