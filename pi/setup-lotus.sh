@@ -397,6 +397,36 @@ sudo mkdir -p "$PI_DIR/data"
 sudo chown -R "$TARGET_USER:$TARGET_GROUP" "$APP_DIR"
 echo "  Ägarskap satt: $APP_DIR → $TARGET_USER:$TARGET_GROUP ✓"
 
+# 3b. Lägg TARGET_USER i netdev + bluetooth som PERMANENTA system-grupper.
+#     Krävs eftersom systemd's AmbientCapabilities clearar SupplementaryGroups
+#     vid setuid/setgid-switchen → SupplementaryGroups= i unit-filen ignoreras.
+#     Att vara medlem i grupperna i /etc/group överlever capability-clear.
+for grp in netdev bluetooth; do
+  if getent group "$grp" >/dev/null 2>&1; then
+    if id -nG "$TARGET_USER" | tr ' ' '\n' | grep -qx "$grp"; then
+      echo "  $TARGET_USER redan i $grp ✓"
+    else
+      sudo usermod -aG "$grp" "$TARGET_USER"
+      echo "  $TARGET_USER → +$grp ✓"
+    fi
+  fi
+done
+
+# 3c. Skriv udev-regel som ger netdev-gruppen rw på /dev/rfkill (default är root:root 0660).
+#     Utan denna kan node-processen inte läsa eller unblocka rfkill även med
+#     CAP_NET_ADMIN, eftersom rfkill-noden kollar gruppägarskap före caps.
+RFKILL_RULE=/etc/udev/rules.d/90-lotus-rfkill.rules
+sudo tee "$RFKILL_RULE" >/dev/null <<'EOF'
+# Lotus Light Link: tillåt netdev-gruppen att läsa/skriva /dev/rfkill
+KERNEL=="rfkill", GROUP="netdev", MODE="0660"
+EOF
+sudo udevadm control --reload-rules 2>/dev/null || true
+sudo udevadm trigger --name-match=rfkill 2>/dev/null || true
+# Fallback om enheten redan finns och udev inte triggar om den
+sudo chgrp netdev /dev/rfkill 2>/dev/null || true
+sudo chmod 0660 /dev/rfkill 2>/dev/null || true
+echo "  /dev/rfkill → netdev:rw via udev ✓"
+
 sudo tee "$SYS_SVC_PATH" >/dev/null <<EOF
 [Unit]
 Description=Lotus Light Link engine
@@ -422,6 +452,9 @@ MemoryMax=200M
 NoNewPrivileges=false
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+# Tillåt åtkomst till BLE/rfkill-enheter (annars blockerar systemd dem)
+DeviceAllow=/dev/rfkill rw
+DeviceAllow=char-rfkill rw
 # Realtime-prio för ALSA capture-tråden (SCHED_FIFO 80) → minimal jitter
 LimitRTPRIO=99
 LimitNICE=-20
