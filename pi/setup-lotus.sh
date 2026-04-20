@@ -355,6 +355,9 @@ SYS_SVC_PATH="/etc/systemd/system/lotus-light-engine.service"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 USER_SVC_PATH="$TARGET_HOME/.config/systemd/user/lotus-light-engine.service"
 TARGET_UID="$(id -u "$TARGET_USER")"
+run_user_systemctl() {
+  sudo -u "$TARGET_USER" env XDG_RUNTIME_DIR="/run/user/$TARGET_UID" systemctl --user "$@"
+}
 
 echo ""
 echo "[BLE-fix] Installerar system-service (ersätter user-service)..."
@@ -362,24 +365,25 @@ echo "[BLE-fix] Installerar system-service (ersätter user-service)..."
 # 1. Rensa GAMMAL user-service från tidigare versioner (idempotent, alltid)
 #    Vi kör som target-user via systemctl --user med rätt XDG_RUNTIME_DIR,
 #    annars hittar systemctl inte user-bus från sudo-kontext.
-USER_SYSTEMCTL="sudo -u $TARGET_USER XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user"
-$USER_SYSTEMCTL stop lotus-light-engine 2>/dev/null || true
-$USER_SYSTEMCTL disable lotus-light-engine 2>/dev/null || true
+run_user_systemctl stop lotus-light-engine 2>/dev/null || true
+run_user_systemctl disable lotus-light-engine 2>/dev/null || true
 if [ -f "$USER_SVC_PATH" ]; then
   rm -f "$USER_SVC_PATH"
-  $USER_SYSTEMCTL daemon-reload 2>/dev/null || true
+  run_user_systemctl daemon-reload 2>/dev/null || true
   echo "  Gammal user-service raderad ($USER_SVC_PATH) ✓"
 fi
 
-# 2. Döda kvarlevande ENGINE-processer — men matcha bara själva engine-entryn.
-#    Tidigare användes `pkill -f 'lotus-light'`, vilket även matchade detta
-#    setup-script eftersom sökvägen innehåller /opt/lotus-light/... Resultat:
-#    scriptet terminerade sig självt precis vid "Installerar system-service".
-ENGINE_PROC_PATTERN="$PI_DIR/dist/index.js"
-if pgrep -f "$ENGINE_PROC_PATTERN" >/dev/null 2>&1; then
-  sudo pkill -TERM -f "$ENGINE_PROC_PATTERN" 2>/dev/null || true
+# 2. Döda kvarlevande ENGINE-processer via explicita PID:ar.
+#    Matcha bara node-processer som kör exakt vår engine-entry.
+ENGINE_PIDS="$(pgrep -f "node .*${PI_DIR}/dist/index.js" 2>/dev/null || true)"
+if [ -n "$ENGINE_PIDS" ]; then
+  echo "  Dödar kvarlevande engine-PID:ar: $(echo "$ENGINE_PIDS" | tr '\n' ' ')"
+  echo "$ENGINE_PIDS" | xargs -r sudo kill -TERM 2>/dev/null || true
   sleep 1
-  sudo pkill -KILL -f "$ENGINE_PROC_PATTERN" 2>/dev/null || true
+  REMAINING_ENGINE_PIDS="$(pgrep -f "node .*${PI_DIR}/dist/index.js" 2>/dev/null || true)"
+  if [ -n "$REMAINING_ENGINE_PIDS" ]; then
+    echo "$REMAINING_ENGINE_PIDS" | xargs -r sudo kill -KILL 2>/dev/null || true
+  fi
   echo "  Kvarlevande engine-processer dödade ✓"
 fi
 
