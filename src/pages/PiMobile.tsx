@@ -1144,51 +1144,7 @@ export default function PiMobile() {
     }
   };
 
-  const handleSave = async () => {
-    setSaveError(null);
-    try {
-      const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-      const results = await Promise.allSettled([
-        putJson('/api/calibration', {
-          bassWeight: cal.bassWeight,
-          releaseAlpha,
-          smoothing,
-          dynamicDamping: cal.dynamicDamping,
-          brightnessFloor: cal.brightnessFloor,
-          punchWhiteThreshold: cal.punchWhiteThreshold,
-          
-          perceptualGamma: cal.perceptualGamma,
-          transientGain: cal.transientGain,
-          dynamicsEnabled: cal.dynamicsEnabled,
-          hiShelfGainDb: 6,
-        }),
-        putJson('/api/tick-ms', { tickMs }),
-        putJson('/api/mic-device', { device: alsaDevice }),
-        putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
-        putJson('/api/idle-color', { color: idleColor }),
-        ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
-        putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
-        putJson('/api/mic-gain', { gain: micGain }),
-      ]);
-      const failed = results.filter(r => r.status === 'rejected');
-      if (failed.length > 0) {
-        const reasons = failed.map(r => (r as PromiseRejectedResult).reason?.message ?? 'okänt').join(', ');
-        console.error('[PiMobile] Partial save failure:', reasons);
-        setSaveError(`${failed.length}/${results.length} misslyckades: ${reasons}`);
-        clearTimeout(savedTimer.current);
-        savedTimer.current = setTimeout(() => setSaveError(null), 6000);
-        return;
-      }
-      setSaved(true);
-      clearTimeout(savedTimer.current);
-      savedTimer.current = setTimeout(() => setSaved(false), 1500);
-    } catch (e: any) {
-      console.error('[PiMobile] Save failed', e);
-      setSaveError(e.message ?? 'Kunde inte nå motorn');
-      clearTimeout(savedTimer.current);
-      savedTimer.current = setTimeout(() => setSaveError(null), 6000);
-    }
-  };
+  // (handleSave defined above)
 
   // Load current settings from Pi on mount
   useEffect(() => {
@@ -1276,23 +1232,8 @@ export default function PiMobile() {
         setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
         if (typeof data.uptime === 'number') setEngineUptime(data.uptime);
         if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
-        const track = data.sonos?.trackName ?? null;
-        setLiveTrack(track);
-        setLiveBleCount(data.ble?.connected ?? null);
-        setBleConnectedId(data.ble?.connectedDeviceId ?? null);
-        setBleConnectedName(data.ble?.devices?.[0] ?? null);
-        setBleSavedId(data.ble?.savedDeviceId ?? null);
-        setBleSavedName(data.ble?.savedDeviceName ?? null);
-        setBleSavedAddress(data.ble?.savedDeviceAddress ?? null);
-        setBleDemand(data.ble?.demand ?? false);
-        setBleAdapterState(data.ble?.adapterState ?? null);
-        setBootPhase(data.bootPhase ?? null);
         setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
-        // Always update palette when available (may arrive after track change)
-        const palette = data.engine?.palette ?? [];
-        if (palette.length > 0) {
-          setLivePalette(palette);
-        }
+
       } catch {
         if (!cancelled) setPiOnline(false);
       }
