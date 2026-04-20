@@ -387,6 +387,7 @@ export function setTickHopMs(_tickMs: number): void {
 // Cal-punkterna är absoluta gain-värden, inte multiplikatorer ovanpå base.
 let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
 let micGainAuto = 15.0;  // Absolute gain interpolated from Sonos volume
+let autoGainEnabled = false;
 let micGain = 15.0;      // Effective — used in hot path
 
 function updateEffectiveGain(): void {
