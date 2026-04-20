@@ -67,7 +67,7 @@ interface TickConstants {
   quietFastTicks: number;
   centerAlpha: number;
   
-  paletteTimedSpeed: number;
+  
   gammaIsUnity: boolean;
   dimmingGamma: number;
 }
@@ -87,7 +87,7 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     agcDecayFast: Math.pow(AGC_FAST_DECAY_PER_SEC, secRatio),
     quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
-    paletteTimedSpeed: Math.max(1, ((cal.paletteRotationSpeed ?? 8) * (125 / tickMs) + 0.5) | 0),
+    
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
     dimmingGamma: getDimmingGamma(),
   };
@@ -119,7 +119,6 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
 }
 
 // --- Calibration ---
-export type PaletteMode = 'off' | 'timed' | 'bass' | 'energy' | 'blend';
 
 interface LightCalibration {
   gammaR: number; gammaG: number; gammaB: number;
@@ -133,8 +132,6 @@ interface LightCalibration {
   perceptualCurve: boolean;
   agcEnabled: boolean;
   dynamicsEnabled: boolean;
-  paletteMode: PaletteMode;
-  paletteRotationSpeed: number;
   [key: string]: any;
 }
 
@@ -149,7 +146,7 @@ const DEFAULT_CAL: LightCalibration = {
   perceptualCurve: false,
   agcEnabled: true,
   dynamicsEnabled: true,
-  paletteMode: 'off', paletteRotationSpeed: 8,
+  
 };
 
 function loadCalibration(): LightCalibration {
@@ -246,7 +243,6 @@ const _tickData: TickData = {
   midHiLevel: 0,
   isPlaying: false,
   tickMs: 0,
-  paletteIndex: 0,
 };
 
 // ── Engine ──
@@ -258,7 +254,6 @@ export interface TickData {
   midHiLevel: number;
   isPlaying: boolean;
   tickMs: number;
-  paletteIndex: number;
 }
 
 export type TickCallback = (data: TickData) => void;
@@ -295,11 +290,8 @@ export class PiLightEngine {
   private saveTimer: NodeJS.Timeout | null = null;
   private callbacks: TickCallback[] = [];
 
-  // Palette state
+  // Palette state — endast lagring för API/UI; färgen sätts via setColor vid låtbyte
   private _palette: [number, number, number][] = [];
-  private _paletteIndex = 0;
-  private _paletteTickCounter = 0;
-  private _bassWasHigh = false;
 
   // Raw mode — disables all processors for gain calibration
   private _rawMode = false;
@@ -340,8 +332,6 @@ export class PiLightEngine {
 
   setPalette(palette: [number, number, number][]) {
     this._palette = palette;
-    this._paletteIndex = 0;
-    this._paletteTickCounter = 0;
     if (palette.length > 0) this.color = palette[0];
   }
 
@@ -663,45 +653,6 @@ export class PiLightEngine {
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
 
-      // ── Palette mode ──
-      const pm = cal.paletteMode ?? 'off';
-      if (pm !== 'off' && this._palette.length > 1) {
-        const pLen = this._palette.length;
-
-        if (pm === 'timed') {
-          this._paletteTickCounter++;
-          if (this._paletteTickCounter >= tc.paletteTimedSpeed) {
-            this._paletteTickCounter = 0;
-            this._paletteIndex = (this._paletteIndex + 1) % pLen;
-          }
-          this.color = this._palette[this._paletteIndex];
-
-        } else if (pm === 'bass') {
-          const isHigh = bassNorm > 0.45;
-          if (isHigh && !this._bassWasHigh) {
-            this._paletteIndex = (this._paletteIndex + 1) % pLen;
-          }
-          this._bassWasHigh = isHigh;
-          this.color = this._palette[this._paletteIndex];
-
-        } else if (pm === 'energy') {
-          const idx = Math.min(pLen - 1, (rawEnergy * pLen) | 0);
-          this.color = this._palette[idx];
-
-        } else if (pm === 'blend') {
-          const ce = rawEnergy < 0 ? 0 : rawEnergy > 1 ? 1 : rawEnergy;
-          const pos = ce * (pLen - 1);
-          const lo = pos | 0;
-          const hi = lo + 1 < pLen ? lo + 1 : pLen - 1;
-          const t = pos - lo;
-          const cLo = this._palette[lo], cHi = this._palette[hi];
-          _blendColor[0] = (cLo[0] + (cHi[0] - cLo[0]) * t + 0.5) | 0;
-          _blendColor[1] = (cLo[1] + (cHi[1] - cLo[1]) * t + 0.5) | 0;
-          _blendColor[2] = (cLo[2] + (cHi[2] - cLo[2]) * t + 0.5) | 0;
-          this.color = _blendColor;
-        }
-      }
-
       // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
@@ -755,7 +706,7 @@ export class PiLightEngine {
       td.midHiLevel = bands.midHiRms;
       td.isPlaying = this.playing;
       td.tickMs = this.tickMs;
-      td.paletteIndex = this._paletteIndex;
+      
       const cbs = this.callbacks;
       for (let i = 0, len = cbs.length; i < len; i++) cbs[i](td);
 
