@@ -108,11 +108,17 @@ export interface BandResult {
 
 const SAMPLE_RATE = 48000;
 const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = tickMs * 48 → exakt 1 FFT per tick (1:1 mic→FFT→tick).
-// Med synkron hard-fail-pipeline behövs ingen "extra" FFT-frame som
-// säkerhetsmarginal — varje audio-batch driver exakt en tick.
-// Default 40ms tick → hop≈1920 frames (~40ms). Sätts via setTickHopMs().
-let HOP_SIZE = 1920;
+// HOP_SIZE = 512 frames (~10.7ms @ 48kHz) — FAST, frikopplad från tickMs.
+// FFT körs ~93Hz för bättre transient-detektering och peak-tracking.
+// Engine.tickInner triggas dock bara på tickMs-takt (gate i piEngine.onFFTFrame
+// kollar `elapsed >= tickMs`) → BLE-trafik oförändrad, men engine ser senaste
+// FFT-frame när den väl kör → snabbare attack-respons.
+//
+// CPU-konsekvens: ~93 FFT/s × ~1ms = ~9% CPU på Pi Zero 2W (mätt: tål det,
+// vendor-bufferten är 8× period = 43ms vilket täcker värsta GC-pausen).
+// Tidigare HOP=tickMs (40ms) → ~25Hz FFT → ~2.5% CPU. Vi byter ~6.5% extra
+// CPU mot ~30ms bättre transient-respons.
+const HOP_SIZE = 512;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 const FFT_MASK = FFT_SIZE - 1;
