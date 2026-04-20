@@ -183,20 +183,16 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const device = getDevice();
   if (!device) return 'no-device';
 
-  // Steg 1: BLE-slot ledig?
+  // Steg 1: BLE-slot ledig? (Single-slot hard-fail = vårt enda backpressure-skydd.
+  // Ingen separat rate-limit — engine.tickMs styr maxtakten in, slot-checken
+  // fångar om noble fortfarande håller på med förra writen.)
   if (writeSlot) {
     bleStats.skipInFlightCount++;
     bleStats.skipBusyCount++;
     return 'busy';
   }
 
-  // Steg 2: Rate-limit-gate (35ms)
   const now = performance.now();
-  if (lastWriteTime > 0 && (now - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
-    bleStats.skipRateLimitCount++;
-    bleStats.skipBusyCount++;
-    return 'rate-limited';
-  }
 
   // Steg 3: Brightness-skala + delta-check
   const scale = brightnessToScale(brightness);
