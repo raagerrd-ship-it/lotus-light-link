@@ -390,6 +390,13 @@ fi
 # 3. Skriv ny system-service (idempotent — overwrite varje release)
 TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
 echo "  Service kommer köra som: User=$TARGET_USER, Group=$TARGET_GROUP, SupplementaryGroups=netdev bluetooth"
+
+# 3a. Säkerställ att $PI_DIR + data/ ägs av TARGET_USER så storage-shimmen
+#     kan göra mkdir/writeFile (annars kraschar engine direkt med EACCES).
+sudo mkdir -p "$PI_DIR/data"
+sudo chown -R "$TARGET_USER:$TARGET_GROUP" "$APP_DIR"
+echo "  Ägarskap satt: $APP_DIR → $TARGET_USER:$TARGET_GROUP ✓"
+
 sudo tee "$SYS_SVC_PATH" >/dev/null <<EOF
 [Unit]
 Description=Lotus Light Link engine
