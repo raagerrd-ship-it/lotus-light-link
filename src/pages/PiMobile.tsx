@@ -19,6 +19,15 @@ const PRESET_CALS: Record<string, Cal> = {
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
 
+/** Format uptime-sekunder till "2h 15m" / "45m" / "12s" */
+function formatUptime(s: number): string {
+  if (s < 60) return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 /** Convert Softness 0-100 → releaseAlpha only (no extra smoothing filter) */
 function softnessToParams(s: number) {
   const t = s / 100;
@@ -1483,6 +1492,7 @@ export default function PiMobile() {
   const [manualBleSaving, setManualBleSaving] = useState(false);
   const [manualBleError, setManualBleError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
+  const [engineUptime, setEngineUptime] = useState<number | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [updatePhase, setUpdatePhase] = useState<'idle' | 'stopping' | 'downloading' | 'starting'>('idle');
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
@@ -1771,6 +1781,7 @@ export default function PiMobile() {
         if (cancelled) return;
         setPiOnline(true);
         setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
+        if (typeof data.uptime === 'number') setEngineUptime(data.uptime);
         if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
         const track = data.sonos?.trackName ?? null;
         setLiveTrack(track);
@@ -2009,6 +2020,9 @@ export default function PiMobile() {
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
             <span>Motor {engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz` : 'Stoppad') : '…'}</span>
+            {engineUptime != null && (
+              <span className="opacity-60 font-mono">· {formatUptime(engineUptime)}</span>
+            )}
           </div>
           {piVersion && (
             <div className="flex flex-col items-end font-mono leading-tight text-right">
