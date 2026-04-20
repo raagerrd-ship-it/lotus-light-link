@@ -335,7 +335,7 @@ export function getNoiseGateState(): typeof _ngState {
 }
 
 let capture: any = null;
-let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
+let currentDevice = process.env.ALSA_DEVICE ?? 'hw:0,0';
 // INMP441 (Google voiceHAT-soundcard overlay) levererar bara S32_LE.
 // Default till S32_LE; kan överridas via ALSA_FORMAT env för andra mikar.
 let currentFormat: 'S16_LE' | 'S32_LE' = (process.env.ALSA_FORMAT as any) ?? 'S32_LE';
