@@ -819,7 +819,7 @@ function GainCalibrationPanel({
         </div>
       )}
 
-      {/* AUTO MODE: visa live Sonos vol → multiplier (slidern dold) */}
+      {/* AUTO MODE: visa live Sonos vol → multiplier → effektiv gain */}
       {enabled && (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
           <div className="flex items-center justify-between">
@@ -827,24 +827,52 @@ function GainCalibrationPanel({
             <span className="text-sm font-mono font-bold">{liveSonosVol ?? '—'}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">→ Mic gain</span>
-            <span className="text-sm font-mono font-bold text-primary">{multiplier.toFixed(1)}×</span>
+            <span className="text-xs text-muted-foreground">Auto-multiplikator</span>
+            <span className="text-sm font-mono font-bold">{multiplier.toFixed(2)}×</span>
           </div>
-          <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-            Justeras automatiskt enligt kalibreringen nedan.
-          </p>
+          <div className="flex items-center justify-between pt-2 border-t border-border/40">
+            <span className="text-xs text-muted-foreground">Aktuell mic-gain</span>
+            <span className="text-base font-mono font-bold text-primary">
+              {effectiveGain != null ? `${effectiveGain.toFixed(1)}×` : '—'}
+            </span>
+          </div>
         </div>
       )}
 
-      {/* Calibration status (alltid synlig) */}
+      {/* MANUAL MODE: bekräfta vad motorn faktiskt kör */}
+      {!enabled && effectiveGain != null && (
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-secondary/30 rounded-lg px-3 py-1.5">
+          <span>Aktiv i motor:</span>
+          <span className="font-mono font-bold text-foreground">{effectiveGain.toFixed(1)}×</span>
+        </div>
+      )}
+
+      {/* Kalibrering — alltid synlig + finjusterbar med +/- (live till motor) */}
       {hasCalibration ? (
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground bg-secondary/40 rounded-lg px-3 py-2">
-          <div>
-            <span className="font-mono">P1: vol {calPoints.point1.vol} → {calPoints.point1.gain.toFixed(1)}×</span>
-            <span className="mx-2">|</span>
-            <span className="font-mono">P2: vol {calPoints.point2.vol} → {calPoints.point2.gain.toFixed(1)}×</span>
+        <div className="rounded-lg bg-secondary/40 px-3 py-2 space-y-2">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+            <span>Kalibrering (finjustera live)</span>
+            <button onClick={clearCalibration} className="text-destructive underline normal-case tracking-normal">Rensa</button>
           </div>
-          <button onClick={clearCalibration} className="text-destructive underline ml-2">Rensa</button>
+          {([1, 2] as const).map((n) => {
+            const pt = n === 1 ? calPoints.point1 : calPoints.point2;
+            return (
+              <div key={n} className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-mono text-muted-foreground w-20">P{n}: vol {pt.vol}</span>
+                <div className="flex items-center gap-1.5 flex-1 justify-end">
+                  <button
+                    onClick={() => adjustCalPointGain(n, -0.5)}
+                    className="w-7 h-7 rounded-md bg-secondary border border-border text-sm font-bold active:scale-95 transition-transform"
+                  >−</button>
+                  <span className="text-sm font-mono font-bold w-14 text-center">{pt.gain.toFixed(1)}×</span>
+                  <button
+                    onClick={() => adjustCalPointGain(n, 0.5)}
+                    className="w-7 h-7 rounded-md bg-secondary border border-border text-sm font-bold active:scale-95 transition-transform"
+                  >+</button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="text-[10px] text-muted-foreground">
