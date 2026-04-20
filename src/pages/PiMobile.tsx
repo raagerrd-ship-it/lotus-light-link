@@ -847,7 +847,6 @@ function GlobalSettingsView({
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
           <Mic size={14} /> Mikrofon
-          <MicBackendBadge piBase={piBase} />
         </h2>
         <input
           type="text" value={alsaDevice} onChange={(e) => setAlsaDevice(e.target.value)}
