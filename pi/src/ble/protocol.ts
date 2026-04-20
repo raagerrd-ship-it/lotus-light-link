@@ -107,11 +107,14 @@ export function startKeepAlive(): void {
     const elapsed = performance.now() - lastWriteTime;
     if (elapsed < KEEPALIVE_MS * 0.8) return;
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
+    // Sätt lastWriteTime FÖRE writeAsync (samma semantik som sendToBLE: write-START).
+    // Annars räknar rate-limit-gaten från resolve-tid → första riktiga write efter
+    // keep-alive kan blockas felaktigt.
+    lastWriteTime = performance.now();
     try {
       // Anchor write i connect-hardcoded/connect.ts bevisar att denna stack
       // faktiskt returnerar på `true`, medan `false` fastnar i timeout-loop.
       await device.characteristic.writeAsync(buf, true);
-      lastWriteTime = performance.now();
       keepAliveSentCount++;
       if (keepAliveFailCount > 0) {
         console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
