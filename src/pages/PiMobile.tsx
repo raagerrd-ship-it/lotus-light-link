@@ -19,6 +19,15 @@ const PRESET_CALS: Record<string, Cal> = {
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
 
+/** Format uptime-sekunder till "2h 15m" / "45m" / "12s" */
+function formatUptime(s: number): string {
+  if (s < 60) return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 /** Convert Softness 0-100 → releaseAlpha only (no extra smoothing filter) */
 function softnessToParams(s: number) {
   const t = s / 100;
