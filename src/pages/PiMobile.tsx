@@ -520,7 +520,14 @@ function ProfileSettingsView({
 }
 
 
-/* ── Mode-aware gain control: Manual XOR Auto (Sonos vol) ── */
+/* ── Mode-aware gain control: Manual XOR Auto (Sonos vol)
+ *  Auto-läget använder två fasta referenspunkter (vol 15 & vol 50) som
+ *  användaren själv kan dra i — motorn interpolerar mellan dem live. */
+const AUTO_VOL_LOW = 15;
+const AUTO_VOL_HIGH = 50;
+const DEFAULT_GAIN_LOW = 15;   // hög gain vid låg volym
+const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
+
 function GainCalibrationPanel({
   piBase, micGain, setMicGain,
 }: {
@@ -530,18 +537,26 @@ function GainCalibrationPanel({
 }) {
   const [enabled, setEnabled] = useState(false);
   const [multiplier, setMultiplier] = useState(1);
-  const [calPoints, setCalPoints] = useState<{ point1: any; point2: any }>({ point1: null, point2: null });
-  const [calStep, setCalStep] = useState<0 | 1 | 2 | 3>(0); // 0=idle, 1=step1, 2=step2, 3=done
-  const [sonosVol, setSonosVol] = useState<number | null>(null);
-  const [tempGain, setTempGain] = useState(15);
-  const [outputPct, setOutputPct] = useState(0);
+  const [gainLow, setGainLow] = useState(DEFAULT_GAIN_LOW);
+  const [gainHigh, setGainHigh] = useState(DEFAULT_GAIN_HIGH);
   const [liveSonosVol, setLiveSonosVol] = useState<number | null>(null);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
 
-  // Poll auto-gain status (multiplier + effective) i båda lägena så användaren
-  // alltid ser aktuell motor-gain. Sonos-vol används bara i Auto-rutan.
+  // Initial load: hämta sparat läge + cal-punkter
   useEffect(() => {
-    if (calStep !== 0) return;
+    Promise.all([
+      fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
+      fetch(`${piBase}/api/gain-calibration`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
+    ]).then(([ag, cal]) => {
+      setEnabled(!!ag.enabled);
+      if (ag.multiplier != null) setMultiplier(ag.multiplier);
+      if (cal?.point1?.gain != null) setGainLow(cal.point1.gain);
+      if (cal?.point2?.gain != null) setGainHigh(cal.point2.gain);
+    }).catch(() => {});
+  }, [piBase]);
+
+  // Live-poll: aktuell gain + Sonos-volym (alltid, så Manual också ser motorvärdet)
+  useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       try {
@@ -561,229 +576,50 @@ function GainCalibrationPanel({
     poll();
     const id = setInterval(poll, 1500);
     return () => { cancelled = true; clearInterval(id); };
-  }, [piBase, calStep]);
-
-  // Load initial state
-  useEffect(() => {
-    Promise.all([
-      fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
-      fetch(`${piBase}/api/gain-calibration`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
-    ]).then(([ag, cal]) => {
-      setEnabled(ag.enabled);
-      setMultiplier(ag.multiplier);
-      setCalPoints(cal);
-    }).catch(() => {});
   }, [piBase]);
 
-  // Enable/disable raw mode when entering/leaving calibration
-  useEffect(() => {
-    if (calStep > 0 && calStep < 3) {
-      fetch(`${piBase}/api/raw-mode`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: true }),
-      }).catch(() => {});
-    }
-    return () => {
-      // Disable raw mode on unmount or step change to 0/3
-      if (calStep > 0 && calStep < 3) {
-        fetch(`${piBase}/api/raw-mode`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: false }),
-        }).catch(() => {});
-      }
-    };
-  }, [piBase, calStep]);
-
-  // Poll Sonos volume + output level during calibration
-  useEffect(() => {
-    if (calStep === 0) return;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const [statusRes, diagRes] = await Promise.all([
-          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }),
-          fetch(`${piBase}/api/diagnostics`, { signal: AbortSignal.timeout(2000) }),
-        ]);
-        const status = await statusRes.json();
-        const diag = await diagRes.json();
-        if (!cancelled) {
-          if (status.sonos?.volume != null) setSonosVol(status.sonos.volume);
-          if (diag.pipeline?.brightnessPct != null) setOutputPct(diag.pipeline.brightnessPct);
-        }
-      } catch {}
-    };
-    poll();
-    const id = setInterval(poll, 200);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [piBase, calStep]);
-
-  const toggle = () => {
-    const next = !enabled;
-    setEnabled(next);
-    fetch(`${piBase}/api/auto-gain`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: next }),
-    }).then(r => r.json()).then(d => setMultiplier(d.multiplier)).catch(() => {});
-  };
-
-  const startCalibration = () => {
-    setCalStep(1);
-    fetch(`${piBase}/api/mic-gain`, { signal: AbortSignal.timeout(2000) })
-      .then(r => r.json())
-      .then(d => setTempGain(d.gain ?? 15))
-      .catch(() => {});
-  };
-
-  const exitCalibration = () => {
-    // Disable raw mode before leaving
-    fetch(`${piBase}/api/raw-mode`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: false }),
-    }).catch(() => {});
-    setCalStep(0);
-  };
-
-  const savePoint = (pointNum: 1 | 2) => {
-    if (sonosVol == null) return;
-    const point = { vol: sonosVol, gain: tempGain };
-    const updated = pointNum === 1
-      ? { point1: point, point2: calPoints.point2 }
-      : { point1: calPoints.point1, point2: point };
-    setCalPoints(updated);
-
-    if (pointNum === 1) {
-      setCalStep(2);
-    } else {
-      fetch(`${piBase}/api/gain-calibration`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
-      }).then(() => {
-        // Disable raw mode
-        fetch(`${piBase}/api/raw-mode`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: false }),
-        }).catch(() => {});
-        setCalStep(3);
-        setTimeout(() => setCalStep(0), 2000);
-      }).catch(() => {});
-    }
-  };
-
-  const applyTempGain = (gain: number) => {
-    setTempGain(gain);
-    fetch(`${piBase}/api/mic-gain`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gain }),
-    }).catch(() => {});
-  };
-
-  const clearCalibration = () => {
-    fetch(`${piBase}/api/gain-calibration`, { method: 'DELETE' }).catch(() => {});
-    setCalPoints({ point1: null, point2: null });
-  };
-
-  /** Live-finjustera P1/P2 gain (delta i ×). PUT:ar nya kalibreringen direkt
-   *  → motorn räknar om interpoleringen vid nästa Sonos-vol-update (inom 2s). */
-  const adjustCalPointGain = (pointNum: 1 | 2, delta: number) => {
-    const pt = pointNum === 1 ? calPoints.point1 : calPoints.point2;
-    if (!pt) return;
-    const newGain = Math.max(0.5, Math.min(50, +(pt.gain + delta).toFixed(1)));
-    const updated = pointNum === 1
-      ? { point1: { ...pt, gain: newGain }, point2: calPoints.point2 }
-      : { point1: calPoints.point1, point2: { ...pt, gain: newGain } };
-    setCalPoints(updated);
+  /** PUT båda kalibreringspunkterna live till motorn när en slider ändras. */
+  const pushCalibration = (lowGain: number, highGain: number) => {
     fetch(`${piBase}/api/gain-calibration`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
+      body: JSON.stringify({
+        point1: { vol: AUTO_VOL_LOW, gain: lowGain },
+        point2: { vol: AUTO_VOL_HIGH, gain: highGain },
+      }),
     }).catch(() => {});
   };
 
-  const hasCalibration = calPoints.point1 && calPoints.point2;
+  const setMode = (auto: boolean) => {
+    if (auto === enabled) return;
+    setEnabled(auto);
+    // Säkerställ kalibreringspunkter finns innan Auto aktiveras
+    // (motorn returnerar 1.0× utan punkter).
+    if (auto) pushCalibration(gainLow, gainHigh);
+    fetch(`${piBase}/api/auto-gain`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: auto }),
+    }).then(r => r.json()).then(d => {
+      if (d.multiplier != null) setMultiplier(d.multiplier);
+    }).catch(() => {});
+  };
 
-  // Calibration wizard UI
-  if (calStep > 0 && calStep < 3) {
-    const stepNum = calStep;
-    const stepLabel = stepNum === 1 ? 'Låg volym' : 'Hög volym';
-    const stepDesc = stepNum === 1
-      ? 'Spela en låt med höga partier på låg volym (t.ex. 10–20). Justera gain tills output når nära 100% på de starkaste partierna.'
-      : 'Samma låt/parti på hög volym (t.ex. 35–50). Justera gain tills output når nära 100% igen.';
-
-    // Color the bar based on level
-    const barColor = outputPct > 90 ? 'bg-red-500' : outputPct > 60 ? 'bg-yellow-500' : outputPct > 20 ? 'bg-green-500' : 'bg-muted-foreground';
-
-    return (
-      <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-primary">Kalibrering — Steg {stepNum}/2: {stepLabel}</span>
-          <button onClick={exitCalibration} className="text-[10px] text-muted-foreground underline">Avbryt</button>
-        </div>
-        <p className="text-[10px] text-muted-foreground">{stepDesc}</p>
-
-        {/* Output bar */}
-        <div>
-          <div className="flex justify-between text-[10px] mb-1">
-            <span className="text-muted-foreground">Output (rå mic)</span>
-            <span className="font-mono font-bold">{outputPct}%</span>
-          </div>
-          <div className="w-full h-3 rounded-full bg-secondary overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-150 ${barColor}`}
-              style={{ width: `${Math.min(100, outputPct)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2">
-          <span className="text-xs text-muted-foreground w-16">Sonos vol:</span>
-          <span className="text-sm font-mono font-bold">{sonosVol ?? '—'}</span>
-        </div>
-
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span>Mic Gain</span>
-            <span className="text-muted-foreground font-mono">{tempGain.toFixed(1)}×</span>
-          </div>
-          <input
-            type="range" min={1} max={50} step={0.5} value={tempGain}
-            onChange={(e) => applyTempGain(parseFloat(e.target.value))}
-            className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-          />
-        </div>
-
-        <button
-          onClick={() => savePoint(stepNum as 1 | 2)}
-          disabled={sonosVol == null}
-          className="w-full py-2.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground active:scale-[0.98] transition-transform disabled:opacity-40"
-        >
-          {stepNum === 1 ? 'Spara punkt 1 → Nästa' : 'Spara punkt 2 → Klar'}
-        </button>
-      </div>
-    );
-  }
-
-  if (calStep === 3) {
-    return (
-      <div className="mt-4 rounded-xl border border-green-500/30 bg-green-500/10 p-3 text-center">
-        <Check size={20} className="mx-auto text-green-500 mb-1" />
-        <p className="text-sm font-medium text-green-500">Kalibrering sparad!</p>
-      </div>
-    );
-  }
+  const onGainLowChange = (g: number) => {
+    setGainLow(g);
+    pushCalibration(g, gainHigh);
+  };
+  const onGainHighChange = (g: number) => {
+    setGainHigh(g);
+    pushCalibration(gainLow, g);
+  };
 
   return (
     <div className="space-y-4">
       {/* Mode selector: Manual ↔ Auto */}
       <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-secondary/40 border border-border">
         <button
-          onClick={() => { if (enabled) toggle(); }}
+          onClick={() => setMode(false)}
           className={`py-2 rounded-lg text-xs font-medium transition-colors ${
             !enabled ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground'
           }`}
@@ -791,17 +627,16 @@ function GainCalibrationPanel({
           Manuell
         </button>
         <button
-          onClick={() => { if (!enabled && hasCalibration) toggle(); }}
-          disabled={!enabled && !hasCalibration}
+          onClick={() => setMode(true)}
           className={`py-2 rounded-lg text-xs font-medium transition-colors ${
-            enabled ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground disabled:opacity-40'
+            enabled ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground'
           }`}
         >
           Auto (Sonos vol)
         </button>
       </div>
 
-      {/* MANUAL MODE: visa slider, dölj auto-info */}
+      {/* MANUAL MODE: en slider som direkt styr motor-gain */}
       {!enabled && (
         <div>
           <div className="flex justify-between text-sm mb-1">
@@ -814,78 +649,67 @@ function GainCalibrationPanel({
             className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
           />
           <p className="text-[10px] text-muted-foreground mt-0.5">
-            Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.
+            Mjukvaruförstärkning. 1× = rå signal, högre = känsligare.
           </p>
         </div>
       )}
 
-      {/* AUTO MODE: visa live Sonos vol → multiplier → effektiv gain */}
+      {/* AUTO MODE: två slidrar (vol 15 & vol 50), motorn interpolerar */}
       {enabled && (
-        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Sonos volym</span>
-            <span className="text-sm font-mono font-bold">{liveSonosVol ?? '—'}</span>
+        <div className="space-y-4">
+          {/* Live status */}
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Sonos volym</span>
+              <span className="font-mono font-bold">{liveSonosVol ?? '—'}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
+              <span className="text-xs text-muted-foreground">Aktuell mic-gain</span>
+              <span className="text-base font-mono font-bold text-primary">
+                {effectiveGain != null ? `${effectiveGain.toFixed(1)}×` : `${multiplier.toFixed(1)}×`}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Auto-multiplikator</span>
-            <span className="text-sm font-mono font-bold">{multiplier.toFixed(2)}×</span>
+
+          {/* P1: vid låg volym */}
+          <div>
+            <div className="flex justify-between text-sm mb-1">
+              <span>Gain @ vol {AUTO_VOL_LOW}</span>
+              <span className="text-muted-foreground font-mono text-xs">{gainLow.toFixed(1)}×</span>
+            </div>
+            <input
+              type="range" min={1} max={50} step={0.5} value={gainLow}
+              onChange={(e) => onGainLowChange(parseFloat(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+            />
           </div>
-          <div className="flex items-center justify-between pt-2 border-t border-border/40">
-            <span className="text-xs text-muted-foreground">Aktuell mic-gain</span>
-            <span className="text-base font-mono font-bold text-primary">
-              {effectiveGain != null ? `${effectiveGain.toFixed(1)}×` : '—'}
-            </span>
+
+          {/* P2: vid hög volym */}
+          <div>
+            <div className="flex justify-between text-sm mb-1">
+              <span>Gain @ vol {AUTO_VOL_HIGH}</span>
+              <span className="text-muted-foreground font-mono text-xs">{gainHigh.toFixed(1)}×</span>
+            </div>
+            <input
+              type="range" min={1} max={50} step={0.5} value={gainHigh}
+              onChange={(e) => onGainHighChange(parseFloat(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+            />
           </div>
+
+          <p className="text-[10px] text-muted-foreground">
+            Motorn interpolerar mellan dessa två punkter baserat på Sonos-volymen.
+          </p>
         </div>
       )}
 
-      {/* MANUAL MODE: bekräfta vad motorn faktiskt kör */}
+      {/* MANUAL MODE: visa vad motorn faktiskt kör */}
       {!enabled && effectiveGain != null && (
         <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-secondary/30 rounded-lg px-3 py-1.5">
           <span>Aktiv i motor:</span>
           <span className="font-mono font-bold text-foreground">{effectiveGain.toFixed(1)}×</span>
         </div>
       )}
-
-      {/* Kalibrering — alltid synlig + finjusterbar med +/- (live till motor) */}
-      {hasCalibration ? (
-        <div className="rounded-lg bg-secondary/40 px-3 py-2 space-y-2">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-            <span>Kalibrering (finjustera live)</span>
-            <button onClick={clearCalibration} className="text-destructive underline normal-case tracking-normal">Rensa</button>
-          </div>
-          {([1, 2] as const).map((n) => {
-            const pt = n === 1 ? calPoints.point1 : calPoints.point2;
-            return (
-              <div key={n} className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-mono text-muted-foreground w-20">P{n}: vol {pt.vol}</span>
-                <div className="flex items-center gap-1.5 flex-1 justify-end">
-                  <button
-                    onClick={() => adjustCalPointGain(n, -0.5)}
-                    className="w-7 h-7 rounded-md bg-secondary border border-border text-sm font-bold active:scale-95 transition-transform"
-                  >−</button>
-                  <span className="text-sm font-mono font-bold w-14 text-center">{pt.gain.toFixed(1)}×</span>
-                  <button
-                    onClick={() => adjustCalPointGain(n, 0.5)}
-                    className="w-7 h-7 rounded-md bg-secondary border border-border text-sm font-bold active:scale-95 transition-transform"
-                  >+</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="text-[10px] text-muted-foreground">
-          Ingen kalibrering — Auto-läget är låst tills du kalibrerar.
-        </p>
-      )}
-
-      <button
-        onClick={startCalibration}
-        className="w-full py-2 rounded-lg text-xs font-medium border border-border bg-secondary/50 active:scale-[0.98] transition-transform"
-      >
-        {hasCalibration ? 'Kalibrera om' : 'Kalibrera gain'}
-      </button>
     </div>
   );
 }
