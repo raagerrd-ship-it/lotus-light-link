@@ -101,42 +101,66 @@ export function startKeepAlive(): void {
   keepAliveFailCount = 0;
   keepAliveSentCount = 0;
   lastWriteTime = performance.now();
-  keepAliveTimer = setInterval(async () => {
+  keepAliveTimer = setInterval(() => {
     const device = getDevice();
     if (!device) return;
     const elapsed = performance.now() - lastWriteTime;
     if (elapsed < KEEPALIVE_MS * 0.8) return;
+
+    // KONTRAKT: bara EN aktiv BLE-write i taget. Om writeSlot är upptagen
+    // eller någon annan write skedde nyss räcker den för att hålla länken
+    // vid liv — keep-alive hoppar över denna runda. Detta hindrar parallella
+    // writes som annars skulle bygga noble-kö och ge osynk mitt i låten.
+    if (writeSlot) return;
+
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
-    // Sätt lastWriteTime FÖRE writeAsync (samma semantik som sendToBLE: write-START).
-    // Annars räknar rate-limit-gaten från resolve-tid → första riktiga write efter
-    // keep-alive kan blockas felaktigt.
-    lastWriteTime = performance.now();
-    try {
-      // Anchor write i connect-hardcoded/connect.ts bevisar att denna stack
-      // faktiskt returnerar på `true`, medan `false` fastnar i timeout-loop.
-      await device.characteristic.writeAsync(buf, true);
-      keepAliveSentCount++;
-      if (keepAliveFailCount > 0) {
-        console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
-        keepAliveFailCount = 0;
+    const startedAt = performance.now();
+    lastWriteTime = startedAt;
+
+    // Fire-and-forget genom samma single-slot-mekanism som sendToBLE.
+    const p: Promise<void> = device.characteristic.writeAsync(buf, true)
+      .then(() => {
+        keepAliveSentCount++;
+        if (keepAliveFailCount > 0) {
+          console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
+          keepAliveFailCount = 0;
+        }
+      })
+      .catch((e: any) => {
+        keepAliveFailCount++;
+        if (keepAliveFailCount <= 3 || keepAliveFailCount % 10 === 0) {
+          console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e?.message ?? e}`);
+        }
+        if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && getDevice() && isDemandActive()) {
+          console.warn('[BLE] Keep-alive threshold reached — triggering proactive reconnect');
+          const dev = getDevice()!;
+          const periph = dev.peripheral;
+          const name = dev.name;
+          periph.removeAllListeners('disconnect');
+          stopKeepAlive();
+          setDevice(null);
+          resetLastSent();
+          Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
+            if (_triggerReconnect) _triggerReconnect(periph, name);
+          });
+        }
+      })
+      .finally(() => {
+        if (writeSlot === p) {
+          writeSlot = null;
+          if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
+        }
+      });
+
+    writeSlot = p;
+    if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
+    writeSlotWatchdog = setTimeout(() => {
+      if (writeSlot === p) {
+        bleStats.writeStuckCount++;
+        writeSlot = null;
+        writeSlotWatchdog = null;
       }
-    } catch (e: any) {
-      keepAliveFailCount++;
-      if (keepAliveFailCount <= 3 || keepAliveFailCount % 10 === 0) {
-        console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e.message ?? e}`);
-      }
-      if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && device && isDemandActive()) {
-        console.warn('[BLE] Keep-alive threshold reached — triggering proactive reconnect');
-        const periph = device.peripheral;
-        const name = device.name;
-        periph.removeAllListeners('disconnect');
-        stopKeepAlive();
-        setDevice(null);
-        resetLastSent();
-        try { await periph.disconnectAsync(); } catch {}
-        if (_triggerReconnect) _triggerReconnect(periph, name);
-      }
-    }
+    }, WRITE_SLOT_TIMEOUT_MS);
   }, KEEPALIVE_MS);
 }
 
