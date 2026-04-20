@@ -1,9 +1,10 @@
 /**
  * ALSA microphone input → FFT → BandResult.
- * Prefers native alsa-capture (direct snd_pcm_readi, no subprocess).
- * Falls back to node-record-lpcm16 (arecord subprocess) if native addon unavailable.
- * Uses custom zero-alloc radix-2 FFT (no fft-js dependency).
- * 
+ * Uses native alsa-capture (direct snd_pcm_readi, no subprocess) — HARD REQUIRED.
+ * Engine refuses to start mic if vendored binding can't be loaded (no arecord
+ * fallback, since arecord adds ~30-50ms latency we deliberately avoid).
+ * Custom zero-alloc radix-2 FFT (no fft-js dependency).
+ *
  * Event-driven: fires onFFTReady callback immediately after each FFT frame,
  * enabling the engine to process with zero additional latency.
  */
@@ -15,10 +16,13 @@ import { pipelineTiming } from './pipelineTiming.js';
 // (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.
 // Resolution order: vendored fork → upstream npm pkg → arecord subprocess fallback.
 let AlsaCapture: any = null;
-let nodeRecord: any = null;
 let useNative = false;
-let micBackend: 'alsa-vendored' | 'alsa-npm' | 'arecord' | 'none' = 'none';
+let micBackend: 'alsa-vendored' | 'alsa-npm' | 'none' = 'none';
+let nativeImportError: string | null = null;
 
+// HARD-FAIL POLICY (2026-04-20): användaren har valt lägsta möjliga latens →
+// arecord-fallback är borttagen. Engine vägrar starta mic om native binding
+// saknas, så vi inte tyst hamnar i ett 30-50ms-läge utan att märka det.
 try {
   AlsaCapture = (await import('../vendor/alsa-capture/index.js')).default;
   useNative = true;
@@ -33,19 +37,16 @@ try {
     console.log('[ALSA] Using native alsa-capture (npm package, direct snd_pcm_readi)');
   } catch (e: any) {
     const npmReason = e?.message ?? String(e);
-    console.warn(`[ALSA] Native alsa-capture unavailable (vendored: ${vendorReason}; npm: ${npmReason})`);
-    try {
-      nodeRecord = (await import('node-record-lpcm16')).default;
-      micBackend = 'arecord';
-      console.log('[ALSA] Falling back to node-record-lpcm16 (arecord subprocess)');
-    } catch (e2: any) {
-      console.warn(`[ALSA] node-record-lpcm16 also unavailable: ${e2?.message ?? e2}`);
-    }
+    nativeImportError = `vendored: ${vendorReason}; npm: ${npmReason}`;
+    console.error(`[ALSA] FATAL: Native alsa-capture unavailable (${nativeImportError})`);
+    console.error(`[ALSA] Engine kommer vägra starta mic — bygg om pi/vendor/alsa-capture på Pi:n.`);
   }
 }
 
+export function getNativeImportError(): string | null { return nativeImportError; }
+
 /** Returns which audio capture backend is currently active. */
-export function getMicBackend(): 'alsa-vendored' | 'alsa-npm' | 'arecord' | 'none' {
+export function getMicBackend(): 'alsa-vendored' | 'alsa-npm' | 'none' {
   return micBackend;
 }
 
@@ -336,10 +337,11 @@ export function getNoiseGateState(): typeof _ngState {
 }
 
 let capture: any = null;
-// För fallback via arecord är plughw säkrare än hw eftersom VoiceHAT ofta kräver
-// ALSA plugin-konvertering till S16_LE/mono. Native addon kan fortfarande öppna
-// hw:0,0 direkt om användaren väljer det explicit via API/UI.
-let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
+// LÄGSTA LATENS: hw:0,0 = rå hårdvara, ingen ALSA plugin-konvertering.
+// Kräver att engine matchar exakt format som soundcardet stödjer (INMP441
+// via google-voicehat-soundcard overlay = S32_LE 48kHz stereo — vilket är
+// precis vad vi konfigurerar i startMic). plughw skulle ge ~1-2ms extra.
+let currentDevice = process.env.ALSA_DEVICE ?? 'hw:0,0';
 // INMP441 (Google voiceHAT-soundcard overlay) levererar bara S32_LE.
 // Default till S32_LE; kan överridas via ALSA_FORMAT env för andra mikar.
 let currentFormat: 'S16_LE' | 'S32_LE' = (process.env.ALSA_FORMAT as any) ?? 'S32_LE';
@@ -490,25 +492,12 @@ export function startMic(): void {
     });
     console.log(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
 
-  } else if (nodeRecord) {
-    // Fallback — arecord subprocess + pipe
-    capture = nodeRecord.record({
-      sampleRate: SAMPLE_RATE,
-      channels: 1,
-      audioType: 'raw',
-      recorder: 'arecord',
-      device: currentDevice,
-    });
-    const stream = capture.stream();
-    stream.on('data', onAudioData);
-    stream.on('error', (err: any) => {
-      const msg = err?.message ?? err?.code ?? (err === undefined ? '(empty error event from arecord stream — usually harmless EOF)' : String(err));
-      handleStartFailure(`[ALSA] stream error: ${msg}`);
-    });
-    console.log(`[ALSA] Mic started via arecord (44.1kHz, 16-bit, mono, device: ${currentDevice})`);
-
   } else {
-    handleStartFailure('[ALSA] No audio capture module available — mic disabled');
+    handleStartFailure(
+      `[ALSA] Native alsa-capture binding inte laddad — mic disabled. ` +
+      `Importfel: ${nativeImportError ?? 'okänt'}. ` +
+      `Kör: cd /opt/lotus-light/pi/vendor/alsa-capture && sudo npm rebuild`
+    );
   }
 }
 
@@ -580,11 +569,8 @@ export function stopMic(): void {
     resolveMicReadyWaiters();
   }
 
-  if (useNative) {
-    capture.close();
-  } else {
-    capture.stop();
-  }
+  // Endast native-pathen finns kvar (arecord-fallback borttagen 2026-04-20)
+  capture.close();
   capture = null;
   hsState = 0;
   samplesReceived = 0;
