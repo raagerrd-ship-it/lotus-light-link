@@ -605,18 +605,6 @@ function GainCalibrationPanel({
     }).catch(() => {});
   };
 
-  /** PUT båda kalibreringspunkterna live till motorn när en slider ändras. */
-  const pushCalibration = (lowGain: number, highGain: number) => {
-    fetch(`${piBase}/api/gain-calibration`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        point1: { vol: AUTO_VOL_LOW, gain: lowGain },
-        point2: { vol: AUTO_VOL_HIGH, gain: highGain },
-      }),
-    }).catch(() => {});
-  };
-
   const onGainLowChange = (g: number) => {
     setGainLow(g);
     pushCalibration(g, gainHigh);
