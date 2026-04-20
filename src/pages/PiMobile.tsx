@@ -763,18 +763,12 @@ function GlobalSettingsView({
       {/* Motor-sektionen borttagen: tickMs hårdkodat till 25ms (40 pkt/s),
           dimmingGamma flyttas till profilinställning, BLE Hastighetstest borttaget. */}
 
+      {/* Mikrofon: device hårdkodat till hw:0,0 i state.
+          Endast gain-kontrollen (Manual/Auto) exponeras. */}
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <Mic size={14} /> Mikrofon
+          <Mic size={14} /> Mic Gain
         </h2>
-        <input
-          type="text" value={alsaDevice} onChange={(e) => setAlsaDevice(e.target.value)}
-          placeholder="plughw:0,0"
-          className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm font-mono border border-border focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-        <p className="text-[10px] text-muted-foreground mt-1 mb-5">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0.</p>
-
-        {/* Mic gain — Manual XOR Auto (Sonos-vol-driven) */}
         <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} />
       </section>
 
