@@ -452,9 +452,14 @@ MemoryMax=200M
 NoNewPrivileges=false
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
-# Tillåt åtkomst till BLE/rfkill-enheter (annars blockerar systemd dem)
+# Tillåt åtkomst till BLE/rfkill-enheter + ALSA ljudkort.
+# VIKTIGT: så fort en DeviceAllow= sätts implicerar systemd DevicePolicy=closed,
+# vilket annars BLOCKERAR /dev/snd/* → snd_pcm_open() returnerar ENOENT (inte EPERM)
+# och native alsa-capture failar tyst. char-alsa täcker hela /dev/snd/.
 DeviceAllow=/dev/rfkill rw
 DeviceAllow=char-rfkill rw
+DeviceAllow=char-alsa rw
+DeviceAllow=/dev/snd rw
 # Realtime-prio för ALSA capture-tråden (SCHED_FIFO 80) → minimal jitter
 LimitRTPRIO=99
 LimitNICE=-20
