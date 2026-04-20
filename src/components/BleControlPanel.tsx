@@ -7,6 +7,7 @@
  *      (scan-then-connect mot hårdkodad MAC)
  *
  * Pollar /api/ble/state varannan sekund för status.
+ * Engine-loggen är borttagen — felsök via SSH/journalctl istället.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,13 +18,6 @@ interface BleStateResp {
   connected: boolean;
   device: { name: string; mac: string };
   rawState?: string;
-}
-
-interface LogEntry {
-  seq: number;
-  t: number;
-  level: "log" | "warn" | "error";
-  text: string;
 }
 
 type Section = "engine" | "lamp" | "all";
@@ -47,15 +41,11 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const [engineBusy, setEngineBusy] = useState(false);
   const [connectBusy, setConnectBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [bleOutput, setBleOutput] = useState<BleOutput>({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
   const lastSentCountRef = useRef(0);
   const lastSentRateRef = useRef(0);
   const lastSkipDeltaRateRef = useRef(0);
   const lastSkipBusyRateRef = useRef(0);
-  const sinceRef = useRef(0);
-  const logPollRef = useRef<number | null>(null);
-  const logBoxRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -74,27 +64,6 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
     const id = setInterval(refresh, 2000);
     return () => clearInterval(id);
   }, [refresh]);
-
-  const pollLogs = useCallback(async () => {
-    try {
-      const r = await fetch(`${piBase}/api/ble/engine/logs?since=${sinceRef.current}`, { signal: AbortSignal.timeout(2500) });
-      if (r.ok) {
-        const data = (await r.json()) as { entries: LogEntry[]; nextSince: number };
-        if (data.entries?.length) {
-          setLogs((prev) => [...prev, ...data.entries].slice(-300));
-        }
-        sinceRef.current = data.nextSince ?? sinceRef.current;
-      }
-    } catch {}
-  }, [piBase]);
-
-  useEffect(() => {
-    if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
-  }, [logs]);
-
-  useEffect(() => () => {
-    if (logPollRef.current) window.clearInterval(logPollRef.current);
-  }, []);
 
   // Poll BLE-output (sista färg + brightness skickad till lampan) — bara
   // när lampan är ansluten och vi visar lamp-sektionen. ~5 Hz.
