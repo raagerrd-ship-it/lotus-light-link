@@ -12,6 +12,16 @@ import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
 
+// Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
+// Används så att engine kan toggla keep-alive/idle-heartbeat baserat på
+// faktisk BLE-status (inte vid engine.start() innan lampan är ansluten).
+let _onConnected: (() => void) | null = null;
+let _onDisconnected: (() => void) | null = null;
+export function setEngineBleCallbacks(onConnected: () => void, onDisconnected: () => void): void {
+  _onConnected = onConnected;
+  _onDisconnected = onDisconnected;
+}
+
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
 let _lastConnectCallAt = 0;
