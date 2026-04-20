@@ -49,11 +49,6 @@ export function getMicBackend(): 'alsa-vendored' | 'alsa-npm' | 'none' {
   return micBackend;
 }
 
-// Timestamp (performance.now) when the last audio buffer arrived from ALSA.
-// Used together with getLastWriteTime() in protocol.ts to compute end-to-end
-// audio→BLE latency for the UI badge.
-let lastAudioTimestamp = 0;
-export function getLastAudioTimestamp(): number { return lastAudioTimestamp; }
 
 type MicReadyWaiter = {
   resolve: () => void;
