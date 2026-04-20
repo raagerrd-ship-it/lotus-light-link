@@ -166,6 +166,13 @@ async function startBleEngine(): Promise<void> {
         if (g >= 1 && g <= 3) nobleBle.setDimmingGamma(g);
       }
 
+      // Återställ BLE write rate-limit (live-tweakbar via /api/ble/rate-limit)
+      const savedMinWrite = getItem('ble-min-write-interval-ms');
+      if (savedMinWrite) {
+        const v = parseFloat(savedMinWrite);
+        if (Number.isFinite(v) && v >= 5 && v <= 100) nobleBle.setMinWriteIntervalMs(v);
+      }
+
       setBootPhase('ready');
       markSubsystemReady('bleEngine');
 
