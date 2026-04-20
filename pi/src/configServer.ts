@@ -13,7 +13,7 @@ import { getWatchdogGiveUpReason } from './ble/watchdog.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
-import { getPipelineTimingSnapshot, resetPipelineTiming } from './pipelineTiming.js';
+
 
 type AlsaMicModule = typeof import('./alsaMic.js');
 
@@ -830,41 +830,6 @@ export function startConfigServer(port = 3050): void {
     });
   });
 
-  // --- Pipeline timing (live latency p50/p95/p99 per stage) ---
-  // Stages:
-  //   audioToFft = ALSA buffer arrival → FFT frame complete
-  //   fftToTick  = FFT complete → engine tick start (event-driven scheduling)
-  //   tickInner  = engine processing (math + dynamics + onset + colorcal + emit)
-  //   bleWrite   = noble writeAsync resolve (write-without-response: enqueue cost)
-  //   endToEnd   = ALSA buffer arrival → engine tick complete (BLE enqueued)
-  // Add ~3-5ms for actual radio TX + BLEDOM controller delay (not measurable from userspace).
-  app.get('/api/pipeline/timing', (_req, res) => {
-    const snapshot = getPipelineTimingSnapshot();
-    const tickMs = attachedEngine?.getTickMs() ?? 0;
-    const fftFrames = attachedMic?.getFFTFrameCount?.() ?? 0;
-    res.json({
-      ok: true,
-      tickMs,
-      tickHzMax: tickMs > 0 ? Math.round(1000 / tickMs) : 0,
-      fftFramesTotal: fftFrames,
-      stages: snapshot,
-      summary: {
-        median_total_ms: snapshot.endToEnd.p50Ms,
-        p95_total_ms: snapshot.endToEnd.p95Ms,
-        p99_total_ms: snapshot.endToEnd.p99Ms,
-        // Estimated wall-clock latency including BLE radio:
-        // endToEnd (measured) + ~3.75ms median connection event wait + ~1.5ms BLEDOM controller
-        estimated_wall_clock_median_ms: Math.round((snapshot.endToEnd.p50Ms + 5.25) * 10) / 10,
-      },
-      note: 'endToEnd excludes BLE radio TX (~3.75ms median) and BLEDOM controller (~1.5ms). Add ~5ms to estimate user-visible latency.',
-    });
-  });
-
-  app.post('/api/pipeline/timing/reset', (_req, res) => {
-    resetPipelineTiming();
-    res.json({ ok: true });
-  });
-
   app.get('/api/calibration', (_req, res) => {
     const raw = getItem('light-calibration');
     res.json(raw ? JSON.parse(raw) : {});
@@ -1100,27 +1065,9 @@ export function startConfigServer(port = 3050): void {
       return;
     }
     const b = mic.getLatestBands();
-    let audioToBleLatencyMs: number | null = null;
-    let audioToBleP95Ms: number | null = null;
-    let stageBreakdown: { audioToFftMs: number; fftToTickMs: number; tickInnerMs: number; bleWriteMs: number } | null = null;
     let ble: any = null;
     try {
       const { bleStats } = await import('./ble/state.js');
-      // Korrekt audio→BLE latens från pipelineTiming (paret matchat per tick).
-      // Tidigare diff = getLastWriteTime - getLastAudioTimestamp gav negativa
-      // värden när ny mic-frame kom mellan senaste BLE-paket och sample-tillfället
-      // → audioToBleLatencyMs = null → ingen ms-siffra i UI-badgen.
-      const pt = getPipelineTimingSnapshot();
-      if (pt.endToEnd.samples > 0) {
-        audioToBleLatencyMs = Math.round(pt.endToEnd.p50Ms);
-        audioToBleP95Ms = Math.round(pt.endToEnd.p95Ms);
-        stageBreakdown = {
-          audioToFftMs: pt.audioToFft.p50Ms,
-          fftToTickMs: pt.fftToTick.p50Ms,
-          tickInnerMs: pt.tickInner.p50Ms,
-          bleWriteMs: pt.bleWrite.p50Ms,
-        };
-      }
 
       const now = performance.now();
       const dt = _lastSampleTs > 0 ? (now - _lastSampleTs) / 1000 : 0;
@@ -1190,9 +1137,6 @@ export function startConfigServer(port = 3050): void {
       bassRms: b.bassRms,
       midHiRms: b.midHiRms,
       backend: mic.getMicBackend(),
-      audioToBleLatencyMs,
-      audioToBleP95Ms,
-      stageBreakdown,
       tickMs,
       ble,
     });
