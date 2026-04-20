@@ -299,7 +299,7 @@ export class PiLightEngine {
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
 
-  constructor(tickMs = 40) {
+  constructor(tickMs = 25) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
     this.agc = createAgcState();
@@ -308,7 +308,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
-    setMinWriteIntervalMs(Math.max(5, tickMs - 2));
+    setMinWriteIntervalMs(Math.max(5, Math.floor(tickMs * 0.6)));
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -320,10 +320,11 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    // Auto-koppla BLE rate-limit till tick: lampans gate måste vara ≤ tickMs,
-    // annars rate-limitas varannan tick. -2ms slack mot timing-jitter.
+    // Auto-koppla BLE rate-limit till tick: gate sätts till 60% av tickMs.
+    // Tillräckligt brett för Pi Zero 2W timer-jitter (±3-5ms) utan att
+    // överbelasta BLEDOM. Vid tick=25 → gate=15ms (66 Hz tak, faktisk ~40 Hz).
     // Override via PUT /api/ble/rate-limit fungerar fortfarande som debug.
-    setMinWriteIntervalMs(Math.max(5, ms - 2));
+    setMinWriteIntervalMs(Math.max(5, Math.floor(ms * 0.6)));
   }
 
   setColor(rgb: [number, number, number]) {

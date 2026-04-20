@@ -898,8 +898,8 @@ export function startConfigServer(port = 3050): void {
       engine.setTickMs(tickMs);
       engine.restartTimer();
       setItem('tick-ms', String(tickMs));
-      // BLE rate-limit auto-följer (tickMs - 2) via setTickMs() — exponera båda.
-      res.json({ ok: true, tickMs, minWriteIntervalMs: Math.max(5, tickMs - 2) });
+      // BLE rate-limit auto-följer (tickMs * 0.6) via setTickMs() — exponera båda.
+      res.json({ ok: true, tickMs, minWriteIntervalMs: Math.max(5, Math.floor(tickMs * 0.6)) });
     } else {
       res.status(400).json({ error: 'tickMs must be 5-50 (rate-limit auto-följer)' });
     }
