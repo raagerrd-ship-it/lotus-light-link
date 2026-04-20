@@ -25,14 +25,15 @@ try {
   micBackend = 'alsa-vendored';
   console.log('[ALSA] Using native alsa-capture (vendored fork, direct snd_pcm_readi)');
 } catch (eVendor: any) {
+  const vendorReason = eVendor?.message ?? String(eVendor);
   try {
     AlsaCapture = (await import('alsa-capture')).default;
     useNative = true;
     micBackend = 'alsa-npm';
     console.log('[ALSA] Using native alsa-capture (npm package, direct snd_pcm_readi)');
   } catch (e: any) {
-    const reason = e?.message ?? String(e);
-    console.warn(`[ALSA] Native alsa-capture unavailable: ${reason}`);
+    const npmReason = e?.message ?? String(e);
+    console.warn(`[ALSA] Native alsa-capture unavailable (vendored: ${vendorReason}; npm: ${npmReason})`);
     try {
       nodeRecord = (await import('node-record-lpcm16')).default;
       micBackend = 'arecord';
