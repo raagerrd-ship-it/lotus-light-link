@@ -21,40 +21,16 @@ import { getItem, setItem } from './storage.js';
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
-// --- Simple Peak AGC ---
-const AGC_FLOOR = 0.0001;
-const AGC_DECAY_PER_SEC = 0.995;      // slow decay for peak tracker
-const AGC_FAST_DECAY_PER_SEC = 0.95;  // faster decay after prolonged silence
-const QUIET_THRESHOLD = 0.10;
-const QUIET_MS_FAST = 4000;
+// AGC borttaget 2026-04-20: Sonos-volym → mic-gain-kalibrering (auto-gain)
+// hanterar nu nivåskalningen. Ingen behov av en till normaliseringsloop.
+// Bands från ALSA är redan rätt-skalade när de når engine.
 
-interface AgcState {
-  peakMax: number;       // single running max across all bands
-  quietTicks: number;
-}
-
-function createAgcState(): AgcState {
-  return { peakMax: 0.01, quietTicks: 0 };
-}
-
-function updatePeakAgc(state: AgcState, totalRms: number, bassRms: number, midHiRms: number, tc: TickConstants): void {
-  // Track highest of all bands
-  const peak = Math.max(totalRms, bassRms, midHiRms);
-  if (peak > state.peakMax) {
-    state.peakMax = peak;
-    state.quietTicks = 0;
-  } else {
-    const isQuiet = totalRms < state.peakMax * QUIET_THRESHOLD;
-    if (isQuiet) state.quietTicks++; else state.quietTicks = 0;
-    const decay = state.quietTicks >= tc.quietFastTicks ? tc.agcDecayFast : tc.agcDecayNormal;
-    state.peakMax = Math.max(AGC_FLOOR, state.peakMax * decay);
-  }
-}
-
-function normalizeSimple(value: number, peakMax: number): number {
-  const n = value / peakMax;
+const RAW_SCALE = 5; // Fast skalning från RMS (~0–0.2 normalt) till 0–1-domän
+function normalizeFixed(value: number): number {
+  const n = value * RAW_SCALE;
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
+
 
 // --- Precomputed tick constants ---
 interface TickConstants {
@@ -62,9 +38,6 @@ interface TickConstants {
   releaseAlpha: number;
   onsetDecay: number;
   onsetRiseAlpha: number;
-  agcDecayNormal: number;
-  agcDecayFast: number;
-  quietFastTicks: number;
   centerAlpha: number;
   
   
@@ -83,9 +56,6 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     // Snabbare decay → kortare, skarpare puls (matchar trum-attack ~80ms)
     onsetDecay: Math.pow(0.04, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
-    agcDecayNormal: Math.pow(AGC_DECAY_PER_SEC, secRatio),
-    agcDecayFast: Math.pow(AGC_FAST_DECAY_PER_SEC, secRatio),
-    quietFastTicks: (QUIET_MS_FAST / tickMs + 0.5) | 0,
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
     
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
