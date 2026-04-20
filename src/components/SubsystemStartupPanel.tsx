@@ -182,7 +182,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
           <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
           <Icon size={14} className="shrink-0 text-muted-foreground" />
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-foreground/90">{label}</div>
+            <div className="font-medium text-foreground/90 flex items-center gap-1.5 flex-wrap">{label}{badge}</div>
             {sub.status === "ready" && sub.durationMs != null && (
               <div className="text-[9px] opacity-50">Redo på {(sub.durationMs / 1000).toFixed(1)}s</div>
             )}
