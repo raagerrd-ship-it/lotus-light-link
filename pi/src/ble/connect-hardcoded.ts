@@ -10,7 +10,7 @@
 import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
-import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
+import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
 // Används så att engine kan toggla keep-alive/idle-heartbeat baserat på
