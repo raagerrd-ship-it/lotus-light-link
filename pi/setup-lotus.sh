@@ -205,11 +205,16 @@ elif [ -f "$ALSA_NODE_FILE" ]; then
   ALSA_NODE_SIZE=$(stat -c%s "$ALSA_NODE_FILE" 2>/dev/null || echo 0)
   echo "  ✓ capture.node finns från CI-bygge (${ALSA_NODE_SIZE} bytes)"
   # Verifiera att binären faktiskt går att ladda mot installerad Node
-  if ! taskset -c "$CORE" node -e "require('$VENDOR_DIR/index.js')" 2>/tmp/alsa-load-test.err; then
+  # Använd unik tempfil under root's eget tmp så vi inte krockar med en
+  # tidigare körning som ägs av annan user. mktemp ger oss garanterad write.
+  ALSA_LOAD_ERR="$(mktemp /tmp/alsa-load-test.XXXXXX.err 2>/dev/null || echo /tmp/alsa-load-test.$$.err)"
+  : > "$ALSA_LOAD_ERR" 2>/dev/null || true
+  if ! taskset -c "$CORE" node -e "require('$VENDOR_DIR/index.js')" 2>"$ALSA_LOAD_ERR"; then
     echo "  ⚠ capture.node kunde inte laddas — bygger om lokalt"
-    echo "    Fel: $(tail -3 /tmp/alsa-load-test.err)"
+    echo "    Fel: $(tail -3 "$ALSA_LOAD_ERR" 2>/dev/null)"
     rm -f "$ALSA_NODE_FILE"
   fi
+  rm -f "$ALSA_LOAD_ERR" 2>/dev/null || true
 fi
 
 if [ ! -f "$ALSA_NODE_FILE" ] && [ -d "$VENDOR_DIR" ]; then
