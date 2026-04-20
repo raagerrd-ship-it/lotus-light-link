@@ -42,8 +42,55 @@ if [ -z "$LATEST_VERSION" ]; then
 fi
 
 if [ -n "$CURRENT_VERSION" ] && [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
-  echo "$LOG_PREFIX Already up to date (v${CURRENT_VERSION})"
-  exit 0
+  # Hård säkerhetskontroll: även om versionen matchar, vägra säga "up to date"
+  # om kritiska deployment-artefakter saknas eller är trasiga. Detta fångar
+  # fall där en tidigare update kraschade halvvägs eller en gammal release
+  # installerades innan setup-lotus.sh kunde skapa system-servicen.
+  HEALTH_OK=1
+  HEALTH_REASONS=""
+
+  # 1. System-service MÅSTE finnas (user-service ärver inte SupplementaryGroups → BLE failar)
+  if [ ! -f /etc/systemd/system/lotus-light-engine.service ]; then
+    HEALTH_OK=0
+    HEALTH_REASONS="$HEALTH_REASONS\n  - /etc/systemd/system/lotus-light-engine.service saknas"
+  elif ! grep -q "SupplementaryGroups=netdev bluetooth" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
+    HEALTH_OK=0
+    HEALTH_REASONS="$HEALTH_REASONS\n  - System-service saknar SupplementaryGroups=netdev bluetooth"
+  fi
+
+  # 2. Engine-bundle måste finnas
+  if [ ! -f "$PI_DIR/dist/index.js" ]; then
+    HEALTH_OK=0
+    HEALTH_REASONS="$HEALTH_REASONS\n  - $PI_DIR/dist/index.js saknas"
+  fi
+
+  # 3. BLE_BUILD_TAG i deployad bundle måste matcha förväntad tag för denna release.
+  #    GitHub release-noten har formatet "BLE_BUILD_TAG: <tag>" på en egen rad.
+  #    Om release-noten inte innehåller en sådan rad hoppar vi över denna check
+  #    (bakåtkompatibelt med äldre releases).
+  EXPECTED_TAG=$(echo "$LATEST_JSON" | python3 -c "
+import json,re,sys
+body = json.load(sys.stdin).get('body','') or ''
+m = re.search(r'BLE_BUILD_TAG:\\s*([^\\s]+)', body)
+print(m.group(1) if m else '')
+" 2>/dev/null || echo "")
+  if [ -n "$EXPECTED_TAG" ] && [ -f "$PI_DIR/dist/ble/state.js" ]; then
+    DEPLOYED_TAG=$(grep -oE "BLE_BUILD_TAG[^'\"]*['\"]([^'\"]+)['\"]" "$PI_DIR/dist/ble/state.js" 2>/dev/null | head -1 | sed -E "s/.*['\"]([^'\"]+)['\"].*/\\1/" || echo "")
+    if [ -n "$DEPLOYED_TAG" ] && [ "$DEPLOYED_TAG" != "$EXPECTED_TAG" ]; then
+      HEALTH_OK=0
+      HEALTH_REASONS="$HEALTH_REASONS\n  - BLE_BUILD_TAG mismatch: deployed='$DEPLOYED_TAG' förväntat='$EXPECTED_TAG'"
+    fi
+  fi
+
+  if [ "$HEALTH_OK" = "1" ]; then
+    echo "$LOG_PREFIX Already up to date (v${CURRENT_VERSION}) — health-check OK ✓"
+    exit 0
+  fi
+
+  echo "$LOG_PREFIX Version matchar (v${CURRENT_VERSION}) MEN health-check FAILADE:"
+  printf "$HEALTH_REASONS\n"
+  echo "$LOG_PREFIX Tvingar full re-deploy för att reparera..."
+  # Fortsätt nedåt i scriptet → ladda ner tarball, packa upp, kör setup-lotus.sh
 fi
 
 echo "$LOG_PREFIX Updating: v${CURRENT_VERSION:-unknown} → $LATEST_TAG"
