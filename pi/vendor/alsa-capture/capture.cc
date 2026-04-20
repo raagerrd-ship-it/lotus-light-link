@@ -146,7 +146,10 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     snd_pcm_t* handle = nullptr;
     int rc = snd_pcm_open(&handle, options_.device.c_str(), SND_PCM_STREAM_CAPTURE, 0);
     if (rc < 0) {
-      EmitEvent("readError", std::string("Unable to open PCM: ") + snd_strerror(rc));
+      char buf[256];
+      snprintf(buf, sizeof(buf), "snd_pcm_open(device='%s') failed: rc=%d errno=%d (%s) — %s",
+               options_.device.c_str(), rc, -rc, strerror(-rc), snd_strerror(rc));
+      EmitEvent("readError", buf);
       return;
     }
 
