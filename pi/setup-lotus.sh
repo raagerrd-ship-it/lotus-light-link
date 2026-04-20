@@ -383,6 +383,8 @@ if pgrep -f 'lotus-light|piEngine' >/dev/null 2>&1; then
 fi
 
 # 3. Skriv ny system-service (idempotent — overwrite varje release)
+TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
+echo "  Service kommer köra som: User=$TARGET_USER, Group=$TARGET_GROUP, SupplementaryGroups=netdev bluetooth"
 sudo tee "$SYS_SVC_PATH" >/dev/null <<EOF
 [Unit]
 Description=Lotus Light Link engine
@@ -391,8 +393,8 @@ Wants=bluetooth.service
 
 [Service]
 Type=simple
-User=pi
-Group=pi
+User=$TARGET_USER
+Group=$TARGET_GROUP
 SupplementaryGroups=netdev bluetooth
 WorkingDirectory=$PI_DIR
 ExecStartPre=/bin/sleep 2
