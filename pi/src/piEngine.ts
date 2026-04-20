@@ -470,7 +470,8 @@ export class PiLightEngine {
     onFFTReady((bands) => this.onFFTFrame(bands));
     // Always start the loop — CPU is negligible
     this.startLoop();
-    // Start in idle heartbeat until Sonos says playing
+    // Start in idle: heartbeat + keep-alive (mic-writes finns inte ännu)
+    startKeepAlive();
     this.startIdleHeartbeat();
 
     this.saveTimer = setInterval(() => {
