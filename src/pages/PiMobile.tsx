@@ -927,21 +927,10 @@ function GlobalSettingsView({
           placeholder="plughw:0,0"
           className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm font-mono border border-border focus:outline-none focus:ring-1 focus:ring-ring"
         />
-        <p className="text-[10px] text-muted-foreground mt-1">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0.</p>
+        <p className="text-[10px] text-muted-foreground mt-1 mb-5">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0.</p>
 
-        <div className="flex justify-between text-sm mb-1 mt-5">
-          <span>Mic Gain</span>
-          <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
-        </div>
-        <input
-          type="range" min={1} max={50} step={1} value={micGain}
-          onChange={(e) => setMicGain(parseFloat(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-        />
-        <p className="text-[10px] text-muted-foreground mt-0.5">Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.</p>
-
-        {/* Auto-gain toggle */}
-        <GainCalibrationPanel piBase={piBase} />
+        {/* Mic gain — Manual XOR Auto (Sonos-vol-driven) */}
+        <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} />
       </section>
 
       <section className="mb-8">
