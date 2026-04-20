@@ -2014,41 +2014,32 @@ export default function PiMobile() {
           )}
         </div>
 
-        {/* Update available row — visas bara om backend rapporterat en nyare version */}
-        {piVersion && latestVersion && latestVersion !== piVersion.version && updatePhase === 'idle' && updateStatus !== 'running' && (
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
-            <div className="flex items-center gap-2 min-w-0">
-              <Download size={12} className="text-primary shrink-0" />
-              <span className="font-mono truncate">v{piVersion.version} → <span className="text-primary font-bold">v{latestVersion}</span></span>
-            </div>
-            <button
-              onClick={runForceUpdate}
-              className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold active:scale-95 transition-transform shrink-0"
-            >
-              Uppdatera
-            </button>
-          </div>
-        )}
-
-        {/* Update progress — vilken fas vi är i */}
-        {updatePhase !== 'idle' && (
-          <div className="flex items-center gap-2 pt-2 border-t border-border/40">
-            <Loader2 size={12} className="text-primary animate-spin shrink-0" />
-            <span className="text-foreground">
-              {updatePhase === 'stopping' && 'Stänger ner motorn…'}
-              {updatePhase === 'downloading' && 'Hämtar ny version…'}
-              {updatePhase === 'starting' && 'Startar motorn igen…'}
-            </span>
-          </div>
-        )}
-
-        {/* Up-to-date confirmation */}
-        {piVersion && latestVersion && latestVersion === piVersion.version && updatePhase === 'idle' && (
-          <div className="flex items-center gap-1.5 pt-1 border-t border-border/40">
-            <Check size={11} className="text-green-500" />
-            <span>Senaste versionen</span>
-          </div>
-        )}
+        {/* Tvinga uppdatering — synlig knapp som alltid kör force-update */}
+        <button
+          onClick={() => {
+            if (updatePhase !== 'idle' || updateStatus === 'running') return;
+            if (!confirm('Tvinga ominstallation av motorn? (Stänger ner → Hämtar → Startar)')) return;
+            runForceUpdate();
+          }}
+          disabled={updatePhase !== 'idle' || updateStatus === 'running'}
+          className="w-full flex items-center justify-center gap-2 pt-2 border-t border-border/40 text-foreground/80 active:text-foreground disabled:opacity-50"
+        >
+          {updatePhase !== 'idle' ? (
+            <>
+              <Loader2 size={12} className="text-primary animate-spin" />
+              <span className="text-foreground">
+                {updatePhase === 'stopping' && 'Stänger ner motorn…'}
+                {updatePhase === 'downloading' && 'Hämtar ny version…'}
+                {updatePhase === 'starting' && 'Startar motorn igen…'}
+              </span>
+            </>
+          ) : (
+            <>
+              <Download size={12} className="text-muted-foreground" />
+              <span>Tvinga uppdatering av motorn</span>
+            </>
+          )}
+        </button>
       </div>
 
       <section className="mb-8">
