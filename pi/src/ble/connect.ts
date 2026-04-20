@@ -380,21 +380,42 @@ export async function nobleScanConnect(targetMacOrId: string, name: string, time
       const pmac = normalizeBleKey(peripheral.address);
       if (pid !== targetNorm && pmac !== targetNorm) return;
 
-      // Mark done + tear down the listener BEFORE awaiting connect, so the
-      // scan timer can't fire finish(false) while we're mid-connect, and a
-      // second discover event for the same peripheral can't re-enter.
+      // Matchad: riv ner listener/timer DIREKT så inget annat re-enters,
+      // men vänta sedan EXPLICIT på stopScanningAsync innan connectAsync.
+      // Detta speglar connect-hardcoded.ts som visat sig fungera stabilt på Pi.
       done = true;
-      try { cleanup(); } catch {}
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (onDiscover) { try { noble.removeListener('discover', onDiscover); } catch {} onDiscover = null; }
+      nobleScanActive = false;
 
-      logConnectionEvent({ type: 'connect_start', device: name, detail: `Found via scan, connecting (addressType=${peripheral.addressType ?? 'unknown'})` });
-
-      connectPeripheral(peripheral, 0, false).then(
-        () => resolve(true),
-        (e: any) => {
-          logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect failed: ${e.message}` });
-          resolve(false);
+      (async () => {
+        try {
+          if (typeof (noble as any).stopScanningAsync === 'function') {
+            await (noble as any).stopScanningAsync();
+            logConnectionEvent({ type: 'connect_start', device: name, detail: 'stopScanningAsync OK före connect' });
+          } else {
+            try { noble.stopScanning(); } catch {}
+            logConnectionEvent({ type: 'connect_start', device: name, detail: 'stopScanning() fallback före connect' });
+          }
+        } catch (e: any) {
+          logConnectionEvent({ type: 'connect_start', device: name, detail: `stopScanning warning före connect: ${e?.message ?? e}` });
         }
-      );
+
+        // Kort settle så BlueZ/noble hinner lämna scan state innan connect.
+        await new Promise(r => setTimeout(r, 150));
+        logConnectionEvent({ type: 'connect_start', device: name, detail: `Found via scan, connecting (addressType=${peripheral.addressType ?? 'unknown'})` });
+
+        connectPeripheral(peripheral, 0, false).then(
+          () => resolve(true),
+          (e: any) => {
+            logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect failed: ${e.message}` });
+            resolve(false);
+          }
+        );
+      })().catch((e: any) => {
+        logConnectionEvent({ type: 'connect_fail', device: name, detail: `Scan-connect internal failure: ${e?.message ?? e}` });
+        resolve(false);
+      });
     };
 
     noble.on('discover', onDiscover);
