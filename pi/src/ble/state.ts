@@ -1,23 +1,19 @@
 /**
- * BLE shared mutable state — slim variant for the hardcoded-only flow.
+ * BLE shared state — slim variant for the hardcoded-only flow.
  *
- * Behåller bara det som protocol.ts + connect-hardcoded.ts + configServer
- * faktiskt använder. Allt scan/select/forget/demand/watchdog/respawn-state
- * är borta — UI:t använder enbart `/api/ble/engine/start`,
- * `/api/ble/connect`, `/api/ble/disconnect`, `/api/ble/state`.
+ * Allt scan/select/forget/demand/watchdog-state är borta. UI använder
+ * bara /api/ble/engine/start, /api/ble/connect, /api/ble/disconnect,
+ * /api/ble/state.
  */
 
 import { noble, hasNobleLoaded } from './noble-singleton.js';
 import type { ConnectedDevice, BleConnectionEvent } from './types.js';
-export { hasNobleLoaded };
-export { noble };
+export { hasNobleLoaded, noble };
 
-// ── Constants ──
 export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 const MAX_EVENTS = 200;
 
-// ── Build tag ──
 export const BLE_BUILD_TAG = '2026-04-20/legacy-flow-removed';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
@@ -65,17 +61,13 @@ export function resetSubsystem(id: SubsystemId): void {
   _subsystems[id] = { status: 'idle', startedAt: null, readyAt: null, durationMs: null, error: null };
 }
 
-// ── Single device state ──
+// ── Connected device ──
 let _device: ConnectedDevice | null = null;
 export function getDevice(): ConnectedDevice | null { return _device; }
 export function setDevice(d: ConnectedDevice | null): void { _device = d; }
 
-/**
- * No-op helper — protocol.ts har en proaktiv reconnect-gren som var
- * beroende av demand-flaggan i legacy-flödet. I hardcoded-flödet är
- * det `connect-hardcoded.ts` som styr connect, och proaktiv reconnect
- * finns inte. Vi returnerar alltid false så grenen aldrig triggas.
- */
+// Legacy demand-flag — alltid false i hardcoded-flödet (protocol.ts har en
+// proaktiv reconnect-gren bakom denna flagga som aldrig ska triggas nu).
 export function isDemandActive(): boolean { return false; }
 
 // ── Stats (used by protocol.ts + /api/ble/output + /api/mic/level) ──
@@ -110,9 +102,8 @@ export const bleStats = {
   intervalSource: 'unknown' as string,
 };
 
-// ── Connection event log (kvar för disconnect-spårning, läses inte av UI längre) ──
+// ── Connection event log (kvar för disconnect-spårning) ──
 const _connectionLog: BleConnectionEvent[] = [];
-
 export function logConnectionEvent(event: Omit<BleConnectionEvent, 'timestamp'>): void {
   const entry: BleConnectionEvent = { ...event, timestamp: new Date().toISOString() };
   _connectionLog.push(entry);
