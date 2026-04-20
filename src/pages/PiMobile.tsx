@@ -520,15 +520,45 @@ function ProfileSettingsView({
 }
 
 
-/* ── Two-point gain calibration + auto-gain toggle ── */
-function GainCalibrationPanel({ piBase }: { piBase: string }) {
-  const [enabled, setEnabled] = useState(true);
+/* ── Mode-aware gain control: Manual XOR Auto (Sonos vol) ── */
+function GainCalibrationPanel({
+  piBase, micGain, setMicGain,
+}: {
+  piBase: string;
+  micGain: number;
+  setMicGain: (g: number) => void;
+}) {
+  const [enabled, setEnabled] = useState(false);
   const [multiplier, setMultiplier] = useState(1);
   const [calPoints, setCalPoints] = useState<{ point1: any; point2: any }>({ point1: null, point2: null });
   const [calStep, setCalStep] = useState<0 | 1 | 2 | 3>(0); // 0=idle, 1=step1, 2=step2, 3=done
   const [sonosVol, setSonosVol] = useState<number | null>(null);
   const [tempGain, setTempGain] = useState(15);
   const [outputPct, setOutputPct] = useState(0);
+  const [liveSonosVol, setLiveSonosVol] = useState<number | null>(null);
+
+  // Poll Sonos vol live when auto-gain is ON (so user sees current multiplier source)
+  useEffect(() => {
+    if (!enabled || calStep !== 0) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const [statusRes, agRes] = await Promise.all([
+          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }),
+          fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }),
+        ]);
+        const status = await statusRes.json();
+        const ag = await agRes.json();
+        if (!cancelled) {
+          if (status.sonos?.volume != null) setLiveSonosVol(status.sonos.volume);
+          if (ag.multiplier != null) setMultiplier(ag.multiplier);
+        }
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 1500);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [piBase, enabled, calStep]);
 
   // Load initial state
   useEffect(() => {
