@@ -500,9 +500,12 @@ export class PiLightEngine {
   }
 
   // ── Event-driven tick scheduling ──
-  // FFT fires ~86 times/sec (44100/512). We only process if tickMs has elapsed.
+  // FFT fires ~93 times/sec (48000/512). Vi kör tickInner när tickMs har
+  // förflutit — ALLTID med den färska FFT-framen i handen. Tidigare schemalades
+  // en setTimeout för "remaining ms" när FFT kom för tidigt, vilket innebar
+  // att tickInner körde mot en GAMMAL getLatestBands() (upp till tickMs sen).
+  // Det gav smygande audio-latens utan att synas i pkt/s. Borttaget.
   private _lastTickTime = 0;
-  private _pendingTimeout: ReturnType<typeof setTimeout> | null = null;
   private _loopActive = false;
 
   /** Called by ALSA FFT callback — runs in the audio data handler context */
@@ -513,27 +516,14 @@ export class PiLightEngine {
     const elapsed = now - this._lastTickTime;
 
     if (elapsed >= this.tickMs) {
-      // Enough time passed — process immediately (zero latency)
+      // Färsk FFT-frame OCH tickMs har förflutit → kör direkt (zero latency).
       this._lastTickTime = now;
-      if (this._pendingTimeout) { clearTimeout(this._pendingTimeout); this._pendingTimeout = null; }
       this.tickInner();
-    } else if (!this._pendingTimeout) {
-      // FFT arrived too early — schedule for remaining time.
-      // Räkna detta som "förkastad" mic-input ur output-perspektiv: framen
-      // uppdaterar fortfarande FFT-state (smoothing/peak), men driver inte
-      // en BLE-write. Synliggörs i UI så vi vet hur mycket capacity vi har kvar.
-      bleStatsState.fftDroppedCount++;
-      const remaining = this.tickMs - elapsed;
-      this._pendingTimeout = setTimeout(() => {
-        this._pendingTimeout = null;
-        this._lastTickTime = performance.now();
-        this.tickInner();
-      }, remaining);
     } else {
-      // Already a tick scheduled — this FFT-frame is also "dropped" for output.
+      // FFT kom för tidigt — släng den ur output-perspektiv. Nästa FFT
+      // (~10.7ms senare) triggar tickInner direkt om tickMs då passerats.
       bleStatsState.fftDroppedCount++;
     }
-    // If _pendingTimeout already set, skip (tick is already scheduled)
   }
 
   private startLoop(): void {
@@ -544,7 +534,6 @@ export class PiLightEngine {
 
   private stopLoop(): void {
     this._loopActive = false;
-    if (this._pendingTimeout) { clearTimeout(this._pendingTimeout); this._pendingTimeout = null; }
   }
 
   stop(): void {
