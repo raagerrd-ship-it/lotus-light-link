@@ -381,37 +381,20 @@ export class PiLightEngine {
   }
 
   private _idleTimer: ReturnType<typeof setInterval> | null = null;
-  private _idleFlushTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly IDLE_HEARTBEAT_MS = 2000;
-  // Aggressiv flush direkt efter pause: skicka idle-frame var 100ms i 600ms.
-  // Detta sköljer noble's interna pending writes (musik-burst) snabbt — utan
-  // detta kan keep-alive (400ms) ärva en kö av musik-frames som spelar ut
-  // sig själva i radio-stacken efter att engine slutat skicka.
-  private static readonly IDLE_FLUSH_INTERVAL_MS = 100;
-  private static readonly IDLE_FLUSH_DURATION_MS = 600;
 
   private startIdleHeartbeat(): void {
     this.stopIdleHeartbeat();
-    // Tvinga idle-färgen direkt vid pause — bypassar busy/rate-limit/delta-gates.
+    // EN omedelbar idle-force vid pause. Ingen burst-loop här — flera
+    // force-writes kan själva skapa en noble-kö av idle-frames som sedan
+    // ligger kvar när nästa låt startar.
     this.forceIdleNow();
-    // Aggressiv flush-burst första 600ms: var 100ms tvingas idle-frame in,
-    // så keep-alive aldrig hinner ärva en gammal musik-buffer.
-    let flushElapsed = 0;
-    this._idleFlushTimer = setInterval(() => {
-      this.forceIdleNow();
-      flushElapsed += PiLightEngine.IDLE_FLUSH_INTERVAL_MS;
-      if (flushElapsed >= PiLightEngine.IDLE_FLUSH_DURATION_MS) {
-        if (this._idleFlushTimer) { clearInterval(this._idleFlushTimer); this._idleFlushTimer = null; }
-      }
-    }, PiLightEngine.IDLE_FLUSH_INTERVAL_MS);
-    // Lång-sikt heartbeat var 2s — använd sendIdleForce så vi aldrig kan
-    // delta-skippas av sendToBLE-gaten.
+    // Långsiktig idle-heartbeat för att hålla länken vid liv medan vi står i idle.
     this._idleTimer = setInterval(() => this.forceIdleNow(), PiLightEngine.IDLE_HEARTBEAT_MS);
   }
 
   private stopIdleHeartbeat(): void {
     if (this._idleTimer) { clearInterval(this._idleTimer); this._idleTimer = null; }
-    if (this._idleFlushTimer) { clearInterval(this._idleFlushTimer); this._idleFlushTimer = null; }
   }
 
   private forceIdleNow(): void {
