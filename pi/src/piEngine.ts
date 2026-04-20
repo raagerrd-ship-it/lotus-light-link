@@ -245,7 +245,6 @@ export class PiLightEngine {
   private onsetLastTime = 0;
   private static readonly ONSET_REFRACTORY_MS = 110;
 
-  private agc: AgcState;
   private cal: LightCalibration;
 
   // Precomputed tick constants — refreshed only when tickMs or cal changes
@@ -267,7 +266,6 @@ export class PiLightEngine {
   constructor(tickMs = 25) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
-    this.agc = createAgcState();
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
@@ -405,7 +403,6 @@ export class PiLightEngine {
     this._calDirty = true; // mark for next save cycle
     // Re-apply raw mode overrides if active
     if (this._rawMode) {
-      this.cal.agcEnabled = false;
       this.cal.dynamicsEnabled = false;
       this.cal.transientBoost = false;
       this.cal.perceptualCurve = false;
@@ -418,12 +415,10 @@ export class PiLightEngine {
     if (on && !this._rawMode) {
       this._rawMode = true;
       this._savedCal = {
-        agcEnabled: this.cal.agcEnabled,
         dynamicsEnabled: this.cal.dynamicsEnabled,
         transientBoost: this.cal.transientBoost,
         perceptualCurve: this.cal.perceptualCurve,
       };
-      this.cal.agcEnabled = false;
       this.cal.dynamicsEnabled = false;
       this.cal.transientBoost = false;
       this.cal.perceptualCurve = false;
@@ -445,7 +440,6 @@ export class PiLightEngine {
   /** Initialize engine — call once at boot. Loop only starts when setPlaying(true). */
   start(): void {
     if (this._running) return;
-    this.agc = createAgcState();
     this._running = true;
 
     // Register for FFT-driven ticks (event-driven, not polling)
@@ -569,15 +563,9 @@ export class PiLightEngine {
         return;
       }
 
-      // ── 1. Simple peak AGC ──
-      if (cal.agcEnabled !== false) {
-        updatePeakAgc(this.agc, bands.totalRms, bands.bassRms, bands.midHiRms, tc);
-      }
-
-      // ── 2. Normalize via peak ──
-      const peakMax = this.agc.peakMax;
-      const bassNorm = cal.agcEnabled !== false ? normalizeSimple(bands.bassRms, peakMax) : Math.min(1, bands.bassRms * 5);
-      const midHiNorm = cal.agcEnabled !== false ? normalizeSimple(bands.midHiRms, peakMax) : Math.min(1, bands.midHiRms * 5);
+      // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
+      const bassNorm = normalizeFixed(bands.bassRms);
+      const midHiNorm = normalizeFixed(bands.midHiRms);
       const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
 
       // ── 3. Bas/Disk mix ──
