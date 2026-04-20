@@ -165,6 +165,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
     label: string,
     Icon: typeof Mic,
     extra?: React.ReactNode,
+    badge?: React.ReactNode,
   ) => {
     const sub = status?.subsystems[id] ?? { status: "idle" as Status, startedAt: null, readyAt: null, durationMs: null, error: null };
     const dot = sub.status === "ready"
