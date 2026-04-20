@@ -536,10 +536,12 @@ function GainCalibrationPanel({
   const [tempGain, setTempGain] = useState(15);
   const [outputPct, setOutputPct] = useState(0);
   const [liveSonosVol, setLiveSonosVol] = useState<number | null>(null);
+  const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
 
-  // Poll Sonos vol live when auto-gain is ON (so user sees current multiplier source)
+  // Poll auto-gain status (multiplier + effective) i båda lägena så användaren
+  // alltid ser aktuell motor-gain. Sonos-vol används bara i Auto-rutan.
   useEffect(() => {
-    if (!enabled || calStep !== 0) return;
+    if (calStep !== 0) return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -552,13 +554,14 @@ function GainCalibrationPanel({
         if (!cancelled) {
           if (status.sonos?.volume != null) setLiveSonosVol(status.sonos.volume);
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
+          if (ag.effective != null) setEffectiveGain(ag.effective);
         }
       } catch {}
     };
     poll();
     const id = setInterval(poll, 1500);
     return () => { cancelled = true; clearInterval(id); };
-  }, [piBase, enabled, calStep]);
+  }, [piBase, calStep]);
 
   // Load initial state
   useEffect(() => {
