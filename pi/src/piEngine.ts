@@ -418,6 +418,11 @@ export class PiLightEngine {
     this.playing = playing;
 
     if (!playing && wasPlaying) {
+      // Reset smoothing-state så en ev. resume börjar från noll, inte från
+      // sista musik-frame (annars kan första post-resume-ticken slå till hårt).
+      this.smoothed = 0;
+      this.onsetBoost = 0;
+      this.onsetTarget = 0;
       // Keep loop running (CPU is negligible) but add idle heartbeat
       this.startIdleHeartbeat();
       console.log('[Engine] → idle mode (loop + heartbeat every 2s)');
