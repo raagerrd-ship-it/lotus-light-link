@@ -7,6 +7,10 @@ interface BleRates {
   sentPerSec: number;
   skipDeltaPerSec: number;
   skipBusyPerSec: number;
+  skipInFlightPerSec?: number;
+  skipRateLimitPerSec?: number;
+  fftDroppedPerSec?: number;
+  writeFailPerSec?: number;
   writeLatAvgMs: number;
   fftPerSec?: number;
   tickPerSec?: number;
@@ -17,11 +21,19 @@ interface Props {
 }
 
 /**
- * Visar audio-backend + end-to-end latens + BLE pkt/s.
- * Pkt/s-badge avslöjar var paketen tar vägen:
- *   pkt/s lågt + skipDelta högt  → samma färg upprepas (engine OK, inget nytt att skicka)
- *   pkt/s lågt + skipBusy högt   → BLE writeAsync långsammare än tick (BLEDOM cap)
- *   pkt/s lågt + båda låga       → engine tickar inte (FFT/audio-problem)
+ * Visar audio-backend + end-to-end latens + mini-stapeldiagram över hela
+ * mic→FFT→tick→BLE-kedjan. Stapeln pulserar i realtid så ögat hinner med
+ * istället för att läsa siffror som flimrar varje sekund.
+ *
+ * Staplar (vänster→höger):
+ *   FFT  — frames/s normaliserat mot 2000/tickMs (mål: 2 FFT/tick)
+ *   TCK  — engine ticks/s mot 1000/tickMs
+ *   PKT  — BLE-paket/s mot 1000/tickMs
+ *   DLT  — skip pga oförändrad färg (normalt, blå)
+ *   RLM  — skip pga 35ms BLE-rate-limit (normalt vid hög aktivitet, blå)
+ *
+ * Röd LED-prick: lyser om någon av skipInFlight / writeFail / fftDropped > 0
+ * — det är dessa som indikerar verklig kö eller missad kapacitet.
  */
 export function MicBackendBadge({ piBase }: Props) {
   const [backend, setBackend] = useState<Backend>(null);
@@ -70,7 +82,6 @@ export function MicBackendBadge({ piBase }: Props) {
     );
   }
 
-  // Latensen JÄMFÖRS MOT TICK-RATE — det är taket för hur snabbt vi kan reagera.
   const latencyClass =
     latencyMs == null || tickMs == null
       ? ""
@@ -80,38 +91,82 @@ export function MicBackendBadge({ piBase }: Props) {
           ? "text-foreground/70"
           : "text-destructive";
 
-  const latencyTitle =
-    latencyMs != null && tickMs != null
-      ? ` — ${latencyMs}ms audio→BLE (tick=${tickMs}ms)`
-      : latencyMs != null
-        ? ` — ${latencyMs}ms audio→BLE`
-        : "";
-
   const latencySuffix =
-    latencyMs != null ? (
-      <span className={`ml-1 ${latencyClass}`}>· {latencyMs}ms</span>
-    ) : null;
+    latencyMs != null ? <span className={`ml-1 ${latencyClass}`}>· {latencyMs}ms</span> : null;
 
-  // BLE pkt/s — färgkodad mot tick-rate-taket (1000/tickMs)
-  const targetPps = tickMs ? Math.round(1000 / tickMs) : 0;
-  const pktClass =
-    !ble || !targetPps
-      ? "text-foreground/60"
-      : ble.sentPerSec >= targetPps * 0.8
-        ? "text-primary"
-        : ble.sentPerSec >= targetPps * 0.4
-          ? "text-foreground/70"
-          : "text-destructive";
+  // ── Stapel-rendering ──────────────────────────────────────────────
+  const pktTarget = tickMs ? 1000 / tickMs : 0;
+  const fftTarget = pktTarget * 2; // 2 FFT per tick by design
 
-  const pktTitle = ble
-    ? `Kedja: FFT ${ble.fftPerSec ?? "?"}/s → tick ${ble.tickPerSec ?? "?"}/s → BLE ${ble.sentPerSec}/s (mål ${targetPps}) · skipDelta ${ble.skipDeltaPerSec}/s · skipBusy ${ble.skipBusyPerSec}/s · writeLat ${ble.writeLatAvgMs}ms`
+  const pct = (v: number, target: number) =>
+    target > 0 ? Math.max(2, Math.min(100, Math.round((v / target) * 100))) : 0;
+
+  const productiveColor = (ratio: number) =>
+    ratio >= 0.8 ? "bg-primary" : ratio >= 0.4 ? "bg-foreground/60" : "bg-destructive";
+
+  const fftRatio = ble && fftTarget ? (ble.fftPerSec ?? 0) / fftTarget : 0;
+  const tckRatio = ble && pktTarget ? (ble.tickPerSec ?? 0) / pktTarget : 0;
+  const pktRatio = ble && pktTarget ? ble.sentPerSec / pktTarget : 0;
+
+  const skipInFlight = ble?.skipInFlightPerSec ?? 0;
+  const writeFail = ble?.writeFailPerSec ?? 0;
+  const fftDropped = ble?.fftDroppedPerSec ?? 0;
+  const hasBadSkip = skipInFlight > 0 || writeFail > 0;
+
+  const Bar = ({ height, colorClass, label }: { height: number; colorClass: string; label: string }) => (
+    <div className="flex flex-col items-center justify-end h-3 w-[5px]" title={label}>
+      <div
+        className={`w-full rounded-sm ${colorClass} transition-all duration-200`}
+        style={{ height: `${height}%` }}
+      />
+    </div>
+  );
+
+  const tooltip = ble
+    ? [
+        `Mål: tick=${tickMs}ms → ${Math.round(pktTarget)} pkt/s, ${Math.round(fftTarget)} FFT/s`,
+        ``,
+        `PRODUKTIVT:`,
+        `  FFT  ${ble.fftPerSec ?? "?"}/s   (${Math.round(fftRatio * 100)}% av mål)`,
+        `  TICK ${ble.tickPerSec ?? "?"}/s  (${Math.round(tckRatio * 100)}% av mål)`,
+        `  PKT  ${ble.sentPerSec}/s    (${Math.round(pktRatio * 100)}% av mål)`,
+        ``,
+        `FÖRVÄNTADE SKIPS:`,
+        `  delta (oförändrad färg): ${ble.skipDeltaPerSec}/s`,
+        `  rate-limit (35ms gate):  ${ble.skipRateLimitPerSec ?? 0}/s`,
+        ``,
+        `OND SKIPS (kö/förlust):`,
+        `  in-flight (write hänger): ${skipInFlight}/s`,
+        `  writeFail (BLE-error):    ${writeFail}/s`,
+        `  fftDropped (mic-overflow): ${fftDropped}/s`,
+        ``,
+        `writeLat avg: ${ble.writeLatAvgMs}ms`,
+        latencyMs != null ? `audio→BLE latens: ${latencyMs}ms` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
     : "";
 
-  const pktSuffix = ble ? (
-    <span className={`ml-1 ${pktClass}`} title={pktTitle}>
-      · f{ble.fftPerSec ?? "?"}/t{ble.tickPerSec ?? "?"}/p{ble.sentPerSec}
-      {ble.skipBusyPerSec > 0 ? <span className="opacity-60"> b{ble.skipBusyPerSec}</span> : null}
-      {ble.skipDeltaPerSec > 0 ? <span className="opacity-60"> d{ble.skipDeltaPerSec}</span> : null}
+  const bars = ble ? (
+    <span className="ml-1.5 inline-flex items-end gap-[2px] align-middle" title={tooltip}>
+      <Bar height={pct(ble.fftPerSec ?? 0, fftTarget)} colorClass={productiveColor(fftRatio)} label="FFT/s" />
+      <Bar height={pct(ble.tickPerSec ?? 0, pktTarget)} colorClass={productiveColor(tckRatio)} label="TICK/s" />
+      <Bar height={pct(ble.sentPerSec, pktTarget)} colorClass={productiveColor(pktRatio)} label="PKT/s" />
+      <span className="w-[3px]" />
+      <Bar height={pct(ble.skipDeltaPerSec, pktTarget)} colorClass="bg-foreground/30" label="skip delta" />
+      <Bar height={pct(ble.skipRateLimitPerSec ?? 0, pktTarget)} colorClass="bg-foreground/30" label="skip rate-limit" />
+      {hasBadSkip ? (
+        <span
+          className="ml-1 w-[6px] h-[6px] rounded-full bg-destructive animate-pulse"
+          title={`KÖ! in-flight=${skipInFlight}/s writeFail=${writeFail}/s`}
+        />
+      ) : null}
+      {!hasBadSkip && fftDropped > 0 ? (
+        <span
+          className="ml-1 w-[6px] h-[6px] rounded-full bg-foreground/40"
+          title={`fftDropped=${fftDropped}/s — extra mic-frames bidrar till FFT-state men driver ej output`}
+        />
+      ) : null}
     </span>
   ) : null;
 
@@ -119,9 +174,9 @@ export function MicBackendBadge({ piBase }: Props) {
     return (
       <span
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-primary/15 text-primary border border-primary/30"
-        title={`Native ALSA (direct snd_pcm_readi)${latencyTitle}`}
+        title={`Native ALSA${latencyMs != null ? ` · ${latencyMs}ms audio→BLE` : ""}`}
       >
-        <Cpu size={9} /> ALSA{latencySuffix}{pktSuffix}
+        <Cpu size={9} /> ALSA{latencySuffix}{bars}
       </span>
     );
   }
@@ -130,9 +185,9 @@ export function MicBackendBadge({ piBase }: Props) {
     return (
       <span
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-destructive/15 text-destructive border border-destructive/30"
-        title={`arecord-subprocess (fallback)${latencyTitle}`}
+        title={`arecord-subprocess (fallback)${latencyMs != null ? ` · ${latencyMs}ms audio→BLE` : ""}`}
       >
-        <Terminal size={9} /> ARECORD{latencySuffix}{pktSuffix}
+        <Terminal size={9} /> ARECORD{latencySuffix}{bars}
       </span>
     );
   }

@@ -970,6 +970,10 @@ export function startConfigServer(port = 3050): void {
   let _lastSent = 0;
   let _lastSkipDelta = 0;
   let _lastSkipBusy = 0;
+  let _lastSkipInFlight = 0;
+  let _lastSkipRateLimit = 0;
+  let _lastFftDropped = 0;
+  let _lastWriteFail = 0;
   let _lastFftFrames = 0;
   let _lastTickCount = 0;
 
@@ -997,13 +1001,15 @@ export function startConfigServer(port = 3050): void {
         const delta = tBle - tAudio;
         if (delta >= 0 && delta < 500) audioToBleLatencyMs = Math.round(delta);
       }
-      // Per-second rates (sample-to-sample delta)
       const now = performance.now();
       const dt = _lastSampleTs > 0 ? (now - _lastSampleTs) / 1000 : 0;
       const sentPerSec = dt > 0 ? Math.round((bleStats.sentCount - _lastSent) / dt) : 0;
       const skipDeltaPerSec = dt > 0 ? Math.round((bleStats.skipDeltaCount - _lastSkipDelta) / dt) : 0;
       const skipBusyPerSec = dt > 0 ? Math.round((bleStats.skipBusyCount - _lastSkipBusy) / dt) : 0;
-      // FFT-frames/s (audio→engine) och engine ticks/s (gating släpper igenom)
+      const skipInFlightPerSec = dt > 0 ? Math.round(((bleStats.skipInFlightCount ?? 0) - _lastSkipInFlight) / dt) : 0;
+      const skipRateLimitPerSec = dt > 0 ? Math.round(((bleStats.skipRateLimitCount ?? 0) - _lastSkipRateLimit) / dt) : 0;
+      const fftDroppedPerSec = dt > 0 ? Math.round(((bleStats.fftDroppedCount ?? 0) - _lastFftDropped) / dt) : 0;
+      const writeFailPerSec = dt > 0 ? Math.round((bleStats.writeFailCount - _lastWriteFail) / dt) : 0;
       const fftFrames = mic.getFFTFrameCount?.() ?? 0;
       const tickCount = engine?.getDiagnostics().tickCount ?? 0;
       const fftPerSec = dt > 0 ? Math.round((fftFrames - _lastFftFrames) / dt) : 0;
@@ -1012,12 +1018,20 @@ export function startConfigServer(port = 3050): void {
       _lastSent = bleStats.sentCount;
       _lastSkipDelta = bleStats.skipDeltaCount;
       _lastSkipBusy = bleStats.skipBusyCount;
+      _lastSkipInFlight = bleStats.skipInFlightCount ?? 0;
+      _lastSkipRateLimit = bleStats.skipRateLimitCount ?? 0;
+      _lastFftDropped = bleStats.fftDroppedCount ?? 0;
+      _lastWriteFail = bleStats.writeFailCount;
       _lastFftFrames = fftFrames;
       _lastTickCount = tickCount;
       ble = {
         sentPerSec,
         skipDeltaPerSec,
         skipBusyPerSec,
+        skipInFlightPerSec,
+        skipRateLimitPerSec,
+        fftDroppedPerSec,
+        writeFailPerSec,
         writeLatAvgMs: bleStats.writeLatAvgMs,
         fftPerSec,
         tickPerSec,

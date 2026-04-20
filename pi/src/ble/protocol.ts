@@ -137,6 +137,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
       console.warn('[BLE] Write timeout — forcing writeInFlight release');
       writeInFlight = false;
     } else {
+      bleStats.skipInFlightCount++;
       bleStats.skipBusyCount++;
       return;
     }
@@ -150,6 +151,7 @@ export async function sendToBLE(r: number, g: number, b: number, brightness: num
   // slidern (UI) är den verkliga begränsaren.
   const MIN_WRITE_INTERVAL_MS = 35;
   if (lastWriteTime > 0 && (performance.now() - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
+    bleStats.skipRateLimitCount++;
     bleStats.skipBusyCount++;
     return;
   }
