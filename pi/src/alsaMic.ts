@@ -378,13 +378,17 @@ export function setTickHopMs(tickMs: number): void {
   console.log(`[ALSA] FFT hop → ${HOP_SIZE} frames (${(HOP_SIZE / SAMPLE_RATE * 1000).toFixed(1)}ms, 1 FFT/tick @ ${tickMs}ms)`);
 }
 
-// Software mic gain — multiplier applied to raw PCM samples before processing
+// Software mic gain — multiplier applied to raw PCM samples before processing.
+// ANTINGEN/ELLER-LOGIK:
+//   autoGainEnabled === false → micGain = micGainBase   (manuell slider)
+//   autoGainEnabled === true  → micGain = micGainAuto   (interpolerad från Sonos-vol)
+// Cal-punkterna är absoluta gain-värden, inte multiplikatorer ovanpå base.
 let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
-let micGainAuto = 1.0;   // Auto-gain multiplier from Sonos volume
-let micGain = 1.0;       // Effective = base * auto
+let micGainAuto = 15.0;  // Absolute gain interpolated from Sonos volume
+let micGain = 15.0;      // Effective — used in hot path
 
 function updateEffectiveGain(): void {
-  micGain = micGainBase * micGainAuto;
+  micGain = autoGainEnabled ? micGainAuto : micGainBase;
 }
 
 export function getMicGain(): number { return micGainBase; }
@@ -394,19 +398,17 @@ export function getAutoGainMultiplier(): number { return micGainAuto; }
 export function setMicGain(gain: number): void {
   micGainBase = Math.max(0.1, Math.min(50, gain));
   updateEffectiveGain();
-  console.log(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x)`);
+  console.log(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x, auto=${autoGainEnabled})`);
 }
 
 /** Two-point gain calibration.
- *  Two reference points: (vol1, gain1) and (vol2, gain2).
- *  Auto-gain interpolates/extrapolates in log space between them. */
+ *  Cal-punkterna är absoluta gain-värden. När auto är på bypass:as manuell slider. */
 export interface GainCalPoint { vol: number; gain: number; }
 
-let calPoint1: GainCalPoint | null = null;  // low volume point
-let calPoint2: GainCalPoint | null = null;  // high volume point
-const AUTO_GAIN_MAX = 12.0;
-const AUTO_GAIN_MIN = 0.3;
-// Auto-gain only activates when calibration points exist
+let calPoint1: GainCalPoint | null = null;
+let calPoint2: GainCalPoint | null = null;
+const AUTO_GAIN_MAX = 50.0;
+const AUTO_GAIN_MIN = 0.1;
 let autoGainEnabled = false;
 
 export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
@@ -423,14 +425,10 @@ export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | nul
 }
 
 function interpolateGain(sonosVolume: number): number {
-  if (!calPoint1 || !calPoint2) {
-    // No calibration → no auto-gain adjustment
-    return 1.0;
-  }
-  // Log-linear interpolation between the two calibrated points
+  if (!calPoint1 || !calPoint2) return micGainBase;
   const v1 = calPoint1.vol, g1 = calPoint1.gain;
   const v2 = calPoint2.vol, g2 = calPoint2.gain;
-  if (v1 === v2) return g1; // degenerate
+  if (v1 === v2) return g1;
   const logG1 = Math.log(g1), logG2 = Math.log(g2);
   const t = (sonosVolume - v1) / (v2 - v1);
   const logG = logG1 + t * (logG2 - logG1);
@@ -442,19 +440,19 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   if (sonosVolume <= 0) { micGainAuto = AUTO_GAIN_MAX; updateEffectiveGain(); return; }
   micGainAuto = interpolateGain(sonosVolume);
   updateEffectiveGain();
-  console.log(`[ALSA] Auto-gain: vol=${sonosVolume} → multiplier=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
+  console.log(`[ALSA] Auto-gain: vol=${sonosVolume} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
 }
 
 export function disableAutoGain(): void {
   autoGainEnabled = false;
-  micGainAuto = 1.0;
   updateEffectiveGain();
-  console.log(`[ALSA] Auto-gain disabled (effective: ${micGain.toFixed(1)}x)`);
+  console.log(`[ALSA] Auto-gain disabled → manual base gain ${micGainBase.toFixed(1)}x active`);
 }
 
 export function enableAutoGain(): void {
   autoGainEnabled = true;
-  console.log(`[ALSA] Auto-gain enabled`);
+  updateEffectiveGain();
+  console.log(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (interpolated from Sonos vol)`);
 }
 
 export function getAlsaDevice(): string {
