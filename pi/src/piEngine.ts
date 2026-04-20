@@ -629,8 +629,6 @@ export class PiLightEngine {
       _diag.rawRms = bands.totalRms;
       _diag.bassRms = bands.bassRms;
       _diag.midHiRms = bands.midHiRms;
-      _diag.peakMax = this.agc.peakMax;
-      _diag.agcQuietTicks = this.agc.quietTicks;
       _diag.bassNorm = bassNorm;
       _diag.midHiNorm = midHiNorm;
       _diag.preDynamics = preDynamics;
