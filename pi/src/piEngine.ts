@@ -139,7 +139,10 @@ function migrateLegacyCalibration(cal: any): any {
 function loadCalibration(): LightCalibration {
   try {
     const raw = getItem('light-calibration');
-    if (raw) return { ...DEFAULT_CAL, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = migrateLegacyCalibration(JSON.parse(raw));
+      return { ...DEFAULT_CAL, ...parsed };
+    }
   } catch {}
   return { ...DEFAULT_CAL };
 }
