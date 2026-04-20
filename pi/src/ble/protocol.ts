@@ -297,10 +297,46 @@ export function sendIdleForce(r: number, g: number, b: number): void {
   const cg = Math.max(0, Math.min(255, g | 0));
   const cb = Math.max(0, Math.min(255, b | 0));
 
+  // Synkron buffer + dedup-state (så keep-alive bär idle-färgen direkt).
   writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
   brightBuf[3] = 0xff;
   lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff;
 
-  // Reservér tidpunkten så keep-alive inte omedelbart race:ar samma tick.
-  lastWriteTime = performance.now();
+  // OMEDELBAR write om sloten är ledig — vänta INTE på nästa keep-alive
+  // (som är upp till 400ms bort) eller på en hängande writeSlot. Detta är
+  // raden av "lampan blinkar vidare flera sekunder efter pause": utan denna
+  // rad ärver keep-alive bara writeBuf när dess timer ticker, och om noble's
+  // interna characteristic-kö har ackumulerade writes från musik-bursten kan
+  // det dröja innan idle-frame faktiskt sänds över luften.
+  //
+  // Hard-fail-pipeline: om writeSlot är upptagen droppar vi writen istället
+  // för att kö:a — keep-alive tar nästa skott inom 400ms när sloten släppts.
+  // Detta får ALDRIG skapa en backlog.
+  if (writeSlot) {
+    // Slot upptagen → låt keep-alive ta vid. lastWriteTime sätts INTE här
+    // för att vi inte vill blocka keep-alives 320ms-gate.
+    return;
+  }
+
+  const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
+  const startedAt = performance.now();
+  lastWriteTime = startedAt;
+  const p: Promise<void> = device.characteristic.writeAsync(buf, true)
+    .then(() => { bleStats.sentCount++; })
+    .catch(() => { /* idle-write fail = harmless, keep-alive retries */ })
+    .finally(() => {
+      if (writeSlot === p) {
+        writeSlot = null;
+        if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
+      }
+    });
+  writeSlot = p;
+  if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
+  writeSlotWatchdog = setTimeout(() => {
+    if (writeSlot === p) {
+      bleStats.writeStuckCount++;
+      writeSlot = null;
+      writeSlotWatchdog = null;
+    }
+  }, WRITE_SLOT_TIMEOUT_MS);
 }
