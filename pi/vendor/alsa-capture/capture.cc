@@ -84,8 +84,6 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
   ~CaptureWorker() {
     closed_ = true;
     if (thread_.joinable()) thread_.join();
-    if (audioTsfn_) audioTsfn_.Release();
-    if (eventTsfn_) eventTsfn_.Release();
   }
 
  private:
@@ -218,7 +216,9 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
       EmitAudio(std::move(out));
     }
 
-    snd_pcm_drain(handle);
+    if (audioTsfn_) audioTsfn_.Release();
+    if (eventTsfn_) eventTsfn_.Release();
+    snd_pcm_drop(handle);
     snd_pcm_close(handle);
   }
 
