@@ -2068,7 +2068,7 @@ export default function PiMobile() {
           Sök/manuell-MAC/spara/glöm är medvetet borttaget i denna iteration. */}
 
       {/* Diagnostik medvetet borttaget — UI är minimalt fokuserat på Starta motor + Anslut.
-          Logg från backend visas live i BleControlPanel via /api/ble/engine/logs. */}
+          Engine-loggen är borttagen — felsök via SSH/journalctl istället. */}
 
     </div>
   );
