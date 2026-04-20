@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase, ensureAdapterUp } from './nobleBle.js';
+import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase, ensureAdapterUp, getMinWriteIntervalMs, setMinWriteIntervalMs } from './nobleBle.js';
 import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot, getAllSubsystemStates, getSubsystemState, type SubsystemId } from './ble/state.js';
 import { getWatchdogGiveUpReason } from './ble/watchdog.js';
 import type { GainCalPoint } from './alsaMic.js';
@@ -938,6 +938,23 @@ export function startConfigServer(port = 3050): void {
     } else {
       res.status(400).json({ error: 'tickMs must be 35-50 (BLE rate-limit är 35ms)' });
     }
+  });
+
+  // --- BLE write rate-limit (live-tweakbar för att hitta lampans tak) ---
+  app.get('/api/ble/rate-limit', (_req, res) => {
+    const ms = getMinWriteIntervalMs();
+    res.json({ minWriteIntervalMs: ms, maxHz: +(1000 / ms).toFixed(1) });
+  });
+
+  app.put('/api/ble/rate-limit', (req, res) => {
+    const { minWriteIntervalMs } = req.body ?? {};
+    const v = Number(minWriteIntervalMs);
+    if (!Number.isFinite(v) || v < 5 || v > 100) {
+      return res.status(400).json({ error: 'minWriteIntervalMs must be 5–100 (number)' });
+    }
+    setMinWriteIntervalMs(v);
+    setItem('ble-min-write-interval-ms', String(v));
+    res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
   });
 
 

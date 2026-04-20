@@ -25,7 +25,7 @@ export type { BootPhase, SubsystemId, SubsystemStatus, SubsystemState } from './
 export { noble } from './state.js';
 
 // Protocol (write pipeline)
-export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma } from './protocol.js';
+export { sendToBLE, sendRawColor, resetLastSent, setDimmingGamma, getDimmingGamma, getMinWriteIntervalMs, setMinWriteIntervalMs } from './protocol.js';
 
 // Connection (direct connect + GATT)
 export { connectPeripheral, resetHciAdapter, autoConnectSaved, isConnectInProgress, waitForConnectIdle } from './connect.js';
