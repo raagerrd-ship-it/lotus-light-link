@@ -974,8 +974,13 @@ export function startConfigServer(port = 3050): void {
   let _lastSkipRateLimit = 0;
   let _lastFftDropped = 0;
   let _lastWriteFail = 0;
+  let _lastWriteStuck = 0;
   let _lastFftFrames = 0;
   let _lastTickCount = 0;
+  let _lastTickOk = 0;
+  let _lastTickAbortNoMic = 0;
+  let _lastTickAbortNoChange = 0;
+  let _lastTickAbortNoDevice = 0;
 
   app.get('/api/mic/level', async (_req, res) => {
     const mic = getMic();
@@ -1003,17 +1008,30 @@ export function startConfigServer(port = 3050): void {
       }
       const now = performance.now();
       const dt = _lastSampleTs > 0 ? (now - _lastSampleTs) / 1000 : 0;
-      const sentPerSec = dt > 0 ? Math.round((bleStats.sentCount - _lastSent) / dt) : 0;
-      const skipDeltaPerSec = dt > 0 ? Math.round((bleStats.skipDeltaCount - _lastSkipDelta) / dt) : 0;
-      const skipBusyPerSec = dt > 0 ? Math.round((bleStats.skipBusyCount - _lastSkipBusy) / dt) : 0;
-      const skipInFlightPerSec = dt > 0 ? Math.round(((bleStats.skipInFlightCount ?? 0) - _lastSkipInFlight) / dt) : 0;
-      const skipRateLimitPerSec = dt > 0 ? Math.round(((bleStats.skipRateLimitCount ?? 0) - _lastSkipRateLimit) / dt) : 0;
-      const fftDroppedPerSec = dt > 0 ? Math.round(((bleStats.fftDroppedCount ?? 0) - _lastFftDropped) / dt) : 0;
-      const writeFailPerSec = dt > 0 ? Math.round((bleStats.writeFailCount - _lastWriteFail) / dt) : 0;
+      const perSec = (cur: number, prev: number) => dt > 0 ? Math.round((cur - prev) / dt) : 0;
+
+      const sentPerSec = perSec(bleStats.sentCount, _lastSent);
+      const skipDeltaPerSec = perSec(bleStats.skipDeltaCount, _lastSkipDelta);
+      const skipBusyPerSec = perSec(bleStats.skipBusyCount, _lastSkipBusy);
+      const skipInFlightPerSec = perSec(bleStats.skipInFlightCount ?? 0, _lastSkipInFlight);
+      const skipRateLimitPerSec = perSec(bleStats.skipRateLimitCount ?? 0, _lastSkipRateLimit);
+      const fftDroppedPerSec = perSec(bleStats.fftDroppedCount ?? 0, _lastFftDropped);
+      const writeFailPerSec = perSec(bleStats.writeFailCount, _lastWriteFail);
+      const writeStuckPerSec = perSec(bleStats.writeStuckCount ?? 0, _lastWriteStuck);
+      const tickOkPerSec = perSec(bleStats.tickOkCount ?? 0, _lastTickOk);
+      const tickAbortNoMicPerSec = perSec(bleStats.tickAbortNoMicCount ?? 0, _lastTickAbortNoMic);
+      const tickAbortNoChangePerSec = perSec(bleStats.tickAbortNoChangeCount ?? 0, _lastTickAbortNoChange);
+      const tickAbortNoDevicePerSec = perSec(bleStats.tickAbortNoDeviceCount ?? 0, _lastTickAbortNoDevice);
+
       const fftFrames = mic.getFFTFrameCount?.() ?? 0;
       const tickCount = engine?.getDiagnostics().tickCount ?? 0;
-      const fftPerSec = dt > 0 ? Math.round((fftFrames - _lastFftFrames) / dt) : 0;
-      const tickPerSec = dt > 0 ? Math.round((tickCount - _lastTickCount) / dt) : 0;
+      const fftPerSec = perSec(fftFrames, _lastFftFrames);
+      const tickPerSec = perSec(tickCount, _lastTickCount);
+
+      // Snapshot writeLatMaxMs sedan reset så vi ser peak senaste sekunden
+      const writeLatMaxMs = bleStats.writeLatMaxMs ?? 0;
+      bleStats.writeLatMaxMs = 0;
+
       _lastSampleTs = now;
       _lastSent = bleStats.sentCount;
       _lastSkipDelta = bleStats.skipDeltaCount;
@@ -1022,8 +1040,14 @@ export function startConfigServer(port = 3050): void {
       _lastSkipRateLimit = bleStats.skipRateLimitCount ?? 0;
       _lastFftDropped = bleStats.fftDroppedCount ?? 0;
       _lastWriteFail = bleStats.writeFailCount;
+      _lastWriteStuck = bleStats.writeStuckCount ?? 0;
       _lastFftFrames = fftFrames;
       _lastTickCount = tickCount;
+      _lastTickOk = bleStats.tickOkCount ?? 0;
+      _lastTickAbortNoMic = bleStats.tickAbortNoMicCount ?? 0;
+      _lastTickAbortNoChange = bleStats.tickAbortNoChangeCount ?? 0;
+      _lastTickAbortNoDevice = bleStats.tickAbortNoDeviceCount ?? 0;
+
       ble = {
         sentPerSec,
         skipDeltaPerSec,
@@ -1032,9 +1056,16 @@ export function startConfigServer(port = 3050): void {
         skipRateLimitPerSec,
         fftDroppedPerSec,
         writeFailPerSec,
+        writeStuckPerSec,
         writeLatAvgMs: bleStats.writeLatAvgMs,
+        writeLatMaxMs,
         fftPerSec,
         tickPerSec,
+        // Tick-pipeline-utfall (per sekund)
+        tickOkPerSec,
+        tickAbortNoMicPerSec,
+        tickAbortNoChangePerSec,
+        tickAbortNoDevicePerSec,
       };
     } catch { /* protocol module not loaded yet */ }
     res.json({

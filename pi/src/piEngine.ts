@@ -717,6 +717,11 @@ export class PiLightEngine {
       const cal = this.cal;
       const tc = this.tc;
       const bands = getLatestBands();
+      // Steg 1 i hard-fail-pipelinen: har vi en mic-frame att jobba med?
+      if (!bands || !Number.isFinite(bands.totalRms)) {
+        bleStatsState.tickAbortNoMicCount++;
+        return;
+      }
 
       // ── 1. Simple peak AGC ──
       if (cal.agcEnabled !== false) {
