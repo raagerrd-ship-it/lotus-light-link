@@ -18,7 +18,6 @@ import { sendToBLE, getDimmingGamma, setMinWriteIntervalMs } from './ble/protoco
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
-import { pipelineTiming } from './pipelineTiming.js';
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
@@ -527,9 +526,6 @@ export class PiLightEngine {
       // Enough time passed — process immediately (zero latency)
       this._lastTickTime = now;
       if (this._pendingTimeout) { clearTimeout(this._pendingTimeout); this._pendingTimeout = null; }
-      // fftToTick = FFT frame complete → engine tick start (event-driven path)
-      const fftTs = getLastFFTTimestamp();
-      if (fftTs > 0) pipelineTiming.recordFftToTick(now - fftTs);
       this.tickInner();
     } else if (!this._pendingTimeout) {
       // FFT arrived too early — schedule for remaining time.
@@ -540,10 +536,7 @@ export class PiLightEngine {
       const remaining = this.tickMs - elapsed;
       this._pendingTimeout = setTimeout(() => {
         this._pendingTimeout = null;
-        const t = performance.now();
-        this._lastTickTime = t;
-        const fftTs = getLastFFTTimestamp();
-        if (fftTs > 0) pipelineTiming.recordFftToTick(t - fftTs);
+        this._lastTickTime = performance.now();
         this.tickInner();
       }, remaining);
     } else {
@@ -894,14 +887,6 @@ export class PiLightEngine {
         if (this._profilePos >= this._profileSize) this.finishProfiling();
       }
 
-      // ── Pipeline timing (always-on, low overhead) ──
-      const tEnd = performance.now();
-      pipelineTiming.recordTickInner(tEnd - _tickStart);
-      // endToEnd = ALSA buffer arrival → all engine work done (BLE write
-      // already enqueued via sendToBLE). Excludes BLE radio air-time which
-      // we can't see from userspace; that's a separate ~5ms tail.
-      const tAudio = getLastAudioTimestamp();
-      if (tAudio > 0) pipelineTiming.recordEndToEnd(tEnd - tAudio);
     } catch (e) {
       console.error('[Engine] tick error (recovering):', e);
       this.sanitizeState();

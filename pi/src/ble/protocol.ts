@@ -13,7 +13,6 @@
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
-import { pipelineTiming } from '../pipelineTiming.js';
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
@@ -214,7 +213,6 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
         (bleStats.writeLatAvgMs * 0.9 + elapsed * 0.1) * 10
       ) / 10;
       if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
-      pipelineTiming.recordBleWrite(elapsed);
       if (lastWriteTime > 0) bleStats.effectiveIntervalMs = Math.round(writeStartedAt - (lastWriteTime - (writeStartedAt - now)));
       if (writeFailCount > 0) console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
       writeFailCount = 0;
