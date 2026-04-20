@@ -760,35 +760,8 @@ function GlobalSettingsView({
         </div>
       )}
 
-      <section className="mb-8">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Motor</h2>
-        <div className="flex justify-between text-sm mb-1">
-          <span>Tick rate</span>
-          <span className="text-muted-foreground font-mono text-xs">{tickMs} ms</span>
-        </div>
-        <input
-          type="range" min={25} max={50} step={1} value={tickMs}
-          onChange={(e) => setTickMs(parseInt(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-        />
-        <p className="text-[10px] text-muted-foreground mt-1">
-          Styr hela kedjan: mic→FFT→färg→BLE. {Math.round(1000 / tickMs)} pkt/s. Min 25ms = 40 pkt/s.
-        </p>
-
-        <div className="flex justify-between text-sm mb-1 mt-5">
-          <span>Dimming gamma</span>
-          <span className="text-muted-foreground font-mono text-xs">{dimmingGamma.toFixed(1)}</span>
-        </div>
-        <input
-          type="range" min={1.0} max={3.0} step={0.1} value={dimmingGamma}
-          onChange={(e) => setDimmingGamma(parseFloat(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-        />
-        <p className="text-[10px] text-muted-foreground mt-0.5">Lägre = mer ljus vid låga nivåer, högre = mer kontrast</p>
-
-        {/* BLE Fade Test */}
-        <BleFadeTest piBase={piBase} onResult={(wps) => { const ms = Math.round(1000 / wps); setTickMs(ms); }} />
-      </section>
+      {/* Motor-sektionen borttagen: tickMs hårdkodat till 25ms (40 pkt/s),
+          dimmingGamma flyttas till profilinställning, BLE Hastighetstest borttaget. */}
 
       <section className="mb-8">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
