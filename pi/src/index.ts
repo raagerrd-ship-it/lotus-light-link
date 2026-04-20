@@ -39,7 +39,7 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 10;
+const TICK_MS = 40;
 
 // --- Lazy module references (filled by starters) ---
 type AlsaMicModule = typeof import('./alsaMic.js');
@@ -213,7 +213,7 @@ async function startMicSubsystem(): Promise<void> {
       if (!engineInstance) {
         engineMod = await import('./piEngine.js');
         const savedTickMs = getItem('tick-ms');
-        const tick = savedTickMs ? Math.max(10, Math.min(50, Number(savedTickMs))) : TICK_MS;
+        const tick = savedTickMs ? Math.max(35, Math.min(50, Number(savedTickMs))) : TICK_MS;
         engineInstance = new engineMod.PiLightEngine(tick);
       }
 

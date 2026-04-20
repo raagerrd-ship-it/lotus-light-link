@@ -63,11 +63,11 @@ export interface BandResult {
 
 const SAMPLE_RATE = 44100;
 const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE styrs nu av tickMs: hop = round(tickMs/2 * 44.1) → 2 audio-frames per tick.
-// Default 25ms tick → hop≈551 frames (~12.5ms). FFT körs 2×/tick = snabbare
-// onset-detektering utan att dubbla CPU-kostnaden vs hop=128.
-// Sätts via setTickHopMs() — auto-restartar capture om aktiv.
-let HOP_SIZE = 551;
+// HOP_SIZE = tickMs * 44.1 → exakt 1 FFT per tick (1:1 mic→FFT→tick).
+// Med synkron hard-fail-pipeline behövs ingen "extra" FFT-frame som
+// säkerhetsmarginal — varje audio-batch driver exakt en tick.
+// Default 40ms tick → hop≈1764 frames (~40ms). Sätts via setTickHopMs().
+let HOP_SIZE = 1764;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 const FFT_MASK = FFT_SIZE - 1;
@@ -288,15 +288,15 @@ export function getNoiseGateState(): typeof _ngState {
 let capture: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 
-/** Sätt FFT-trigger från tickMs (hop = tickMs/2 → 2 FFT-frames/tick).
- *  ALSA-perioden är fast 128 frames (~2.9ms) — säker och liten. JS-sidan
- *  ackumulerar HOP_SIZE samples innan processFFT() körs. Inget capture-restart
- *  behövs → noll glitch när användaren drar i tick-slidern. */
+/** Sätt FFT-trigger från tickMs (hop = tickMs → 1 FFT per tick, 1:1 mic→tick).
+ *  ALSA-perioden är 256 frames (~5.8ms). JS-sidan ackumulerar HOP_SIZE samples
+ *  innan processFFT() körs. Inget capture-restart behövs → noll glitch när
+ *  användaren drar i tick-slidern. */
 export function setTickHopMs(tickMs: number): void {
-  const newHop = Math.max(64, Math.round((tickMs / 2) * (SAMPLE_RATE / 1000)));
+  const newHop = Math.max(128, Math.round(tickMs * (SAMPLE_RATE / 1000)));
   if (newHop === HOP_SIZE) return;
   HOP_SIZE = newHop;
-  console.log(`[ALSA] FFT hop → ${HOP_SIZE} frames (${(HOP_SIZE / SAMPLE_RATE * 1000).toFixed(1)}ms, 2 FFTs/tick @ ${tickMs}ms)`);
+  console.log(`[ALSA] FFT hop → ${HOP_SIZE} frames (${(HOP_SIZE / SAMPLE_RATE * 1000).toFixed(1)}ms, 1 FFT/tick @ ${tickMs}ms)`);
 }
 
 // Software mic gain — multiplier applied to raw PCM samples before processing
