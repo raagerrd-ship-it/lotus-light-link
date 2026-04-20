@@ -79,3 +79,4 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Boot-time noble respawn](mem://pi/ble/boot-time-noble-respawn) — Triggar respawn om noble inte når poweredOn inom 5s vid boot (libuv-race)
 - [Separera raw/eff/stateChange](mem://pi/ble/separate-raw-eff-statechange) — Tre oberoende BLE-statusbegrepp; blanda inte ihop dem i loggar/UI; scan fortsätter på effektiv readiness utan auto-respawn
 - [Data dir ownership](mem://pi/deployment/data-dir-ownership) — setup-lotus.sh måste chown APP_DIR + pre-skapa data/ annars EACCES vid boot
+- [Ambient caps clearar grupper](mem://pi/ble/ambient-caps-clears-supplementary-groups) — AmbientCapabilities clearar SupplementaryGroups; lägg pi i netdev/bluetooth permanent + udev-regel för /dev/rfkill
