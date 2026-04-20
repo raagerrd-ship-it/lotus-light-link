@@ -9,22 +9,12 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type PaletteMode = 'off' | 'timed' | 'bass' | 'energy' | 'blend';
-const PALETTE_MODES: { value: PaletteMode; label: string }[] = [
-  { value: 'off', label: 'Av' },
-  { value: 'timed', label: 'Tid' },
-  { value: 'bass', label: 'Bas' },
-  { value: 'energy', label: 'Energi' },
-  { value: 'blend', label: 'Blend' },
-];
-
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; paletteMode: PaletteMode; perceptualCurve: boolean; transientBoost: boolean; agcEnabled: boolean; dynamicsEnabled: boolean };
-
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualCurve: boolean; transientBoost: boolean; agcEnabled: boolean; dynamicsEnabled: boolean };
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: true, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  paletteMode: 'blend', perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  paletteMode: 'bass', perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, paletteMode: 'off', perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualCurve: true, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualCurve: false, transientBoost: true, agcEnabled: true, dynamicsEnabled: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -449,25 +439,6 @@ function ProfileSettingsView({
             <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
           </div>
         ))}
-
-        {/* Palette mode */}
-        <div>
-          <div className="text-sm mb-2">Palettläge</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {PALETTE_MODES.map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => setCal({ ...cal, paletteMode: value })}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
-                  cal.paletteMode === value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-secondary-foreground"
-                }`}
-              >{label}</button>
-            ))}
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1">Hur färgen roterar genom albumpalett</p>
-        </div>
 
         {/* Toggles */}
         <div className="space-y-3">
@@ -1674,7 +1645,7 @@ export default function PiMobile() {
           dynamicDamping: cal.dynamicDamping,
           brightnessFloor: cal.brightnessFloor,
           punchWhiteThreshold: cal.punchWhiteThreshold,
-          paletteMode: cal.paletteMode,
+          
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
           agcEnabled: cal.agcEnabled,
@@ -1744,7 +1715,7 @@ export default function PiMobile() {
           dynamicDamping: c.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
           brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
           punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
-          paletteMode: c.paletteMode ?? DEFAULT_CAL.paletteMode,
+          
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
           agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
