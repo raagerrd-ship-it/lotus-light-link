@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, Music, Loader2, Check, X, Play } from "lucide-react";
+import { MicBackendBadge } from "@/components/MicBackendBadge";
 
 type SubsystemId = "mic" | "sonos";
 type Status = "idle" | "starting" | "ready" | "error";
