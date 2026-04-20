@@ -805,29 +805,10 @@ export class PiLightEngine {
       td.paletteIndex = this._paletteIndex;
       const cbs = this.callbacks;
       for (let i = 0, len = cbs.length; i < len; i++) cbs[i](td);
-      if (profiling) {
-        this._profileData.diag[this._profilePos] = performance.now() - _t0;
-        this._profileData.total[this._profilePos] = performance.now() - _tickStart;
-        this._profilePos++;
-        if (this._profilePos >= this._profileSize) this.finishProfiling();
-      }
 
     } catch (e) {
       console.error('[Engine] tick error (recovering):', e);
       this.sanitizeState();
     }
   }
-}
-
-export interface ProfileStageResult {
-  avgUs: number;
-  p50Us: number;
-  p99Us: number;
-  maxUs: number;
-  minUs: number;
-}
-
-export interface ProfileResult {
-  ticks: number;
-  stages: Record<string, ProfileStageResult>;
 }
