@@ -1517,34 +1517,6 @@ export function startConfigServer(port = 3050): void {
     });
   });
 
-  // --- Diagnostics recording ---
-  app.post('/api/diagnostics/record', async (req, res) => {
-    const engine = requireEngine(res);
-    if (!engine) return;
-    if (engine.isRecording()) {
-      return res.status(409).json({ error: 'Recording already in progress' });
-    }
-    const durationMs = typeof req.body?.durationMs === 'number' ? Math.min(10000, Math.max(1000, req.body.durationMs)) : 5000;
-    res.json({ ok: true, durationMs });
-    engine.startRecording(durationMs).then(data => {
-      (engine as any)._lastRecordingData = data;
-    });
-  });
-
-  app.get('/api/diagnostics/recording', (_req, res) => {
-    const engine = getEngine();
-    if (!engine) return res.json({ status: 'booting' });
-    if (engine.isRecording()) {
-      return res.json({ status: 'recording' });
-    }
-    const data = (engine as any)._lastRecordingData;
-    if (data) {
-      res.json({ status: 'done', samples: data });
-    } else {
-      res.json({ status: 'idle' });
-    }
-  });
-
   app.get('/api/diagnostics', (_req, res) => {
     const engine = requireEngine(res);
     if (!engine) return;
