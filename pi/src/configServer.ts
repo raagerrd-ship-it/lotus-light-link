@@ -1491,12 +1491,17 @@ export function startConfigServer(port = 3050): void {
     if (updateRunning) return res.status(409).json({ error: 'Update already running' });
     updateRunning = true;
     updateLog = '';
-    res.json({ ok: true, message: 'Force update started' });
+    res.json({ ok: true, message: 'Force update started — process will exit after install' });
 
     const { exec } = await import('child_process');
     // Delete VERSION.json så update-services.sh inte hoppar över med "already up to date".
-    // Skriptet slutar med `sudo systemctl restart lotus-light-engine` — då dör vi
-    // och ny version startar. Ingen separat restart-kommando behövs.
+    // Vi kan INTE förlita oss på `sudo systemctl restart` i skriptet — om den körs
+    // som user-process utan rätt sudo-rättigheter (eller mot fel service-scope) så
+    // misslyckas den tyst och gamla processen lever vidare.
+    //
+    // STRATEGI: efter att skriptet är klart kör vi process.exit(0). Vår systemd-unit
+    // har Restart=always vilket gör att systemd direkt startar oss igen — på den NYA
+    // koden som just installerats. Detta fungerar oavsett service-scope.
     const cmds = [
       'sudo rm -f /opt/lotus-light/VERSION.json',
       'bash /opt/lotus-light/pi/update-services.sh 2>&1',
@@ -1505,6 +1510,16 @@ export function startConfigServer(port = 3050): void {
       updateLog = stdout + (stderr || '') + (err ? `\nError: ${err.message}` : '');
       updateRunning = false;
       console.log('[Force Update]', updateLog);
+      if (err) {
+        console.error('[Force Update] Skript misslyckades — INTE exit, behåller gamla processen:', err.message);
+        return;
+      }
+      console.log('[Force Update] ✓ Klart — exit(0) om 1s så systemd startar oss på ny kod');
+      // Liten paus så frontend hinner se "done" innan motorn försvinner
+      setTimeout(() => {
+        console.log('[Force Update] 👋 process.exit(0) — systemd Restart=always tar över');
+        process.exit(0);
+      }, 1000);
     });
   });
 
