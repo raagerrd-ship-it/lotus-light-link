@@ -9,12 +9,13 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualCurve: boolean; transientBoost: boolean; dynamicsEnabled: boolean };
+type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean };
 const PRESET_CALS: Record<string, Cal> = {
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualCurve: true, transientBoost: true, dynamicsEnabled: true },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualCurve: false, transientBoost: true, dynamicsEnabled: true },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualCurve: false, transientBoost: true, dynamicsEnabled: true },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualCurve: false, transientBoost: true, dynamicsEnabled: true },
+  // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
+  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true },
+  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true },
+  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true },
+  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -35,12 +36,14 @@ function softnessToParams(s: number) {
   return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing: 0 };
 }
 
-type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold';
+type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain';
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = diskant, 0.5 = lika, 1.0 = bas" },
   { key: "softness", label: "Mjukhet", min: 0, max: 100, step: 1, description: "0 = rått, 100 = mycket mjukt" },
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
-  { key: "brightnessFloor", label: "Golv", min: 0, max: 25, step: 1, unit: "%", description: "Lägsta ljusstyrka" },
+  { key: "transientGain", label: "Transient boost", min: 0, max: 2, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 2.0 = överdrivna trumslag" },
+  { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 3, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 3.0 = kraftigt komprimerad" },
+  { key: "brightnessFloor", label: "Golv", min: 0, max: 25, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av)" },
   { key: "punchWhiteThreshold", label: "Punch White", min: 90, max: 100, step: 0.5, unit: "%", description: "100 = av. Över detta → vit" },
 ];
 
@@ -124,7 +127,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
     }
 
     // Onset detection: simulate spectral flux from signal derivative
-    if (cal.transientBoost) {
+    if ((cal.transientGain ?? 0) > 0) {
       const flux = Math.max(0, r - (i > 0 ? raw[i - 1] : r));
       fluxBuf[fluxIdx % onsetBufLen] = flux;
       fluxIdx++;
@@ -137,18 +140,18 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
       // Exponential decay
       onsetBoost *= Math.pow(0.10, tickMs / 1000);
       if (isOnset) onsetBoost = 0.20;
-      val = val * (1 + onsetBoost);
+      val = val * (1 + onsetBoost * cal.transientGain);
     }
 
     // Floor
     const floor = cal.brightnessFloor / 100;
     val = Math.max(val, floor);
 
-    // Perceptual curve (mirrors piEngine.ts)
-    if (cal.perceptualCurve && val > floor && val < 1) {
-      const gamma = 1.8; // matches default dimmingGamma
+    // Perceptual curve (mirrors piEngine.ts) — 0 = av
+    const pGamma = cal.perceptualGamma ?? 0;
+    if (pGamma > 0 && val > floor && val < 1) {
       const norm = (val - floor) / (1 - floor);
-      val = floor + Math.pow(Math.max(0, norm), gamma) * (1 - floor);
+      val = floor + Math.pow(Math.max(0, norm), pGamma) * (1 - floor);
     }
 
     val = Math.max(0, val);
