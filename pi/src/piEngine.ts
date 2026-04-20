@@ -98,8 +98,10 @@ interface LightCalibration {
   hiShelfGainDb: number;
   punchWhiteThreshold: number;
   brightnessFloor: number;
-  transientBoost: boolean;
-  perceptualCurve: boolean;
+  /** 0 = av (ingen boost), 1.0 = nuvarande default, upp till ~2.0 = överdrivna transienter */
+  transientGain: number;
+  /** 0 = av (linjärt, kurvan hoppas helt över), 1.0 = linjärt via math, 1.8 = tidigare default, upp till 3.0 = kraftig mörkkomprimering */
+  perceptualGamma: number;
   dynamicsEnabled: boolean;
   [key: string]: any;
 }
@@ -111,16 +113,36 @@ const DEFAULT_CAL: LightCalibration = {
   bassWeight: 0.7, hiShelfGainDb: 6,
   punchWhiteThreshold: 100,
   brightnessFloor: 0,
-  transientBoost: true,
-  perceptualCurve: false,
+  transientGain: 1.0,
+  perceptualGamma: 0,
   dynamicsEnabled: true,
   
 };
 
+/** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
+function migrateLegacyCalibration(cal: any): any {
+  if (!cal || typeof cal !== 'object') return cal;
+  const out = { ...cal };
+  // transientBoost: true → 1.0, false → 0
+  if (typeof out.transientBoost === 'boolean' && out.transientGain == null) {
+    out.transientGain = out.transientBoost ? 1.0 : 0;
+  }
+  delete out.transientBoost;
+  // perceptualCurve: true → 1.8 (tidigare hårdkodad gamma), false → 0
+  if (typeof out.perceptualCurve === 'boolean' && out.perceptualGamma == null) {
+    out.perceptualGamma = out.perceptualCurve ? 1.8 : 0;
+  }
+  delete out.perceptualCurve;
+  return out;
+}
+
 function loadCalibration(): LightCalibration {
   try {
     const raw = getItem('light-calibration');
-    if (raw) return { ...DEFAULT_CAL, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = migrateLegacyCalibration(JSON.parse(raw));
+      return { ...DEFAULT_CAL, ...parsed };
+    }
   } catch {}
   return { ...DEFAULT_CAL };
 }
@@ -404,8 +426,8 @@ export class PiLightEngine {
     // Re-apply raw mode overrides if active
     if (this._rawMode) {
       this.cal.dynamicsEnabled = false;
-      this.cal.transientBoost = false;
-      this.cal.perceptualCurve = false;
+      this.cal.transientGain = 0;
+      this.cal.perceptualGamma = 0;
     }
     this.tc = computeTickConstants(this.tickMs, this.cal);
   }
@@ -416,12 +438,12 @@ export class PiLightEngine {
       this._rawMode = true;
       this._savedCal = {
         dynamicsEnabled: this.cal.dynamicsEnabled,
-        transientBoost: this.cal.transientBoost,
-        perceptualCurve: this.cal.perceptualCurve,
+        transientGain: this.cal.transientGain,
+        perceptualGamma: this.cal.perceptualGamma,
       };
       this.cal.dynamicsEnabled = false;
-      this.cal.transientBoost = false;
-      this.cal.perceptualCurve = false;
+      this.cal.transientGain = 0;
+      this.cal.perceptualGamma = 0;
       this.tc = computeTickConstants(this.tickMs, this.cal);
       console.log('[Engine] Raw mode ON — all processors disabled');
     } else if (!on && this._rawMode) {
@@ -586,9 +608,10 @@ export class PiLightEngine {
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
 
-      // ── 6. Transient boost ──
+      // ── 6. Transient boost (0 = av, 1.0 = default, 2.0 = överdrivet) ──
       this.processOnset(bands.flux);
-      const fluxBoost = (cal.transientBoost !== false) ? this.onsetBoost : 0;
+      const transientGain = cal.transientGain ?? 1.0;
+      const fluxBoost = transientGain > 0 ? this.onsetBoost * transientGain : 0;
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
@@ -597,9 +620,11 @@ export class PiLightEngine {
       let pct = energyNorm * 100;
       if (pct < floor) pct = floor;
 
-      if (cal.perceptualCurve && pct > floor && pct < 100) {
+      // perceptualGamma: 0 = av (hoppa över helt), ≥1.0 = kör kurvan med angivet exponent
+      const pGamma = cal.perceptualGamma ?? 0;
+      if (pGamma > 0 && pct > floor && pct < 100) {
         const norm = (pct - floor) / (100 - floor);
-        pct = floor + (norm > 0.0001 ? Math.exp(tc.dimmingGamma * Math.log(norm)) : 0) * (100 - floor);
+        pct = floor + (norm > 0.0001 ? Math.exp(pGamma * Math.log(norm)) : 0) * (100 - floor);
       }
 
       // Fast round + clamp
