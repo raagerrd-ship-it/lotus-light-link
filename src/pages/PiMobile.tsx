@@ -1477,6 +1477,8 @@ export default function PiMobile() {
   const [manualBleSaving, setManualBleSaving] = useState(false);
   const [manualBleError, setManualBleError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [updatePhase, setUpdatePhase] = useState<'idle' | 'stopping' | 'downloading' | 'starting'>('idle');
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const [sonosPlaying, setSonosPlaying] = useState(false);
