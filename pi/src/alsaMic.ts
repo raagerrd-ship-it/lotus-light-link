@@ -540,35 +540,63 @@ function onAudioData(buf: Buffer): void {
     console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
   }
   // Stereo interleaved → ta bara vänster kanal.
-  // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst
-  // (beroende på L/R-pin). Att bara läsa L är säkrast och billigast (en index/sample).
-  // S16_LE: 2 bytes/sample. S32_LE: 4 bytes/sample.
-  // INMP441 levererar 24-bit data left-justified i 32-bit container — samma divisor fungerar.
-  let frameCount: number;
-  let getFrame: (i: number) => number;
+  // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
+  // Format-specifika loopar för att undvika closure-overhead per sample.
+  // Hi-shelf (single-pole) inlinad i loop:en — sparar en function call per sample.
+  // Soft-clip: algebraisk x/(1+|x|) istället för Math.tanh — ~5x snabbare,
+  // samma monotona "knee"-form över [-1,+1] för våra peakar.
+  const gain = micGain;
+  const hsAlpha = HS_ALPHA;
+  const hsG = hsGain;
+  let hs = hsState;
+  let pos = ringPos;
+  const ring = ringBuf;
+  const mask = FFT_MASK;
+  let received = samplesReceived;
+
   if (currentFormat === 'S32_LE') {
     const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
-    frameCount = samples.length >> 1; // 2 ch interleaved
+    const frameCount = samples.length >> 1;
     const INV_S32 = 1 / 2147483648;
-    getFrame = (i) => samples[i << 1] * INV_S32; // L only
+    for (let i = 0; i < frameCount; i++) {
+      let raw = samples[i << 1] * INV_S32 * gain;
+      if (raw > 0.5 || raw < -0.5) {
+        const a = raw < 0 ? -raw : raw;
+        raw = raw / (1 + a);
+      }
+      if (DEBUG_ENABLED) {
+        const abs = raw < 0 ? -raw : raw;
+        if (abs > debugPeakRaw) debugPeakRaw = abs;
+      }
+      hs += hsAlpha * (raw - hs);
+      ring[pos] = hs + (raw - hs) * hsG;
+      pos = (pos + 1) & mask;
+      received++;
+    }
   } else {
     const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
-    frameCount = samples.length >> 1;
+    const frameCount = samples.length >> 1;
     const INV_S16 = 1 / 32768;
-    getFrame = (i) => samples[i << 1] * INV_S16; // L only
+    for (let i = 0; i < frameCount; i++) {
+      let raw = samples[i << 1] * INV_S16 * gain;
+      if (raw > 0.5 || raw < -0.5) {
+        const a = raw < 0 ? -raw : raw;
+        raw = raw / (1 + a);
+      }
+      if (DEBUG_ENABLED) {
+        const abs = raw < 0 ? -raw : raw;
+        if (abs > debugPeakRaw) debugPeakRaw = abs;
+      }
+      hs += hsAlpha * (raw - hs);
+      ring[pos] = hs + (raw - hs) * hsG;
+      pos = (pos + 1) & mask;
+      received++;
+    }
   }
 
-  for (let i = 0; i < frameCount; i++) {
-    let raw = getFrame(i) * micGain;
-    if (raw > 0.5 || raw < -0.5) raw = Math.tanh(raw);
-    if (DEBUG_ENABLED) {
-      const abs = raw < 0 ? -raw : raw;
-      if (abs > debugPeakRaw) debugPeakRaw = abs;
-    }
-    ringBuf[ringPos] = applyHighShelfSample(raw);
-    ringPos = (ringPos + 1) & FFT_MASK;
-    samplesReceived++;
-  }
+  hsState = hs;
+  ringPos = pos;
+  samplesReceived = received;
 
   if (samplesReceived >= HOP_SIZE) {
     processFFT();
