@@ -376,42 +376,25 @@ export class PiLightEngine {
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
 
-  private _idleTimer: ReturnType<typeof setInterval> | null = null;
-  private static readonly IDLE_HEARTBEAT_MS = 2000;
-
-  private startIdleHeartbeat(): void {
-    this.stopIdleHeartbeat();
-    // EN omedelbar idle-force vid pause. Ingen burst-loop här — flera
-    // force-writes kan själva skapa en noble-kö av idle-frames som sedan
-    // ligger kvar när nästa låt startar.
-    this.forceIdleNow();
-    // Långsiktig idle-heartbeat för att hålla länken vid liv medan vi står i idle.
-    this._idleTimer = setInterval(() => this.forceIdleNow(), PiLightEngine.IDLE_HEARTBEAT_MS);
-  }
-
-  private stopIdleHeartbeat(): void {
-    if (this._idleTimer) { clearInterval(this._idleTimer); this._idleTimer = null; }
-  }
-
   private forceIdleNow(): void {
     const idle = loadIdleColor();
     sendIdleForce(idle[0] | 0, idle[1] | 0, idle[2] | 0);
   }
 
-  // BLE-anslutningsstatus — keep-alive/idle-heartbeat startar BARA när
-  // lampan faktiskt är ansluten (annars writeAsync mot null = no-op spam).
+  // BLE-anslutningsstatus — keep-alive startar BARA när lampan faktiskt är
+  // ansluten (annars writeAsync mot null-device i 400ms-intervall = slöseri).
   private _bleConnected = false;
 
   /** Anropas av connect-hardcoded EFTER lyckad anchor write. */
   onBleConnected(): void {
     if (this._bleConnected) return;
     this._bleConnected = true;
-    // Default = idle vid connect (Sonos kan vara pausad). setPlaying(true)
-    // kommer senare stoppa dessa om musik redan spelar.
     if (!this.playing) {
+      // sendIdleForce uppdaterar writeBuf med idle-färgen → keep-alive
+      // (400ms) bär sedan både länk OCH idle-färg. Ingen separat heartbeat.
+      this.forceIdleNow();
       startKeepAlive();
-      this.startIdleHeartbeat();
-      console.log('[Engine] BLE connected → idle keep-alive + heartbeat aktiva');
+      console.log('[Engine] BLE connected → idle keep-alive aktiv (bär färg + länk)');
     } else {
       console.log('[Engine] BLE connected (musik spelar redan, mic-writes håller länken)');
     }
@@ -422,8 +405,7 @@ export class PiLightEngine {
     if (!this._bleConnected) return;
     this._bleConnected = false;
     stopKeepAlive();
-    this.stopIdleHeartbeat();
-    console.log('[Engine] BLE disconnected → keep-alive + heartbeat STOPPADE');
+    console.log('[Engine] BLE disconnected → keep-alive STOPPAD');
   }
 
   setPlaying(playing: boolean): void {
@@ -436,21 +418,19 @@ export class PiLightEngine {
       this.smoothed = 0;
       this.onsetBoost = 0;
       this.onsetTarget = 0;
-      // Idle: starta keep-alive (mic-writes är borta, länken behöver heartbeat)
-      // + en omedelbar idle-frame så lampan släpper sista musik-färgen direkt.
-      // MEN bara om BLE faktiskt är ansluten — annars skriker keep-alive
-      // mot null-device i 400ms-intervall.
+      // Idle: skicka EN idle-frame (uppdaterar writeBuf) + starta keep-alive
+      // som sedan bär både länk och idle-färg @ 400ms. MEN bara om BLE
+      // faktiskt är ansluten — annars writeAsync mot null = slöseri.
       if (this._bleConnected) {
+        this.forceIdleNow();
         startKeepAlive();
-        this.startIdleHeartbeat();
-        console.log('[Engine] → idle mode (keep-alive + heartbeat aktiva)');
+        console.log('[Engine] → idle mode (keep-alive bär färg + länk)');
       } else {
         console.log('[Engine] → idle mode (BLE ej ansluten, ingen keep-alive)');
       }
     } else if (playing && !wasPlaying) {
       // Active: mic→BLE-writes (~25-40ms) håller länken vid liv. Stoppa
       // keep-alive helt så vi aldrig riskerar parallella writes.
-      this.stopIdleHeartbeat();
       stopKeepAlive();
       console.log('[Engine] → active mode (keep-alive STOPPAD, mic-writes håller länken)');
     }
