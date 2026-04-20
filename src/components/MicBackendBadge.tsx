@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Cpu, AlertCircle } from "lucide-react";
+import { Cpu, AlertCircle, Zap } from "lucide-react";
 
 type Backend = "alsa-vendored" | "alsa-npm" | "none" | null;
 
@@ -20,6 +20,13 @@ interface BleRates {
   tickAbortNoMicPerSec?: number;
   tickAbortNoChangePerSec?: number;
   tickAbortNoDevicePerSec?: number;
+}
+
+interface StageBreakdown {
+  audioToFftMs: number;
+  fftToTickMs: number;
+  tickInnerMs: number;
+  bleWriteMs: number;
 }
 
 interface Props {
@@ -44,6 +51,8 @@ interface Props {
 export function MicBackendBadge({ piBase }: Props) {
   const [backend, setBackend] = useState<Backend>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [latencyP95Ms, setLatencyP95Ms] = useState<number | null>(null);
+  const [stages, setStages] = useState<StageBreakdown | null>(null);
   const [tickMs, setTickMs] = useState<number | null>(null);
   const [ble, setBle] = useState<BleRates | null>(null);
 
@@ -58,6 +67,8 @@ export function MicBackendBadge({ piBase }: Props) {
           const d = await r.json();
           setBackend(d.backend ?? "none");
           setLatencyMs(typeof d.audioToBleLatencyMs === "number" ? d.audioToBleLatencyMs : null);
+          setLatencyP95Ms(typeof d.audioToBleP95Ms === "number" ? d.audioToBleP95Ms : null);
+          setStages(d.stageBreakdown ?? null);
           setTickMs(typeof d.tickMs === "number" ? d.tickMs : null);
           setBle(d.ble ?? null);
         }
@@ -65,6 +76,8 @@ export function MicBackendBadge({ piBase }: Props) {
         if (!cancelled) {
           setBackend("none");
           setLatencyMs(null);
+          setLatencyP95Ms(null);
+          setStages(null);
           setBle(null);
         }
       }
@@ -88,17 +101,34 @@ export function MicBackendBadge({ piBase }: Props) {
     );
   }
 
+  // ── Latens-färg: <= tickMs grönt, <= 2× gult, > destruktivt ───────
+  // p95 är det som syns för ögat — använd den för färgning så drift fångas tidigt.
+  const latRef = latencyP95Ms ?? latencyMs;
   const latencyClass =
-    latencyMs == null || tickMs == null
+    latRef == null || tickMs == null
       ? ""
-      : latencyMs <= tickMs
+      : latRef <= tickMs
         ? "text-primary"
-        : latencyMs <= tickMs * 2
+        : latRef <= tickMs * 2
           ? "text-foreground/70"
           : "text-destructive";
 
-  const latencySuffix =
-    latencyMs != null ? <span className={`ml-1 ${latencyClass}`}>· {latencyMs}ms</span> : null;
+  // ── Bygg en tydlig latens-summa: "p50/p95 ms" så ögat fångar drift ───
+  const latencyText =
+    latencyMs != null && latencyP95Ms != null
+      ? `${latencyMs}/${latencyP95Ms}ms`
+      : latencyMs != null
+        ? `${latencyMs}ms`
+        : "—ms";
+
+  const isLagging = latRef != null && tickMs != null && latRef > tickMs * 2;
+
+  const latencySuffix = (
+    <span className={`ml-1 inline-flex items-center gap-0.5 ${latencyClass}`}>
+      · {latencyText}
+      {isLagging ? <Zap size={9} className="text-destructive animate-pulse" /> : null}
+    </span>
+  );
 
   // ── Stapel-rendering ──────────────────────────────────────────────
   const pktTarget = tickMs ? 1000 / tickMs : 0;
@@ -153,7 +183,13 @@ export function MicBackendBadge({ piBase }: Props) {
         `WRITE-LATENS:`,
         `  avg: ${ble.writeLatAvgMs}ms`,
         `  max (senaste s): ${ble.writeLatMaxMs ?? 0}ms`,
-        latencyMs != null ? `audio→BLE: ${latencyMs}ms` : "",
+        ``,
+        `END-TO-END LATENS (audio → BLE-paket skickat):`,
+        latencyMs != null ? `  p50: ${latencyMs}ms   p95: ${latencyP95Ms ?? "?"}ms` : `  (väntar på data)`,
+        stages
+          ? `  bryts ner: audio→FFT ${stages.audioToFftMs}ms · FFT→tick ${stages.fftToTickMs}ms · tickInner ${stages.tickInnerMs}ms · BLE-write ${stages.bleWriteMs}ms`
+          : "",
+        isLagging ? `  ⚡ LAGGAR: p95 > 2× tick (${tickMs}ms) — ljuset hänger inte med` : "",
       ]
         .filter(Boolean)
         .join("\n")
