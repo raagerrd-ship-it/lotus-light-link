@@ -16,7 +16,7 @@
  */
 
 import { getNobleAsync } from './noble-singleton.js';
-import { bringHci0Up, isHci0Up } from './adapter-hci-check.js';
+import { isHci0Up } from './adapter-hci-check.js';
 
 let _started = false;
 let _eventsBound = false;
@@ -60,25 +60,25 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   const t0 = Date.now();
   const ts = () => `+${(Date.now() - t0).toString().padStart(5, ' ')}ms`;
 
-  // Steg 0: väck adaptern (idempotent — säkert även om hci0 redan är upp).
-  // Måste köras INNAN noble laddas, eftersom noble cachar HCI-state vid import.
-  console.log(`${ts()} 0. Väcker adaptern: rfkill unblock bluetooth + hciconfig hci0 up...`);
-  try {
-    const alreadyUp = isHci0Up();
-    const woke = alreadyUp || bringHci0Up();
-    if (!woke) {
-      const error = 'hci0 kunde inte väckas till UP RUNNING';
-      console.log(`${ts()}    Adapter wake FEL: ${error}`);
-      return {
-        ready: false,
-        rawState: null,
-        durationMs: Date.now() - t0,
-        error,
-      };
-    }
-    console.log(`${ts()}    Adapter wake klar (${alreadyUp ? 'redan UP' : 'UP RUNNING'})`);
-  } catch (e: any) {
-    const error = `Adapter wake FEL: ${e?.message ?? e}`;
+  // Steg 0: PASSIV vänta på att hci0 är UP RUNNING.
+  //
+  // RATIONALE (2026-04-20): Aktiv `hciconfig hci0 up` från engine-processen
+  // racear bluetoothd's egen power-on och triggar `org.bluez.Error.Busy` +
+  // `Can't init device hci0: Connection timed out (110)` på Pi Zero 2W.
+  // Bevisat i SSH-logg där `bluetoothctl power on` failade direkt efter
+  // engine-restart. bluetoothd (som setup-lotus.sh enable+startar) ÄGER
+  // adaptern och tar upp den korrekt — engine ska bara vänta passivt.
+  //
+  // Policy: mem://pi/ble/hci-up-only-policy — engine får aldrig mutera hci0.
+  console.log(`${ts()} 0. Väntar passivt på att hci0 är UP RUNNING (bluetoothd äger wake)...`);
+  const waitStart = Date.now();
+  let hciUp = isHci0Up();
+  while (!hciUp && Date.now() - waitStart < 8000) {
+    await new Promise(r => setTimeout(r, 250));
+    hciUp = isHci0Up();
+  }
+  if (!hciUp) {
+    const error = 'hci0 inte UP RUNNING efter 8s — bluetoothd nere? (kör: sudo systemctl restart bluetooth)';
     console.log(`${ts()}    ${error}`);
     return {
       ready: false,
@@ -87,6 +87,7 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
       error,
     };
   }
+  console.log(`${ts()}    hci0 UP RUNNING ✓ (väntat ${Date.now() - waitStart}ms)`);
 
   console.log(`${ts()} 1. Importing @stoprocent/noble...`);
   const noble = await getNobleAsync();
