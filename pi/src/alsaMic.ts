@@ -437,9 +437,24 @@ export function startMic(): void {
 }
 
 /** Shared audio data handler for both native and fallback paths */
+let _audioCbCount = 0;
+let _audioCbBytes = 0;
+let _audioCbFirstAt = 0;
+export function getAudioCbStats() {
+  return { count: _audioCbCount, bytes: _audioCbBytes, firstAt: _audioCbFirstAt };
+}
 function onAudioData(buf: Buffer): void {
   const tAudio = performance.now();
   lastAudioTimestamp = tAudio;
+  _audioCbCount++;
+  _audioCbBytes += buf.byteLength;
+  if (_audioCbFirstAt === 0) {
+    _audioCbFirstAt = tAudio;
+    console.log(`[ALSA] FIRST audio callback fired at t=${tAudio.toFixed(1)}ms, ${buf.byteLength} bytes`);
+  }
+  if (_audioCbCount === 50 || _audioCbCount === 200 || _audioCbCount % 1000 === 0) {
+    console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
+  }
   const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
   const len = samples.length;
 
