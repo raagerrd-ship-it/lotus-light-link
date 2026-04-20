@@ -440,7 +440,9 @@ function ProfileSettingsView({
         {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
           const isDyn = key === 'dynamicDamping';
           const isFloor = key === 'brightnessFloor';
-          const isOffAtZero = isDyn || isFloor;
+          const isTransient = key === 'transientGain';
+          const isPerceptual = key === 'perceptualGamma';
+          const isOffAtZero = isDyn || isFloor || isTransient || isPerceptual;
           const displayValue = isOffAtZero && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
           // Tick-position i procent längs slidern där "av"-läget ligger (0)
           const zeroPct = ((0 - min) / (max - min)) * 100;
