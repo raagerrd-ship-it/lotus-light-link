@@ -930,13 +930,14 @@ export function startConfigServer(port = 3050): void {
     const engine = requireEngine(res);
     if (!engine) return;
     const { tickMs } = req.body;
-    if (typeof tickMs === 'number' && tickMs >= 35 && tickMs <= 50) {
+    if (typeof tickMs === 'number' && tickMs >= 5 && tickMs <= 50) {
       engine.setTickMs(tickMs);
       engine.restartTimer();
       setItem('tick-ms', String(tickMs));
-      res.json({ ok: true, tickMs });
+      // BLE rate-limit auto-följer (tickMs - 2) via setTickMs() — exponera båda.
+      res.json({ ok: true, tickMs, minWriteIntervalMs: Math.max(5, tickMs - 2) });
     } else {
-      res.status(400).json({ error: 'tickMs must be 35-50 (BLE rate-limit är 35ms)' });
+      res.status(400).json({ error: 'tickMs must be 5-50 (rate-limit auto-följer)' });
     }
   });
 

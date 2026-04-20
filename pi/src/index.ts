@@ -220,7 +220,7 @@ async function startMicSubsystem(): Promise<void> {
       if (!engineInstance) {
         engineMod = await import('./piEngine.js');
         const savedTickMs = getItem('tick-ms');
-        const tick = savedTickMs ? Math.max(35, Math.min(50, Number(savedTickMs))) : TICK_MS;
+        const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
         engineInstance = new engineMod.PiLightEngine(tick);
       }
 
