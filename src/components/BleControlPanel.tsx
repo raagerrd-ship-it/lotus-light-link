@@ -107,10 +107,6 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const startEngine = async () => {
     setEngineBusy(true);
     setLastError(null);
-    setLogs([]);
-    sinceRef.current = 0;
-    if (logPollRef.current) window.clearInterval(logPollRef.current);
-    logPollRef.current = window.setInterval(pollLogs, 400);
     try {
       const r = await fetch(`${piBase}/api/ble/engine/start`, {
         method: "POST",
@@ -125,21 +121,12 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
       setLastError(e?.message ?? "Nätverksfel");
     } finally {
       setEngineBusy(false);
-      await pollLogs();
-      if (logPollRef.current) {
-        window.clearInterval(logPollRef.current);
-        logPollRef.current = null;
-      }
     }
   };
 
   const connect = async () => {
     setConnectBusy(true);
     setLastError(null);
-    setLogs([]);
-    sinceRef.current = 0;
-    if (logPollRef.current) window.clearInterval(logPollRef.current);
-    logPollRef.current = window.setInterval(pollLogs, 400);
     try {
       const r = await fetch(`${piBase}/api/ble/connect`, {
         method: "POST",
@@ -154,11 +141,6 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
       setLastError(e?.message ?? "Nätverksfel");
     } finally {
       setConnectBusy(false);
-      await pollLogs();
-      if (logPollRef.current) {
-        window.clearInterval(logPollRef.current);
-        logPollRef.current = null;
-      }
     }
   };
 
@@ -197,31 +179,6 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
               {engineBusy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
               {engineReady ? "Klar" : "Starta motor"}
             </button>
-          </div>
-        </div>
-      )}
-      {/* SSH-style live-logg */}
-      {logs.length > 0 && (
-        <div className="rounded-xl border border-border bg-black/80 p-2">
-          <div className="flex items-center justify-between px-1 pb-1">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Engine-logg</span>
-            <button
-              onClick={() => { setLogs([]); sinceRef.current = 0; }}
-              className="text-[10px] text-muted-foreground hover:text-foreground"
-            >
-              Rensa
-            </button>
-          </div>
-          <div
-            ref={logBoxRef}
-            className="font-mono text-[10px] leading-snug text-green-300 max-h-56 overflow-y-auto whitespace-pre-wrap"
-          >
-            {logs.map((l) => (
-              <div key={l.seq} className={l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-300" : undefined}>
-                <span className="text-muted-foreground">+{String(l.t).padStart(5, " ")}ms</span>{" "}
-                {l.text}
-              </div>
-            ))}
           </div>
         </div>
       )}
