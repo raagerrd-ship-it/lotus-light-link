@@ -440,25 +440,6 @@ function ProfileSettingsView({
           </div>
         ))}
 
-        {/* Palette mode */}
-        <div>
-          <div className="text-sm mb-2">Palettläge</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {PALETTE_MODES.map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => setCal({ ...cal, paletteMode: value })}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
-                  cal.paletteMode === value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-secondary-foreground"
-                }`}
-              >{label}</button>
-            ))}
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1">Hur färgen roterar genom albumpalett</p>
-        </div>
-
         {/* Toggles */}
         <div className="space-y-3">
           {([
@@ -1664,7 +1645,7 @@ export default function PiMobile() {
           dynamicDamping: cal.dynamicDamping,
           brightnessFloor: cal.brightnessFloor,
           punchWhiteThreshold: cal.punchWhiteThreshold,
-          paletteMode: cal.paletteMode,
+          
           perceptualCurve: cal.perceptualCurve,
           transientBoost: cal.transientBoost,
           agcEnabled: cal.agcEnabled,
@@ -1734,7 +1715,7 @@ export default function PiMobile() {
           dynamicDamping: c.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
           brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
           punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
-          paletteMode: c.paletteMode ?? DEFAULT_CAL.paletteMode,
+          
           perceptualCurve: c.perceptualCurve ?? DEFAULT_CAL.perceptualCurve,
           transientBoost: c.transientBoost ?? DEFAULT_CAL.transientBoost,
           agcEnabled: c.agcEnabled ?? DEFAULT_CAL.agcEnabled,
