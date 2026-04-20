@@ -520,15 +520,45 @@ function ProfileSettingsView({
 }
 
 
-/* ── Two-point gain calibration + auto-gain toggle ── */
-function GainCalibrationPanel({ piBase }: { piBase: string }) {
-  const [enabled, setEnabled] = useState(true);
+/* ── Mode-aware gain control: Manual XOR Auto (Sonos vol) ── */
+function GainCalibrationPanel({
+  piBase, micGain, setMicGain,
+}: {
+  piBase: string;
+  micGain: number;
+  setMicGain: (g: number) => void;
+}) {
+  const [enabled, setEnabled] = useState(false);
   const [multiplier, setMultiplier] = useState(1);
   const [calPoints, setCalPoints] = useState<{ point1: any; point2: any }>({ point1: null, point2: null });
   const [calStep, setCalStep] = useState<0 | 1 | 2 | 3>(0); // 0=idle, 1=step1, 2=step2, 3=done
   const [sonosVol, setSonosVol] = useState<number | null>(null);
   const [tempGain, setTempGain] = useState(15);
   const [outputPct, setOutputPct] = useState(0);
+  const [liveSonosVol, setLiveSonosVol] = useState<number | null>(null);
+
+  // Poll Sonos vol live when auto-gain is ON (so user sees current multiplier source)
+  useEffect(() => {
+    if (!enabled || calStep !== 0) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const [statusRes, agRes] = await Promise.all([
+          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }),
+          fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }),
+        ]);
+        const status = await statusRes.json();
+        const ag = await agRes.json();
+        if (!cancelled) {
+          if (status.sonos?.volume != null) setLiveSonosVol(status.sonos.volume);
+          if (ag.multiplier != null) setMultiplier(ag.multiplier);
+        }
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 1500);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [piBase, enabled, calStep]);
 
   // Load initial state
   useEffect(() => {
@@ -729,22 +759,64 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
   }
 
   return (
-    <div className="mt-4 space-y-3">
-      {/* Auto-gain toggle */}
-      <label className="flex items-center justify-between">
-        <div>
-          <div className="text-sm">Auto-gain (Sonos vol)</div>
-          <p className="text-[10px] text-muted-foreground">Justerar mic-gain efter Sonos-volym ({multiplier.toFixed(1)}×)</p>
-        </div>
+    <div className="space-y-4">
+      {/* Mode selector: Manual ↔ Auto */}
+      <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-secondary/40 border border-border">
         <button
-          onClick={toggle}
-          className={`w-12 h-7 rounded-full transition-colors relative ${enabled ? 'bg-green-500' : 'bg-secondary border border-border'}`}
+          onClick={() => { if (enabled) toggle(); }}
+          className={`py-2 rounded-lg text-xs font-medium transition-colors ${
+            !enabled ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground'
+          }`}
         >
-          <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${enabled ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
+          Manuell
         </button>
-      </label>
+        <button
+          onClick={() => { if (!enabled && hasCalibration) toggle(); }}
+          disabled={!enabled && !hasCalibration}
+          className={`py-2 rounded-lg text-xs font-medium transition-colors ${
+            enabled ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground disabled:opacity-40'
+          }`}
+        >
+          Auto (Sonos vol)
+        </button>
+      </div>
 
-      {/* Calibration status & button */}
+      {/* MANUAL MODE: visa slider, dölj auto-info */}
+      {!enabled && (
+        <div>
+          <div className="flex justify-between text-sm mb-1">
+            <span>Mic Gain</span>
+            <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
+          </div>
+          <input
+            type="range" min={1} max={50} step={1} value={micGain}
+            onChange={(e) => setMicGain(parseFloat(e.target.value))}
+            className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+          />
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.
+          </p>
+        </div>
+      )}
+
+      {/* AUTO MODE: visa live Sonos vol → multiplier (slidern dold) */}
+      {enabled && (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Sonos volym</span>
+            <span className="text-sm font-mono font-bold">{liveSonosVol ?? '—'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">→ Mic gain</span>
+            <span className="text-sm font-mono font-bold text-primary">{multiplier.toFixed(1)}×</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+            Justeras automatiskt enligt kalibreringen nedan.
+          </p>
+        </div>
+      )}
+
+      {/* Calibration status (alltid synlig) */}
       {hasCalibration ? (
         <div className="flex items-center justify-between text-[10px] text-muted-foreground bg-secondary/40 rounded-lg px-3 py-2">
           <div>
@@ -755,7 +827,9 @@ function GainCalibrationPanel({ piBase }: { piBase: string }) {
           <button onClick={clearCalibration} className="text-destructive underline ml-2">Rensa</button>
         </div>
       ) : (
-        <p className="text-[10px] text-muted-foreground">Ingen kalibrering — använder standardkurva</p>
+        <p className="text-[10px] text-muted-foreground">
+          Ingen kalibrering — Auto-läget är låst tills du kalibrerar.
+        </p>
       )}
 
       <button
@@ -853,21 +927,10 @@ function GlobalSettingsView({
           placeholder="plughw:0,0"
           className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm font-mono border border-border focus:outline-none focus:ring-1 focus:ring-ring"
         />
-        <p className="text-[10px] text-muted-foreground mt-1">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0.</p>
+        <p className="text-[10px] text-muted-foreground mt-1 mb-5">ALSA-enhet. Vanligtvis plughw:0,0 eller plughw:1,0.</p>
 
-        <div className="flex justify-between text-sm mb-1 mt-5">
-          <span>Mic Gain</span>
-          <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
-        </div>
-        <input
-          type="range" min={1} max={50} step={1} value={micGain}
-          onChange={(e) => setMicGain(parseFloat(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-        />
-        <p className="text-[10px] text-muted-foreground mt-0.5">Mjukvaruförstärkning av mikrofonsignal. 1× = rå signal, högre = känsligare.</p>
-
-        {/* Auto-gain toggle */}
-        <GainCalibrationPanel piBase={piBase} />
+        {/* Mic gain — Manual XOR Auto (Sonos-vol-driven) */}
+        <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} />
       </section>
 
       <section className="mb-8">
