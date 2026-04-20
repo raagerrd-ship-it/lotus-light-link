@@ -284,8 +284,6 @@ export function startConfigServer(port = 3050): void {
   // GET  /api/ble/state          → { engineReady, connected, device }
   // ─────────────────────────────────────────────────────────────────────
   app.post('/api/ble/engine/start', async (_req, res) => {
-    const { resetEngineLogs } = await import('./ble/log-buffer.js');
-    resetEngineLogs();
     try {
       const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
       const r = await startBleEngineMinimal();
@@ -298,12 +296,6 @@ export function startConfigServer(port = 3050): void {
       console.error('engine/start FEL:', e?.message ?? e);
       res.status(500).json({ ready: false, error: e?.message ?? String(e) });
     }
-  });
-
-  app.get('/api/ble/engine/logs', async (req, res) => {
-    const since = Number(req.query.since ?? 0) || 0;
-    const { getEngineLogsSince } = await import('./ble/log-buffer.js');
-    res.json(getEngineLogsSince(since));
   });
 
   app.post('/api/ble/connect', async (_req, res) => {
