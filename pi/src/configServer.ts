@@ -1050,7 +1050,7 @@ export function startConfigServer(port = 3050): void {
   // --- Microphone device ---
   app.get('/api/mic-device', (_req, res) => {
     const mic = getMic();
-    res.json({ device: mic ? mic.getAlsaDevice() : (getItem('alsa-device') || 'plughw:0,0') });
+    res.json({ device: mic ? mic.getAlsaDevice() : (getItem('alsa-device') || 'hw:0,0') });
   });
 
   app.put('/api/mic-device', (req, res) => {
@@ -1062,7 +1062,7 @@ export function startConfigServer(port = 3050): void {
       setItem('alsa-device', device);
       res.json({ ok: true, device });
     } else {
-      res.status(400).json({ error: 'Need device string (e.g. "plughw:0,0")' });
+      res.status(400).json({ error: 'Need device string (e.g. "hw:0,0")' });
     }
   });
 

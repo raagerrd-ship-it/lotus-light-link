@@ -243,12 +243,19 @@ if [ -d "$ALSA_VENDOR" ]; then
     if [ -f "build/Release/capture.node" ]; then
       echo "$LOG_PREFIX alsa-capture: lokal build OK ✓"
     else
-      echo "$LOG_PREFIX WARN: alsa-capture build FAILED — engine fortsätter med arecord-fallback"
+      echo "$LOG_PREFIX FATAL: alsa-capture build FAILED — engine kan inte starta utan native binding (arecord-fallback borttagen för minimal latens)"
+      exit 1
     fi
+  fi
+  # Verifiera att binären också går att ladda mot installerad Node
+  if ! node -e "require('./build/Release/capture.node')" 2>/dev/null; then
+    echo "$LOG_PREFIX FATAL: capture.node finns men kan inte laddas — kör: cd $ALSA_VENDOR && sudo npm rebuild"
+    exit 1
   fi
   cd "$APP_DIR"
 else
-  echo "$LOG_PREFIX WARN: $ALSA_VENDOR saknas — engine använder arecord-fallback (högre latens)"
+  echo "$LOG_PREFIX FATAL: $ALSA_VENDOR saknas — engine kan inte starta mic"
+  exit 1
 fi
 
 # Read new version + commit

@@ -200,14 +200,15 @@ VENDOR_DIR="$PI_DIR/vendor/alsa-capture"
 ALSA_NODE_FILE="$VENDOR_DIR/build/Release/capture.node"
 
 if [ ! -d "$VENDOR_DIR" ]; then
-  echo "  ✗ $VENDOR_DIR saknas — engine kommer falla tillbaka på arecord"
+  echo "  ✗ FATAL: $VENDOR_DIR saknas — engine kan inte starta mic (arecord-fallback borttagen)"
+  exit 1
 elif [ -f "$ALSA_NODE_FILE" ]; then
   ALSA_NODE_SIZE=$(stat -c%s "$ALSA_NODE_FILE" 2>/dev/null || echo 0)
   echo "  ✓ capture.node finns från CI-bygge (${ALSA_NODE_SIZE} bytes)"
-  # Verifiera att binären faktiskt går att ladda mot installerad Node
-  # Använd unik tempfil under root's eget tmp så vi inte krockar med en
-  # tidigare körning som ägs av annan user. mktemp ger oss garanterad write.
-  ALSA_LOAD_ERR="$(mktemp /tmp/alsa-load-test.XXXXXX.err 2>/dev/null || echo /tmp/alsa-load-test.$$.err)"
+  # Verifiera att binären faktiskt går att ladda mot installerad Node.
+  # mktemp KRÄVER att XXXXXX ligger sist i mallen — annars failar mktemp tyst
+  # och skriver till en fil som ägs av tidigare körning (root) → "Permission denied".
+  ALSA_LOAD_ERR="$(mktemp /tmp/alsa-load-test.XXXXXX 2>/dev/null || echo /tmp/alsa-load-test.$$)"
   : > "$ALSA_LOAD_ERR" 2>/dev/null || true
   if ! taskset -c "$CORE" node -e "require('$VENDOR_DIR/index.js')" 2>"$ALSA_LOAD_ERR"; then
     echo "  ⚠ capture.node kunde inte laddas — bygger om lokalt"
@@ -225,7 +226,8 @@ if [ ! -f "$ALSA_NODE_FILE" ] && [ -d "$VENDOR_DIR" ]; then
   fi
   GYP_BIN="$(command -v node-gyp || true)"
   if [ -z "$GYP_BIN" ]; then
-    echo "  ✗ node-gyp kunde inte installeras — engine använder arecord-fallback"
+    echo "  ✗ FATAL: node-gyp kunde inte installeras — engine kan inte starta utan native ALSA"
+    exit 1
   else
     echo "  Installerar vendor-deps (node-addon-api, eventemitter3)..."
     (cd "$VENDOR_DIR" && nice -n 15 taskset -c "$CORE" \
@@ -249,9 +251,10 @@ if [ ! -f "$ALSA_NODE_FILE" ] && [ -d "$VENDOR_DIR" ]; then
     if [ -f "$ALSA_NODE_FILE" ]; then
       echo "  ✓ Native alsa-capture byggd lokalt ($(stat -c%s "$ALSA_NODE_FILE") bytes)"
     else
-      echo "  ✗ Lokal build failade — engine använder arecord-fallback"
-      echo "    Sista 25 raderna ur $ALSA_BUILD_LOG:"
-      tail -25 "$ALSA_BUILD_LOG" | sed 's/^/      /'
+      echo "  ✗ FATAL: Lokal build av alsa-capture failade — engine kan inte starta mic"
+      echo "    Sista 40 raderna ur $ALSA_BUILD_LOG:"
+      tail -40 "$ALSA_BUILD_LOG" | sed 's/^/      /'
+      exit 1
     fi
   fi
 fi
