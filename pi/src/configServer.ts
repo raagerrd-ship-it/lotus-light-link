@@ -958,7 +958,95 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
   });
 
+  // --- BLE Auto-tune (sweep tickMs, hitta lägsta som håller fftDropped=0 + writeFail=0) ---
+  // Sekvens: 30 → 25 → 20 → 15 → 12 → 10 → 8 → 7.5 ms, 5s/steg.
+  // Mäter delta för fftDroppedCount och writeFailCount per block.
+  // Sätter automatiskt den lägsta nivån som höll båda = 0.
+  // OBS: Spela musik under hela sweepen — annars är delta-skip 100% och vi mäter ingenting meningsfullt.
+  let _autotuneRunning = false;
+  app.post('/api/ble/autotune', async (_req, res) => {
+    if (_autotuneRunning) {
+      return res.status(409).json({ error: 'Auto-tune already running' });
+    }
+    const engine = requireEngine(res);
+    if (!engine) return;
 
+    _autotuneRunning = true;
+    const STEPS = [30, 25, 20, 15, 12, 10, 8, 7.5];
+    const BLOCK_MS = 5000;
+    const SETTLE_MS = 500;
+    const originalTickMs = engine.getTickMs();
+    const results: Array<{
+      tickMs: number;
+      fftDropped: number;
+      writeFail: number;
+      writeStuck: number;
+      sent: number;
+      passed: boolean;
+    }> = [];
+
+    console.log(`[Autotune] Start — sweep ${STEPS.length} steg, ${BLOCK_MS}ms/steg, original=${originalTickMs}ms`);
+
+    try {
+      for (const step of STEPS) {
+        engine.setTickMs(step);
+        engine.restartTimer();
+        // Settle: vänta ut tidigare ticks innan vi börjar mäta
+        await new Promise(r => setTimeout(r, SETTLE_MS));
+        const fftStart = bleStats.fftDroppedCount ?? 0;
+        const failStart = bleStats.writeFailCount;
+        const stuckStart = bleStats.writeStuckCount ?? 0;
+        const sentStart = bleStats.sentCount;
+
+        await new Promise(r => setTimeout(r, BLOCK_MS));
+
+        const fftDelta = (bleStats.fftDroppedCount ?? 0) - fftStart;
+        const failDelta = bleStats.writeFailCount - failStart;
+        const stuckDelta = (bleStats.writeStuckCount ?? 0) - stuckStart;
+        const sentDelta = bleStats.sentCount - sentStart;
+        const passed = fftDelta === 0 && failDelta === 0 && stuckDelta === 0;
+
+        results.push({
+          tickMs: step,
+          fftDropped: fftDelta,
+          writeFail: failDelta,
+          writeStuck: stuckDelta,
+          sent: sentDelta,
+          passed,
+        });
+        console.log(`[Autotune] tickMs=${step} → fftDropped=${fftDelta} writeFail=${failDelta} writeStuck=${stuckDelta} sent=${sentDelta} ${passed ? '✓' : '✗'}`);
+      }
+
+      // Lägsta tickMs som klarade alla tre nollvillkor
+      const passing = results.filter(r => r.passed);
+      const lowestSafe = passing.length > 0
+        ? passing.reduce((a, b) => (b.tickMs < a.tickMs ? b : a)).tickMs
+        : originalTickMs;
+
+      engine.setTickMs(lowestSafe);
+      engine.restartTimer();
+      setItem('tick-ms', String(lowestSafe));
+
+      console.log(`[Autotune] Done — vald tickMs=${lowestSafe}ms (${passing.length}/${STEPS.length} steg klarade)`);
+      res.json({
+        ok: true,
+        chosenTickMs: lowestSafe,
+        chosenMinWriteIntervalMs: Math.max(5, lowestSafe - 2),
+        originalTickMs,
+        results,
+      });
+    } catch (e: any) {
+      console.error('[Autotune] Error:', e);
+      try { engine.setTickMs(originalTickMs); engine.restartTimer(); } catch {}
+      res.status(500).json({ error: e?.message ?? String(e) });
+    } finally {
+      _autotuneRunning = false;
+    }
+  });
+
+  app.get('/api/ble/autotune/status', (_req, res) => {
+    res.json({ running: _autotuneRunning });
+  });
 
   // --- Microphone device ---
   app.get('/api/mic-device', (_req, res) => {
