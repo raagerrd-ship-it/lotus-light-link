@@ -238,12 +238,8 @@ export function onFFTReady(cb: FFTReadyCallback | null): void {
 let _fftFrameCount = 0;
 export function getFFTFrameCount(): number { return _fftFrameCount; }
 
-function applyHighShelfSample(sample: number): number {
-  hsState += HS_ALPHA * (sample - hsState);
-  const lo = hsState;
-  const hi = sample - lo;
-  return lo + hi * hsGain;
-}
+// NOTE: applyHighShelfSample inlined directly into onAudioData hot loop
+// (function call overhead per sample × 1920/cb = measurable on Pi Zero 2W).
 
 function processFFT(): void {
   // Copy ring buffer in order, apply Hann window — bitmask instead of modulo
@@ -253,18 +249,48 @@ function processFFT(): void {
 
   const [fftRe, fftIm] = fft1024(windowedBuf);
 
-  // Power spectrum + band sums in single pass (oktav-baserade band)
+  // Power spectrum + band sums — branchless, split into 4 segments instead of
+  // per-bin if/else (saves ~1024 conditional branches per frame).
+  // Segments: [0..LO_BIN_LOW)  [LO_BIN_LOW..LO_BIN_HIGH)  [HI_BIN_LOW..HI_BIN_HIGH)  [HI_BIN_HIGH..BIN_COUNT)
+  // (LO_BIN_HIGH === HI_BIN_LOW so segments are contiguous.)
   let loSum = 0, hiSum = 0;
   let totalSum = 0;
   let flux = 0;
 
-  for (let i = 0; i < BIN_COUNT; i++) {
+  // Segment 1: 0 .. LO_BIN_LOW (only total + flux)
+  for (let i = 0; i < LO_BIN_LOW; i++) {
     const r = fftRe[i], m = fftIm[i];
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
-    if (i >= LO_BIN_LOW && i < LO_BIN_HIGH) loSum += power;
-    else if (i >= HI_BIN_LOW && i < HI_BIN_HIGH) hiSum += power;
-
+    const diff = power - prevPower[i];
+    if (diff > 0) flux += diff;
+    prevPower[i] = power;
+  }
+  // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum)
+  for (let i = LO_BIN_LOW; i < LO_BIN_HIGH; i++) {
+    const r = fftRe[i], m = fftIm[i];
+    const power = (r * r + m * m) * INV_N2;
+    totalSum += power;
+    loSum += power;
+    const diff = power - prevPower[i];
+    if (diff > 0) flux += diff;
+    prevPower[i] = power;
+  }
+  // Segment 3: HI_BIN_LOW .. HI_BIN_HIGH (hiSum)
+  for (let i = HI_BIN_LOW; i < HI_BIN_HIGH; i++) {
+    const r = fftRe[i], m = fftIm[i];
+    const power = (r * r + m * m) * INV_N2;
+    totalSum += power;
+    hiSum += power;
+    const diff = power - prevPower[i];
+    if (diff > 0) flux += diff;
+    prevPower[i] = power;
+  }
+  // Segment 4: HI_BIN_HIGH .. BIN_COUNT (only total + flux)
+  for (let i = HI_BIN_HIGH; i < BIN_COUNT; i++) {
+    const r = fftRe[i], m = fftIm[i];
+    const power = (r * r + m * m) * INV_N2;
+    totalSum += power;
     const diff = power - prevPower[i];
     if (diff > 0) flux += diff;
     prevPower[i] = power;
