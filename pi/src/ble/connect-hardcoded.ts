@@ -179,9 +179,11 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
               name: HARDCODED_DEVICE.name,
               id: peripheral.id,
             });
-            // Keep-alive ägs av piEngine — startas i engine.start() / setPlaying(false).
-            // Connect ska INTE starta egen keep-alive (skulle ge parallella writes).
-            console.log(`${ts()} 8. anslutning klar — engine sköter keep-alive vid idle`);
+            // Notifiera engine — den startar keep-alive + idle-heartbeat
+            // (om Sonos är pausad). Vid spelande musik skippar engine
+            // keep-alive eftersom mic-writes håller länken.
+            _onConnected?.();
+            console.log(`${ts()} 8. anslutning klar — engine notifierad om BLE-status`);
             finish({ connected: true });
           } catch (e: any) {
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
