@@ -183,7 +183,13 @@ export function MicBackendBadge({ piBase }: Props) {
         `WRITE-LATENS:`,
         `  avg: ${ble.writeLatAvgMs}ms`,
         `  max (senaste s): ${ble.writeLatMaxMs ?? 0}ms`,
-        latencyMs != null ? `audio→BLE: ${latencyMs}ms` : "",
+        ``,
+        `END-TO-END LATENS (audio → BLE-paket skickat):`,
+        latencyMs != null ? `  p50: ${latencyMs}ms   p95: ${latencyP95Ms ?? "?"}ms` : `  (väntar på data)`,
+        stages
+          ? `  bryts ner: audio→FFT ${stages.audioToFftMs}ms · FFT→tick ${stages.fftToTickMs}ms · tickInner ${stages.tickInnerMs}ms · BLE-write ${stages.bleWriteMs}ms`
+          : "",
+        isLagging ? `  ⚡ LAGGAR: p95 > 2× tick (${tickMs}ms) — ljuset hänger inte med` : "",
       ]
         .filter(Boolean)
         .join("\n")
