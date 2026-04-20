@@ -231,14 +231,19 @@ if [ ! -f "$ALSA_NODE_FILE" ] && [ -d "$VENDOR_DIR" ]; then
     (cd "$VENDOR_DIR" && nice -n 15 taskset -c "$CORE" \
       npm install --no-audit --no-fund --ignore-scripts --no-save 2>&1 | tail -3)
 
-    echo "  Bygger capture.node lokalt (${GYP_BIN}, Python: ${GYP_PYTHON:-$(command -v python3)})..."
+    # Resolve python: prefer GYP_PYTHON, fall back till första funna python3.
+    BUILD_PY="${GYP_PYTHON:-$(command -v python3 2>/dev/null || true)}"
+    echo "  Bygger capture.node lokalt (${GYP_BIN}, Python: ${BUILD_PY:-<saknas>})..."
     ALSA_BUILD_LOG="/tmp/alsa-capture-build.log"
     (
-      cd "$VENDOR_DIR" && \
-      ${GYP_PYTHON:+PYTHON=$GYP_PYTHON} \
-      ${GYP_PYTHON:+npm_config_python=$GYP_PYTHON} \
-      nice -n 15 taskset -c "$CORE" \
-        "$GYP_BIN" rebuild --release
+      cd "$VENDOR_DIR"
+      # Sätt PYTHON-env bara om vi faktiskt har en path — annars
+      # blir 'PYTHON= node-gyp' tolkat som programnamn av env(1).
+      if [ -n "$BUILD_PY" ]; then
+        export PYTHON="$BUILD_PY"
+        export npm_config_python="$BUILD_PY"
+      fi
+      nice -n 15 taskset -c "$CORE" "$GYP_BIN" rebuild --release
     ) > "$ALSA_BUILD_LOG" 2>&1 || true
 
     if [ -f "$ALSA_NODE_FILE" ]; then
