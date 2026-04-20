@@ -110,13 +110,13 @@ export interface BandResult {
   flux: number;
 }
 
-const SAMPLE_RATE = 44100;
+const SAMPLE_RATE = 48000;
 const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = tickMs * 44.1 → exakt 1 FFT per tick (1:1 mic→FFT→tick).
+// HOP_SIZE = tickMs * 48 → exakt 1 FFT per tick (1:1 mic→FFT→tick).
 // Med synkron hard-fail-pipeline behövs ingen "extra" FFT-frame som
 // säkerhetsmarginal — varje audio-batch driver exakt en tick.
-// Default 40ms tick → hop≈1764 frames (~40ms). Sätts via setTickHopMs().
-let HOP_SIZE = 1764;
+// Default 40ms tick → hop≈1920 frames (~40ms). Sätts via setTickHopMs().
+let HOP_SIZE = 1920;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 const FFT_MASK = FFT_SIZE - 1;
