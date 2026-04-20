@@ -530,7 +530,7 @@ export class PiLightEngine {
     console.log(`[Engine] Resumed (${this.playing ? 'active' : 'idle'})`);
   }
 
-  /** Restart tick scheduling — preserves all smoothing/AGC state */
+  /** Restart tick scheduling — preserves all smoothing state */
   restartTimer(): void {
     this.stopLoop();
     if (this.playing) this.startLoop();
