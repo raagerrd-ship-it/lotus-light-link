@@ -1180,6 +1180,8 @@ export function startConfigServer(port = 3050): void {
       midHiRms: b.midHiRms,
       backend: mic.getMicBackend(),
       audioToBleLatencyMs,
+      audioToBleP95Ms,
+      stageBreakdown,
       tickMs,
       ble,
     });
