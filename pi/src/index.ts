@@ -121,6 +121,14 @@ async function startMicSubsystem(): Promise<void> {
         const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
         engineInstance = new engineMod.PiLightEngine(tick);
 
+        // Koppla BLE connect/disconnect → engine, så keep-alive och idle-heartbeat
+        // bara körs när lampan faktiskt är ansluten (inte vid engine.start()).
+        const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
+        setEngineBleCallbacks(
+          () => engineInstance?.onBleConnected(),
+          () => engineInstance?.onBleDisconnected(),
+        );
+
         // Återställ sparad dimming-gamma från storage. Utan detta hamnar engine
         // alltid på default 1.0 efter omstart, oavsett vad användaren sparat —
         // vilket gör att brightness-kurvan blir fel tills profil sparas igen.

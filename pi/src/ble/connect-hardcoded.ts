@@ -10,7 +10,17 @@
 import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
-import { brightMaxBuf, startKeepAlive, stopKeepAlive, resetLastSent } from './protocol.js';
+import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
+
+// Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
+// Används så att engine kan toggla keep-alive/idle-heartbeat baserat på
+// faktisk BLE-status (inte vid engine.start() innan lampan är ansluten).
+let _onConnected: (() => void) | null = null;
+let _onDisconnected: (() => void) | null = null;
+export function setEngineBleCallbacks(onConnected: () => void, onDisconnected: () => void): void {
+  _onConnected = onConnected;
+  _onDisconnected = onDisconnected;
+}
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
@@ -27,7 +37,8 @@ export function getHardcodedPeripheral(): any | null {
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   if (!_connected) return { disconnected: true };
-  stopKeepAlive();
+  // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
+  _onDisconnected?.();
   setDevice(null);
   resetLastSent();
   try { await _connected.disconnectAsync(); } catch {}
@@ -122,7 +133,7 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
           try { peripheral.removeAllListeners?.('disconnect'); } catch {}
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
-            stopKeepAlive();
+            _onDisconnected?.();
             setDevice(null);
             resetLastSent();
             bleStats.disconnectCount++;
@@ -168,9 +179,11 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
               name: HARDCODED_DEVICE.name,
               id: peripheral.id,
             });
-            // Keep-alive ägs av piEngine — startas i engine.start() / setPlaying(false).
-            // Connect ska INTE starta egen keep-alive (skulle ge parallella writes).
-            console.log(`${ts()} 8. anslutning klar — engine sköter keep-alive vid idle`);
+            // Notifiera engine — den startar keep-alive + idle-heartbeat
+            // (om Sonos är pausad). Vid spelande musik skippar engine
+            // keep-alive eftersom mic-writes håller länken.
+            _onConnected?.();
+            console.log(`${ts()} 8. anslutning klar — engine notifierad om BLE-status`);
             finish({ connected: true });
           } catch (e: any) {
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
