@@ -14,8 +14,7 @@
  */
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, getLastFFTTimestamp, getLastAudioTimestamp, setTickHopMs, type BandResult } from './alsaMic.js';
-import { sendToBLE, bleStats, getDimmingGamma } from './nobleBle.js';
-import { setMinWriteIntervalMs } from './ble/protocol.js';
+import { sendToBLE, getDimmingGamma, setMinWriteIntervalMs } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';

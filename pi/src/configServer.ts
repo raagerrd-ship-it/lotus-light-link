@@ -14,7 +14,6 @@ import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
 import { getPipelineTimingSnapshot, resetPipelineTiming } from './pipelineTiming.js';
-import { getFFTFrameCount } from './alsaMic.js';
 
 type AlsaMicModule = typeof import('./alsaMic.js');
 
@@ -842,7 +841,7 @@ export function startConfigServer(port = 3050): void {
   app.get('/api/pipeline/timing', (_req, res) => {
     const snapshot = getPipelineTimingSnapshot();
     const tickMs = attachedEngine?.getTickMs() ?? 0;
-    const fftFrames = getFFTFrameCount();
+    const fftFrames = attachedMic?.getFFTFrameCount?.() ?? 0;
     res.json({
       ok: true,
       tickMs,
