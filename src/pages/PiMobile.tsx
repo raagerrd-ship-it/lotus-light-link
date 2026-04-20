@@ -436,26 +436,40 @@ function ProfileSettingsView({
         
         {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
           const isDyn = key === 'dynamicDamping';
-          const displayValue = isDyn && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
+          const isFloor = key === 'brightnessFloor';
+          const isOffAtZero = isDyn || isFloor;
+          const displayValue = isOffAtZero && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
+          // Tick-position i procent längs slidern där "av"-läget ligger (0)
+          const zeroPct = ((0 - min) / (max - min)) * 100;
+          const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
           return (
             <div key={key}>
               <div className="flex justify-between text-sm mb-0.5">
                 <span>{label}</span>
-                <span className="text-muted-foreground font-mono text-xs">{displayValue}</span>
+                <span className={`font-mono text-xs ${isOffAtZero && cal[key] === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{displayValue}</span>
               </div>
-              <input
-                type="range" min={min} max={max} step={step} value={cal[key]}
-                onChange={(e) => {
-                  const v = parseFloat(e.target.value);
-                  if (isDyn) {
-                    // Slider = enda kontrollen: 0 = av, ≠0 = på
-                    setCal({ ...cal, dynamicDamping: v, dynamicsEnabled: v !== 0 });
-                  } else {
-                    setCal({ ...cal, [key]: v });
-                  }
-                }}
-                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-              />
+              <div className="relative">
+                <input
+                  type="range" min={min} max={max} step={step} value={cal[key]}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (isDyn) {
+                      // Slider = enda kontrollen: 0 = av, ≠0 = på
+                      setCal({ ...cal, dynamicDamping: v, dynamicsEnabled: v !== 0 });
+                    } else {
+                      setCal({ ...cal, [key]: v });
+                    }
+                  }}
+                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary relative z-10"
+                />
+                {showTick && (
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-muted-foreground/60 pointer-events-none z-0"
+                    style={{ left: `calc(${zeroPct}% - 1px)` }}
+                    aria-hidden
+                  />
+                )}
+              </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
             </div>
           );
