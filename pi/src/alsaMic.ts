@@ -287,6 +287,10 @@ export function getNoiseGateState(): typeof _ngState {
 
 let capture: any = null;
 let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
+// INMP441 (Google voiceHAT-soundcard overlay) levererar bara S32_LE.
+// Default till S32_LE; kan överridas via ALSA_FORMAT env för andra mikar.
+let currentFormat: 'S16_LE' | 'S32_LE' = (process.env.ALSA_FORMAT as any) ?? 'S32_LE';
+const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 
 /** Sätt FFT-trigger från tickMs (hop = tickMs → 1 FFT per tick, 1:1 mic→tick).
  *  ALSA-perioden är 256 frames (~5.8ms). JS-sidan ackumulerar HOP_SIZE samples
@@ -403,7 +407,7 @@ export function startMic(): void {
     capture = new AlsaCapture({
       channels: 1,
       rate: SAMPLE_RATE,
-      format: 'S16_LE',
+      format: currentFormat,
       device: currentDevice,
       periodSize: 256,
     });
@@ -411,7 +415,7 @@ export function startMic(): void {
     capture.on('audio', onAudioData);
     capture.on('overrun', () => console.warn('[ALSA] Buffer overrun detected'));
     capture.on('error', (err: Error) => console.error('[ALSA] capture error:', err.message));
-    console.log(`[ALSA] Mic started via native ALSA (44.1kHz, S16_LE, mono, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
+    console.log(`[ALSA] Mic started via native ALSA (44.1kHz, ${currentFormat}, mono, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
 
   } else if (nodeRecord) {
     // Fallback — arecord subprocess + pipe
@@ -455,11 +459,24 @@ function onAudioData(buf: Buffer): void {
   if (_audioCbCount === 50 || _audioCbCount === 200 || _audioCbCount % 1000 === 0) {
     console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
   }
-  const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
-  const len = samples.length;
+  // S16_LE: 2 bytes/sample, divisor 32768. S32_LE: 4 bytes/sample, divisor 2147483648.
+  // INMP441 levererar 24-bit data left-justified i 32-bit container — samma divisor fungerar.
+  let len: number;
+  let getSample: (i: number) => number;
+  if (currentFormat === 'S32_LE') {
+    const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
+    len = samples.length;
+    const INV_S32 = 1 / 2147483648;
+    getSample = (i) => samples[i] * INV_S32;
+  } else {
+    const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
+    len = samples.length;
+    const INV_S16 = 1 / 32768;
+    getSample = (i) => samples[i] * INV_S16;
+  }
 
   for (let i = 0; i < len; i++) {
-    let raw = (samples[i] / 32768) * micGain;
+    let raw = getSample(i) * micGain;
     if (raw > 0.5 || raw < -0.5) raw = Math.tanh(raw);
     if (DEBUG_ENABLED) {
       const abs = raw < 0 ? -raw : raw;
