@@ -56,6 +56,9 @@ if [ -n "$CURRENT_VERSION" ] && [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
   elif ! grep -q "SupplementaryGroups=netdev bluetooth audio" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
     HEALTH_OK=0
     HEALTH_REASONS="$HEALTH_REASONS\n  - System-service saknar SupplementaryGroups=netdev bluetooth audio"
+  elif ! grep -q "DeviceAllow=char-alsa" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
+    HEALTH_OK=0
+    HEALTH_REASONS="$HEALTH_REASONS\n  - System-service saknar DeviceAllow=char-alsa (mic får ENOENT pga DevicePolicy=closed)"
   fi
 
   # 2. Engine-bundle måste finnas

@@ -81,3 +81,4 @@ BLE writes always go through noble.characteristic.writeAsync(buf, true) — gatt
 - [Data dir ownership](mem://pi/deployment/data-dir-ownership) — setup-lotus.sh måste chown APP_DIR + pre-skapa data/ annars EACCES vid boot
 - [Ambient caps clearar grupper](mem://pi/ble/ambient-caps-clears-supplementary-groups) — AmbientCapabilities clearar SupplementaryGroups; lägg pi i netdev/bluetooth permanent + udev-regel för /dev/rfkill
 - [Passive HCI wait](mem://pi/ble/passive-hci-wait-policy) — Engine väntar passivt på hci0; bluetoothd äger wake
+- [DeviceAllow gotcha](mem://pi/runtime/deviceallow-implies-deny-all) — En DeviceAllow= blockerar alla andra devices (inkl /dev/snd → mic ENOENT)
