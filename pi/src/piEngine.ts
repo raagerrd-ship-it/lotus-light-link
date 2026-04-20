@@ -100,7 +100,6 @@ interface LightCalibration {
   brightnessFloor: number;
   transientBoost: boolean;
   perceptualCurve: boolean;
-  agcEnabled: boolean;
   dynamicsEnabled: boolean;
   [key: string]: any;
 }
@@ -114,7 +113,6 @@ const DEFAULT_CAL: LightCalibration = {
   brightnessFloor: 0,
   transientBoost: true,
   perceptualCurve: false,
-  agcEnabled: true,
   dynamicsEnabled: true,
   
 };
@@ -173,10 +171,8 @@ export interface DiagSnapshot {
   rawRms: number;
   bassRms: number;
   midHiRms: number;
-  peakMax: number;       // simple AGC peak tracker
-  agcQuietTicks: number;
-  bassNorm: number;      // after AGC normalization (0-1)
-  midHiNorm: number;     // after AGC normalization (0-1)
+  bassNorm: number;      // bassRms * RAW_SCALE, clamped 0-1
+  midHiNorm: number;     // midHiRms * RAW_SCALE, clamped 0-1
   preDynamics: number;   // energyNorm BEFORE dynamics expansion
   energyNorm: number;    // after dynamics
   dynamicCenter: number;
@@ -196,7 +192,6 @@ export interface DiagSnapshot {
 
 const _diag: DiagSnapshot = {
   rawRms: 0, bassRms: 0, midHiRms: 0,
-  peakMax: 0, agcQuietTicks: 0,
   bassNorm: 0, midHiNorm: 0,
   preDynamics: 0, energyNorm: 0, dynamicCenter: 0, onsetBoost: 0,
   brightnessPct: 0, bleScaleRaw: 0,
