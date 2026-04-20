@@ -1772,6 +1772,7 @@ export default function PiMobile() {
         if (cancelled) return;
         setPiOnline(true);
         setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
+        if (typeof data.uptime === 'number') setEngineUptime(data.uptime);
         if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
         const track = data.sonos?.trackName ?? null;
         setLiveTrack(track);
