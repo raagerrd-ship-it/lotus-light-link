@@ -243,6 +243,8 @@ export function startConfigServer(port = 3050): void {
       commit: GIT_COMMIT_SHORT,
       branch: GIT_BRANCH,
       version: SERVICE_VERSION,
+      uptime: Math.floor((Date.now() - START_TIME) / 1000),
+      startedAt: new Date(START_TIME).toISOString(),
       sonos,
       engine: engine
         ? {
