@@ -381,36 +381,42 @@ export class PiLightEngine {
   }
 
   private _idleTimer: ReturnType<typeof setInterval> | null = null;
+  private _idleFlushTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly IDLE_HEARTBEAT_MS = 2000;
+  // Aggressiv flush direkt efter pause: skicka idle-frame var 100ms i 600ms.
+  // Detta sköljer noble's interna pending writes (musik-burst) snabbt — utan
+  // detta kan keep-alive (400ms) ärva en kö av musik-frames som spelar ut
+  // sig själva i radio-stacken efter att engine slutat skicka.
+  private static readonly IDLE_FLUSH_INTERVAL_MS = 100;
+  private static readonly IDLE_FLUSH_DURATION_MS = 600;
 
   private startIdleHeartbeat(): void {
     this.stopIdleHeartbeat();
-    // Tvinga idle-färgen direkt vid pause — bypassar busy/rate-limit/delta-gates
-    // så lampan inte fortsätter måla senaste musik-frame via keep-alive.
+    // Tvinga idle-färgen direkt vid pause — bypassar busy/rate-limit/delta-gates.
     this.forceIdleNow();
-    // Then repeat every 2s (via vanlig pipeline — keep-alive håller ändå
-    // writeBuf uppdaterad mellan dessa)
-    this._idleTimer = setInterval(() => this.sendIdleColor(), PiLightEngine.IDLE_HEARTBEAT_MS);
+    // Aggressiv flush-burst första 600ms: var 100ms tvingas idle-frame in,
+    // så keep-alive aldrig hinner ärva en gammal musik-buffer.
+    let flushElapsed = 0;
+    this._idleFlushTimer = setInterval(() => {
+      this.forceIdleNow();
+      flushElapsed += PiLightEngine.IDLE_FLUSH_INTERVAL_MS;
+      if (flushElapsed >= PiLightEngine.IDLE_FLUSH_DURATION_MS) {
+        if (this._idleFlushTimer) { clearInterval(this._idleFlushTimer); this._idleFlushTimer = null; }
+      }
+    }, PiLightEngine.IDLE_FLUSH_INTERVAL_MS);
+    // Lång-sikt heartbeat var 2s — använd sendIdleForce så vi aldrig kan
+    // delta-skippas av sendToBLE-gaten.
+    this._idleTimer = setInterval(() => this.forceIdleNow(), PiLightEngine.IDLE_HEARTBEAT_MS);
   }
 
   private stopIdleHeartbeat(): void {
     if (this._idleTimer) { clearInterval(this._idleTimer); this._idleTimer = null; }
+    if (this._idleFlushTimer) { clearInterval(this._idleFlushTimer); this._idleFlushTimer = null; }
   }
 
   private forceIdleNow(): void {
     const idle = loadIdleColor();
     sendIdleForce(idle[0] | 0, idle[1] | 0, idle[2] | 0);
-  }
-
-  private sendIdleColor(): void {
-    const idle = loadIdleColor();
-    // Send idle color at full brightness — skip gamma so the color isn't dimmed
-    sendToBLE(
-      Math.max(0, Math.min(255, idle[0] | 0)),
-      Math.max(0, Math.min(255, idle[1] | 0)),
-      Math.max(0, Math.min(255, idle[2] | 0)),
-      100,
-    );
   }
 
   setPlaying(playing: boolean): void {
