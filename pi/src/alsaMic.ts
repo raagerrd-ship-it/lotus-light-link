@@ -25,14 +25,15 @@ try {
   micBackend = 'alsa-vendored';
   console.log('[ALSA] Using native alsa-capture (vendored fork, direct snd_pcm_readi)');
 } catch (eVendor: any) {
+  const vendorReason = eVendor?.message ?? String(eVendor);
   try {
     AlsaCapture = (await import('alsa-capture')).default;
     useNative = true;
     micBackend = 'alsa-npm';
     console.log('[ALSA] Using native alsa-capture (npm package, direct snd_pcm_readi)');
   } catch (e: any) {
-    const reason = e?.message ?? String(e);
-    console.warn(`[ALSA] Native alsa-capture unavailable: ${reason}`);
+    const npmReason = e?.message ?? String(e);
+    console.warn(`[ALSA] Native alsa-capture unavailable (vendored: ${vendorReason}; npm: ${npmReason})`);
     try {
       nodeRecord = (await import('node-record-lpcm16')).default;
       micBackend = 'arecord';
@@ -335,7 +336,10 @@ export function getNoiseGateState(): typeof _ngState {
 }
 
 let capture: any = null;
-let currentDevice = process.env.ALSA_DEVICE ?? 'hw:0,0';
+// För fallback via arecord är plughw säkrare än hw eftersom VoiceHAT ofta kräver
+// ALSA plugin-konvertering till S16_LE/mono. Native addon kan fortfarande öppna
+// hw:0,0 direkt om användaren väljer det explicit via API/UI.
+let currentDevice = process.env.ALSA_DEVICE ?? 'plughw:0,0';
 // INMP441 (Google voiceHAT-soundcard overlay) levererar bara S32_LE.
 // Default till S32_LE; kan överridas via ALSA_FORMAT env för andra mikar.
 let currentFormat: 'S16_LE' | 'S32_LE' = (process.env.ALSA_FORMAT as any) ?? 'S32_LE';
