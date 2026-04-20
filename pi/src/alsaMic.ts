@@ -373,15 +373,11 @@ let currentDevice = process.env.ALSA_DEVICE ?? 'hw:0,0';
 let currentFormat: 'S16_LE' | 'S32_LE' = (process.env.ALSA_FORMAT as any) ?? 'S32_LE';
 const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 
-/** Sätt FFT-trigger från tickMs (hop = tickMs → 1 FFT per tick, 1:1 mic→tick).
- *  ALSA-perioden är 256 frames (~5.8ms). JS-sidan ackumulerar HOP_SIZE samples
- *  innan processFFT() körs. Inget capture-restart behövs → noll glitch när
- *  användaren drar i tick-slidern. */
-export function setTickHopMs(tickMs: number): void {
-  const newHop = Math.max(128, Math.round(tickMs * (SAMPLE_RATE / 1000)));
-  if (newHop === HOP_SIZE) return;
-  HOP_SIZE = newHop;
-  console.log(`[ALSA] FFT hop → ${HOP_SIZE} frames (${(HOP_SIZE / SAMPLE_RATE * 1000).toFixed(1)}ms, 1 FFT/tick @ ${tickMs}ms)`);
+/** No-op: HOP_SIZE är hårdkodat till 512 (~10.7ms) och frikopplat från tickMs.
+ *  Engine.tickInner gatear själv på tickMs i onFFTFrame, så vi behöver inte
+ *  ändra FFT-takten när användaren drar i tick-slidern. Behållen för API-kompat. */
+export function setTickHopMs(_tickMs: number): void {
+  // intentionally empty — FFT körs alltid var 10.7ms, engine gatear på tickMs
 }
 
 // Software mic gain — multiplier applied to raw PCM samples before processing.
