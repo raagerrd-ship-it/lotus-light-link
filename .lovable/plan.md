@@ -1,45 +1,49 @@
 
 
 ## Mål
-Kortast möjliga latens mic→BLE. Det som spelar roll är inte ALSA vs arecord (5-15ms skillnad är försumbart) — det är pipeline-lagren mellan FFT och BLE-write.
+1. Visuella staplar i `MicBackendBadge` istället för flimrande siffror.
+2. Räkna **alla** skip-typer separat så inget göms.
 
-## Var ligger latensen idag?
+## Räknare vi ska visa (alla per sekund)
 
-Pipeline (per frame, 128 samples @ 44.1kHz = 2.9ms hop):
+Backend redan har eller behöver:
+- `fftPerSec` — FFT-frames producerade
+- `tickPerSec` — engine-ticks körda
+- `sentPerSec` — BLE-paket faktiskt skickade
+- `skipDeltaPerSec` — skippade pga oförändrad färg (förväntat)
+- `skipRateLimitPerSec` — skippade pga 35ms-gate (BLE cap nådd, förväntat)
+- `skipInFlightPerSec` — skippade pga write hänger (verklig kö — onormalt) **[NY]**
+- `writeFailPerSec` — writeAsync kastade error **[NY: derive från writeFailCount]**
+- `fftDroppedPerSec` — FFT-frames som kom innan tick-fönstret öppnat (extra mic-input som bara uppdaterar FFT-state) **[NY]**
+
+Backend-ändring: splitta `skipBusyCount` i `skipInFlightCount` + `skipRateLimitCount` (i `pi/src/ble/protocol.ts` + `state.ts`), räkna `fftDroppedCount` i `piEngine.ts`, exponera alla via `/api/mic/level`.
+
+## UI-design (kompakt, inom befintlig badge-höjd)
+
 ```
-Mic → ringbuf → FFT (every 128 samples) → onFFTReady → engine.tickInner → BLE write
-  ~3ms        ~0.5ms                       0ms event   ~1-2ms              ~10-20ms BLE
+[ALSA · 18ms]  ▮▮▮ ▮▮▮ ▮▮▮ · ░░▮ ▮▮░ · ●
+                FFT TCK PKT   DLT RLM   ↑ skip-LED (in-flight/fail)
 ```
 
-Total: **~15-25ms i bästa fall**. BLE-skrivningen är den enskilt största posten — och styrs av tick-rate-slidern.
+Tre **gröna staplar** = produktiva: FFT / TICK / PKT, var och en normaliserad mot sitt mål (`fftMål = 2000/tickMs`, `tickMål = pktMål = 1000/tickMs`).
 
-## Vad ger faktisk vinst (rangordnat)
+Två **grå/blå staplar** = förväntade skips: DLT (delta) och RLM (rate-limit). Höjd = `skipPerSec / pktMål` (visar hur stor andel av tick-budgeten som "sparades").
 
-1. **Sänk tick-rate till 25ms** (om inte redan) — ger 40 pkt/s, max throughput innan BLEDOM disconnectar. Detta är redan default enligt minnet.
-2. **Verifiera connection interval 7.5-10ms** via HCI (redan implementerat enligt `connection-optimization`).
-3. **Mät faktisk end-to-end latens** — vi gissar nu. Lägg till mätpunkter: timestamp vid `onAudioData` → timestamp vid `protocol.write` → logga delta var 2:a sekund.
-4. **Hoppa över FFT helt på rena transient-paths** — för "punch white" och flux-driven puls räcker peak-detektion på råa samples (kan göras var 32:a sample = 0.7ms istället för var 128:e). Det är dock en större omskrivning.
+En **röd LED-prick** lyser bara när `skipInFlight > 0` ELLER `writeFail > 0` ELLER `fftDropped > 0` under senaste sekunden — det är de OND skipsen som betyder verklig kö eller missad capacity.
 
-ALSA vs arecord: arecord-subprocess lägger ~5-15ms via pipe-buffring. Native ALSA tar bort det. Men om bygget failar är det inte värt att jaga — gör mätningen först.
+Färglogik per stapel:
+- ≥80% av mål → primary (grön/blå)
+- 40–80% → foreground/70
+- <40% → destructive
 
-## Förslag (i ordning)
+Tooltip: full siffer-readout för alla räknare, plus förklaring (hold-to-read).
 
-**Steg 1 — Mät latensen** (nu, billigt):
-- Lägg till `lastAudioTimestamp` i `alsaMic.ts` (sätts i `onAudioData`)
-- Lägg till `lastBleWriteTimestamp` i `protocol.ts` (sätts precis innan write)
-- Exponera båda via `/api/mic/level` som `audioToBleLatencyMs`
-- Visa i UI bredvid ALSA/ARECORD-badgen: t.ex. `ALSA · 18ms`
+CSS-baserade staplar (`<div>` med `height: %`), ingen ny dep. ~60 rader total.
 
-**Steg 2 — Beslut baserat på mätning**:
-- Om latens >30ms och ARECORD aktivt → fixa native ALSA-bygget (vi har redan vendored fork)
-- Om latens >30ms och ALSA aktivt → titta på engine.tickInner / BLE-kö
-- Om latens <25ms → done, det är så snabbt det blir med BLEDOM
-
-## Filer som ändras (steg 1)
-- `pi/src/alsaMic.ts` — exportera `getLastAudioTimestamp()`
-- `pi/src/ble/protocol.ts` — exportera `getLastWriteTimestamp()`
-- `pi/src/configServer.ts` — lägg till latency i `/api/mic/level`
-- `src/components/MicBackendBadge.tsx` — visa `· {ms}ms` efter backend-namnet
-
-Inga nya beroenden, ingen ombyggnad. ~30 rader kod totalt.
+## Filer
+- `pi/src/ble/state.ts` — lägg `skipInFlightCount`, `skipRateLimitCount`, `fftDroppedCount`
+- `pi/src/ble/protocol.ts` — bumpa rätt räknare i båda gates
+- `pi/src/piEngine.ts` — bumpa `fftDroppedCount` när FFT kommer för tidigt
+- `pi/src/configServer.ts` — exponera nya `*PerSec`-fält i `/api/mic/level`
+- `src/components/MicBackendBadge.tsx` — byt textraden mot stapel-rad + skip-LED, behåll latens-suffix och tooltip
 
