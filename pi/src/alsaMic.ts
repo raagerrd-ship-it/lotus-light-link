@@ -108,11 +108,17 @@ export interface BandResult {
 
 const SAMPLE_RATE = 48000;
 const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = tickMs * 48 → exakt 1 FFT per tick (1:1 mic→FFT→tick).
-// Med synkron hard-fail-pipeline behövs ingen "extra" FFT-frame som
-// säkerhetsmarginal — varje audio-batch driver exakt en tick.
-// Default 40ms tick → hop≈1920 frames (~40ms). Sätts via setTickHopMs().
-let HOP_SIZE = 1920;
+// HOP_SIZE = 512 frames (~10.7ms @ 48kHz) — FAST, frikopplad från tickMs.
+// FFT körs ~93Hz för bättre transient-detektering och peak-tracking.
+// Engine.tickInner triggas dock bara på tickMs-takt (gate i piEngine.onFFTFrame
+// kollar `elapsed >= tickMs`) → BLE-trafik oförändrad, men engine ser senaste
+// FFT-frame när den väl kör → snabbare attack-respons.
+//
+// CPU-konsekvens: ~93 FFT/s × ~1ms = ~9% CPU på Pi Zero 2W (mätt: tål det,
+// vendor-bufferten är 8× period = 43ms vilket täcker värsta GC-pausen).
+// Tidigare HOP=tickMs (40ms) → ~25Hz FFT → ~2.5% CPU. Vi byter ~6.5% extra
+// CPU mot ~30ms bättre transient-respons.
+const HOP_SIZE = 512;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 const FFT_MASK = FFT_SIZE - 1;
@@ -367,15 +373,11 @@ let currentDevice = process.env.ALSA_DEVICE ?? 'hw:0,0';
 let currentFormat: 'S16_LE' | 'S32_LE' = (process.env.ALSA_FORMAT as any) ?? 'S32_LE';
 const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 
-/** Sätt FFT-trigger från tickMs (hop = tickMs → 1 FFT per tick, 1:1 mic→tick).
- *  ALSA-perioden är 256 frames (~5.8ms). JS-sidan ackumulerar HOP_SIZE samples
- *  innan processFFT() körs. Inget capture-restart behövs → noll glitch när
- *  användaren drar i tick-slidern. */
-export function setTickHopMs(tickMs: number): void {
-  const newHop = Math.max(128, Math.round(tickMs * (SAMPLE_RATE / 1000)));
-  if (newHop === HOP_SIZE) return;
-  HOP_SIZE = newHop;
-  console.log(`[ALSA] FFT hop → ${HOP_SIZE} frames (${(HOP_SIZE / SAMPLE_RATE * 1000).toFixed(1)}ms, 1 FFT/tick @ ${tickMs}ms)`);
+/** No-op: HOP_SIZE är hårdkodat till 512 (~10.7ms) och frikopplat från tickMs.
+ *  Engine.tickInner gatear själv på tickMs i onFFTFrame, så vi behöver inte
+ *  ändra FFT-takten när användaren drar i tick-slidern. Behållen för API-kompat. */
+export function setTickHopMs(_tickMs: number): void {
+  // intentionally empty — FFT körs alltid var 10.7ms, engine gatear på tickMs
 }
 
 // Software mic gain — multiplier applied to raw PCM samples before processing.
