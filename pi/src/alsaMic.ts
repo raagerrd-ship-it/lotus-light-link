@@ -409,9 +409,9 @@ export interface GainCalPoint { vol: number; gain: number; }
 
 let calPoint1: GainCalPoint | null = null;
 let calPoint2: GainCalPoint | null = null;
+let lastSonosVol: number | null = null;  // cachat för live-omräkning vid slider-change
 const AUTO_GAIN_MAX = 50.0;
 const AUTO_GAIN_MIN = 0.1;
-let autoGainEnabled = false;
 
 export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
 export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainCalPoint | null } {
@@ -423,6 +423,10 @@ export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | nul
   calPoint2 = p2;
   if (p1 && p2) {
     console.log(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
+    // Räkna om direkt från senast kända volym så slider-ändringar syns omedelbart
+    if (autoGainEnabled && lastSonosVol != null) {
+      recomputeAutoGain(lastSonosVol);
+    }
   }
 }
 
@@ -434,14 +438,19 @@ function interpolateGain(sonosVolume: number): number {
   const logG1 = Math.log(g1), logG2 = Math.log(g2);
   const t = (sonosVolume - v1) / (v2 - v1);
   const logG = logG1 + t * (logG2 - logG1);
-  return Math.min(AUTO_GAIN_MAX, Math.max(AUTO_GAIN_MIN, Math.exp(logG)));
+  return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, Math.exp(logG)));
 }
 
-export function setAutoGainFromVolume(sonosVolume: number): void {
-  if (!autoGainEnabled || !calPoint1 || !calPoint2) return;
+function recomputeAutoGain(sonosVolume: number): void {
   if (sonosVolume <= 0) { micGainAuto = AUTO_GAIN_MAX; updateEffectiveGain(); return; }
   micGainAuto = interpolateGain(sonosVolume);
   updateEffectiveGain();
+}
+
+export function setAutoGainFromVolume(sonosVolume: number): void {
+  lastSonosVol = sonosVolume;
+  if (!autoGainEnabled || !calPoint1 || !calPoint2) return;
+  recomputeAutoGain(sonosVolume);
   console.log(`[ALSA] Auto-gain: vol=${sonosVolume} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
 }
 
