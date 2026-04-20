@@ -689,6 +689,23 @@ function GainCalibrationPanel({
     setCalPoints({ point1: null, point2: null });
   };
 
+  /** Live-finjustera P1/P2 gain (delta i ×). PUT:ar nya kalibreringen direkt
+   *  → motorn räknar om interpoleringen vid nästa Sonos-vol-update (inom 2s). */
+  const adjustCalPointGain = (pointNum: 1 | 2, delta: number) => {
+    const pt = pointNum === 1 ? calPoints.point1 : calPoints.point2;
+    if (!pt) return;
+    const newGain = Math.max(0.5, Math.min(50, +(pt.gain + delta).toFixed(1)));
+    const updated = pointNum === 1
+      ? { point1: { ...pt, gain: newGain }, point2: calPoints.point2 }
+      : { point1: calPoints.point1, point2: { ...pt, gain: newGain } };
+    setCalPoints(updated);
+    fetch(`${piBase}/api/gain-calibration`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    }).catch(() => {});
+  };
+
   const hasCalibration = calPoints.point1 && calPoints.point2;
 
   // Calibration wizard UI
