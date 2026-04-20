@@ -1477,6 +1477,8 @@ export default function PiMobile() {
   const [manualBleSaving, setManualBleSaving] = useState(false);
   const [manualBleError, setManualBleError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [updatePhase, setUpdatePhase] = useState<'idle' | 'stopping' | 'downloading' | 'starting'>('idle');
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const [sonosPlaying, setSonosPlaying] = useState(false);
@@ -1792,6 +1794,71 @@ export default function PiMobile() {
     return () => { cancelled = true; clearInterval(id); };
   }, [view, piBase]);
 
+  // Poll latest available version every 5 min (and once at mount when online)
+  useEffect(() => {
+    if (view !== 'home' || piOnline !== true) return;
+    let cancelled = false;
+    const checkLatest = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/update/check`, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        if (cancelled || data.error) return;
+        if (data.latestVersion) setLatestVersion(data.latestVersion);
+      } catch { /* nätverksfel — försök igen nästa intervall */ }
+    };
+    checkLatest();
+    const id = setInterval(checkLatest, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [view, piBase, piOnline]);
+
+  // "Tvångs-uppdatera": stoppa engine → kör force-update → backend startar om service
+  const runForceUpdate = async () => {
+    if (updatePhase !== 'idle') return;
+    setUpdatePhase('downloading');
+    setUpdateStatus('running');
+    try {
+      // /api/update/force triggar update-script som:
+      //   1. Stoppar systemd-tjänsten (= motor stängs ner)
+      //   2. Hämtar + installerar ny tarball
+      //   3. Startar tjänsten igen (= motor startar med ny version)
+      // Vi visar bara faserna i UI:t baserat på poll-svar.
+      await fetch(`${piBase}/api/update/force`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+      setUpdatePhase('starting');
+      // Step 3: Polla tills update done OCH service tillbaka online
+      const poll = setInterval(async () => {
+        try {
+          const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
+          const sd = await s.json();
+          if (!sd.running) {
+            // Verifiera att engine svarar igen
+            try {
+              const v = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) });
+              if (v.ok) {
+                clearInterval(poll);
+                // Tvinga ny version-hämtning så v-raden uppdateras direkt
+                try {
+                  const fresh = await v.json();
+                  if (fresh?.version) setPiVersion({ version: fresh.version, commitShort: fresh.commit ?? '?', branch: fresh.branch ?? '?' });
+                } catch {}
+                setUpdatePhase('idle');
+                setUpdateStatus('done');
+                setTimeout(() => setUpdateStatus(null), 4000);
+              }
+            } catch { /* engine ännu inte uppe — fortsätt polla */ }
+          }
+        } catch { /* service kanske startar om — fortsätt polla */ }
+      }, 2500);
+      // Säkerhetsstopp efter 3 min
+      setTimeout(() => { clearInterval(poll); if (updatePhase !== 'idle') { setUpdatePhase('idle'); setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 4000); } }, 180000);
+    } catch {
+      setUpdatePhase('idle');
+      setUpdateStatus('error');
+      setTimeout(() => setUpdateStatus(null), 4000);
+    }
+  };
+
+
   if (view === "profile") {
     return (
       <ProfileSettingsView
@@ -1929,7 +1996,7 @@ export default function PiMobile() {
       )}
 
       {/* Version / Status */}
-      <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-1">
+      <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
@@ -1946,6 +2013,42 @@ export default function PiMobile() {
             </div>
           )}
         </div>
+
+        {/* Update available row — visas bara om backend rapporterat en nyare version */}
+        {piVersion && latestVersion && latestVersion !== piVersion.version && updatePhase === 'idle' && updateStatus !== 'running' && (
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+            <div className="flex items-center gap-2 min-w-0">
+              <Download size={12} className="text-primary shrink-0" />
+              <span className="font-mono truncate">v{piVersion.version} → <span className="text-primary font-bold">v{latestVersion}</span></span>
+            </div>
+            <button
+              onClick={runForceUpdate}
+              className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold active:scale-95 transition-transform shrink-0"
+            >
+              Uppdatera
+            </button>
+          </div>
+        )}
+
+        {/* Update progress — vilken fas vi är i */}
+        {updatePhase !== 'idle' && (
+          <div className="flex items-center gap-2 pt-2 border-t border-border/40">
+            <Loader2 size={12} className="text-primary animate-spin shrink-0" />
+            <span className="text-foreground">
+              {updatePhase === 'stopping' && 'Stänger ner motorn…'}
+              {updatePhase === 'downloading' && 'Hämtar ny version…'}
+              {updatePhase === 'starting' && 'Startar motorn igen…'}
+            </span>
+          </div>
+        )}
+
+        {/* Up-to-date confirmation */}
+        {piVersion && latestVersion && latestVersion === piVersion.version && updatePhase === 'idle' && (
+          <div className="flex items-center gap-1.5 pt-1 border-t border-border/40">
+            <Check size={11} className="text-green-500" />
+            <span>Senaste versionen</span>
+          </div>
+        )}
       </div>
 
       <section className="mb-8">
