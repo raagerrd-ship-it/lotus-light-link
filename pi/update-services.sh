@@ -103,15 +103,41 @@ done
 # som bara hade user-service), återskapa den genom att köra setup-lotus.sh
 # som bara reinstallerar service-blocket — det är idempotent och bygger inte
 # om något om dist/ redan finns.
+SETUP_NEEDED=0
 if [ ! -f /etc/systemd/system/lotus-light-engine.service ]; then
-  echo "$LOG_PREFIX System-service saknas — kör setup-lotus.sh för att återskapa..."
+  echo "$LOG_PREFIX System-service saknas — kör setup-lotus.sh för att skapa..."
+  SETUP_NEEDED=1
+elif ! grep -q "SupplementaryGroups=netdev bluetooth" /etc/systemd/system/lotus-light-engine.service 2>/dev/null; then
+  echo "$LOG_PREFIX System-service saknar SupplementaryGroups — kör setup-lotus.sh för att fixa..."
+  SETUP_NEEDED=1
+else
+  # Service-filen ser OK ut. Verifiera ändå att node-binären har caps + user är i grupperna —
+  # detta är BILLIGT och kritiskt för BLE. Sker varje update så regressioner fångas snabbt.
+  TARGET_USER_VERIFY="${SUDO_USER:-${USER:-pi}}"
+  NODE_BIN_VERIFY="$(readlink -f "$(command -v node)" 2>/dev/null || true)"
+  if [ -n "$NODE_BIN_VERIFY" ] && ! getcap "$NODE_BIN_VERIFY" 2>/dev/null | grep -q "cap_net_raw"; then
+    echo "$LOG_PREFIX node-binären saknar CAP_NET_RAW — sätter caps..."
+    sudo setcap 'cap_net_raw,cap_net_admin+eip' "$NODE_BIN_VERIFY" 2>/dev/null || true
+  fi
+  for GRP in netdev bluetooth; do
+    if getent group "$GRP" >/dev/null 2>&1 && ! id -nG "$TARGET_USER_VERIFY" 2>/dev/null | tr ' ' '\n' | grep -qx "$GRP"; then
+      echo "$LOG_PREFIX $TARGET_USER_VERIFY saknas i $GRP — lägger till (kräver service-restart för att aktiveras)..."
+      sudo usermod -aG "$GRP" "$TARGET_USER_VERIFY" 2>/dev/null || true
+    fi
+  done
+  if ! systemctl is-active bluetooth >/dev/null 2>&1; then
+    echo "$LOG_PREFIX bluetooth.service inte igång — startar..."
+    sudo systemctl enable --now bluetooth 2>/dev/null || true
+  fi
+  echo "$LOG_PREFIX System-service intakt + BLE permissions verifierade ✓"
+fi
+
+if [ "$SETUP_NEEDED" = "1" ]; then
   if [ -x "$PI_DIR/setup-lotus.sh" ]; then
     bash "$PI_DIR/setup-lotus.sh" || echo "$LOG_PREFIX WARN: setup-lotus.sh returnerade fel — kontrollera manuellt"
   else
     echo "$LOG_PREFIX WARN: $PI_DIR/setup-lotus.sh saknas eller är inte körbar — engine kan fastna i user-service-läge"
   fi
-else
-  echo "$LOG_PREFIX System-service intakt ✓ (behåller över update)"
 fi
 
 # BLE permissions (CAP_NET_RAW/CAP_NET_ADMIN) are handled by

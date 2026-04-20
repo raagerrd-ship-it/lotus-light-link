@@ -309,6 +309,41 @@ async function startSonosSubsystem(): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────────────────────────────────────
+async function logRuntimePermissions(): Promise<void> {
+  // Logga EXAKT vilka groups + caps engine-processen kör med, så det syns i UI:t
+  // utan SSH. Hjälper diagnosticera "rfkill: Permission denied"-loop:en.
+  try {
+    const fs = await import('node:fs');
+    const uid = process.getuid?.() ?? -1;
+    const gid = process.getgid?.() ?? -1;
+    const groups = process.getgroups?.() ?? [];
+    console.log(`[Boot/Perms] uid=${uid} gid=${gid} supplementary-gids=[${groups.join(',')}]`);
+
+    try {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const exec = promisify(execFile);
+      const { stdout } = await exec('id', ['-Gn']);
+      console.log(`[Boot/Perms] groups: ${stdout.trim()}`);
+    } catch {}
+
+    try {
+      const status = fs.readFileSync('/proc/self/status', 'utf8');
+      const capLines = status.split('\n').filter(l => l.startsWith('Cap'));
+      for (const line of capLines) console.log(`[Boot/Perms] ${line}`);
+    } catch {}
+
+    try {
+      fs.accessSync('/dev/rfkill', fs.constants.R_OK | fs.constants.W_OK);
+      console.log('[Boot/Perms] /dev/rfkill: read+write OK ✓');
+    } catch (e: any) {
+      console.warn(`[Boot/Perms] /dev/rfkill: NO ACCESS (${e?.code}) — netdev-grupp saknas i processen`);
+    }
+  } catch (e: any) {
+    console.warn('[Boot/Perms] kunde inte logga runtime permissions:', e?.message ?? e);
+  }
+}
+
 async function main() {
   console.log('╔═══════════════════════════════════════════╗');
   console.log('║   Lotus Light Link — Pi Headless Runtime  ║');
@@ -316,6 +351,10 @@ async function main() {
   console.log('╚═══════════════════════════════════════════╝');
   console.log(`  Config API: :${CONFIG_PORT}`);
   console.log(`  Bridge: ${SONOS_BUDDY_API_URL}`);
+  console.log('');
+
+  await logRuntimePermissions();
+
   console.log('');
   console.log('  Boot startar INTE BLE/mic/sonos automatiskt.');
   console.log('  Använd UI:t (Subsystem-startup-panelen) eller');
