@@ -1815,13 +1815,14 @@ export default function PiMobile() {
   // "Tvångs-uppdatera": stoppa engine → kör force-update → backend startar om service
   const runForceUpdate = async () => {
     if (updatePhase !== 'idle') return;
-    setUpdatePhase('stopping');
+    setUpdatePhase('downloading');
     setUpdateStatus('running');
     try {
-      // Step 1: Be engine stoppa snyggt (releaseDemand släpper BLE-lås)
-      try { await fetch(`${piBase}/api/ble/engine/stop`, { method: 'POST', signal: AbortSignal.timeout(3000) }); } catch {}
-      setUpdatePhase('downloading');
-      // Step 2: Kör update (PCC startar om service efter)
+      // /api/update/force triggar update-script som:
+      //   1. Stoppar systemd-tjänsten (= motor stängs ner)
+      //   2. Hämtar + installerar ny tarball
+      //   3. Startar tjänsten igen (= motor startar med ny version)
+      // Vi visar bara faserna i UI:t baserat på poll-svar.
       await fetch(`${piBase}/api/update/force`, { method: 'POST', signal: AbortSignal.timeout(5000) });
       setUpdatePhase('starting');
       // Step 3: Polla tills update done OCH service tillbaka online
