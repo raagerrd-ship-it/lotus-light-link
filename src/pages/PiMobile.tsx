@@ -525,9 +525,11 @@ function GainCalibrationPanel({
     }).catch(() => {});
   }, [piBase]);
 
-  // Live-poll: aktuell gain + Sonos-volym (alltid, så Manual också ser motorvärdet)
+  // Live-poll: aktuell gain + Sonos-volym. Snabbpoll i 5s efter slider-aktivitet.
+  const fastPollUntilRef = useRef(0);
   useEffect(() => {
     let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
       try {
         const [statusRes, agRes] = await Promise.all([
@@ -542,10 +544,12 @@ function GainCalibrationPanel({
           if (ag.effective != null) setEffectiveGain(ag.effective);
         }
       } catch {}
+      if (cancelled) return;
+      const interval = Date.now() < fastPollUntilRef.current ? 500 : 1500;
+      timeoutId = setTimeout(poll, interval);
     };
     poll();
-    const id = setInterval(poll, 1500);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
   }, [piBase]);
 
   /** PUT båda kalibreringspunkterna live till motorn när en slider ändras. */
@@ -558,6 +562,8 @@ function GainCalibrationPanel({
         point2: { vol: AUTO_VOL_HIGH, gain: highGain },
       }),
     }).catch(() => {});
+    // Trigga snabbpoll (500ms) i 5s så användaren ser effekten direkt
+    fastPollUntilRef.current = Date.now() + 5000;
   };
 
   const setMode = (auto: boolean) => {
@@ -573,6 +579,7 @@ function GainCalibrationPanel({
     }).then(r => r.json()).then(d => {
       if (d.multiplier != null) setMultiplier(d.multiplier);
     }).catch(() => {});
+    fastPollUntilRef.current = Date.now() + 5000;
   };
 
   const onGainLowChange = (g: number) => {
