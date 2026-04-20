@@ -3,14 +3,13 @@
  * API-only — the web UI is served by a separate frontend process.
  */
 
-import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
 import express from 'express';
 import { getItem, setItem } from './storage.js';
-import { bleStats, getConnectedCount, getConnectedNames, setDimmingGamma, getDimmingGamma, sendRawColor, scanForDevices, selectDevice, forgetDevice, saveManualDevice, getLastScanResults, getSavedDeviceId, getSavedDeviceName, getSavedDeviceAddress, getSavedAddressType, getSavedConnectable, getSavedServiceUuids, getConnectedDeviceId, isScanning, isDemandActive, requestConnect, releaseDemand, getAdapterState, getConnectionLog, processHasBtCaps, BLE_BUILD_TAG, noble, isConnectInProgress, resetHciAdapter, disconnect, workaroundCounters, autoConnectSaved, waitForFirstStateChange, getBleBootStartedAt, getFirstStateChangeAt, hasNobleEverFiredStateChange, getScanMetrics, getBootPhase, ensureAdapterUp, getMinWriteIntervalMs, setMinWriteIntervalMs } from './nobleBle.js';
-import { bumpWorkaround, getHciProbeSnapshot, getForceMutationSnapshot, getAllSubsystemStates, getSubsystemState, type SubsystemId } from './ble/state.js';
-import { getWatchdogGiveUpReason } from './ble/watchdog.js';
-import type { GainCalPoint } from './alsaMic.js';
+import {
+  bleStats, setDimmingGamma, getDimmingGamma, sendRawColor,
+  getMinWriteIntervalMs, setMinWriteIntervalMs,
+  getAllSubsystemStates, getSubsystemState, type SubsystemId,
+} from './ble/index.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
 
