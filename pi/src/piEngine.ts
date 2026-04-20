@@ -747,9 +747,6 @@ export class PiLightEngine {
       _diag.tickCount++;
       _diag.lastTickUs = ((performance.now() - _tickStart) * 1000 + 0.5) | 0;
 
-      // Record sample if recording active
-      this.recordSample();
-
       // ── Emit ──
       const td = _tickData;
       td.brightness = pct;
