@@ -528,21 +528,23 @@ function onAudioData(buf: Buffer): void {
   if (_audioCbCount === 50 || _audioCbCount === 200 || _audioCbCount % 1000 === 0) {
     console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
   }
-  // Stereo interleaved → mono downmix (L+R)/2.
-  // S16_LE: 2 bytes/sample, divisor 32768. S32_LE: 4 bytes/sample, divisor 2147483648.
+  // Stereo interleaved → ta bara vänster kanal.
+  // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst
+  // (beroende på L/R-pin). Att bara läsa L är säkrast och billigast (en index/sample).
+  // S16_LE: 2 bytes/sample. S32_LE: 4 bytes/sample.
   // INMP441 levererar 24-bit data left-justified i 32-bit container — samma divisor fungerar.
   let frameCount: number;
   let getFrame: (i: number) => number;
   if (currentFormat === 'S32_LE') {
     const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
-    frameCount = samples.length >> 1; // 2 ch
+    frameCount = samples.length >> 1; // 2 ch interleaved
     const INV_S32 = 1 / 2147483648;
-    getFrame = (i) => (samples[i << 1] + samples[(i << 1) + 1]) * 0.5 * INV_S32;
+    getFrame = (i) => samples[i << 1] * INV_S32; // L only
   } else {
     const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
-    frameCount = samples.length >> 1; // 2 ch
+    frameCount = samples.length >> 1;
     const INV_S16 = 1 / 32768;
-    getFrame = (i) => (samples[i << 1] + samples[(i << 1) + 1]) * 0.5 * INV_S16;
+    getFrame = (i) => samples[i << 1] * INV_S16; // L only
   }
 
   for (let i = 0; i < frameCount; i++) {
