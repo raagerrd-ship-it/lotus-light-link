@@ -33,12 +33,19 @@ sudo systemctl stop lotus-light.service 2>/dev/null || true
 # Döda alla node-processer som kör lotus-light, även de utanför systemd.
 # Vanligt scenario: gamla manuellt-startade processer (t.ex. från
 # /home/pi/...) som överlever en systemctl stop.
-sudo pkill -TERM -f "lotus-light" 2>/dev/null || true
-sudo pkill -TERM -f "piEngine" 2>/dev/null || true
-sleep 1
-# Hård kill om de fortfarande lever
-sudo pkill -KILL -f "lotus-light" 2>/dev/null || true
-sudo pkill -KILL -f "piEngine" 2>/dev/null || true
+# VIKTIGT: pkill -f matchar HELA cmdline inkl. CWD-resolution — om scriptet
+# körs från /opt/lotus-light/... matchar pkill sin egen parent-shell och
+# dödar sessionen. Lösning: matcha bara på 'node' i cmd-namnet och filtrera
+# bort vår egen pid + parent-pid.
+SELF_PID=$$
+PARENT_PID=$PPID
+KILL_PIDS=$(pgrep -f "node.*lotus-light|node.*piEngine" 2>/dev/null | grep -vE "^($SELF_PID|$PARENT_PID)$" || true)
+if [ -n "$KILL_PIDS" ]; then
+  echo "$KILL_PIDS" | xargs -r sudo kill -TERM 2>/dev/null || true
+  sleep 1
+  KILL_PIDS=$(pgrep -f "node.*lotus-light|node.*piEngine" 2>/dev/null | grep -vE "^($SELF_PID|$PARENT_PID)$" || true)
+  [ -n "$KILL_PIDS" ] && echo "$KILL_PIDS" | xargs -r sudo kill -KILL 2>/dev/null || true
+fi
 
 REMAINING=$(pgrep -f "lotus-light|piEngine" | wc -l)
 if [ "$REMAINING" -gt 0 ]; then
