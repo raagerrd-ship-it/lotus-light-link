@@ -1076,33 +1076,8 @@ export default function PiMobile() {
   const [liveTrack, setLiveTrack] = useState<string | null>(null);
   const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
   const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
-  const [bleScanning, setBleScanning] = useState(false);
-  const [bleScanCompletedEmpty, setBleScanCompletedEmpty] = useState(false);
-  const [bleScanMessage, setBleScanMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
-  const [bleScanLog, setBleScanLog] = useState<{ type: string; detail?: string; device?: string; timestamp: string }[]>([]);
-  const [showBleLog, setShowBleLog] = useState(true);
-  const [bleScanResults, setBleScanResults] = useState<{ id: string; name: string; rssi: number; source?: 'noble' | 'hcitool' | 'both' }[]>([]);
-  const [bleConnectedId, setBleConnectedId] = useState<string | null>(null);
   const [bleHardcodedConnected, setBleHardcodedConnected] = useState(false);
   const [bleEngineReady, setBleEngineReady] = useState(false);
-  const [bleConnectedName, setBleConnectedName] = useState<string | null>(null);
-  const [bleSavedId, setBleSavedId] = useState<string | null>(null);
-  const [bleSavedName, setBleSavedName] = useState<string | null>(null);
-  const [bleSavedAddress, setBleSavedAddress] = useState<string | null>(null);
-  const [bleConnecting, setBleConnecting] = useState<string | null>(null);
-  const [bleDemand, setBleDemand] = useState(false);
-  const [bleAdapterState, setBleAdapterState] = useState<string | null>(null);
-  const [bootPhase, setBootPhase] = useState<string | null>(null);
-  const [blePreview, setBlePreview] = useState(false);
-  const [blePreviewSec, setBlePreviewSec] = useState(0);
-  const [bleEngineDiagOpen, setBleEngineDiagOpen] = useState(false);
-  const [bleEngineDiag, setBleEngineDiag] = useState<any>(null);
-  const [bleEngineDiagLoading, setBleEngineDiagLoading] = useState(false);
-  const [showManualBle, setShowManualBle] = useState(true);
-  const [manualBleMac, setManualBleMac] = useState("");
-  const [manualBleName, setManualBleName] = useState("");
-  const [manualBleSaving, setManualBleSaving] = useState(false);
-  const [manualBleError, setManualBleError] = useState<string | null>(null);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [engineUptime, setEngineUptime] = useState<number | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
@@ -1110,9 +1085,11 @@ export default function PiMobile() {
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const [sonosPlaying, setSonosPlaying] = useState(false);
+  const [liveTrackUnused, setLiveTrackUnused] = useState<string | null>(null);
+  const [liveBleCount, setLiveBleCount] = useState<number | null>(null);
+  const [livePalette, setLivePalette] = useState<[number, number, number][]>([]);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
-  const bleIdentityRef = useRef<{ savedId: string | null; savedName: string | null; connectedId: string | null }>({
-    savedId: null,
+
     savedName: null,
     connectedId: null,
   });
