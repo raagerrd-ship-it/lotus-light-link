@@ -756,7 +756,7 @@ export function startConfigServer(port = 3050): void {
         detail: micRunning
           ? `OK — senaste FFT ${Math.round(performance.now() - micLastFFTAt)}ms sedan`
           : micHasDevice
-            ? 'Inga FFT-frames på senaste 5s — mic stoppad eller arecord saknas'
+            ? 'Inga FFT-frames på senaste 5s — mic stoppad eller native ALSA binding ej laddad'
             : '—',
       },
       {

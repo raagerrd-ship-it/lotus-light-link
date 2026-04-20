@@ -1,9 +1,10 @@
 /**
  * ALSA microphone input → FFT → BandResult.
- * Prefers native alsa-capture (direct snd_pcm_readi, no subprocess).
- * Falls back to node-record-lpcm16 (arecord subprocess) if native addon unavailable.
- * Uses custom zero-alloc radix-2 FFT (no fft-js dependency).
- * 
+ * Uses native alsa-capture (direct snd_pcm_readi, no subprocess) — HARD REQUIRED.
+ * Engine refuses to start mic if vendored binding can't be loaded (no arecord
+ * fallback, since arecord adds ~30-50ms latency we deliberately avoid).
+ * Custom zero-alloc radix-2 FFT (no fft-js dependency).
+ *
  * Event-driven: fires onFFTReady callback immediately after each FFT frame,
  * enabling the engine to process with zero additional latency.
  */

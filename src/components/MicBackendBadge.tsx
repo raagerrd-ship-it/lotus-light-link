@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Cpu, Terminal, AlertCircle } from "lucide-react";
+import { Cpu, AlertCircle } from "lucide-react";
 
-type Backend = "alsa-vendored" | "alsa-npm" | "arecord" | "none" | null;
+type Backend = "alsa-vendored" | "alsa-npm" | "none" | null;
 
 interface BleRates {
   sentPerSec: number;
@@ -193,16 +193,7 @@ export function MicBackendBadge({ piBase }: Props) {
     );
   }
 
-  if (backend === "arecord") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-destructive/15 text-destructive border border-destructive/30"
-        title={`arecord-subprocess (fallback)${latencyMs != null ? ` · ${latencyMs}ms audio→BLE` : ""}`}
-      >
-        <Terminal size={9} /> ARECORD{latencySuffix}{bars}
-      </span>
-    );
-  }
+  // arecord-fallback finns inte längre — engine vägrar starta utan native binding.
 
   return (
     <span
