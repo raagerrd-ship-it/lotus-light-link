@@ -37,7 +37,8 @@ export function getHardcodedPeripheral(): any | null {
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   if (!_connected) return { disconnected: true };
-  stopKeepAlive();
+  // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
+  _onDisconnected?.();
   setDevice(null);
   resetLastSent();
   try { await _connected.disconnectAsync(); } catch {}
@@ -132,7 +133,7 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
           try { peripheral.removeAllListeners?.('disconnect'); } catch {}
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
-            stopKeepAlive();
+            _onDisconnected?.();
             setDevice(null);
             resetLastSent();
             bleStats.disconnectCount++;
