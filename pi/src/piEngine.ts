@@ -538,23 +538,26 @@ export class PiLightEngine {
   stop(): void {
     this._running = false;
     this.stopLoop();
-    this.stopIdleHeartbeat();
+    stopKeepAlive();
     onFFTReady(null); // unregister callback
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
   }
 
-  /** Suspend engine output (for BLE tests etc.) — stops loop + heartbeat */
+  /** Suspend engine output (for BLE tests etc.) — stops loop + keep-alive */
   suspend(): void {
     this.stopLoop();
-    this.stopIdleHeartbeat();
+    stopKeepAlive();
     console.log('[Engine] Suspended (BLE test mode)');
   }
 
   /** Resume engine output after suspend */
   resume(): void {
     this.startLoop();
-    if (!this.playing) this.startIdleHeartbeat();
+    if (!this.playing && this._bleConnected) {
+      this.forceIdleNow();
+      startKeepAlive();
+    }
     console.log(`[Engine] Resumed (${this.playing ? 'active' : 'idle'})`);
   }
 
