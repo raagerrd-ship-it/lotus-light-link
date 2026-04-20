@@ -1,5 +1,15 @@
 /**
  * BLE BLEDOM protocol: packet formats, write pipeline, keepalive, brightness.
+ *
+ * SYNKRON HARD-FAIL-PIPELINE:
+ * sendToBLE() är SYNKRON och returnerar WriteResult direkt. Den awaitar
+ * aldrig characteristic.writeAsync — det görs fire-and-forget med en
+ * single-slot promise (writeSlot). Engine.tickInner kan därför aldrig
+ * blockeras av BLE-stacken; om sloten är upptagen får ticken returvärdet
+ * 'busy' och kan räkna det som en abort istället för att vänta.
+ *
+ * En 500ms watchdog (writeSlotWatchdog) tvångs-släpper sloten om noble
+ * skulle hänga utan att resolvar — annars dör all output för evigt.
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
@@ -33,17 +43,28 @@ function brightnessToScale(brightness: number): number {
   return brightnessLut[idx];
 }
 
+// ── Write result type — synkron rapport till engine ──
+export type WriteResult =
+  | 'sent'         // write fire-and-forgot → till noble
+  | 'busy'         // BLE-slot upptagen (föregående writeAsync ej resolvad)
+  | 'rate-limited' // < 35ms sedan senaste write
+  | 'no-change'    // delta-skip (samma färg+brightness)
+  | 'no-device';   // ingen ConnectedDevice
+
 // ── Write state ──
-const WRITE_FAIL_THRESHOLD = 5;
-const WRITE_TIMEOUT_MS = 500;
+const WRITE_SLOT_TIMEOUT_MS = 500;
+const MIN_WRITE_INTERVAL_MS = 35;
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
-let writeInFlight = false;
+let writeSlot: Promise<void> | null = null;
+let writeSlotWatchdog: ReturnType<typeof setTimeout> | null = null;
 let lastWriteTime = 0;
 let writeFailCount = 0;
+const WRITE_FAIL_THRESHOLD = 5;
 
 export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
-  writeInFlight = false;
+  if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
+  writeSlot = null;
   lastWriteTime = 0;
   bleStats.requestedIntervalMs = '—';
   bleStats.actualIntervalMs = '—';
@@ -69,9 +90,6 @@ export function startKeepAlive(): void {
   stopKeepAlive();
   keepAliveFailCount = 0;
   keepAliveSentCount = 0;
-  // Seed lastWriteTime so the first keep-alive fires on schedule rather
-  // than skipping because (now - 0) is huge but elapsed-vs-threshold logic
-  // sees a stale 0. Anchor writes already happened — count from now.
   lastWriteTime = performance.now();
   keepAliveTimer = setInterval(async () => {
     const device = getDevice();
@@ -94,7 +112,6 @@ export function startKeepAlive(): void {
       if (keepAliveFailCount <= 3 || keepAliveFailCount % 10 === 0) {
         console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e.message ?? e}`);
       }
-      // Proactive reconnect: too many keep-alive failures → device is dead
       if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && device && isDemandActive()) {
         console.warn('[BLE] Keep-alive threshold reached — triggering proactive reconnect');
         const periph = device.peripheral;
@@ -120,111 +137,124 @@ export function setReconnectTrigger(fn: (peripheral: any, name: string) => void)
   _triggerReconnect = fn;
 }
 
-/** Ultra-fast single-device BLE write with failure detection */
-export async function sendToBLE(r: number, g: number, b: number, brightness: number): Promise<void> {
+/**
+ * SYNKRON BLE-write — hard-fail om sloten är upptagen.
+ * Returnerar WriteResult direkt; engine kan räkna utfallet utan await.
+ * writeAsync triggas fire-and-forget; resultatet rapporteras via .then/.catch.
+ */
+export function sendToBLE(r: number, g: number, b: number, brightness: number): WriteResult {
   const device = getDevice();
-  if (!device) return;
+  if (!device) return 'no-device';
 
+  // Steg 1: BLE-slot ledig?
+  if (writeSlot) {
+    bleStats.skipInFlightCount++;
+    bleStats.skipBusyCount++;
+    return 'busy';
+  }
+
+  // Steg 2: Rate-limit-gate (35ms)
+  const now = performance.now();
+  if (lastWriteTime > 0 && (now - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
+    bleStats.skipRateLimitCount++;
+    bleStats.skipBusyCount++;
+    return 'rate-limited';
+  }
+
+  // Steg 3: Brightness-skala + delta-check
   const scale = brightnessToScale(brightness);
   const cr = (r * scale + 0.5) | 0;
   const cg = (g * scale + 0.5) | 0;
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  // Timeout guard
-  if (writeInFlight) {
-    if (lastWriteTime > 0 && (performance.now() - lastWriteTime) > WRITE_TIMEOUT_MS) {
-      console.warn('[BLE] Write timeout — forcing writeInFlight release');
-      writeInFlight = false;
-    } else {
-      bleStats.skipInFlightCount++;
-      bleStats.skipBusyCount++;
-      return;
-    }
-  }
-
-  // Rate-limit: writeAsync(..., true) = withoutResponse returnerar direkt
-  // utan att vänta på radio-ACK → ingen naturlig backpressure. Utan denna
-  // gate bygger noble/HCI-buffern kö och lampan släpar 1-2s efter musiken.
-  // 35ms = ~28 pkt/s tak, matchar BLEDOM:s reella throughput. Tick 40ms
-  // har visat sig stabilt i fält — håll gaten precis under tick-min så
-  // slidern (UI) är den verkliga begränsaren.
-  const MIN_WRITE_INTERVAL_MS = 35;
-  if (lastWriteTime > 0 && (performance.now() - lastWriteTime) < MIN_WRITE_INTERVAL_MS) {
-    bleStats.skipRateLimitCount++;
-    bleStats.skipBusyCount++;
-    return;
-  }
-
-  // Delta-skip — kan stängas av via env BLE_NO_DELTA_SKIP=1 för throughput-test.
   if (!process.env.BLE_NO_DELTA_SKIP &&
       cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
-    return;
+    return 'no-change';
   }
 
-  writeInFlight = true;
-  const now = performance.now();
-
-  try {
-    const mode = device?.mode ?? 'rgb';
-    let buf: Buffer;
-    if (mode === 'brightness') {
-      brightBuf[3] = cbr;
-      buf = brightBuf;
-    } else {
-      writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
-      buf = writeBuf;
-    }
-    // Viktigt: på denna Pi/noble-stack hänger `writeAsync(..., false)` men
-    // anchor write med `true` returnerar direkt och lampan håller länken.
-    // Därför måste drift-writes använda samma flagga som anchor writen.
-    await device.characteristic.writeAsync(buf, true);
-
-    lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
-    bleStats.sentCount++;
-    if (writeFailCount > 0) {
-      console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
-    }
-    writeFailCount = 0;
-
-    const elapsed = performance.now() - now;
-    bleStats.writeLatMs = Math.round(elapsed * 10) / 10;
-    bleStats.writeLatAvgMs = Math.round(
-      (bleStats.writeLatAvgMs * 0.9 + elapsed * 0.1) * 10
-    ) / 10;
-    pipelineTiming.recordBleWrite(elapsed);
-
-    if (lastWriteTime > 0) {
-      bleStats.effectiveIntervalMs = Math.round(now - lastWriteTime);
-    }
-    lastWriteTime = now;
-
-    // Estimate connection interval from write latency if HCI event wasn't available
-    if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
-      bleStats.actualIntervalMs = bleStats.writeLatAvgMs.toFixed(1) + ' (est)';
-    }
-  } catch (e: any) {
-    writeFailCount++;
-    bleStats.writeFailCount++;
-    if (writeFailCount === 1 || writeFailCount === WRITE_FAIL_THRESHOLD) {
-      console.warn(`[BLE] Write failed (${writeFailCount}x): ${e.message ?? e}`);
-    }
-    if (writeFailCount >= WRITE_FAIL_THRESHOLD && device && isDemandActive()) {
-      console.warn('[BLE] Too many write failures — triggering proactive reconnect');
-      const periph = device.peripheral;
-      const name = device.name;
-      periph.removeAllListeners('disconnect');
-      stopKeepAlive();
-      setDevice(null);
-      resetLastSent();
-      try { await periph.disconnectAsync(); } catch { }
-      if (_triggerReconnect) _triggerReconnect(periph, name);
-      return;
-    }
-  } finally {
-    writeInFlight = false;
+  // Steg 4: Bygg buffer + fire-and-forget write
+  const mode = device.mode ?? 'rgb';
+  let buf: Buffer;
+  if (mode === 'brightness') {
+    brightBuf[3] = cbr;
+    buf = brightBuf;
+  } else {
+    writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
+    buf = writeBuf;
   }
+
+  // Markera slot UPPTAGEN innan vi triggar write — fönstret mellan här
+  // och .then() är där alla efterföljande ticks ser 'busy'.
+  const writeStartedAt = now;
+  lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
+  // Reservera lastWriteTime direkt så rate-limit-gaten räknar från start,
+  // inte från resolve — annars kan en långsam write låta nästa tick smita
+  // förbi gaten direkt efter resolve.
+  lastWriteTime = now;
+
+  const writePromise = device.characteristic.writeAsync(buf, true)
+    .then(() => {
+      const elapsed = performance.now() - writeStartedAt;
+      bleStats.sentCount++;
+      bleStats.writeLatMs = Math.round(elapsed * 10) / 10;
+      bleStats.writeLatAvgMs = Math.round(
+        (bleStats.writeLatAvgMs * 0.9 + elapsed * 0.1) * 10
+      ) / 10;
+      if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
+      pipelineTiming.recordBleWrite(elapsed);
+      if (lastWriteTime > 0) bleStats.effectiveIntervalMs = Math.round(writeStartedAt - (lastWriteTime - (writeStartedAt - now)));
+      if (writeFailCount > 0) console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
+      writeFailCount = 0;
+      if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
+        bleStats.actualIntervalMs = bleStats.writeLatAvgMs.toFixed(1) + ' (est)';
+      }
+    })
+    .catch((e: any) => {
+      writeFailCount++;
+      bleStats.writeFailCount++;
+      if (writeFailCount === 1 || writeFailCount === WRITE_FAIL_THRESHOLD) {
+        console.warn(`[BLE] Write failed (${writeFailCount}x): ${e?.message ?? e}`);
+      }
+      if (writeFailCount >= WRITE_FAIL_THRESHOLD && getDevice() && isDemandActive()) {
+        console.warn('[BLE] Too many write failures — triggering proactive reconnect');
+        const dev = getDevice()!;
+        const periph = dev.peripheral;
+        const name = dev.name;
+        periph.removeAllListeners('disconnect');
+        stopKeepAlive();
+        setDevice(null);
+        resetLastSent();
+        Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
+          if (_triggerReconnect) _triggerReconnect(periph, name);
+        });
+      }
+    })
+    .finally(() => {
+      // Släpp sloten — men bara om denna write fortfarande äger den
+      // (watchdogen kan ha tvångs-släppt och en annan write tagit över)
+      if (writeSlot === writePromise) {
+        writeSlot = null;
+        if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
+      }
+    });
+
+  writeSlot = writePromise;
+
+  // Watchdog — om writeAsync hänger >500ms släpp sloten ändå så engine
+  // inte fastnar permanent i 'busy'. Räkna stuck-count som signal.
+  if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
+  writeSlotWatchdog = setTimeout(() => {
+    if (writeSlot === writePromise) {
+      bleStats.writeStuckCount++;
+      console.warn('[BLE] writeAsync stuck >500ms — force-releasing slot');
+      writeSlot = null;
+      writeSlotWatchdog = null;
+    }
+  }, WRITE_SLOT_TIMEOUT_MS);
+
+  return 'sent';
 }
 
 /** Raw color write — bypasses dedup and brightness scaling. For test tools only. */
