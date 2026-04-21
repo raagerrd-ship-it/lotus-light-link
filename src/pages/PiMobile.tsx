@@ -194,25 +194,32 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
       if (val > 1) val = 1;
     }
 
-    // Floor — clamp på 0–1 (motsvarar engine: pct < floor → pct = floor)
-    const floor = cal.brightnessFloor / 100;
-    if (val < floor) val = floor;
+    // Floor + Gamma — engine arbetar i pct-domän (0–100) och avrundar till heltal
+    // EFTER gamma men FÖRE punch-check. Måste speglas exakt eller blir små
+    // slider-justeringar (särskilt kring golv/punch-tröskel) icke-monotona.
+    const floorPct = cal.brightnessFloor; // 0–25 (procent)
+    let pct = val * 100;
+    if (pct < floorPct) pct = floorPct;
 
-    // Perceptual gamma — engine kör EFTER floor-clamp, samma ordning här
     const pGamma = cal.perceptualGamma ?? 0;
-    if (pGamma > 0 && val > floor && val < 1) {
-      const norm = (val - floor) / (1 - floor);
-      val = floor + Math.pow(Math.max(0, norm), pGamma) * (1 - floor);
+    if (pGamma > 0 && pct > floorPct && pct < 100) {
+      const norm = (pct - floorPct) / (100 - floorPct);
+      pct = floorPct + Math.pow(Math.max(0, norm), pGamma) * (100 - floorPct);
     }
 
-    // Punch white — engine: pct >= threshold → sätter pct=100 (clip till full vit)
-    const punchThr = (cal.punchWhiteThreshold ?? 100) / 100;
+    // Engine: snabb avrundning + clamp + andra floor-clamp (gamma kan dra under)
+    pct = Math.floor(pct + 0.5);
+    if (pct > 100) pct = 100;
+    if (pct < floorPct) pct = floorPct;
+
+    // Punch white — engine: kontroll på avrundad heltals-pct
     let didPunch = false;
-    if (punchThr < 1.0 && val >= punchThr) {
-      val = 1.0;
+    if ((cal.punchWhiteThreshold ?? 100) < 100 && pct >= cal.punchWhiteThreshold) {
+      pct = 100;
       didPunch = true;
     }
 
+    val = pct / 100;
     if (val < 0) val = 0;
     prev = val > 1 ? 1 : val;
     values.push(val);
