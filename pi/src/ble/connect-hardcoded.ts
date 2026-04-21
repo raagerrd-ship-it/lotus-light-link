@@ -27,8 +27,59 @@ let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = n
 let _lastConnectCallAt = 0;
 let _connectCallCount = 0;
 
+// ── Auto-reconnect-loop ──────────────────────────────────────────────────
+// Aktiveras när en lyckad connect följs av disconnect (alltså: lampan VAR
+// ansluten och tappade länken). Inaktiveras vid manuell disconnectHardcoded()
+// eller när reconnect lyckas. Backoff: 2s → 4s → 8s → 16s → max 30s, oändligt.
+let _autoReconnectEnabled = false;
+let _autoReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let _autoReconnectAttempt = 0;
+
+function clearAutoReconnect(): void {
+  if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
+  _autoReconnectAttempt = 0;
+}
+
+function scheduleAutoReconnect(): void {
+  if (!_autoReconnectEnabled) return;
+  if (_autoReconnectTimer) return; // redan schemalagd
+  if (_connectInFlight) return;     // pågående connect täcker behovet
+  if (_connected && _connected.state === 'connected') return; // redan uppe
+
+  _autoReconnectAttempt++;
+  const backoffs = [2000, 4000, 8000, 16000, 30000];
+  const delay = backoffs[Math.min(_autoReconnectAttempt - 1, backoffs.length - 1)];
+  console.log(`[auto-reconnect] försök #${_autoReconnectAttempt} om ${delay}ms`);
+  _autoReconnectTimer = setTimeout(async () => {
+    _autoReconnectTimer = null;
+    if (!_autoReconnectEnabled) return;
+    if (_connected && _connected.state === 'connected') {
+      console.log(`[auto-reconnect] redan ansluten — avbryter loop`);
+      _autoReconnectAttempt = 0;
+      return;
+    }
+    try {
+      const r = await connectHardcoded();
+      if (r.connected) {
+        console.log(`[auto-reconnect] ✓ återansluten efter ${_autoReconnectAttempt} försök (${r.durationMs}ms)`);
+        _autoReconnectAttempt = 0;
+      } else {
+        console.warn(`[auto-reconnect] ✗ försök #${_autoReconnectAttempt} misslyckades: ${r.error ?? 'okänt fel'}`);
+        scheduleAutoReconnect(); // nästa försök, ökad backoff
+      }
+    } catch (e: any) {
+      console.warn(`[auto-reconnect] ✗ försök #${_autoReconnectAttempt} kastade: ${e?.message ?? e}`);
+      scheduleAutoReconnect();
+    }
+  }, delay);
+}
+
 export function getHardcodedConnected(): { connected: boolean; name: string; mac: string } {
   return { connected: !!_connected && _connected.state === 'connected', name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac };
+}
+
+export function getAutoReconnectStatus(): { enabled: boolean; attempt: number; pending: boolean } {
+  return { enabled: _autoReconnectEnabled, attempt: _autoReconnectAttempt, pending: !!_autoReconnectTimer };
 }
 
 export function getHardcodedPeripheral(): any | null {
@@ -36,6 +87,9 @@ export function getHardcodedPeripheral(): any | null {
 }
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
+  // Manuell disconnect → stoppa auto-reconnect-loopen så vi inte kämpar mot användaren.
+  _autoReconnectEnabled = false;
+  clearAutoReconnect();
   if (!_connected) return { disconnected: true };
   // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
   _onDisconnected?.();
