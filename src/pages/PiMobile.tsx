@@ -3,6 +3,7 @@ import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap
 import { apiBase } from "@/lib/apiBase";
 import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 import { BleControlPanel } from "@/components/BleControlPanel";
+import { PermissionsBanner } from "@/components/PermissionsBanner";
 
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
@@ -1552,6 +1553,9 @@ export default function PiMobile() {
           </button>
         </div>
       </div>
+
+      {/* 0. Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
+      <PermissionsBanner piBase={piBase} />
 
       {/* 1. BLE-motor — startas först så noble är poweredOn innan vi gör något annat */}
       <BleControlPanel
