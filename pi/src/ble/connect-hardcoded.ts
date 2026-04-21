@@ -359,6 +359,16 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             finish({ connected: false, error: `GATT discovery failed: ${e?.message ?? e}` });
           }
         } catch (e: any) {
+          // RACE GUARD: withTimeout's interna setTimeout(4000) fortsätter ticka
+          // även efter att connectAsync redan resolvat — om GATT+anchor+finish()
+          // hann köras före timeouten, kastar racet ändå "connectAsync timed out"
+          // ~1s senare. Då har vi en LYCKAD, ANSLUTEN session som inte får dödas.
+          // Bevisat i fält: 22:45:28 "anslutning klar" → 22:45:29 timeout-catch
+          // disconnectade samma peripheral. Om resolved=true → ignorera tyst.
+          if (resolved) {
+            console.log(`${ts()}    (ignorerar sen connectAsync-timeout: ${e?.message ?? e} — vi är redan anslutna)`);
+            return;
+          }
           console.log(`${ts()}    connectAsync FEL: ${e?.message ?? e} — disconnectar och ger upp`);
           try { await peripheral.disconnectAsync(); } catch {}
           finish({ connected: false, error: `connectAsync failed: ${e?.message ?? e}` });
