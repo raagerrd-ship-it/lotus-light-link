@@ -222,7 +222,14 @@ export function startConfigServer(port = 3050): void {
       hasAudio: false,
       uid: process.getuid?.() ?? -1,
       missing: [],
-      setupCommand: 'sudo bash /opt/lotus-light/pi/setup-lotus.sh',
+      setupCommand: (() => {
+        // Härleder UI-port från CONFIG_PORT (engine = UI + 50, så UI = CONFIG_PORT - 50).
+        // CORE läses från PCC via env, default 1 (matchar PCC default för Pi-tjänster).
+        const cfgPort = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 3050);
+        const uiPort = Math.max(1, cfgPort - 50);
+        const core = Number(process.env.PCC_CORE ?? process.env.CPU_CORE ?? 1);
+        return `sudo bash /opt/lotus-light/pi/setup-lotus.sh --port ${uiPort} --core ${core}`;
+      })(),
     };
 
     try {

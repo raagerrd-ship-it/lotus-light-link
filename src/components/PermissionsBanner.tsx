@@ -42,11 +42,36 @@ export function PermissionsBanner({ piBase }: { piBase: string }) {
 
   const cmd = perms.setupCommand;
   const onCopy = async () => {
+    let ok = false;
+    // 1. Försök med modern Clipboard API (kräver https eller localhost)
     try {
-      await navigator.clipboard.writeText(cmd);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(cmd);
+        ok = true;
+      }
+    } catch {}
+    // 2. Fallback för http (typiskt fall: chrome på 192.168.x.x:3001)
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = cmd;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "0";
+        ta.style.left = "0";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, cmd.length);
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {}
+    }
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {}
+    }
   };
 
   return (
