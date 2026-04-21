@@ -384,7 +384,9 @@ export function startConfigServer(port = 3050): void {
     try {
       const { connectHardcoded } = await import('./ble/connect-hardcoded.js');
       const { HARDCODED_DEVICE } = await import('./ble/hardcoded-device.js');
-      const r = await connectHardcoded(8000);
+      // 6s yttre watchdog: BLEDOM ansluter alltid på 1-2s eller aldrig
+      // (mem://pi/ble/fast-fail-self-restart). Längre timeout hjälper inte.
+      const r = await connectHardcoded(6000);
       if (r.connected) {
         res.json({ connected: true, name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac, durationMs: r.durationMs });
       } else {
