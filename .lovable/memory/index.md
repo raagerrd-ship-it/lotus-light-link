@@ -49,6 +49,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [Inget setTimeout i FFT-tick](mem://pi/runtime/no-settimeout-on-fft-tick-path) — onFFTFrame får aldrig schemalägga setTimeout, då körs tickInner mot gammal frame
 - [Single-slot BLE-write](mem://pi/ble/single-slot-write-contract) — En writeAsync åt gången, hard-fail vid busy, ingen rate-limit, keep-alive bara i idle
 - [Stale peripheral cache](mem://pi/ble/stale-peripheral-cache) — Purga noble._peripherals[id] mellan reconnects mot samma MAC
+- [Late connect-timeout race](mem://pi/ble/late-connect-timeout-race) — withTimeout(connectAsync) kan kasta efter lyckad connect → catch måste guardas med resolved-flagg
 - [Auto-reconnect-loop](mem://pi/ble/auto-reconnect-loop) — Backoff 2→4→8→16→30s, aktiveras först efter lyckad connect, stoppas av manuell disconnect
 - [Fast-fail self-restart](mem://pi/ble/fast-fail-self-restart) — BLEDOM ansluter på 1-2s eller aldrig: 2 failures → process.exit(0) + /tmp-flagga + auto-connect vid boot
 - [Palette integration](mem://pi/sonos/palette-integration) — 4-color palettes consumed directly from Sonos Gateway
