@@ -186,13 +186,8 @@ let samplesReceived = 0;
 const MIC_SMOOTHING_FROM_CAL = process.env.MIC_SMOOTHING_FROM_CAL !== 'false';
 const DEFAULT_MIC_ATTACK = 0.8;
 const DEFAULT_MIC_RELEASE = 0.15;
-const DEFAULT_GATE_RECOVERY = 0.001;
 let micAttackAlpha = DEFAULT_MIC_ATTACK;
 let micReleaseAlpha = DEFAULT_MIC_RELEASE;
-// Gate-recovery (rising noise floor): härleds från release men med ett golv
-// på 0.03 så även profiler med mycket långsam release får ~100ms gate-öppning
-// efter en tyst passage. Föll = långsam (1ms/frame) som tidigare.
-let micGateRecoveryAlpha = Math.max(0.03, DEFAULT_MIC_RELEASE * 0.3);
 let smoothBass = 0;
 let smoothMidHi = 0;
 let smoothTotal = 0;
@@ -203,7 +198,6 @@ export function setMicSmoothing(attackAlpha: number, releaseAlpha: number): void
   if (!MIC_SMOOTHING_FROM_CAL) return;
   micAttackAlpha = Math.max(0.001, Math.min(1, attackAlpha));
   micReleaseAlpha = Math.max(0.001, Math.min(1, releaseAlpha));
-  micGateRecoveryAlpha = Math.max(0.03, micReleaseAlpha * 0.3);
 }
 
 function smoothRms(raw: number, prev: number): number {
@@ -211,29 +205,10 @@ function smoothRms(raw: number, prev: number): number {
   return prev + alpha * (raw - prev);
 }
 
-// ── Noise gate ──
-// Soft gate: signal below noiseFloor is exponentially attenuated.
-// The floor adapts asymmetrically: instant drop, then climbs back at
-// micGateRecoveryAlpha (kopplat till release-slidern, golv 0.03 → ~100ms
-// recovery efter tystnad så transienter inte kvävs i gate-knäet).
-const NOISE_GATE_KNEE = 3.0;            // gate ratio: signal must be 3x noise floor for full pass
-let noiseFloor = 0.001;
-
-function applyNoiseGate(rms: number): number {
-  // Track noise floor (slow minimum follower, fast(er) maximum follower)
-  if (rms < noiseFloor || noiseFloor < 0.0001) {
-    noiseFloor = rms;  // instant drop
-  } else {
-    noiseFloor += micGateRecoveryAlpha * (rms - noiseFloor);
-  }
-  // Soft gate: ramp from 0→1 as signal goes from 1x→3x noise floor
-  const threshold = noiseFloor * NOISE_GATE_KNEE;
-  if (rms <= noiseFloor) return 0;
-  if (rms >= threshold) return rms;
-  // Smooth quadratic ramp in the knee region
-  const t = (rms - noiseFloor) / (threshold - noiseFloor);
-  return rms * (t * t);
-}
+// Noise gate borttagen 2026-04-21: brightnessFloor + dynamics + perceptualGamma
+// i engine sköter redan tystnadströskeln, och den gamla gaten kvävde första
+// kicken efter en tyst passage (3× knee-ramp). bassRms etc. flödar nu rakt
+// från smoothBass/smoothMidHi/smoothTotal — ingen attenuation, ingen recovery.
 
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
@@ -334,10 +309,10 @@ function processFFT(): void {
   smoothMidHi = smoothRms(rawMidHi, smoothMidHi);
   smoothTotal = smoothRms(rawTotal, smoothTotal);
 
-  // ── Noise gate: suppress signal near ambient noise floor ──
-  latestBands.bassRms = applyNoiseGate(smoothBass);
-  latestBands.midHiRms = applyNoiseGate(smoothMidHi);
-  latestBands.totalRms = applyNoiseGate(smoothTotal);
+  // ── Bands flödar rakt från smoothed RMS — ingen noise gate ──
+  latestBands.bassRms = smoothBass;
+  latestBands.midHiRms = smoothMidHi;
+  latestBands.totalRms = smoothTotal;
   latestBands.flux = flux;
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
@@ -371,11 +346,11 @@ export function getLastFFTTimestamp(): number {
   return lastFFTTimestamp;
 }
 
-/** Expose noise gate state for diagnostics — zero-alloc static object */
+/** Diagnostics — zero-alloc static object. Noise gate borttagen, behåller
+ *  formen så piEngine._diag.ngFloor/ngThreshold/etc. fortsätter funka utan
+ *  ändring av endpoints. floor/threshold rapporteras som 0. */
 const _ngState = { noiseFloor: 0, threshold: 0, smoothBass: 0, smoothMidHi: 0, smoothTotal: 0 };
 export function getNoiseGateState(): typeof _ngState {
-  _ngState.noiseFloor = noiseFloor;
-  _ngState.threshold = noiseFloor * NOISE_GATE_KNEE;
   _ngState.smoothBass = smoothBass;
   _ngState.smoothMidHi = smoothMidHi;
   _ngState.smoothTotal = smoothTotal;
@@ -652,7 +627,6 @@ export function stopMic(): void {
   ringBuf.fill(0);
   prevPower.fill(0);
   smoothBass = 0; smoothMidHi = 0; smoothTotal = 0;
-  noiseFloor = 0.001;
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
