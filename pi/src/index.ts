@@ -291,6 +291,27 @@ async function main() {
 
   console.log('[Boot] ✓ configServer up — väntar på subsystem-start från UI/API');
 
+  // Auto-reconnect efter self-restart: om förra processen dog pga consecutive
+  // BLE-failures finns en flagga i /tmp. Konsumera den och starta motor + connect
+  // direkt så användaren slipper trycka knappar manuellt efter en restart-cykel.
+  try {
+    const { consumeReconnectOnBootFlag, connectHardcoded } = await import('./ble/connect-hardcoded.js');
+    if (consumeReconnectOnBootFlag()) {
+      console.log('[Boot] 🔁 reconnect-flagga hittad → startar BLE-motor + connectHardcoded()');
+      // Starta engine först (så noble laddas), sen connect.
+      const { startEngineMinimal } = await import('./ble/engine-start-minimal.js');
+      await startEngineMinimal().catch((e: any) => console.warn('[Boot] engine-start-minimal fel:', e?.message ?? e));
+      // Liten delay så noble hinner till poweredOn innan första scan.
+      setTimeout(() => {
+        connectHardcoded().then((r) => {
+          console.log(`[Boot] auto-reconnect resultat: connected=${r.connected} ${r.error ? `error=${r.error}` : ''} (${r.durationMs}ms)`);
+        }).catch((e: any) => console.warn('[Boot] auto-reconnect kastade:', e?.message ?? e));
+      }, 1500);
+    }
+  } catch (e: any) {
+    console.warn('[Boot] reconnect-flagga-check fel:', e?.message ?? e);
+  }
+
   // Graceful shutdown
   const shutdown = async () => {
     console.log('\n[Shutdown] Cleaning up…');
