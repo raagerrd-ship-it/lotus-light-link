@@ -191,15 +191,28 @@ function parseStatus(s: any): void {
   if (s.source === 'position-tick') {
     const newPos = s.positionMillis ?? currentState.positionMs;
 
-    // Position-based inference: if position is advancing, confirm PLAYING
-    const positionImpliesPlaying = inferPlayingFromPosition(newPos);
+    // Gateway's authoritative state on tick (gatewayn skickar
+    // lastSonosEvent.playbackState i varje position-tick — den är sanning).
+    const reportedTickState = readPlaybackState(s.playbackState);
+    const reportedPaused = reportedTickState != null && !isPlaying(reportedTickState);
+
+    // Position-inferens får BARA promota till PLAYING om gatewayn inte
+    // explicit säger PAUSED/IDLE. Annars fastnar vi i PLAYING efter pause
+    // när Sonos råkar rapportera mikrorörelser i relTime direkt efter stop.
+    const positionImpliesPlaying = !reportedPaused && inferPlayingFromPosition(newPos);
     updatePositionTracking(newPos);
 
-    let playbackState = currentState.playbackState;
+    let playbackState = reportedTickState ?? currentState.playbackState;
     if (positionImpliesPlaying && !isPlaying(playbackState)) {
-      // Position moving → override to PLAYING (self-healing)
       console.log('[Sonos] Position advancing → infer PLAYING');
       playbackState = 'PLAYBACK_STATE_PLAYING';
+      pendingState = null;
+      pendingCount = 0;
+    }
+
+    // Om gatewayn säger PAUSED i ticken, applicera direkt (ingen confirm).
+    if (reportedPaused && isPlaying(currentState.playbackState)) {
+      console.log(`[Sonos] Position-tick reports ${reportedTickState} → apply immediately`);
       pendingState = null;
       pendingCount = 0;
     }
