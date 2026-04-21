@@ -330,6 +330,13 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
               await withTimeout(ch.writeAsync(brightMaxBuf, true), 'anchor write', 3000);
               console.log(`${ts()}    anchor write OK`);
             } catch (e: any) {
+              // RACE GUARD: withTimeout(anchor write, 3000) kan kasta sent
+              // om writeAsync resolvar precis runt 3s-gränsen. Om finish()
+              // redan körts (resolved=true) är vi redan anslutna.
+              if (resolved) {
+                console.log(`${ts()}    (ignorerar sen anchor-write-timeout: ${e?.message ?? e})`);
+                return;
+              }
               console.warn(`${ts()}    anchor write FEL: ${e?.message ?? e} — disconnectar`);
               try { await peripheral.disconnectAsync(); } catch {}
               finish({ connected: false, error: `Anchor write failed: ${e?.message ?? e}` });
@@ -354,6 +361,13 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             console.log(`${ts()} 8. anslutning klar — engine notifierad om BLE-status`);
             finish({ connected: true });
           } catch (e: any) {
+            // RACE GUARD: samma sen-timeout-mönster som connectAsync nedan.
+            // GATT discovery kan resolva precis runt 8s-gränsen och tickande
+            // setTimeout kastar ändå — disconnecta INTE en lyckad session.
+            if (resolved) {
+              console.log(`${ts()}    (ignorerar sen GATT-discovery-timeout: ${e?.message ?? e})`);
+              return;
+            }
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
             try { await peripheral.disconnectAsync(); } catch {}
             finish({ connected: false, error: `GATT discovery failed: ${e?.message ?? e}` });
