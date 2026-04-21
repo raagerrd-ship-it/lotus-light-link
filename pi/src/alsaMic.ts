@@ -458,8 +458,15 @@ export function disableAutoGain(): void {
 
 export function enableAutoGain(): void {
   autoGainEnabled = true;
-  updateEffectiveGain();
-  console.log(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (interpolated from Sonos vol)`);
+  // Räkna om direkt från senast kända Sonos-volym så vi inte fastnar på default 15x
+  // tills användaren råkar dra i en slider eller volymen råkar ändras.
+  if (calPoint1 && calPoint2 && lastSonosVol != null) {
+    recomputeAutoGain(lastSonosVol);
+    console.log(`[ALSA] Auto-gain enabled → recomputed from cached vol=${lastSonosVol} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
+  } else {
+    updateEffectiveGain();
+    console.log(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (no cached vol yet, awaiting Sonos poll)`);
+  }
 }
 
 export function getAlsaDevice(): string {
