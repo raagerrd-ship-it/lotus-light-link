@@ -29,17 +29,25 @@ function formatUptime(s: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-/** Convert Softness 0-100 → releaseAlpha only (no extra smoothing filter) */
-function softnessToParams(s: number) {
-  const t = s / 100;
-  const releaseAlpha = 1.0 - 0.995 * Math.pow(t, 0.7);
-  return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing: 0 };
+/** Shared exponential mapping 0-100 → alpha 0.005-1.0 (lägre värde = mjukare) */
+function curveToAlpha(v: number) {
+  const t = v / 100;
+  const alpha = 1.0 - 0.995 * Math.pow(t, 0.7);
+  return Math.max(0.005, Math.round(alpha * 1000) / 1000);
+}
+function softnessToAlpha(s: number) { return curveToAlpha(s); }
+function attackToAlpha(a: number) { return curveToAlpha(a); }
+/** Reverse-mappa alpha → 0-100 UI-värde */
+function alphaToCurve(alpha: number) {
+  const t = Math.pow(Math.max(0, (1 - alpha) / 0.995), 1 / 0.7);
+  return Math.round(Math.min(100, Math.max(0, t * 100)));
 }
 
-type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain';
+type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain';
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = diskant, 0.5 = lika, 1.0 = bas" },
-  { key: "softness", label: "Mjukhet", min: 0, max: 100, step: 1, description: "0 = rått, 100 = mycket mjukt" },
+  { key: "attack", label: "Attack", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar" },
+  { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
   { key: "transientGain", label: "Transient boost", min: 0, max: 2, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 2.0 = överdrivna trumslag" },
   { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 3, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 3.0 = kraftigt komprimerad" },
