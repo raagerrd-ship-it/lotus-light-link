@@ -1113,20 +1113,25 @@ export default function PiMobile() {
   const handleSave = async () => {
     setSaveError(null);
     try {
-      const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-      const results = await Promise.allSettled([
-        putJson('/api/calibration', {
-          bassWeight: cal.bassWeight,
+      // Konvertera alla 4 profilers softness → releaseAlpha+smoothing innan PUT
+      const profilesPayload: Record<string, any> = {};
+      for (const [name, p] of Object.entries(profiles)) {
+        const { releaseAlpha, smoothing } = softnessToParams(p.softness);
+        profilesPayload[name] = {
+          bassWeight: p.bassWeight,
           releaseAlpha,
           smoothing,
-          dynamicDamping: cal.dynamicDamping,
-          brightnessFloor: cal.brightnessFloor,
-          punchWhiteThreshold: cal.punchWhiteThreshold,
-          perceptualGamma: cal.perceptualGamma,
-          transientGain: cal.transientGain,
-          dynamicsEnabled: cal.dynamicsEnabled,
+          dynamicDamping: p.dynamicDamping,
+          brightnessFloor: p.brightnessFloor,
+          punchWhiteThreshold: p.punchWhiteThreshold,
+          perceptualGamma: p.perceptualGamma,
+          transientGain: p.transientGain,
+          dynamicsEnabled: p.dynamicsEnabled,
           hiShelfGainDb: 6,
-        }),
+        };
+      }
+      const results = await Promise.allSettled([
+        putJson('/api/profiles', { profiles: profilesPayload, activePreset }),
         putJson('/api/tick-ms', { tickMs }),
         putJson('/api/mic-device', { device: alsaDevice }),
         putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
