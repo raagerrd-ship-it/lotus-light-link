@@ -299,8 +299,8 @@ async function main() {
     if (consumeReconnectOnBootFlag()) {
       console.log('[Boot] 🔁 reconnect-flagga hittad → startar BLE-motor + connectHardcoded()');
       // Starta engine först (så noble laddas), sen connect.
-      const { startEngineMinimal } = await import('./ble/engine-start-minimal.js');
-      await startEngineMinimal().catch((e: any) => console.warn('[Boot] engine-start-minimal fel:', e?.message ?? e));
+      const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
+      await startBleEngineMinimal().catch((e: any) => console.warn('[Boot] startBleEngineMinimal fel:', e?.message ?? e));
       // Liten delay så noble hinner till poweredOn innan första scan.
       setTimeout(() => {
         connectHardcoded().then((r) => {
