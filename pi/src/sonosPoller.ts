@@ -79,8 +79,8 @@ export function onSonosChange(fn: Listener): () => void {
 // ── Stability: consecutive confirmation + position inference ──
 
 /** How many consecutive polls must agree before we flip playback state.
- *  Sänkt från 2 → 1: idle-heartbeat + sendIdleForce skyddar mot flicker, så
- *  vi vinner ~2-4s pause-latens (lampan slutar blinka direkt efter pause). */
+ *  Sänkt från 2 → 1: BLE owner-switch (active→idle) + keep-alive @200ms bär
+ *  idle-färgen direkt vid pause, så vi vinner ~2-4s pause-latens utan flicker. */
 const CONFIRM_COUNT = 1;
 /** Max age (ms) of last successful response before we consider data stale */
 const STALE_THRESHOLD_MS = 8000;
