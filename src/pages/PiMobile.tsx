@@ -1170,8 +1170,8 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
-        safeFetch(`${piBase}/api/calibration`),
+      const [profilesRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
+        safeFetch(`${piBase}/api/profiles`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
         safeFetch(`${piBase}/api/dimming-gamma`),
@@ -1182,26 +1182,35 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
-      // calRes is the flat stored calibration object (or {} if empty)
-      if (calRes && typeof calRes === 'object' && Object.keys(calRes).length > 0) {
-        const c = calRes;
-        // Reverse-map releaseAlpha+smoothing back to softness
+      // Mappa varje profils stored kalibrering tillbaka till UI:ts Cal-form
+      // (releaseAlpha+smoothing → softness, defaults för saknade fält).
+      const mapStoredToCal = (c: any): Cal => {
         let softness = DEFAULT_CAL.softness;
-        if (c.releaseAlpha != null) {
+        if (c?.releaseAlpha != null) {
           const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
           softness = Math.round(Math.min(100, Math.max(0, t * 100)));
         }
-        setCal({
-          bassWeight: c.bassWeight ?? DEFAULT_CAL.bassWeight,
+        return {
+          bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
           softness,
-          dynamicDamping: c.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
-          brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
-          punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
-          
-          perceptualGamma: c.perceptualGamma ?? (typeof c.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
-          transientGain: c.transientGain ?? (typeof c.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
-          dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
-        });
+          dynamicDamping: c?.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
+          brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
+          punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
+          perceptualGamma: c?.perceptualGamma ?? (typeof c?.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
+          transientGain: c?.transientGain ?? (typeof c?.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
+          dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
+        };
+      };
+
+      if (profilesRes?.profiles && typeof profilesRes.profiles === 'object') {
+        const next: Record<string, Cal> = {
+          Lugn:   mapStoredToCal(profilesRes.profiles.Lugn   ?? {}),
+          Normal: mapStoredToCal(profilesRes.profiles.Normal ?? {}),
+          Party:  mapStoredToCal(profilesRes.profiles.Party  ?? {}),
+          Custom: mapStoredToCal(profilesRes.profiles.Custom ?? {}),
+        };
+        setProfiles(next);
+        if (profilesRes.activePreset) setActivePreset(profilesRes.activePreset);
       }
       if (micRes?.device) setAlsaDevice(micRes.device);
       if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
