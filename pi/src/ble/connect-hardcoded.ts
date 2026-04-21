@@ -382,6 +382,26 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   _connectInFlight = inflight;
   try {
     const r = await inflight;
+    if (r.connected) {
+      // Lyckad connect → nollställ failure-räknaren.
+      if (_consecutiveFailures > 0) {
+        console.log(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
+      }
+      _consecutiveFailures = 0;
+    } else {
+      _consecutiveFailures++;
+      console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures)`);
+      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
+        // Mönster från fältet: BLEDOM ansluter alltid på 1-2s eller aldrig.
+        // 2 misslyckade i rad = noble's HCI-state är fastnat. Enda fungerande
+        // lösning är full process-restart (systemd Restart=always startar om).
+        // Sätt flagga så engine auto-anropar connectHardcoded() vid boot.
+        console.error(`[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures — sätter reconnect-flagga och process.exit(0) för systemd restart`);
+        setReconnectOnBootFlag();
+        // Liten delay så HTTP-svar hinner ut till UI innan vi dör.
+        setTimeout(() => process.exit(0), 500);
+      }
+    }
     return { ...r, durationMs: Date.now() - t0 };
   } finally {
     _connectInFlight = null;
