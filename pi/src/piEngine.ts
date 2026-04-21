@@ -470,6 +470,19 @@ export class PiLightEngine {
     this.tc = computeTickConstants(this.tickMs, this.cal);
   }
 
+  /**
+   * Plugga in en profils kalibreringsvärden i pipelinen.
+   * Skriver profilen till light-calibration-storage och kör reloadCalibration().
+   * Så hela befintliga pipelinen (gain, bands, dynamics, gamma, punch, ...) följer
+   * automatiskt aktiv profil utan att vi behöver duplicera fältmappning här.
+   */
+  setActiveProfile(profileCal: Partial<LightCalibration>): void {
+    const current = loadCalibration();
+    const merged = { ...current, ...profileCal };
+    saveCalibration(merged);
+    this.reloadCalibration();
+  }
+
   /** Enable raw mode — disables all processors for gain calibration */
   setRawMode(on: boolean): void {
     if (on && !this._rawMode) {
