@@ -502,7 +502,7 @@ function ProfileSettingsView({
 
       <section className="space-y-5 mb-8">
         
-        <SignalPreview cal={cal} height={180} showLegend={false} />
+        <SignalPreview cal={cal} height={180} showLegend={true} />
         
         {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
           const isDyn = key === 'dynamicDamping';
