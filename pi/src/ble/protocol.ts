@@ -114,6 +114,11 @@ export function startKeepAlive(): void {
     const p: Promise<void> = device.characteristic.writeAsync(buf, true)
       .then(() => {
         keepAliveSentCount++;
+        // Räkna keep-alive-writes mot bleStats.sentCount så /api/ble/output
+        // visar pkt/s för BÅDA vägarna (mic-driven OCH idle keep-alive).
+        // Annars dyker keep-alive-paketen upp som "tysta" — UI:t visar 0 pkt/s
+        // trots att lampan får ~2.5 paket/s i idle.
+        bleStats.sentCount++;
         if (keepAliveFailCount > 0) {
           console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
           keepAliveFailCount = 0;
