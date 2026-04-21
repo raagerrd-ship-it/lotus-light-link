@@ -1060,7 +1060,18 @@ export default function PiMobile() {
   const [view, setView] = useState<"home" | "profile" | "global">("home");
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
-  const [cal, setCal] = useState({ ...DEFAULT_CAL });
+  // 4 oberoende profiler — varje knapp kommer ihåg sina egna värden.
+  // Aktiv profils värden härleds som `cal` och muteras via `setCal`.
+  const [profiles, setProfiles] = useState<Record<string, Cal>>({
+    Lugn:   { ...PRESET_CALS.Lugn },
+    Normal: { ...PRESET_CALS.Normal },
+    Party:  { ...PRESET_CALS.Party },
+    Custom: { ...PRESET_CALS.Custom },
+  });
+  const cal = profiles[activePreset] ?? PRESET_CALS.Normal;
+  const setCal = useCallback((next: Cal) => {
+    setProfiles(p => ({ ...p, [activePreset]: next }));
+  }, [activePreset]);
   const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
   const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto');
@@ -1499,7 +1510,18 @@ export default function PiMobile() {
         <div className="grid grid-cols-2 gap-3">
           {PRESETS.map((name) => (
             <button
-              key={name} onClick={() => { setActivePreset(name); setCal({ ...PRESET_CALS[name] }); }}
+              key={name}
+              onClick={() => {
+                // Byt aktiv profil — laddar profilens egna sparade värden,
+                // INGEN återställning till PRESET_CALS-defaults.
+                setActivePreset(name);
+                fetch(`${piBase}/api/active-preset`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name }),
+                  signal: AbortSignal.timeout(3000),
+                }).catch(() => {});
+              }}
               className={`py-4 rounded-xl text-sm font-medium transition-all active:scale-95 ${
                 activePreset === name
                   ? "bg-primary text-primary-foreground ring-2 ring-ring"
