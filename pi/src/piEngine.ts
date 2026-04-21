@@ -639,8 +639,12 @@ export class PiLightEngine {
       const midHiNorm = normalizeFixed(bands.midHiRms);
       const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
 
-      // ── 3. Bas/Disk mix ──
-      let energyNorm = bassNorm * cal.bassWeight + midHiNorm * (1 - cal.bassWeight);
+      // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
+      // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
+      const w = cal.bassWeight;
+      const bassGain  = w <= 0.5 ? w * 2 : 1;
+      const midHiGain = w >= 0.5 ? (1 - w) * 2 : 1;
+      let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
 
       // ── 4. Release smoothing (Mjukhet) ──
       const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
