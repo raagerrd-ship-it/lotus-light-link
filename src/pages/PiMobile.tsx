@@ -209,7 +209,7 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
     const ch = h - pad * 2;
     ctx.clearRect(0, 0, w, h);
 
-    const processed = processCurve(RAW_CURVE, cal);
+    const { values: processed, rising, punched } = processCurve(RAW_CURVE, cal);
     const step = w / (CURVE_POINTS - 1);
 
     const procMax = Math.max(1, ...processed);
@@ -233,6 +233,20 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
         ctx.lineWidth = 1;
         ctx.stroke();
       }
+    }
+
+    // Floor reference line
+    const floorVal = cal.brightnessFloor / 100;
+    if (floorVal > 0.005) {
+      const fy = toY(floorVal);
+      ctx.beginPath();
+      ctx.moveTo(0, fy);
+      ctx.lineTo(w, fy);
+      ctx.strokeStyle = "rgba(120,180,255,0.25)";
+      ctx.setLineDash([2 * dpr, 3 * dpr]);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     // 100% reference line + boost band
@@ -274,20 +288,23 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
     ctx.stroke();
     ctx.restore();
 
-    // Processed curve — segmented by rising (attack) vs falling (release)
+    // Processed curve — segmented per step:
+    //   punched=white, rising=attack-color, falling=release-color
     ctx.setLineDash([]);
     ctx.lineWidth = 2 * dpr;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     const ATTACK_COLOR = "rgb(255,200,60)";
     const RELEASE_COLOR = "rgb(255,90,140)";
+    const PUNCH_COLOR = "rgb(255,255,255)";
     for (let i = 0; i < CURVE_POINTS - 1; i++) {
       const x0 = i * step;
       const x1 = (i + 1) * step;
       const y0 = toY(processed[i]);
       const y1 = toY(processed[i + 1]);
-      const rising = processed[i + 1] >= processed[i];
-      ctx.strokeStyle = rising ? ATTACK_COLOR : RELEASE_COLOR;
+      const isPunch = punched[i + 1] || punched[i];
+      ctx.strokeStyle = isPunch ? PUNCH_COLOR : (rising[i + 1] ? ATTACK_COLOR : RELEASE_COLOR);
+      ctx.lineWidth = isPunch ? 3 * dpr : 2 * dpr;
       ctx.beginPath();
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
