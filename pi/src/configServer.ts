@@ -195,6 +195,64 @@ export function startConfigServer(port = 3050): void {
     res.json({ subsystems: getAllSubsystemStates() });
   });
 
+  // ─── Runtime permissions self-check ───
+  // Frontend visar en "Setup måste köras"-banner om något saknas.
+  // Detta händer typiskt när PCC packar upp release utan att köra setup-lotus.sh
+  // (managed:false + runInstallOnRelease:false).
+  app.get('/api/permissions', async (_req, res) => {
+    const fs = await import('node:fs');
+    const result: {
+      ok: boolean;
+      rfkillAccess: boolean;
+      rfkillError: string | null;
+      groups: string[];
+      hasNetdev: boolean;
+      hasBluetooth: boolean;
+      hasAudio: boolean;
+      uid: number;
+      missing: string[];
+      setupCommand: string;
+    } = {
+      ok: false,
+      rfkillAccess: false,
+      rfkillError: null,
+      groups: [],
+      hasNetdev: false,
+      hasBluetooth: false,
+      hasAudio: false,
+      uid: process.getuid?.() ?? -1,
+      missing: [],
+      setupCommand: 'sudo bash /opt/lotus-light/pi/setup-lotus.sh',
+    };
+
+    try {
+      fs.accessSync('/dev/rfkill', fs.constants.R_OK | fs.constants.W_OK);
+      result.rfkillAccess = true;
+    } catch (e: any) {
+      result.rfkillError = e?.code ?? String(e);
+    }
+
+    try {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const exec = promisify(execFile);
+      const { stdout } = await exec('id', ['-Gn']);
+      result.groups = stdout.trim().split(/\s+/);
+    } catch {}
+
+    result.hasNetdev    = result.groups.includes('netdev');
+    result.hasBluetooth = result.groups.includes('bluetooth');
+    result.hasAudio     = result.groups.includes('audio');
+
+    if (!result.rfkillAccess) result.missing.push('/dev/rfkill (BLE)');
+    if (!result.hasNetdev)    result.missing.push('netdev-grupp (BLE)');
+    if (!result.hasBluetooth) result.missing.push('bluetooth-grupp (BLE)');
+    if (!result.hasAudio)     result.missing.push('audio-grupp (mic)');
+
+    result.ok = result.missing.length === 0;
+    res.json(result);
+  });
+
   const startSubsystem = async (id: SubsystemId, res: any) => {
     if (!_starters) {
       return res.status(503).json({ error: 'Subsystem-starters inte attachade ännu' });
