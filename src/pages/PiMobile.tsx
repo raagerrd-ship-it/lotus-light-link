@@ -452,13 +452,12 @@ function ProfileSettingsView({
           const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
           const showSoftnessHeader = key === 'attack';
           return (
-            <>
-            {showSoftnessHeader && (
-              <div key={`${key}-header`} className="pt-2 pb-1 border-t border-border/40">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mjukhet</h3>
-              </div>
-            )}
             <div key={key}>
+              {showSoftnessHeader && (
+                <div className="pt-2 pb-1 mb-2 border-t border-border/40">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mjukhet</h3>
+                </div>
+              )}
               <div className="flex justify-between text-sm mb-0.5">
                 <span>{label}</span>
                 <span className={`font-mono text-xs ${isOffAtZero && cal[key] === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{displayValue}</span>
