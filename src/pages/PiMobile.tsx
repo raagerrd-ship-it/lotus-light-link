@@ -102,45 +102,60 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
   return Math.max(0, result);
 }
 
-function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
+function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[]; rising: boolean[]; punched: boolean[] } {
   const releaseAlpha = softnessToAlpha(cal.softness);
   const attackAlpha = attackToAlpha(cal.attack);
-  const out: number[] = [];
-  let prev = raw[0];
-  let dynamicCenter = 0.5;
-  let extraSm = raw[0];
 
-  // Onset detection state (mirrors onsetDetector.ts)
+  // Apply bassWeight: re-weight the 3 sections (Låg/Mellan/Hög)
+  // bassWeight 0=diskant (höj hög, sänk bas), 0.5=neutral, 1.0=bas (höj bas, sänk hög)
+  const bw = cal.bassWeight;
+  const bassGain = 0.4 + bw * 1.2;       // 0→0.4, 0.5→1.0, 1.0→1.6
+  const trebleGain = 0.4 + (1 - bw) * 1.2; // invers
+  const midGain = 1.0;
+  const weighted: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const t = i / raw.length;
+    const section = t < 1 / 3 ? 0 : t < 2 / 3 ? 1 : 2;
+    const g = section === 0 ? bassGain : section === 1 ? midGain : trebleGain;
+    // Re-center around 0.5 baseline so gain modulates the wave amplitude, not the floor
+    const centered = (raw[i] - 0.5) * g + 0.5;
+    weighted.push(Math.max(0, Math.min(1, centered)));
+  }
+
+  const values: number[] = [];
+  const rising: boolean[] = [];
+  const punched: boolean[] = [];
+  let prev = weighted[0];
+  let dynamicCenter = 0.5;
+
+  // Onset detection state
   const onsetBufLen = 7;
   const fluxBuf: number[] = new Array(onsetBufLen).fill(0);
   let fluxIdx = 0;
   let prevFlux = 0;
   let onsetBoost = 0;
-  const tickMs = 25; // simulated tick rate
+  const tickMs = 25;
 
-  for (let i = 0; i < raw.length; i++) {
-    const r = raw[i];
-    const alpha = r > prev ? attackAlpha : releaseAlpha;
+  for (let i = 0; i < weighted.length; i++) {
+    const r = weighted[i];
+    const isRising = r > prev;
+    const alpha = isRising ? attackAlpha : releaseAlpha;
     let val = prev + alpha * (r - prev);
 
-    // Real dynamics processing with adaptive center
+    // Dynamics
     dynamicCenter += (val - dynamicCenter) * 0.002;
     val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
 
-    // (Smoothing-fältet är borttaget — Attack/Release styr nu helt)
-
-    // Onset detection: simulate spectral flux from signal derivative
+    // Transient boost
     if ((cal.transientGain ?? 0) > 0) {
-      const flux = Math.max(0, r - (i > 0 ? raw[i - 1] : r));
+      const flux = Math.max(0, r - (i > 0 ? weighted[i - 1] : r));
       fluxBuf[fluxIdx % onsetBufLen] = flux;
       fluxIdx++;
-      // Median threshold
       const sorted = fluxBuf.slice().sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)];
       const threshold = median * 1.5 + 0.005;
       const isOnset = flux > threshold && flux >= prevFlux;
       prevFlux = flux;
-      // Exponential decay
       onsetBoost *= Math.pow(0.10, tickMs / 1000);
       if (isOnset) onsetBoost = 0.20;
       val = val * (1 + onsetBoost * cal.transientGain);
@@ -150,18 +165,28 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
     const floor = cal.brightnessFloor / 100;
     val = Math.max(val, floor);
 
-    // Perceptual curve (mirrors piEngine.ts) — 0 = av
+    // Perceptual gamma
     const pGamma = cal.perceptualGamma ?? 0;
     if (pGamma > 0 && val > floor && val < 1) {
       const norm = (val - floor) / (1 - floor);
       val = floor + Math.pow(Math.max(0, norm), pGamma) * (1 - floor);
     }
 
+    // Punch white: över tröskel → klipp till 1.0 (full vit)
+    const punchThr = (cal.punchWhiteThreshold ?? 100) / 100;
+    let didPunch = false;
+    if (punchThr < 1.0 && val >= punchThr) {
+      val = Math.max(val, 1.0);
+      didPunch = true;
+    }
+
     val = Math.max(0, val);
     prev = Math.max(0, Math.min(1, val));
-    out.push(val);
+    values.push(val);
+    rising.push(isRising);
+    punched.push(didPunch);
   }
-  return out;
+  return { values, rising, punched };
 }
 
 /* ── Signal Preview — static sinus canvas ── */
