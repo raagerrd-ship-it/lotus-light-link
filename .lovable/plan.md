@@ -1,60 +1,64 @@
 
 
-# Alternativ B: 4 separata profiler lagrade på Pi:n
+# Separera attack och release i Mjukhet-sektionen
 
-## Backend (`pi/src/configServer.ts`)
+## Vad ändras konceptuellt
 
-Nya endpoints:
-- `GET /api/profiles` → `{ profiles: { Lugn, Normal, Party, Custom }, activePreset }`
-- `PUT /api/profiles` → ersätter hela objektet, sparar till `pi/data/profiles.json` via `storage.ts`
-- `PUT /api/active-preset` `{ name }` → byter aktiv profil, kallar `engine.setActiveProfile(name)`
+Idag: **Mjukhet** = en slider som bara styr release (fall). Attack (rise) är låst till 1.0 (omedelbar).
 
-Vid serverstart: läs `profiles.json`. Om saknas → seed:a med default `PRESET_CALS` (samma värden som UI:t har idag) och spara. Kalla `engine.setActiveProfile(activePreset)` vid uppstart så Pi:n alltid har en aktiv kalibrering.
+Nytt: **Två slidrar** under "Mjukhet"-rubriken:
+- **Attack** (0–100, default 100 = omedelbar) — hur snabbt ljuset stiger när musiken slår till
+- **Release** (0–100, default = nuvarande Mjukhet-värde) — hur snabbt ljuset faller (oförändrad logik, bara byter namn från "Mjukhet")
 
-`/api/calibration` (PUT) behålls för bakåtkomp men flaggas internt — den uppdaterar nu **aktiv profil** istället för en separat global. GET returnerar fortfarande aktiv profils värden.
+Båda mappar via samma exponentiella kurva (`1.0 - 0.995 * t^0.7`) till en alpha 0.005–1.0. Lägre värde = mjukare.
 
-## Engine (`pi/src/piEngine.ts`)
+## Per-profil defaults (förslag)
 
-Ny metod `setActiveProfile(cal)` som tar ett kalibrerings-objekt och pluggar in det i samma fält som befintlig `setCalibration` redan sätter (gain, bandweights, dynamics, releaseAlpha, gamma, punchWhite, m.m.). Ingen pipeline-ändring — bara en tunn wrapper så `configServer` har en tydlig entry point per profil.
+| Profil  | Attack | Release |
+|---------|--------|---------|
+| Lugn    | 70     | 75 (oförändrad) |
+| Normal  | 100    | 30 |
+| Party   | 100    | 5  |
+| Custom  | 100    | 0  |
 
-## Frontend (`src/pages/PiMobile.tsx`)
-
-State-omskrivning:
-```ts
-const [profiles, setProfiles] = useState<Record<string, Cal>>({...PRESET_CALS});
-const [activePreset, setActivePreset] = useState("Normal");
-const cal = profiles[activePreset];
-const setCal = (next) => setProfiles(p => ({...p, [activePreset]: next}));
-```
-
-Profil-byte:
-```ts
-onClick={async () => {
-  setActivePreset(name);
-  await fetch(`${API}/api/active-preset`, {method:'PUT', body: JSON.stringify({name})});
-}}
-```
-Ingen `setCal({...PRESET_CALS[name]})` — laddar inte default, bara byter pekare till profilens egna värden.
-
-`load()` hämtar `/api/profiles` istället för `/api/calibration` och seed:ar state.
-
-`handleSave()`:
-1. PUT `/api/profiles` med hela `profiles`+`activePreset`
-2. Övriga globala settings oförändrade (tickMs, mic-device, gamma, idle-color, sonos, auto-tv, mic-gain)
-3. Vid inloggad: skriv `profiles` + `active_preset` till `user_settings`
-
-## Supabase-sync
-
-`user_settings.presets` (jsonb) får formen `{Lugn:{...}, Normal:{...}, Party:{...}, Custom:{...}}`. `user_settings.active_preset` får namnet. Befintlig offline-first sync återanvänds — inga schema-ändringar behövs (kolumnerna finns redan).
+Lugn får mjukare attack (ingen poppighet), de övriga behåller skarp attack.
 
 ## Filer
 
-- `pi/src/configServer.ts` — nya endpoints + seed-vid-start
-- `pi/src/piEngine.ts` — `setActiveProfile(cal)` wrapper
-- `src/pages/PiMobile.tsx` — `profiles`-state, `cal`/`setCal` härledda, profil-byte pushar till Pi, `handleSave` skickar hela objektet, `load()` hämtar `/api/profiles`, Supabase-sync uppdaterad
-- `mem://pi/runtime/profile-storage` (ny) — dokumentera 4-profil-modellen
+**`src/pages/PiMobile.tsx`**
+- `Cal`-typen: lägg till `attack: number` (behåll `softness` men döp om semantiskt till release i UI:t — internt fält kan heta `softness` för bakåtkomp eller bytas till `release`).
+- `PRESET_CALS`: lägg till `attack`-värden enligt tabellen.
+- `softnessToParams` → byt namn till `softnessToAlpha(s)` som returnerar bara `releaseAlpha` (smoothing-fältet kan tas bort, det används inte längre).
+- Ny `attackToAlpha(a)` med samma kurva.
+- `SLIDER_CONFIG`: byt "Mjukhet" → "Release", lägg till "Attack" precis ovanför.
+- `handleSave` → skicka både `attackAlpha` och `releaseAlpha` per profil.
+- `mapStoredToCal` (load) → reverse-mappa både `attackAlpha` och `releaseAlpha` tillbaka till UI-värden.
 
-## Migrations-detalj
+**`pi/src/configServer.ts`**
+- `ProfileCal`-typen: lägg till `attackAlpha: number`.
+- `DEFAULT_PROFILES`: lägg till `attackAlpha`-värden härledda från attack-defaults ovan.
+- Endpoints behöver ingen schema-ändring (fältet flyter bara igenom i jsonb).
 
-Första gången en användare kör nya versionen finns ingen `profiles.json`. Vi seedar med `PRESET_CALS`-defaults (samma som UI:t fallback:ar till idag) — användaren förlorar inte sin nuvarande kalibrering eftersom den globala `calibration.json` läses först och pluggas in i `Normal`-profilen om den finns. Övriga 3 profiler får defaults.
+**`pi/src/piEngine.ts`**
+- `attackAlpha` finns redan i `LightCalibration` och `TickConstants` — **inget engine-arbete behövs**. Den läses redan från `cal.attackAlpha` på rad 54 och används i `tickInner` rad 644. Idag är värdet bara alltid 1.0; nu kommer det vara variabelt.
+
+**`mem://pi/ui/softness-slider-curve`**
+- Uppdatera memory: kurvan används nu för BÅDE attack och release.
+
+## Migrationer
+
+- Befintliga `profiles.json` har inget `attackAlpha`-fält → load-mappningen defaultar till 1.0 (= 100 i UI) → identiskt beteende som idag tills användaren rör Attack-slidern.
+- Sparade kalibreringar i Supabase `user_settings.presets` påverkas inte (jsonb tar nya fält gratis).
+
+## Visuell layout i ProfileSettingsView
+
+```text
+─── Mjukhet ───────────────
+Attack       [====●====] 100
+0 = mjuk rise, 100 = omedelbar
+Release      [==●======]  30
+0 = rått fall, 100 = mycket mjukt
+```
+
+Rubriken "Mjukhet" blir en sektionsrubrik över de två slidrarna istället för en slider-label.
 
