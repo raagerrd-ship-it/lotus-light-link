@@ -109,23 +109,33 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
 }
 
 function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[]; rising: boolean[]; punched: boolean[] } {
-  const releaseAlpha = softnessToAlpha(cal.softness);
-  const attackAlpha = attackToAlpha(cal.attack);
+  // Tick-rate normalisering — speglar computeTickConstants() i piEngine.ts EXAKT.
+  // Engine kör med variabel tickMs men normaliserar alla alphor till 125ms-referens:
+  //   effectiveAlpha = 1 - (1 - rawAlpha)^(tickMs/125)
+  // Vid tickMs=25 (default) skalas alphan ner ~5×, vilket ger mjukare beteende än rå-värdet
+  // skulle antyda. Måste matcha exakt eller blir visualiseringen meningslös.
+  const TICK_MS = 25;
+  const RATIO = TICK_MS / 125;
+  const SEC_RATIO = TICK_MS / 1000;
+  const releaseAlphaRaw = softnessToAlpha(cal.softness);
+  const attackAlphaRaw = attackToAlpha(cal.attack);
+  const releaseAlpha = 1 - Math.pow(1 - releaseAlphaRaw, RATIO);
+  const attackAlpha = 1 - Math.pow(1 - attackAlphaRaw, RATIO);
+  const centerAlpha = 1 - Math.pow(1 - 0.002, RATIO);
+  const onsetDecay = Math.pow(0.04, SEC_RATIO);
+  const onsetRiseAlpha = 1 - Math.pow(0.05, RATIO);
 
-  // bassWeight: speglar engine exakt — energyNorm = bassNorm * bw + midHiNorm * (1 - bw)
-  // I UI:n består rå-kurvan av 3 sektioner (Låg/Mellan/Hög) som vi tolkar som "rena band".
-  // Låg = bassNorm, Hög = midHiNorm, Mellan = 50/50-blandning. Bevarar engine-matematik 1:1.
+  // bassWeight: speglar engine — energyNorm = bassNorm * bw + midHiNorm * (1 - bw)
+  // Rå-kurvans 3 sektioner tolkas som band: Låg=bass, Mellan=50/50, Hög=midHi.
   const bw = cal.bassWeight;
   const weighted: number[] = [];
   for (let i = 0; i < raw.length; i++) {
     const t = i / raw.length;
     const section = t < 1 / 3 ? 0 : t < 2 / 3 ? 1 : 2;
-    // Andel "bas" i denna sektion: Låg=1, Mellan=0.5, Hög=0
     const bassShare = section === 0 ? 1 : section === 1 ? 0.5 : 0;
     const midHiShare = 1 - bassShare;
-    // Effektiv vikt = bassShare*bw + midHiShare*(1-bw). Skala rå-amplituden runt 0.5.
     const w = bassShare * bw + midHiShare * (1 - bw);
-    // w ∈ [0, 1]. Multiplicera amplitud (avstånd från 0.5) med 2w så att w=0.5 → 1.0× (neutralt).
+    // w ∈ [0, 1]. w=0.5 → 1.0× (neutralt), w=0 → 0× (band tystnar), w=1 → 2× (band dubbleras).
     const centered = (raw[i] - 0.5) * (w * 2) + 0.5;
     weighted.push(Math.max(0, Math.min(1, centered)));
   }
@@ -136,69 +146,75 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   let prev = weighted[0];
   let dynamicCenter = 0.5;
 
-  // Onset detection state — speglar engine (additiv boost, ej multiplikativ)
+  // Onset state — engine använder rise/decay-alphor via processOnset(), spegla samma logik
   const onsetBufLen = 7;
   const fluxBuf: number[] = new Array(onsetBufLen).fill(0);
   let fluxIdx = 0;
   let prevFlux = 0;
   let onsetBoost = 0;
-  const tickMs = 25;
+  let onsetTarget = 0;
 
   for (let i = 0; i < weighted.length; i++) {
     const r = weighted[i];
-    // Riktning bestäms av rå-insignalen (inte filtrerad prev)
-    const rPrev = i > 0 ? weighted[i - 1] : r;
-    const isRising = r >= rPrev;
+    // Riktning bestäms av rå-insignalen (inte filtrerad prev) — det är så engine
+    // väljer attack vs release-alpha (energyNorm > smoothed).
+    const isRising = r >= prev;
     const alpha = isRising ? attackAlpha : releaseAlpha;
     let val = prev + alpha * (r - prev);
 
     // Dynamics — speglar engine: hoppa över helt om dynamicsEnabled === false,
-    // clamp dynamicCenter till [0.2, 0.7]
+    // använd centerAlpha (tick-rate-skalad), clamp dynamicCenter till [0.2, 0.7]
     if (cal.dynamicsEnabled !== false) {
-      dynamicCenter += (val - dynamicCenter) * 0.002;
+      dynamicCenter += centerAlpha * (val - dynamicCenter);
       if (dynamicCenter < 0.2) dynamicCenter = 0.2;
       if (dynamicCenter > 0.7) dynamicCenter = 0.7;
       val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
     }
 
-    // Transient boost — engine använder ADDITIV boost (energyNorm + onsetBoost * gain),
-    // INTE multiplikativ. Måste matcha för korrekt visualisering.
+    // Transient boost — engine: processOnset(flux) sätter onsetTarget=0.20 vid candidate,
+    // sen rise mot target via onsetRiseAlpha + decay via onsetDecay. Additiv på energyNorm.
     if ((cal.transientGain ?? 0) > 0) {
       const flux = Math.max(0, r - (i > 0 ? weighted[i - 1] : r));
       fluxBuf[fluxIdx % onsetBufLen] = flux;
       fluxIdx++;
       const sorted = fluxBuf.slice().sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)];
-      const threshold = median * 1.8 + 0.008; // matchar engine (1.8x + 0.008)
+      const threshold = median * 1.8 + 0.008; // matchar engine
       const isOnset = flux > threshold && flux >= prevFlux;
       prevFlux = flux;
-      onsetBoost *= Math.pow(0.10, tickMs / 1000);
-      if (isOnset) onsetBoost = 0.20;
-      val = val + onsetBoost * cal.transientGain; // additiv (ej *)
+      if (isOnset) onsetTarget = 0.20;
+      if (onsetBoost < onsetTarget) {
+        onsetBoost += onsetRiseAlpha * (onsetTarget - onsetBoost);
+      } else {
+        onsetBoost *= onsetDecay;
+      }
+      onsetTarget *= onsetDecay;
+      if (onsetBoost < 0.001) { onsetBoost = 0; onsetTarget = 0; }
+      val = val + onsetBoost * cal.transientGain; // additiv
       if (val > 1) val = 1;
     }
 
-    // Floor — clamp på 0–1 skalan (motsvarar pct < floor → pct = floor i engine)
+    // Floor — clamp på 0–1 (motsvarar engine: pct < floor → pct = floor)
     const floor = cal.brightnessFloor / 100;
     if (val < floor) val = floor;
 
-    // Perceptual gamma — engine kör efter floor-clamp, samma här
+    // Perceptual gamma — engine kör EFTER floor-clamp, samma ordning här
     const pGamma = cal.perceptualGamma ?? 0;
     if (pGamma > 0 && val > floor && val < 1) {
       const norm = (val - floor) / (1 - floor);
       val = floor + Math.pow(Math.max(0, norm), pGamma) * (1 - floor);
     }
 
-    // Punch white — engine jämför pct mot threshold (på 0–100 skala) EFTER floor & gamma
+    // Punch white — engine: pct >= threshold → sätter pct=100 (clip till full vit)
     const punchThr = (cal.punchWhiteThreshold ?? 100) / 100;
     let didPunch = false;
     if (punchThr < 1.0 && val >= punchThr) {
-      val = 1.0; // engine sätter pct=100 vid punch (clipt direkt)
+      val = 1.0;
       didPunch = true;
     }
 
-    val = Math.max(0, val);
-    prev = Math.max(0, Math.min(1, val));
+    if (val < 0) val = 0;
+    prev = val > 1 ? 1 : val;
     values.push(val);
     rising.push(isRising);
     punched.push(didPunch);
