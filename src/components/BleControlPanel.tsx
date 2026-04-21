@@ -246,7 +246,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                 <span className="ml-auto">
                   {lastSentRateRef.current} pkt/s
                   {lastSkipBusyRateRef.current > 0 && <span className="text-destructive"> · b{lastSkipBusyRateRef.current}</span>}
-                  {lastSkipDeltaRateRef.current > 0 && <span className="opacity-70"> · d{lastSkipDeltaRateRef.current}</span>}
+                  {lastSkipDeltaRateRef.current > 0 && <span className="opacity-70" title="Skippade dup-paket per sekund (samma färg som förra)"> · skip{lastSkipDeltaRateRef.current}</span>}
                   {bleOutput.writeLatAvgMs ? <span className="opacity-50"> · {bleOutput.writeLatAvgMs}ms</span> : null}
                   <span className="opacity-50"> · {bleOutput.sentCount} totalt</span>
                 </span>
