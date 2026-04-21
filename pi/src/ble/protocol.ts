@@ -301,93 +301,19 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   return 'sent';
 }
 
-/** Raw color write — bypasses dedup and brightness scaling. For test tools only.
- *  Går genom samma single-slot-mekanism: hard-fail om sloten är upptagen. */
-export function sendRawColor(r: number, g: number, b: number): void {
-  const device = getDevice();
-  if (!device) return;
-  if (writeSlot) return; // Hard-fail — caller (fade-test) loopar ändå
-  resetLastSent();
-  writeBuf[4] = r; writeBuf[5] = g; writeBuf[6] = b;
-  const startedAt = performance.now();
-  lastWriteTime = startedAt;
-  const p: Promise<void> = device.characteristic.writeAsync(writeBuf, true)
-    .then(() => { bleStats.sentCount++; })
-    .catch(() => { /* fire-and-forget */ })
-    .finally(() => {
-      if (writeSlot === p) {
-        writeSlot = null;
-        if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
-      }
-    });
-  writeSlot = p;
-  if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
-  writeSlotWatchdog = setTimeout(() => {
-    if (writeSlot === p) {
-      bleStats.writeStuckCount++;
-      writeSlot = null;
-      writeSlotWatchdog = null;
-    }
-  }, WRITE_SLOT_TIMEOUT_MS);
-}
-
 /**
- * Forced idle sync — används vid pause för att tvinga keep-alive att bära
- * idle-färgen direkt utan att skapa någon köad write.
+ * Synkron idle-färg-uppdate — uppdaterar bara writeBuf + dedup-state.
+ * INGEN write triggas här. Keep-alive-loopen (200ms) bär färgen vid nästa tick.
  *
- * Viktigt: vi får INTE vänta på `writeSlot.finally(...)` här, för då skapas en
- * eftersläpande write som kan landa hundratals millisekunder senare och ge
- * synligt "svans-blink" / dålig takt. I stället uppdaterar vi bara writeBuf +
- * dedup-state synkront. Nästa keep-alive (max 400ms) eller vanliga idle-tick
- * skickar då rätt färg, utan att något backloggas.
+ * Detta är hela "idle-vägen" från engines synvinkel: sätt färgen → keep-alive
+ * skickar den. EN ägare i taget (idle keep-alive ELLER active sendToBLE,
+ * aldrig båda). Owner-switch sker i piEngine.ts.
  */
-export function sendIdleForce(r: number, g: number, b: number): void {
-  const device = getDevice();
-  if (!device) return;
+export function setIdleColor(r: number, g: number, b: number): void {
   const cr = Math.max(0, Math.min(255, r | 0));
   const cg = Math.max(0, Math.min(255, g | 0));
   const cb = Math.max(0, Math.min(255, b | 0));
-
-  // Synkron buffer + dedup-state (så keep-alive bär idle-färgen direkt).
   writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
   brightBuf[3] = 0xff;
   lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff;
-
-  // OMEDELBAR write om sloten är ledig — vänta INTE på nästa keep-alive
-  // (som är upp till 400ms bort) eller på en hängande writeSlot. Detta är
-  // raden av "lampan blinkar vidare flera sekunder efter pause": utan denna
-  // rad ärver keep-alive bara writeBuf när dess timer ticker, och om noble's
-  // interna characteristic-kö har ackumulerade writes från musik-bursten kan
-  // det dröja innan idle-frame faktiskt sänds över luften.
-  //
-  // Hard-fail-pipeline: om writeSlot är upptagen droppar vi writen istället
-  // för att kö:a — keep-alive tar nästa skott inom 400ms när sloten släppts.
-  // Detta får ALDRIG skapa en backlog.
-  if (writeSlot) {
-    // Slot upptagen → låt keep-alive ta vid. lastWriteTime sätts INTE här
-    // för att vi inte vill blocka keep-alives 320ms-gate.
-    return;
-  }
-
-  const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
-  const startedAt = performance.now();
-  lastWriteTime = startedAt;
-  const p: Promise<void> = device.characteristic.writeAsync(buf, true)
-    .then(() => { bleStats.sentCount++; })
-    .catch(() => { /* idle-write fail = harmless, keep-alive retries */ })
-    .finally(() => {
-      if (writeSlot === p) {
-        writeSlot = null;
-        if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
-      }
-    });
-  writeSlot = p;
-  if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
-  writeSlotWatchdog = setTimeout(() => {
-    if (writeSlot === p) {
-      bleStats.writeStuckCount++;
-      writeSlot = null;
-      writeSlotWatchdog = null;
-    }
-  }, WRITE_SLOT_TIMEOUT_MS);
 }
