@@ -135,9 +135,11 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
     const bassShare = section === 0 ? 1 : section === 1 ? 0.5 : 0;
     const midHiShare = 1 - bassShare;
     const w = bassShare * bw + midHiShare * (1 - bw);
-    // w ∈ [0, 1]. w=0.5 → 1.0× (neutralt), w=0 → 0× (band tystnar), w=1 → 2× (band dubbleras).
-    const centered = (raw[i] - 0.5) * (w * 2) + 0.5;
-    weighted.push(Math.max(0, Math.min(1, centered)));
+    // w ∈ [0, 1]. Multiplikativ skalning från 0: w=0 → band tystnar (går mot golv),
+    // w=0.5 → 1.0× (neutralt), w=1 → 2× (band dubbleras). Detta påverkar utsignalen så
+    // att t.ex. bw=1 (bara bas) drar mid/hi ner till 0 (golv tar över sen).
+    const scaled = raw[i] * (w * 2);
+    weighted.push(Math.max(0, Math.min(1, scaled)));
   }
 
   const values: number[] = [];
