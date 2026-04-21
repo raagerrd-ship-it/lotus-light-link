@@ -214,9 +214,9 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
             ) : (
               <button
                 onClick={connect}
-                disabled={connectBusy}
+                disabled={connectBusy || !engineReady}
                 className="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center gap-1.5"
-                title={!engineReady ? "Motorn rapporteras inte redo — försöker ändå" : undefined}
+                title={!engineReady ? "Starta BLE-motorn först" : undefined}
               >
                 {connectBusy ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                 Anslut
@@ -224,7 +224,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
             )}
           </div>
           {!engineReady && !connected && (
-            <div className="text-[10px] text-muted-foreground mt-2 ml-6">Motorn verkar inte redo — Anslut försöker ändå.</div>
+            <div className="text-[10px] text-muted-foreground mt-2 ml-6">Starta BLE-motorn först.</div>
           )}
 
           {/* BLE-output VU-meter — visar att engine faktiskt skickar data till lampan.
