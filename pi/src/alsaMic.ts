@@ -179,32 +179,52 @@ const windowedBuf = new Float64Array(FFT_SIZE);
 let samplesReceived = 0;
 
 // ── Asymmetric RMS pre-smoothing (noise reduction + transient preservation) ──
-// Fast attack (alpha=0.8) lets kicks punch through with minimal delay (~1 frame).
-// Slow release (alpha=0.15) smooths out noise on the way down.
-const RMS_ATTACK_ALPHA = 0.8;   // fast rise — preserves kick transients
-const RMS_RELEASE_ALPHA = 0.15; // slow fall — kills noise jitter on decay
+// Defaults motsvarar tidigare hårdkodade konstanter (0.8 / 0.15). När
+// MIC_SMOOTHING_FROM_CAL !== 'false' override:as dessa via setMicSmoothing()
+// från engine baserat på profilens attackAlpha/releaseAlpha → hela kedjan
+// (mic → engine → ljus) styrs av samma Attack/Release-slidrar i UI:t.
+const MIC_SMOOTHING_FROM_CAL = process.env.MIC_SMOOTHING_FROM_CAL !== 'false';
+const DEFAULT_MIC_ATTACK = 0.8;
+const DEFAULT_MIC_RELEASE = 0.15;
+const DEFAULT_GATE_RECOVERY = 0.001;
+let micAttackAlpha = DEFAULT_MIC_ATTACK;
+let micReleaseAlpha = DEFAULT_MIC_RELEASE;
+// Gate-recovery (rising noise floor): härleds från release men med ett golv
+// på 0.03 så även profiler med mycket långsam release får ~100ms gate-öppning
+// efter en tyst passage. Föll = långsam (1ms/frame) som tidigare.
+let micGateRecoveryAlpha = Math.max(0.03, DEFAULT_MIC_RELEASE * 0.3);
 let smoothBass = 0;
 let smoothMidHi = 0;
 let smoothTotal = 0;
 
+/** Engine kallar denna när profilens cal sätts/uppdateras. När env-flaggan
+ *  MIC_SMOOTHING_FROM_CAL=false är satt blir detta en no-op (säkerhetsventil). */
+export function setMicSmoothing(attackAlpha: number, releaseAlpha: number): void {
+  if (!MIC_SMOOTHING_FROM_CAL) return;
+  micAttackAlpha = Math.max(0.001, Math.min(1, attackAlpha));
+  micReleaseAlpha = Math.max(0.001, Math.min(1, releaseAlpha));
+  micGateRecoveryAlpha = Math.max(0.03, micReleaseAlpha * 0.3);
+}
+
 function smoothRms(raw: number, prev: number): number {
-  const alpha = raw > prev ? RMS_ATTACK_ALPHA : RMS_RELEASE_ALPHA;
+  const alpha = raw > prev ? micAttackAlpha : micReleaseAlpha;
   return prev + alpha * (raw - prev);
 }
 
 // ── Noise gate ──
 // Soft gate: signal below noiseFloor is exponentially attenuated.
-// The floor adapts slowly to track ambient noise level.
-const NOISE_FLOOR_TRACK_ALPHA = 0.001;  // very slow — tracks over ~3 seconds
+// The floor adapts asymmetrically: instant drop, then climbs back at
+// micGateRecoveryAlpha (kopplat till release-slidern, golv 0.03 → ~100ms
+// recovery efter tystnad så transienter inte kvävs i gate-knäet).
 const NOISE_GATE_KNEE = 3.0;            // gate ratio: signal must be 3x noise floor for full pass
 let noiseFloor = 0.001;
 
 function applyNoiseGate(rms: number): number {
-  // Track noise floor (slow minimum follower)
+  // Track noise floor (slow minimum follower, fast(er) maximum follower)
   if (rms < noiseFloor || noiseFloor < 0.0001) {
     noiseFloor = rms;  // instant drop
   } else {
-    noiseFloor += NOISE_FLOOR_TRACK_ALPHA * (rms - noiseFloor);
+    noiseFloor += micGateRecoveryAlpha * (rms - noiseFloor);
   }
   // Soft gate: ramp from 0→1 as signal goes from 1x→3x noise floor
   const threshold = noiseFloor * NOISE_GATE_KNEE;

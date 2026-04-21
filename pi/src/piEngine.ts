@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, type BandResult } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, setMicSmoothing, type BandResult } from './alsaMic.js';
 import { sendToBLE, setIdleColor, getDimmingGamma, setMinWriteIntervalMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
@@ -293,6 +293,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
+    setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -468,6 +469,7 @@ export class PiLightEngine {
       this.cal.perceptualGamma = 0;
     }
     this.tc = computeTickConstants(this.tickMs, this.cal);
+    setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
   /**
