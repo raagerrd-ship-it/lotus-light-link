@@ -306,6 +306,10 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
               name: HARDCODED_DEVICE.name,
               id: peripheral.id,
             });
+            // Aktivera auto-reconnect-loopen — från och med nu räknas varje
+            // disconnect som "tappad länk vi vill ha tillbaka".
+            _autoReconnectEnabled = true;
+            clearAutoReconnect();
             // Notifiera engine — den startar keep-alive + idle-heartbeat
             // (om Sonos är pausad). Vid spelande musik skippar engine
             // keep-alive eftersom mic-writes håller länken.
