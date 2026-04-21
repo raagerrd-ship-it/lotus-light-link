@@ -47,6 +47,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [HOP frikopplad](mem://pi/audio/hop-size-decoupled) — HOP=512 fast (~10.7ms), FFT 93Hz, engine gatear på tickMs
 - [Inget setTimeout i FFT-tick](mem://pi/runtime/no-settimeout-on-fft-tick-path) — onFFTFrame får aldrig schemalägga setTimeout, då körs tickInner mot gammal frame
 - [Single-slot BLE-write](mem://pi/ble/single-slot-write-contract) — En writeAsync åt gången, hard-fail vid busy, ingen rate-limit, keep-alive bara i idle
+- [Stale peripheral cache](mem://pi/ble/stale-peripheral-cache) — Purga noble._peripherals[id] mellan reconnects mot samma MAC
 - [Palette integration](mem://pi/sonos/palette-integration) — 4-color palettes consumed directly from Sonos Gateway
 - [Softness slider](mem://pi/ui/softness-slider-curve) — Exponential mapping for releaseAlpha
 - [Native capture](mem://pi/audio/native-capture) — C++ alsa-capture binding with Int16Array
