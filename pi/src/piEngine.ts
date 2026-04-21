@@ -293,6 +293,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
+    setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
