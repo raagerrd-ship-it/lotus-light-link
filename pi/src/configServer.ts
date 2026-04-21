@@ -375,7 +375,53 @@ export function startConfigServer(port = 3050): void {
     const merged = { ...(current ? JSON.parse(current) : {}), ...req.body };
     setItem('light-calibration', JSON.stringify(merged));
     engine.reloadCalibration();
+    // Spegla även i aktiv profil så /api/profiles förblir source-of-truth
+    try {
+      const pf = loadProfilesFile();
+      pf.profiles[pf.activePreset] = { ...pf.profiles[pf.activePreset], ...req.body };
+      saveProfilesFile(pf);
+    } catch {}
     res.json({ ok: true });
+  });
+
+  // ── Profiles (4 oberoende kalibreringsprofiler) ──
+  app.get('/api/profiles', (_req, res) => {
+    res.json(loadProfilesFile());
+  });
+
+  app.put('/api/profiles', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    const { profiles, activePreset } = req.body ?? {};
+    if (!profiles || typeof profiles !== 'object') {
+      return res.status(400).json({ error: 'Need profiles object' });
+    }
+    const current = loadProfilesFile();
+    const mergedProfiles: Record<string, ProfileCal> = { ...current.profiles };
+    for (const name of PROFILE_NAMES) {
+      if (profiles[name]) mergedProfiles[name] = { ...mergedProfiles[name], ...profiles[name] };
+    }
+    const active: ProfileName = (activePreset && PROFILE_NAMES.includes(activePreset))
+      ? activePreset : current.activePreset;
+    const next: ProfilesFile = { profiles: mergedProfiles, activePreset: active };
+    saveProfilesFile(next);
+    engine.setActiveProfile(next.profiles[active]);
+    res.json({ ok: true, ...next });
+  });
+
+  app.put('/api/active-preset', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    const { name } = req.body ?? {};
+    if (!name || !PROFILE_NAMES.includes(name)) {
+      return res.status(400).json({ error: `name must be one of ${PROFILE_NAMES.join(', ')}` });
+    }
+    const pf = loadProfilesFile();
+    pf.activePreset = name;
+    saveProfilesFile(pf);
+    engine.setActiveProfile(pf.profiles[name]);
+    console.log(`[Config] Active profile → ${name}`);
+    res.json({ ok: true, activePreset: name, profile: pf.profiles[name] });
   });
 
   // --- Raw mode (for gain calibration) ---
