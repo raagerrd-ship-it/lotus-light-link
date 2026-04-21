@@ -45,6 +45,7 @@ const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
   Normal: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
   Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, hiShelfGainDb: 6 },
   Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  // bassWeight semantik: 0=bara disk, 0.5=neutral (båda 100%), 1.0=bara bas. Asymmetrisk dämpning av "andra" sidan.
 };
 
 interface ProfilesFile {
