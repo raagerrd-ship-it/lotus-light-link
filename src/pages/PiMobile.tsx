@@ -450,7 +450,14 @@ function ProfileSettingsView({
           // Tick-position i procent längs slidern där "av"-läget ligger (0)
           const zeroPct = ((0 - min) / (max - min)) * 100;
           const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
+          const showSoftnessHeader = key === 'attack';
           return (
+            <>
+            {showSoftnessHeader && (
+              <div key={`${key}-header`} className="pt-2 pb-1 border-t border-border/40">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mjukhet</h3>
+              </div>
+            )}
             <div key={key}>
               <div className="flex justify-between text-sm mb-0.5">
                 <span>{label}</span>
