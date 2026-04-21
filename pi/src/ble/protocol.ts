@@ -124,18 +124,31 @@ export function startKeepAlive(): void {
         if (keepAliveFailCount <= 3 || keepAliveFailCount % 10 === 0) {
           console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e?.message ?? e}`);
         }
-        if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && getDevice() && isDemandActive()) {
-          console.warn('[BLE] Keep-alive threshold reached — triggering proactive reconnect');
-          const dev = getDevice()!;
-          const periph = dev.peripheral;
-          const name = dev.name;
-          periph.removeAllListeners('disconnect');
+        if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && getDevice()) {
+          // Hardcoded-flödet har ingen demand-aktiv reconnect-loop — istället
+          // markerar vi länken som död direkt så /api/ble/state rapporterar
+          // connected:false och användaren kan trycka Anslut utan att vänta
+          // på 8s scan-timeout. Lazy-import för att bryta circular dep.
+          console.warn(`[BLE] keep-alive failed ${keepAliveFailCount}x — link lost, marking disconnected`);
           stopKeepAlive();
-          setDevice(null);
-          resetLastSent();
-          Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
-            if (_triggerReconnect) _triggerReconnect(periph, name);
-          });
+          import('./connect-hardcoded.js').then(({ forceCleanupStalePeripheral }) => {
+            forceCleanupStalePeripheral('keep-alive-fail').catch(() => {});
+          }).catch(() => {});
+
+          // Bevara legacy demand-baserad reconnect om någon framtida konsument vill ha den
+          if (isDemandActive()) {
+            const dev = getDevice();
+            if (dev) {
+              const periph = dev.peripheral;
+              const name = dev.name;
+              periph.removeAllListeners('disconnect');
+              setDevice(null);
+              resetLastSent();
+              Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
+                if (_triggerReconnect) _triggerReconnect(periph, name);
+              });
+            }
+          }
         }
       })
       .finally(() => {
