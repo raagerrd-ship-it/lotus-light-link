@@ -1116,14 +1116,13 @@ export default function PiMobile() {
   const handleSave = async () => {
     setSaveError(null);
     try {
-      // Konvertera alla 4 profilers softness → releaseAlpha+smoothing innan PUT
+      // Konvertera alla 4 profilers attack/softness → attackAlpha/releaseAlpha innan PUT
       const profilesPayload: Record<string, any> = {};
       for (const [name, p] of Object.entries(profiles)) {
-        const { releaseAlpha, smoothing } = softnessToParams(p.softness);
         profilesPayload[name] = {
           bassWeight: p.bassWeight,
-          releaseAlpha,
-          smoothing,
+          attackAlpha: attackToAlpha(p.attack),
+          releaseAlpha: softnessToAlpha(p.softness),
           dynamicDamping: p.dynamicDamping,
           brightnessFloor: p.brightnessFloor,
           punchWhiteThreshold: p.punchWhiteThreshold,
