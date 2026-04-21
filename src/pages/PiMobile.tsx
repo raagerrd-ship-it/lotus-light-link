@@ -1060,7 +1060,18 @@ export default function PiMobile() {
   const [view, setView] = useState<"home" | "profile" | "global">("home");
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
-  const [cal, setCal] = useState({ ...DEFAULT_CAL });
+  // 4 oberoende profiler — varje knapp kommer ihåg sina egna värden.
+  // Aktiv profils värden härleds som `cal` och muteras via `setCal`.
+  const [profiles, setProfiles] = useState<Record<string, Cal>>({
+    Lugn:   { ...PRESET_CALS.Lugn },
+    Normal: { ...PRESET_CALS.Normal },
+    Party:  { ...PRESET_CALS.Party },
+    Custom: { ...PRESET_CALS.Custom },
+  });
+  const cal = profiles[activePreset] ?? PRESET_CALS.Normal;
+  const setCal = useCallback((next: Cal) => {
+    setProfiles(p => ({ ...p, [activePreset]: next }));
+  }, [activePreset]);
   const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState("http://127.0.0.1:3053/api/sonos");
   const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto');
@@ -1102,20 +1113,25 @@ export default function PiMobile() {
   const handleSave = async () => {
     setSaveError(null);
     try {
-      const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-      const results = await Promise.allSettled([
-        putJson('/api/calibration', {
-          bassWeight: cal.bassWeight,
+      // Konvertera alla 4 profilers softness → releaseAlpha+smoothing innan PUT
+      const profilesPayload: Record<string, any> = {};
+      for (const [name, p] of Object.entries(profiles)) {
+        const { releaseAlpha, smoothing } = softnessToParams(p.softness);
+        profilesPayload[name] = {
+          bassWeight: p.bassWeight,
           releaseAlpha,
           smoothing,
-          dynamicDamping: cal.dynamicDamping,
-          brightnessFloor: cal.brightnessFloor,
-          punchWhiteThreshold: cal.punchWhiteThreshold,
-          perceptualGamma: cal.perceptualGamma,
-          transientGain: cal.transientGain,
-          dynamicsEnabled: cal.dynamicsEnabled,
+          dynamicDamping: p.dynamicDamping,
+          brightnessFloor: p.brightnessFloor,
+          punchWhiteThreshold: p.punchWhiteThreshold,
+          perceptualGamma: p.perceptualGamma,
+          transientGain: p.transientGain,
+          dynamicsEnabled: p.dynamicsEnabled,
           hiShelfGainDb: 6,
-        }),
+        };
+      }
+      const results = await Promise.allSettled([
+        putJson('/api/profiles', { profiles: profilesPayload, activePreset }),
         putJson('/api/tick-ms', { tickMs }),
         putJson('/api/mic-device', { device: alsaDevice }),
         putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
@@ -1154,8 +1170,8 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
-        safeFetch(`${piBase}/api/calibration`),
+      const [profilesRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
+        safeFetch(`${piBase}/api/profiles`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
         safeFetch(`${piBase}/api/dimming-gamma`),
@@ -1166,26 +1182,35 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
-      // calRes is the flat stored calibration object (or {} if empty)
-      if (calRes && typeof calRes === 'object' && Object.keys(calRes).length > 0) {
-        const c = calRes;
-        // Reverse-map releaseAlpha+smoothing back to softness
+      // Mappa varje profils stored kalibrering tillbaka till UI:ts Cal-form
+      // (releaseAlpha+smoothing → softness, defaults för saknade fält).
+      const mapStoredToCal = (c: any): Cal => {
         let softness = DEFAULT_CAL.softness;
-        if (c.releaseAlpha != null) {
+        if (c?.releaseAlpha != null) {
           const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
           softness = Math.round(Math.min(100, Math.max(0, t * 100)));
         }
-        setCal({
-          bassWeight: c.bassWeight ?? DEFAULT_CAL.bassWeight,
+        return {
+          bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
           softness,
-          dynamicDamping: c.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
-          brightnessFloor: c.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
-          punchWhiteThreshold: c.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
-          
-          perceptualGamma: c.perceptualGamma ?? (typeof c.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
-          transientGain: c.transientGain ?? (typeof c.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
-          dynamicsEnabled: c.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
-        });
+          dynamicDamping: c?.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
+          brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
+          punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
+          perceptualGamma: c?.perceptualGamma ?? (typeof c?.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
+          transientGain: c?.transientGain ?? (typeof c?.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
+          dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
+        };
+      };
+
+      if (profilesRes?.profiles && typeof profilesRes.profiles === 'object') {
+        const next: Record<string, Cal> = {
+          Lugn:   mapStoredToCal(profilesRes.profiles.Lugn   ?? {}),
+          Normal: mapStoredToCal(profilesRes.profiles.Normal ?? {}),
+          Party:  mapStoredToCal(profilesRes.profiles.Party  ?? {}),
+          Custom: mapStoredToCal(profilesRes.profiles.Custom ?? {}),
+        };
+        setProfiles(next);
+        if (profilesRes.activePreset) setActivePreset(profilesRes.activePreset);
       }
       if (micRes?.device) setAlsaDevice(micRes.device);
       if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
@@ -1499,7 +1524,18 @@ export default function PiMobile() {
         <div className="grid grid-cols-2 gap-3">
           {PRESETS.map((name) => (
             <button
-              key={name} onClick={() => { setActivePreset(name); setCal({ ...PRESET_CALS[name] }); }}
+              key={name}
+              onClick={() => {
+                // Byt aktiv profil — laddar profilens egna sparade värden,
+                // INGEN återställning till PRESET_CALS-defaults.
+                setActivePreset(name);
+                fetch(`${piBase}/api/active-preset`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name }),
+                  signal: AbortSignal.timeout(3000),
+                }).catch(() => {});
+              }}
               className={`py-4 rounded-xl text-sm font-medium transition-all active:scale-95 ${
                 activePreset === name
                   ? "bg-primary text-primary-foreground ring-2 ring-ring"

@@ -33,6 +33,59 @@ export function attachSubsystemStarters(s: SubsystemStarters): void {
   console.log('[Config] subsystem starters attached');
 }
 
+// ── Profiles (4 oberoende kalibreringsprofiler) ──
+type ProfileCal = Record<string, any>;
+const PROFILE_NAMES = ['Lugn', 'Normal', 'Party', 'Custom'] as const;
+type ProfileName = typeof PROFILE_NAMES[number];
+
+// Defaults speglar PRESET_CALS i src/pages/PiMobile.tsx — om de ändras där,
+// uppdatera även här. Båda måste vara i sync vid första boot/seed.
+const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
+  Lugn:   { bassWeight: 0.7, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Normal: { bassWeight: 0.5, releaseAlpha: 0.025, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Party:  { bassWeight: 0.3, releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Custom: { bassWeight: 0.5, releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
+};
+
+interface ProfilesFile {
+  profiles: Record<string, ProfileCal>;
+  activePreset: ProfileName;
+}
+
+function loadProfilesFile(): ProfilesFile {
+  try {
+    const raw = getItem('profiles');
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p?.profiles && p?.activePreset) {
+        // Säkerställ att alla 4 namn finns (forward-kompat)
+        const merged: Record<string, ProfileCal> = { ...DEFAULT_PROFILES };
+        for (const name of PROFILE_NAMES) {
+          if (p.profiles[name]) merged[name] = { ...DEFAULT_PROFILES[name], ...p.profiles[name] };
+        }
+        const active = PROFILE_NAMES.includes(p.activePreset) ? p.activePreset : 'Normal';
+        return { profiles: merged, activePreset: active };
+      }
+    }
+  } catch {}
+  // Första boot: seed:a med defaults. Om en gammal /api/calibration finns
+  // (light-calibration), pluggar vi in den i Normal så användaren inte
+  // tappar sin nuvarande inställning.
+  const seeded: Record<string, ProfileCal> = JSON.parse(JSON.stringify(DEFAULT_PROFILES));
+  try {
+    const legacy = getItem('light-calibration');
+    if (legacy) {
+      const lc = JSON.parse(legacy);
+      seeded.Normal = { ...seeded.Normal, ...lc };
+    }
+  } catch {}
+  return { profiles: seeded, activePreset: 'Normal' };
+}
+
+function saveProfilesFile(p: ProfilesFile): void {
+  setItem('profiles', JSON.stringify(p));
+}
+
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
   mic: AlsaMicModule;
@@ -49,6 +102,16 @@ export function attachConfigRuntime(runtime: {
       attachedMic.setGainCalPoints(point1 ?? null, point2 ?? null);
     }
   } catch {}
+
+  // Seed profiles.json vid behov + applicera aktiv profil i pipelinen
+  try {
+    const pf = loadProfilesFile();
+    if (!getItem('profiles')) saveProfilesFile(pf);
+    runtime.engine.setActiveProfile(pf.profiles[pf.activePreset]);
+    console.log(`[Config] Active profile: ${pf.activePreset}`);
+  } catch (e: any) {
+    console.warn('[Config] Profile seed failed:', e?.message ?? e);
+  }
 
   console.log('[Config] Runtime attached (engine + mic)');
 }
@@ -312,7 +375,53 @@ export function startConfigServer(port = 3050): void {
     const merged = { ...(current ? JSON.parse(current) : {}), ...req.body };
     setItem('light-calibration', JSON.stringify(merged));
     engine.reloadCalibration();
+    // Spegla även i aktiv profil så /api/profiles förblir source-of-truth
+    try {
+      const pf = loadProfilesFile();
+      pf.profiles[pf.activePreset] = { ...pf.profiles[pf.activePreset], ...req.body };
+      saveProfilesFile(pf);
+    } catch {}
     res.json({ ok: true });
+  });
+
+  // ── Profiles (4 oberoende kalibreringsprofiler) ──
+  app.get('/api/profiles', (_req, res) => {
+    res.json(loadProfilesFile());
+  });
+
+  app.put('/api/profiles', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    const { profiles, activePreset } = req.body ?? {};
+    if (!profiles || typeof profiles !== 'object') {
+      return res.status(400).json({ error: 'Need profiles object' });
+    }
+    const current = loadProfilesFile();
+    const mergedProfiles: Record<string, ProfileCal> = { ...current.profiles };
+    for (const name of PROFILE_NAMES) {
+      if (profiles[name]) mergedProfiles[name] = { ...mergedProfiles[name], ...profiles[name] };
+    }
+    const active: ProfileName = (activePreset && PROFILE_NAMES.includes(activePreset))
+      ? activePreset : current.activePreset;
+    const next: ProfilesFile = { profiles: mergedProfiles, activePreset: active };
+    saveProfilesFile(next);
+    engine.setActiveProfile(next.profiles[active]);
+    res.json({ ok: true, ...next });
+  });
+
+  app.put('/api/active-preset', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    const { name } = req.body ?? {};
+    if (!name || !PROFILE_NAMES.includes(name)) {
+      return res.status(400).json({ error: `name must be one of ${PROFILE_NAMES.join(', ')}` });
+    }
+    const pf = loadProfilesFile();
+    pf.activePreset = name;
+    saveProfilesFile(pf);
+    engine.setActiveProfile(pf.profiles[name]);
+    console.log(`[Config] Active profile → ${name}`);
+    res.json({ ok: true, activePreset: name, profile: pf.profiles[name] });
   });
 
   // --- Raw mode (for gain calibration) ---
