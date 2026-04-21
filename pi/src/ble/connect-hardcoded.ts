@@ -62,8 +62,23 @@ function clearAutoReconnect(): void {
   _autoReconnectAttempt = 0;
 }
 
-function scheduleAutoReconnect(): void {
-  if (!_autoReconnectEnabled) return;
+/**
+ * Schemalägg auto-reconnect med exponentiell backoff (2→4→8→16→30s).
+ * Exporterad så keep-alive-fail-pathen i protocol.ts kan trigga loopen
+ * direkt — peripheral.disconnect-eventet är inte garanterat att fyra
+ * när BLEDOM tappas via supervision timeout (reason=8).
+ */
+export function scheduleAutoReconnect(): void {
+  if (!_autoReconnectEnabled) {
+    // Aktivera loopen om vi någon gång har varit anslutna — annars triggas
+    // den aldrig efter en supervision-timeout (peripheral-disconnect-eventet
+    // hinner inte fyra innan keep-alive ger upp och nollar device).
+    if (_connected || bleStats.disconnectCount > 0) {
+      _autoReconnectEnabled = true;
+    } else {
+      return;
+    }
+  }
   if (_autoReconnectTimer) return; // redan schemalagd
   if (_connectInFlight) return;     // pågående connect täcker behovet
   if (_connected && _connected.state === 'connected') return; // redan uppe

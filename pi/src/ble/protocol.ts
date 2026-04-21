@@ -131,14 +131,20 @@ export function startKeepAlive(): void {
           console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e?.message ?? e}`);
         }
         if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && getDevice()) {
-          // Hardcoded-flödet har ingen demand-aktiv reconnect-loop — istället
-          // markerar vi länken som död direkt så /api/ble/state rapporterar
-          // connected:false och användaren kan trycka Anslut utan att vänta
-          // på 8s scan-timeout. Lazy-import för att bryta circular dep.
-          console.warn(`[BLE] keep-alive failed ${keepAliveFailCount}x — link lost, marking disconnected`);
+          // BLEDOM supervision timeout (reason=8) triggar inte alltid
+          // peripheral.once('disconnect') i tid — keep-alive failar 5x
+          // innan eventet hinner fyra. Markera länken död + STARTA
+          // auto-reconnect-loop direkt så användaren slipper trycka Anslut.
+          console.warn(`[BLE] keep-alive failed ${keepAliveFailCount}x — link lost, marking disconnected + scheduling auto-reconnect`);
           stopKeepAlive();
-          import('./connect-hardcoded.js').then(({ forceCleanupStalePeripheral }) => {
-            forceCleanupStalePeripheral('keep-alive-fail').catch(() => {});
+          import('./connect-hardcoded.js').then(({ forceCleanupStalePeripheral, scheduleAutoReconnect }) => {
+            forceCleanupStalePeripheral('keep-alive-fail')
+              .catch(() => {})
+              .finally(() => {
+                // scheduleAutoReconnect aktiverar _autoReconnectEnabled internt
+                // om vi någon gång har varit anslutna (bleStats.disconnectCount>0).
+                scheduleAutoReconnect();
+              });
           }).catch(() => {});
 
           // Bevara legacy demand-baserad reconnect om någon framtida konsument vill ha den
