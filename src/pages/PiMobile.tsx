@@ -144,7 +144,9 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
 
   for (let i = 0; i < weighted.length; i++) {
     const r = weighted[i];
-    const isRising = r > prev;
+    // Riktning bestäms av rå-insignalen (inte filtrerad prev) — det är den som triggar attack vs release
+    const rPrev = i > 0 ? weighted[i - 1] : r;
+    const isRising = r >= rPrev;
     const alpha = isRising ? attackAlpha : releaseAlpha;
     let val = prev + alpha * (r - prev);
 
