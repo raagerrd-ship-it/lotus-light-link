@@ -11,6 +11,28 @@ import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
+import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
+
+// Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
+// pga consecutive connect-failures, läses i index.ts boot för att auto-anropa
+// connectHardcoded() direkt efter restart (så användaren slipper trycka Anslut).
+const RECONNECT_FLAG = '/tmp/lotus-auto-reconnect-on-boot';
+export function setReconnectOnBootFlag(): void {
+  try { writeFileSync(RECONNECT_FLAG, String(Date.now()), 'utf8'); } catch {}
+}
+export function consumeReconnectOnBootFlag(): boolean {
+  try {
+    if (!existsSync(RECONNECT_FLAG)) return false;
+    unlinkSync(RECONNECT_FLAG);
+    return true;
+  } catch { return false; }
+}
+
+// Consecutive connect-failures räknare. Mönster från fältet: BLEDOM ansluter
+// alltid på 1-2s eller aldrig. Efter 2 misslyckanden i rad är noble's HCI-state
+// fastnat — enda fungerande lösning är full process-restart (systemd Restart=always).
+const CONSECUTIVE_FAIL_LIMIT = 2;
+let _consecutiveFailures = 0;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
 // Används så att engine kan toggla keep-alive/idle-heartbeat baserat på
@@ -165,7 +187,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
   try { resetLastSent(); } catch {}
 }
 
-export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
+export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
   _connectCallCount++;
   const sinceLast = Date.now() - _lastConnectCallAt;
   _lastConnectCallAt = Date.now();
@@ -244,7 +266,7 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
         }
         console.log(`${ts()} 4. peripheral.connectAsync() (5s timeout)…`);
         try {
-          await withTimeout(peripheral.connectAsync(), 'connectAsync', 5000);
+          await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
           _connected = peripheral;
           // Rensa ev. gamla disconnect-listeners från tidigare connect-cyklar.
           // Noble emittar internt `disconnect:<uuid>` på SIG noble-objektet,
@@ -360,6 +382,26 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
   _connectInFlight = inflight;
   try {
     const r = await inflight;
+    if (r.connected) {
+      // Lyckad connect → nollställ failure-räknaren.
+      if (_consecutiveFailures > 0) {
+        console.log(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
+      }
+      _consecutiveFailures = 0;
+    } else {
+      _consecutiveFailures++;
+      console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures)`);
+      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
+        // Mönster från fältet: BLEDOM ansluter alltid på 1-2s eller aldrig.
+        // 2 misslyckade i rad = noble's HCI-state är fastnat. Enda fungerande
+        // lösning är full process-restart (systemd Restart=always startar om).
+        // Sätt flagga så engine auto-anropar connectHardcoded() vid boot.
+        console.error(`[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures — sätter reconnect-flagga och process.exit(0) för systemd restart`);
+        setReconnectOnBootFlag();
+        // Liten delay så HTTP-svar hinner ut till UI innan vi dör.
+        setTimeout(() => process.exit(0), 500);
+      }
+    }
     return { ...r, durationMs: Date.now() - t0 };
   } finally {
     _connectInFlight = null;
