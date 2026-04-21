@@ -35,12 +35,18 @@ function curveToAlpha(v: number) {
   const alpha = 1.0 - 0.995 * Math.pow(t, 0.7);
   return Math.max(0.005, Math.round(alpha * 1000) / 1000);
 }
+/** Release: 0 = rått fall (alpha 1.0), 100 = mycket mjukt (alpha ~0.005) */
 function softnessToAlpha(s: number) { return curveToAlpha(s); }
-function attackToAlpha(a: number) { return curveToAlpha(a); }
-/** Reverse-mappa alpha → 0-100 UI-värde */
+/** Attack: 0 = mjuk rise (alpha ~0.005), 100 = omedelbar (alpha 1.0) — INVERS av Release */
+function attackToAlpha(a: number) { return curveToAlpha(100 - a); }
+/** Reverse-mappa alpha → 0-100 UI-värde (för Release) */
 function alphaToCurve(alpha: number) {
   const t = Math.pow(Math.max(0, (1 - alpha) / 0.995), 1 / 0.7);
   return Math.round(Math.min(100, Math.max(0, t * 100)));
+}
+/** Reverse-mappa alpha → 0-100 UI-värde (för Attack — invers) */
+function alphaToAttack(alpha: number) {
+  return 100 - alphaToCurve(alpha);
 }
 
 type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain';
