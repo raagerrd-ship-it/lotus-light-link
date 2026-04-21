@@ -293,12 +293,15 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
         style={{ height, background: "rgba(0,0,0,0.3)" }}
       />
       {showLegend && (
-        <div className="flex justify-center gap-4 mt-1.5 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-1.5 text-[10px] text-muted-foreground">
           <span className="flex items-center gap-1">
-            <span className="inline-block w-3 border-t border-dashed" style={{ borderColor: "rgba(255,255,255,0.4)" }} /> Rå signal
+            <span className="inline-block w-3 border-t border-dashed" style={{ borderColor: "rgba(255,255,255,0.4)" }} /> Rå
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block w-3 border-t-2" style={{ borderColor: "rgb(255,120,50)" }} /> Bearbetad
+            <span className="inline-block w-3 border-t-2" style={{ borderColor: "rgb(255,200,60)" }} /> Attack ↑
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 border-t-2" style={{ borderColor: "rgb(255,90,140)" }} /> Release ↓
           </span>
         </div>
       )}
