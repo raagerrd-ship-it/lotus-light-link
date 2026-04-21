@@ -46,6 +46,71 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   return { disconnected: true };
 }
 
+/**
+ * Pre-connect cleanup: rensa stale peripheral + noble's interna cache.
+ *
+ * Bakgrund: när BLEDOM tappar länken tyst (keep-alive failar i bakgrunden,
+ * radio-timeout utan disconnect-event) sitter noble kvar med en peripheral
+ * i `_peripherals[id]` som internt tror att GATT-sessionen lever. Nästa
+ * `connectAsync()` mot samma instans hänger då oändligt.
+ *
+ * Lösningen är att purga cache-entrien så scan skapar en fresh peripheral.
+ * Idempotent — inget händer om allt redan är rent.
+ *
+ * Se mem://pi/ble/stale-peripheral-cache.
+ */
+export async function forceCleanupStalePeripheral(reason: string): Promise<void> {
+  const n: any = getNoble();
+
+  // 1. Stoppa pågående scan (säkerhetsåtgärd om förra cyklen kraschade mitt i)
+  try { await n.stopScanningAsync(); } catch {}
+
+  // 2. Force-disconnect stale peripheral om den ligger kvar
+  if (_connected) {
+    const state = _connected.state;
+    console.log(`[connect-hardcoded] cleanup (${reason}): stale peripheral state=${state}, force-disconnecting`);
+    const periph = _connected;
+    const disconnectEvent = `disconnect:${periph.uuid ?? periph.id}`;
+    try { n.removeAllListeners?.(disconnectEvent); } catch {}
+    try { periph.removeAllListeners?.('disconnect'); } catch {}
+    try {
+      await Promise.race([
+        periph.disconnectAsync?.(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('disconnect timeout')), 1000)),
+      ]);
+    } catch (e: any) {
+      console.log(`[connect-hardcoded] cleanup: disconnect ignored (${e?.message ?? e})`);
+    }
+    _connected = null;
+  }
+
+  // 3. Purga noble's interna peripheral-cache för target-MAC
+  try {
+    const peripherals = n._peripherals;
+    if (peripherals && typeof peripherals === 'object') {
+      const targetId = HARDCODED_DEVICE.idNoColon;
+      const targetAddr = HARDCODED_DEVICE.addressLower;
+      const keys = Object.keys(peripherals);
+      for (const key of keys) {
+        const p = peripherals[key];
+        const pid = (p?.id ?? key).toLowerCase().replace(/[^0-9a-f]/g, '');
+        const paddr = (p?.address ?? '').toLowerCase();
+        if (pid === targetId || paddr === targetAddr) {
+          delete peripherals[key];
+          console.log(`[connect-hardcoded] cleanup: noble._peripherals[${key}] purged`);
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[connect-hardcoded] cleanup: cache purge fel (${e?.message ?? e}) — fortsätter ändå`);
+  }
+
+  // 4. Engine-side state reset (no-op om redan rent)
+  try { _onDisconnected?.(); } catch {}
+  try { setDevice(null); } catch {}
+  try { resetLastSent(); } catch {}
+}
+
 export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
   _connectCallCount++;
   const sinceLast = Date.now() - _lastConnectCallAt;
@@ -71,6 +136,11 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
 
   const inflight = (async (): Promise<{ connected: boolean; error?: string }> => {
     const n = getNoble();
+
+    // 0. Pre-connect cleanup — purga ev. stale peripheral i noble's cache,
+    //    annars hänger connectAsync tyst om förra länken dog utan disconnect-event.
+    console.log(`${ts()} 0. pre-connect cleanup…`);
+    await forceCleanupStalePeripheral('pre-connect');
 
     console.log(`${ts()} 1. waitForPoweredOnAsync(10s)…`);
     try {
