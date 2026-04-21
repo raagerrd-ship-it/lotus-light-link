@@ -125,20 +125,20 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   const onsetDecay = Math.pow(0.04, SEC_RATIO);
   const onsetRiseAlpha = 1 - Math.pow(0.05, RATIO);
 
-  // bassWeight: speglar engine — energyNorm = bassNorm * bw + midHiNorm * (1 - bw)
+  // bassWeight: speglar engine — asymmetrisk dämpning runt 0.5 (neutral).
+  // bw=0 → bara disk (bas dämpad). bw=0.5 → båda 100% (neutral). bw=1 → bara bas (disk dämpad).
   // Rå-kurvans 3 sektioner tolkas som band: Låg=bass, Mellan=50/50, Hög=midHi.
   const bw = cal.bassWeight;
+  const bassGain = bw <= 0.5 ? bw * 2 : 1;
+  const midHiGain = bw >= 0.5 ? (1 - bw) * 2 : 1;
   const weighted: number[] = [];
   for (let i = 0; i < raw.length; i++) {
     const t = i / raw.length;
     const section = t < 1 / 3 ? 0 : t < 2 / 3 ? 1 : 2;
     const bassShare = section === 0 ? 1 : section === 1 ? 0.5 : 0;
     const midHiShare = 1 - bassShare;
-    const w = bassShare * bw + midHiShare * (1 - bw);
-    // w ∈ [0, 1]. Multiplikativ skalning från 0: w=0 → band tystnar (går mot golv),
-    // w=0.5 → 1.0× (neutralt), w=1 → 2× (band dubbleras). Detta påverkar utsignalen så
-    // att t.ex. bw=1 (bara bas) drar mid/hi ner till 0 (golv tar över sen).
-    const scaled = raw[i] * (w * 2);
+    const gain = bassShare * bassGain + midHiShare * midHiGain;
+    const scaled = raw[i] * gain;
     weighted.push(Math.max(0, Math.min(1, scaled)));
   }
 
