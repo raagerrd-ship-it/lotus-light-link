@@ -378,7 +378,19 @@ export class PiLightEngine {
 
   private forceIdleNow(): void {
     const idle = loadIdleColor();
-    sendIdleForce(idle[0] | 0, idle[1] | 0, idle[2] | 0);
+    const r = idle[0] | 0, g = idle[1] | 0, b = idle[2] | 0;
+    sendIdleForce(r, g, b);
+    // Reflektera idle-färgen i diagnostics så /api/ble/output visar rätt
+    // färg i UI:t. tickInner uppdaterar bara _diag i playing-mode, så utan
+    // detta visar UI:t 0,0,0 (svart) hela tiden lampan står i idle.
+    _diag.finalR = r;
+    _diag.finalG = g;
+    _diag.finalB = b;
+    _diag.brightnessPct = 100;
+    _tickData.color[0] = r;
+    _tickData.color[1] = g;
+    _tickData.color[2] = b;
+    _tickData.brightness = 100;
   }
 
   // BLE-anslutningsstatus — keep-alive startar BARA när lampan faktiskt är
