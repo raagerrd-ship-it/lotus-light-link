@@ -1,73 +1,60 @@
 
 
-# Två BLE-vägar med tydlig owner-växling
+# Alternativ B: 4 separata profiler lagrade på Pi:n
 
-## Mål
+## Backend (`pi/src/configServer.ts`)
 
-EN väg är alltid aktiv när BLE är ansluten — aldrig båda samtidigt, aldrig ingen.
+Nya endpoints:
+- `GET /api/profiles` → `{ profiles: { Lugn, Normal, Party, Custom }, activePreset }`
+- `PUT /api/profiles` → ersätter hela objektet, sparar till `pi/data/profiles.json` via `storage.ts`
+- `PUT /api/active-preset` `{ name }` → byter aktiv profil, kallar `engine.setActiveProfile(name)`
 
-- **Idle-vägen** (keep-alive-loopen) är default. Startar när BLE ansluter. Bär idle-färgen @ 200ms.
-- **Aktiva vägen** (`sendToBLE` per FFT-tick) tar över när Sonos rapporterar `playing`. Idle-loopen pausas helt under tiden.
-- När Sonos går till `paused`/`stopped`/TV → idle-vägen återupptas inom samma tick.
+Vid serverstart: läs `profiles.json`. Om saknas → seed:a med default `PRESET_CALS` (samma värden som UI:t har idag) och spara. Kalla `engine.setActiveProfile(activePreset)` vid uppstart så Pi:n alltid har en aktiv kalibrering.
 
-## Nuvarande problem
+`/api/calibration` (PUT) behålls för bakåtkomp men flaggas internt — den uppdaterar nu **aktiv profil** istället för en separat global. GET returnerar fortfarande aktiv profils värden.
 
-I dag kör keep-alive-loopen ALLTID när BLE är ansluten — även mitt under musik. Det betyder att idle-keepalive och `sendToBLE` slåss om samma single-slot, vilket:
-1. Ökar `skipBusyCount` under play (keep-alive konkurrerar med mic-writes).
-2. Gör ägarskapet otydligt: vem äger `writeBuf`-state under play?
-3. Räknar keep-alive-paket i `pkt/s` även under play, vilket skuggar det riktiga mic-flödet.
+## Engine (`pi/src/piEngine.ts`)
 
-## Lösning — explicit owner-switch
+Ny metod `setActiveProfile(cal)` som tar ett kalibrerings-objekt och pluggar in det i samma fält som befintlig `setCalibration` redan sätter (gain, bandweights, dynamics, releaseAlpha, gamma, punchWhite, m.m.). Ingen pipeline-ändring — bara en tunn wrapper så `configServer` har en tydlig entry point per profil.
 
-### `pi/src/ble/protocol.ts`
-- Behåll `startKeepAlive`/`stopKeepAlive` men gör dem till den enda idle-mekanismen.
-- Sänk `KEEPALIVE_MS` till **200ms** (idle-färg-byte syns inom 200ms vid pause).
-- Ny exporterad `setIdleColor(r, g, b)` — synkron buffer-uppdate, ingen write. Keep-alive bär färgen vid nästa tick.
-- Ta bort `sendIdleForce` och `sendRawColor` (enligt tidigare plan).
+## Frontend (`src/pages/PiMobile.tsx`)
 
-### `pi/src/piEngine.ts` — owner-switch
-Nytt internt state: `_bleOwner: 'idle' | 'active' | 'none'`.
-
-Övergångar:
-| Event | Från | Till | Action |
-|---|---|---|---|
-| `onBleConnected` | none | idle | `setIdleColor(idle)` + `startKeepAlive()` |
-| `setPlaying(true)` | idle | active | `stopKeepAlive()` — `tickInner` tar över via `sendToBLE` |
-| `setPlaying(false)` | active | idle | `setIdleColor(idle)` + `startKeepAlive()` |
-| `onBleDisconnected` | * | none | `stopKeepAlive()` |
-
-`tickInner` returnerar tidigt om `_bleOwner !== 'active'` (skyddar mot race där en sen FFT-frame försöker skriva efter pause).
-
-### `pi/src/configServer.ts`
-Radera `/api/ble-fade-test`-endpoints + `sendRawColor`-import (enligt tidigare plan).
-
-### Diagnostik
-- `forceIdleNow()` uppdaterar `_diag.finalR/G/B` + `_tickData.color` så UI:t visar idle-färgen direkt vid pause (redan gjort i tidigare iteration, behålls).
-- `bleStats.sentCount` räknar bara writes från den **aktiva ägaren** — keep-alive räknar i idle, `sendToBLE` räknar i play. Aldrig båda. UI:t visar ~5 pkt/s i idle, mic-rate i play.
-
-## Resultat
-
-```text
-BLE connected ──► idle (keep-alive @200ms, idle-färg)
-                       │
-                  Sonos playing
-                       ▼
-                   active (sendToBLE per tick)
-                       │
-                  Sonos paused
-                       ▼
-                  idle (keep-alive återupptas)
+State-omskrivning:
+```ts
+const [profiles, setProfiles] = useState<Record<string, Cal>>({...PRESET_CALS});
+const [activePreset, setActivePreset] = useState("Normal");
+const cal = profiles[activePreset];
+const setCal = (next) => setProfiles(p => ({...p, [activePreset]: next}));
 ```
 
-EN ägare i taget. Inga konkurrerande writes. `pkt/s` säger sanningen om vilken väg som är aktiv.
+Profil-byte:
+```ts
+onClick={async () => {
+  setActivePreset(name);
+  await fetch(`${API}/api/active-preset`, {method:'PUT', body: JSON.stringify({name})});
+}}
+```
+Ingen `setCal({...PRESET_CALS[name]})` — laddar inte default, bara byter pekare till profilens egna värden.
+
+`load()` hämtar `/api/profiles` istället för `/api/calibration` och seed:ar state.
+
+`handleSave()`:
+1. PUT `/api/profiles` med hela `profiles`+`activePreset`
+2. Övriga globala settings oförändrade (tickMs, mic-device, gamma, idle-color, sonos, auto-tv, mic-gain)
+3. Vid inloggad: skriv `profiles` + `active_preset` till `user_settings`
+
+## Supabase-sync
+
+`user_settings.presets` (jsonb) får formen `{Lugn:{...}, Normal:{...}, Party:{...}, Custom:{...}}`. `user_settings.active_preset` får namnet. Befintlig offline-first sync återanvänds — inga schema-ändringar behövs (kolumnerna finns redan).
 
 ## Filer
 
-- `pi/src/ble/protocol.ts` — radera `sendRawColor`+`sendIdleForce`, lägg till `setIdleColor`, `KEEPALIVE_MS=200`.
-- `pi/src/ble/index.ts` — uppdatera exports.
-- `pi/src/piEngine.ts` — `_bleOwner` state, owner-switch i `onBleConnected`/`onBleDisconnected`/`setPlaying`, tick-guard.
-- `pi/src/configServer.ts` — radera fade-test-endpoints.
-- `pi/src/sonosPoller.ts` — uppdatera kommentar.
-- `mem://pi/ble/single-slot-write-contract` — dokumentera owner-modellen.
-- Radera `mem://pi/ble/idle-force-on-pause` (inaktuell).
+- `pi/src/configServer.ts` — nya endpoints + seed-vid-start
+- `pi/src/piEngine.ts` — `setActiveProfile(cal)` wrapper
+- `src/pages/PiMobile.tsx` — `profiles`-state, `cal`/`setCal` härledda, profil-byte pushar till Pi, `handleSave` skickar hela objektet, `load()` hämtar `/api/profiles`, Supabase-sync uppdaterad
+- `mem://pi/runtime/profile-storage` (ny) — dokumentera 4-profil-modellen
+
+## Migrations-detalj
+
+Första gången en användare kör nya versionen finns ingen `profiles.json`. Vi seedar med `PRESET_CALS`-defaults (samma som UI:t fallback:ar till idag) — användaren förlorar inte sin nuvarande kalibrering eftersom den globala `calibration.json` läses först och pluggas in i `Normal`-profilen om den finns. Övriga 3 profiler får defaults.
 
