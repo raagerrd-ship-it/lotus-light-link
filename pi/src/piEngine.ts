@@ -469,6 +469,7 @@ export class PiLightEngine {
       this.cal.perceptualGamma = 0;
     }
     this.tc = computeTickConstants(this.tickMs, this.cal);
+    setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
   /**
