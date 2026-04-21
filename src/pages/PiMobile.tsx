@@ -103,8 +103,8 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
 }
 
 function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
-  const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-  const attackAlpha = 1.0;
+  const releaseAlpha = softnessToAlpha(cal.softness);
+  const attackAlpha = attackToAlpha(cal.attack);
   const out: number[] = [];
   let prev = raw[0];
   let dynamicCenter = 0.5;
