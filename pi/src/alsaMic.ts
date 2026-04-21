@@ -309,10 +309,10 @@ function processFFT(): void {
   smoothMidHi = smoothRms(rawMidHi, smoothMidHi);
   smoothTotal = smoothRms(rawTotal, smoothTotal);
 
-  // ── Noise gate: suppress signal near ambient noise floor ──
-  latestBands.bassRms = applyNoiseGate(smoothBass);
-  latestBands.midHiRms = applyNoiseGate(smoothMidHi);
-  latestBands.totalRms = applyNoiseGate(smoothTotal);
+  // ── Bands flödar rakt från smoothed RMS — ingen noise gate ──
+  latestBands.bassRms = smoothBass;
+  latestBands.midHiRms = smoothMidHi;
+  latestBands.totalRms = smoothTotal;
   latestBands.flux = flux;
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
