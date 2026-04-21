@@ -1,64 +1,92 @@
 
 
-# Separera attack och release i Mjukhet-sektionen
+## Du har rätt — Attack/Release-slidrarna styr bara engine-smoothing, inte mic-stadiet
 
-## Vad ändras konceptuellt
+### Var slidrarna faktiskt går idag
 
-Idag: **Mjukhet** = en slider som bara styr release (fall). Attack (rise) är låst till 1.0 (omedelbar).
+UI Attack/Release → `cal.attackAlpha` / `cal.releaseAlpha` → används **bara** i `piEngine.ts` rad 644 på den slutgiltiga `energyNorm`-signalen (efter dynamics, gamma, allt).
 
-Nytt: **Två slidrar** under "Mjukhet"-rubriken:
-- **Attack** (0–100, default 100 = omedelbar) — hur snabbt ljuset stiger när musiken slår till
-- **Release** (0–100, default = nuvarande Mjukhet-värde) — hur snabbt ljuset faller (oförändrad logik, bara byter namn från "Mjukhet")
+Mic-stadiet (`alsaMic.ts`) har **egna hårdkodade konstanter**:
+- `RMS_ATTACK_ALPHA = 0.8` (rad 184)
+- `RMS_RELEASE_ALPHA = 0.15` (rad 185)
+- `NOISE_GATE_KNEE = 3.0` (rad 199)
+- `NOISE_FLOOR_TRACK_ALPHA = 0.001` (rad 198)
 
-Båda mappar via samma exponentiella kurva (`1.0 - 0.995 * t^0.7`) till en alpha 0.005–1.0. Lägre värde = mjukare.
+Slidrarna i UI:t har alltså aldrig påverkat bas-detektering eller noise-gate — bara den sista smoothing-stegen i engine. Det är därför du upplever segheten även efter att du dragit upp Attack.
 
-## Per-profil defaults (förslag)
+### Förslag: koppla ihop hela kedjan med samma Attack/Release
 
-| Profil  | Attack | Release |
-|---------|--------|---------|
-| Lugn    | 70     | 75 (oförändrad) |
-| Normal  | 100    | 30 |
-| Party   | 100    | 5  |
-| Custom  | 100    | 0  |
+Använd **samma** `attackAlpha`/`releaseAlpha` från profilen för:
 
-Lugn får mjukare attack (ingen poppighet), de övriga behåller skarp attack.
+1. **`alsaMic.ts` `smoothRms`** (bas + mid/hi pre-smoothing) → ersätter `RMS_ATTACK_ALPHA` / `RMS_RELEASE_ALPHA`
+2. **`alsaMic.ts` noise-floor tracking** → härleds från release-värdet (snabbare release = snabbare gate-recovery)
+3. **`piEngine.ts` rad 644** (befintlig användning) → oförändrad
 
-## Filer
+På så vis betyder Attack=100 verkligen "ingen smoothing någonstans i kedjan" och Release=0 betyder "rått fall överallt".
 
-**`src/pages/PiMobile.tsx`**
-- `Cal`-typen: lägg till `attack: number` (behåll `softness` men döp om semantiskt till release i UI:t — internt fält kan heta `softness` för bakåtkomp eller bytas till `release`).
-- `PRESET_CALS`: lägg till `attack`-värden enligt tabellen.
-- `softnessToParams` → byt namn till `softnessToAlpha(s)` som returnerar bara `releaseAlpha` (smoothing-fältet kan tas bort, det används inte längre).
-- Ny `attackToAlpha(a)` med samma kurva.
-- `SLIDER_CONFIG`: byt "Mjukhet" → "Release", lägg till "Attack" precis ovanför.
-- `handleSave` → skicka både `attackAlpha` och `releaseAlpha` per profil.
-- `mapStoredToCal` (load) → reverse-mappa både `attackAlpha` och `releaseAlpha` tillbaka till UI-värden.
+### Konkret mappning
 
-**`pi/src/configServer.ts`**
-- `ProfileCal`-typen: lägg till `attackAlpha: number`.
-- `DEFAULT_PROFILES`: lägg till `attackAlpha`-värden härledda från attack-defaults ovan.
-- Endpoints behöver ingen schema-ändring (fältet flyter bara igenom i jsonb).
+I `alsaMic.ts` läggs en exporterad setter som engine anropar när profil byts:
 
-**`pi/src/piEngine.ts`**
-- `attackAlpha` finns redan i `LightCalibration` och `TickConstants` — **inget engine-arbete behövs**. Den läses redan från `cal.attackAlpha` på rad 54 och används i `tickInner` rad 644. Idag är värdet bara alltid 1.0; nu kommer det vara variabelt.
+```ts
+let micAttackAlpha = 0.8;   // default = nuvarande beteende
+let micReleaseAlpha = 0.15; // default = nuvarande beteende
+let micGateRecoveryAlpha = 0.05; // default snabb recovery
 
-**`mem://pi/ui/softness-slider-curve`**
-- Uppdatera memory: kurvan används nu för BÅDE attack och release.
-
-## Migrationer
-
-- Befintliga `profiles.json` har inget `attackAlpha`-fält → load-mappningen defaultar till 1.0 (= 100 i UI) → identiskt beteende som idag tills användaren rör Attack-slidern.
-- Sparade kalibreringar i Supabase `user_settings.presets` påverkas inte (jsonb tar nya fält gratis).
-
-## Visuell layout i ProfileSettingsView
-
-```text
-─── Mjukhet ───────────────
-Attack       [====●====] 100
-0 = mjuk rise, 100 = omedelbar
-Release      [==●======]  30
-0 = rått fall, 100 = mycket mjukt
+export function setMicSmoothing(attackAlpha: number, releaseAlpha: number) {
+  micAttackAlpha = attackAlpha;
+  micReleaseAlpha = releaseAlpha;
+  // Gate-recovery: snabbare när release är snabbt (motverkar samma symptom)
+  micGateRecoveryAlpha = Math.max(0.01, releaseAlpha * 0.3);
+}
 ```
 
-Rubriken "Mjukhet" blir en sektionsrubrik över de två slidrarna istället för en slider-label.
+`smoothRms` använder `micAttackAlpha`/`micReleaseAlpha` istället för konstanterna.
+`applyNoiseGate` använder `micGateRecoveryAlpha` istället för `NOISE_FLOOR_TRACK_ALPHA` på "rising"-vägen (asymmetrisk floor tracking, snabb upp).
+
+### Var setter:n anropas
+
+I `piEngine.ts` där `cal` uppdateras (init + profil-byte). En enda rad:
+```ts
+setMicSmoothing(cal.attackAlpha, cal.releaseAlpha);
+```
+
+### "Inför alla" — defaults i `configServer.ts`
+
+Befintliga profil-defaults är redan rimliga; mappningen ger automatiskt:
+
+| Profil  | Attack (UI) | Release (UI) | Mic attack | Mic release | Gate recovery |
+|---------|-------------|--------------|------------|-------------|---------------|
+| Lugn    | ~25         | ~75          | 0.061      | 0.025       | 0.0075 (långsam) |
+| Normal  | 100         | ~75          | 1.0        | 0.025       | 0.0075 |
+| Party   | 100         | ~75          | 1.0        | 0.025       | 0.0075 |
+| Custom  | 100         | ~75          | 1.0        | 0.025       | 0.0075 |
+
+**Problem:** Release-defaults idag (`0.025`) ger fortfarande långsam gate-recovery (~3s efter tystnad). Om du vill få bort segheten efter tysta passager **utan** att ändra UI-känslan behöver vi också:
+
+**Förslag (valbart):** Gör gate-recovery delvis frikopplad — använd `max(releaseAlpha * 0.3, 0.03)` så att även Lugn får ~100ms gate-recovery efter tystnad, medan UI-release fortfarande styr själva fall-tiden.
+
+### Filer som ändras
+
+- **`pi/src/alsaMic.ts`** — gör `RMS_ATTACK_ALPHA`/`RMS_RELEASE_ALPHA` till mutable variabler + ny `setMicSmoothing()` export + asymmetrisk `noiseFloor` tracking baserat på samma värde (~10 rader).
+- **`pi/src/piEngine.ts`** — anropa `setMicSmoothing(cal.attackAlpha, cal.releaseAlpha)` när cal sätts/uppdateras (1 rad i `applyCalibration` eller motsvarande).
+- **`mem://pi/audio/signal-processing-chain.md`** — uppdatera: mic-smoothing styrs nu av samma Attack/Release som engine.
+- **`mem://pi/ui/softness-slider-curve.md`** — uppdatera: kurvan styr nu hela kedjan, inte bara engine-smoothing.
+
+### Vad du får
+
+- Attack-slidern påverkar nu **mic→engine→ljus** överallt — sätter du 100 är pipelinen helt utan smoothing-fördröjning.
+- Release-slidern styr både den hörbara fall-tiden och hur snabbt noise-gaten återhämtar sig efter tystnad.
+- Profilerna fungerar identiskt som idag på låga UI-värden (samma defaults).
+- Inga UI-ändringar behövs — slidrarna finns redan.
+
+### Vad vi INTE rör
+
+- Tick-rate, FFT-storlek, BLE — orelaterat.
+- `dynamics`, `gamma`, `bassWeight` — separata kontroller.
+- UI-komponenter — slidrarna existerar redan i `ProfileSettingsView`.
+
+### Reversibelt
+
+Lägger en env-flagga `MIC_SMOOTHING_FROM_CAL=false` som faller tillbaka till hårdkodade konstanter ifall ändringen orsakar oväntat beteende.
 
