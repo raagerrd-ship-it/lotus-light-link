@@ -249,22 +249,35 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
     ctx.stroke();
     ctx.restore();
 
-    // Processed curve (solid + fill)
+    // Processed curve — segmented by rising (attack) vs falling (release)
     ctx.setLineDash([]);
-    ctx.strokeStyle = "rgb(255,120,50)";
     ctx.lineWidth = 2 * dpr;
     ctx.lineJoin = "round";
-    ctx.beginPath();
-    for (let i = 0; i < CURVE_POINTS; i++) {
-      const x = i * step;
-      i === 0 ? ctx.moveTo(x, toY(processed[i])) : ctx.lineTo(x, toY(processed[i]));
+    ctx.lineCap = "round";
+    const ATTACK_COLOR = "rgb(255,200,60)";
+    const RELEASE_COLOR = "rgb(255,90,140)";
+    for (let i = 0; i < CURVE_POINTS - 1; i++) {
+      const x0 = i * step;
+      const x1 = (i + 1) * step;
+      const y0 = toY(processed[i]);
+      const y1 = toY(processed[i + 1]);
+      const rising = processed[i + 1] >= processed[i];
+      ctx.strokeStyle = rising ? ATTACK_COLOR : RELEASE_COLOR;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
     }
-    ctx.stroke();
 
-    // Fill under processed
+    // Fill under processed (neutral tint)
     const grad = ctx.createLinearGradient(0, pad, 0, pad + ch);
-    grad.addColorStop(0, "rgba(255,120,50,0.4)");
+    grad.addColorStop(0, "rgba(255,120,50,0.25)");
     grad.addColorStop(1, "rgba(255,120,50,0)");
+    ctx.beginPath();
+    ctx.moveTo(0, toY(processed[0]));
+    for (let i = 1; i < CURVE_POINTS; i++) {
+      ctx.lineTo(i * step, toY(processed[i]));
+    }
     ctx.lineTo((CURVE_POINTS - 1) * step, pad + ch);
     ctx.lineTo(0, pad + ch);
     ctx.closePath();
