@@ -35,6 +35,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [Noble compatibility](mem://pi/runtime/noble-compatibility) — Check state and _state on noble object
 - [Build resources](mem://pi/deployment/build-and-resources) — RAM/swap requirements for building on Pi Zero 2W
 - [BLE keep-alive](mem://pi/ble/keep-alive) — 200ms keep-alive bär idle-färg + länk (owner-switch model)
+- [Stale-write force](mem://pi/ble/stale-write-force) — Bypass delta-skip efter 400ms i active mode så tyst musik inte tappar BLEDOM-länken
 - [Idle force on pause](mem://pi/ble/idle-force-on-pause) — sendIdleForce bypasses busy/rate-limit/delta so lamp lands on idle immediately at pause
 - [Pi exclusive focus](mem://architecture/pi-exclusive-focus) — Architecture focused on headless Pi engine
 - [Event-driven engine](mem://pi/performance/event-driven-architecture) — Engine execution triggered by FFT frames
