@@ -187,7 +187,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
   try { resetLastSent(); } catch {}
 }
 
-export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
+export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
   _connectCallCount++;
   const sinceLast = Date.now() - _lastConnectCallAt;
   _lastConnectCallAt = Date.now();
@@ -266,7 +266,7 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
         }
         console.log(`${ts()} 4. peripheral.connectAsync() (5s timeout)…`);
         try {
-          await withTimeout(peripheral.connectAsync(), 'connectAsync', 5000);
+          await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
           _connected = peripheral;
           // Rensa ev. gamla disconnect-listeners från tidigare connect-cyklar.
           // Noble emittar internt `disconnect:<uuid>` på SIG noble-objektet,
