@@ -11,6 +11,28 @@ import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
+import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
+
+// Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
+// pga consecutive connect-failures, läses i index.ts boot för att auto-anropa
+// connectHardcoded() direkt efter restart (så användaren slipper trycka Anslut).
+const RECONNECT_FLAG = '/tmp/lotus-auto-reconnect-on-boot';
+export function setReconnectOnBootFlag(): void {
+  try { writeFileSync(RECONNECT_FLAG, String(Date.now()), 'utf8'); } catch {}
+}
+export function consumeReconnectOnBootFlag(): boolean {
+  try {
+    if (!existsSync(RECONNECT_FLAG)) return false;
+    unlinkSync(RECONNECT_FLAG);
+    return true;
+  } catch { return false; }
+}
+
+// Consecutive connect-failures räknare. Mönster från fältet: BLEDOM ansluter
+// alltid på 1-2s eller aldrig. Efter 2 misslyckanden i rad är noble's HCI-state
+// fastnat — enda fungerande lösning är full process-restart (systemd Restart=always).
+const CONSECUTIVE_FAIL_LIMIT = 2;
+let _consecutiveFailures = 0;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
 // Används så att engine kan toggla keep-alive/idle-heartbeat baserat på
