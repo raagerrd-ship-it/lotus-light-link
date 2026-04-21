@@ -41,10 +41,10 @@ type ProfileName = typeof PROFILE_NAMES[number];
 // Defaults speglar PRESET_CALS i src/pages/PiMobile.tsx — om de ändras där,
 // uppdatera även här. Båda måste vara i sync vid första boot/seed.
 const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
-  Lugn:   { bassWeight: 0.7, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true, hiShelfGainDb: 6 },
-  Normal: { bassWeight: 0.5, releaseAlpha: 0.025, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
-  Party:  { bassWeight: 0.3, releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, hiShelfGainDb: 6 },
-  Custom: { bassWeight: 0.5, releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Lugn:   { bassWeight: 0.7, attackAlpha: 0.061, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Normal: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
 };
 
 interface ProfilesFile {

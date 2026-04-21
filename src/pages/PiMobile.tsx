@@ -9,13 +9,13 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type Cal = { bassWeight: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean };
+type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true },
-  Normal: { bassWeight: 0.5, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true },
-  Party:  { bassWeight: 0.3, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true },
-  Custom: { bassWeight: 0.5, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true },
+  Normal: { bassWeight: 0.5, attack: 100, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true },
+  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -29,17 +29,25 @@ function formatUptime(s: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-/** Convert Softness 0-100 → releaseAlpha only (no extra smoothing filter) */
-function softnessToParams(s: number) {
-  const t = s / 100;
-  const releaseAlpha = 1.0 - 0.995 * Math.pow(t, 0.7);
-  return { releaseAlpha: Math.max(0.005, Math.round(releaseAlpha * 1000) / 1000), smoothing: 0 };
+/** Shared exponential mapping 0-100 → alpha 0.005-1.0 (lägre värde = mjukare) */
+function curveToAlpha(v: number) {
+  const t = v / 100;
+  const alpha = 1.0 - 0.995 * Math.pow(t, 0.7);
+  return Math.max(0.005, Math.round(alpha * 1000) / 1000);
+}
+function softnessToAlpha(s: number) { return curveToAlpha(s); }
+function attackToAlpha(a: number) { return curveToAlpha(a); }
+/** Reverse-mappa alpha → 0-100 UI-värde */
+function alphaToCurve(alpha: number) {
+  const t = Math.pow(Math.max(0, (1 - alpha) / 0.995), 1 / 0.7);
+  return Math.round(Math.min(100, Math.max(0, t * 100)));
 }
 
-type NumericCalKey = 'bassWeight' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain';
+type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain';
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = diskant, 0.5 = lika, 1.0 = bas" },
-  { key: "softness", label: "Mjukhet", min: 0, max: 100, step: 1, description: "0 = rått, 100 = mycket mjukt" },
+  { key: "attack", label: "Attack", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar" },
+  { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
   { key: "transientGain", label: "Transient boost", min: 0, max: 2, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 2.0 = överdrivna trumslag" },
   { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 3, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 3.0 = kraftigt komprimerad" },
@@ -95,8 +103,8 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
 }
 
 function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
-  const { releaseAlpha, smoothing } = softnessToParams(cal.softness);
-  const attackAlpha = 1.0;
+  const releaseAlpha = softnessToAlpha(cal.softness);
+  const attackAlpha = attackToAlpha(cal.attack);
   const out: number[] = [];
   let prev = raw[0];
   let dynamicCenter = 0.5;
@@ -119,12 +127,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
     dynamicCenter += (val - dynamicCenter) * 0.002;
     val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
 
-    // Smoothing
-    if (smoothing > 0) {
-      const k = Math.exp(-smoothing * 0.04);
-      extraSm = extraSm + k * (val - extraSm);
-      val = extraSm;
-    }
+    // (Smoothing-fältet är borttaget — Attack/Release styr nu helt)
 
     // Onset detection: simulate spectral flux from signal derivative
     if ((cal.transientGain ?? 0) > 0) {
@@ -447,8 +450,14 @@ function ProfileSettingsView({
           // Tick-position i procent längs slidern där "av"-läget ligger (0)
           const zeroPct = ((0 - min) / (max - min)) * 100;
           const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
+          const showSoftnessHeader = key === 'attack';
           return (
             <div key={key}>
+              {showSoftnessHeader && (
+                <div className="pt-2 pb-1 mb-2 border-t border-border/40">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mjukhet</h3>
+                </div>
+              )}
               <div className="flex justify-between text-sm mb-0.5">
                 <span>{label}</span>
                 <span className={`font-mono text-xs ${isOffAtZero && cal[key] === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{displayValue}</span>
@@ -1113,14 +1122,13 @@ export default function PiMobile() {
   const handleSave = async () => {
     setSaveError(null);
     try {
-      // Konvertera alla 4 profilers softness → releaseAlpha+smoothing innan PUT
+      // Konvertera alla 4 profilers attack/softness → attackAlpha/releaseAlpha innan PUT
       const profilesPayload: Record<string, any> = {};
       for (const [name, p] of Object.entries(profiles)) {
-        const { releaseAlpha, smoothing } = softnessToParams(p.softness);
         profilesPayload[name] = {
           bassWeight: p.bassWeight,
-          releaseAlpha,
-          smoothing,
+          attackAlpha: attackToAlpha(p.attack),
+          releaseAlpha: softnessToAlpha(p.softness),
           dynamicDamping: p.dynamicDamping,
           brightnessFloor: p.brightnessFloor,
           punchWhiteThreshold: p.punchWhiteThreshold,
@@ -1183,15 +1191,13 @@ export default function PiMobile() {
       ]);
 
       // Mappa varje profils stored kalibrering tillbaka till UI:ts Cal-form
-      // (releaseAlpha+smoothing → softness, defaults för saknade fält).
+      // (attackAlpha → attack, releaseAlpha → softness, defaults för saknade fält).
       const mapStoredToCal = (c: any): Cal => {
-        let softness = DEFAULT_CAL.softness;
-        if (c?.releaseAlpha != null) {
-          const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
-          softness = Math.round(Math.min(100, Math.max(0, t * 100)));
-        }
+        const softness = c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness;
+        const attack = c?.attackAlpha != null ? alphaToCurve(c.attackAlpha) : DEFAULT_CAL.attack;
         return {
           bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
+          attack,
           softness,
           dynamicDamping: c?.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
           brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
