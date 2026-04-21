@@ -51,12 +51,22 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
     try {
       const r = await fetch(`${piBase}/api/ble/state`, { signal: AbortSignal.timeout(2500) });
       if (r.ok) {
+        const ct = r.headers.get("content-type") ?? "";
+        if (!ct.includes("application/json")) throw new Error("non-json response");
         const data = (await r.json()) as BleStateResp;
         setState(data);
         onConnectedChange?.(data.connected);
         onEngineReadyChange?.(data.engineReady);
+      } else {
+        throw new Error(`http ${r.status}`);
       }
-    } catch {}
+    } catch {
+      // Engine ej nåbar → markera som ej redo / ej ansluten istället för
+      // att visa stale state (annars ser UI:t ut som att allt funkar).
+      setState((prev) => prev ? { ...prev, engineReady: false, connected: false } : { engineReady: false, connected: false, device: { name: "ELK-BLEDOM01", mac: "BE:67:00:15:09:41" } });
+      onConnectedChange?.(false);
+      onEngineReadyChange?.(false);
+    }
   }, [piBase, onConnectedChange, onEngineReadyChange]);
 
   useEffect(() => {
