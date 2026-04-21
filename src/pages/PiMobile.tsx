@@ -127,12 +127,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): number[] {
     dynamicCenter += (val - dynamicCenter) * 0.002;
     val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
 
-    // Smoothing
-    if (smoothing > 0) {
-      const k = Math.exp(-smoothing * 0.04);
-      extraSm = extraSm + k * (val - extraSm);
-      val = extraSm;
-    }
+    // (Smoothing-fältet är borttaget — Attack/Release styr nu helt)
 
     // Onset detection: simulate spectral flux from signal derivative
     if ((cal.transientGain ?? 0) > 0) {
