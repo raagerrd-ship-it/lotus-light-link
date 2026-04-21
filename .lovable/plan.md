@@ -1,48 +1,73 @@
 
 
-# Fix BLE-återanslutning efter tappad länk
+# Två BLE-vägar med tydlig owner-växling
 
-## Problem
+## Mål
 
-Första `Anslut` fungerar alltid. När lampan sedan tappar länken (typiskt: Sonos pausad → 400ms keep-alive failar i bakgrunden → BLEDOM:s radio-sida timeoutar utan att noble får ett rent `disconnect`-event), så fastnar nästa `Anslut`-försök på `Match hittad men connect hängde efter 8000ms`. Motor-restart löser det → bevisar att lampan är OK, men något i **noble-stackens cache** håller en halvdöd peripheral för den MAC:en, så `peripheral.connectAsync()` hänger oändligt.
+EN väg är alltid aktiv när BLE är ansluten — aldrig båda samtidigt, aldrig ingen.
 
-I `connect-hardcoded.ts` rensar vi `_connected` när vi får `disconnect`-event, men:
+- **Idle-vägen** (keep-alive-loopen) är default. Startar när BLE ansluter. Bär idle-färgen @ 200ms.
+- **Aktiva vägen** (`sendToBLE` per FFT-tick) tar över när Sonos rapporterar `playing`. Idle-loopen pausas helt under tiden.
+- När Sonos går till `paused`/`stopped`/TV → idle-vägen återupptas inom samma tick.
 
-1. Om disconnect-eventet aldrig kommer (tyst radio-timeout) fortsätter noble att ha en stale peripheral i sin interna `_peripherals`-cache.
-2. När scan hittar samma MAC återanvänder noble den gamla peripheral-instansen — som internt fortfarande tror att den har en pågående GATT-session.
-3. `connectAsync()` hänger då tyst.
+## Nuvarande problem
 
-## Lösning — pre-connect cleanup i `connectHardcoded`
+I dag kör keep-alive-loopen ALLTID när BLE är ansluten — även mitt under musik. Det betyder att idle-keepalive och `sendToBLE` slåss om samma single-slot, vilket:
+1. Ökar `skipBusyCount` under play (keep-alive konkurrerar med mic-writes).
+2. Gör ägarskapet otydligt: vem äger `writeBuf`-state under play?
+3. Räknar keep-alive-paket i `pkt/s` även under play, vilket skuggar det riktiga mic-flödet.
 
-Innan scan startas i `connectHardcoded()` ska vi alltid:
+## Lösning — explicit owner-switch
 
-1. **Stoppa pågående scan** — `await noble.stopScanningAsync().catch(() => {})`. Säkerhetsåtgärd om en tidigare connect-cykel kraschade mitt i scan.
-2. **Force-disconnect stale peripheral** — om `_connected` finns OCH `state !== 'connected'`, kör `_connected.disconnectAsync()` med 1s timeout, rensa alla listeners (`disconnect:<uuid>` på noble + `disconnect` på peripheralen), nolla `_connected`.
-3. **Rensa noble's peripheral-cache för target-MAC** — `delete noble._peripherals[<id>]` om det finns. Detta tvingar noble att skapa en fresh peripheral-instans nästa gång scan ser MAC:en, vilket bryter den hängande GATT-sessionen.
-4. **Engine-side state reset** — anropa `_onDisconnected?.()`, `setDevice(null)`, `resetLastSent()` för säkerhets skull (no-op om redan rent).
+### `pi/src/ble/protocol.ts`
+- Behåll `startKeepAlive`/`stopKeepAlive` men gör dem till den enda idle-mekanismen.
+- Sänk `KEEPALIVE_MS` till **200ms** (idle-färg-byte syns inom 200ms vid pause).
+- Ny exporterad `setIdleColor(r, g, b)` — synkron buffer-uppdate, ingen write. Keep-alive bär färgen vid nästa tick.
+- Ta bort `sendIdleForce` och `sendRawColor` (enligt tidigare plan).
 
-Detta körs alltid i början av `connectHardcoded()`, oavsett om vi tror att vi är frånkopplade eller inte. Idempotent: om allt redan är rent händer ingenting.
+### `pi/src/piEngine.ts` — owner-switch
+Nytt internt state: `_bleOwner: 'idle' | 'active' | 'none'`.
 
-## Bonus — rapportera disconnect till UI snabbare
+Övergångar:
+| Event | Från | Till | Action |
+|---|---|---|---|
+| `onBleConnected` | none | idle | `setIdleColor(idle)` + `startKeepAlive()` |
+| `setPlaying(true)` | idle | active | `stopKeepAlive()` — `tickInner` tar över via `sendToBLE` |
+| `setPlaying(false)` | active | idle | `setIdleColor(idle)` + `startKeepAlive()` |
+| `onBleDisconnected` | * | none | `stopKeepAlive()` |
 
-I dag märker UI:t att lampan tappade länken först när `_connected.state` ändras (vilket aldrig händer vid tyst radio-timeout). Lägg till: om keep-alive failar `KEEPALIVE_FAIL_THRESHOLD` (5) gånger i rad och vi INTE har `isDemandActive()` (alltid false i hardcoded-flödet), kör samma cleanup som ovan så `/api/ble/state` rapporterar `connected: false` direkt — användaren ser då att lampan är borta utan att behöva försöka anslut+vänta 8s timeout.
+`tickInner` returnerar tidigt om `_bleOwner !== 'active'` (skyddar mot race där en sen FFT-frame försöker skriva efter pause).
 
-## Tekniska detaljer
+### `pi/src/configServer.ts`
+Radera `/api/ble-fade-test`-endpoints + `sendRawColor`-import (enligt tidigare plan).
 
-**Filer som ändras:**
-- `pi/src/ble/connect-hardcoded.ts` — ny `forceCleanupStalePeripheral()` helper, anropas först i `connectHardcoded()`. Exporteras även så keep-alive kan trigga den.
-- `pi/src/ble/protocol.ts` — i `startKeepAlive`'s fail-handler, när `keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD` och vi inte har `isDemandActive()`, anropa cleanup direkt istället för att bara öka räknaren.
+### Diagnostik
+- `forceIdleNow()` uppdaterar `_diag.finalR/G/B` + `_tickData.color` så UI:t visar idle-färgen direkt vid pause (redan gjort i tidigare iteration, behålls).
+- `bleStats.sentCount` räknar bara writes från den **aktiva ägaren** — keep-alive räknar i idle, `sendToBLE` räknar i play. Aldrig båda. UI:t visar ~5 pkt/s i idle, mic-rate i play.
 
-**Loggning:**
-- `[connect-hardcoded] cleanup: stale peripheral state=<x>, force-disconnecting`
-- `[connect-hardcoded] cleanup: noble._peripherals[<id>] purged`
-- `[BLE] keep-alive failed 5x — link lost, marking disconnected`
+## Resultat
 
-**Memory som skrivs efter fix:**
-`mem://pi/ble/stale-peripheral-cache` — beskriv att noble's interna `_peripherals[id]` måste purgas mellan reconnects mot samma MAC, annars hänger `connectAsync` tyst.
+```text
+BLE connected ──► idle (keep-alive @200ms, idle-färg)
+                       │
+                  Sonos playing
+                       ▼
+                   active (sendToBLE per tick)
+                       │
+                  Sonos paused
+                       ▼
+                  idle (keep-alive återupptas)
+```
 
-**Inga ändringar i:**
-- UI (BleControlPanel) — felmeddelandet visas redan, blir bara mindre vanligt nu.
-- Sonos-poller, mic, scan-flödet i övrigt.
-- Noble-singleton — den ska fortfarande aldrig laddas om i process-livstiden.
+EN ägare i taget. Inga konkurrerande writes. `pkt/s` säger sanningen om vilken väg som är aktiv.
+
+## Filer
+
+- `pi/src/ble/protocol.ts` — radera `sendRawColor`+`sendIdleForce`, lägg till `setIdleColor`, `KEEPALIVE_MS=200`.
+- `pi/src/ble/index.ts` — uppdatera exports.
+- `pi/src/piEngine.ts` — `_bleOwner` state, owner-switch i `onBleConnected`/`onBleDisconnected`/`setPlaying`, tick-guard.
+- `pi/src/configServer.ts` — radera fade-test-endpoints.
+- `pi/src/sonosPoller.ts` — uppdatera kommentar.
+- `mem://pi/ble/single-slot-write-contract` — dokumentera owner-modellen.
+- Radera `mem://pi/ble/idle-force-on-pause` (inaktuell).
 
