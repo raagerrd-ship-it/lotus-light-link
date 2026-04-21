@@ -1266,7 +1266,7 @@ export default function PiMobile() {
       // (attackAlpha → attack, releaseAlpha → softness, defaults för saknade fält).
       const mapStoredToCal = (c: any): Cal => {
         const softness = c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness;
-        const attack = c?.attackAlpha != null ? alphaToCurve(c.attackAlpha) : DEFAULT_CAL.attack;
+        const attack = c?.attackAlpha != null ? alphaToAttack(c.attackAlpha) : DEFAULT_CAL.attack;
         return {
           bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
           attack,
