@@ -8,7 +8,7 @@ import express from 'express';
 import { getItem, setItem } from './storage.js';
 import {
   bleStats, BLE_BUILD_TAG,
-  setDimmingGamma, getDimmingGamma, sendRawColor,
+  setDimmingGamma, getDimmingGamma,
   getMinWriteIntervalMs, setMinWriteIntervalMs,
   getAllSubsystemStates, getSubsystemState, type SubsystemId,
 } from './ble/index.js';
@@ -785,64 +785,10 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, config });
   });
 
-  // --- BLE Fade Test ---
-  let fadeRunning = false;
-  let fadeCurrentWps = 0;
-  let fadeAbort = false;
-
-  app.post('/api/ble-fade-test', async (_req, res) => {
-    const engine = requireEngine(res);
-    if (!engine) return;
-    if (fadeRunning) {
-      return res.status(409).json({ error: 'Test already running' });
-    }
-    fadeRunning = true;
-    fadeAbort = false;
-    fadeCurrentWps = 0;
-    engine.suspend();
-    res.json({ ok: true, message: 'Fade test started' });
-
-    const steps = [10, 15, 20, 25, 30, 40, 50, 60, 75, 100];
-    const fadeSteps = 50;
-    const cyclesPerStep = 2;
-
-    for (const wps of steps) {
-      if (fadeAbort) break;
-      fadeCurrentWps = wps;
-      const intervalMs = Math.round(1000 / wps);
-
-      for (let cycle = 0; cycle < cyclesPerStep && !fadeAbort; cycle++) {
-        for (let i = 0; i <= fadeSteps && !fadeAbort; i++) {
-          const v = Math.round((i / fadeSteps) * 255);
-          sendRawColor(v, 0, 0);
-          await new Promise(r => setTimeout(r, intervalMs));
-        }
-        for (let i = fadeSteps; i >= 0 && !fadeAbort; i--) {
-          const v = Math.round((i / fadeSteps) * 255);
-          sendRawColor(v, 0, 0);
-          await new Promise(r => setTimeout(r, intervalMs));
-        }
-      }
-
-      if (!fadeAbort) await new Promise(r => setTimeout(r, 400));
-    }
-
-    fadeRunning = false;
-    engine.resume();
-  });
-
-  app.get('/api/ble-fade-test/status', (_req, res) => {
-    res.json({ running: fadeRunning, currentWps: fadeCurrentWps });
-  });
-
-  app.post('/api/ble-fade-test/stop', (_req, res) => {
-    const lastWps = fadeCurrentWps;
-    fadeAbort = true;
-    sendRawColor(0, 0, 0);
-    fadeRunning = false;
-    getEngine()?.resume();
-    res.json({ ok: true, lastWps });
-  });
+  // --- BLE Fade Test borttaget 2026-04-21 ---
+  // sendRawColor + fade-test endpoints raderade när BLE-arkitekturen reducerades
+  // till två vägar (idle keep-alive + active sendToBLE). Test-verktyget användes
+  // bara i dev/benchmark — inte i normal drift.
 
   // --- Software Update ---
   let updateRunning = false;
