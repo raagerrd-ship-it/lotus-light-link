@@ -346,11 +346,11 @@ export function getLastFFTTimestamp(): number {
   return lastFFTTimestamp;
 }
 
-/** Expose noise gate state for diagnostics — zero-alloc static object */
+/** Diagnostics — zero-alloc static object. Noise gate borttagen, behåller
+ *  formen så piEngine._diag.ngFloor/ngThreshold/etc. fortsätter funka utan
+ *  ändring av endpoints. floor/threshold rapporteras som 0. */
 const _ngState = { noiseFloor: 0, threshold: 0, smoothBass: 0, smoothMidHi: 0, smoothTotal: 0 };
 export function getNoiseGateState(): typeof _ngState {
-  _ngState.noiseFloor = noiseFloor;
-  _ngState.threshold = noiseFloor * NOISE_GATE_KNEE;
   _ngState.smoothBass = smoothBass;
   _ngState.smoothMidHi = smoothMidHi;
   _ngState.smoothTotal = smoothTotal;
