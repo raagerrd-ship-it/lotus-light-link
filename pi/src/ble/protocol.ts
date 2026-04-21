@@ -219,7 +219,15 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  if (!process.env.BLE_NO_DELTA_SKIP &&
+  // Stale-write force: vid tyst musik (R=G=B=0 över flera ticks) skulle
+  // delta-skip annars stoppa ALLA writes — och eftersom keep-alive är
+  // stoppad i active mode tappar BLEDOM länken på ~7s (reason=8 supervision
+  // timeout). Tröskeln 400ms = samma som keep-alive-intervallet, säkert
+  // under BLEDOM-timeouten även med jitter. När tröskeln passeras skippar
+  // vi delta-checken och skickar samma färg igen som "soft keep-alive".
+  const STALE_WRITE_MS = 400;
+  const isStale = (now - lastWriteTime) >= STALE_WRITE_MS;
+  if (!process.env.BLE_NO_DELTA_SKIP && !isStale &&
       cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
     return 'no-change';
