@@ -263,6 +263,9 @@ export async function connectHardcoded(timeoutMs = 8000): Promise<{ connected: b
             bleStats.disconnectCount++;
             bleStats.lastDisconnectAt = new Date().toISOString();
             if (_connected === peripheral) _connected = null;
+            // Auto-reconnect: vi var ANSLUTNA och tappade länken → starta backoff-loop.
+            // (Aktiveras nedan vid lyckad connect så manuella connect-fel inte triggar.)
+            scheduleAutoReconnect();
           });
           console.log(`${ts()} 5. ANSLUTEN ${peripheral.address}`);
 
