@@ -77,11 +77,12 @@ export function resetLastSent(): void {
 export function getLastWriteTime(): number { return lastWriteTime; }
 export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 
-// ── Keepalive ──
-// 400ms is well under BLEDOM's empirical supervision timeout (~1.5–2s on
-// Pi when "Connection interval update not available — HCI access limited").
-// Previously 1000ms → reason=8 disconnects within 7s on idle links.
-const KEEPALIVE_MS = 400;
+// ── Keepalive (idle-vägen) ──
+// 200ms = enda idle-vägen. Bär BÅDE BLE-länken (förhindrar reason=8) OCH
+// idle-färgen (writeBuf är redan synkat via setIdleColor). Engine startar
+// keep-alive vid BLE-connect + setPlaying(false), stoppar vid setPlaying(true)
+// + onBleDisconnected. Aldrig parallellt med sendToBLE.
+const KEEPALIVE_MS = 200;
 const KEEPALIVE_FAIL_THRESHOLD = 5;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
