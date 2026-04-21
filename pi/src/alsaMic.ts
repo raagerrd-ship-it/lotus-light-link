@@ -627,7 +627,6 @@ export function stopMic(): void {
   ringBuf.fill(0);
   prevPower.fill(0);
   smoothBass = 0; smoothMidHi = 0; smoothTotal = 0;
-  noiseFloor = 0.001;
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
