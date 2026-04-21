@@ -72,8 +72,15 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
   const fetchStatus = useCallback(async () => {
     try {
       const r = await fetch(`${piBase}/api/subsystem/status`, { signal: AbortSignal.timeout(2500) });
-      if (r.ok) setStatus(await r.json());
-    } catch {}
+      if (!r.ok) throw new Error(`http ${r.status}`);
+      const ct = r.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) throw new Error("non-json response");
+      setStatus(await r.json());
+    } catch {
+      // Engine ej nåbar → nollställ subsystem-status så UI:t inte visar
+      // "Redo" på gammal data när motorn faktiskt ligger nere.
+      setStatus(null);
+    }
   }, [piBase]);
 
   useEffect(() => {
