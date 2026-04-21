@@ -1185,15 +1185,13 @@ export default function PiMobile() {
       ]);
 
       // Mappa varje profils stored kalibrering tillbaka till UI:ts Cal-form
-      // (releaseAlpha+smoothing → softness, defaults för saknade fält).
+      // (attackAlpha → attack, releaseAlpha → softness, defaults för saknade fält).
       const mapStoredToCal = (c: any): Cal => {
-        let softness = DEFAULT_CAL.softness;
-        if (c?.releaseAlpha != null) {
-          const t = Math.pow(Math.max(0, (1 - c.releaseAlpha) / 0.995), 1 / 0.7);
-          softness = Math.round(Math.min(100, Math.max(0, t * 100)));
-        }
+        const softness = c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness;
+        const attack = c?.attackAlpha != null ? alphaToCurve(c.attackAlpha) : DEFAULT_CAL.attack;
         return {
           bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
+          attack,
           softness,
           dynamicDamping: c?.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
           brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
