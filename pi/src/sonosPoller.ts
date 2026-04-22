@@ -217,107 +217,43 @@ function parseStatus(s: any): void {
   if (!s?.ok) return;
   lastResponseTime = Date.now();
 
+  // ENKEL REGEL: lita på gatewayens playbackState. Inga inferenser från
+  // position, tystnad, eller saknad trackName. Är status PLAYING → output på.
+  // Är status PAUSED/IDLE → output av. Punkt.
+  const reportedPlaybackState = readPlaybackState(s.playbackState);
+
   // ── Position-tick (high frequency, partial update) ──
   if (s.source === 'position-tick') {
-    const newPos = s.positionMillis ?? currentState.positionMs;
-
-    // Gateway's authoritative state on tick (gatewayn skickar
-    // lastSonosEvent.playbackState i varje position-tick — den är sanning).
-    const reportedTickState = readPlaybackState(s.playbackState);
-    const reportedPaused = reportedTickState != null && !isPlaying(reportedTickState);
-
-    // Position-inferens får BARA promota till PLAYING om gatewayn inte
-    // explicit säger PAUSED/IDLE. Annars fastnar vi i PLAYING efter pause
-    // när Sonos råkar rapportera mikrorörelser i relTime direkt efter stop.
-    const positionImpliesPlaying = !reportedPaused && inferPlayingFromPosition(newPos);
-    updatePositionTracking(newPos);
-
-    let playbackState = reportedTickState ?? currentState.playbackState;
-    if (positionImpliesPlaying && !isPlaying(playbackState)) {
-      console.log('[Sonos] Position advancing → infer PLAYING');
-      playbackState = 'PLAYBACK_STATE_PLAYING';
-      pendingState = null;
-      pendingCount = 0;
-    }
-
-    // Om gatewayn säger PAUSED i ticken, applicera direkt (ingen confirm).
-    if (reportedPaused && isPlaying(currentState.playbackState)) {
-      console.log(`[Sonos] Position-tick reports ${reportedTickState} → apply immediately`);
-      pendingState = null;
-      pendingCount = 0;
-    }
-
     apply({
       ...currentState,
-      positionMs: newPos,
+      positionMs: s.positionMillis ?? currentState.positionMs,
       durationMs: s.durationMillis ?? currentState.durationMs,
       volume: s.volume ?? currentState.volume,
-      playbackState,
+      playbackState: reportedPlaybackState ?? currentState.playbackState,
     });
     return;
   }
 
   // ── Full status update ──
-  const previousPlaybackState = currentState.playbackState;
-  const previousPositionMs = currentState.positionMs;
-  const nextPositionMs = s.positionMillis ?? null;
-  const reportedPlaybackState = readPlaybackState(s.playbackState);
-  const stalledPosition =
-    nextPositionMs != null &&
-    previousPositionMs != null &&
-    Math.abs(nextPositionMs - previousPositionMs) < 50;
-
-  updatePositionTracking(nextPositionMs);
-
-  if (!s.trackName) {
-    const reportedPlaying = isPlaying(reportedPlaybackState ?? '');
-    if (autoTvModeEnabled && reportedPlaying) {
-      // TV/SPDIF source: no metadata but playing → TV-mode
-      confirmedApply({
-        ...currentState,
-        playbackState: reportedPlaybackState ?? previousPlaybackState,
-        volume: s.volume ?? currentState.volume,
-        isTvMode: true,
-      });
-    } else {
-      // No track + not playing → PAUSED, but only with staleness guard
-      const isStale = (Date.now() - lastResponseTime) > STALE_THRESHOLD_MS;
-      if (!isStale) {
-        confirmedApply({
-          ...currentState,
-          playbackState: 'PLAYBACK_STATE_PAUSED',
-          isTvMode: false,
-        });
-      }
-    }
-    return;
-  }
-
-  const inferredPlaybackState =
-    reportedPlaybackState ??
-    (stalledPosition && isPlaying(previousPlaybackState)
-      ? 'PLAYBACK_STATE_PAUSED'
-      : previousPlaybackState);
-
-  if (!reportedPlaybackState && stalledPosition && isPlaying(previousPlaybackState)) {
-    console.log('[Sonos] Position stalled + missing playbackState → infer PAUSED');
-  }
-
   // Parse palette from gateway response (array of [r,g,b] tuples)
   const gwPalette: [number, number, number][] | null =
     Array.isArray(s.palette) && s.palette.length > 0
       ? s.palette.filter((c: any) => Array.isArray(c) && c.length >= 3)
       : null;
 
-  confirmedApply({
+  // Auto TV-mode: PLAYING + ingen trackName → TV/SPDIF
+  const reportedPlaying = isPlaying(reportedPlaybackState ?? '');
+  const isTvMode = autoTvModeEnabled && reportedPlaying && !s.trackName;
+
+  apply({
     trackName: s.trackName ?? null,
     artistName: s.artistName ?? null,
     albumArtUrl: s.albumArtUri ?? s.albumArtURI ?? s.albumArtUrl ?? null,
-    playbackState: inferredPlaybackState,
+    playbackState: reportedPlaybackState ?? currentState.playbackState,
     volume: s.volume ?? currentState.volume,
-    positionMs: nextPositionMs,
+    positionMs: s.positionMillis ?? null,
     durationMs: s.durationMillis ?? null,
-    isTvMode: false,
+    isTvMode,
     palette: gwPalette ?? currentState.palette,
   });
 }
