@@ -64,3 +64,4 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [PCC service contract](mem://pi/runtime/pcc-contract) — PCC äger runtime/portar/config/perms; tjänsten äger appkod + deps. PORT-fallback, PCC_CONFIG_DIR, services.json permissions
 - [Settings survive updates](mem://pi/deployment/settings-survive-updates) — pi/data/ rörs aldrig av update/setup; storage.ts auto-migrerar mellan legacy-paths
 - [Sonos stale-watchdog](mem://pi/sonos/stale-watchdog) — 10s watchdog tvingar PAUSED om status saknas i PLAYING (skydd mot fastnad output)
+- [Saturation mapping](mem://technical/lighting/saturation-mapping) — Vit-rensning (min-channel subtract + peak-boost) bevarar hue, default saturation=1.0 i alla profiler
