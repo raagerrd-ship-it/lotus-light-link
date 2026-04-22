@@ -15,8 +15,10 @@ type: constraint
 ### PCC tillhandahåller (env)
 - `PORT` — engine-port (PCC tilldelad). Fallback-kedja: `PORT` → `ENGINE_PORT` → `BACKEND_PORT` → `UI_PORT + 50` → 3050
 - `UI_PORT` — UI-port. Engine räknar `UI_PORT + 50` för fallback om PORT saknas
-- `PCC_CONFIG_DIR` — config/secrets storage. `storage.ts` föredrar denna före `LOTUS_DATA_DIR` och hårdkodad path
+- `PCC_DATA_DIR` — persistent state (profiler, kalibrering, BLE-state, cache). `storage.ts` lägger ALLT state här.
+- `PCC_CONFIG_DIR` — settings/config. `storage.ts` lägger keys i `SETTINGS_KEYS` här (övrigt → DATA_DIR).
 - `PCC_LOG_DIR` — logg-katalog (för fil-logg om vi skulle byta från stdout)
+- **Förbjudet:** skriva runtime-state under `/opt/` — den katalogen kan ersättas vid update.
 - `PCC_CORE` / `CPU_CORE` — CPU-affinitet (default 1)
 
 ### services.json deklarerar
