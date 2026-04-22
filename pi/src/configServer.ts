@@ -201,6 +201,10 @@ export function startConfigServer(port = 3050): void {
   // (managed:false + runInstallOnRelease:false).
   app.get('/api/permissions', async (_req, res) => {
     const fs = await import('node:fs');
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+
     const result: {
       ok: boolean;
       rfkillAccess: boolean;
@@ -210,6 +214,13 @@ export function startConfigServer(port = 3050): void {
       hasBluetooth: boolean;
       hasAudio: boolean;
       uid: number;
+      // Self-check additions (PCC verifierar runtime-perms efter release)
+      nodeCaps: string | null;        // getcap-output på process.execPath
+      hasNetRaw: boolean;             // CAP_NET_RAW i caps eller ambient
+      hasNetAdmin: boolean;           // CAP_NET_ADMIN i caps eller ambient
+      bluetoothdActive: boolean;      // systemctl is-active bluetooth
+      bluetoothdStatus: string;       // raw output
+      nobleState: string;             // 'poweredOn' | 'unknown' | ...
       missing: string[];
       setupCommand: string;
     } = {
@@ -221,10 +232,14 @@ export function startConfigServer(port = 3050): void {
       hasBluetooth: false,
       hasAudio: false,
       uid: process.getuid?.() ?? -1,
+      nodeCaps: null,
+      hasNetRaw: false,
+      hasNetAdmin: false,
+      bluetoothdActive: false,
+      bluetoothdStatus: 'unknown',
+      nobleState: 'unknown',
       missing: [],
       setupCommand: (() => {
-        // Härleder UI-port: 1) UI_PORT från PCC, 2) CONFIG_PORT - 50.
-        // CORE läses från PCC via env, default 1 (matchar PCC default för Pi-tjänster).
         const cfgPort = Number(process.env.PORT ?? process.env.ENGINE_PORT ?? process.env.BACKEND_PORT ?? 3050);
         const uiPort = process.env.UI_PORT ? Number(process.env.UI_PORT) : Math.max(1, cfgPort - 50);
         const core = Number(process.env.PCC_CORE ?? process.env.CPU_CORE ?? 1);
@@ -232,6 +247,7 @@ export function startConfigServer(port = 3050): void {
       })(),
     };
 
+    // 1. /dev/rfkill access
     try {
       fs.accessSync('/dev/rfkill', fs.constants.R_OK | fs.constants.W_OK);
       result.rfkillAccess = true;
@@ -239,22 +255,68 @@ export function startConfigServer(port = 3050): void {
       result.rfkillError = e?.code ?? String(e);
     }
 
+    // 2. Supplementary groups
     try {
-      const { execFile } = await import('node:child_process');
-      const { promisify } = await import('node:util');
-      const exec = promisify(execFile);
       const { stdout } = await exec('id', ['-Gn']);
       result.groups = stdout.trim().split(/\s+/);
     } catch {}
-
     result.hasNetdev    = result.groups.includes('netdev');
     result.hasBluetooth = result.groups.includes('bluetooth');
     result.hasAudio     = result.groups.includes('audio');
 
-    if (!result.rfkillAccess) result.missing.push('/dev/rfkill (BLE)');
-    if (!result.hasNetdev)    result.missing.push('netdev-grupp (BLE)');
-    if (!result.hasBluetooth) result.missing.push('bluetooth-grupp (BLE)');
-    if (!result.hasAudio)     result.missing.push('audio-grupp (mic)');
+    // 3. Node-binary caps (getcap) + ambient caps från /proc/self/status
+    try {
+      const { stdout } = await exec('getcap', [process.execPath], { timeout: 1500 });
+      result.nodeCaps = stdout.trim() || '(none)';
+    } catch (e: any) {
+      result.nodeCaps = `error: ${e?.code ?? e?.message ?? 'unknown'}`;
+    }
+    try {
+      const status = fs.readFileSync('/proc/self/status', 'utf8');
+      const ambLine = status.match(/^CapAmb:\s+([0-9a-fA-F]+)/m);
+      const effLine = status.match(/^CapEff:\s+([0-9a-fA-F]+)/m);
+      const ambHex = ambLine ? BigInt('0x' + ambLine[1]) : 0n;
+      const effHex = effLine ? BigInt('0x' + effLine[1]) : 0n;
+      const combined = ambHex | effHex;
+      // CAP_NET_ADMIN = 12, CAP_NET_RAW = 13
+      const CAP_NET_ADMIN = 1n << 12n;
+      const CAP_NET_RAW   = 1n << 13n;
+      result.hasNetAdmin = (combined & CAP_NET_ADMIN) !== 0n;
+      result.hasNetRaw   = (combined & CAP_NET_RAW)   !== 0n;
+    } catch {}
+    // Fallback: getcap-output kan visa caps även om CapEff är tom (file caps på binär)
+    if (result.nodeCaps && /cap_net_raw/i.test(result.nodeCaps))   result.hasNetRaw = true;
+    if (result.nodeCaps && /cap_net_admin/i.test(result.nodeCaps)) result.hasNetAdmin = true;
+
+    // 4. bluetoothd active
+    try {
+      const { stdout } = await exec('systemctl', ['is-active', 'bluetooth'], { timeout: 1500 });
+      result.bluetoothdStatus = stdout.trim();
+      result.bluetoothdActive = result.bluetoothdStatus === 'active';
+    } catch (e: any) {
+      // is-active returnerar exit-code != 0 om inte aktiv → execFile rejectar
+      result.bluetoothdStatus = e?.stdout?.toString().trim() || (e?.code ?? 'error');
+      result.bluetoothdActive = false;
+    }
+
+    // 5. noble adapter state
+    try {
+      const mod = await import('./ble/noble-singleton.js');
+      const noble: any = (mod as any).getNoble?.() ?? (mod as any).noble ?? null;
+      if (noble) {
+        result.nobleState = noble.state ?? noble._state ?? 'unknown';
+      }
+    } catch {}
+
+    // Missing-rapport
+    if (!result.rfkillAccess)    result.missing.push('/dev/rfkill (BLE)');
+    if (!result.hasNetdev)       result.missing.push('netdev-grupp (BLE)');
+    if (!result.hasBluetooth)    result.missing.push('bluetooth-grupp (BLE)');
+    if (!result.hasAudio)        result.missing.push('audio-grupp (mic)');
+    if (!result.hasNetRaw)       result.missing.push('CAP_NET_RAW (BLE HCI)');
+    if (!result.hasNetAdmin)     result.missing.push('CAP_NET_ADMIN (BLE HCI)');
+    if (!result.bluetoothdActive) result.missing.push(`bluetoothd (${result.bluetoothdStatus})`);
+    if (result.nobleState !== 'poweredOn') result.missing.push(`noble adapter state=${result.nobleState}`);
 
     result.ok = result.missing.length === 0;
     res.json(result);
