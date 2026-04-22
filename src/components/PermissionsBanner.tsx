@@ -15,6 +15,12 @@ interface PermsResp {
   hasNetdev: boolean;
   hasBluetooth: boolean;
   hasAudio: boolean;
+  hasNetRaw?: boolean;
+  hasNetAdmin?: boolean;
+  bluetoothdActive?: boolean;
+  bluetoothdStatus?: string;
+  nobleState?: string;
+  nodeCaps?: string | null;
   missing: string[];
   setupCommand: string;
 }
