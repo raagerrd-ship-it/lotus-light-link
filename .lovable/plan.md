@@ -1,92 +1,78 @@
 
 
-## Du har rätt — Attack/Release-slidrarna styr bara engine-smoothing, inte mic-stadiet
+## Djupgranskning: stabilitetsrisker på Pi-engine
 
-### Var slidrarna faktiskt går idag
+Granskningen täcker timers, listeners, oändliga loopar, logg-spam och resursläckor i `pi/src/`. Jag har hittat **6 reella problem** + 2 mindre observationer.
 
-UI Attack/Release → `cal.attackAlpha` / `cal.releaseAlpha` → används **bara** i `piEngine.ts` rad 644 på den slutgiltiga `energyNorm`-signalen (efter dynamics, gamma, allt).
+---
 
-Mic-stadiet (`alsaMic.ts`) har **egna hårdkodade konstanter**:
-- `RMS_ATTACK_ALPHA = 0.8` (rad 184)
-- `RMS_RELEASE_ALPHA = 0.15` (rad 185)
-- `NOISE_GATE_KNEE = 3.0` (rad 199)
-- `NOISE_FLOOR_TRACK_ALPHA = 0.001` (rad 198)
+### Problem 1: Auto-reconnect-loop kan bli oändlig + parallell med fast-fail-restart
+`pi/src/ble/connect-hardcoded.ts`
 
-Slidrarna i UI:t har alltså aldrig påverkat bas-detektering eller noise-gate — bara den sista smoothing-stegen i engine. Det är därför du upplever segheten även efter att du dragit upp Attack.
+- `scheduleAutoReconnect()` har **ingen övre gräns** på antal försök — backar bara av till max 30s och fortsätter för evigt.
+- Loopen anropar `connectHardcoded()`, som i sin tur räknar `_consecutiveFailures` och vid 2 i rad gör `process.exit(0)` för systemd-restart.
+- Under boot körs `consumeReconnectOnBootFlag` → ny connect → fail → ny exit. **Risk för boot-loop** om lampan är permanent borta (t.ex. släckt).
+- **Fix:** lägg max-attempts (t.ex. 20 försök ≈ 10 min total backoff), pausa loopen efter det och kräv manuell trigger.
 
-### Förslag: koppla ihop hela kedjan med samma Attack/Release
+---
 
-Använd **samma** `attackAlpha`/`releaseAlpha` från profilen för:
+### Problem 2: Parallella triggers — keep-alive-fail OCH peripheral.disconnect kan båda schemalägga reconnect
+`pi/src/ble/protocol.ts` (rad 138–148) + `connect-hardcoded.ts` peripheral.once('disconnect')
 
-1. **`alsaMic.ts` `smoothRms`** (bas + mid/hi pre-smoothing) → ersätter `RMS_ATTACK_ALPHA` / `RMS_RELEASE_ALPHA`
-2. **`alsaMic.ts` noise-floor tracking** → härleds från release-värdet (snabbare release = snabbare gate-recovery)
-3. **`piEngine.ts` rad 644** (befintlig användning) → oförändrad
+- Vid supervision-timeout: keep-alive failar 5x → `forceCleanupStalePeripheral` → `scheduleAutoReconnect`. Men **disconnect-eventet** kan fyra parallellt och göra samma sak.
+- `_connectInFlight`-guarden hjälper bara delvis; race-fönster där två `connectHardcoded` kallas tätt ger dubbla CALL-loggar (vi ser detta i `_connectCallCount`-spam).
+- **Fix:** central kö för "request reconnect" som debouncar 1s.
 
-På så vis betyder Attack=100 verkligen "ingen smoothing någonstans i kedjan" och Release=0 betyder "rått fall överallt".
+---
 
-### Konkret mappning
+### Problem 3: writeSlotWatchdog kan dubbel-schemaläggas och "stuck-count" spammar logg
+`pi/src/ble/protocol.ts` rad 305–313
 
-I `alsaMic.ts` läggs en exporterad setter som engine anropar när profil byts:
+- Vid varje `sendToBLE` clearas och sätts `writeSlotWatchdog` om. Om writeAsync hänger, loggas `[BLE] writeAsync stuck >500ms` — men nästa tick efter watchdog kan trigga **igen direkt** eftersom sloten just släpptes. Risk för rate-limit-loggspam i journald (kan fylla disken på Pi:n efter dagar/veckor).
+- **Fix:** rate-limita warn-loggen (max 1/10s) och räkna stuck silent.
 
-```ts
-let micAttackAlpha = 0.8;   // default = nuvarande beteende
-let micReleaseAlpha = 0.15; // default = nuvarande beteende
-let micGateRecoveryAlpha = 0.05; // default snabb recovery
+---
 
-export function setMicSmoothing(attackAlpha: number, releaseAlpha: number) {
-  micAttackAlpha = attackAlpha;
-  micReleaseAlpha = releaseAlpha;
-  // Gate-recovery: snabbare när release är snabbt (motverkar samma symptom)
-  micGateRecoveryAlpha = Math.max(0.01, releaseAlpha * 0.3);
-}
-```
+### Problem 4: micReadyWaiters läcker om man startar/stoppar mic snabbt
+`pi/src/alsaMic.ts` rad 53–99
 
-`smoothRms` använder `micAttackAlpha`/`micReleaseAlpha` istället för konstanterna.
-`applyNoiseGate` använder `micGateRecoveryAlpha` istället för `NOISE_FLOOR_TRACK_ALPHA` på "rising"-vägen (asymmetrisk floor tracking, snabb upp).
+- `waitForFirstAudio` lägger en waiter med setTimeout som rejectar efter timeoutMs. Om `stopMic()` kallas innan timeouten triggar `rejectMicReadyWaiters` (bra). Men om `startMic` kallas igen direkt efter, finns inget skydd mot att gamla waiters fortfarande har timers — `clearMicReadyWaiters` returnerar dem men gör ingen `clearTimeout`. Mindre läcka men ok.
+- **Fix:** `clearTimeout(waiter.timer)` i `clearMicReadyWaiters` även när vi inte resolvar.
 
-### Var setter:n anropas
+---
 
-I `piEngine.ts` där `cal` uppdateras (init + profil-byte). En enda rad:
-```ts
-setMicSmoothing(cal.attackAlpha, cal.releaseAlpha);
-```
+### Problem 5: BLE disconnect-listeners kan stapla på noble._peripherals via cache-purge
+`pi/src/ble/connect-hardcoded.ts` rad 178–197 + onDiscover rad 292–306
 
-### "Inför alla" — defaults i `configServer.ts`
+- Vi `removeAllListeners('disconnect:<uuid>')` på noble innan vi sätter ny listener — bra. Men om peripheral redan finns i `noble._peripherals` (cache hit) och vi inte purgade rätt key (case-mismatch på UUID), staplas listeners.
+- Symptom: `MaxListenersExceededWarning` efter ~10 reconnects → långsam memory creep + node-spam i journal.
+- **Fix:** sätt `n.setMaxListeners(0)` defensivt + logga `n.listenerCount(disconnectEvent)` vid varje connect för verifiering.
 
-Befintliga profil-defaults är redan rimliga; mappningen ger automatiskt:
+---
 
-| Profil  | Attack (UI) | Release (UI) | Mic attack | Mic release | Gate recovery |
-|---------|-------------|--------------|------------|-------------|---------------|
-| Lugn    | ~25         | ~75          | 0.061      | 0.025       | 0.0075 (långsam) |
-| Normal  | 100         | ~75          | 1.0        | 0.025       | 0.0075 |
-| Party   | 100         | ~75          | 1.0        | 0.025       | 0.0075 |
-| Custom  | 100         | ~75          | 1.0        | 0.025       | 0.0075 |
+### Problem 6: Sonos pollTimer fortsätter parallellt med SSE — dubbla parseStatus-anrop
+`pi/src/sonosPoller.ts` rad 330–360
 
-**Problem:** Release-defaults idag (`0.025`) ger fortfarande långsam gate-recovery (~3s efter tystnad). Om du vill få bort segheten efter tysta passager **utan** att ändra UI-känslan behöver vi också:
+- Både SSE OCH pollTimer kör parseStatus var 2:a sekund. Inga konsekvenser för korrekthet (parseStatus är idempotent), men onödigt CPU och nätverkstrafik. På Pi Zero 2W räknas det.
+- **Fix:** stäng av pollTimer när SSE är ansluten, starta om vid SSE-error.
 
-**Förslag (valbart):** Gör gate-recovery delvis frikopplad — använd `max(releaseAlpha * 0.3, 0.03)` så att även Lugn får ~100ms gate-recovery efter tystnad, medan UI-release fortfarande styr själva fall-tiden.
+---
 
-### Filer som ändras
+### Mindre observationer (inte fix nu)
+- `bleStats` växer aldrig — räknare är OK.
+- `_connectionLog` har MAX_EVENTS=200 cap — bra.
+- onsetBuffer / windowedBuf / ringBuf är pre-allokerade — zero-alloc i hot path. Bra.
+- `_diag` muteras in-place — bra.
 
-- **`pi/src/alsaMic.ts`** — gör `RMS_ATTACK_ALPHA`/`RMS_RELEASE_ALPHA` till mutable variabler + ny `setMicSmoothing()` export + asymmetrisk `noiseFloor` tracking baserat på samma värde (~10 rader).
-- **`pi/src/piEngine.ts`** — anropa `setMicSmoothing(cal.attackAlpha, cal.releaseAlpha)` när cal sätts/uppdateras (1 rad i `applyCalibration` eller motsvarande).
-- **`mem://pi/audio/signal-processing-chain.md`** — uppdatera: mic-smoothing styrs nu av samma Attack/Release som engine.
-- **`mem://pi/ui/softness-slider-curve.md`** — uppdatera: kurvan styr nu hela kedjan, inte bara engine-smoothing.
+---
 
-### Vad du får
+### Föreslagen åtgärdsordning (default mode)
 
-- Attack-slidern påverkar nu **mic→engine→ljus** överallt — sätter du 100 är pipelinen helt utan smoothing-fördröjning.
-- Release-slidern styr både den hörbara fall-tiden och hur snabbt noise-gaten återhämtar sig efter tystnad.
-- Profilerna fungerar identiskt som idag på låga UI-värden (samma defaults).
-- Inga UI-ändringar behövs — slidrarna finns redan.
+1. **Problem 1 + 2** (boot-loop + dubbla reconnects) — högst prio, kan ta ner Pi:n
+2. **Problem 3** (logg-spam) — fyller journald över tid
+3. **Problem 5** (listener-stacking) — slow leak
+4. **Problem 6** (SSE+poll redundans) — CPU-besparing
+5. **Problem 4** (micReadyWaiters) — kosmetisk
 
-### Vad vi INTE rör
-
-- Tick-rate, FFT-storlek, BLE — orelaterat.
-- `dynamics`, `gamma`, `bassWeight` — separata kontroller.
-- UI-komponenter — slidrarna existerar redan i `ProfileSettingsView`.
-
-### Reversibelt
-
-Lägger en env-flagga `MIC_SMOOTHING_FROM_CAL=false` som faller tillbaka till hårdkodade konstanter ifall ändringen orsakar oväntat beteende.
+Vill du att jag implementerar alla 5 i en sweep, eller plockar 1+2+3 nu (de kritiska) och sparar resten?
 
