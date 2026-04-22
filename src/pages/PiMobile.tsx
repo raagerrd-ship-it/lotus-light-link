@@ -1370,7 +1370,7 @@ export default function PiMobile() {
         setPiVersion({ version: data.version ?? '?', commitShort: data.commit ?? '?', branch: data.branch ?? '?' });
         if (typeof data.uptime === 'number') setEngineUptime(data.uptime);
         if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
-        setSonosPlaying(data.sonos?.playbackState === 'PLAYBACK_STATE_PLAYING');
+        setSonosPlaying(typeof data.sonos?.playbackState === 'string' && data.sonos.playbackState.includes('PLAYING'));
 
       } catch {
         if (!cancelled) setPiOnline(false);
