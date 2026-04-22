@@ -115,6 +115,7 @@ const DEFAULT_CAL: LightCalibration = {
   bassWeight: 0.7, hiShelfGainDb: 6,
   punchWhiteThreshold: 100,
   brightnessFloor: 0,
+  saturation: 1.0,
   transientGain: 1.0,
   perceptualGamma: 0,
   dynamicsEnabled: true,
