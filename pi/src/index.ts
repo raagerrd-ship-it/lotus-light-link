@@ -70,7 +70,11 @@ function applySonosStateToEngine(state: {
   albumArtUrl: string | null;
 }, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }): void {
   if (!engineInstance) return;
-  const isPlaying = state.playbackState === 'PLAYBACK_STATE_PLAYING';
+  // Acceptera alla PLAYING-varianter (PLAYBACK_STATE_PLAYING, PLAYING, ev.
+  // PLAYING_ad). Matchar sonosPoller.isPlaying() och UI:s play-detektion —
+  // utan detta visade UI:t play-symbol medan engine satt PAUSED.
+  const isPlaying = typeof state.playbackState === 'string'
+    && state.playbackState.includes('PLAYING');
 
   if (state.isTvMode) {
     engineInstance.setPlaying(true);
