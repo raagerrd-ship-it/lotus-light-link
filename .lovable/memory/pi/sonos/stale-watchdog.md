@@ -1,16 +1,20 @@
 ---
-name: Sonos stale-watchdog förhindrar fastnad PLAYING
-description: sonosPoller har 10s watchdog som tvingar PAUSED om varken SSE eller poll svarat under playing. Skydd mot fastnad output när Sonos pausar och pause-eventet missas eller gateway tappar kontakt.
+name: Sonos trust-gateway-state — ingen inferens
+description: sonosPoller litar enbart på gatewayens playbackState. Inga inferenser från position-rörelse, tystnad, saknad trackName, eller stale-watchdog. PLAYING → output på, PAUSED → output av. Punkt.
 type: feature
 ---
-**Symptom utan watchdog:** Sonos pausar (II i UI), men engine fortsätter skicka RGB-output till lampan eftersom inget event nådde fram.
+**Princip:** Gatewayen (Cast Away) är sanningskällan för Sonos play-state. sonosPoller läser `s.playbackState` och applicerar direkt — inga gissningar.
 
-**Implementation (`pi/src/sonosPoller.ts`):**
-- `startStaleWatchdog()` körs varje 2s.
-- Om `currentState.playbackState` innehåller `PLAYING` OCH `max(lastResponseTime, lastSuccessfulPollAt)` är >10s gammalt → `apply({ ...state, playbackState: 'PLAYBACK_STATE_PAUSED' })`.
-- Listeners (inkl. `applySonosStateToEngine`) får eventet → `engine.setPlaying(false)` → owner=idle, keep-alive tar över idle-färgen, sendToBLE stoppas.
-- Watchdogen startas i `startSonosPoller`, stoppas i `stopSonosPoller`.
+**Borttaget (2026-04-22):**
+- `inferPlayingFromPosition()` — position-delta gissade PLAYING.
+- `confirmedApply()` med CONFIRM_COUNT-räknare för PAUSED-flips.
+- `startStaleWatchdog()` som tvingade PAUSED efter 10s utan respons.
+- "stalled position + missing playbackState → PAUSED"-inferens.
+- "no trackName → PAUSED"-inferens.
+- bootPhase-flagga.
 
-**Bonusfix:** `apply()`s `changed`-detection inkluderar nu också `albumArtUrl` (annars triggar palette-byten inte listeners om bara art-URL ändrats utan track-byte).
+**Kvar i `apply()`:** En enkel diff-detektion (playbackState, trackName, volume, isTvMode, albumArtUrl) som triggar listeners endast vid faktisk ändring.
 
-Verifierat 2026-04-22.
+**Auto TV-mode:** PLAYING + ingen trackName → `isTvMode = true` (om `autoTvModeEnabled`).
+
+**Varför:** Tidigare logik kunde tvinga PAUSED mitt under låt p.g.a. tystnad eller temporärt missade tickar — engine slutade sända output trots att Sonos faktiskt spelade. Lampans säkerhet hanteras nu istället av BLE-keep-alive @200ms (alltid på när connected).
