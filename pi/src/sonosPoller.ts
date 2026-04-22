@@ -234,19 +234,15 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 
   // Starta pollen som fallback — SSE.onopen pausar den när den ansluter
   startPollTimer();
-  startStaleWatchdog();
 
-  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, confirm: ${CONFIRM_COUNT}, stale-watchdog: ${STALE_PLAYING_THRESHOLD_MS}ms)`);
+  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, mode: trust-gateway-state)`);
 }
 
 export function stopSonosPoller(): void {
   sseCleanup?.();
   sseCleanup = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  stopStaleWatchdog();
   activeConfig = null;
-  pendingState = null;
-  pendingCount = 0;
 }
 
 export function getPollerConfig(): SonosPollerConfig | null {
