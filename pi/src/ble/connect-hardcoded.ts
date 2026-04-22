@@ -52,14 +52,26 @@ let _connectCallCount = 0;
 // ── Auto-reconnect-loop ──────────────────────────────────────────────────
 // Aktiveras när en lyckad connect följs av disconnect (alltså: lampan VAR
 // ansluten och tappade länken). Inaktiveras vid manuell disconnectHardcoded()
-// eller när reconnect lyckas. Backoff: 2s → 4s → 8s → 16s → max 30s, oändligt.
+// eller när reconnect lyckas. Backoff: 2s → 4s → 8s → 16s → max 30s.
+// MAX_ATTEMPTS hindrar oändlig boot-loop om lampan är permanent borta —
+// efter 20 försök (~10 min total backoff) pausas loopen och kräver manuell
+// trigger via /api/ble/connect. Räknaren nollställs vid lyckad reconnect.
+const AUTO_RECONNECT_MAX_ATTEMPTS = 20;
 let _autoReconnectEnabled = false;
 let _autoReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _autoReconnectAttempt = 0;
+let _autoReconnectGivenUp = false;
+
+// Debounce-skydd: keep-alive-fail OCH peripheral.disconnect kan båda
+// schemalägga reconnect inom samma race-fönster. 1s debounce kollapsar
+// dubbla triggers så vi inte räknar upp _autoReconnectAttempt två gånger.
+let _lastReconnectRequestAt = 0;
+const RECONNECT_DEBOUNCE_MS = 1000;
 
 function clearAutoReconnect(): void {
   if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
   _autoReconnectAttempt = 0;
+  _autoReconnectGivenUp = false;
 }
 
 /**
