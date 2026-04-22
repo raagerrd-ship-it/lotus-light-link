@@ -171,12 +171,9 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 
   activeConfig = cfg;
 
-  // Reset stability state
-  pendingState = null;
-  pendingCount = 0;
-  lastPositionMs = null;
-  lastPositionTime = 0;
-  bootPhase = true;
+  // Reset response time
+  lastResponseTime = 0;
+
 
   const statusUrl = `${baseUrl}${statusPath}`;
 
