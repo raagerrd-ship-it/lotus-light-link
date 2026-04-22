@@ -76,21 +76,9 @@ export function onSonosChange(fn: Listener): () => void {
   return () => listeners.delete(fn);
 }
 
-// ── Stability: consecutive confirmation + position inference ──
+// ── Enkel state-tracking — vi litar på gatewayens playbackState rakt av ──
 
-/** How many consecutive polls must agree before we flip playback state.
- *  Sänkt från 2 → 1: BLE owner-switch (active→idle) + keep-alive @200ms bär
- *  idle-färgen direkt vid pause, så vi vinner ~2-4s pause-latens utan flicker. */
-const CONFIRM_COUNT = 1;
-/** Max age (ms) of last successful response before we consider data stale */
-const STALE_THRESHOLD_MS = 8000;
-
-let pendingState: string | null = null;   // candidate playback state
-let pendingCount = 0;                      // consecutive polls matching candidate
-let lastResponseTime = 0;                  // timestamp of last successful parse
-let lastPositionMs: number | null = null;  // for position-based inference
-let lastPositionTime = 0;                  // when we recorded lastPositionMs
-let bootPhase = true;                      // bypass confirmation on first response
+let lastResponseTime = 0; // timestamp of last successful parse
 
 function isPlaying(state: string): boolean {
   return state.includes('PLAYING');
@@ -98,22 +86,6 @@ function isPlaying(state: string): boolean {
 
 function readPlaybackState(raw: unknown): string | null {
   return typeof raw === 'string' && raw.length > 0 ? raw : null;
-}
-
-/** Infer playing from position movement: if position advanced >50ms in a reasonable window */
-function inferPlayingFromPosition(newPos: number | null): boolean {
-  if (newPos == null || lastPositionMs == null) return false;
-  const posDelta = newPos - lastPositionMs;
-  const timeDelta = Date.now() - lastPositionTime;
-  // Position moved forward 50–10000ms within a credible time window
-  return posDelta > 50 && posDelta < 10000 && timeDelta > 0 && timeDelta < 6000;
-}
-
-function updatePositionTracking(pos: number | null): void {
-  if (pos != null) {
-    lastPositionMs = pos;
-    lastPositionTime = Date.now();
-  }
 }
 
 function apply(next: SonosState): void {
@@ -125,92 +97,6 @@ function apply(next: SonosState): void {
     next.albumArtUrl !== currentState.albumArtUrl;
   currentState = next;
   if (changed) listeners.forEach(fn => fn(next));
-}
-
-/**
- * Watchdog: om vi inte fått någon status (varken SSE eller poll) på
- * STALE_PLAYING_THRESHOLD_MS OCH currentState säger PLAYING → tvinga PAUSED.
- * Skyddar mot att engine fastnar i PLAYING när Sonos-gateway tappar kontakten,
- * SSE dör eller pause-eventet aldrig nådde fram.
- */
-const STALE_PLAYING_THRESHOLD_MS = 10_000;
-let watchdogTimer: NodeJS.Timeout | null = null;
-
-function startStaleWatchdog(): void {
-  if (watchdogTimer) return;
-  watchdogTimer = setInterval(() => {
-    if (!isPlaying(currentState.playbackState)) return;
-    const last = Math.max(lastResponseTime, lastSuccessfulPollAt ?? 0);
-    if (last === 0) return;
-    const age = Date.now() - last;
-    if (age > STALE_PLAYING_THRESHOLD_MS) {
-      console.warn(`[Sonos] Watchdog: ingen status på ${(age/1000).toFixed(1)}s i PLAYING — tvingar PAUSED`);
-      pendingState = null;
-      pendingCount = 0;
-      apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED' });
-    }
-  }, 2000);
-}
-
-function stopStaleWatchdog(): void {
-  if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
-}
-
-/**
- * Confirmed state transition: only flip playbackState after CONFIRM_COUNT
- * consecutive polls agree on the new state. This prevents flicker from
- * transient gateway responses.
- */
-function confirmedApply(next: SonosState): void {
-  const candidateState = next.playbackState;
-  const currentPlayback = currentState.playbackState;
-
-  // Boot phase: first real status → apply immediately
-  if (bootPhase) {
-    bootPhase = false;
-    pendingState = null;
-    pendingCount = 0;
-    if (candidateState !== currentPlayback) {
-      console.log(`[Sonos] Boot: ${currentPlayback} → ${candidateState} (immediate)`);
-    }
-    apply(next);
-    return;
-  }
-
-  // Same direction as current → apply immediately
-  if (candidateState === currentPlayback) {
-    pendingState = null;
-    pendingCount = 0;
-    apply(next);
-    return;
-  }
-
-  // PLAYING → apply immediately (no confirmation needed — idle heartbeat keeps lamp safe)
-  if (isPlaying(candidateState)) {
-    console.log(`[Sonos] ${currentPlayback} → ${candidateState} (immediate)`);
-    pendingState = null;
-    pendingCount = 0;
-    apply(next);
-    return;
-  }
-
-  // PAUSED/IDLE → require confirmation to avoid flicker
-  if (candidateState === pendingState) {
-    pendingCount++;
-  } else {
-    pendingState = candidateState;
-    pendingCount = 1;
-  }
-
-  if (pendingCount >= CONFIRM_COUNT) {
-    console.log(`[Sonos] State confirmed: ${currentPlayback} → ${candidateState} (after ${pendingCount} polls)`);
-    pendingState = null;
-    pendingCount = 0;
-    apply(next);
-  } else {
-    // Not yet confirmed — apply metadata/volume but keep current playbackState
-    apply({ ...next, playbackState: currentPlayback });
-  }
 }
 
 function parseStatus(s: any): void {
