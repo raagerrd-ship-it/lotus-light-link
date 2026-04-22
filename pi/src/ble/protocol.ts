@@ -63,6 +63,10 @@ let writeSlotWatchdog: ReturnType<typeof setTimeout> | null = null;
 let lastWriteTime = 0;
 let writeFailCount = 0;
 const WRITE_FAIL_THRESHOLD = 5;
+// Rate-limit för stuck-warn-loggen — annars kan en hängande writeAsync
+// spamma journald var 500ms i timmar och äta diskutrymme på Pi:n.
+let lastStuckWarnAt = 0;
+const STUCK_WARN_INTERVAL_MS = 10_000;
 
 export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
@@ -306,7 +310,11 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   writeSlotWatchdog = setTimeout(() => {
     if (writeSlot === writePromise) {
       bleStats.writeStuckCount++;
-      console.warn('[BLE] writeAsync stuck >500ms — force-releasing slot');
+      const now = performance.now();
+      if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
+        console.warn(`[BLE] writeAsync stuck >500ms — force-releasing slot (stuckCount=${bleStats.writeStuckCount})`);
+        lastStuckWarnAt = now;
+      }
       writeSlot = null;
       writeSlotWatchdog = null;
     }

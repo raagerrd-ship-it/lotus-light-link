@@ -52,6 +52,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [Late connect-timeout race](mem://pi/ble/late-connect-timeout-race) — withTimeout(connectAsync) kan kasta efter lyckad connect → catch måste guardas med resolved-flagg
 - [Auto-reconnect-loop](mem://pi/ble/auto-reconnect-loop) — Backoff 2→4→8→16→30s, aktiveras först efter lyckad connect, stoppas av manuell disconnect
 - [Fast-fail self-restart](mem://pi/ble/fast-fail-self-restart) — BLEDOM ansluter på 1-2s eller aldrig: 2 failures → process.exit(0) + /tmp-flagga + auto-connect vid boot
+- [Stability hardening](mem://pi/runtime/stability-hardening) — Auto-reconnect cap (20), debounce (1s), watchdog warn rate-limit (10s), listener guard, mic timer cleanup, Sonos SSE pausar poll
 - [Palette integration](mem://pi/sonos/palette-integration) — 4-color palettes consumed directly from Sonos Gateway
 - [Softness slider](mem://pi/ui/softness-slider-curve) — Exponential mapping for releaseAlpha
 - [Native capture](mem://pi/audio/native-capture) — C++ alsa-capture binding with Int16Array

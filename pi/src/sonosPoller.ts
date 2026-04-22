@@ -326,38 +326,65 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   lastPositionTime = 0;
   bootPhase = true;
 
-  // SSE connection (unless disabled)
+  const statusUrl = `${baseUrl}${statusPath}`;
+
+  // SSE connection (unless disabled). När SSE är ANSLUTEN pausar vi
+  // pollTimer för att undvika redundanta parseStatus-anrop var 2:a sekund
+  // (sparar CPU + nätverk på Pi Zero 2W). Vid SSE-error startar vi om pollen.
+  let sseActive = false;
+
+  const startPollTimer = () => {
+    if (pollTimer) return;
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
+        if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
+      } catch {}
+    }, pollMs);
+  };
+
+  const stopPollTimer = () => {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  };
+
   if (!disableSSE) {
     try {
       const mod = await import('eventsource');
       const ESClass = (mod as any).default ?? mod;
       const sseUrl = `${baseUrl}${ssePath}`;
       const es = new ESClass(sseUrl);
+      es.onopen = () => {
+        if (!sseActive) {
+          sseActive = true;
+          stopPollTimer();
+          console.log(`[Sonos] SSE active — pollTimer paused`);
+        }
+      };
       es.onmessage = (e: any) => {
         try { parseStatus(JSON.parse(e.data)); } catch {}
       };
-      es.onerror = () => {}; // auto-reconnects
+      es.onerror = () => {
+        if (sseActive) {
+          sseActive = false;
+          startPollTimer();
+          console.warn(`[Sonos] SSE error — pollTimer resumed`);
+        }
+      };
       sseCleanup = () => es.close();
-      console.log(`[Sonos] SSE connected → ${sseUrl}`);
+      console.log(`[Sonos] SSE connecting → ${sseUrl}`);
     } catch {
       console.log('[Sonos] No SSE support, using poll-only mode');
     }
   }
 
   // Initial status fetch — bootPhase flag ensures immediate apply
-  const statusUrl = `${baseUrl}${statusPath}`;
   try {
     const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
     if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
   } catch {}
 
-  // Fallback poll
-  pollTimer = setInterval(async () => {
-    try {
-      const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-      if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
-    } catch {}
-  }, pollMs);
+  // Starta pollen som fallback — SSE.onopen pausar den när den ansluter
+  startPollTimer();
 
   console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, confirm: ${CONFIRM_COUNT})`);
 }

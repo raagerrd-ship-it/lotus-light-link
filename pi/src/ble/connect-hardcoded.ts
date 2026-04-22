@@ -52,14 +52,26 @@ let _connectCallCount = 0;
 // ── Auto-reconnect-loop ──────────────────────────────────────────────────
 // Aktiveras när en lyckad connect följs av disconnect (alltså: lampan VAR
 // ansluten och tappade länken). Inaktiveras vid manuell disconnectHardcoded()
-// eller när reconnect lyckas. Backoff: 2s → 4s → 8s → 16s → max 30s, oändligt.
+// eller när reconnect lyckas. Backoff: 2s → 4s → 8s → 16s → max 30s.
+// MAX_ATTEMPTS hindrar oändlig boot-loop om lampan är permanent borta —
+// efter 20 försök (~10 min total backoff) pausas loopen och kräver manuell
+// trigger via /api/ble/connect. Räknaren nollställs vid lyckad reconnect.
+const AUTO_RECONNECT_MAX_ATTEMPTS = 20;
 let _autoReconnectEnabled = false;
 let _autoReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _autoReconnectAttempt = 0;
+let _autoReconnectGivenUp = false;
+
+// Debounce-skydd: keep-alive-fail OCH peripheral.disconnect kan båda
+// schemalägga reconnect inom samma race-fönster. 1s debounce kollapsar
+// dubbla triggers så vi inte räknar upp _autoReconnectAttempt två gånger.
+let _lastReconnectRequestAt = 0;
+const RECONNECT_DEBOUNCE_MS = 1000;
 
 function clearAutoReconnect(): void {
   if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
   _autoReconnectAttempt = 0;
+  _autoReconnectGivenUp = false;
 }
 
 /**
@@ -69,6 +81,16 @@ function clearAutoReconnect(): void {
  * när BLEDOM tappas via supervision timeout (reason=8).
  */
 export function scheduleAutoReconnect(): void {
+  // Debounce: kollapsa dubbla triggers (keep-alive-fail + disconnect-event)
+  const now = Date.now();
+  if (now - _lastReconnectRequestAt < RECONNECT_DEBOUNCE_MS) {
+    return;
+  }
+  _lastReconnectRequestAt = now;
+
+  if (_autoReconnectGivenUp) {
+    return; // pausad efter MAX_ATTEMPTS — kräv manuell /api/ble/connect
+  }
   if (!_autoReconnectEnabled) {
     // Aktivera loopen om vi någon gång har varit anslutna — annars triggas
     // den aldrig efter en supervision-timeout (peripheral-disconnect-eventet
@@ -83,10 +105,17 @@ export function scheduleAutoReconnect(): void {
   if (_connectInFlight) return;     // pågående connect täcker behovet
   if (_connected && _connected.state === 'connected') return; // redan uppe
 
+  if (_autoReconnectAttempt >= AUTO_RECONNECT_MAX_ATTEMPTS) {
+    console.error(`[auto-reconnect] ⚠ ${AUTO_RECONNECT_MAX_ATTEMPTS} försök misslyckade — pausar loop, kräver manuell trigger`);
+    _autoReconnectGivenUp = true;
+    _autoReconnectEnabled = false;
+    return;
+  }
+
   _autoReconnectAttempt++;
   const backoffs = [2000, 4000, 8000, 16000, 30000];
   const delay = backoffs[Math.min(_autoReconnectAttempt - 1, backoffs.length - 1)];
-  console.log(`[auto-reconnect] försök #${_autoReconnectAttempt} om ${delay}ms`);
+  console.log(`[auto-reconnect] försök #${_autoReconnectAttempt}/${AUTO_RECONNECT_MAX_ATTEMPTS} om ${delay}ms`);
   _autoReconnectTimer = setTimeout(async () => {
     _autoReconnectTimer = null;
     if (!_autoReconnectEnabled) return;
@@ -102,10 +131,13 @@ export function scheduleAutoReconnect(): void {
         _autoReconnectAttempt = 0;
       } else {
         console.warn(`[auto-reconnect] ✗ försök #${_autoReconnectAttempt} misslyckades: ${r.error ?? 'okänt fel'}`);
-        scheduleAutoReconnect(); // nästa försök, ökad backoff
+        // Bypass debounce för intern loop-fortsättning
+        _lastReconnectRequestAt = 0;
+        scheduleAutoReconnect();
       }
     } catch (e: any) {
       console.warn(`[auto-reconnect] ✗ försök #${_autoReconnectAttempt} kastade: ${e?.message ?? e}`);
+      _lastReconnectRequestAt = 0;
       scheduleAutoReconnect();
     }
   }, delay);
@@ -228,6 +260,11 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   const inflight = (async (): Promise<{ connected: boolean; error?: string }> => {
     const n = getNoble();
 
+    // Defensiv: noble emittar `disconnect:<uuid>` på SIG-objektet — sätt
+    // maxListeners=0 så vi aldrig får MaxListenersExceededWarning även om
+    // ett edge case staplar listeners.
+    try { (n as any).setMaxListeners?.(0); } catch {}
+
     // 0. Pre-connect cleanup — purga ev. stale peripheral i noble's cache,
     //    annars hänger connectAsync tyst om förra länken dog utan disconnect-event.
     console.log(`${ts()} 0. pre-connect cleanup…`);
@@ -292,6 +329,11 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           const disconnectEvent = `disconnect:${peripheral.uuid ?? peripheral.id}`;
           try { (n as any).removeAllListeners?.(disconnectEvent); } catch {}
           try { peripheral.removeAllListeners?.('disconnect'); } catch {}
+          // Verifierings-logg: om denna växer >0 efter cleanup har vi en stale-listener-läcka
+          try {
+            const lc = (n as any).listenerCount?.(disconnectEvent) ?? 0;
+            if (lc > 0) console.warn(`[connect-hardcoded] ⚠ disconnect-listeners kvar EFTER cleanup: ${lc} (förväntat 0)`);
+          } catch {}
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
             _onDisconnected?.();
