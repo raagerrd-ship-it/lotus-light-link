@@ -378,7 +378,6 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   }
 
   // Initial status fetch — bootPhase flag ensures immediate apply
-  const statusUrl = `${baseUrl}${statusPath}`;
   try {
     const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
     if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
