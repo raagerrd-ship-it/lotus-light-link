@@ -81,6 +81,16 @@ function clearAutoReconnect(): void {
  * när BLEDOM tappas via supervision timeout (reason=8).
  */
 export function scheduleAutoReconnect(): void {
+  // Debounce: kollapsa dubbla triggers (keep-alive-fail + disconnect-event)
+  const now = Date.now();
+  if (now - _lastReconnectRequestAt < RECONNECT_DEBOUNCE_MS) {
+    return;
+  }
+  _lastReconnectRequestAt = now;
+
+  if (_autoReconnectGivenUp) {
+    return; // pausad efter MAX_ATTEMPTS — kräv manuell /api/ble/connect
+  }
   if (!_autoReconnectEnabled) {
     // Aktivera loopen om vi någon gång har varit anslutna — annars triggas
     // den aldrig efter en supervision-timeout (peripheral-disconnect-eventet
@@ -95,10 +105,17 @@ export function scheduleAutoReconnect(): void {
   if (_connectInFlight) return;     // pågående connect täcker behovet
   if (_connected && _connected.state === 'connected') return; // redan uppe
 
+  if (_autoReconnectAttempt >= AUTO_RECONNECT_MAX_ATTEMPTS) {
+    console.error(`[auto-reconnect] ⚠ ${AUTO_RECONNECT_MAX_ATTEMPTS} försök misslyckade — pausar loop, kräver manuell trigger`);
+    _autoReconnectGivenUp = true;
+    _autoReconnectEnabled = false;
+    return;
+  }
+
   _autoReconnectAttempt++;
   const backoffs = [2000, 4000, 8000, 16000, 30000];
   const delay = backoffs[Math.min(_autoReconnectAttempt - 1, backoffs.length - 1)];
-  console.log(`[auto-reconnect] försök #${_autoReconnectAttempt} om ${delay}ms`);
+  console.log(`[auto-reconnect] försök #${_autoReconnectAttempt}/${AUTO_RECONNECT_MAX_ATTEMPTS} om ${delay}ms`);
   _autoReconnectTimer = setTimeout(async () => {
     _autoReconnectTimer = null;
     if (!_autoReconnectEnabled) return;
@@ -114,10 +131,13 @@ export function scheduleAutoReconnect(): void {
         _autoReconnectAttempt = 0;
       } else {
         console.warn(`[auto-reconnect] ✗ försök #${_autoReconnectAttempt} misslyckades: ${r.error ?? 'okänt fel'}`);
-        scheduleAutoReconnect(); // nästa försök, ökad backoff
+        // Bypass debounce för intern loop-fortsättning
+        _lastReconnectRequestAt = 0;
+        scheduleAutoReconnect();
       }
     } catch (e: any) {
       console.warn(`[auto-reconnect] ✗ försök #${_autoReconnectAttempt} kastade: ${e?.message ?? e}`);
+      _lastReconnectRequestAt = 0;
       scheduleAutoReconnect();
     }
   }, delay);
