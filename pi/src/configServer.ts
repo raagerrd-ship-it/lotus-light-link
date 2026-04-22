@@ -333,12 +333,15 @@ export function startConfigServer(port = 3050): void {
     const t0 = Date.now();
     let noble: any = null;
 
-    // Step 1: load noble singleton
+    // Step 1: load noble singleton (via async loader — synkron getNoble() kastar om ej laddad)
     const s1 = Date.now();
     try {
       const mod = await import('./ble/noble-singleton.js');
-      noble = (mod as any).getNoble?.() ?? (mod as any).noble ?? null;
-      steps.push({ step: 'load-noble', ok: !!noble, ms: Date.now() - s1, detail: noble ? 'singleton ok' : 'getNoble returned null' });
+      const loader = (mod as any).getNobleAsync ?? (mod as any).getNoble;
+      if (typeof loader !== 'function') throw new Error('noble-singleton saknar getNobleAsync/getNoble');
+      noble = await loader();
+      steps.push({ step: 'load-noble', ok: !!noble, ms: Date.now() - s1, detail: noble ? 'singleton ok' : 'loader returnerade null' });
+      if (!noble) return res.json({ ok: false, durationMs: Date.now() - t0, steps });
     } catch (e: any) {
       steps.push({ step: 'load-noble', ok: false, ms: Date.now() - s1, detail: e?.message ?? String(e) });
       return res.json({ ok: false, durationMs: Date.now() - t0, steps });
