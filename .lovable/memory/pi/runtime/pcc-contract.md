@@ -24,8 +24,13 @@ type: constraint
 - `runInstallOnRelease: true` — kör setup-lotus.sh vid varje release för native rebuild
 - `manageService: false` på engine — PCC äger systemd-tjänsten
 
+### PCC_MANAGED-flaggan
+- PCC sätter `PCC_MANAGED=1` när den kör `setup-lotus.sh` vid release.
+- Skriptet kör då ALLTID systemnivå-prep (grupper, udev-regel för rfkill, ägarskap, native rebuild) men hoppar HELT över: skriva `/etc/systemd/system/lotus-light-engine.service`, `systemctl daemon-reload`, `enable`, `restart`. PCC restartar tjänsten själv.
+- Om en legacy unit-fil finns kvar från ett tidigare standalone-install lämnas den orörd — manuell `sudo rm /etc/systemd/system/lotus-light-engine.service` krävs för rensning. Risk: om legacy-tjänsten är `enabled` startar den parallellt med PCC:s tjänst vid boot → portkonflikt.
+
 ### Fallback-läge (ingen PCC)
-- `setup-lotus.sh` skapar EGEN systemd system-service `lotus-light-engine.service` när skriptet körs manuellt — endast om PCC inte hanterar tjänsten. PCC:s release-flow ska helst skippa denna sektion (TODO: detektera `PCC_MANAGED=1` env och no-op).
+- `setup-lotus.sh` utan `PCC_MANAGED=1` skapar egen systemd system-service med User=$TARGET_USER, SupplementaryGroups=netdev bluetooth audio, AmbientCapabilities=CAP_NET_RAW/ADMIN/SYS_NICE.
 - Installerar Node 24 om saknas. Med PCC ska detta redan finnas — skriptet hoppar över om `node -v` ≥ 24.
 
 ### Symptom om kontraktet bryts
