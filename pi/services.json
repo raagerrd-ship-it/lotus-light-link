@@ -9,6 +9,7 @@
   "runInstallOnRelease": true,
   "updateScript": "/opt/lotus-light/pi/update-services.sh",
   "uninstallScript": "pi/uninstall-lotus.sh",
+  "permissions": ["bluetooth", "audio", "network"],
   "components": {
     "engine": {
       "type": "node",
