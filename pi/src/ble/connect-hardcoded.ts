@@ -260,6 +260,11 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   const inflight = (async (): Promise<{ connected: boolean; error?: string }> => {
     const n = getNoble();
 
+    // Defensiv: noble emittar `disconnect:<uuid>` på SIG-objektet — sätt
+    // maxListeners=0 så vi aldrig får MaxListenersExceededWarning även om
+    // ett edge case staplar listeners.
+    try { (n as any).setMaxListeners?.(0); } catch {}
+
     // 0. Pre-connect cleanup — purga ev. stale peripheral i noble's cache,
     //    annars hänger connectAsync tyst om förra länken dog utan disconnect-event.
     console.log(`${ts()} 0. pre-connect cleanup…`);
