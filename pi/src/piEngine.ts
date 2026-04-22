@@ -405,19 +405,18 @@ export class PiLightEngine {
   /** True om BLE är ansluten (owner !== 'none'). */
   private get _bleConnected(): boolean { return this._bleOwner !== 'none'; }
 
-  /** Anropas av connect-hardcoded EFTER lyckad anchor write. */
+  /** Anropas av connect-hardcoded EFTER lyckad anchor write.
+   *  Keep-alive kör ALLTID när BLE är connected — den är harmlös i active mode
+   *  eftersom den skippar om sendToBLE skrev <160ms sedan (KEEPALIVE_MS * 0.8).
+   *  Det skyddar mot supervision timeout även om FFT-tickarna råkar leverera
+   *  oförändrad färg ("no-change") en längre stund — då sker ingen mic-write
+   *  alls och utan keep-alive faller länken efter ~1s. */
   onBleConnected(): void {
     if (this._bleOwner !== 'none') return;
-    if (this.playing) {
-      this._bleOwner = 'active';
-      stopKeepAlive();
-      console.log('[Engine] BLE connected → active mode (mic-writes håller länken)');
-    } else {
-      this._bleOwner = 'idle';
-      this.forceIdleNow();
-      startKeepAlive();
-      console.log('[Engine] BLE connected → idle mode (keep-alive @200ms bär färg + länk)');
-    }
+    this._bleOwner = this.playing ? 'active' : 'idle';
+    if (!this.playing) this.forceIdleNow();
+    startKeepAlive();
+    console.log(`[Engine] BLE connected → ${this._bleOwner} mode (keep-alive @200ms alltid på)`);
   }
 
   /** Anropas av connect-hardcoded vid disconnect (peripheral.disconnect-event). */
@@ -431,28 +430,25 @@ export class PiLightEngine {
   setPlaying(playing: boolean): void {
     const wasPlaying = this.playing;
     this.playing = playing;
+    if (playing === wasPlaying) return;
 
-    if (!playing && wasPlaying) {
-      // Reset smoothing-state så en ev. resume börjar från noll, inte från
-      // sista musik-frame (annars kan första post-resume-ticken slå till hårt).
+    if (!playing) {
+      // active → idle: reset smoothing + force idle-färg via keep-alive-buf.
       this.smoothed = 0;
       this.onsetBoost = 0;
       this.onsetTarget = 0;
-      // active → idle: keep-alive tar över. Bara om BLE faktiskt är ansluten.
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'idle';
         this.forceIdleNow();
-        startKeepAlive();
-        console.log('[Engine] → idle mode (owner=idle, keep-alive bär färg + länk)');
+        console.log('[Engine] → idle mode (owner=idle, keep-alive bär färg)');
       } else {
-        console.log('[Engine] → idle mode (BLE ej ansluten, ingen keep-alive)');
+        console.log('[Engine] → idle mode (BLE ej ansluten)');
       }
-    } else if (playing && !wasPlaying) {
-      // idle → active: stoppa keep-alive helt, sendToBLE per tick tar över.
+    } else {
+      // idle → active: bara byta owner; keep-alive fortsätter som safety net.
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'active';
-        stopKeepAlive();
-        console.log('[Engine] → active mode (owner=active, keep-alive STOPPAD)');
+        console.log('[Engine] → active mode (owner=active, keep-alive kvar som safety)');
       } else {
         console.log('[Engine] → active mode (BLE ej ansluten, inga writes)');
       }
