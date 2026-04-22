@@ -322,6 +322,79 @@ export function startConfigServer(port = 3050): void {
     res.json(result);
   });
 
+  // ─── BLE self-test (aktivt prov) ───
+  // Försöker:
+  //  1. Ladda noble (lazy singleton)
+  //  2. Vänta på poweredOn (max 5s)
+  //  3. Köra en kort scan-start/stop (verifierar HCI-write-rättighet)
+  // Returnerar steg-för-steg resultat så UI:t kan peka på exakt fel.
+  app.post('/api/permissions/ble-selftest', async (_req, res) => {
+    const steps: Array<{ step: string; ok: boolean; detail?: string; ms?: number }> = [];
+    const t0 = Date.now();
+    let noble: any = null;
+
+    // Step 1: load noble singleton
+    const s1 = Date.now();
+    try {
+      const mod = await import('./ble/noble-singleton.js');
+      noble = (mod as any).getNoble?.() ?? (mod as any).noble ?? null;
+      steps.push({ step: 'load-noble', ok: !!noble, ms: Date.now() - s1, detail: noble ? 'singleton ok' : 'getNoble returned null' });
+    } catch (e: any) {
+      steps.push({ step: 'load-noble', ok: false, ms: Date.now() - s1, detail: e?.message ?? String(e) });
+      return res.json({ ok: false, durationMs: Date.now() - t0, steps });
+    }
+
+    // Step 2: wait for poweredOn (max 5s)
+    const s2 = Date.now();
+    const initial = noble.state ?? noble._state ?? 'unknown';
+    if (initial === 'poweredOn') {
+      steps.push({ step: 'wait-poweredOn', ok: true, ms: 0, detail: 'already poweredOn' });
+    } else {
+      const reached = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 5000);
+        const onState = (st: string) => {
+          if (st === 'poweredOn') {
+            clearTimeout(timeout);
+            try { noble.removeListener?.('stateChange', onState); } catch {}
+            resolve(true);
+          }
+        };
+        try { noble.on?.('stateChange', onState); } catch { resolve(false); }
+      });
+      const stateNow = noble.state ?? noble._state ?? 'unknown';
+      steps.push({
+        step: 'wait-poweredOn',
+        ok: reached || stateNow === 'poweredOn',
+        ms: Date.now() - s2,
+        detail: `state=${stateNow} (initial=${initial})`,
+      });
+      if (!reached && stateNow !== 'poweredOn') {
+        return res.json({ ok: false, durationMs: Date.now() - t0, steps });
+      }
+    }
+
+    // Step 3: scan-start/stop (verifierar HCI-write-permission)
+    const s3 = Date.now();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('scan-start timeout 2s')), 2000);
+        try {
+          noble.startScanning([], false, (err: any) => {
+            clearTimeout(timeout);
+            if (err) reject(err); else resolve();
+          });
+        } catch (e) { clearTimeout(timeout); reject(e); }
+      });
+      try { noble.stopScanning?.(); } catch {}
+      steps.push({ step: 'scan-start-stop', ok: true, ms: Date.now() - s3, detail: 'HCI write ok' });
+    } catch (e: any) {
+      steps.push({ step: 'scan-start-stop', ok: false, ms: Date.now() - s3, detail: e?.message ?? String(e) });
+      return res.json({ ok: false, durationMs: Date.now() - t0, steps });
+    }
+
+    res.json({ ok: true, durationMs: Date.now() - t0, steps });
+  });
+
   const startSubsystem = async (id: SubsystemId, res: any) => {
     if (!_starters) {
       return res.status(503).json({ error: 'Subsystem-starters inte attachade ännu' });

@@ -5,7 +5,32 @@
  */
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Copy, Check } from "lucide-react";
+import { AlertTriangle, Copy, Check, PlayCircle, Loader2 } from "lucide-react";
+
+interface SelfTestStep {
+  step: string;
+  ok: boolean;
+  detail?: string;
+  ms?: number;
+}
+interface SelfTestResp {
+  ok: boolean;
+  durationMs: number;
+  steps: SelfTestStep[];
+}
+
+// Mappar tekniska "missing"-strängar till läsbar orsak + hint till PCC/setup.
+function explainMissing(m: string): { reason: string; hint: string } {
+  if (m.includes("rfkill"))        return { reason: "Ingen skrivåtkomst till /dev/rfkill", hint: "PCC-tjänsten behöver netdev-grupp + udev-regel (setup-lotus.sh skriver den)." };
+  if (m.includes("netdev"))        return { reason: "Process saknar netdev-grupp",         hint: "Lägg till 'netdev' i PCC service.json → permissions, eller kör setup för standalone." };
+  if (m.includes("bluetooth-grupp"))return { reason: "Process saknar bluetooth-grupp",     hint: "Lägg till 'bluetooth' i PCC service.json → permissions." };
+  if (m.includes("audio-grupp"))   return { reason: "Process saknar audio-grupp (ALSA)",   hint: "Lägg till 'audio' i PCC service.json → permissions." };
+  if (m.includes("CAP_NET_RAW"))   return { reason: "Saknar CAP_NET_RAW (HCI-socket)",     hint: "PCC ska sätta AmbientCapabilities=CAP_NET_RAW eller setcap node-binär." };
+  if (m.includes("CAP_NET_ADMIN")) return { reason: "Saknar CAP_NET_ADMIN (HCI-config)",   hint: "PCC ska sätta AmbientCapabilities=CAP_NET_ADMIN." };
+  if (m.includes("bluetoothd"))    return { reason: "bluetoothd-tjänsten är inte aktiv",   hint: "Kör: sudo systemctl enable --now bluetooth" };
+  if (m.includes("noble adapter")) return { reason: "BLE-adaptern är inte poweredOn",      hint: "Kontrollera 'rfkill list bluetooth' + 'hciconfig hci0 up'." };
+  return { reason: m, hint: "Kör setup-skriptet nedan." };
+}
 
 interface PermsResp {
   ok: boolean;
@@ -30,6 +55,25 @@ const POLL_MS = 15_000;
 export function PermissionsBanner({ piBase }: { piBase: string }) {
   const [perms, setPerms] = useState<PermsResp | null>(null);
   const [copied, setCopied] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<SelfTestResp | null>(null);
+
+  const runSelfTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await fetch(`${piBase}/api/permissions/ble-selftest`, {
+        method: "POST",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (r.ok) setTestResult(await r.json());
+      else setTestResult({ ok: false, durationMs: 0, steps: [{ step: "http", ok: false, detail: `HTTP ${r.status}` }] });
+    } catch (e: any) {
+      setTestResult({ ok: false, durationMs: 0, steps: [{ step: "fetch", ok: false, detail: e?.message ?? String(e) }] });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -93,14 +137,52 @@ export function PermissionsBanner({ piBase }: { piBase: string }) {
           Pi:n saknar systemrättigheter som krävs för BLE och mikrofon. PCC packade upp
           release-filerna men hoppade över setup-skriptet (managed:false).
         </p>
-        <div className="text-[10px] opacity-80">
-          <span className="font-medium">Saknas:</span>{" "}
-          {perms.missing.map((m, i) => (
-            <span key={m}>
-              {i > 0 && ", "}
-              <span className="font-mono text-destructive">{m}</span>
-            </span>
-          ))}
+        <div className="space-y-1.5">
+          <div className="text-[9px] uppercase tracking-wider opacity-60">Saknas ({perms.missing.length})</div>
+          <ul className="space-y-1">
+            {perms.missing.map((m) => {
+              const { reason, hint } = explainMissing(m);
+              return (
+                <li key={m} className="rounded-md bg-background/40 border border-border/50 px-2 py-1.5">
+                  <div className="font-mono text-[10px] text-destructive">{m}</div>
+                  <div className="text-[10px] text-foreground/80 mt-0.5">{reason}</div>
+                  <div className="text-[9px] opacity-60 mt-0.5">→ {hint}</div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* BLE self-test */}
+        <div className="rounded-md bg-background/40 border border-border/50 p-2 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[9px] uppercase tracking-wider opacity-60">BLE self-test</div>
+            <button
+              onClick={runSelfTest}
+              disabled={testing}
+              className="px-2 py-1 rounded-md bg-primary/15 hover:bg-primary/25 disabled:opacity-50 text-primary text-[10px] font-semibold flex items-center gap-1"
+            >
+              {testing ? <Loader2 size={11} className="animate-spin" /> : <PlayCircle size={11} />}
+              {testing ? "Testar…" : "Kör test"}
+            </button>
+          </div>
+          {testResult && (
+            <div className="space-y-1">
+              <div className={`text-[10px] font-semibold ${testResult.ok ? "text-green-500" : "text-destructive"}`}>
+                {testResult.ok ? "✓ OK" : "✗ Misslyckades"} ({testResult.durationMs}ms)
+              </div>
+              <ul className="space-y-0.5">
+                {testResult.steps.map((s, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-[10px]">
+                    <span className={s.ok ? "text-green-500" : "text-destructive"}>{s.ok ? "✓" : "✗"}</span>
+                    <span className="font-mono opacity-80">{s.step}</span>
+                    {s.ms !== undefined && <span className="opacity-50">({s.ms}ms)</span>}
+                    {s.detail && <span className="opacity-70 ml-1">— {s.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div>
           <div className="text-[9px] uppercase tracking-wider opacity-60 mb-1">
