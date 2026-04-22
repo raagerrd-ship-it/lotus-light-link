@@ -62,12 +62,16 @@ let micReadyWaiters: MicReadyWaiter[] = [];
 function clearMicReadyWaiters(): MicReadyWaiter[] {
   const waiters = micReadyWaiters;
   micReadyWaiters = [];
+  // Säkerhetsnät: rensa alla pending timers så timeouten inte triggar mot
+  // en redan ersatt waiter-array vid snabba startMic/stopMic-cykler.
+  for (const w of waiters) {
+    try { clearTimeout(w.timer); } catch {}
+  }
   return waiters;
 }
 
 function resolveMicReadyWaiters(): void {
   for (const waiter of clearMicReadyWaiters()) {
-    clearTimeout(waiter.timer);
     waiter.resolve();
   }
 }
@@ -76,7 +80,6 @@ function rejectMicReadyWaiters(message: string): void {
   micStartError = message;
   const error = new Error(message);
   for (const waiter of clearMicReadyWaiters()) {
-    clearTimeout(waiter.timer);
     waiter.reject(error);
   }
 }
