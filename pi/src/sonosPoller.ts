@@ -326,6 +326,8 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   lastPositionTime = 0;
   bootPhase = true;
 
+  const statusUrl = `${baseUrl}${statusPath}`;
+
   // SSE connection (unless disabled). När SSE är ANSLUTEN pausar vi
   // pollTimer för att undvika redundanta parseStatus-anrop var 2:a sekund
   // (sparar CPU + nätverk på Pi Zero 2W). Vid SSE-error startar vi om pollen.
