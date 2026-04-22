@@ -121,9 +121,39 @@ function apply(next: SonosState): void {
     next.playbackState !== currentState.playbackState ||
     next.trackName !== currentState.trackName ||
     next.volume !== currentState.volume ||
-    next.isTvMode !== currentState.isTvMode;
+    next.isTvMode !== currentState.isTvMode ||
+    next.albumArtUrl !== currentState.albumArtUrl;
   currentState = next;
   if (changed) listeners.forEach(fn => fn(next));
+}
+
+/**
+ * Watchdog: om vi inte fått någon status (varken SSE eller poll) på
+ * STALE_PLAYING_THRESHOLD_MS OCH currentState säger PLAYING → tvinga PAUSED.
+ * Skyddar mot att engine fastnar i PLAYING när Sonos-gateway tappar kontakten,
+ * SSE dör eller pause-eventet aldrig nådde fram.
+ */
+const STALE_PLAYING_THRESHOLD_MS = 10_000;
+let watchdogTimer: NodeJS.Timeout | null = null;
+
+function startStaleWatchdog(): void {
+  if (watchdogTimer) return;
+  watchdogTimer = setInterval(() => {
+    if (!isPlaying(currentState.playbackState)) return;
+    const last = Math.max(lastResponseTime, lastSuccessfulPollAt ?? 0);
+    if (last === 0) return;
+    const age = Date.now() - last;
+    if (age > STALE_PLAYING_THRESHOLD_MS) {
+      console.warn(`[Sonos] Watchdog: ingen status på ${(age/1000).toFixed(1)}s i PLAYING — tvingar PAUSED`);
+      pendingState = null;
+      pendingCount = 0;
+      apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED' });
+    }
+  }, 2000);
+}
+
+function stopStaleWatchdog(): void {
+  if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
 }
 
 /**
@@ -385,14 +415,16 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 
   // Starta pollen som fallback — SSE.onopen pausar den när den ansluter
   startPollTimer();
+  startStaleWatchdog();
 
-  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, confirm: ${CONFIRM_COUNT})`);
+  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, confirm: ${CONFIRM_COUNT}, stale-watchdog: ${STALE_PLAYING_THRESHOLD_MS}ms)`);
 }
 
 export function stopSonosPoller(): void {
   sseCleanup?.();
   sseCleanup = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  stopStaleWatchdog();
   activeConfig = null;
   pendingState = null;
   pendingCount = 0;
