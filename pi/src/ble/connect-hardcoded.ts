@@ -329,6 +329,11 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           const disconnectEvent = `disconnect:${peripheral.uuid ?? peripheral.id}`;
           try { (n as any).removeAllListeners?.(disconnectEvent); } catch {}
           try { peripheral.removeAllListeners?.('disconnect'); } catch {}
+          // Verifierings-logg: om denna växer >0 efter cleanup har vi en stale-listener-läcka
+          try {
+            const lc = (n as any).listenerCount?.(disconnectEvent) ?? 0;
+            if (lc > 0) console.warn(`[connect-hardcoded] ⚠ disconnect-listeners kvar EFTER cleanup: ${lc} (förväntat 0)`);
+          } catch {}
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
             _onDisconnected?.();
