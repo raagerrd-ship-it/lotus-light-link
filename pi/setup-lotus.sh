@@ -353,7 +353,7 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   fi
 fi
 
-# ─── Engine system-service (ersätter PCC:s user-service) ─────────────
+# ─── Engine system-service (skippas om PCC hanterar tjänsten) ─────────
 # RATIONALE (2026-04-19): PCC skapar lotus-light-engine som --user-service.
 # User-services i systemd kan INTE ärva login-användarens supplementary groups
 # (netdev, bluetooth) på Raspberry Pi OS. Konsekvens: rfkill + hci0 = "Permission
@@ -361,10 +361,13 @@ fi
 #
 # Lösning: Skapa en parallell SYSTEM-service med User=pi och korrekta
 # SupplementaryGroups. System-services KAN sätta SupplementaryGroups (kräver
-# bara systemd PID 1, vilket de har). Vi disablar PCC:s user-service så
-# de inte konflitar om porten.
+# bara systemd PID 1, vilket de har).
+#
+# PCC_MANAGED=1 ─ när PCC äger lifecycle hoppar vi ÖVER unit-filen och
+# systemctl-anrop helt. Vi gör fortfarande grupp-fix, udev-regel och
+# ägarskap eftersom det är systemnivå-konfiguration som PCC inte hanterar.
+TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
 SYS_SVC_PATH="/etc/systemd/system/lotus-light-engine.service"
-# Hitta target-user's home (setup körs ofta via sudo → $HOME = /root)
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 USER_SVC_PATH="$TARGET_HOME/.config/systemd/user/lotus-light-engine.service"
 TARGET_UID="$(id -u "$TARGET_USER")"
@@ -373,47 +376,24 @@ run_user_systemctl() {
 }
 
 echo ""
-echo "[BLE-fix] Installerar system-service (ersätter user-service)..."
-
-# 1. Rensa GAMMAL user-service från tidigare versioner (idempotent, alltid)
-#    Vi kör som target-user via systemctl --user med rätt XDG_RUNTIME_DIR,
-#    annars hittar systemctl inte user-bus från sudo-kontext.
-run_user_systemctl stop lotus-light-engine 2>/dev/null || true
-run_user_systemctl disable lotus-light-engine 2>/dev/null || true
-if [ -f "$USER_SVC_PATH" ]; then
-  rm -f "$USER_SVC_PATH"
-  run_user_systemctl daemon-reload 2>/dev/null || true
-  echo "  Gammal user-service raderad ($USER_SVC_PATH) ✓"
+if [ "${PCC_MANAGED:-0}" = "1" ]; then
+  echo "[PCC] PCC_MANAGED=1 → hoppar över egen systemd-service (PCC äger lifecycle)"
+else
+  echo "[BLE-fix] Installerar system-service (ersätter user-service)..."
 fi
 
-# 2. Döda kvarlevande ENGINE-processer via explicita PID:ar.
-#    Matcha bara node-processer som kör exakt vår engine-entry.
-ENGINE_PIDS="$(pgrep -f "node .*${PI_DIR}/dist/index.js" 2>/dev/null || true)"
-if [ -n "$ENGINE_PIDS" ]; then
-  echo "  Dödar kvarlevande engine-PID:ar: $(echo "$ENGINE_PIDS" | tr '\n' ' ')"
-  echo "$ENGINE_PIDS" | xargs -r sudo kill -TERM 2>/dev/null || true
-  sleep 1
-  REMAINING_ENGINE_PIDS="$(pgrep -f "node .*${PI_DIR}/dist/index.js" 2>/dev/null || true)"
-  if [ -n "$REMAINING_ENGINE_PIDS" ]; then
-    echo "$REMAINING_ENGINE_PIDS" | xargs -r sudo kill -KILL 2>/dev/null || true
-  fi
-  echo "  Kvarlevande engine-processer dödade ✓"
-fi
+# ─── System-prep (körs ALLTID, även under PCC) ───────────────────────────
+# Grupper, udev-regel och ägarskap är systemnivå och behövs oavsett vem som
+# kör tjänsten. PCC kan inte sätta dessa.
 
-# 3. Skriv ny system-service (idempotent — overwrite varje release)
-TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
-echo "  Service kommer köra som: User=$TARGET_USER, Group=$TARGET_GROUP, SupplementaryGroups=netdev bluetooth audio"
-
-# 3a. Säkerställ att $PI_DIR + data/ ägs av TARGET_USER så storage-shimmen
-#     kan göra mkdir/writeFile (annars kraschar engine direkt med EACCES).
+# Ägarskap så storage-shimmen kan göra mkdir/writeFile.
 sudo mkdir -p "$PI_DIR/data"
 sudo chown -R "$TARGET_USER:$TARGET_GROUP" "$APP_DIR"
 echo "  Ägarskap satt: $APP_DIR → $TARGET_USER:$TARGET_GROUP ✓"
 
-# 3b. Lägg TARGET_USER i netdev + bluetooth som PERMANENTA system-grupper.
-#     Krävs eftersom systemd's AmbientCapabilities clearar SupplementaryGroups
-#     vid setuid/setgid-switchen → SupplementaryGroups= i unit-filen ignoreras.
-#     Att vara medlem i grupperna i /etc/group överlever capability-clear.
+# Lägg TARGET_USER i netdev + bluetooth + audio som permanenta grupper.
+# Krävs eftersom systemd's AmbientCapabilities clearar SupplementaryGroups
+# vid setuid-switchen → SupplementaryGroups= i unit-filen ignoreras.
 for grp in netdev bluetooth audio; do
   if getent group "$grp" >/dev/null 2>&1; then
     if id -nG "$TARGET_USER" | tr ' ' '\n' | grep -qx "$grp"; then
@@ -425,9 +405,7 @@ for grp in netdev bluetooth audio; do
   fi
 done
 
-# 3c. Skriv udev-regel som ger netdev-gruppen rw på /dev/rfkill (default är root:root 0660).
-#     Utan denna kan node-processen inte läsa eller unblocka rfkill även med
-#     CAP_NET_ADMIN, eftersom rfkill-noden kollar gruppägarskap före caps.
+# udev-regel: ge netdev-gruppen rw på /dev/rfkill.
 RFKILL_RULE=/etc/udev/rules.d/90-lotus-rfkill.rules
 sudo tee "$RFKILL_RULE" >/dev/null <<'EOF'
 # Lotus Light Link: tillåt netdev-gruppen att läsa/skriva /dev/rfkill
@@ -435,12 +413,37 @@ KERNEL=="rfkill", GROUP="netdev", MODE="0660"
 EOF
 sudo udevadm control --reload-rules 2>/dev/null || true
 sudo udevadm trigger --name-match=rfkill 2>/dev/null || true
-# Fallback om enheten redan finns och udev inte triggar om den
 sudo chgrp netdev /dev/rfkill 2>/dev/null || true
 sudo chmod 0660 /dev/rfkill 2>/dev/null || true
 echo "  /dev/rfkill → netdev:rw via udev ✓"
 
-sudo tee "$SYS_SVC_PATH" >/dev/null <<EOF
+# ─── Standalone systemd-service (skippas under PCC) ──────────────────────
+if [ "${PCC_MANAGED:-0}" != "1" ]; then
+  # Rensa GAMMAL user-service från tidigare versioner
+  run_user_systemctl stop lotus-light-engine 2>/dev/null || true
+  run_user_systemctl disable lotus-light-engine 2>/dev/null || true
+  if [ -f "$USER_SVC_PATH" ]; then
+    rm -f "$USER_SVC_PATH"
+    run_user_systemctl daemon-reload 2>/dev/null || true
+    echo "  Gammal user-service raderad ($USER_SVC_PATH) ✓"
+  fi
+
+  # Döda kvarlevande engine-PID:ar
+  ENGINE_PIDS="$(pgrep -f "node .*${PI_DIR}/dist/index.js" 2>/dev/null || true)"
+  if [ -n "$ENGINE_PIDS" ]; then
+    echo "  Dödar kvarlevande engine-PID:ar: $(echo "$ENGINE_PIDS" | tr '\n' ' ')"
+    echo "$ENGINE_PIDS" | xargs -r sudo kill -TERM 2>/dev/null || true
+    sleep 1
+    REMAINING_ENGINE_PIDS="$(pgrep -f "node .*${PI_DIR}/dist/index.js" 2>/dev/null || true)"
+    if [ -n "$REMAINING_ENGINE_PIDS" ]; then
+      echo "$REMAINING_ENGINE_PIDS" | xargs -r sudo kill -KILL 2>/dev/null || true
+    fi
+    echo "  Kvarlevande engine-processer dödade ✓"
+  fi
+
+  echo "  Service kommer köra som: User=$TARGET_USER, Group=$TARGET_GROUP, SupplementaryGroups=netdev bluetooth audio"
+
+  sudo tee "$SYS_SVC_PATH" >/dev/null <<EOF
 [Unit]
 Description=Lotus Light Link engine
 After=network.target bluetooth.service
@@ -465,15 +468,10 @@ MemoryMax=200M
 NoNewPrivileges=false
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
-# Tillåt åtkomst till BLE/rfkill-enheter + ALSA ljudkort.
-# VIKTIGT: så fort en DeviceAllow= sätts implicerar systemd DevicePolicy=closed,
-# vilket annars BLOCKERAR /dev/snd/* → snd_pcm_open() returnerar ENOENT (inte EPERM)
-# och native alsa-capture failar tyst. char-alsa täcker hela /dev/snd/.
 DeviceAllow=/dev/rfkill rw
 DeviceAllow=char-rfkill rw
 DeviceAllow=char-alsa rw
 DeviceAllow=/dev/snd rw
-# Realtime-prio för ALSA capture-tråden (SCHED_FIFO 80) → minimal jitter
 LimitRTPRIO=99
 LimitNICE=-20
 Restart=always
@@ -482,15 +480,22 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
-echo "  System-service skriven till $SYS_SVC_PATH ✓"
+  echo "  System-service skriven till $SYS_SVC_PATH ✓"
 
-# 4. Aktivera + starta
-sudo systemctl daemon-reload
-sudo systemctl enable lotus-light-engine 2>/dev/null || true
-sudo systemctl restart lotus-light-engine
-echo "  System-service aktiverad och startad ✓"
-echo "  → Verifiera: sudo systemctl status lotus-light-engine"
-echo "  → Loggar: sudo journalctl -u lotus-light-engine -f"
+  sudo systemctl daemon-reload
+  sudo systemctl enable lotus-light-engine 2>/dev/null || true
+  sudo systemctl restart lotus-light-engine
+  echo "  System-service aktiverad och startad ✓"
+  echo "  → Verifiera: sudo systemctl status lotus-light-engine"
+  echo "  → Loggar: sudo journalctl -u lotus-light-engine -f"
+else
+  # PCC-läge: rör INTE systemctl. PCC startar/restartar själv.
+  echo "  → PCC kommer (re)starta lotus-light-engine själv efter setup"
+  if [ -f "$SYS_SVC_PATH" ]; then
+    echo "  ⚠ Hittade legacy $SYS_SVC_PATH från standalone-install."
+    echo "    Den lämnas orörd — PCC:s tjänst tar över. Kör 'sudo rm $SYS_SVC_PATH' manuellt om du vill rensa."
+  fi
+fi
 
 # ─── Done ─────────────────────────────────────────────────
 echo ""
