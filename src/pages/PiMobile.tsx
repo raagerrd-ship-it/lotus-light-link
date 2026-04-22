@@ -10,13 +10,13 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean };
+type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; saturation: number; dynamicsEnabled: boolean };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true },
-  Normal: { bassWeight: 0.5, attack: 100, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, dynamicsEnabled: true },
-  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, dynamicsEnabled: true },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 1.0, dynamicsEnabled: true },
+  Normal: { bassWeight: 0.5, attack: 100, softness: 30, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, saturation: 1.0, dynamicsEnabled: true },
+  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 1.0, dynamicsEnabled: true },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 1.0, dynamicsEnabled: true },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
