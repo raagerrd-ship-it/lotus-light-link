@@ -415,8 +415,9 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 
   // Starta pollen som fallback — SSE.onopen pausar den när den ansluter
   startPollTimer();
+  startStaleWatchdog();
 
-  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, confirm: ${CONFIRM_COUNT})`);
+  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, confirm: ${CONFIRM_COUNT}, stale-watchdog: ${STALE_PLAYING_THRESHOLD_MS}ms)`);
 }
 
 export function stopSonosPoller(): void {
