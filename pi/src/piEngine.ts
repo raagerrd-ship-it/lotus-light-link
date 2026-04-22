@@ -173,14 +173,37 @@ export function invalidateIdleColorCache(): void {
   _idleColorLoaded = false;
 }
 
-/** Fast color calibration — skips gamma when unity */
+/** Fast color calibration — white-cleansing (saturation), then offset/gamma */
 function applyColorCalibrationFast(r: number, g: number, b: number, cal: LightCalibration, gammaIsUnity: boolean): void {
+  // ── Saturation / vit-rensning ──
+  // Drar bort min-kanalen (vit-andelen) och boostar tillbaka peak,
+  // så hue bevaras men blå/grön spill försvinner i mättade färger.
+  let rIn = r, gIn = g, bIn = b;
+  const sat = cal.saturation;
+  if (sat > 0) {
+    const m = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    if (m > 0) {
+      const peak = r > g ? (r > b ? r : b) : (g > b ? g : b);
+      const r2 = r - m, g2 = g - m, b2 = b - m;
+      const peak2 = r2 > g2 ? (r2 > b2 ? r2 : b2) : (g2 > b2 ? g2 : b2);
+      if (peak2 > 0) {
+        const boost = peak / peak2;
+        const rC = r2 * boost, gC = g2 * boost, bC = b2 * boost;
+        // Blend mellan original (sat=0) och vit-rensad (sat=1)
+        const inv = 1 - sat;
+        rIn = r * inv + rC * sat;
+        gIn = g * inv + gC * sat;
+        bIn = b * inv + bC * sat;
+      }
+    }
+  }
+
   if (gammaIsUnity) {
-    _finalColor[0] = Math.max(0, Math.min(255, (r + cal.offsetR + 0.5) | 0));
-    _finalColor[1] = Math.max(0, Math.min(255, (g + cal.offsetG + 0.5) | 0));
-    _finalColor[2] = Math.max(0, Math.min(255, (b + cal.offsetB + 0.5) | 0));
+    _finalColor[0] = Math.max(0, Math.min(255, (rIn + cal.offsetR + 0.5) | 0));
+    _finalColor[1] = Math.max(0, Math.min(255, (gIn + cal.offsetG + 0.5) | 0));
+    _finalColor[2] = Math.max(0, Math.min(255, (bIn + cal.offsetB + 0.5) | 0));
   } else {
-    const rn = r / 255, gn = g / 255, bn = b / 255;
+    const rn = rIn / 255, gn = gIn / 255, bn = bIn / 255;
     _finalColor[0] = Math.max(0, Math.min(255, (Math.pow(rn < 0 ? 0 : rn > 1 ? 1 : rn, cal.gammaR) * 255 + cal.offsetR + 0.5) | 0));
     _finalColor[1] = Math.max(0, Math.min(255, (Math.pow(gn < 0 ? 0 : gn > 1 ? 1 : gn, cal.gammaG) * 255 + cal.offsetG + 0.5) | 0));
     _finalColor[2] = Math.max(0, Math.min(255, (Math.pow(bn < 0 ? 0 : bn > 1 ? 1 : bn, cal.gammaB) * 255 + cal.offsetB + 0.5) | 0));
