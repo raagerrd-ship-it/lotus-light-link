@@ -310,7 +310,11 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   writeSlotWatchdog = setTimeout(() => {
     if (writeSlot === writePromise) {
       bleStats.writeStuckCount++;
-      console.warn('[BLE] writeAsync stuck >500ms — force-releasing slot');
+      const now = performance.now();
+      if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
+        console.warn(`[BLE] writeAsync stuck >500ms — force-releasing slot (stuckCount=${bleStats.writeStuckCount})`);
+        lastStuckWarnAt = now;
+      }
       writeSlot = null;
       writeSlotWatchdog = null;
     }
