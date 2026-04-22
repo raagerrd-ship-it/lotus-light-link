@@ -424,6 +424,7 @@ export function stopSonosPoller(): void {
   sseCleanup?.();
   sseCleanup = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  stopStaleWatchdog();
   activeConfig = null;
   pendingState = null;
   pendingCount = 0;
