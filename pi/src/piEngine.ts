@@ -98,6 +98,8 @@ interface LightCalibration {
   hiShelfGainDb: number;
   punchWhiteThreshold: number;
   brightnessFloor: number;
+  /** 0 = av (ingen vit-rensning, gammalt blekt beteende), 1.0 = full vit-rensning (rena mättade färger) */
+  saturation: number;
   /** 0 = av (ingen boost), 1.0 = nuvarande default, upp till ~2.0 = överdrivna transienter */
   transientGain: number;
   /** 0 = av (linjärt, kurvan hoppas helt över), 1.0 = linjärt via math, 1.8 = tidigare default, upp till 3.0 = kraftig mörkkomprimering */
