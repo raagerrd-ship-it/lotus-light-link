@@ -28,7 +28,15 @@ const LEGACY_LOCAL_SONOS_URLS = new Set([
   'http://127.0.0.1:3053/api/sonos',
   'http://127.0.0.1:3052/api/sonos',
 ]);
-const CONFIG_PORT = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 3050);
+// PCC sätter PORT direkt på engine. Fallback: räkna från UI_PORT + 50
+// (samma offset som services.json portOffset). Sista fallback: 3050.
+const CONFIG_PORT = Number(
+  process.env.PORT ??
+  process.env.ENGINE_PORT ??
+  process.env.BACKEND_PORT ??
+  (process.env.UI_PORT ? Number(process.env.UI_PORT) + 50 : null) ??
+  3050
+);
 const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);

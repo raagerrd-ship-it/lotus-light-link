@@ -7,7 +7,12 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 
-const DATA_DIR = process.env.LOTUS_DATA_DIR || '/opt/lotus-light/pi/data';
+// PCC-styrd config-katalog vinner. LOTUS_DATA_DIR är legacy override.
+// Sista fallback är hårdkodad path för standalone-install (utan PCC).
+const DATA_DIR =
+  process.env.PCC_CONFIG_DIR ||
+  process.env.LOTUS_DATA_DIR ||
+  '/opt/lotus-light/pi/data';
 
 function ensureDataDir(): void {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });

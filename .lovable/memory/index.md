@@ -61,3 +61,4 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
 - [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — hcitool för lescan, noble för GATT
 - [Profile storage](mem://pi/runtime/profile-storage) — 4 oberoende kalibreringsprofiler lagrade på Pi:n via /api/profiles
+- [PCC service contract](mem://pi/runtime/pcc-contract) — PCC äger runtime/portar/config/perms; tjänsten äger appkod + deps. PORT-fallback, PCC_CONFIG_DIR, services.json permissions
