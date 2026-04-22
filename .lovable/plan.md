@@ -1,78 +1,78 @@
 
 
-## Djupgranskning: stabilitetsrisker på Pi-engine
+## Problem
 
-Granskningen täcker timers, listeners, oändliga loopar, logg-spam och resursläckor i `pi/src/`. Jag har hittat **6 reella problem** + 2 mindre observationer.
+UI:t visar RGB `251,93,52` (orange) skickas till lampan vid 87 % brightness — men du ser vit. Det är inte att färgen blir vit i koden. Det är att vi just nu skalar färgen helt linjärt med brightness, vilket gör att alla tre LED-kanalerna i BLEDOM-strippen lyser samtidigt (R=251, G=93, B=52 → vid 87 % blir det ~196/73/41 PWM på R/G/B). Ögat blandar det till blekt vit/rosa eftersom blå- och grön-LEDarna fortfarande är på ~20–35 % duty.
 
----
+Vi gjorde "punch-white" mjukare i förra steget — det gjorde inget eftersom den effekten bara aktiveras de sista procenten. Det riktiga problemet är hela mappningen.
 
-### Problem 1: Auto-reconnect-loop kan bli oändlig + parallell med fast-fail-restart
-`pi/src/ble/connect-hardcoded.ts`
+## Vad jag föreslår
 
-- `scheduleAutoReconnect()` har **ingen övre gräns** på antal försök — backar bara av till max 30s och fortsätter för evigt.
-- Loopen anropar `connectHardcoded()`, som i sin tur räknar `_consecutiveFailures` och vid 2 i rad gör `process.exit(0)` för systemd-restart.
-- Under boot körs `consumeReconnectOnBootFlag` → ny connect → fail → ny exit. **Risk för boot-loop** om lampan är permanent borta (t.ex. släckt).
-- **Fix:** lägg max-attempts (t.ex. 20 försök ≈ 10 min total backoff), pausa loopen efter det och kräv manuell trigger.
+Två oberoende ändringar. Den första är hela poängen, den andra ger finkontroll.
 
----
+### 1. Saturation-bevarande utgång (vit-rensning)
 
-### Problem 2: Parallella triggers — keep-alive-fail OCH peripheral.disconnect kan båda schemalägga reconnect
-`pi/src/ble/protocol.ts` (rad 138–148) + `connect-hardcoded.ts` peripheral.once('disconnect')
+Innan brightness-skalningen drar vi bort den minsta kanalen från alla tre. Det är samma sak som att räkna ut "vit-andelen" och nolla den.
 
-- Vid supervision-timeout: keep-alive failar 5x → `forceCleanupStalePeripheral` → `scheduleAutoReconnect`. Men **disconnect-eventet** kan fyra parallellt och göra samma sak.
-- `_connectInFlight`-guarden hjälper bara delvis; race-fönster där två `connectHardcoded` kallas tätt ger dubbla CALL-loggar (vi ser detta i `_connectCallCount`-spam).
-- **Fix:** central kö för "request reconnect" som debouncar 1s.
+```text
+m = min(R, G, B)
+R' = R - m
+G' = G - m
+B' = B - m
+```
 
----
+För `(251, 93, 52)` → `m = 52` → `(199, 41, 0)`. Hue bevaras exakt; mättnaden går till 100 %; total ljusstyrka kompenseras av att vi skalar upp resultatet så att max-kanalen behåller sitt värde:
 
-### Problem 3: writeSlotWatchdog kan dubbel-schemaläggas och "stuck-count" spammar logg
-`pi/src/ble/protocol.ts` rad 305–313
+```text
+boost = max(R, G, B) / max(R', G', B')   // = 251/199 ≈ 1.26
+R'' = R' * boost  →  (251, 52, 0)
+```
 
-- Vid varje `sendToBLE` clearas och sätts `writeSlotWatchdog` om. Om writeAsync hänger, loggas `[BLE] writeAsync stuck >500ms` — men nästa tick efter watchdog kan trigga **igen direkt** eftersom sloten just släpptes. Risk för rate-limit-loggspam i journald (kan fylla disken på Pi:n efter dagar/veckor).
-- **Fix:** rate-limita warn-loggen (max 1/10s) och räkna stuck silent.
+Resultat: ren mättad orange istället för "orange-vit". Vid alla brightness-nivåer.
 
----
+Detta görs i `applyColorCalibrationFast` (eller i ett nytt steg precis efter), så hela pipen påverkas — både idle, active och keep-alive.
 
-### Problem 4: micReadyWaiters läcker om man startar/stoppar mic snabbt
-`pi/src/alsaMic.ts` rad 53–99
+### 2. Saturation-slider per profil (default = 1.0 = full vit-rensning)
 
-- `waitForFirstAudio` lägger en waiter med setTimeout som rejectar efter timeoutMs. Om `stopMic()` kallas innan timeouten triggar `rejectMicReadyWaiters` (bra). Men om `startMic` kallas igen direkt efter, finns inget skydd mot att gamla waiters fortfarande har timers — `clearMicReadyWaiters` returnerar dem men gör ingen `clearTimeout`. Mindre läcka men ok.
-- **Fix:** `clearTimeout(waiter.timer)` i `clearMicReadyWaiters` även när vi inte resolvar.
+Ny calibration-parameter `saturation` (0.0 – 1.0):
 
----
+- `0.0` = ingen vit-rensning (gammalt beteende, "blekt/vitnande")
+- `1.0` = full vit-rensning enligt formeln ovan (default i Lugn/Normal/Party)
 
-### Problem 5: BLE disconnect-listeners kan stapla på noble._peripherals via cache-purge
-`pi/src/ble/connect-hardcoded.ts` rad 178–197 + onDiscover rad 292–306
+Implementation: blenda mellan input-RGB och vit-rensad RGB med `saturation` som mix-faktor. Användaren kan dra ner i Custom om hen vill ha den gamla pastell-känslan.
 
-- Vi `removeAllListeners('disconnect:<uuid>')` på noble innan vi sätter ny listener — bra. Men om peripheral redan finns i `noble._peripherals` (cache hit) och vi inte purgade rätt key (case-mismatch på UUID), staplas listeners.
-- Symptom: `MaxListenersExceededWarning` efter ~10 reconnects → långsam memory creep + node-spam i journal.
-- **Fix:** sätt `n.setMaxListeners(0)` defensivt + logga `n.listenerCount(disconnectEvent)` vid varje connect för verifiering.
+### 3. Defaults
 
----
+| Profil | saturation |
+|---|---|
+| Lugn | 1.0 |
+| Normal | 1.0 |
+| Party | 1.0 |
+| Custom | 1.0 |
 
-### Problem 6: Sonos pollTimer fortsätter parallellt med SSE — dubbla parseStatus-anrop
-`pi/src/sonosPoller.ts` rad 330–360
+(Alla på 1.0 — den gamla bleka mappningen var en bugg, inte en designval. Custom låter användaren backa.)
 
-- Både SSE OCH pollTimer kör parseStatus var 2:a sekund. Inga konsekvenser för korrekthet (parseStatus är idempotent), men onödigt CPU och nätverkstrafik. På Pi Zero 2W räknas det.
-- **Fix:** stäng av pollTimer när SSE är ansluten, starta om vid SSE-error.
+## Filer som ändras
 
----
+- `pi/src/piEngine.ts`
+  - Lägg till `saturation: number` i `LightCalibration`-typen + `DEFAULT_CAL` (= 1.0).
+  - Modifiera `applyColorCalibrationFast` (rad 173–185) så den först kör vit-rensning enligt saturation-faktorn, sen lägger på offset/gamma som idag.
+- `pi/src/configServer.ts`
+  - Lägg till `saturation: 1.0` i alla DEFAULT_PROFILES + i schema/migration så befintliga profiler får default.
+- `src/pages/PiMobile.tsx`
+  - Lägg `saturation: 1.0` i PRESET_CALS.
+  - Ny slider i Custom-vyn ("Färgmättnad" 0–100 %).
+- `.lovable/memory/technical/lighting/saturation-mapping.md` (ny) — dokumentera vit-rensningen.
+- `.lovable/memory/index.md` — ny one-liner.
 
-### Mindre observationer (inte fix nu)
-- `bleStats` växer aldrig — räknare är OK.
-- `_connectionLog` har MAX_EVENTS=200 cap — bra.
-- onsetBuffer / windowedBuf / ringBuf är pre-allokerade — zero-alloc i hot path. Bra.
-- `_diag` muteras in-place — bra.
+## Vad jag medvetet INTE rör
 
----
+- Punch-white (lämnas som den blev förra ändringen — graderad, default av).
+- Brightness-gamma och dimming-LUT — fungerar korrekt; vit-rensningen sker innan.
+- BLE-protokollet och paketformatet.
+- Hue-väljaren.
 
-### Föreslagen åtgärdsordning (default mode)
+## Förväntat resultat
 
-1. **Problem 1 + 2** (boot-loop + dubbla reconnects) — högst prio, kan ta ner Pi:n
-2. **Problem 3** (logg-spam) — fyller journald över tid
-3. **Problem 5** (listener-stacking) — slow leak
-4. **Problem 6** (SSE+poll redundans) — CPU-besparing
-5. **Problem 4** (micReadyWaiters) — kosmetisk
-
-Vill du att jag implementerar alla 5 i en sweep, eller plockar 1+2+3 nu (de kritiska) och sparar resten?
+Vid orange `(251, 93, 52)` skickas istället `(251, 52, 0)` till BLEDOM efter brightness-skalning. Blå-LED är helt av, grön kraftigt nerdragen → ögat ser mättad orange även vid 90 %+ brightness. När musiken är tyst (låg brightness) ser den fortfarande orange ut, bara svagare.
 
