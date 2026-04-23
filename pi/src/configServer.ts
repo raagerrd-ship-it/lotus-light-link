@@ -719,6 +719,8 @@ export function startConfigServer(port = 3050): void {
   let _benchLastResult: any = null;
   app.post('/api/ble/bench', async (req, res) => {
     if (_benchRunning) return res.status(409).json({ error: 'bench already running' });
+    const engine = requireEngine(res);
+    if (!engine) return;
     const { getDevice } = await import('./ble/state.js');
     const { getNoble } = await import('./ble/noble-singleton.js');
     const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
