@@ -31,6 +31,11 @@ interface BleOutput {
   sentCount: number;
   skipDeltaCount?: number;
   skipBusyCount?: number;
+  skipLeaseLockedCount?: number;
+  controllerOutstandingCount?: number;
+  controllerCompleteCount?: number;
+  controllerStuckCount?: number;
+  outstandingAgeMs?: number;
   writeLatAvgMs?: number;
 }
 
@@ -46,6 +51,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const lastSentRateRef = useRef(0);
   const lastSkipDeltaRateRef = useRef(0);
   const lastSkipBusyRateRef = useRef(0);
+  const lastSkipLeaseRateRef = useRef(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -80,6 +86,10 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const lampConnected = !!state?.connected;
   useEffect(() => {
     if (!showLamp || !lampConnected) {
+      lastSentRateRef.current = 0;
+      lastSkipDeltaRateRef.current = 0;
+      lastSkipBusyRateRef.current = 0;
+      lastSkipLeaseRateRef.current = 0;
       setBleOutput({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
       return;
     }
@@ -87,6 +97,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
     let lastCount = 0;
     let lastSkipDelta = 0;
     let lastSkipBusy = 0;
+    let lastSkipLease = 0;
     let lastT = performance.now();
     const tick = async () => {
       try {
@@ -99,10 +110,12 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
             lastSentRateRef.current = Math.round((data.sentCount - lastCount) / dt);
             lastSkipDeltaRateRef.current = Math.round(((data.skipDeltaCount ?? 0) - lastSkipDelta) / dt);
             lastSkipBusyRateRef.current = Math.round(((data.skipBusyCount ?? 0) - lastSkipBusy) / dt);
+            lastSkipLeaseRateRef.current = Math.round(((data.skipLeaseLockedCount ?? 0) - lastSkipLease) / dt);
           }
           lastCount = data.sentCount;
           lastSkipDelta = data.skipDeltaCount ?? 0;
           lastSkipBusy = data.skipBusyCount ?? 0;
+          lastSkipLease = data.skipLeaseLockedCount ?? 0;
           lastT = now;
           lastSentCountRef.current = data.sentCount;
           setBleOutput(data);
@@ -166,6 +179,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const engineReady = !!state?.engineReady;
   const connected = !!state?.connected;
   const device = state?.device ?? { name: "ELK-BLEDOM01", mac: "BE:67:00:15:09:41" };
+  const drainLooksBusy = (bleOutput.controllerOutstandingCount ?? 0) > 0 || (bleOutput.outstandingAgeMs ?? 0) > 25;
 
   return (
     <div className="space-y-3 mb-4">
@@ -255,11 +269,27 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                 <span>RGB {bleOutput.r},{bleOutput.g},{bleOutput.b}</span>
                 <span className="ml-auto">
                   {lastSentRateRef.current} pkt/s
-                  {lastSkipBusyRateRef.current > 0 && <span className="text-destructive"> · b{lastSkipBusyRateRef.current}</span>}
+                  {lastSkipBusyRateRef.current > 0 && <span className="text-destructive"> · busy{lastSkipBusyRateRef.current}</span>}
                   {lastSkipDeltaRateRef.current > 0 && <span className="opacity-70" title="Skippade dup-paket per sekund (samma färg som förra)"> · skip{lastSkipDeltaRateRef.current}</span>}
                   {bleOutput.writeLatAvgMs ? <span className="opacity-50"> · {bleOutput.writeLatAvgMs}ms</span> : null}
                   <span className="opacity-50"> · {bleOutput.sentCount} totalt</span>
                 </span>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] font-mono opacity-60">
+                <span className="w-12">&nbsp;</span>
+                <span>lease {lastSkipLeaseRateRef.current}/s</span>
+                <span className={drainLooksBusy ? "text-destructive" : undefined}>
+                  drain {bleOutput.controllerOutstandingCount ?? 0}
+                </span>
+                <span className={drainLooksBusy ? "text-destructive" : undefined}>
+                  age {bleOutput.outstandingAgeMs ?? 0}ms
+                </span>
+                {(bleOutput.controllerStuckCount ?? 0) > 0 && (
+                  <span className="text-destructive">stuck {bleOutput.controllerStuckCount}</span>
+                )}
+                {(bleOutput.controllerCompleteCount ?? 0) > 0 && (
+                  <span className="opacity-50 ml-auto">done {bleOutput.controllerCompleteCount}</span>
+                )}
               </div>
             </div>
           )}
