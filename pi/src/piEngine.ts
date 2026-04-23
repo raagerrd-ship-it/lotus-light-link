@@ -332,7 +332,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    setMinWriteIntervalMs(ms); // 1 tick = 1 BLE-paket — håll rate-limit i synk
+    setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
   }
 
   setColor(rgb: [number, number, number]) {
