@@ -33,6 +33,7 @@ interface BleOutput {
   skipBusyCount?: number;
   skipLeaseLockedCount?: number;
   controllerOutstandingCount?: number;
+  controllerQueuedCount?: number;
   controllerCompleteCount?: number;
   controllerStuckCount?: number;
   outstandingAgeMs?: number;
