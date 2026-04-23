@@ -994,13 +994,21 @@ export function startConfigServer(port = 3050): void {
   });
 
   // --- Live BLE output (sista färg + brightness skickad till lampan) ---
-  app.get('/api/ble/output', (_req, res) => {
+  app.get('/api/ble/output', async (_req, res) => {
     const engine = getEngine();
     if (!engine) {
       res.json({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
       return;
     }
     const d = engine.getDiagnostics();
+    // Läs drain LIVE direkt från noble — bleStats.controllerOutstandingCount
+    // skrivs bara i leaseAndDrainState() och blir stale om engine pausar
+    // sendToBLE-anrop (idle/keep-alive). UI ska visa sanningen just nu.
+    let liveOutstanding = 0;
+    try {
+      const cd = await import('./ble/controllerDrain.js');
+      if (cd.isControllerDrainAttached()) liveOutstanding = cd.getOutstandingPackets();
+    } catch {}
     res.json({
       active: true,
       r: d.finalR,
@@ -1014,7 +1022,7 @@ export function startConfigServer(port = 3050): void {
       skipControllerBusyCount: bleStats.skipControllerBusyCount ?? 0,
       controllerCompleteCount: bleStats.controllerCompleteCount ?? 0,
       controllerStuckCount: bleStats.controllerStuckCount ?? 0,
-      controllerOutstandingCount: bleStats.controllerOutstandingCount ?? 0,
+      controllerOutstandingCount: liveOutstanding,
       outstandingAgeMs: bleStats.outstandingAgeMs ?? 0,
       writeLatAvgMs: bleStats.writeLatAvgMs,
     });
