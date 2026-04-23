@@ -112,7 +112,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
 
   useEffect(() => {
     if (!sonosReady) {
-      setSonos({ playing: false, track: null, palette: [] });
+      setSonos({ playing: false, track: null, palette: [], nextPalette: [] });
       return;
     }
     let cancelled = false;
@@ -123,6 +123,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
           const data = await r.json();
           const s = data.sonos ?? {};
           const palette = Array.isArray(s.palette) ? s.palette : [];
+          const nextPalette = Array.isArray(s.nextPalette) ? s.nextPalette : [];
           const track: string | null =
             (typeof s.trackName === "string" && s.trackName) ||
             (typeof s.currentTrack === "string" && s.currentTrack) ||
@@ -134,6 +135,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
             playing: s.playbackState === "PLAYBACK_STATE_PLAYING" || s.playbackState === "PLAYING" || s.playing === true,
             track,
             palette,
+            nextPalette,
           });
         }
       } catch {}
