@@ -65,6 +65,7 @@ let currentState: SonosState = {
   durationMs: null,
   isTvMode: false,
   palette: null,
+  nextPalette: null,
 };
 
 export function getSonosState(): SonosState {
