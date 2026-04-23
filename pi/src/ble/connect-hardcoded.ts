@@ -340,6 +340,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
             _onDisconnected?.();
+            detachControllerDrain();
             setDevice(null);
             resetLastSent();
             bleStats.disconnectCount++;
@@ -395,6 +396,9 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
               name: HARDCODED_DEVICE.name,
               id: peripheral.id,
             });
+            // Hooka in noble's HCI ACL-räknare så vi vet om controllern
+            // har outstanding paket (verklig drain-signal, inte promise).
+            attachControllerDrain(peripheral);
             // Aktivera auto-reconnect-loopen — från och med nu räknas varje
             // disconnect som "tappad länk vi vill ha tillbaka".
             _autoReconnectEnabled = true;
