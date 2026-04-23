@@ -222,6 +222,14 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 
   const now = performance.now();
 
+  // Steg 2: Rate-limit gate. withoutResponse=true resolvar nästan direkt
+  // → slot-checken släpper igenom långt över BLEDOM:s ~30 pkt/s tak.
+  // Denna gate är vad som faktiskt hindrar HCI-kö-bygge.
+  if (minWriteIntervalMs > 0 && (now - lastWriteTime) < minWriteIntervalMs) {
+    bleStats.skipRateLimitCount = (bleStats.skipRateLimitCount ?? 0) + 1;
+    return 'rate-limited';
+  }
+
   // Steg 3: Brightness-skala + delta-check
   const scale = brightnessToScale(brightness);
   const cr = (r * scale + 0.5) | 0;
