@@ -709,6 +709,103 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), slotLeaseMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
   });
 
+  // ─── BLE bench: auto-ramp throughput test ───
+  // Förbigår både lease, delta-skip och engine. Skickar writeAsync(buf, true)
+  // direkt mot characteristic med fast intervall under N sekunder per steg.
+  // Rampar upp tills steget misslyckas (failRate > 5% eller drainPeak > 8).
+  let _benchRunning = false;
+  let _benchLastResult: any = null;
+  app.post('/api/ble/bench', async (req, res) => {
+    if (_benchRunning) return res.status(409).json({ error: 'bench already running' });
+    const { getDevice } = await import('./ble/state.js');
+    const { getOutstandingPackets, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
+    const dev = getDevice();
+    if (!dev) return res.status(503).json({ error: 'no BLE device connected' });
+
+    const startRate = Math.max(5, Math.min(200, Number(req.body?.startRate ?? 20)));
+    const stepRate  = Math.max(1, Math.min(50,  Number(req.body?.stepRate  ?? 10)));
+    const maxRate   = Math.max(startRate, Math.min(400, Number(req.body?.maxRate ?? 120)));
+    const stepSec   = Math.max(1, Math.min(10,  Number(req.body?.stepSec   ?? 3)));
+
+    _benchRunning = true;
+    const buf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
+    const steps: any[] = [];
+    let lastGoodRate = 0;
+    let stoppedReason = 'completed';
+
+    console.log(`[Bench] Start ramp ${startRate}→${maxRate} step=${stepRate} stepSec=${stepSec}`);
+
+    try {
+      for (let rate = startRate; rate <= maxRate; rate += stepRate) {
+        const intervalMs = 1000 / rate;
+        const totalAttempts = Math.round(rate * stepSec);
+        let sent = 0, failed = 0, latSum = 0, latMax = 0;
+        let drainPeak = 0;
+        const t0 = performance.now();
+        let colorIdx = 0;
+
+        for (let i = 0; i < totalAttempts; i++) {
+          const targetT = t0 + i * intervalMs;
+          const delay = targetT - performance.now();
+          if (delay > 0) await new Promise(r => setTimeout(r, delay));
+          // Rotera färg så delta-skip aldrig kunde hindra (ej relevant här men säkert)
+          colorIdx = (colorIdx + 1) % 256;
+          buf[4] = colorIdx; buf[5] = 255 - colorIdx; buf[6] = (colorIdx * 3) & 0xff;
+          const wStart = performance.now();
+          try {
+            await dev.characteristic.writeAsync(buf, true);
+            const lat = performance.now() - wStart;
+            sent++; latSum += lat; if (lat > latMax) latMax = lat;
+          } catch {
+            failed++;
+          }
+          if (isControllerDrainAttached()) {
+            const out = getOutstandingPackets();
+            if (out > drainPeak) drainPeak = out;
+          }
+        }
+
+        const failRate = failed / totalAttempts;
+        const avgLat = sent > 0 ? latSum / sent : 0;
+        const passed = failRate < 0.05 && drainPeak < 8;
+        const result = {
+          rate, attempted: totalAttempts, sent, failed,
+          failRatePct: +(failRate * 100).toFixed(1),
+          avgLatencyMs: +avgLat.toFixed(2),
+          maxLatencyMs: +latMax.toFixed(2),
+          drainPeak, passed,
+        };
+        steps.push(result);
+        console.log(`[Bench] rate=${rate} sent=${sent}/${totalAttempts} fail=${failed} avgLat=${avgLat.toFixed(1)}ms drainPeak=${drainPeak} → ${passed ? 'PASS' : 'FAIL'}`);
+
+        if (passed) {
+          lastGoodRate = rate;
+        } else {
+          stoppedReason = failRate >= 0.05 ? `failRate ${(failRate*100).toFixed(1)}%` : `drainPeak ${drainPeak}`;
+          break;
+        }
+        // kort settle mellan steg
+        await new Promise(r => setTimeout(r, 300));
+      }
+    } catch (e: any) {
+      stoppedReason = `error: ${e?.message ?? e}`;
+    } finally {
+      _benchRunning = false;
+    }
+
+    _benchLastResult = {
+      ok: true, finishedAt: new Date().toISOString(),
+      startRate, stepRate, maxRate, stepSec,
+      lastGoodRate, stoppedReason, steps,
+    };
+    console.log(`[Bench] Done — top stable rate = ${lastGoodRate} pkt/s (${stoppedReason})`);
+    res.json(_benchLastResult);
+  });
+
+  app.get('/api/ble/bench', (_req, res) => {
+    res.json({ running: _benchRunning, lastResult: _benchLastResult });
+  });
+
   // --- BLE Auto-tune ---
   let _autotuneRunning = false;
   app.post('/api/ble/autotune', async (_req, res) => {

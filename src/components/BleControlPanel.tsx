@@ -10,8 +10,8 @@
  * Engine-loggen är borttagen — felsök via SSH/journalctl istället.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Bluetooth, Loader2, Lightbulb, Play, Power } from "lucide-react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Bluetooth, Loader2, Lightbulb, Play, Power, Gauge } from "lucide-react";
 
 interface BleStateResp {
   engineReady: boolean;
@@ -291,6 +291,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                   <span className="opacity-50 ml-auto">done {bleOutput.controllerCompleteCount}</span>
                 )}
               </div>
+              <BleBenchRow piBase={piBase} />
             </div>
           )}
         </div>
@@ -298,6 +299,86 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
       {lastError && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-[11px] p-2.5">
           ⚠ {lastError}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// BLE Bench — auto-ramp throughput test.
+// Skickar fasta paket direkt mot lampan (förbi engine + lease) och rampar
+// upp rate (start→max, +step pkt/s, stepSec per steg) tills failrate >5%
+// eller drainPeak ≥8. Visar då lastGoodRate som verifierat tak.
+// ─────────────────────────────────────────────────────────────────────
+interface BenchStep {
+  rate: number; sent: number; failed: number; failRatePct: number;
+  avgLatencyMs: number; maxLatencyMs: number; drainPeak: number; passed: boolean;
+}
+interface BenchResult {
+  lastGoodRate: number; stoppedReason: string; steps: BenchStep[];
+  startRate: number; stepRate: number; maxRate: number; stepSec: number;
+}
+
+function BleBenchRow({ piBase }: { piBase: string }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<BenchResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = useCallback(async () => {
+    setRunning(true); setErr(null); setResult(null);
+    try {
+      const r = await fetch(`${piBase}/api/ble/bench`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startRate: 10, stepRate: 10, maxRate: 120, stepSec: 3 }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!r.ok) throw new Error(`http ${r.status}`);
+      const data = await r.json();
+      setResult(data);
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
+    } finally {
+      setRunning(false);
+    }
+  }, [piBase]);
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border/40">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={run}
+          disabled={running}
+          className="px-2 py-1 rounded text-[10px] font-semibold bg-secondary text-foreground active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1"
+        >
+          {running ? <Loader2 size={10} className="animate-spin" /> : <Gauge size={10} />}
+          {running ? 'Rampar…' : 'Bench (auto-ramp)'}
+        </button>
+        {result && (
+          <span className="text-[10px] font-mono opacity-70">
+            tak: <span className="text-foreground font-semibold">{result.lastGoodRate} pkt/s</span>
+            <span className="opacity-50"> · {result.stoppedReason}</span>
+          </span>
+        )}
+        {err && <span className="text-[10px] text-destructive">⚠ {err}</span>}
+      </div>
+      {result && result.steps.length > 0 && (
+        <div className="mt-1.5 grid grid-cols-[auto_auto_auto_auto_auto] gap-x-2 gap-y-0.5 text-[9px] font-mono opacity-70">
+          <span className="opacity-50">rate</span>
+          <span className="opacity-50">sent</span>
+          <span className="opacity-50">fail%</span>
+          <span className="opacity-50">avgLat</span>
+          <span className="opacity-50">drainPk</span>
+          {result.steps.map((s) => (
+            <Fragment key={s.rate}>
+              <span className={s.passed ? 'text-foreground' : 'text-destructive'}>{s.rate}</span>
+              <span>{s.sent}</span>
+              <span className={s.failRatePct >= 5 ? 'text-destructive' : ''}>{s.failRatePct}</span>
+              <span>{s.avgLatencyMs}</span>
+              <span className={s.drainPeak >= 8 ? 'text-destructive' : ''}>{s.drainPeak}</span>
+            </Fragment>
+          ))}
         </div>
       )}
     </div>
