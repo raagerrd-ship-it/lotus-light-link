@@ -730,6 +730,14 @@ export class PiLightEngine {
       if (pct < floor) pct = floor;
 
       // ── Color fade-tween (mjuk övergång till nytt palette-mål) ──
+      // Läs alltid palette[0] löpande som mål — så att sena palette-uppdateringar
+      // från gateway syns direkt utan att kräva setPalette-call varje gång.
+      if (this._palette.length > 0) {
+        const p0 = this._palette[0];
+        this.colorTarget[0] = p0[0];
+        this.colorTarget[1] = p0[1];
+        this.colorTarget[2] = p0[2];
+      }
       // Alpha per tick = tickMs / fadeMs. Vid fadeMs=0 eller stor delta → snap.
       if (this.colorFadeMs > 0) {
         const a = this.tickMs / this.colorFadeMs;
