@@ -121,7 +121,7 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
         if (r.ok && !cancelled) {
           const data = await r.json();
           const s = data.sonos ?? {};
-          const palette = Array.isArray(data.engine?.palette) ? data.engine.palette : [];
+          const palette = Array.isArray(s.palette) ? s.palette : [];
           const track: string | null =
             (typeof s.trackName === "string" && s.trackName) ||
             (typeof s.currentTrack === "string" && s.currentTrack) ||
