@@ -56,16 +56,23 @@ export type WriteResult =
   | 'no-change'    // delta-skip (samma färg+brightness)
   | 'no-device';   // ingen ConnectedDevice
 
-// ── Strict lease-slot state ──
+// ── Lease + controller-drain state ──
 // Lease-tiden = engine.tickMs. Sätts via setSlotLeaseMs() från piEngine.
-// 1 tick = 1 BLE-paket. Promise-resolution får ALDRIG låsa upp tidigare.
+// Drain räknas från noble._aclConnections[handle].pending + _aclQueue
+// (se controllerDrain.ts). När outstanding > 0 är kedjan inte tom.
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
 
-// Stuck-detektion: när blev pågående write startad?
-let pendingWriteStartedAt = 0;
+// När senaste accepterade write skickades till noble (för outstanding-age).
+// Nollas så fort vi sett drain gå till 0 (controller har sänt klart allt).
+let lastSendStartedAt = 0;
 const STUCK_THRESHOLD_MS = 1000;
+
+// Stuck-recovery: efter STUCK_THRESHOLD_MS av outstanding>0 utan drain
+// triggas EN gång per stuck-event ett disconnect/reconnect-cykel. Flaggan
+// hindrar att vi spammar reconnect medan länken redan rivs.
+let stuckRecoveryInFlight = false;
 
 export function getSlotLeaseMs(): number { return slotLeaseMs; }
 export function setSlotLeaseMs(ms: number): void {
@@ -90,8 +97,10 @@ export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
   writePending = false;
   slotLockedUntil = 0;
-  pendingWriteStartedAt = 0;
+  lastSendStartedAt = 0;
+  stuckRecoveryInFlight = false;
   lastWriteTime = 0;
+  bleStats.outstandingAgeMs = 0;
   bleStats.requestedIntervalMs = '—';
   bleStats.actualIntervalMs = '—';
   bleStats.intervalSource = 'unknown';
