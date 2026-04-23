@@ -14,7 +14,7 @@ export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 const MAX_EVENTS = 200;
 
-export const BLE_BUILD_TAG = '2026-04-20/legacy-flow-removed';
+export const BLE_BUILD_TAG = '2026-04-23/controller-drain-gate';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Subsystem state (mic + sonos + engine — bleEngine borttaget) ──
@@ -74,12 +74,18 @@ export function isDemandActive(): boolean { return false; }
 export const bleStats = {
   sentCount: 0,
   skipDeltaCount: 0,
-  skipBusyCount: 0,
-  skipInFlightCount: 0,
+  skipBusyCount: 0,           // total busy (lease ELLER controller-outstanding)
+  skipInFlightCount: 0,       // legacy: writePending
+  skipLeaseLockedCount: 0,    // busy pga tick-lease ej utgången
+  skipControllerBusyCount: 0, // busy pga outstanding paket i HCI
   skipRateLimitCount: 0,
   fftDroppedCount: 0,
   writeFailCount: 0,
   writeStuckCount: 0,
+  controllerCompleteCount: 0, // antal gånger drain gått från >0 → 0
+  controllerStuckCount: 0,    // outstanding fastnat → reconnect triggad
+  outstandingAgeMs: 0,        // hur länge nuvarande outstanding-paket varit ute
+  lastStuckReason: null as string | null,
   tickOkCount: 0,
   tickAbortNoMicCount: 0,
   tickAbortBleBusyCount: 0,
