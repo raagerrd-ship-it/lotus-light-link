@@ -1,78 +1,163 @@
 
+## Mål
 
-## Problem
+Göra BLE-sändningen strikt "single slot" på riktigt:
 
-UI:t visar RGB `251,93,52` (orange) skickas till lampan vid 87 % brightness — men du ser vit. Det är inte att färgen blir vit i koden. Det är att vi just nu skalar färgen helt linjärt med brightness, vilket gör att alla tre LED-kanalerna i BLEDOM-strippen lyser samtidigt (R=251, G=93, B=52 → vid 87 % blir det ~196/73/41 PWM på R/G/B). Ögat blandar det till blekt vit/rosa eftersom blå- och grön-LEDarna fortfarande är på ~20–35 % duty.
+- 1 tick = max 1 försök till BLE-write
+- om något fortfarande är upptaget när nästa tick kommer: droppa den nya framens write
+- aldrig öppna en andra write bara för att `writeAsync(..., true)` råkade resolva tidigt
+- prioritera synk framför leveransgrad
 
-Vi gjorde "punch-white" mjukare i förra steget — det gjorde inget eftersom den effekten bara aktiveras de sista procenten. Det riktiga problemet är hela mappningen.
+## Rotorsak i nuvarande kod
 
-## Vad jag föreslår
+Kö kan fortfarande byggas trots 25 ms tick därför att nuvarande slot inte representerar radion, bara JavaScript-promisen:
 
-Två oberoende ändringar. Den första är hela poängen, den andra ger finkontroll.
+1. `writeAsync(buf, true)` resolvar nästan direkt när paketet lämnas till stacken, inte när lampan faktiskt är klar.
+2. `writeSlot` släpps därför för tidigt.
+3. `WRITE_SLOT_TIMEOUT_MS` tvångs-släpper dessutom sloten efter 500 ms även om en gammal write fortfarande kan leva i noble/HCI.
+4. Keep-alive delar samma writeväg, så om sloten släpps fel kan fler writes komma in bakom.
 
-### 1. Saturation-bevarande utgång (vit-rensning)
+Det är just detta som gör att "single slot" inte längre är hårt nog.
 
-Innan brightness-skalningen drar vi bort den minsta kanalen från alla tre. Det är samma sak som att räkna ut "vit-andelen" och nolla den.
+## Lösning
+
+### 1. Byt från promise-slot till strikt lease-slot i `pi/src/ble/protocol.ts`
+
+Ersätt dagens modell:
+
+- `writeSlot: Promise<void> | null`
+- release i `.finally()`
+- watchdog som öppnar sloten igen
+
+med en strikt write-gate baserad på två separata tillstånd:
+
+- `writePending: boolean` — det finns fortfarande en oavslutad `writeAsync`
+- `slotLockedUntil: number` — sloten är reserverad för hela tick-fönstret
+
+Nytt kontrakt:
 
 ```text
-m = min(R, G, B)
-R' = R - m
-G' = G - m
-B' = B - m
+sendToBLE():
+  if no device -> 'no-device'
+  if writePending -> 'busy'
+  if now < slotLockedUntil -> 'busy'
+  annars:
+    writePending = true
+    slotLockedUntil = now + 25ms
+    start writeAsync(..., true)
+    return 'sent'
 ```
 
-För `(251, 93, 52)` → `m = 52` → `(199, 41, 0)`. Hue bevaras exakt; mättnaden går till 100 %; total ljusstyrka kompenseras av att vi skalar upp resultatet så att max-kanalen behåller sitt värde:
+Viktigt:
+- `.then/.catch/.finally` får bara uppdatera stats och sätta `writePending = false`
+- promise-resolution får aldrig låsa upp sloten tidigare än lease-tiden
+- lease-tiden blir den verkliga "1 tick = 1 slot"-gränsen
+
+Detta gör att snabb promise-resolution inte längre kan öppna dörren för extra writes mellan två ticks.
+
+### 2. Ta bort rate-limit som separat backpressure-mekanism
+
+`minWriteIntervalMs` används idag som extra gate eftersom promise-sloten inte räcker. När sloten blir strikt behövs inte den dubbla logiken längre.
+
+Ändring:
+- `sendToBLE()` ska inte returnera `'rate-limited'` i active path
+- ticken ska bara se: `sent`, `busy`, `no-change`, `no-device`
+- om API:t `/api/ble/rate-limit` måste finnas kvar för kompatibilitet, låt det rapportera fixed/följa slot lease istället för en separat intern gate
+
+Målet är att undvika två parallella mekanismer som kan maskera var problemet egentligen ligger.
+
+### 3. Watchdog får aldrig öppna plats för en ny write
+
+Nuvarande watchdog är farlig just för synk-kravet. I stället för att "force-release" sloten ska den göra fail-closed:
+
+- om en write varit pending för länge:
+  - räkna stuck
+  - markera länken som dålig
+  - trigga cleanup/reconnect
+- men öppna inte sloten för fler writes innan den gamla transaktionen är avslutad eller anslutningen rivits
+
+Detta är kärnan i att kö inte ska kunna byggas.
+
+### 4. Keep-alive måste följa exakt samma single-slot-regel
+
+Keep-alive ska fortsätta finnas för att inte tappa länken, men den får inte någonsin skapa en extra write bakom active mode.
+
+Ändring i `pi/src/ble/protocol.ts`:
+- keep-alive checkar samma `writePending` + `slotLockedUntil`
+- om active path nyligen tagit sloten: skip
+- om en write hängt: skip, inte försök parallellt
+
+Det gör att hela BLE-kedjan verkligen blir "one writer, one slot".
+
+### 5. Städa tick/rate-limit-kopplingen i engine och API
+
+I `pi/src/piEngine.ts`:
+- ta bort beroendet där `setTickMs()` driver BLE-rate-limit som separat koncept
+- behåll bara ticken som engine-takt
+- om tick är hårdkodad 25 ms ska BLE-slot lease också vara 25 ms
+
+I `pi/src/configServer.ts`:
+- uppdatera `/api/tick-ms` och `/api/ble/rate-limit` så svar/texter inte längre säger att rate-limit auto-följer eller använder andra värden än själva slot-kontraktet
+- om tick-slidern är borttagen i UI:t, håll backend-semantiken konsekvent med fast 25 ms
+
+## Exakt beteende efter ändringen
+
+I active mode:
 
 ```text
-boost = max(R, G, B) / max(R', G', B')   // = 251/199 ≈ 1.26
-R'' = R' * boost  →  (251, 52, 0)
+Tick N:
+- slot ledig
+- write accepteras
+- slot låses i 25 ms
+- writeAsync startas fire-and-forget
+
+Mellan tick N och N+1:
+- även om promise resolvar efter 1 ms är sloten fortfarande låst
+
+Tick N+1:
+- om 25 ms inte passerat eller write fortfarande pending -> 'busy' och droppa frame
+- annars får exakt en ny frame försöka skriva
 ```
 
-Resultat: ren mättad orange istället för "orange-vit". Vid alla brightness-nivåer.
+Resultat:
+- inga extra writes mellan ticks
+- ingen intern app-kö
+- om BLE halkar efter droppas frames hellre än att gamla frames lever kvar
 
-Detta görs i `applyColorCalibrationFast` (eller i ett nytt steg precis efter), så hela pipen påverkas — både idle, active och keep-alive.
+Det matchar ditt krav: levererade paket ska vara så färska som möjligt, inte kompletta.
 
-### 2. Saturation-slider per profil (default = 1.0 = full vit-rensning)
+## Filer att ändra
 
-Ny calibration-parameter `saturation` (0.0 – 1.0):
-
-- `0.0` = ingen vit-rensning (gammalt beteende, "blekt/vitnande")
-- `1.0` = full vit-rensning enligt formeln ovan (default i Lugn/Normal/Party)
-
-Implementation: blenda mellan input-RGB och vit-rensad RGB med `saturation` som mix-faktor. Användaren kan dra ner i Custom om hen vill ha den gamla pastell-känslan.
-
-### 3. Defaults
-
-| Profil | saturation |
-|---|---|
-| Lugn | 1.0 |
-| Normal | 1.0 |
-| Party | 1.0 |
-| Custom | 1.0 |
-
-(Alla på 1.0 — den gamla bleka mappningen var en bugg, inte en designval. Custom låter användaren backa.)
-
-## Filer som ändras
+- `pi/src/ble/protocol.ts`
+  - ersätt promise-slot/backpressure med strict lease-slot
+  - ta bort separat rate-limit i active path
+  - gör watchdog fail-closed
+  - låt keep-alive använda samma gate
 
 - `pi/src/piEngine.ts`
-  - Lägg till `saturation: number` i `LightCalibration`-typen + `DEFAULT_CAL` (= 1.0).
-  - Modifiera `applyColorCalibrationFast` (rad 173–185) så den först kör vit-rensning enligt saturation-faktorn, sen lägger på offset/gamma som idag.
+  - ta bort kopplingen till separat `setMinWriteIntervalMs(...)`
+  - behåll tydlig semantik: tick styr cadence, slot styr om en write får ske
+
 - `pi/src/configServer.ts`
-  - Lägg till `saturation: 1.0` i alla DEFAULT_PROFILES + i schema/migration så befintliga profiler får default.
-- `src/pages/PiMobile.tsx`
-  - Lägg `saturation: 1.0` i PRESET_CALS.
-  - Ny slider i Custom-vyn ("Färgmättnad" 0–100 %).
-- `.lovable/memory/technical/lighting/saturation-mapping.md` (ny) — dokumentera vit-rensningen.
-- `.lovable/memory/index.md` — ny one-liner.
+  - städa API-svar och texter kring tick/rate-limit så de matchar nya kontraktet
 
-## Vad jag medvetet INTE rör
+- `.lovable/memory/pi/ble/single-slot-write-contract.md`
+  - uppdatera kontraktet från promise-slot till strict lease-slot
 
-- Punch-white (lämnas som den blev förra ändringen — graderad, default av).
-- Brightness-gamma och dimming-LUT — fungerar korrekt; vit-rensningen sker innan.
-- BLE-protokollet och paketformatet.
-- Hue-väljaren.
+- `.lovable/memory/pi/ble/write-without-response-mandatory.md`
+  - uppdatera noteringen så den inte längre säger att separat rate-limit är enda skyddet, utan att strict slot lease nu är primär spärr
+
+## Vad jag medvetet inte ändrar
+
+- `writeAsync(..., true)` behålls
+- ingen ACK-baserad lösning
+- ingen högre tick-frekvens
+- ingen ny queue
+- ingen retry av droppade frames
 
 ## Förväntat resultat
 
-Vid orange `(251, 93, 52)` skickas istället `(251, 52, 0)` till BLEDOM efter brightness-skalning. Blå-LED är helt av, grön kraftigt nerdragen → ögat ser mättad orange även vid 90 %+ brightness. När musiken är tyst (låg brightness) ser den fortfarande orange ut, bara svagare.
-
+- Kö kan inte byggas i vår egen sändhantering
+- En upptagen eller hängande write blockerar nya writes i stället för att gamla och nya blandas
+- Vid belastning tappas frames, men de som går igenom ligger nära aktuell musik
+- BLE-output blir "live" i stället för att kunna glida sekunder efter ljudet
