@@ -319,6 +319,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
+    setMinWriteIntervalMs(tickMs); // 1 tick = 1 BLE-paket
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -331,8 +332,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    // Ingen rate-limit längre — single-slot hard-fail i protocol.ts + tickMs
-    // är hela backpressure-kontraktet.
+    setMinWriteIntervalMs(ms); // 1 tick = 1 BLE-paket — håll rate-limit i synk
   }
 
   setColor(rgb: [number, number, number]) {
