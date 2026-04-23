@@ -321,6 +321,9 @@ interface BenchResult {
   lastGoodTickMs: number; lastGoodRatePps: number; stoppedReason: string;
   steps: BenchStep[];
   startTickMs: number; endTickMs: number; stepMs: number; stepSec: number; maxQueued: number;
+  connIntervalMs: number | null;
+  connLatency: number | null;
+  supervisionTimeoutMs: number | null;
 }
 
 function BleBenchRow({ piBase }: { piBase: string }) {
@@ -367,6 +370,22 @@ function BleBenchRow({ piBase }: { piBase: string }) {
         )}
         {err && <span className="text-[10px] text-destructive">⚠ {err}</span>}
       </div>
+      {result && (
+        <div className="mt-1 text-[10px] font-mono opacity-70">
+          connInterval:{' '}
+          <span className={
+            result.connIntervalMs == null
+              ? 'text-destructive'
+              : result.connIntervalMs > 20
+                ? 'text-destructive font-semibold'
+                : 'text-foreground font-semibold'
+          }>
+            {result.connIntervalMs == null ? 'okänt' : `${result.connIntervalMs}ms`}
+          </span>
+          {result.connLatency != null && <span className="opacity-50"> · slaveLat {result.connLatency}</span>}
+          {result.supervisionTimeoutMs != null && <span className="opacity-50"> · supTO {result.supervisionTimeoutMs}ms</span>}
+        </div>
+      )}
       {result && result.steps.length > 0 && (
         <div className="mt-1.5 grid grid-cols-[auto_auto_auto_auto_auto_auto] gap-x-2 gap-y-0.5 text-[9px] font-mono opacity-70">
           <span className="opacity-50">tick</span>

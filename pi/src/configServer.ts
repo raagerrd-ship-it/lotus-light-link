@@ -719,6 +719,8 @@ export function startConfigServer(port = 3050): void {
   let _benchLastResult: any = null;
   app.post('/api/ble/bench', async (req, res) => {
     if (_benchRunning) return res.status(409).json({ error: 'bench already running' });
+    const engine = requireEngine(res);
+    if (!engine) return;
     const { getDevice } = await import('./ble/state.js');
     const { getNoble } = await import('./ble/noble-singleton.js');
     const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
@@ -748,12 +750,46 @@ export function startConfigServer(port = 3050): void {
       } catch { return { pending: 0, queued: 0 }; }
     }
 
+    // Läs faktisk LE connection interval från noble (om tillgänglig).
+    // Förväntat värde efter våra HCI-tweaks: ~7.5–10ms. Default annars: 50ms.
+    function readConnInterval(): { intervalMs: number | null; latency: number | null; supervisionTimeoutMs: number | null; raw: string } {
+      try {
+        if (handle == null) return { intervalMs: null, latency: null, supervisionTimeoutMs: null, raw: 'no-handle' };
+        const hci = noble?._bindings?._hci;
+        const conn = hci?._aclConnections?.get?.(handle) ?? hci?._handles?.[handle];
+        // BLE spec: interval i units à 1.25ms, supervision timeout i units à 10ms
+        const interval = conn?.interval ?? conn?.connInterval ?? null;
+        const latency  = conn?.latency  ?? conn?.connLatency  ?? null;
+        const sup      = conn?.supervisionTimeout ?? conn?.timeout ?? null;
+        const intervalMs = typeof interval === 'number' ? +(interval * 1.25).toFixed(2) : null;
+        const supMs      = typeof sup === 'number' ? sup * 10 : null;
+        const keys = conn ? Object.keys(conn).join(',') : '(no-conn)';
+        return { intervalMs, latency, supervisionTimeoutMs: supMs, raw: `keys=${keys}` };
+      } catch (e: any) {
+        return { intervalMs: null, latency: null, supervisionTimeoutMs: null, raw: `err:${e?.message ?? e}` };
+      }
+    }
+
     _benchRunning = true;
     const buf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
     const steps: any[] = [];
     let lastGoodTickMs = 0;
     let stoppedReason = 'completed';
 
+    // PAUSA engine + keep-alive — annars blandas våra writes med engine's,
+    // och queued/pending blir omöjligt att tolka. Resume i finally.
+    let suspended = false;
+    try { engine.suspend(); suspended = true; } catch {}
+    // Vänta tills allt drainat innan vi börjar mäta.
+    const drainStart = performance.now();
+    while (performance.now() - drainStart < 2000) {
+      const d = readDrain();
+      if (d.queued === 0 && d.pending === 0) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    const preDrain = readDrain();
+    const connInfoStart = readConnInterval();
+    console.log(`[Bench] suspend=${suspended} preDrain pending=${preDrain.pending} queued=${preDrain.queued} connInterval=${connInfoStart.intervalMs}ms latency=${connInfoStart.latency} supTimeout=${connInfoStart.supervisionTimeoutMs}ms (${connInfoStart.raw})`);
     console.log(`[Bench] Ramp tickMs ${startTickMs}→${endTickMs} step=${stepMs} stepSec=${stepSec} maxQueued=${maxQueued} attached=${isControllerDrainAttached()} handle=${handle}`);
 
     try {
@@ -818,21 +854,64 @@ export function startConfigServer(port = 3050): void {
       stoppedReason = `error: ${e?.message ?? e}`;
     } finally {
       _benchRunning = false;
+      if (suspended) { try { engine.resume(); } catch {} }
     }
 
+    const connInfoEnd = readConnInterval();
     _benchLastResult = {
       ok: true, finishedAt: new Date().toISOString(),
       startTickMs, endTickMs, stepMs, stepSec, maxQueued,
       lastGoodTickMs,
       lastGoodRatePps: lastGoodTickMs > 0 ? +(1000 / lastGoodTickMs).toFixed(1) : 0,
+      connIntervalMs: connInfoEnd.intervalMs,
+      connLatency: connInfoEnd.latency,
+      supervisionTimeoutMs: connInfoEnd.supervisionTimeoutMs,
       stoppedReason, steps,
     };
-    console.log(`[Bench] Done — lägsta stabila tick = ${lastGoodTickMs}ms (${_benchLastResult.lastGoodRatePps} pps) — ${stoppedReason}`);
+    console.log(`[Bench] Done — lägsta stabila tick = ${lastGoodTickMs}ms (${_benchLastResult.lastGoodRatePps} pps) connInterval=${connInfoEnd.intervalMs}ms — ${stoppedReason}`);
     res.json(_benchLastResult);
   });
 
   app.get('/api/ble/bench', (_req, res) => {
     res.json({ running: _benchRunning, lastResult: _benchLastResult });
+  });
+
+  // --- BLE connection params (live från noble) ---
+  // Visar faktisk negotiated connection interval / latency / supervision timeout.
+  // Om intervalMs är null = vi kunde inte introspekta noble's HCI-conn.
+  // Om intervalMs ≥ 30ms = controllern föll tillbaka till default → BLE-länken
+  // är långsam oavsett vad vi skickar i HCI-tweaks.
+  app.get('/api/ble/conn-params', async (_req, res) => {
+    try {
+      const { getNoble } = await import('./ble/noble-singleton.js');
+      const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
+      const handle = getAttachedHandle();
+      const noble: any = getNoble();
+      if (handle == null) {
+        return res.json({ ok: false, attached: isControllerDrainAttached(), handle: null, error: 'no handle' });
+      }
+      const hci = noble?._bindings?._hci;
+      const conn = hci?._aclConnections?.get?.(handle) ?? hci?._handles?.[handle];
+      if (!conn) {
+        return res.json({ ok: false, attached: true, handle, error: 'no conn object', hciKeys: hci ? Object.keys(hci).slice(0, 20) : [] });
+      }
+      const interval = conn.interval ?? conn.connInterval ?? null;
+      const latency  = conn.latency  ?? conn.connLatency  ?? null;
+      const sup      = conn.supervisionTimeout ?? conn.timeout ?? null;
+      res.json({
+        ok: true,
+        attached: true,
+        handle,
+        intervalUnits: interval,
+        intervalMs: typeof interval === 'number' ? +(interval * 1.25).toFixed(2) : null,
+        latency,
+        supervisionTimeoutUnits: sup,
+        supervisionTimeoutMs: typeof sup === 'number' ? sup * 10 : null,
+        connKeys: Object.keys(conn),
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+    }
   });
 
   // --- BLE Auto-tune ---
