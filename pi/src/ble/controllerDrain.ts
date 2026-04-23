@@ -107,6 +107,30 @@ export function getOutstandingPackets(): number {
   }
 }
 
+/**
+ * Returnerar bara queued-delen (paket som väntar i noble's _aclQueue för
+ * denna handle). Detta är vad UI:t visar som "Kö" — pending-räknaren är
+ * controller-internt och hör inte hemma i ett kö-mått.
+ */
+export function getQueuedPackets(): number {
+  if (_attachedHandle == null) return 0;
+  try {
+    const n: any = getNoble();
+    const hci = n?._bindings?._hci;
+    if (!hci) return 0;
+    let queued = 0;
+    const q = hci._aclQueue;
+    if (Array.isArray(q)) {
+      for (let i = 0; i < q.length; i++) {
+        if (q[i]?.handle === _attachedHandle) queued++;
+      }
+    }
+    return queued;
+  } catch {
+    return 0;
+  }
+}
+
 export function isControllerDrainAttached(): boolean {
   return _attachedHandle != null;
 }

@@ -33,6 +33,7 @@ interface BleOutput {
   skipBusyCount?: number;
   skipLeaseLockedCount?: number;
   controllerOutstandingCount?: number;
+  controllerQueuedCount?: number;
   controllerCompleteCount?: number;
   controllerStuckCount?: number;
   outstandingAgeMs?: number;
@@ -179,7 +180,8 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
   const engineReady = !!state?.engineReady;
   const connected = !!state?.connected;
   const device = state?.device ?? { name: "ELK-BLEDOM01", mac: "BE:67:00:15:09:41" };
-  const drainLooksBusy = (bleOutput.controllerOutstandingCount ?? 0) > 0 || (bleOutput.outstandingAgeMs ?? 0) > 25;
+  const queuedCount = bleOutput.controllerQueuedCount ?? 0;
+  const drainLooksBusy = queuedCount > 0;
 
   return (
     <div className="space-y-3 mb-4">
@@ -260,9 +262,9 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                 <span className="ml-auto flex items-center gap-1 text-[10px] font-mono">
                   <span className="opacity-60">Kö</span>
                   <span className={drainLooksBusy ? "text-destructive font-semibold" : "opacity-70"}>
-                    {bleOutput.controllerOutstandingCount ?? 0}
+                    {queuedCount}
                   </span>
-                  {(bleOutput.controllerOutstandingCount ?? 0) > 0 && (
+                  {queuedCount > 0 && (
                     <AlertTriangle size={12} className="text-destructive" />
                   )}
                 </span>
