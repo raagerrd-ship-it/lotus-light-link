@@ -256,10 +256,19 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                   style={{ backgroundColor: `rgb(${bleOutput.r},${bleOutput.g},${bleOutput.b})` }}
                   title={`rgb(${bleOutput.r}, ${bleOutput.g}, ${bleOutput.b})`}
                 />
-                <span className="text-[10px] font-mono opacity-70">
+                <span className="text-[10px] font-mono opacity-70 shrink-0">
                   RGB {bleOutput.r},{bleOutput.g},{bleOutput.b}
                 </span>
-                <span className="ml-auto flex items-center gap-1 text-[10px] font-mono">
+                <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden min-w-[20px]">
+                  <div
+                    className="h-full transition-all"
+                    style={{
+                      width: `${Math.round((bleOutput.brightness / 255) * 100)}%`,
+                      backgroundColor: `rgb(${bleOutput.r},${bleOutput.g},${bleOutput.b})`,
+                    }}
+                  />
+                </div>
+                <span className="flex items-center gap-1 text-[10px] font-mono shrink-0">
                   <span className="opacity-60">Kö</span>
                   <span className={drainLooksBusy ? "text-destructive font-semibold" : "opacity-70"}>
                     {queuedCount}
