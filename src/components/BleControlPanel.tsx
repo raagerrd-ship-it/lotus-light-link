@@ -10,7 +10,7 @@
  * Engine-loggen är borttagen — felsök via SSH/journalctl istället.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Bluetooth, Loader2, Lightbulb, Play, Power, Gauge } from "lucide-react";
 
 interface BleStateResp {
