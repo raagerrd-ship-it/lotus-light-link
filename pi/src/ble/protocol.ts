@@ -254,13 +254,14 @@ export function setReconnectTrigger(fn: (peripheral: any, name: string) => void)
 }
 
 /**
- * SYNKRON BLE-write — strict lease-slot, hard-fail om sloten är låst.
- * Returnerar WriteResult direkt; engine kan räkna utfallet utan await.
- * writeAsync triggas fire-and-forget; resultatet rapporteras via .then/.catch.
+ * SYNKRON BLE-write — lease + controller-drain gate, hard-fail om något i
+ * kedjan är upptaget. Returnerar WriteResult direkt; engine kan räkna utan
+ * await. writeAsync triggas fire-and-forget; resultatet rapporteras via
+ * .then/.catch.
  *
- * Kontrakt: 1 tick = max 1 write. När en write accepteras låses sloten
- * i HELA slotLeaseMs (= engine.tickMs) — promise-resolution kan inte
- * öppna sloten tidigare. Detta är vad som hindrar HCI-kö-bygge.
+ * Kontrakt: 1 tick = max 1 write, max 1 outstanding ACL-paket i HCI-lagret.
+ * Sloten "force-releasas" ALDRIG. Om outstanding fastnar > STUCK_THRESHOLD_MS
+ * triggas disconnect/reconnect (i leaseAndDrainState) — kö kan ALDRIG byggas.
  */
 export function sendToBLE(r: number, g: number, b: number, brightness: number): WriteResult {
   const device = getDevice();
@@ -268,29 +269,17 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 
   const now = performance.now();
 
-  // Steg 1: Pågående write? → busy. (Fail-closed: om writeAsync hängt
-  // länge släpps INTE sloten — frames droppas tills writen resolvar
-  // eller länken rivs av stuck-detektion nedan.)
-  if (writePending) {
-    if (pendingWriteStartedAt > 0 && (now - pendingWriteStartedAt) >= STUCK_THRESHOLD_MS) {
-      bleStats.writeStuckCount++;
-      if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
-        console.warn(`[BLE] writeAsync pending >${STUCK_THRESHOLD_MS}ms (stuckCount=${bleStats.writeStuckCount}) — link likely dead, frames being dropped`);
-        lastStuckWarnAt = now;
-      }
-    }
-    bleStats.skipInFlightCount++;
+  // ── Gate: lease + controller-drain (delas med keep-alive) ──
+  const { gate, outstanding } = leaseAndDrainState(now);
+  if (gate === 'busy') {
     bleStats.skipBusyCount++;
+    if (writePending) bleStats.skipInFlightCount++;
+    if (now < slotLockedUntil) bleStats.skipLeaseLockedCount++;
+    if (outstanding > 0) bleStats.skipControllerBusyCount++;
     return 'busy';
   }
 
-  // Steg 2: Lease-slot fortfarande låst från förra ticken?
-  if (now < slotLockedUntil) {
-    bleStats.skipBusyCount++;
-    return 'busy';
-  }
-
-  // Steg 3: Brightness-skala + delta-check
+  // Brightness-skala + delta-check
   const scale = brightnessToScale(brightness);
   const cr = (r * scale + 0.5) | 0;
   const cg = (g * scale + 0.5) | 0;
@@ -307,7 +296,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     return 'no-change';
   }
 
-  // Steg 4: Bygg buffer + fire-and-forget write
+  // Bygg buffer + fire-and-forget write
   const mode = device.mode ?? 'rgb';
   let buf: Buffer;
   if (mode === 'brightness') {
@@ -318,12 +307,13 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     buf = writeBuf;
   }
 
-  // ── LÅS SLOTEN för hela tick-fönstret ──
+  // ── LÅS SLOTEN ──
   // slotLockedUntil hindrar nästa tick även om writeAsync resolvar på <1ms.
+  // lastSendStartedAt driver outstanding-age + stuck-detektion.
   lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
   const writeStartedAt = now;
   writePending = true;
-  pendingWriteStartedAt = now;
+  lastSendStartedAt = now;
   slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
 
@@ -363,10 +353,9 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
       }
     })
     .finally(() => {
-      // Släpp ENDAST writePending. slotLockedUntil håller sloten låst
-      // tills lease-fönstret löpt ut — promise-resolve kan inte smita förbi.
+      // Släpp ENDAST writePending. slotLockedUntil + outstanding-räkning
+      // styr när NÄSTA write får ske — promise-resolve är INTE drain-signal.
       writePending = false;
-      pendingWriteStartedAt = 0;
     });
 
   return 'sent';
