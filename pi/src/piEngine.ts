@@ -729,6 +729,21 @@ export class PiLightEngine {
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
 
+      // ── Color fade-tween (mjuk övergång till nytt palette-mål) ──
+      // Alpha per tick = tickMs / fadeMs. Vid fadeMs=0 eller stor delta → snap.
+      if (this.colorFadeMs > 0) {
+        const a = this.tickMs / this.colorFadeMs;
+        const k = a > 1 ? 1 : a;
+        const c = this.color; const t = this.colorTarget;
+        c[0] += (t[0] - c[0]) * k;
+        c[1] += (t[1] - c[1]) * k;
+        c[2] += (t[2] - c[2]) * k;
+      } else {
+        this.color[0] = this.colorTarget[0];
+        this.color[1] = this.colorTarget[1];
+        this.color[2] = this.colorTarget[2];
+      }
+
       // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
