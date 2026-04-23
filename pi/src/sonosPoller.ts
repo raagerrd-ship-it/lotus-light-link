@@ -131,16 +131,27 @@ function parseStatus(s: any): void {
   const reportedPlaying = isPlaying(reportedPlaybackState ?? '');
   const isTvMode = autoTvModeEnabled && reportedPlaying && !s.trackName;
 
+  // Palette-hantering: om låten bytts (nytt albumArtUrl eller trackName) men
+  // gateway ännu inte skickat ny palette → nollställ till null istället för att
+  // behålla förra låtens palett. Annars: använd gw-palette om den finns, annars
+  // behåll befintlig (samma låt, position-tick etc.).
+  const newArtUrl = s.albumArtUri ?? s.albumArtURI ?? s.albumArtUrl ?? null;
+  const newTrackName = s.trackName ?? null;
+  const trackChanged =
+    newArtUrl !== currentState.albumArtUrl ||
+    newTrackName !== currentState.trackName;
+  const nextPalette = gwPalette ?? (trackChanged ? null : currentState.palette);
+
   apply({
-    trackName: s.trackName ?? null,
+    trackName: newTrackName,
     artistName: s.artistName ?? null,
-    albumArtUrl: s.albumArtUri ?? s.albumArtURI ?? s.albumArtUrl ?? null,
+    albumArtUrl: newArtUrl,
     playbackState: reportedPlaybackState ?? currentState.playbackState,
     volume: s.volume ?? currentState.volume,
     positionMs: s.positionMillis ?? null,
     durationMs: s.durationMillis ?? null,
     isTvMode,
-    palette: gwPalette ?? currentState.palette,
+    palette: nextPalette,
   });
 }
 
