@@ -720,7 +720,6 @@ export class PiLightEngine {
       switch (writeResult) {
         case 'sent':         bleStatsState.tickOkCount++; break;
         case 'busy':         bleStatsState.tickAbortBleBusyCount++; break;
-        case 'rate-limited': bleStatsState.tickAbortBleRateLimitCount++; break;
         case 'no-change':    bleStatsState.tickAbortNoChangeCount++; break;
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
       }
