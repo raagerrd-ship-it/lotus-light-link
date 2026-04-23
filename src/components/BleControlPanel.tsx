@@ -254,42 +254,18 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                   style={{ backgroundColor: `rgb(${bleOutput.r},${bleOutput.g},${bleOutput.b})` }}
                   title={`rgb(${bleOutput.r}, ${bleOutput.g}, ${bleOutput.b})`}
                 />
-                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-[width] duration-100"
-                    style={{ width: `${Math.max(0, Math.min(100, bleOutput.brightness))}%` }}
-                  />
-                </div>
-                <span className="text-[8px] font-mono opacity-60 w-9 text-right">
-                  {Math.round(bleOutput.brightness)}%
+                <span className="text-[10px] font-mono opacity-70">
+                  RGB {bleOutput.r},{bleOutput.g},{bleOutput.b}
                 </span>
-              </div>
-              <div className="flex items-center gap-2 text-[9px] font-mono opacity-60">
-                <span className="w-12">&nbsp;</span>
-                <span>RGB {bleOutput.r},{bleOutput.g},{bleOutput.b}</span>
-                <span className="ml-auto">
-                  {lastSentRateRef.current} pkt/s
-                  {lastSkipBusyRateRef.current > 0 && <span className="text-destructive"> · busy{lastSkipBusyRateRef.current}</span>}
-                  {lastSkipDeltaRateRef.current > 0 && <span className="opacity-70" title="Skippade dup-paket per sekund (samma färg som förra)"> · skip{lastSkipDeltaRateRef.current}</span>}
-                  {bleOutput.writeLatAvgMs ? <span className="opacity-50"> · {bleOutput.writeLatAvgMs}ms</span> : null}
-                  <span className="opacity-50"> · {bleOutput.sentCount} totalt</span>
+                <span className="ml-auto flex items-center gap-1 text-[10px] font-mono">
+                  <span className="opacity-60">Kö</span>
+                  <span className={drainLooksBusy ? "text-destructive font-semibold" : "opacity-70"}>
+                    {bleOutput.controllerOutstandingCount ?? 0}
+                  </span>
+                  {(bleOutput.controllerOutstandingCount ?? 0) > 0 && (
+                    <AlertTriangle size={12} className="text-destructive" />
+                  )}
                 </span>
-              </div>
-              <div className="flex items-center gap-2 text-[9px] font-mono opacity-60">
-                <span className="w-12">&nbsp;</span>
-                <span>lease {lastSkipLeaseRateRef.current}/s</span>
-                <span className={drainLooksBusy ? "text-destructive" : undefined}>
-                  drain {bleOutput.controllerOutstandingCount ?? 0}
-                </span>
-                <span className={drainLooksBusy ? "text-destructive" : undefined}>
-                  age {bleOutput.outstandingAgeMs ?? 0}ms
-                </span>
-                {(bleOutput.controllerStuckCount ?? 0) > 0 && (
-                  <span className="text-destructive">stuck {bleOutput.controllerStuckCount}</span>
-                )}
-                {(bleOutput.controllerCompleteCount ?? 0) > 0 && (
-                  <span className="opacity-50 ml-auto">done {bleOutput.controllerCompleteCount}</span>
-                )}
               </div>
               <BleBenchRow piBase={piBase} />
             </div>
