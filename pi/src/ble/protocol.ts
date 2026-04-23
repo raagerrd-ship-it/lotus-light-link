@@ -52,16 +52,15 @@ export type WriteResult =
 
 // ── Write state ──
 const WRITE_SLOT_TIMEOUT_MS = 500;
-// Rate-limit gate (re-introduced 2026-04-23):
-// withoutResponse=true returnerar nästan direkt utan att vänta på att radion
-// skickat paketet → single-slot hard-fail räcker INTE som backpressure.
-// Utan denna gate bygger noble/HCI-bufferten kö och lampan släpar 1-2s efter
-// musiken (BLEDOM klarar ~30 pkt/s i praktiken). Default 35ms ≈ 28 pkt/s,
-// säker marginal under taket. Justerbar via /api/ble/rate-limit.
-let minWriteIntervalMs = 35;
+// Rate-limit gate. Kontrakt: 1 tick = 1 BLE-paket. Engine.setTickMs sätter
+// detta värde till samma som tickMs så det ALDRIG skickas mer än ett paket
+// per tick — utan denna gate bygger noble/HCI kö (BLEDOM klarar ~30 pkt/s)
+// eftersom withoutResponse=true resolvar nästan direkt och slot-checken
+// släpper igenom långt över taket.
+let minWriteIntervalMs = 25;
 export function getMinWriteIntervalMs(): number { return minWriteIntervalMs; }
 export function setMinWriteIntervalMs(ms: number): void {
-  minWriteIntervalMs = Math.max(0, Math.min(200, ms | 0));
+  minWriteIntervalMs = Math.max(0, Math.min(500, ms | 0));
 }
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
 let writeSlot: Promise<void> | null = null;
