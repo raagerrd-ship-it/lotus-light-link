@@ -88,13 +88,18 @@ function readPlaybackState(raw: unknown): string | null {
   return typeof raw === 'string' && raw.length > 0 ? raw : null;
 }
 
+function paletteSig(p: [number, number, number][] | null): string {
+  return p ? p.map(c => c.join(',')).join('|') : '';
+}
+
 function apply(next: SonosState): void {
   const changed =
     next.playbackState !== currentState.playbackState ||
     next.trackName !== currentState.trackName ||
     next.volume !== currentState.volume ||
     next.isTvMode !== currentState.isTvMode ||
-    next.albumArtUrl !== currentState.albumArtUrl;
+    next.albumArtUrl !== currentState.albumArtUrl ||
+    paletteSig(next.palette) !== paletteSig(currentState.palette);
   currentState = next;
   if (changed) listeners.forEach(fn => fn(next));
 }
