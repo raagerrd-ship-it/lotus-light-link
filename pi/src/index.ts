@@ -68,7 +68,7 @@ function applySonosStateToEngine(state: {
   volume: number | null;
   palette: [number, number, number][] | null;
   albumArtUrl: string | null;
-}, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }): void {
+}, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }, lastPaletteSigRef?: { current: string | null }): void {
   if (!engineInstance) return;
   // Acceptera alla PLAYING-varianter (PLAYBACK_STATE_PLAYING, PLAYING, ev.
   // PLAYING_ad). Matchar sonosPoller.isPlaying() och UI:s play-detektion —
@@ -96,9 +96,15 @@ function applySonosStateToEngine(state: {
   }
 
   if (!state.isTvMode && state.palette && state.palette.length > 0) {
+    // Trigga uppdatering om EN­TINGEN art-URL ändras ELLER palett-signaturen
+    // ändras (gatewayen kan skicka uppdaterad palett för samma låt när
+    // färgextraktionen är klar — utan detta fastnar engine på första paletten).
+    const paletteSig = state.palette.map(c => c.join(',')).join('|');
     const artChanged = !lastArtUrlRef || state.albumArtUrl !== lastArtUrlRef.current;
-    if (artChanged) {
+    const paletteChanged = !lastPaletteSigRef || paletteSig !== lastPaletteSigRef.current;
+    if (artChanged || paletteChanged) {
       if (lastArtUrlRef) lastArtUrlRef.current = state.albumArtUrl;
+      if (lastPaletteSigRef) lastPaletteSigRef.current = paletteSig;
       engineInstance.setColor(state.palette[0]);
       engineInstance.setPalette(state.palette);
       console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
@@ -225,8 +231,9 @@ async function startSonosSubsystem(): Promise<void> {
 
       const lastArtUrl = { current: null as string | null };
       const wasTvMode = { current: false };
+      const lastPaletteSig = { current: null as string | null };
       sonos.onSonosChange((state) => {
-        applySonosStateToEngine(state, lastArtUrl, wasTvMode);
+        applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
       });
 
       markSubsystemReady('sonos');
