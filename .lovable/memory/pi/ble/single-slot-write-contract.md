@@ -1,39 +1,49 @@
 ---
-name: Single-slot BLE-write — kontrakt
-description: Två BLE-vägar med owner-switch — idle keep-alive @200ms ELLER active sendToBLE per tick. Aldrig båda samtidigt. Single-slot writeSlot, hard-fail vid busy.
+name: Strict lease-slot — kontrakt (1 tick = 1 BLE-paket)
+description: BLE-write använder strict lease-slot. När en write accepteras låses sloten i HELA tickMs-fönstret oavsett när writeAsync(..., true) resolvar. Promise-resolution kan aldrig öppna sloten tidigare. Fail-closed watchdog.
 type: constraint
 ---
-**Kontrakt (2026-04-21):**
+**Kontrakt (2026-04-23):**
 
-1. **Två vägar, EN ägare i taget** (`_bleOwner` i `piEngine.ts`):
-   - `'none'` — BLE ej ansluten. Inga writes.
-   - `'idle'` — keep-alive @200ms bär idle-färg + länk. `sendToBLE`-paths blockeras av tickInner-guard.
-   - `'active'` — `sendToBLE` per FFT-tick under play. `stopKeepAlive()` körs vid övergång in.
+1. **Två tillstånd, INGEN promise-slot:**
+   - `writePending: boolean` — det finns en oavslutad `writeAsync`
+   - `slotLockedUntil: number` — sloten är reserverad fram till denna tidpunkt
+   - `slotLeaseMs` = `engine.tickMs` (sätts via `setSlotLeaseMs` från `piEngine.setTickMs`)
 
-2. **Övergångar:**
-   | Event | Action |
-   |---|---|
-   | `onBleConnected` (playing=false) | owner→idle, `setIdleColor` + `startKeepAlive` |
-   | `onBleConnected` (playing=true)  | owner→active |
-   | `setPlaying(true)` från idle     | owner→active, `stopKeepAlive` |
-   | `setPlaying(false)` från active  | owner→idle, `setIdleColor` + `startKeepAlive` |
-   | `onBleDisconnected`              | owner→none, `stopKeepAlive` |
+2. **`sendToBLE()` flow:**
+   ```
+   if no device                  -> 'no-device'
+   if writePending               -> 'busy'
+   if now < slotLockedUntil      -> 'busy'
+   if delta-skip (same RGB+br)   -> 'no-change'
+   else:
+     writePending = true
+     slotLockedUntil = now + slotLeaseMs
+     lastWriteTime = now
+     writeAsync(buf, true)       (fire-and-forget)
+     return 'sent'
+   ```
+   `.finally` släpper ENDAST `writePending`. `slotLockedUntil` håller sloten låst hela lease-fönstret även om promise resolvar på <1ms — detta är vad som hindrar HCI-kö-bygge.
 
-3. **Single-slot:** `writeSlot: Promise<void> | null` är gemensam för `sendToBLE` och keep-alive. Är den upptagen → `'busy'` / no-op. Eftersom bara EN ägare skriver i taget är slot-konflikter sällsynta (mest noble's egen latens).
+3. **Keep-alive följer EXAKT samma gate:**
+   - `if (writePending) return;`
+   - `if (now < slotLockedUntil) return;`
+   - Active path har företräde — keep-alive fyller bara luckor.
 
-4. **500ms watchdog:** `writeSlotWatchdog` tvångs-släpper sloten om writeAsync hänger.
+4. **Fail-closed stuck-detektion:**
+   - Ingen watchdog som "force-releasar" sloten.
+   - Om `writePending` varit true >1000ms → räkna `bleStats.writeStuckCount`, logga (rate-limitad var 10s), men öppna INTE sloten. Frames droppas tills writen resolvar eller länken rivs av reconnect-logik.
 
-5. **`setIdleColor(r,g,b)`:** Synkron buffer-uppdate (`writeBuf[4..6]` + dedup-state). INGEN write triggas. Keep-alive bär färgen vid nästa 200ms-tick. Ersätter tidigare `sendIdleForce`.
+5. **Borttaget 2026-04-23:**
+   - `writeSlot: Promise<void> | null` (promise-baserad slot)
+   - `writeSlotWatchdog` (force-release efter 500ms)
+   - `WriteResult.'rate-limited'` (separat rate-limit i active path)
+   - Separat `minWriteIntervalMs`-koncept — `setMinWriteIntervalMs` är nu alias för `setSlotLeaseMs`
+   - 60%-tick-regeln (`floor(tickMs * 0.6)`) — lease = exakt tickMs
 
-6. **Tick-guard:** `tickInner` returnerar tidigt om `_bleOwner !== 'active'` — skydd mot sen FFT-frame som anländer efter `setPlaying(false)`.
-
-**Borttaget 2026-04-21:**
-- `sendRawColor` (test-only, fade-test-API)
-- `sendIdleForce` (ersatt av `setIdleColor` + förlitar på keep-alive)
-- `/api/ble-fade-test*` endpoints
-- 400ms KEEPALIVE_MS → 200ms (snabbare idle-färg-byte vid pause)
+6. **WriteResult:** `'sent' | 'busy' | 'no-change' | 'no-device'` (4 utfall, inte 5).
 
 **Filer:**
-- `pi/src/ble/protocol.ts` (sendToBLE, setIdleColor, startKeepAlive, KEEPALIVE_MS=200)
-- `pi/src/piEngine.ts` (_bleOwner, onBleConnected, onBleDisconnected, setPlaying, tickInner-guard)
-- `pi/src/ble/connect-hardcoded.ts` (setEngineBleCallbacks → engine owner-switch)
+- `pi/src/ble/protocol.ts` (writePending, slotLockedUntil, setSlotLeaseMs, sendToBLE, startKeepAlive)
+- `pi/src/piEngine.ts` (constructor + setTickMs anropar setSlotLeaseMs(tickMs))
+- `pi/src/configServer.ts` (`/api/tick-ms`, `/api/ble/rate-limit` rapporterar slotLeaseMs)
