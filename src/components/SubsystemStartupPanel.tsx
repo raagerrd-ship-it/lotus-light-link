@@ -68,7 +68,7 @@ function VuMeter({ level }: { level: MicLevel }) {
 export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; enabled: boolean }) {
   const [status, setStatus] = useState<StatusResp | null>(null);
   const [micLevel, setMicLevel] = useState<MicLevel>({ active: false, totalRms: 0, bassRms: 0, midHiRms: 0 });
-  const [sonos, setSonos] = useState<SonosSnapshot>({ playing: false, track: null, palette: [] });
+  const [sonos, setSonos] = useState<SonosSnapshot>({ playing: false, track: null, palette: [], nextPalette: [] });
 
   const fetchStatus = useCallback(async () => {
     try {
