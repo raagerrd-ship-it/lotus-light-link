@@ -11,7 +11,8 @@ import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
-import { attachControllerDrain, detachControllerDrain } from './controllerDrain.js';
+import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
+import { forceConnInterval } from './forceConnInterval.js';
 import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
@@ -399,6 +400,24 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // Hooka in noble's HCI ACL-räknare så vi vet om controllern
             // har outstanding paket (verklig drain-signal, inte promise).
             attachControllerDrain(peripheral);
+            // FORCE 7.5ms connection interval via hcitool lecup.
+            // Noble's egen HCI-request slår inte alltid igenom (bevisat:
+            // bench körde på ~20pps tak tills `hcitool lecup --min 6 --max 6`
+            // kördes manuellt — då gick det till 50 pps utan kö).
+            // Vi kör async, 500ms efter attach, så GATT-sessionen hinner sätta sig.
+            setTimeout(async () => {
+              const handle = getAttachedHandle();
+              if (handle == null) {
+                console.warn(`${ts()}    [forceConnInterval] ingen handle — skip`);
+                return;
+              }
+              const r = await forceConnInterval(handle);
+              if (r.ok) {
+                console.log(`${ts()}    [forceConnInterval] OK handle=${handle} → 7.5ms target (${r.durationMs}ms)`);
+              } else {
+                console.warn(`${ts()}    [forceConnInterval] FAIL handle=${handle} exit=${r.exitCode} stderr="${r.stderr}" (${r.durationMs}ms) — länken körs på default interval`);
+              }
+            }, 500);
             // Aktivera auto-reconnect-loopen — från och med nu räknas varje
             // disconnect som "tappad länk vi vill ha tillbaka".
             _autoReconnectEnabled = true;

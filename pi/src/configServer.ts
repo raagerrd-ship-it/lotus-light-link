@@ -727,8 +727,8 @@ export function startConfigServer(port = 3050): void {
     const dev = getDevice();
     if (!dev) return res.status(503).json({ error: 'no BLE device connected' });
 
-    const startTickMs = Math.max(10, Math.min(200, Number(req.body?.startTickMs ?? 50)));
-    const endTickMs   = Math.max(5,  Math.min(startTickMs, Number(req.body?.endTickMs ?? 20)));
+    const startTickMs = Math.max(10, Math.min(200, Number(req.body?.startTickMs ?? 30)));
+    const endTickMs   = Math.max(5,  Math.min(startTickMs, Number(req.body?.endTickMs ?? 10)));
     const stepMs      = Math.max(1,  Math.min(20,  Number(req.body?.stepMs    ?? 5)));
     const stepSec     = Math.max(2,  Math.min(15,  Number(req.body?.stepSec   ?? 5)));
     const maxQueued   = Math.max(0,  Math.min(10,  Number(req.body?.maxQueued ?? 2)));

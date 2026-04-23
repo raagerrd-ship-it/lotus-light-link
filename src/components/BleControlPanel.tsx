@@ -337,7 +337,7 @@ function BleBenchRow({ piBase }: { piBase: string }) {
       const r = await fetch(`${piBase}/api/ble/bench`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startTickMs: 50, endTickMs: 20, stepMs: 5, stepSec: 5, maxQueued: 2 }),
+        body: JSON.stringify({ startTickMs: 30, endTickMs: 10, stepMs: 2, stepSec: 5, maxQueued: 2 }),
         signal: AbortSignal.timeout(180_000),
       });
       if (!r.ok) throw new Error(`http ${r.status}`);
@@ -359,7 +359,7 @@ function BleBenchRow({ piBase }: { piBase: string }) {
           className="px-2 py-1 rounded text-[10px] font-semibold bg-secondary text-foreground active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1"
         >
           {running ? <Loader2 size={10} className="animate-spin" /> : <Gauge size={10} />}
-          {running ? 'Mäter…' : 'Bench tick 50→20ms'}
+          {running ? 'Mäter…' : 'Bench tick 30→10ms'}
         </button>
         {result && (
           <span className="text-[10px] font-mono opacity-70">
