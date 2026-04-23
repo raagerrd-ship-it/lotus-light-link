@@ -286,9 +286,10 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  // Stale-write force: vid tyst musik (R=G=B=0) skulle delta-skip annars
-  // stoppa ALLA writes; keep-alive är inte garanterad i active mode.
-  const STALE_WRITE_MS = 400;
+  // Stale-write force: garanterar minst ~5 pkt/s under playing även när
+  // färgen inte ändras. Hindrar dels delta-skip från att tysta länken vid
+  // tyst musik, dels supervision timeout (keep-alive är AV i active mode).
+  const STALE_WRITE_MS = 200;
   const isStale = (now - lastWriteTime) >= STALE_WRITE_MS;
   if (!process.env.BLE_NO_DELTA_SKIP && !isStale &&
       cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
