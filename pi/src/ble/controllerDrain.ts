@@ -67,6 +67,10 @@ export function detachControllerDrain(): void {
  * Returnerar 0 om vi inte kan introspekta noble (degraderar till lease-only,
  * vilket är säkrare än att aldrig släppa fram en write).
  */
+let _lastDiagLog = 0;
+let _maxPendingSeen = 0;
+let _maxQueuedSeen = 0;
+
 export function getOutstandingPackets(): number {
   if (_attachedHandle == null) return 0;
   try {
@@ -82,6 +86,21 @@ export function getOutstandingPackets(): number {
         if (q[i]?.handle === _attachedHandle) queued++;
       }
     }
+
+    // Diagnostik: logga max-värden 1 ggr/s så vi ser om pending fastnar.
+    if (pending > _maxPendingSeen) _maxPendingSeen = pending;
+    if (queued > _maxQueuedSeen) _maxQueuedSeen = queued;
+    const now = Date.now();
+    if (now - _lastDiagLog > 1000) {
+      _lastDiagLog = now;
+      const hasConn = !!conn;
+      const hasAclQueue = Array.isArray(q);
+      const connKeys = conn ? Object.keys(conn).join(',') : '(no-conn)';
+      console.log(`[controllerDrain:diag] pending=${pending} queued=${queued} maxPending=${_maxPendingSeen} maxQueued=${_maxQueuedSeen} hasConn=${hasConn} hasAclQueue=${hasAclQueue} connKeys=${connKeys}`);
+      _maxPendingSeen = 0;
+      _maxQueuedSeen = 0;
+    }
+
     return pending + queued;
   } catch {
     return 0;
