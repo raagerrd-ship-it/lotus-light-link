@@ -16,3 +16,4 @@ export { connectHardcoded, disconnectHardcoded, getHardcodedConnected, getHardco
 export { startBleEngineMinimal, isMinimalEngineStarted } from './engine-start-minimal.js';
 export { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 export { isHci0Up } from './adapter-hci-check.js';
+export { getOutstandingPackets, isControllerDrainAttached, getAttachedHandle } from './controllerDrain.js';

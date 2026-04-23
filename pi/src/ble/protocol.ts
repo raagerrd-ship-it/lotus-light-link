@@ -1,19 +1,25 @@
 /**
  * BLE BLEDOM protocol: packet formats, write pipeline, keepalive, brightness.
  *
- * STRICT LEASE-SLOT (2026-04-23):
+ * LEASE + CONTROLLER-DRAIN (2026-04-23):
  * sendToBLE() är SYNKRON och returnerar WriteResult direkt. Den awaitar
  * aldrig characteristic.writeAsync — det görs fire-and-forget. Backpressure
- * baseras INTE längre på en promise-slot (writeAsync(..., true) resolvar
- * nästan direkt = otillförlitligt). Istället låser varje accepterad write
- * sloten i HELA tick-fönstret (slotLockedUntil = now + slotLeaseMs).
+ * baseras på TVÅ separata gates:
+ *   1. tick-lease  : slotLockedUntil = now + slotLeaseMs (cadence-cap)
+ *   2. controller-drain : antal outstanding ACL-paket i noble's HCI-lager
  *
- * Kontrakt: 1 tick = max 1 BLE-write. Promise-resolution kan ALDRIG låsa upp
- * sloten tidigare än lease-tiden. Watchdogen är fail-closed: om writeAsync
- * hänger droppas frames + räknas stuck — ingen ny write tillåts in.
+ * Promise-resolution ger INTE drain-signal — `writeAsync(..., true)` resolvar
+ * när noble accepterar paketet i sin egen kö, INTE när controller faktiskt
+ * sänt det över radio. Drain räknas via noble._aclConnections[handle].pending
+ * + _aclQueue (se controllerDrain.ts).
+ *
+ * Kontrakt: 1 tick = max 1 BLE-write, max 1 outstanding paket i kedjan.
+ * Om outstanding fastnar > STUCK_THRESHOLD_MS → trigga reconnect.
+ * INGEN force-release — kö kan ALDRIG byggas tyst.
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
+import { getOutstandingPackets, isControllerDrainAttached } from './controllerDrain.js';
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
@@ -50,16 +56,23 @@ export type WriteResult =
   | 'no-change'    // delta-skip (samma färg+brightness)
   | 'no-device';   // ingen ConnectedDevice
 
-// ── Strict lease-slot state ──
+// ── Lease + controller-drain state ──
 // Lease-tiden = engine.tickMs. Sätts via setSlotLeaseMs() från piEngine.
-// 1 tick = 1 BLE-paket. Promise-resolution får ALDRIG låsa upp tidigare.
+// Drain räknas från noble._aclConnections[handle].pending + _aclQueue
+// (se controllerDrain.ts). När outstanding > 0 är kedjan inte tom.
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
 
-// Stuck-detektion: när blev pågående write startad?
-let pendingWriteStartedAt = 0;
+// När senaste accepterade write skickades till noble (för outstanding-age).
+// Nollas så fort vi sett drain gå till 0 (controller har sänt klart allt).
+let lastSendStartedAt = 0;
 const STUCK_THRESHOLD_MS = 1000;
+
+// Stuck-recovery: efter STUCK_THRESHOLD_MS av outstanding>0 utan drain
+// triggas EN gång per stuck-event ett disconnect/reconnect-cykel. Flaggan
+// hindrar att vi spammar reconnect medan länken redan rivs.
+let stuckRecoveryInFlight = false;
 
 export function getSlotLeaseMs(): number { return slotLeaseMs; }
 export function setSlotLeaseMs(ms: number): void {
@@ -84,8 +97,10 @@ export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
   writePending = false;
   slotLockedUntil = 0;
-  pendingWriteStartedAt = 0;
+  lastSendStartedAt = 0;
+  stuckRecoveryInFlight = false;
   lastWriteTime = 0;
+  bleStats.outstandingAgeMs = 0;
   bleStats.requestedIntervalMs = '—';
   bleStats.actualIntervalMs = '—';
   bleStats.intervalSource = 'unknown';
@@ -93,6 +108,61 @@ export function resetLastSent(): void {
 
 export function getLastWriteTime(): number { return lastWriteTime; }
 export function setLastWriteTime(t: number): void { lastWriteTime = t; }
+
+// ── Outstanding-tracking + stuck-recovery (delas av sendToBLE + keep-alive) ──
+//
+// Returnerar 'ready'  = sloten är fri, write tillåten
+//            'busy'   = sloten är låst (lease, writePending eller outstanding)
+// Vid stuck (outstanding > 0 i > STUCK_THRESHOLD_MS) triggas EN reconnect-cykel.
+// Sloten "force-releasas" ALDRIG — frames droppas hellre än att kö byggs.
+function leaseAndDrainState(now: number): { gate: 'ready' | 'busy'; outstanding: number } {
+  const outstanding = isControllerDrainAttached() ? getOutstandingPackets() : 0;
+
+  // Uppdatera ålder för synlighet i diagnostik
+  if (outstanding > 0 && lastSendStartedAt > 0) {
+    bleStats.outstandingAgeMs = Math.round(now - lastSendStartedAt);
+  } else {
+    bleStats.outstandingAgeMs = 0;
+    if (lastSendStartedAt > 0 && outstanding === 0) {
+      bleStats.controllerCompleteCount++;
+      lastSendStartedAt = 0;
+    }
+  }
+
+  // Stuck → trigga disconnect/reconnect en gång. Sloten förblir låst.
+  if (outstanding > 0 && lastSendStartedAt > 0 &&
+      (now - lastSendStartedAt) >= STUCK_THRESHOLD_MS &&
+      !stuckRecoveryInFlight) {
+    stuckRecoveryInFlight = true;
+    bleStats.controllerStuckCount++;
+    bleStats.lastStuckReason = `outstanding=${outstanding} age=${Math.round(now - lastSendStartedAt)}ms`;
+    if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
+      console.warn(`[BLE] controller-drain STUCK: ${bleStats.lastStuckReason} — riv länken + reconnect`);
+      lastStuckWarnAt = now;
+    }
+    const dev = getDevice();
+    if (dev) {
+      const periph = dev.peripheral;
+      const name = dev.name;
+      try { periph.removeAllListeners?.('disconnect'); } catch {}
+      stopKeepAlive();
+      setDevice(null);
+      resetLastSent();
+      stuckRecoveryInFlight = false; // resetLastSent nollar redan, men explicit
+      Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
+        import('./connect-hardcoded.js').then(({ scheduleAutoReconnect }) => {
+          scheduleAutoReconnect();
+        }).catch(() => {});
+      });
+    }
+    return { gate: 'busy', outstanding };
+  }
+
+  if (writePending)             return { gate: 'busy', outstanding };
+  if (now < slotLockedUntil)    return { gate: 'busy', outstanding };
+  if (outstanding > 0)          return { gate: 'busy', outstanding };
+  return { gate: 'ready', outstanding };
+}
 
 // ── Keepalive (idle-vägen) ──
 const KEEPALIVE_MS = 200;
@@ -116,14 +186,14 @@ export function startKeepAlive(): void {
     if (elapsed < KEEPALIVE_MS * 0.8) return;
 
     // STRICT SINGLE-SLOT: keep-alive följer EXAKT samma gate som sendToBLE.
-    // Active path har företräde — om sloten är låst eller en write hänger
-    // hoppar keep-alive över denna runda. Aldrig parallella writes.
-    if (writePending) return;
-    if (now < slotLockedUntil) return;
+    // Active path har företräde — om sloten är låst, en write hänger eller
+    // outstanding > 0 hoppar keep-alive över denna runda.
+    const { gate } = leaseAndDrainState(now);
+    if (gate === 'busy') return;
 
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     writePending = true;
-    pendingWriteStartedAt = now;
+    lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
 
@@ -166,10 +236,9 @@ export function startKeepAlive(): void {
         }
       })
       .finally(() => {
-        // Släpp ENDAST writePending-flaggan. slotLockedUntil låser fortsatt
-        // sloten i hela lease-fönstret oavsett hur snabbt promise resolvar.
+        // Släpp ENDAST writePending. slotLockedUntil + outstanding-räkning
+        // styr när NÄSTA write får ske.
         writePending = false;
-        pendingWriteStartedAt = 0;
       });
   }, KEEPALIVE_MS);
 }
@@ -185,13 +254,14 @@ export function setReconnectTrigger(fn: (peripheral: any, name: string) => void)
 }
 
 /**
- * SYNKRON BLE-write — strict lease-slot, hard-fail om sloten är låst.
- * Returnerar WriteResult direkt; engine kan räkna utfallet utan await.
- * writeAsync triggas fire-and-forget; resultatet rapporteras via .then/.catch.
+ * SYNKRON BLE-write — lease + controller-drain gate, hard-fail om något i
+ * kedjan är upptaget. Returnerar WriteResult direkt; engine kan räkna utan
+ * await. writeAsync triggas fire-and-forget; resultatet rapporteras via
+ * .then/.catch.
  *
- * Kontrakt: 1 tick = max 1 write. När en write accepteras låses sloten
- * i HELA slotLeaseMs (= engine.tickMs) — promise-resolution kan inte
- * öppna sloten tidigare. Detta är vad som hindrar HCI-kö-bygge.
+ * Kontrakt: 1 tick = max 1 write, max 1 outstanding ACL-paket i HCI-lagret.
+ * Sloten "force-releasas" ALDRIG. Om outstanding fastnar > STUCK_THRESHOLD_MS
+ * triggas disconnect/reconnect (i leaseAndDrainState) — kö kan ALDRIG byggas.
  */
 export function sendToBLE(r: number, g: number, b: number, brightness: number): WriteResult {
   const device = getDevice();
@@ -199,29 +269,17 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 
   const now = performance.now();
 
-  // Steg 1: Pågående write? → busy. (Fail-closed: om writeAsync hängt
-  // länge släpps INTE sloten — frames droppas tills writen resolvar
-  // eller länken rivs av stuck-detektion nedan.)
-  if (writePending) {
-    if (pendingWriteStartedAt > 0 && (now - pendingWriteStartedAt) >= STUCK_THRESHOLD_MS) {
-      bleStats.writeStuckCount++;
-      if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
-        console.warn(`[BLE] writeAsync pending >${STUCK_THRESHOLD_MS}ms (stuckCount=${bleStats.writeStuckCount}) — link likely dead, frames being dropped`);
-        lastStuckWarnAt = now;
-      }
-    }
-    bleStats.skipInFlightCount++;
+  // ── Gate: lease + controller-drain (delas med keep-alive) ──
+  const { gate, outstanding } = leaseAndDrainState(now);
+  if (gate === 'busy') {
     bleStats.skipBusyCount++;
+    if (writePending) bleStats.skipInFlightCount++;
+    if (now < slotLockedUntil) bleStats.skipLeaseLockedCount++;
+    if (outstanding > 0) bleStats.skipControllerBusyCount++;
     return 'busy';
   }
 
-  // Steg 2: Lease-slot fortfarande låst från förra ticken?
-  if (now < slotLockedUntil) {
-    bleStats.skipBusyCount++;
-    return 'busy';
-  }
-
-  // Steg 3: Brightness-skala + delta-check
+  // Brightness-skala + delta-check
   const scale = brightnessToScale(brightness);
   const cr = (r * scale + 0.5) | 0;
   const cg = (g * scale + 0.5) | 0;
@@ -238,7 +296,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     return 'no-change';
   }
 
-  // Steg 4: Bygg buffer + fire-and-forget write
+  // Bygg buffer + fire-and-forget write
   const mode = device.mode ?? 'rgb';
   let buf: Buffer;
   if (mode === 'brightness') {
@@ -249,12 +307,13 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     buf = writeBuf;
   }
 
-  // ── LÅS SLOTEN för hela tick-fönstret ──
+  // ── LÅS SLOTEN ──
   // slotLockedUntil hindrar nästa tick även om writeAsync resolvar på <1ms.
+  // lastSendStartedAt driver outstanding-age + stuck-detektion.
   lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
   const writeStartedAt = now;
   writePending = true;
-  pendingWriteStartedAt = now;
+  lastSendStartedAt = now;
   slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
 
@@ -294,10 +353,9 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
       }
     })
     .finally(() => {
-      // Släpp ENDAST writePending. slotLockedUntil håller sloten låst
-      // tills lease-fönstret löpt ut — promise-resolve kan inte smita förbi.
+      // Släpp ENDAST writePending. slotLockedUntil + outstanding-räkning
+      // styr när NÄSTA write får ske — promise-resolve är INTE drain-signal.
       writePending = false;
-      pendingWriteStartedAt = 0;
     });
 
   return 'sent';

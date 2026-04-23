@@ -11,6 +11,7 @@ import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
+import { attachControllerDrain, detachControllerDrain } from './controllerDrain.js';
 import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
@@ -162,6 +163,7 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   if (!_connected) return { disconnected: true };
   // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
   _onDisconnected?.();
+  detachControllerDrain();
   setDevice(null);
   resetLastSent();
   try { await _connected.disconnectAsync(); } catch {}
@@ -230,6 +232,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
 
   // 4. Engine-side state reset (no-op om redan rent)
   try { _onDisconnected?.(); } catch {}
+  try { detachControllerDrain(); } catch {}
   try { setDevice(null); } catch {}
   try { resetLastSent(); } catch {}
 }
@@ -337,6 +340,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           peripheral.once?.('disconnect', () => {
             console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
             _onDisconnected?.();
+            detachControllerDrain();
             setDevice(null);
             resetLastSent();
             bleStats.disconnectCount++;
@@ -392,6 +396,9 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
               name: HARDCODED_DEVICE.name,
               id: peripheral.id,
             });
+            // Hooka in noble's HCI ACL-räknare så vi vet om controllern
+            // har outstanding paket (verklig drain-signal, inte promise).
+            attachControllerDrain(peripheral);
             // Aktivera auto-reconnect-loopen — från och med nu räknas varje
             // disconnect som "tappad länk vi vill ha tillbaka".
             _autoReconnectEnabled = true;
