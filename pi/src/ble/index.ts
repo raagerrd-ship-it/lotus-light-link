@@ -10,7 +10,7 @@ export { getSubsystemState, getAllSubsystemStates, markSubsystemStarting, markSu
 export type { SubsystemId, SubsystemStatus, SubsystemState } from './state.js';
 export { noble, hasNobleLoaded } from './state.js';
 
-export { sendToBLE, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma, getMinWriteIntervalMs, setMinWriteIntervalMs, startKeepAlive, stopKeepAlive } from './protocol.js';
+export { sendToBLE, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma, getMinWriteIntervalMs, setMinWriteIntervalMs, getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './protocol.js';
 
 export { connectHardcoded, disconnectHardcoded, getHardcodedConnected, getHardcodedPeripheral } from './connect-hardcoded.js';
 export { startBleEngineMinimal, isMinimalEngineStarted } from './engine-start-minimal.js';
