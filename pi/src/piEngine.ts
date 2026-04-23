@@ -14,7 +14,7 @@
  */
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, setMicSmoothing, type BandResult } from './alsaMic.js';
-import { sendToBLE, setIdleColor, getDimmingGamma, setMinWriteIntervalMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
+import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
