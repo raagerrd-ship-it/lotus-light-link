@@ -262,9 +262,9 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                 <span className="ml-auto flex items-center gap-1 text-[10px] font-mono">
                   <span className="opacity-60">Kö</span>
                   <span className={drainLooksBusy ? "text-destructive font-semibold" : "opacity-70"}>
-                    {bleOutput.controllerOutstandingCount ?? 0}
+                    {queuedCount}
                   </span>
-                  {(bleOutput.controllerOutstandingCount ?? 0) > 0 && (
+                  {queuedCount > 0 && (
                     <AlertTriangle size={12} className="text-destructive" />
                   )}
                 </span>
