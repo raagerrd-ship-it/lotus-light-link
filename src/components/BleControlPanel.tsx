@@ -11,7 +11,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Bluetooth, Loader2, Lightbulb, Play, Power, Gauge } from "lucide-react";
+import { Bluetooth, Loader2, Lightbulb, Play, Power, Gauge, AlertTriangle } from "lucide-react";
 
 interface BleStateResp {
   engineReady: boolean;
