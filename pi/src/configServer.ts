@@ -1113,9 +1113,13 @@ export function startConfigServer(port = 3050): void {
     // skrivs bara i leaseAndDrainState() och blir stale om engine pausar
     // sendToBLE-anrop (idle/keep-alive). UI ska visa sanningen just nu.
     let liveOutstanding = 0;
+    let liveQueued = 0;
     try {
       const cd = await import('./ble/controllerDrain.js');
-      if (cd.isControllerDrainAttached()) liveOutstanding = cd.getOutstandingPackets();
+      if (cd.isControllerDrainAttached()) {
+        liveOutstanding = cd.getOutstandingPackets();
+        liveQueued = cd.getQueuedPackets();
+      }
     } catch {}
     res.json({
       active: true,
@@ -1131,6 +1135,7 @@ export function startConfigServer(port = 3050): void {
       controllerCompleteCount: bleStats.controllerCompleteCount ?? 0,
       controllerStuckCount: bleStats.controllerStuckCount ?? 0,
       controllerOutstandingCount: liveOutstanding,
+      controllerQueuedCount: liveQueued,
       outstandingAgeMs: bleStats.outstandingAgeMs ?? 0,
       writeLatAvgMs: bleStats.writeLatAvgMs,
     });
