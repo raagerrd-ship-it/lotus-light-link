@@ -42,7 +42,7 @@ type ProfileName = typeof PROFILE_NAMES[number];
 // uppdatera även här. Båda måste vara i sync vid första boot/seed.
 const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
   Lugn:   { bassWeight: 0.7, attackAlpha: 0.061, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
-  Normal: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.0,  brightnessFloor: 0, punchWhiteThreshold: 97,  perceptualGamma: 1.8, transientGain: 1.0, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
+  Normal: { bassWeight: 0.8, attackAlpha: 1.0,   releaseAlpha: 0.677, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 1.0, dynamicsEnabled: false, hiShelfGainDb: 6 },
   Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
   Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6 },
   // bassWeight semantik: 0=bara disk, 0.5=neutral (båda 100%), 1.0=bara bas. Asymmetrisk dämpning av "andra" sidan.
