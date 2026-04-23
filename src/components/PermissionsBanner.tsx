@@ -90,6 +90,12 @@ export function PermissionsBanner({ piBase }: { piBase: string }) {
 
   if (!perms || perms.ok) return null;
 
+  // Filtrera bort "noble adapter state=…" — den missingen är förväntad innan
+  // BLE-motorn startats (adaptern power:as upp först då). Visa bara rutan om
+  // det finns RIKTIGA permission-problem (rfkill, grupp, caps, bluetoothd).
+  const realMissing = perms.missing.filter((m) => !m.includes("noble adapter"));
+  if (realMissing.length === 0) return null;
+
   const cmd = perms.setupCommand;
   const onCopy = async () => {
     let ok = false;
@@ -138,9 +144,9 @@ export function PermissionsBanner({ piBase }: { piBase: string }) {
           release-filerna men hoppade över setup-skriptet (managed:false).
         </p>
         <div className="space-y-1.5">
-          <div className="text-[9px] uppercase tracking-wider opacity-60">Saknas ({perms.missing.length})</div>
+          <div className="text-[9px] uppercase tracking-wider opacity-60">Saknas ({realMissing.length})</div>
           <ul className="space-y-1">
-            {perms.missing.map((m) => {
+            {realMissing.map((m) => {
               const { reason, hint } = explainMissing(m);
               return (
                 <li key={m} className="rounded-md bg-background/40 border border-border/50 px-2 py-1.5">
