@@ -765,7 +765,7 @@ export function startConfigServer(port = 3050): void {
       res.json({
         ok: true,
         chosenTickMs: lowestSafe,
-        chosenMinWriteIntervalMs: Math.max(5, lowestSafe - 2),
+        chosenSlotLeaseMs: lowestSafe,
         originalTickMs,
         results,
       });
