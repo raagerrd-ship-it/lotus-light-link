@@ -463,6 +463,7 @@ export class PiLightEngine {
       this.smoothed = 0;
       this.onsetBoost = 0;
       this.onsetTarget = 0;
+      this.stopLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'idle';
         this.forceIdleNow();
