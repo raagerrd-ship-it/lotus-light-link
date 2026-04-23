@@ -37,6 +37,8 @@ export interface SonosState {
   durationMs: number | null;
   isTvMode: boolean;
   palette: [number, number, number][] | null;
+  /** Pre-cached palette för nästa låt — gör att vi kan börja fade direkt vid trackbyte */
+  nextPalette: [number, number, number][] | null;
 }
 
 type Listener = (state: SonosState) => void;
