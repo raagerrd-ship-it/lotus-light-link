@@ -432,17 +432,21 @@ export class PiLightEngine {
   private get _bleConnected(): boolean { return this._bleOwner !== 'none'; }
 
   /** Anropas av connect-hardcoded EFTER lyckad anchor write.
-   *  Keep-alive kör ALLTID när BLE är connected — den är harmlös i active mode
-   *  eftersom den skippar om sendToBLE skrev <160ms sedan (KEEPALIVE_MS * 0.8).
-   *  Det skyddar mot supervision timeout även om FFT-tickarna råkar leverera
-   *  oförändrad färg ("no-change") en längre stund — då sker ingen mic-write
-   *  alls och utan keep-alive faller länken efter ~1s. */
+   *  Keep-alive kör BARA i idle-mode. Under playing räcker FFT-write-kedjan
+   *  (med min 5 pkt/s garanti via stale-write-force i protocol.ts) för att
+   *  hålla länken vid liv. Det hindrar att keep-alive bygger kö parallellt
+   *  med active path. */
   onBleConnected(): void {
     if (this._bleOwner !== 'none') return;
     this._bleOwner = this.playing ? 'active' : 'idle';
-    if (!this.playing) this.forceIdleNow();
-    startKeepAlive();
-    console.log(`[Engine] BLE connected → ${this._bleOwner} mode (keep-alive @200ms alltid på)`);
+    if (!this.playing) {
+      this.forceIdleNow();
+      startKeepAlive();
+      console.log(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
+    } else {
+      stopKeepAlive();
+      console.log(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
+    }
   }
 
   /** Anropas av connect-hardcoded vid disconnect (peripheral.disconnect-event). */
@@ -459,7 +463,7 @@ export class PiLightEngine {
     if (playing === wasPlaying) return;
 
     if (!playing) {
-      // active → idle: reset smoothing + force idle-färg via keep-alive-buf.
+      // active → idle: reset smoothing + force idle-färg, starta keep-alive.
       this.smoothed = 0;
       this.onsetBoost = 0;
       this.onsetTarget = 0;
@@ -467,17 +471,20 @@ export class PiLightEngine {
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'idle';
         this.forceIdleNow();
-        console.log('[Engine] → idle mode (owner=idle, keep-alive bär färg)');
+        startKeepAlive();
+        console.log('[Engine] → idle mode (owner=idle, keep-alive PÅ)');
       } else {
         console.log('[Engine] → idle mode (BLE ej ansluten)');
       }
     } else {
-      // idle → active: starta FFT-tick-loopen + byt owner.
-      // Utan startLoop() returnerar onFFTFrame direkt → inga ticks → inga writes.
+      // idle → active: stoppa keep-alive (FFT-writes tar över), starta loop.
+      // Keep-alive får ALDRIG köra parallellt med active path — det skulle
+      // bygga kö i HCI-lagret.
       this.startLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'active';
-        console.log('[Engine] → active mode (owner=active, loop startad, keep-alive kvar som safety)');
+        stopKeepAlive();
+        console.log('[Engine] → active mode (owner=active, keep-alive AV, FFT-writes håller länken)');
       } else {
         console.log('[Engine] → active mode (BLE ej ansluten, loop startad men inga writes)');
       }
