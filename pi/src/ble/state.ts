@@ -14,7 +14,7 @@ export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 const MAX_EVENTS = 200;
 
-export const BLE_BUILD_TAG = '2026-04-23/drain-diag';
+export const BLE_BUILD_TAG = '2026-04-23/hci-gate-off-ui-diag';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Subsystem state (mic + sonos + engine — bleEngine borttaget) ──
@@ -83,9 +83,9 @@ export const bleStats = {
   writeFailCount: 0,
   writeStuckCount: 0,
   controllerCompleteCount: 0, // antal gånger drain gått från >0 → 0
-  controllerStuckCount: 0,    // outstanding fastnat → reconnect triggad
-  outstandingAgeMs: 0,        // hur länge nuvarande outstanding-paket varit ute
-  lastStuckReason: null as string | null,
+  controllerStuckCount: 0,    // drain-diagnostik fastnat längre än threshold
+  controllerOutstandingCount: 0, // aktuellt antal outstanding paket i noble/HCI
+  outstandingAgeMs: 0,        // hur länge senaste observerade outstanding-paket varit ute
   tickOkCount: 0,
   tickAbortNoMicCount: 0,
   tickAbortBleBusyCount: 0,
