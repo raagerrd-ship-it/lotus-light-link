@@ -1,163 +1,187 @@
 
+## Problem
+
+Nuvarande strict lease-slot stoppar bara att appen själv kallar `writeAsync(...)` mer än en gång per 25 ms. Det bevisar inte att BLE-kedjan faktiskt är tom. Med `writeAsync(..., true)` får vi bara ett snabbt "packet accepted into stack/HCI", inte "packet left controller/radio". Därför kan kö ändå byggas under ytan och lampan fortsätta långt efter att låten slutat.
+
+## Rotorsak
+
+Nuvarande kontrakt i `pi/src/ble/protocol.ts` är:
+
+- max 1 write-försök per tick
+- men nästa tick får ändå skriva så fort lease-tiden gått ut
+- utan någon signal om att föregående paket verkligen blivit färdigt i BLE-controller/HCI-ledet
+
+Det betyder att vi idag har "single slot i appen", men inte "single outstanding packet i BLE-kedjan".
+
 ## Mål
 
-Göra BLE-sändningen strikt "single slot" på riktigt:
+Göra single-slot verkligt end-to-end:
 
-- 1 tick = max 1 försök till BLE-write
-- om något fortfarande är upptaget när nästa tick kommer: droppa den nya framens write
-- aldrig öppna en andra write bara för att `writeAsync(..., true)` råkade resolva tidigt
-- prioritera synk framför leveransgrad
-
-## Rotorsak i nuvarande kod
-
-Kö kan fortfarande byggas trots 25 ms tick därför att nuvarande slot inte representerar radion, bara JavaScript-promisen:
-
-1. `writeAsync(buf, true)` resolvar nästan direkt när paketet lämnas till stacken, inte när lampan faktiskt är klar.
-2. `writeSlot` släpps därför för tidigt.
-3. `WRITE_SLOT_TIMEOUT_MS` tvångs-släpper dessutom sloten efter 500 ms även om en gammal write fortfarande kan leva i noble/HCI.
-4. Keep-alive delar samma writeväg, så om sloten släpps fel kan fler writes komma in bakom.
-
-Det är just detta som gör att "single slot" inte längre är hårt nog.
+- 1 tick = max 1 försök
+- max 1 outstanding BLE-paket åt gången
+- om controller/radio inte hunnit tömma föregående paket: droppa nästa frame
+- om outstanding-läge fastnar: bryt länken och reconnecta, aldrig fortsätt mata på
+- synk prioriteras över leveransgrad
 
 ## Lösning
 
-### 1. Byt från promise-slot till strikt lease-slot i `pi/src/ble/protocol.ts`
+### 1. Byt från lease-only till tvådelad gate: tick-slot + controller-drain
+I `pi/src/ble/protocol.ts` behålls tick-lease som cadence-regel, men den blir inte ensam spärr längre.
 
-Ersätt dagens modell:
-
-- `writeSlot: Promise<void> | null`
-- release i `.finally()`
-- watchdog som öppnar sloten igen
-
-med en strikt write-gate baserad på två separata tillstånd:
-
-- `writePending: boolean` — det finns fortfarande en oavslutad `writeAsync`
-- `slotLockedUntil: number` — sloten är reserverad för hela tick-fönstret
-
-Nytt kontrakt:
+Ny gate före varje write:
 
 ```text
-sendToBLE():
-  if no device -> 'no-device'
-  if writePending -> 'busy'
-  if now < slotLockedUntil -> 'busy'
-  annars:
-    writePending = true
-    slotLockedUntil = now + 25ms
-    start writeAsync(..., true)
-    return 'sent'
+if no device -> 'no-device'
+if controllerOutstanding -> 'busy'
+if now < slotLockedUntil -> 'busy'
+if no-change -> 'no-change'
+else:
+  controllerOutstanding = true
+  slotLockedUntil = now + tickMs
+  writeAsync(..., true)
+  return 'sent'
 ```
 
-Viktigt:
-- `.then/.catch/.finally` får bara uppdatera stats och sätta `writePending = false`
-- promise-resolution får aldrig låsa upp sloten tidigare än lease-tiden
-- lease-tiden blir den verkliga "1 tick = 1 slot"-gränsen
+Skillnaden är att `controllerOutstanding` inte släpps av promise-resolution. Den släpps först när BLE-stacken signalerar att föregående paket verkligen är färdigt nedströms.
 
-Detta gör att snabb promise-resolution inte längre kan öppna dörren för extra writes mellan två ticks.
+### 2. Koppla in verklig drain-signal från BLE/HCI
+Lägg in en liten intern tracker för "packet completed" i BLE-lagret, kopplad vid anslutning och städad vid disconnect.
 
-### 2. Ta bort rate-limit som separat backpressure-mekanism
+Implementationen ska använda noble-bindningens underliggande HCI-signal för completed packets / motsvarande sänd-kredit, så att vi kan veta när ett outbound-paket faktiskt lämnat outstanding-läget.
 
-`minWriteIntervalMs` används idag som extra gate eftersom promise-sloten inte räcker. När sloten blir strikt behövs inte den dubbla logiken längre.
+Detta läggs i BLE-lagret, t.ex. via:
 
-Ändring:
-- `sendToBLE()` ska inte returnera `'rate-limited'` i active path
-- ticken ska bara se: `sent`, `busy`, `no-change`, `no-device`
-- om API:t `/api/ble/rate-limit` måste finnas kvar för kompatibilitet, låt det rapportera fixed/följa slot lease istället för en separat intern gate
+- ny helperfil för controller-drain tracking, eller
+- direkt i `connect-hardcoded.ts` om noble-internalen måste hookas där
 
-Målet är att undvika två parallella mekanismer som kan maskera var problemet egentligen ligger.
-
-### 3. Watchdog får aldrig öppna plats för en ny write
-
-Nuvarande watchdog är farlig just för synk-kravet. I stället för att "force-release" sloten ska den göra fail-closed:
-
-- om en write varit pending för länge:
-  - räkna stuck
-  - markera länken som dålig
-  - trigga cleanup/reconnect
-- men öppna inte sloten för fler writes innan den gamla transaktionen är avslutad eller anslutningen rivits
-
-Detta är kärnan i att kö inte ska kunna byggas.
-
-### 4. Keep-alive måste följa exakt samma single-slot-regel
-
-Keep-alive ska fortsätta finnas för att inte tappa länken, men den får inte någonsin skapa en extra write bakom active mode.
-
-Ändring i `pi/src/ble/protocol.ts`:
-- keep-alive checkar samma `writePending` + `slotLockedUntil`
-- om active path nyligen tagit sloten: skip
-- om en write hängt: skip, inte försök parallellt
-
-Det gör att hela BLE-kedjan verkligen blir "one writer, one slot".
-
-### 5. Städa tick/rate-limit-kopplingen i engine och API
-
-I `pi/src/piEngine.ts`:
-- ta bort beroendet där `setTickMs()` driver BLE-rate-limit som separat koncept
-- behåll bara ticken som engine-takt
-- om tick är hårdkodad 25 ms ska BLE-slot lease också vara 25 ms
-
-I `pi/src/configServer.ts`:
-- uppdatera `/api/tick-ms` och `/api/ble/rate-limit` så svar/texter inte längre säger att rate-limit auto-följer eller använder andra värden än själva slot-kontraktet
-- om tick-slidern är borttagen i UI:t, håll backend-semantiken konsekvent med fast 25 ms
-
-## Exakt beteende efter ändringen
-
-I active mode:
+Det viktiga kontraktet blir:
 
 ```text
-Tick N:
-- slot ledig
-- write accepteras
-- slot låses i 25 ms
-- writeAsync startas fire-and-forget
-
-Mellan tick N och N+1:
-- även om promise resolvar efter 1 ms är sloten fortfarande låst
-
-Tick N+1:
-- om 25 ms inte passerat eller write fortfarande pending -> 'busy' och droppa frame
-- annars får exakt en ny frame försöka skriva
+send accepted -> outstanding = true
+HCI completed-packets event -> outstanding = false
 ```
 
-Resultat:
-- inga extra writes mellan ticks
-- ingen intern app-kö
-- om BLE halkar efter droppas frames hellre än att gamla frames lever kvar
+Inte:
 
-Det matchar ditt krav: levererade paket ska vara så färska som möjligt, inte kompletta.
+```text
+writeAsync promise resolved -> outstanding = false
+```
+
+### 3. Fail-closed om outstanding fastnar
+Om ett outstanding-paket inte får drain-signal inom ett kort, definierat fönster:
+
+- markera `writeStuckCount`
+- logga tydligt backlog/stuck-reason
+- stoppa vidare writes
+- riv länken och låt reconnect-logiken ta över
+
+Ingen force-release av sloten. Ingen fortsatt sändning "för säkerhets skull".
+
+Detta gör att kö inte kan fortsätta byggas i tysthet. Antingen dräneras paketet, eller så bryts länken.
+
+### 4. Keep-alive måste respektera samma outstanding-gate
+`startKeepAlive()` i `pi/src/ble/protocol.ts` ska använda exakt samma villkor:
+
+- skicka aldrig om `controllerOutstanding === true`
+- skicka aldrig om lease är låst
+- active path har alltid företräde
+
+Keep-alive får alltså inte kunna lägga ett extra paket bakom ett redan outstanding paket.
+
+### 5. Uppdatera diagnostik så problemet går att verifiera
+Utöka `bleStats` i `pi/src/ble/state.ts` och API-svaren i `pi/src/configServer.ts` så att det går att se om vi verkligen slutat bygga kö.
+
+Lägg till mätvärden som:
+
+- `controllerOutstanding`
+- `controllerBusyCount`
+- `controllerCompleteCount`
+- `controllerStuckCount`
+- `outstandingAgeMs`
+- senaste reconnect-orsak relaterad till stuck/backlog
+
+Behåll gärna befintliga `skipBusyCount`, men separera tydligt:
+- busy pga tick-lease
+- busy pga outstanding packet
+- stuck/reconnect
+
+Då går det att se om systemet droppar färska frames korrekt i stället för att bufferera gamla.
+
+### 6. Justera dokumentation och build tag
+Uppdatera minnesfilerna så de inte längre beskriver lease-slot som tillräckligt skydd i sig.
+
+Ny formulering ska vara ungefär:
+
+- tick-slot styr cadence
+- controller-drain styr om kedjan verkligen är tom
+- promise-resolution är inte ett kvitto på att nästa paket är säkert att skicka
+
+Bumpa även `BLE_BUILD_TAG` så det syns att Pi:n kör backlog-fixen.
 
 ## Filer att ändra
 
 - `pi/src/ble/protocol.ts`
-  - ersätt promise-slot/backpressure med strict lease-slot
-  - ta bort separat rate-limit i active path
-  - gör watchdog fail-closed
-  - låt keep-alive använda samma gate
+  - inför controller-outstanding gate
+  - släpp inte på promise-resolution
+  - stuck => disconnect/reconnect, inte reopen
 
-- `pi/src/piEngine.ts`
-  - ta bort kopplingen till separat `setMinWriteIntervalMs(...)`
-  - behåll tydlig semantik: tick styr cadence, slot styr om en write får ske
+- `pi/src/ble/connect-hardcoded.ts`
+  - koppla in och rensa HCI/completed-packets-hook vid connect/disconnect
+
+- `pi/src/ble/state.ts`
+  - nya stats + bump av `BLE_BUILD_TAG`
+
+- `pi/src/ble/index.ts`
+  - exportera ev. ny controller-drain API/helper
 
 - `pi/src/configServer.ts`
-  - städa API-svar och texter kring tick/rate-limit så de matchar nya kontraktet
+  - exponera nya diagnostikfält i status/output
 
 - `.lovable/memory/pi/ble/single-slot-write-contract.md`
-  - uppdatera kontraktet från promise-slot till strict lease-slot
+  - uppdatera kontraktet från "lease-only" till "lease + controller-drain"
 
 - `.lovable/memory/pi/ble/write-without-response-mandatory.md`
-  - uppdatera noteringen så den inte längre säger att separat rate-limit är enda skyddet, utan att strict slot lease nu är primär spärr
+  - förtydliga att `withoutResponse` kräver drain-baserad gate, inte bara tidslease
 
-## Vad jag medvetet inte ändrar
+## Exakt beteende efter ändringen
 
-- `writeAsync(..., true)` behålls
-- ingen ACK-baserad lösning
-- ingen högre tick-frekvens
-- ingen ny queue
-- ingen retry av droppade frames
+```text
+Tick N:
+- inget outstanding
+- lease ledig
+- 1 write accepteras
+- outstanding = true
+
+Mellan tick N och N+1:
+- promise kan resolva direkt
+- outstanding ligger kvar = ingen ny write tillåts
+
+Tick N+1:
+- om outstanding kvarstår -> 'busy', droppa denna frame
+
+När controller signalerar completed packet:
+- outstanding = false
+
+Nästa tick efter det:
+- exakt 1 ny write får försöka gå ut
+```
+
+Om completed-signal inte kommer i tid:
+
+```text
+outstanding fastnar
+-> droppa frames
+-> disconnect/reconnect
+-> aldrig fortsatt påmatning
+```
 
 ## Förväntat resultat
 
-- Kö kan inte byggas i vår egen sändhantering
-- En upptagen eller hängande write blockerar nya writes i stället för att gamla och nya blandas
-- Vid belastning tappas frames, men de som går igenom ligger nära aktuell musik
-- BLE-output blir "live" i stället för att kunna glida sekunder efter ljudet
+- Lampan kan inte ligga 20 sekunder efter längre på grund av vår egen sändhantering
+- Vid störning eller långsam BLE-länk tappas frames hellre än att gamla frames spelas upp sent
+- Outputen blir "live" och nära aktuell musik, även om inte varje paket levereras
+- `1 tick = 1 BLE-paket` blir sant i praktiken, inte bara i app-logiken
+
+## Tekniska detaljer
+
+Nuvarande lease-slot är fortfarande användbar, men bara som taktbegränsning. Den räcker inte ensam eftersom `writeAsync(..., true)` inte representerar faktisk drain i controller/radio. Den nödvändiga ändringen är därför inte "mer timing", utan att gate:a på verklig sänd-kedje-tömning i BLE-lagret.
