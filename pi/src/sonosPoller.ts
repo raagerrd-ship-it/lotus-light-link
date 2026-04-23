@@ -132,27 +132,30 @@ function parseStatus(s: any): void {
   // Parse palette from gateway response (array of [r,g,b] tuples).
   // Gateway använder `currentPalette` (aktuell låt) och `nextPalette` (förcache).
   // Vi accepterar även gamla `palette`-fältet som fallback för bakåtkompatibilitet.
-  const rawPalette = (Array.isArray(s.currentPalette) && s.currentPalette.length > 0)
-    ? s.currentPalette
-    : (Array.isArray(s.palette) && s.palette.length > 0 ? s.palette : null);
-  const gwPalette: [number, number, number][] | null = rawPalette
-    ? rawPalette.filter((c: any) => Array.isArray(c) && c.length >= 3)
-    : null;
+  const parsePalette = (raw: any): [number, number, number][] | null => {
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const filtered = raw.filter((c: any) => Array.isArray(c) && c.length >= 3);
+    return filtered.length > 0 ? filtered : null;
+  };
+  const gwPalette = parsePalette(s.currentPalette) ?? parsePalette(s.palette);
+  const gwNextPalette = parsePalette(s.nextPalette);
 
   // Auto TV-mode: PLAYING + ingen trackName → TV/SPDIF
   const reportedPlaying = isPlaying(reportedPlaybackState ?? '');
   const isTvMode = autoTvModeEnabled && reportedPlaying && !s.trackName;
 
-  // Palette-hantering: om låten bytts (nytt albumArtUrl eller trackName) men
-  // gateway ännu inte skickat ny palette → nollställ till null istället för att
-  // behålla förra låtens palett. Annars: använd gw-palette om den finns, annars
-  // behåll befintlig (samma låt, position-tick etc.).
+  // Palette-hantering vid trackbyte:
+  //  1. Om gateway redan skickat ny `currentPalette` → använd den.
+  //  2. Annars, om vi har `nextPalette` förcachad sedan tidigare → promota den
+  //     direkt så fade börjar utan väntetid på extraktion.
+  //  3. Annars → null (engine clear:ar och fryser tills något landar).
   const newArtUrl = s.albumArtUri ?? s.albumArtURI ?? s.albumArtUrl ?? null;
   const newTrackName = s.trackName ?? null;
   const trackChanged =
     newArtUrl !== currentState.albumArtUrl ||
     newTrackName !== currentState.trackName;
-  const nextPalette = gwPalette ?? (trackChanged ? null : currentState.palette);
+  const promotedNext = trackChanged && !gwPalette ? currentState.nextPalette : null;
+  const nextPaletteForState = gwPalette ?? promotedNext ?? (trackChanged ? null : currentState.palette);
 
   apply({
     trackName: newTrackName,
@@ -163,7 +166,10 @@ function parseStatus(s: any): void {
     positionMs: s.positionMillis ?? null,
     durationMs: s.durationMillis ?? null,
     isTvMode,
-    palette: nextPalette,
+    palette: nextPaletteForState,
+    // Behåll förcachad nextPalette tills gateway skickar en ny (eller null:ar).
+    // Om vi precis promotat den till `palette`, nolla så vi inte återanvänder.
+    nextPalette: gwNextPalette ?? (promotedNext ? null : currentState.nextPalette),
   });
 }
 
