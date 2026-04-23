@@ -52,11 +52,17 @@ export type WriteResult =
 
 // ── Write state ──
 const WRITE_SLOT_TIMEOUT_MS = 500;
-// LEGACY: rate-limit-gaten är borta. Single-slot hard-fail (writeSlot)
-// tillsammans med engine.tickMs är hela backpressure-kontraktet.
-// Funktionerna behålls som no-op för att inte bryta /api/ble/rate-limit.
-export function getMinWriteIntervalMs(): number { return 0; }
-export function setMinWriteIntervalMs(_ms: number): void { /* no-op */ }
+// Rate-limit gate (re-introduced 2026-04-23):
+// withoutResponse=true returnerar nästan direkt utan att vänta på att radion
+// skickat paketet → single-slot hard-fail räcker INTE som backpressure.
+// Utan denna gate bygger noble/HCI-bufferten kö och lampan släpar 1-2s efter
+// musiken (BLEDOM klarar ~30 pkt/s i praktiken). Default 35ms ≈ 28 pkt/s,
+// säker marginal under taket. Justerbar via /api/ble/rate-limit.
+let minWriteIntervalMs = 35;
+export function getMinWriteIntervalMs(): number { return minWriteIntervalMs; }
+export function setMinWriteIntervalMs(ms: number): void {
+  minWriteIntervalMs = Math.max(0, Math.min(200, ms | 0));
+}
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
 let writeSlot: Promise<void> | null = null;
 let writeSlotWatchdog: ReturnType<typeof setTimeout> | null = null;
