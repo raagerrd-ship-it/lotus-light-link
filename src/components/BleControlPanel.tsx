@@ -263,7 +263,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                   <div
                     className="h-full transition-all"
                     style={{
-                      width: `${Math.round((bleOutput.brightness / 255) * 100)}%`,
+                      width: `${Math.max(0, Math.min(100, Math.round(bleOutput.brightness)))}%`,
                       backgroundColor: `rgb(${bleOutput.r},${bleOutput.g},${bleOutput.b})`,
                     }}
                   />
