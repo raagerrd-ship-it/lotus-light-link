@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bluetooth, Loader2, Lightbulb, Play, Power } from "lucide-react";
+import { Bluetooth, Loader2, Lightbulb, Play, Power, Gauge } from "lucide-react";
 
 interface BleStateResp {
   engineReady: boolean;
@@ -291,6 +291,7 @@ export function BleControlPanel({ piBase, onConnectedChange, onEngineReadyChange
                   <span className="opacity-50 ml-auto">done {bleOutput.controllerCompleteCount}</span>
                 )}
               </div>
+              <BleBenchRow piBase={piBase} />
             </div>
           )}
         </div>
