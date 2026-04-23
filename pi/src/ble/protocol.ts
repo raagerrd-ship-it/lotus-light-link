@@ -109,6 +109,61 @@ export function resetLastSent(): void {
 export function getLastWriteTime(): number { return lastWriteTime; }
 export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 
+// ── Outstanding-tracking + stuck-recovery (delas av sendToBLE + keep-alive) ──
+//
+// Returnerar 'ready'  = sloten är fri, write tillåten
+//            'busy'   = sloten är låst (lease, writePending eller outstanding)
+// Vid stuck (outstanding > 0 i > STUCK_THRESHOLD_MS) triggas EN reconnect-cykel.
+// Sloten "force-releasas" ALDRIG — frames droppas hellre än att kö byggs.
+function leaseAndDrainState(now: number): { gate: 'ready' | 'busy'; outstanding: number } {
+  const outstanding = isControllerDrainAttached() ? getOutstandingPackets() : 0;
+
+  // Uppdatera ålder för synlighet i diagnostik
+  if (outstanding > 0 && lastSendStartedAt > 0) {
+    bleStats.outstandingAgeMs = Math.round(now - lastSendStartedAt);
+  } else {
+    bleStats.outstandingAgeMs = 0;
+    if (lastSendStartedAt > 0 && outstanding === 0) {
+      bleStats.controllerCompleteCount++;
+      lastSendStartedAt = 0;
+    }
+  }
+
+  // Stuck → trigga disconnect/reconnect en gång. Sloten förblir låst.
+  if (outstanding > 0 && lastSendStartedAt > 0 &&
+      (now - lastSendStartedAt) >= STUCK_THRESHOLD_MS &&
+      !stuckRecoveryInFlight) {
+    stuckRecoveryInFlight = true;
+    bleStats.controllerStuckCount++;
+    bleStats.lastStuckReason = `outstanding=${outstanding} age=${Math.round(now - lastSendStartedAt)}ms`;
+    if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
+      console.warn(`[BLE] controller-drain STUCK: ${bleStats.lastStuckReason} — riv länken + reconnect`);
+      lastStuckWarnAt = now;
+    }
+    const dev = getDevice();
+    if (dev) {
+      const periph = dev.peripheral;
+      const name = dev.name;
+      try { periph.removeAllListeners?.('disconnect'); } catch {}
+      stopKeepAlive();
+      setDevice(null);
+      resetLastSent();
+      stuckRecoveryInFlight = false; // resetLastSent nollar redan, men explicit
+      Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
+        import('./connect-hardcoded.js').then(({ scheduleAutoReconnect }) => {
+          scheduleAutoReconnect();
+        }).catch(() => {});
+      });
+    }
+    return { gate: 'busy', outstanding };
+  }
+
+  if (writePending)             return { gate: 'busy', outstanding };
+  if (now < slotLockedUntil)    return { gate: 'busy', outstanding };
+  if (outstanding > 0)          return { gate: 'busy', outstanding };
+  return { gate: 'ready', outstanding };
+}
+
 // ── Keepalive (idle-vägen) ──
 const KEEPALIVE_MS = 200;
 const KEEPALIVE_FAIL_THRESHOLD = 5;
@@ -131,14 +186,14 @@ export function startKeepAlive(): void {
     if (elapsed < KEEPALIVE_MS * 0.8) return;
 
     // STRICT SINGLE-SLOT: keep-alive följer EXAKT samma gate som sendToBLE.
-    // Active path har företräde — om sloten är låst eller en write hänger
-    // hoppar keep-alive över denna runda. Aldrig parallella writes.
-    if (writePending) return;
-    if (now < slotLockedUntil) return;
+    // Active path har företräde — om sloten är låst, en write hänger eller
+    // outstanding > 0 hoppar keep-alive över denna runda.
+    const { gate } = leaseAndDrainState(now);
+    if (gate === 'busy') return;
 
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     writePending = true;
-    pendingWriteStartedAt = now;
+    lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
 
@@ -181,10 +236,9 @@ export function startKeepAlive(): void {
         }
       })
       .finally(() => {
-        // Släpp ENDAST writePending-flaggan. slotLockedUntil låser fortsatt
-        // sloten i hela lease-fönstret oavsett hur snabbt promise resolvar.
+        // Släpp ENDAST writePending. slotLockedUntil + outstanding-räkning
+        // styr när NÄSTA write får ske.
         writePending = false;
-        pendingWriteStartedAt = 0;
       });
   }, KEEPALIVE_MS);
 }
