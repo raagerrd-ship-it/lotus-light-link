@@ -95,19 +95,28 @@ function applySonosStateToEngine(state: {
     alsaMic?.setAutoGainFromVolume(state.volume);
   }
 
-  if (!state.isTvMode && state.palette && state.palette.length > 0) {
-    // Trigga uppdatering om EN­TINGEN art-URL ändras ELLER palett-signaturen
-    // ändras (gatewayen kan skicka uppdaterad palett för samma låt när
-    // färgextraktionen är klar — utan detta fastnar engine på första paletten).
-    const paletteSig = state.palette.map(c => c.join(',')).join('|');
-    const artChanged = !lastArtUrlRef || state.albumArtUrl !== lastArtUrlRef.current;
-    const paletteChanged = !lastPaletteSigRef || paletteSig !== lastPaletteSigRef.current;
-    if (artChanged || paletteChanged) {
+  if (!state.isTvMode) {
+    const artChanged = !!lastArtUrlRef && state.albumArtUrl !== lastArtUrlRef.current;
+
+    // Trackbyte upptäckt → rensa engine-palette OMEDELBART så motorn inte
+    // fortsätter välja förra låtens färg medan vi väntar på ny palette från gw.
+    // Engine fade:ar då från nuvarande färg mot nästa palette[0] när den landar.
+    if (artChanged) {
       if (lastArtUrlRef) lastArtUrlRef.current = state.albumArtUrl;
-      if (lastPaletteSigRef) lastPaletteSigRef.current = paletteSig;
-      engineInstance.setColor(state.palette[0]);
-      engineInstance.setPalette(state.palette);
-      console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
+      if (lastPaletteSigRef) lastPaletteSigRef.current = null;
+      engineInstance.setPalette([]);
+      console.log('[Color] Track changed → cleared engine palette, awaiting new from gateway');
+    }
+
+    if (state.palette && state.palette.length > 0) {
+      const paletteSig = state.palette.map(c => c.join(',')).join('|');
+      const paletteChanged = !lastPaletteSigRef || paletteSig !== lastPaletteSigRef.current;
+      if (paletteChanged) {
+        if (lastPaletteSigRef) lastPaletteSigRef.current = paletteSig;
+        engineInstance.setColor(state.palette[0]);
+        engineInstance.setPalette(state.palette);
+        console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
+      }
     }
   }
 }
