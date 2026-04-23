@@ -219,16 +219,25 @@ export function SubsystemStartupPanel({ piBase, enabled }: { piBase: string; ena
             <span className="text-[10px] opacity-70 truncate flex-1">
               {sonos.track ? `${sonos.playing ? "▶" : "⏸"} ${sonos.track}` : <span className="opacity-50">Ingen låt</span>}
             </span>
-            {sonos.palette.length > 0 && (
-              <div className="flex gap-1 shrink-0">
-                {sonos.palette.slice(0, 4).map((c, i) => (
+            {(sonos.palette.length > 0 || sonos.nextPalette.length > 0) && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                {sonos.palette[0] && (
                   <div
-                    key={i}
-                    className="w-3 h-3 rounded-full border border-border/50"
-                    style={{ backgroundColor: `rgb(${c[0]},${c[1]},${c[2]})` }}
-                    title={`rgb(${c[0]},${c[1]},${c[2]})`}
+                    className="w-3.5 h-3.5 rounded-full ring-2 ring-primary/60 border border-border/50"
+                    style={{ backgroundColor: `rgb(${sonos.palette[0][0]},${sonos.palette[0][1]},${sonos.palette[0][2]})` }}
+                    title={`Aktuell: rgb(${sonos.palette[0][0]},${sonos.palette[0][1]},${sonos.palette[0][2]})`}
                   />
-                ))}
+                )}
+                <span className="text-[9px] opacity-40">→</span>
+                {sonos.nextPalette[0] ? (
+                  <div
+                    className="w-3 h-3 rounded-full border border-border/50 opacity-70"
+                    style={{ backgroundColor: `rgb(${sonos.nextPalette[0][0]},${sonos.nextPalette[0][1]},${sonos.nextPalette[0][2]})` }}
+                    title={`Nästa: rgb(${sonos.nextPalette[0][0]},${sonos.nextPalette[0][1]},${sonos.nextPalette[0][2]})`}
+                  />
+                ) : (
+                  <div className="w-3 h-3 rounded-full border border-dashed border-border/50" title="Ingen nästa-palett cachad" />
+                )}
               </div>
             )}
           </div>
