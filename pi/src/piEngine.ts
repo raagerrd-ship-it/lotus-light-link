@@ -14,7 +14,7 @@
  */
 
 import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, setMicSmoothing, type BandResult } from './alsaMic.js';
-import { sendToBLE, setIdleColor, getDimmingGamma, setMinWriteIntervalMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
+import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
@@ -319,7 +319,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
-    setMinWriteIntervalMs(tickMs); // 1 tick = 1 BLE-paket
+    setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -332,7 +332,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    setMinWriteIntervalMs(ms); // 1 tick = 1 BLE-paket — håll rate-limit i synk
+    setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
   }
 
   setColor(rgb: [number, number, number]) {
@@ -720,7 +720,6 @@ export class PiLightEngine {
       switch (writeResult) {
         case 'sent':         bleStatsState.tickOkCount++; break;
         case 'busy':         bleStatsState.tickAbortBleBusyCount++; break;
-        case 'rate-limited': bleStatsState.tickAbortBleRateLimitCount++; break;
         case 'no-change':    bleStatsState.tickAbortNoChangeCount++; break;
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
       }

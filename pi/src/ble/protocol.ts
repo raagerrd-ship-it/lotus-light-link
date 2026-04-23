@@ -1,15 +1,16 @@
 /**
  * BLE BLEDOM protocol: packet formats, write pipeline, keepalive, brightness.
  *
- * SYNKRON HARD-FAIL-PIPELINE:
+ * STRICT LEASE-SLOT (2026-04-23):
  * sendToBLE() är SYNKRON och returnerar WriteResult direkt. Den awaitar
- * aldrig characteristic.writeAsync — det görs fire-and-forget med en
- * single-slot promise (writeSlot). Engine.tickInner kan därför aldrig
- * blockeras av BLE-stacken; om sloten är upptagen får ticken returvärdet
- * 'busy' och kan räkna det som en abort istället för att vänta.
+ * aldrig characteristic.writeAsync — det görs fire-and-forget. Backpressure
+ * baseras INTE längre på en promise-slot (writeAsync(..., true) resolvar
+ * nästan direkt = otillförlitligt). Istället låser varje accepterad write
+ * sloten i HELA tick-fönstret (slotLockedUntil = now + slotLeaseMs).
  *
- * En 500ms watchdog (writeSlotWatchdog) tvångs-släpper sloten om noble
- * skulle hänga utan att resolvar — annars dör all output för evigt.
+ * Kontrakt: 1 tick = max 1 BLE-write. Promise-resolution kan ALDRIG låsa upp
+ * sloten tidigare än lease-tiden. Watchdogen är fail-closed: om writeAsync
+ * hänger droppas frames + räknas stuck — ingen ny write tillåts in.
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
@@ -45,38 +46,45 @@ function brightnessToScale(brightness: number): number {
 // ── Write result type — synkron rapport till engine ──
 export type WriteResult =
   | 'sent'         // write fire-and-forgot → till noble
-  | 'busy'         // BLE-slot upptagen (föregående writeAsync ej resolvad)
-  | 'rate-limited' // < 35ms sedan senaste write
+  | 'busy'         // slot låst (lease ej utgången ELLER pending writeAsync)
   | 'no-change'    // delta-skip (samma färg+brightness)
   | 'no-device';   // ingen ConnectedDevice
 
-// ── Write state ──
-const WRITE_SLOT_TIMEOUT_MS = 500;
-// Rate-limit gate. Kontrakt: 1 tick = 1 BLE-paket. Engine.setTickMs sätter
-// detta värde till samma som tickMs så det ALDRIG skickas mer än ett paket
-// per tick — utan denna gate bygger noble/HCI kö (BLEDOM klarar ~30 pkt/s)
-// eftersom withoutResponse=true resolvar nästan direkt och slot-checken
-// släpper igenom långt över taket.
-let minWriteIntervalMs = 25;
-export function getMinWriteIntervalMs(): number { return minWriteIntervalMs; }
-export function setMinWriteIntervalMs(ms: number): void {
-  minWriteIntervalMs = Math.max(0, Math.min(500, ms | 0));
+// ── Strict lease-slot state ──
+// Lease-tiden = engine.tickMs. Sätts via setSlotLeaseMs() från piEngine.
+// 1 tick = 1 BLE-paket. Promise-resolution får ALDRIG låsa upp tidigare.
+let slotLeaseMs = 25;
+let slotLockedUntil = 0;
+let writePending = false;
+
+// Stuck-detektion: när blev pågående write startad?
+let pendingWriteStartedAt = 0;
+const STUCK_THRESHOLD_MS = 1000;
+
+export function getSlotLeaseMs(): number { return slotLeaseMs; }
+export function setSlotLeaseMs(ms: number): void {
+  slotLeaseMs = Math.max(5, Math.min(500, ms | 0));
 }
+
+// Legacy aliases — vissa callsites och API:er använder fortfarande
+// minWriteIntervalMs-namnet. Mappa till lease-slot.
+export function getMinWriteIntervalMs(): number { return slotLeaseMs; }
+export function setMinWriteIntervalMs(ms: number): void { setSlotLeaseMs(ms); }
+
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
-let writeSlot: Promise<void> | null = null;
-let writeSlotWatchdog: ReturnType<typeof setTimeout> | null = null;
 let lastWriteTime = 0;
 let writeFailCount = 0;
 const WRITE_FAIL_THRESHOLD = 5;
 // Rate-limit för stuck-warn-loggen — annars kan en hängande writeAsync
-// spamma journald var 500ms i timmar och äta diskutrymme på Pi:n.
+// spamma journald i timmar och äta diskutrymme på Pi:n.
 let lastStuckWarnAt = 0;
 const STUCK_WARN_INTERVAL_MS = 10_000;
 
 export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = -1;
-  if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
-  writeSlot = null;
+  writePending = false;
+  slotLockedUntil = 0;
+  pendingWriteStartedAt = 0;
   lastWriteTime = 0;
   bleStats.requestedIntervalMs = '—';
   bleStats.actualIntervalMs = '—';
@@ -87,10 +95,6 @@ export function getLastWriteTime(): number { return lastWriteTime; }
 export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 
 // ── Keepalive (idle-vägen) ──
-// 200ms = enda idle-vägen. Bär BÅDE BLE-länken (förhindrar reason=8) OCH
-// idle-färgen (writeBuf är redan synkat via setIdleColor). Engine startar
-// keep-alive vid BLE-connect + setPlaying(false), stoppar vid setPlaying(true)
-// + onBleDisconnected. Aldrig parallellt med sendToBLE.
 const KEEPALIVE_MS = 200;
 const KEEPALIVE_FAIL_THRESHOLD = 5;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -107,27 +111,25 @@ export function startKeepAlive(): void {
   keepAliveTimer = setInterval(() => {
     const device = getDevice();
     if (!device) return;
-    const elapsed = performance.now() - lastWriteTime;
+    const now = performance.now();
+    const elapsed = now - lastWriteTime;
     if (elapsed < KEEPALIVE_MS * 0.8) return;
 
-    // KONTRAKT: bara EN aktiv BLE-write i taget. Om writeSlot är upptagen
-    // eller någon annan write skedde nyss räcker den för att hålla länken
-    // vid liv — keep-alive hoppar över denna runda. Detta hindrar parallella
-    // writes som annars skulle bygga noble-kö och ge osynk mitt i låten.
-    if (writeSlot) return;
+    // STRICT SINGLE-SLOT: keep-alive följer EXAKT samma gate som sendToBLE.
+    // Active path har företräde — om sloten är låst eller en write hänger
+    // hoppar keep-alive över denna runda. Aldrig parallella writes.
+    if (writePending) return;
+    if (now < slotLockedUntil) return;
 
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
-    const startedAt = performance.now();
-    lastWriteTime = startedAt;
+    writePending = true;
+    pendingWriteStartedAt = now;
+    slotLockedUntil = now + slotLeaseMs;
+    lastWriteTime = now;
 
-    // Fire-and-forget genom samma single-slot-mekanism som sendToBLE.
-    const p: Promise<void> = device.characteristic.writeAsync(buf, true)
+    device.characteristic.writeAsync(buf, true)
       .then(() => {
         keepAliveSentCount++;
-        // Räkna keep-alive-writes mot bleStats.sentCount så /api/ble/output
-        // visar pkt/s för BÅDA vägarna (mic-driven OCH idle keep-alive).
-        // Annars dyker keep-alive-paketen upp som "tysta" — UI:t visar 0 pkt/s
-        // trots att lampan får ~2.5 paket/s i idle.
         bleStats.sentCount++;
         if (keepAliveFailCount > 0) {
           console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
@@ -140,23 +142,14 @@ export function startKeepAlive(): void {
           console.warn(`[BLE] Keep-alive write failed (${keepAliveFailCount}x): ${e?.message ?? e}`);
         }
         if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && getDevice()) {
-          // BLEDOM supervision timeout (reason=8) triggar inte alltid
-          // peripheral.once('disconnect') i tid — keep-alive failar 5x
-          // innan eventet hinner fyra. Markera länken död + STARTA
-          // auto-reconnect-loop direkt så användaren slipper trycka Anslut.
           console.warn(`[BLE] keep-alive failed ${keepAliveFailCount}x — link lost, marking disconnected + scheduling auto-reconnect`);
           stopKeepAlive();
           import('./connect-hardcoded.js').then(({ forceCleanupStalePeripheral, scheduleAutoReconnect }) => {
             forceCleanupStalePeripheral('keep-alive-fail')
               .catch(() => {})
-              .finally(() => {
-                // scheduleAutoReconnect aktiverar _autoReconnectEnabled internt
-                // om vi någon gång har varit anslutna (bleStats.disconnectCount>0).
-                scheduleAutoReconnect();
-              });
+              .finally(() => { scheduleAutoReconnect(); });
           }).catch(() => {});
 
-          // Bevara legacy demand-baserad reconnect om någon framtida konsument vill ha den
           if (isDemandActive()) {
             const dev = getDevice();
             if (dev) {
@@ -173,21 +166,11 @@ export function startKeepAlive(): void {
         }
       })
       .finally(() => {
-        if (writeSlot === p) {
-          writeSlot = null;
-          if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
-        }
+        // Släpp ENDAST writePending-flaggan. slotLockedUntil låser fortsatt
+        // sloten i hela lease-fönstret oavsett hur snabbt promise resolvar.
+        writePending = false;
+        pendingWriteStartedAt = 0;
       });
-
-    writeSlot = p;
-    if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
-    writeSlotWatchdog = setTimeout(() => {
-      if (writeSlot === p) {
-        bleStats.writeStuckCount++;
-        writeSlot = null;
-        writeSlotWatchdog = null;
-      }
-    }, WRITE_SLOT_TIMEOUT_MS);
   }, KEEPALIVE_MS);
 }
 
@@ -202,31 +185,40 @@ export function setReconnectTrigger(fn: (peripheral: any, name: string) => void)
 }
 
 /**
- * SYNKRON BLE-write — hard-fail om sloten är upptagen.
+ * SYNKRON BLE-write — strict lease-slot, hard-fail om sloten är låst.
  * Returnerar WriteResult direkt; engine kan räkna utfallet utan await.
  * writeAsync triggas fire-and-forget; resultatet rapporteras via .then/.catch.
+ *
+ * Kontrakt: 1 tick = max 1 write. När en write accepteras låses sloten
+ * i HELA slotLeaseMs (= engine.tickMs) — promise-resolution kan inte
+ * öppna sloten tidigare. Detta är vad som hindrar HCI-kö-bygge.
  */
 export function sendToBLE(r: number, g: number, b: number, brightness: number): WriteResult {
   const device = getDevice();
   if (!device) return 'no-device';
 
-  // Steg 1: BLE-slot ledig? (Single-slot hard-fail = vårt enda backpressure-skydd.
-  // Ingen separat rate-limit — engine.tickMs styr maxtakten in, slot-checken
-  // fångar om noble fortfarande håller på med förra writen.)
-  if (writeSlot) {
+  const now = performance.now();
+
+  // Steg 1: Pågående write? → busy. (Fail-closed: om writeAsync hängt
+  // länge släpps INTE sloten — frames droppas tills writen resolvar
+  // eller länken rivs av stuck-detektion nedan.)
+  if (writePending) {
+    if (pendingWriteStartedAt > 0 && (now - pendingWriteStartedAt) >= STUCK_THRESHOLD_MS) {
+      bleStats.writeStuckCount++;
+      if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
+        console.warn(`[BLE] writeAsync pending >${STUCK_THRESHOLD_MS}ms (stuckCount=${bleStats.writeStuckCount}) — link likely dead, frames being dropped`);
+        lastStuckWarnAt = now;
+      }
+    }
     bleStats.skipInFlightCount++;
     bleStats.skipBusyCount++;
     return 'busy';
   }
 
-  const now = performance.now();
-
-  // Steg 2: Rate-limit gate. withoutResponse=true resolvar nästan direkt
-  // → slot-checken släpper igenom långt över BLEDOM:s ~30 pkt/s tak.
-  // Denna gate är vad som faktiskt hindrar HCI-kö-bygge.
-  if (minWriteIntervalMs > 0 && (now - lastWriteTime) < minWriteIntervalMs) {
-    bleStats.skipRateLimitCount = (bleStats.skipRateLimitCount ?? 0) + 1;
-    return 'rate-limited';
+  // Steg 2: Lease-slot fortfarande låst från förra ticken?
+  if (now < slotLockedUntil) {
+    bleStats.skipBusyCount++;
+    return 'busy';
   }
 
   // Steg 3: Brightness-skala + delta-check
@@ -236,12 +228,8 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  // Stale-write force: vid tyst musik (R=G=B=0 över flera ticks) skulle
-  // delta-skip annars stoppa ALLA writes — och eftersom keep-alive är
-  // stoppad i active mode tappar BLEDOM länken på ~7s (reason=8 supervision
-  // timeout). Tröskeln 400ms = samma som keep-alive-intervallet, säkert
-  // under BLEDOM-timeouten även med jitter. När tröskeln passeras skippar
-  // vi delta-checken och skickar samma färg igen som "soft keep-alive".
+  // Stale-write force: vid tyst musik (R=G=B=0) skulle delta-skip annars
+  // stoppa ALLA writes; keep-alive är inte garanterad i active mode.
   const STALE_WRITE_MS = 400;
   const isStale = (now - lastWriteTime) >= STALE_WRITE_MS;
   if (!process.env.BLE_NO_DELTA_SKIP && !isStale &&
@@ -261,16 +249,16 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     buf = writeBuf;
   }
 
-  // Markera slot UPPTAGEN innan vi triggar write — fönstret mellan här
-  // och .then() är där alla efterföljande ticks ser 'busy'.
-  const writeStartedAt = now;
+  // ── LÅS SLOTEN för hela tick-fönstret ──
+  // slotLockedUntil hindrar nästa tick även om writeAsync resolvar på <1ms.
   lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
-  // Reservera lastWriteTime direkt så rate-limit-gaten räknar från start,
-  // inte från resolve — annars kan en långsam write låta nästa tick smita
-  // förbi gaten direkt efter resolve.
+  const writeStartedAt = now;
+  writePending = true;
+  pendingWriteStartedAt = now;
+  slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
 
-  const writePromise = device.characteristic.writeAsync(buf, true)
+  device.characteristic.writeAsync(buf, true)
     .then(() => {
       const elapsed = performance.now() - writeStartedAt;
       bleStats.sentCount++;
@@ -279,7 +267,6 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
         (bleStats.writeLatAvgMs * 0.9 + elapsed * 0.1) * 10
       ) / 10;
       if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
-      if (lastWriteTime > 0) bleStats.effectiveIntervalMs = Math.round(writeStartedAt - (lastWriteTime - (writeStartedAt - now)));
       if (writeFailCount > 0) console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
       writeFailCount = 0;
       if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
@@ -307,31 +294,11 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
       }
     })
     .finally(() => {
-      // Släpp sloten — men bara om denna write fortfarande äger den
-      // (watchdogen kan ha tvångs-släppt och en annan write tagit över)
-      if (writeSlot === writePromise) {
-        writeSlot = null;
-        if (writeSlotWatchdog) { clearTimeout(writeSlotWatchdog); writeSlotWatchdog = null; }
-      }
+      // Släpp ENDAST writePending. slotLockedUntil håller sloten låst
+      // tills lease-fönstret löpt ut — promise-resolve kan inte smita förbi.
+      writePending = false;
+      pendingWriteStartedAt = 0;
     });
-
-  writeSlot = writePromise;
-
-  // Watchdog — om writeAsync hänger >500ms släpp sloten ändå så engine
-  // inte fastnar permanent i 'busy'. Räkna stuck-count som signal.
-  if (writeSlotWatchdog) clearTimeout(writeSlotWatchdog);
-  writeSlotWatchdog = setTimeout(() => {
-    if (writeSlot === writePromise) {
-      bleStats.writeStuckCount++;
-      const now = performance.now();
-      if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
-        console.warn(`[BLE] writeAsync stuck >500ms — force-releasing slot (stuckCount=${bleStats.writeStuckCount})`);
-        lastStuckWarnAt = now;
-      }
-      writeSlot = null;
-      writeSlotWatchdog = null;
-    }
-  }, WRITE_SLOT_TIMEOUT_MS);
 
   return 'sent';
 }
@@ -339,10 +306,6 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 /**
  * Synkron idle-färg-uppdate — uppdaterar bara writeBuf + dedup-state.
  * INGEN write triggas här. Keep-alive-loopen (200ms) bär färgen vid nästa tick.
- *
- * Detta är hela "idle-vägen" från engines synvinkel: sätt färgen → keep-alive
- * skickar den. EN ägare i taget (idle keep-alive ELLER active sendToBLE,
- * aldrig båda). Owner-switch sker i piEngine.ts.
  */
 export function setIdleColor(r: number, g: number, b: number): void {
   const cr = Math.max(0, Math.min(255, r | 0));
