@@ -709,46 +709,65 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), slotLeaseMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
   });
 
-  // ─── BLE bench: auto-ramp throughput test ───
-  // Förbigår både lease, delta-skip och engine. Skickar writeAsync(buf, true)
-  // direkt mot characteristic med fast intervall under N sekunder per steg.
-  // Rampar upp tills steget misslyckas (failRate > 5% eller drainPeak > 8).
+  // ─── BLE bench: auto-ramp tickMs (HÖG → LÅG) ───
+  // Förbigår engine, lease och delta-skip. Skickar 1 paket per tickMs över
+  // stepSec sekunder och mäter queuedPeak/pendingPeak från noble live.
+  // pending=8 är hårdvarutaket (ACL-buffrar) och ignoreras — bara queued
+  // (=noble's _aclQueue) indikerar att vi producerar snabbare än radion.
+  // Pass: queuedPeak ≤ maxQueued (default 2). LastGoodTickMs = lägsta som passade.
   let _benchRunning = false;
   let _benchLastResult: any = null;
   app.post('/api/ble/bench', async (req, res) => {
     if (_benchRunning) return res.status(409).json({ error: 'bench already running' });
     const { getDevice } = await import('./ble/state.js');
-    const { getOutstandingPackets, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
+    const { getNoble } = await import('./ble/noble-singleton.js');
+    const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
     const dev = getDevice();
     if (!dev) return res.status(503).json({ error: 'no BLE device connected' });
 
-    const startRate = Math.max(5, Math.min(200, Number(req.body?.startRate ?? 20)));
-    const stepRate  = Math.max(1, Math.min(50,  Number(req.body?.stepRate  ?? 10)));
-    const maxRate   = Math.max(startRate, Math.min(400, Number(req.body?.maxRate ?? 120)));
-    const stepSec   = Math.max(1, Math.min(10,  Number(req.body?.stepSec   ?? 3)));
+    const startTickMs = Math.max(10, Math.min(200, Number(req.body?.startTickMs ?? 50)));
+    const endTickMs   = Math.max(5,  Math.min(startTickMs, Number(req.body?.endTickMs ?? 20)));
+    const stepMs      = Math.max(1,  Math.min(20,  Number(req.body?.stepMs    ?? 5)));
+    const stepSec     = Math.max(2,  Math.min(15,  Number(req.body?.stepSec   ?? 5)));
+    const maxQueued   = Math.max(0,  Math.min(10,  Number(req.body?.maxQueued ?? 2)));
+
+    // Live drain-läsning som separerar pending/queued (controllerDrain.ts
+    // returnerar summan; här vill vi se dem var för sig).
+    const handle = getAttachedHandle();
+    const noble: any = getNoble();
+    function readDrain(): { pending: number; queued: number } {
+      try {
+        if (handle == null) return { pending: 0, queued: 0 };
+        const hci = noble?._bindings?._hci;
+        const conn = hci?._aclConnections?.get?.(handle);
+        const pending = conn?.pending ?? 0;
+        let queued = 0;
+        const q = hci?._aclQueue;
+        if (Array.isArray(q)) for (let i = 0; i < q.length; i++) if (q[i]?.handle === handle) queued++;
+        return { pending, queued };
+      } catch { return { pending: 0, queued: 0 }; }
+    }
 
     _benchRunning = true;
     const buf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
     const steps: any[] = [];
-    let lastGoodRate = 0;
+    let lastGoodTickMs = 0;
     let stoppedReason = 'completed';
 
-    console.log(`[Bench] Start ramp ${startRate}→${maxRate} step=${stepRate} stepSec=${stepSec}`);
+    console.log(`[Bench] Ramp tickMs ${startTickMs}→${endTickMs} step=${stepMs} stepSec=${stepSec} maxQueued=${maxQueued} attached=${isControllerDrainAttached()} handle=${handle}`);
 
     try {
-      for (let rate = startRate; rate <= maxRate; rate += stepRate) {
-        const intervalMs = 1000 / rate;
-        const totalAttempts = Math.round(rate * stepSec);
+      for (let tickMs = startTickMs; tickMs >= endTickMs; tickMs -= stepMs) {
+        const totalAttempts = Math.max(1, Math.round(stepSec * 1000 / tickMs));
         let sent = 0, failed = 0, latSum = 0, latMax = 0;
-        let drainPeak = 0;
+        let queuedPeak = 0, pendingPeak = 0;
         const t0 = performance.now();
         let colorIdx = 0;
 
         for (let i = 0; i < totalAttempts; i++) {
-          const targetT = t0 + i * intervalMs;
+          const targetT = t0 + i * tickMs;
           const delay = targetT - performance.now();
           if (delay > 0) await new Promise(r => setTimeout(r, delay));
-          // Rotera färg så delta-skip aldrig kunde hindra (ej relevant här men säkert)
           colorIdx = (colorIdx + 1) % 256;
           buf[4] = colorIdx; buf[5] = 255 - colorIdx; buf[6] = (colorIdx * 3) & 0xff;
           const wStart = performance.now();
@@ -759,33 +778,41 @@ export function startConfigServer(port = 3050): void {
           } catch {
             failed++;
           }
-          if (isControllerDrainAttached()) {
-            const out = getOutstandingPackets();
-            if (out > drainPeak) drainPeak = out;
-          }
+          const d = readDrain();
+          if (d.queued  > queuedPeak)  queuedPeak  = d.queued;
+          if (d.pending > pendingPeak) pendingPeak = d.pending;
+        }
+
+        // Vänta extra ~1s så kön töms innan nästa steg och vi mäter rent.
+        const settleStart = performance.now();
+        while (performance.now() - settleStart < 1000) {
+          const d = readDrain();
+          if (d.queued === 0) break;
+          await new Promise(r => setTimeout(r, 50));
         }
 
         const failRate = failed / totalAttempts;
         const avgLat = sent > 0 ? latSum / sent : 0;
-        const passed = failRate < 0.05 && drainPeak < 8;
+        const ratePps = +(1000 / tickMs).toFixed(1);
+        const passed = failRate < 0.05 && queuedPeak <= maxQueued;
         const result = {
-          rate, attempted: totalAttempts, sent, failed,
+          tickMs, ratePps, attempted: totalAttempts, sent, failed,
           failRatePct: +(failRate * 100).toFixed(1),
           avgLatencyMs: +avgLat.toFixed(2),
           maxLatencyMs: +latMax.toFixed(2),
-          drainPeak, passed,
+          queuedPeak, pendingPeak, passed,
         };
         steps.push(result);
-        console.log(`[Bench] rate=${rate} sent=${sent}/${totalAttempts} fail=${failed} avgLat=${avgLat.toFixed(1)}ms drainPeak=${drainPeak} → ${passed ? 'PASS' : 'FAIL'}`);
+        console.log(`[Bench] tick=${tickMs}ms (${ratePps} pps) sent=${sent}/${totalAttempts} fail=${failed} avgLat=${avgLat.toFixed(1)}ms queuedPk=${queuedPeak} pendingPk=${pendingPeak} → ${passed ? 'PASS' : 'FAIL'}`);
 
         if (passed) {
-          lastGoodRate = rate;
+          lastGoodTickMs = tickMs;
         } else {
-          stoppedReason = failRate >= 0.05 ? `failRate ${(failRate*100).toFixed(1)}%` : `drainPeak ${drainPeak}`;
+          stoppedReason = failRate >= 0.05
+            ? `failRate ${(failRate*100).toFixed(1)}%`
+            : `queuedPeak ${queuedPeak} > ${maxQueued}`;
           break;
         }
-        // kort settle mellan steg
-        await new Promise(r => setTimeout(r, 300));
       }
     } catch (e: any) {
       stoppedReason = `error: ${e?.message ?? e}`;
@@ -795,10 +822,12 @@ export function startConfigServer(port = 3050): void {
 
     _benchLastResult = {
       ok: true, finishedAt: new Date().toISOString(),
-      startRate, stepRate, maxRate, stepSec,
-      lastGoodRate, stoppedReason, steps,
+      startTickMs, endTickMs, stepMs, stepSec, maxQueued,
+      lastGoodTickMs,
+      lastGoodRatePps: lastGoodTickMs > 0 ? +(1000 / lastGoodTickMs).toFixed(1) : 0,
+      stoppedReason, steps,
     };
-    console.log(`[Bench] Done — top stable rate = ${lastGoodRate} pkt/s (${stoppedReason})`);
+    console.log(`[Bench] Done — lägsta stabila tick = ${lastGoodTickMs}ms (${_benchLastResult.lastGoodRatePps} pps) — ${stoppedReason}`);
     res.json(_benchLastResult);
   });
 
