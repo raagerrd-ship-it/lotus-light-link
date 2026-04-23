@@ -114,9 +114,9 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   // Tick-rate normalisering — speglar computeTickConstants() i piEngine.ts EXAKT.
   // Engine kör med variabel tickMs men normaliserar alla alphor till 125ms-referens:
   //   effectiveAlpha = 1 - (1 - rawAlpha)^(tickMs/125)
-  // Vid tickMs=25 (default) skalas alphan ner ~5×, vilket ger mjukare beteende än rå-värdet
+  // Vid tickMs=20 (default) skalas alphan ner ~6×, vilket ger mjukare beteende än rå-värdet
   // skulle antyda. Måste matcha exakt eller blir visualiseringen meningslös.
-  const TICK_MS = 25;
+  const TICK_MS = 20;
   const RATIO = TICK_MS / 125;
   const SEC_RATIO = TICK_MS / 1000;
   const releaseAlphaRaw = softnessToAlpha(cal.softness);
