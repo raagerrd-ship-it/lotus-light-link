@@ -273,6 +273,10 @@ export type TickCallback = (data: TickData) => void;
 
 export class PiLightEngine {
   private color: [number, number, number] = [255, 80, 0];
+  // Fade-mål: setColor/setPalette sätter detta; tick-loopen tweenar `color` hit
+  // över `colorFadeMs` så att lampan inte hoppar när paletten uppdateras sent.
+  private colorTarget: [number, number, number] = [255, 80, 0];
+  private colorFadeMs = 800;
   private volume: number | undefined;
   private playing = false;
   private tickMs: number;
@@ -336,12 +340,20 @@ export class PiLightEngine {
   }
 
   setColor(rgb: [number, number, number]) {
-    this.color = rgb;
+    this.colorTarget = [rgb[0], rgb[1], rgb[2]];
   }
 
   setPalette(palette: [number, number, number][]) {
     this._palette = palette;
-    if (palette.length > 0) this.color = palette[0];
+    if (palette.length > 0) {
+      const p = palette[0];
+      this.colorTarget = [p[0], p[1], p[2]];
+    }
+  }
+
+  /** Justera fade-tid i ms för övergången mellan gammal och ny palette-färg. */
+  setColorFadeMs(ms: number) {
+    this.colorFadeMs = Math.max(0, ms | 0);
   }
 
   private initOnsetBuffer(tickMs: number): void {
@@ -716,6 +728,21 @@ export class PiLightEngine {
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
+
+      // ── Color fade-tween (mjuk övergång till nytt palette-mål) ──
+      // Alpha per tick = tickMs / fadeMs. Vid fadeMs=0 eller stor delta → snap.
+      if (this.colorFadeMs > 0) {
+        const a = this.tickMs / this.colorFadeMs;
+        const k = a > 1 ? 1 : a;
+        const c = this.color; const t = this.colorTarget;
+        c[0] += (t[0] - c[0]) * k;
+        c[1] += (t[1] - c[1]) * k;
+        c[2] += (t[2] - c[2]) * k;
+      } else {
+        this.color[0] = this.colorTarget[0];
+        this.color[1] = this.colorTarget[1];
+        this.color[2] = this.colorTarget[2];
+      }
 
       // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
