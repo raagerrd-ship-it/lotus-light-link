@@ -321,6 +321,9 @@ interface BenchResult {
   lastGoodTickMs: number; lastGoodRatePps: number; stoppedReason: string;
   steps: BenchStep[];
   startTickMs: number; endTickMs: number; stepMs: number; stepSec: number; maxQueued: number;
+  connIntervalMs: number | null;
+  connLatency: number | null;
+  supervisionTimeoutMs: number | null;
 }
 
 function BleBenchRow({ piBase }: { piBase: string }) {
