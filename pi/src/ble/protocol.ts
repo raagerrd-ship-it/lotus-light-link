@@ -1,19 +1,25 @@
 /**
  * BLE BLEDOM protocol: packet formats, write pipeline, keepalive, brightness.
  *
- * STRICT LEASE-SLOT (2026-04-23):
+ * LEASE + CONTROLLER-DRAIN (2026-04-23):
  * sendToBLE() är SYNKRON och returnerar WriteResult direkt. Den awaitar
  * aldrig characteristic.writeAsync — det görs fire-and-forget. Backpressure
- * baseras INTE längre på en promise-slot (writeAsync(..., true) resolvar
- * nästan direkt = otillförlitligt). Istället låser varje accepterad write
- * sloten i HELA tick-fönstret (slotLockedUntil = now + slotLeaseMs).
+ * baseras på TVÅ separata gates:
+ *   1. tick-lease  : slotLockedUntil = now + slotLeaseMs (cadence-cap)
+ *   2. controller-drain : antal outstanding ACL-paket i noble's HCI-lager
  *
- * Kontrakt: 1 tick = max 1 BLE-write. Promise-resolution kan ALDRIG låsa upp
- * sloten tidigare än lease-tiden. Watchdogen är fail-closed: om writeAsync
- * hänger droppas frames + räknas stuck — ingen ny write tillåts in.
+ * Promise-resolution ger INTE drain-signal — `writeAsync(..., true)` resolvar
+ * när noble accepterar paketet i sin egen kö, INTE när controller faktiskt
+ * sänt det över radio. Drain räknas via noble._aclConnections[handle].pending
+ * + _aclQueue (se controllerDrain.ts).
+ *
+ * Kontrakt: 1 tick = max 1 BLE-write, max 1 outstanding paket i kedjan.
+ * Om outstanding fastnar > STUCK_THRESHOLD_MS → trigga reconnect.
+ * INGEN force-release — kö kan ALDRIG byggas tyst.
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
+import { getOutstandingPackets, isControllerDrainAttached } from './controllerDrain.js';
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
