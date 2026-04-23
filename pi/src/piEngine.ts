@@ -471,12 +471,14 @@ export class PiLightEngine {
         console.log('[Engine] → idle mode (BLE ej ansluten)');
       }
     } else {
-      // idle → active: bara byta owner; keep-alive fortsätter som safety net.
+      // idle → active: starta FFT-tick-loopen + byt owner.
+      // Utan startLoop() returnerar onFFTFrame direkt → inga ticks → inga writes.
+      this.startLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'active';
-        console.log('[Engine] → active mode (owner=active, keep-alive kvar som safety)');
+        console.log('[Engine] → active mode (owner=active, loop startad, keep-alive kvar som safety)');
       } else {
-        console.log('[Engine] → active mode (BLE ej ansluten, inga writes)');
+        console.log('[Engine] → active mode (BLE ej ansluten, loop startad men inga writes)');
       }
     }
   }
