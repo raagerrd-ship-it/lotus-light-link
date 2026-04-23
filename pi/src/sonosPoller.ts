@@ -121,11 +121,15 @@ function parseStatus(s: any): void {
   }
 
   // ── Full status update ──
-  // Parse palette from gateway response (array of [r,g,b] tuples)
-  const gwPalette: [number, number, number][] | null =
-    Array.isArray(s.palette) && s.palette.length > 0
-      ? s.palette.filter((c: any) => Array.isArray(c) && c.length >= 3)
-      : null;
+  // Parse palette from gateway response (array of [r,g,b] tuples).
+  // Gateway använder `currentPalette` (aktuell låt) och `nextPalette` (förcache).
+  // Vi accepterar även gamla `palette`-fältet som fallback för bakåtkompatibilitet.
+  const rawPalette = (Array.isArray(s.currentPalette) && s.currentPalette.length > 0)
+    ? s.currentPalette
+    : (Array.isArray(s.palette) && s.palette.length > 0 ? s.palette : null);
+  const gwPalette: [number, number, number][] | null = rawPalette
+    ? rawPalette.filter((c: any) => Array.isArray(c) && c.length >= 3)
+    : null;
 
   // Auto TV-mode: PLAYING + ingen trackName → TV/SPDIF
   const reportedPlaying = isPlaying(reportedPlaybackState ?? '');
