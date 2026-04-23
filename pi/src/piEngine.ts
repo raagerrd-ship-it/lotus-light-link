@@ -276,7 +276,7 @@ export class PiLightEngine {
   // Fade-mål: setColor/setPalette sätter detta; tick-loopen tweenar `color` hit
   // över `colorFadeMs` så att lampan inte hoppar när paletten uppdateras sent.
   private colorTarget: [number, number, number] = [255, 80, 0];
-  private colorFadeMs = 800;
+  private colorFadeMs = 3000;
   private volume: number | undefined;
   private playing = false;
   private tickMs: number;
