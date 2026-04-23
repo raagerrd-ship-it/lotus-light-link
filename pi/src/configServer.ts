@@ -913,6 +913,12 @@ export function startConfigServer(port = 3050): void {
       sentCount: bleStats.sentCount,
       skipDeltaCount: bleStats.skipDeltaCount,
       skipBusyCount: bleStats.skipBusyCount,
+      skipLeaseLockedCount: bleStats.skipLeaseLockedCount ?? 0,
+      skipControllerBusyCount: bleStats.skipControllerBusyCount ?? 0,
+      controllerCompleteCount: bleStats.controllerCompleteCount ?? 0,
+      controllerStuckCount: bleStats.controllerStuckCount ?? 0,
+      outstandingAgeMs: bleStats.outstandingAgeMs ?? 0,
+      lastStuckReason: bleStats.lastStuckReason ?? null,
       writeLatAvgMs: bleStats.writeLatAvgMs,
     });
   });
