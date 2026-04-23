@@ -35,6 +35,7 @@ interface SonosSnapshot {
   playing: boolean;
   track: string | null;
   palette: [number, number, number][];
+  nextPalette: [number, number, number][];
 }
 
 const POLL_MS = 2000;
