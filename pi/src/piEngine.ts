@@ -340,12 +340,20 @@ export class PiLightEngine {
   }
 
   setColor(rgb: [number, number, number]) {
-    this.color = rgb;
+    this.colorTarget = [rgb[0], rgb[1], rgb[2]];
   }
 
   setPalette(palette: [number, number, number][]) {
     this._palette = palette;
-    if (palette.length > 0) this.color = palette[0];
+    if (palette.length > 0) {
+      const p = palette[0];
+      this.colorTarget = [p[0], p[1], p[2]];
+    }
+  }
+
+  /** Justera fade-tid i ms för övergången mellan gammal och ny palette-färg. */
+  setColorFadeMs(ms: number) {
+    this.colorFadeMs = Math.max(0, ms | 0);
   }
 
   private initOnsetBuffer(tickMs: number): void {
