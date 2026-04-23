@@ -111,17 +111,19 @@ export interface BandResult {
 
 const SAMPLE_RATE = 48000;
 const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = 512 frames (~10.7ms @ 48kHz) — FAST, frikopplad från tickMs.
-// FFT körs ~93Hz för bättre transient-detektering och peak-tracking.
+// HOP_SIZE = 480 frames (10.0ms @ 48kHz) — exakt 100 Hz FFT-takt.
+// Synkar deterministiskt mot tickMs=20ms (50 pps): exakt 2 FFT-frames per
+// engine-tick → senaste FFT är max 10ms gammal när tickInner läser → jämn
+// transient-respons utan jitter mellan 1 och 2 frames per tick.
+// (Tidigare HOP=512 gav ~93Hz → 1.87 frames/tick → ojämn färskhet.)
+//
 // Engine.tickInner triggas dock bara på tickMs-takt (gate i piEngine.onFFTFrame
 // kollar `elapsed >= tickMs`) → BLE-trafik oförändrad, men engine ser senaste
 // FFT-frame när den väl kör → snabbare attack-respons.
 //
-// CPU-konsekvens: ~93 FFT/s × ~1ms = ~9% CPU på Pi Zero 2W (mätt: tål det,
-// vendor-bufferten är 8× period = 43ms vilket täcker värsta GC-pausen).
-// Tidigare HOP=tickMs (40ms) → ~25Hz FFT → ~2.5% CPU. Vi byter ~6.5% extra
-// CPU mot ~30ms bättre transient-respons.
-const HOP_SIZE = 512;
+// CPU-konsekvens: ~100 FFT/s × ~1ms ≈ 10% CPU på Pi Zero 2W (var ~9% @ HOP=512).
+// Vendor-bufferten är 8× period = 46ms vilket täcker värsta GC-pausen.
+const HOP_SIZE = 480;
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 const FFT_MASK = FFT_SIZE - 1;
