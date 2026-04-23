@@ -319,7 +319,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
-    setMinWriteIntervalMs(tickMs); // 1 tick = 1 BLE-paket
+    setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
