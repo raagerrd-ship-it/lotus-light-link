@@ -683,27 +683,30 @@ export function startConfigServer(port = 3050): void {
       engine.setTickMs(tickMs);
       engine.restartTimer();
       setItem('tick-ms', String(tickMs));
-      res.json({ ok: true, tickMs, minWriteIntervalMs: Math.max(5, Math.floor(tickMs * 0.6)) });
+      res.json({ ok: true, tickMs, slotLeaseMs: tickMs });
     } else {
-      res.status(400).json({ error: 'tickMs must be 5-50 (rate-limit auto-följer)' });
+      res.status(400).json({ error: 'tickMs must be 5-50 (BLE slot-lease följer tick)' });
     }
   });
 
-  // --- BLE write rate-limit ---
+  // --- BLE write slot-lease (legacy alias: rate-limit) ---
+  // Strict lease-slot: 1 tick = 1 BLE-paket. slotLeaseMs = engine.tickMs.
+  // Detta endpoint exponerar samma värde under det gamla namnet för
+  // bakåtkompatibilitet. Engine skriver över vid nästa setTickMs.
   app.get('/api/ble/rate-limit', (_req, res) => {
     const ms = getMinWriteIntervalMs();
-    res.json({ minWriteIntervalMs: ms, maxHz: +(1000 / ms).toFixed(1) });
+    res.json({ minWriteIntervalMs: ms, slotLeaseMs: ms, maxHz: +(1000 / ms).toFixed(1) });
   });
 
   app.put('/api/ble/rate-limit', (req, res) => {
     const { minWriteIntervalMs } = req.body ?? {};
     const v = Number(minWriteIntervalMs);
     if (!Number.isFinite(v) || v < 5 || v > 100) {
-      return res.status(400).json({ error: 'minWriteIntervalMs must be 5–100 (number)' });
+      return res.status(400).json({ error: 'minWriteIntervalMs must be 5–100 (number) — overrides slot-lease tills nästa setTickMs' });
     }
     setMinWriteIntervalMs(v);
     setItem('ble-min-write-interval-ms', String(v));
-    res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
+    res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), slotLeaseMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
   });
 
   // --- BLE Auto-tune ---
