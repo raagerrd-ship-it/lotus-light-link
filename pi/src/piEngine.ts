@@ -617,10 +617,12 @@ export class PiLightEngine {
     if (!this._loopActive) return;
 
     const now = performance.now();
-    const elapsed = now - this._lastTickTime;
-
-    if (elapsed >= this.tickMs) {
-      // Färsk FFT-frame OCH tickMs har förflutit → kör direkt (zero latency).
+    if (now >= this._nextTickDeadline) {
+      // Grid-align: nästa deadline är tickMs efter den förra, inte efter now.
+      this._nextTickDeadline += this.tickMs;
+      if (now - this._nextTickDeadline > this.tickMs) {
+        this._nextTickDeadline = now + this.tickMs;
+      }
       this._lastTickTime = now;
       this.tickInner();
     } else {
@@ -633,7 +635,9 @@ export class PiLightEngine {
   private startLoop(): void {
     if (this._loopActive) return;
     this._loopActive = true;
-    this._lastTickTime = performance.now();
+    const now = performance.now();
+    this._lastTickTime = now;
+    this._nextTickDeadline = now + this.tickMs;
   }
 
   private stopLoop(): void {
@@ -645,6 +649,7 @@ export class PiLightEngine {
     this.stopLoop();
     stopKeepAlive();
     onFFTReady(null); // unregister callback
+    onFluxReady(null);
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
   }
