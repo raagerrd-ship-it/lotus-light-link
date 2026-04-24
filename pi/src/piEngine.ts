@@ -307,7 +307,7 @@ export class PiLightEngine {
   // Refractory period — minimum gap between onsets, räknat i FFT-frames @ 100Hz
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
-  private static readonly ONSET_REFRACTORY_FRAMES = 11;  // ~110ms vid 100Hz FFT-takt
+  // Refractory räknas dynamiskt från cal.onsetRefractoryMs (FFT @ 100Hz → 10ms/frame)
 
   private cal: LightCalibration;
 
