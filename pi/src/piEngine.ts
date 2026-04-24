@@ -761,7 +761,13 @@ export class PiLightEngine {
         this.colorTarget[2] = p0[2];
         this._lastSeenPaletteVersion = this._paletteVersion;
       }
-      const k = tc.colorFadeAlpha;
+      // Time-based fade: använd faktisk elapsed sedan förra tick istället för
+      // precomputed alpha (som antog exakt tickMs-intervall). Skyddar mot
+      // jitter (sen FFT-frame, GC-paus) som annars hade gett ojämn fade-takt.
+      const k = this.colorFadeMs > 0
+        ? Math.min(1, (now - this._lastTickAtForFade) / this.colorFadeMs)
+        : 1;
+      this._lastTickAtForFade = now;
       if (k < 1) {
         const c = this.color; const t = this.colorTarget;
         c[0] += (t[0] - c[0]) * k;
