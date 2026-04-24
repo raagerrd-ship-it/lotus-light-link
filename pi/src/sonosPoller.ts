@@ -268,11 +268,13 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     }
   }
 
-  // Initial status fetch — bootPhase flag ensures immediate apply
-  try {
-    const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-    if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
-  } catch {}
+  // Initial status fetch — fire-and-forget så subsystem-start inte blockeras
+  // om gateway är otillgänglig. Timer:n picker upp värden vid nästa cykel.
+  fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) })
+    .then(async res => {
+      if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
+    })
+    .catch(() => {});
 
   // Starta pollen som fallback — SSE.onopen pausar den när den ansluter
   startPollTimer();
