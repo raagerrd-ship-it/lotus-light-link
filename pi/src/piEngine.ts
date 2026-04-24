@@ -47,10 +47,9 @@ interface TickConstants {
   transientGain: number;
   perceptualGamma: number;
   dynamicsEnabled: boolean;
-  colorFadeAlpha: number;
 }
 
-function computeTickConstants(tickMs: number, cal: LightCalibration, colorFadeMs: number): TickConstants {
+function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
   const fftMs = 10; // HOP_SIZE=480 @ 48kHz → 100Hz FFT-takt
@@ -73,7 +72,6 @@ function computeTickConstants(tickMs: number, cal: LightCalibration, colorFadeMs
     transientGain: cal.transientGain ?? 1.0,
     perceptualGamma: cal.perceptualGamma ?? 0,
     dynamicsEnabled: cal.dynamicsEnabled !== false,
-    colorFadeAlpha: colorFadeMs > 0 ? Math.min(1, tickMs / colorFadeMs) : 1,
   };
 }
 
