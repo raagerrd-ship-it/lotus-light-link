@@ -735,10 +735,8 @@ export class PiLightEngine {
       const preDynamics = energyNorm;
 
       // ── 5. Dynamics expansion ──
+      // (dynamicCenter uppdateras i onFluxReady @ 100Hz — se start())
       if (tc.dynamicsEnabled) {
-        this.dynamicCenter += tc.centerAlpha * (rawEnergyForCenter - this.dynamicCenter);
-        if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
-        if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
 
