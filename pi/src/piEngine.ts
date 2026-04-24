@@ -717,8 +717,7 @@ export class PiLightEngine {
       // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
       const bassNorm = normalizeFixed(bands.bassRms);
       const midHiNorm = normalizeFixed(bands.midHiRms);
-      // Center spårar rå energi, inte release-smoothad energi, för lägre dynamics-lag.
-      const rawEnergyForCenter = bassNorm * 0.5 + midHiNorm * 0.5;
+      // (dynamicCenter spåras nu i onFluxReady @ 100Hz — inte här)
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
       // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
