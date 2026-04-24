@@ -22,8 +22,13 @@
 
 import { getNoble } from './noble-singleton.js';
 
+const DRAIN_DIAG = process.env.DRAIN_DIAG === 'true';
+
 let _attachedHandle: number | null = null;
 let _attachedPeripheralUuid: string | null = null;
+let _hci: any = null;
+let _aclConnections: Map<number, any> | null = null;
+let _aclQueue: any[] | null = null;
 
 export function attachControllerDrain(peripheral: any): void {
   try {
@@ -43,11 +48,17 @@ export function attachControllerDrain(peripheral: any): void {
     }
     _attachedHandle = handle;
     _attachedPeripheralUuid = uuid;
+    _hci = bindings?._hci ?? null;
+    _aclConnections = _hci?._aclConnections ?? null;
+    _aclQueue = Array.isArray(_hci?._aclQueue) ? _hci._aclQueue : null;
     console.log(`[controllerDrain] attached uuid=${uuid} handle=${handle}`);
   } catch (e: any) {
     console.warn(`[controllerDrain] attach FEL: ${e?.message ?? e} — drain-gate degraderas`);
     _attachedHandle = null;
     _attachedPeripheralUuid = null;
+    _hci = null;
+    _aclConnections = null;
+    _aclQueue = null;
   }
 }
 
@@ -57,6 +68,9 @@ export function detachControllerDrain(): void {
   }
   _attachedHandle = null;
   _attachedPeripheralUuid = null;
+  _hci = null;
+  _aclConnections = null;
+  _aclQueue = null;
 }
 
 /**
