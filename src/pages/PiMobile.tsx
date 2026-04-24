@@ -30,6 +30,22 @@ function formatUptime(s: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+function cleanVersionLabel(version?: string | null): string | null {
+  const v = version?.trim();
+  if (!v || v === '?' || v.toLowerCase() === 'unknown') return null;
+  return v.replace(/^v+/i, '');
+}
+
+function cleanBuildLabel(commit?: string | null, branch?: string | null): string | null {
+  const c = commit?.trim();
+  const b = branch?.trim();
+  const hasCommit = !!c && c !== '?' && c.toLowerCase() !== 'unknown';
+  const hasBranch = !!b && b !== '?' && b.toLowerCase() !== 'unknown';
+  if (hasCommit && hasBranch) return `${c}@${b}`;
+  if (hasCommit) return c;
+  return null;
+}
+
 /** Shared exponential mapping 0-100 → alpha 0.005-1.0 (lägre värde = mjukare) */
 function curveToAlpha(v: number) {
   const t = v / 100;
@@ -1208,6 +1224,8 @@ export default function PiMobile() {
   const [updatePhase, setUpdatePhase] = useState<'idle' | 'stopping' | 'downloading' | 'starting'>('idle');
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
+  const engineVersionLabel = cleanVersionLabel(piVersion?.version);
+  const engineBuildLabel = cleanBuildLabel(piVersion?.commitShort, piVersion?.branch);
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -1601,10 +1619,10 @@ export default function PiMobile() {
               <span className="opacity-60 font-mono">· {formatUptime(engineUptime)}</span>
             )}
           </div>
-          {piVersion && (
+          {(engineVersionLabel || engineBuildLabel) && (
             <div className="flex flex-col items-end font-mono leading-tight text-right">
-              <span>v{piVersion.version}</span>
-              <span>{piVersion.commitShort}@{piVersion.branch}</span>
+              {engineVersionLabel && <span>v{engineVersionLabel}</span>}
+              {engineBuildLabel && <span>{engineBuildLabel}</span>}
             </div>
           )}
         </div>
