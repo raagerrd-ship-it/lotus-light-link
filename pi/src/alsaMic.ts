@@ -616,7 +616,7 @@ export function stopMic(): void {
   ringPos = 0;
   ringBuf.fill(0);
   prevPower.fill(0);
-  smoothBass = 0; smoothMidHi = 0; smoothTotal = 0;
+  // (smoothing-state finns inte längre i alsaMic — körs i engine.tickInner)
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
