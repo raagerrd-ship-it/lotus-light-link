@@ -129,7 +129,7 @@ interface LightCalibration {
 const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 1.0, releaseAlpha: 0.025, dynamicDamping: 0.8,
+  attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
   bassWeight: 0.7, hiShelfGainDb: 6,
   punchWhiteThreshold: 100,
   brightnessFloor: 0,
@@ -294,6 +294,7 @@ export class PiLightEngine {
   private tickMs: number;
 
   private dynamicCenter = 0.5;
+  private smoothed = 0;  // EMA-state för release-smoothing @ tick-takt
   
 
   // Onset detection state — zero-alloc insertion-sort median
@@ -479,6 +480,7 @@ export class PiLightEngine {
       // puls istället för att blandas med stale state från senaste sessionen.
       this.onsetBoost = 0;
       this.onsetTarget = 0;
+      this.smoothed = 0;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
       stopKeepAlive();
       console.log(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
@@ -502,6 +504,7 @@ export class PiLightEngine {
       // active → idle: reset onset + force idle-färg, starta keep-alive.
       this.onsetBoost = 0;
       this.onsetTarget = 0;
+      this.smoothed = 0;
       this._lastTickAtForFade = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
@@ -702,7 +705,7 @@ export class PiLightEngine {
   /** Guard against NaN/Infinity corrupting smoothing state */
   private sanitizeState(): void {
     if (!Number.isFinite(this.dynamicCenter)) this.dynamicCenter = 0.5;
-    
+    if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
 
@@ -738,8 +741,13 @@ export class PiLightEngine {
       const midHiGain = w >= 0.5 ? (1 - w) * 2 : 1;
       let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
 
-      // ── 4. Release smoothing hanteras i alsaMic.processFFT @ 100Hz ──
-      // (tidigare dubbel smoothing här gav kvadrerad effektiv alpha → slött ljud)
+      // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
+      // Körs på tick-takt (50Hz) så filtret är synkat mot output-raten och
+      // undviker alias-hack mellan FFT-takt (100Hz) och tick-takt.
+      const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
+      this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
+      energyNorm = this.smoothed;
+
       const preDynamics = energyNorm;
 
       // ── 5. Dynamics expansion ──

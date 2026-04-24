@@ -44,6 +44,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
 - [Signal processing chain](mem://pi/audio/signal-processing-chain) — Pipeline order from Mic to Gamma
+- [Single smoothing on tick](mem://pi/audio/single-smoothing-on-tick) — En EMA i tickInner @ 50Hz, alsaMic levererar rå RMS, default releaseAlpha=0.15
 - [FFT resolution](mem://technical/audio-processing/fft-resolution) — 1024 samples, 128 hop-size
 - [HOP frikopplad](mem://pi/audio/hop-size-decoupled) — HOP=512 fast (~10.7ms), FFT 93Hz, engine gatear på tickMs
 - [Inget setTimeout i FFT-tick](mem://pi/runtime/no-settimeout-on-fft-tick-path) — onFFTFrame får aldrig schemalägga setTimeout, då körs tickInner mot gammal frame
