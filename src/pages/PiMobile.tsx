@@ -1261,6 +1261,8 @@ export default function PiMobile() {
           perceptualGamma: p.perceptualGamma,
           transientGain: p.transientGain,
           dynamicsEnabled: p.dynamicsEnabled,
+          onsetThreshold: p.onsetThreshold,
+          onsetRefractoryMs: p.onsetRefractoryMs,
           hiShelfGainDb: 6,
         };
       }
