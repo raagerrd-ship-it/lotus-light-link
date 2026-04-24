@@ -570,7 +570,7 @@ export class PiLightEngine {
     this._running = true;
 
     // Register for FFT-driven ticks (event-driven, not polling)
-    onFFTReady((bands) => this.onFFTFrame(bands));
+    onFFTReady(() => this.onFFTFrame());
     // Always start the loop — CPU is negligible
     this.startLoop();
     // Keep-alive och idle-heartbeat startar INTE här — de startas först när
@@ -597,7 +597,7 @@ export class PiLightEngine {
   private _loopActive = false;
 
   /** Called by ALSA FFT callback — runs in the audio data handler context */
-  private onFFTFrame(_bands: BandResult): void {
+  private onFFTFrame(): void {
     if (!this._loopActive) return;
 
     const now = performance.now();
@@ -706,7 +706,7 @@ export class PiLightEngine {
       const preDynamics = energyNorm;
 
       // ── 5. Dynamics expansion ──
-      if (cal.dynamicsEnabled !== false) {
+      if (tc.dynamicsEnabled) {
         this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
         if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
         if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
@@ -715,18 +715,18 @@ export class PiLightEngine {
 
       // ── 6. Transient boost (0 = av, 1.0 = default, 2.0 = överdrivet) ──
       this.processOnset(bands.flux);
-      const transientGain = cal.transientGain ?? 1.0;
+      const transientGain = tc.transientGain;
       const fluxBoost = transientGain > 0 ? this.onsetBoost * transientGain : 0;
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
       // ── 7. Floor + Perceptual curve ──
-      const floor = cal.brightnessFloor ?? 0;
+      const floor = tc.brightnessFloor;
       let pct = energyNorm * 100;
       if (pct < floor) pct = floor;
 
       // perceptualGamma: 0 = av (hoppa över helt), ≥1.0 = kör kurvan med angivet exponent
-      const pGamma = cal.perceptualGamma ?? 0;
+      const pGamma = tc.perceptualGamma;
       if (pGamma > 0 && pct > floor && pct < 100) {
         const norm = (pct - floor) / (100 - floor);
         pct = floor + (norm > 0.0001 ? Math.exp(pGamma * Math.log(norm)) : 0) * (100 - floor);
@@ -740,11 +740,12 @@ export class PiLightEngine {
       // ── Color fade-tween (mjuk övergång till nytt palette-mål) ──
       // Läs alltid palette[0] löpande som mål — så att sena palette-uppdateringar
       // från gateway syns direkt utan att kräva setPalette-call varje gång.
-      if (this._palette.length > 0) {
+      if (this._paletteVersion !== this._lastSeenPaletteVersion && this._palette.length > 0) {
         const p0 = this._palette[0];
         this.colorTarget[0] = p0[0];
         this.colorTarget[1] = p0[1];
         this.colorTarget[2] = p0[2];
+        this._lastSeenPaletteVersion = this._paletteVersion;
       }
       // Alpha per tick = tickMs / fadeMs. Vid fadeMs=0 eller stor delta → snap.
       if (this.colorFadeMs > 0) {
