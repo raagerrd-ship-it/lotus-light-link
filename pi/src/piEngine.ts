@@ -87,7 +87,7 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
     const normalized = (result - center) / range;
     // Fast pow approximation: exp(exponent * ln(|x|)) via Math.exp/Math.log
     const absN = normalized < 0 ? -normalized : normalized;
-    const powered = absN > 0.0001 ? Math.exp(exponent * Math.log(absN)) : 0;
+    const powered = absN > 0.0001 ? Math.pow(absN, exponent) : 0;
     const expanded = normalized < 0 ? -powered : powered;
     const gain = 1 + amount * 0.5;
     result = center + expanded * range * gain;
@@ -288,7 +288,6 @@ export class PiLightEngine {
   private playing = false;
   private tickMs: number;
 
-  private smoothed = 0;
   private dynamicCenter = 0.5;
   
 
@@ -300,9 +299,10 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
-  // Refractory period — minimum gap between onsets (ms) to avoid flutter on sustained transients
-  private onsetLastTime = 0;
-  private static readonly ONSET_REFRACTORY_MS = 110;
+  // Refractory period — minimum gap between onsets, räknat i FFT-frames @ 100Hz
+  private onsetFrameCounter = 0;
+  private onsetLastFrameIdx = -1000;
+  private static readonly ONSET_REFRACTORY_FRAMES = 11;  // ~110ms vid 100Hz FFT-takt
 
   private cal: LightCalibration;
 
@@ -380,6 +380,8 @@ export class PiLightEngine {
     this.onsetPrevFlux = 0;
     this.onsetBoost = 0;
     this.onsetTarget = 0;
+    this.onsetFrameCounter = 0;
+    this.onsetLastFrameIdx = -1000;
   }
 
   /** Zero-alloc onset detection using precomputed constants.
@@ -408,11 +410,11 @@ export class PiLightEngine {
     const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
 
-    // Refractory gate: minimum gap between onsets
-    const now = performance.now();
-    if (isCandidate && (now - this.onsetLastTime) >= PiLightEngine.ONSET_REFRACTORY_MS) {
+    // Refractory gate: minimum gap between onsets (räknat i FFT-frames @ 100Hz)
+    this.onsetFrameCounter++;
+    if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= PiLightEngine.ONSET_REFRACTORY_FRAMES) {
       this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
-      this.onsetLastTime = now;
+      this.onsetLastFrameIdx = this.onsetFrameCounter;
     }
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
@@ -467,11 +469,11 @@ export class PiLightEngine {
       startKeepAlive();
       console.log(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
     } else {
-      // Ren start: rensa onset/smoothed så första riktiga beat ger en tydlig
+      // Ren start: rensa onset så första riktiga beat ger en tydlig
       // puls istället för att blandas med stale state från senaste sessionen.
-      this.smoothed = 0;
       this.onsetBoost = 0;
       this.onsetTarget = 0;
+      this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
       stopKeepAlive();
       console.log(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
     }
@@ -491,10 +493,10 @@ export class PiLightEngine {
     if (playing === wasPlaying) return;
 
     if (!playing) {
-      // active → idle: reset smoothing + force idle-färg, starta keep-alive.
-      this.smoothed = 0;
+      // active → idle: reset onset + force idle-färg, starta keep-alive.
       this.onsetBoost = 0;
       this.onsetTarget = 0;
+      this._lastTickAtForFade = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'idle';
@@ -693,7 +695,6 @@ export class PiLightEngine {
 
   /** Guard against NaN/Infinity corrupting smoothing state */
   private sanitizeState(): void {
-    if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
     if (!Number.isFinite(this.dynamicCenter)) this.dynamicCenter = 0.5;
     
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
@@ -731,11 +732,8 @@ export class PiLightEngine {
       const midHiGain = w >= 0.5 ? (1 - w) * 2 : 1;
       let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
 
-      // ── 4. Release smoothing (Mjukhet) ──
-      const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
-      this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
-      energyNorm = this.smoothed;
-
+      // ── 4. Release smoothing hanteras i alsaMic.processFFT @ 100Hz ──
+      // (tidigare dubbel smoothing här gav kvadrerad effektiv alpha → slött ljud)
       const preDynamics = energyNorm;
 
       // ── 5. Dynamics expansion ──
