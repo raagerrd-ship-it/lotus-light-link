@@ -119,6 +119,10 @@ interface LightCalibration {
   /** 0 = av (linjärt, kurvan hoppas helt över), 1.0 = linjärt via math, 1.8 = tidigare default, upp till 3.0 = kraftig mörkkomprimering */
   perceptualGamma: number;
   dynamicsEnabled: boolean;
+  /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
+  onsetThreshold: number;
+  /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
+  onsetRefractoryMs: number;
   [key: string]: any;
 }
 
@@ -133,7 +137,8 @@ const DEFAULT_CAL: LightCalibration = {
   transientGain: 1.0,
   perceptualGamma: 0,
   dynamicsEnabled: true,
-  
+  onsetThreshold: 1.8,
+  onsetRefractoryMs: 110,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
