@@ -119,6 +119,10 @@ interface LightCalibration {
   /** 0 = av (linjärt, kurvan hoppas helt över), 1.0 = linjärt via math, 1.8 = tidigare default, upp till 3.0 = kraftig mörkkomprimering */
   perceptualGamma: number;
   dynamicsEnabled: boolean;
+  /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
+  onsetThreshold: number;
+  /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
+  onsetRefractoryMs: number;
   [key: string]: any;
 }
 
@@ -133,7 +137,8 @@ const DEFAULT_CAL: LightCalibration = {
   transientGain: 1.0,
   perceptualGamma: 0,
   dynamicsEnabled: true,
-  
+  onsetThreshold: 1.8,
+  onsetRefractoryMs: 110,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
@@ -302,7 +307,7 @@ export class PiLightEngine {
   // Refractory period — minimum gap between onsets, räknat i FFT-frames @ 100Hz
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
-  private static readonly ONSET_REFRACTORY_FRAMES = 11;  // ~110ms vid 100Hz FFT-takt
+  // Refractory räknas dynamiskt från cal.onsetRefractoryMs (FFT @ 100Hz → 10ms/frame)
 
   private cal: LightCalibration;
 
@@ -405,14 +410,15 @@ export class PiLightEngine {
 
     const mid = n >> 1;
     const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
-    // Stricter threshold (1.8x median + floor) → only real beats trigger, not noise
-    const threshold = med * 1.8 + 0.008;
+    // Stricter threshold (cal.onsetThreshold × median + floor) → only real beats trigger, not noise
+    const threshold = med * this.cal.onsetThreshold + 0.008;
     const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
 
-    // Refractory gate: minimum gap between onsets (räknat i FFT-frames @ 100Hz)
+    // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 100Hz (10ms/frame)
+    const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
     this.onsetFrameCounter++;
-    if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= PiLightEngine.ONSET_REFRACTORY_FRAMES) {
+    if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
       this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
       this.onsetLastFrameIdx = this.onsetFrameCounter;
     }
