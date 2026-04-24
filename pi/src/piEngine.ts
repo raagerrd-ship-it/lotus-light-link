@@ -41,6 +41,7 @@ interface TickConstants {
   onsetRiseAlphaFft: number;
   onsetDecayFft: number;
   centerAlpha: number;
+  centerAlphaFft: number;
   gammaIsUnity: boolean;
   dimmingGamma: number;
   brightnessFloor: number;
@@ -66,6 +67,7 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
+    centerAlphaFft: 1 - Math.pow(1 - 0.002, fftRatio),
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
     dimmingGamma: getDimmingGamma(),
     brightnessFloor: cal.brightnessFloor ?? 0,
