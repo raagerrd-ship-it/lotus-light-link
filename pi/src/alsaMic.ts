@@ -183,37 +183,23 @@ let ringPos = 0;
 const windowedBuf = new Float64Array(FFT_SIZE);
 let samplesReceived = 0;
 
-// ── Asymmetric RMS pre-smoothing (noise reduction + transient preservation) ──
-// Defaults motsvarar tidigare hårdkodade konstanter (0.8 / 0.15). När
-// MIC_SMOOTHING_FROM_CAL !== 'false' override:as dessa via setMicSmoothing()
-// från engine baserat på profilens attackAlpha/releaseAlpha → hela kedjan
-// (mic → engine → ljus) styrs av samma Attack/Release-slidrar i UI:t.
-const MIC_SMOOTHING_FROM_CAL = process.env.MIC_SMOOTHING_FROM_CAL !== 'false';
-const DEFAULT_MIC_ATTACK = 0.8;
-const DEFAULT_MIC_RELEASE = 0.15;
-let micAttackAlpha = DEFAULT_MIC_ATTACK;
-let micReleaseAlpha = DEFAULT_MIC_RELEASE;
-let smoothBass = 0;
-let smoothMidHi = 0;
-let smoothTotal = 0;
-
-/** Engine kallar denna när profilens cal sätts/uppdateras. När env-flaggan
- *  MIC_SMOOTHING_FROM_CAL=false är satt blir detta en no-op (säkerhetsventil). */
-export function setMicSmoothing(attackAlpha: number, releaseAlpha: number): void {
-  if (!MIC_SMOOTHING_FROM_CAL) return;
-  micAttackAlpha = Math.max(0.001, Math.min(1, attackAlpha));
-  micReleaseAlpha = Math.max(0.001, Math.min(1, releaseAlpha));
-}
-
-function smoothRms(raw: number, prev: number): number {
-  const alpha = raw > prev ? micAttackAlpha : micReleaseAlpha;
-  return prev + alpha * (raw - prev);
+// ── Smoothing flyttad till engine.tickInner @ 50Hz ──
+// Tidigare körde vi en EMA här @ 100Hz OCH en till i tickInner → kvadrerad
+// effektiv alpha (slött ljud). Sedan togs båda bort → flimmer pga FFT-rate-
+// hack (10ms) aliaserades mot tick-takten (20ms). Nu: rå RMS levereras hit,
+// smoothing körs på tick-takt så filtret är synkat mot output-raten.
+//
+// setMicSmoothing() bevaras som no-op för bakåtkompatibilitet (engine kallar
+// den fortfarande från reloadCalibration() — billigare än att riva ut alla
+// callsites).
+export function setMicSmoothing(_attackAlpha: number, _releaseAlpha: number): void {
+  /* no-op — smoothing sker numera i engine.tickInner */
 }
 
 // Noise gate borttagen 2026-04-21: brightnessFloor + dynamics + perceptualGamma
 // i engine sköter redan tystnadströskeln, och den gamla gaten kvävde första
 // kicken efter en tyst passage (3× knee-ramp). bassRms etc. flödar nu rakt
-// från smoothBass/smoothMidHi/smoothTotal — ingen attenuation, ingen recovery.
+// från rå RMS — ingen attenuation, ingen recovery.
 
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
