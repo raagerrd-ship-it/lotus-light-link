@@ -86,33 +86,31 @@ let _maxPendingSeen = 0;
 let _maxQueuedSeen = 0;
 
 export function getOutstandingPackets(): number {
-  if (_attachedHandle == null) return 0;
+  if (_attachedHandle == null || !_hci) return 0;
   try {
-    const n: any = getNoble();
-    const hci = n?._bindings?._hci;
-    if (!hci) return 0;
-    const conn = hci._aclConnections?.get?.(_attachedHandle);
+    const conn = _aclConnections?.get(_attachedHandle);
     const pending = conn?.pending ?? 0;
     let queued = 0;
-    const q = hci._aclQueue;
-    if (Array.isArray(q)) {
-      for (let i = 0; i < q.length; i++) {
-        if (q[i]?.handle === _attachedHandle) queued++;
+    if (_aclQueue) {
+      for (let i = 0; i < _aclQueue.length; i++) {
+        if (_aclQueue[i]?.handle === _attachedHandle) queued++;
       }
     }
 
-    // Diagnostik: logga max-värden 1 ggr/s så vi ser om pending fastnar.
-    if (pending > _maxPendingSeen) _maxPendingSeen = pending;
-    if (queued > _maxQueuedSeen) _maxQueuedSeen = queued;
-    const now = Date.now();
-    if (now - _lastDiagLog > 1000) {
-      _lastDiagLog = now;
-      const hasConn = !!conn;
-      const hasAclQueue = Array.isArray(q);
-      const connKeys = conn ? Object.keys(conn).join(',') : '(no-conn)';
-      console.log(`[controllerDrain:diag] pending=${pending} queued=${queued} maxPending=${_maxPendingSeen} maxQueued=${_maxQueuedSeen} hasConn=${hasConn} hasAclQueue=${hasAclQueue} connKeys=${connKeys}`);
-      _maxPendingSeen = 0;
-      _maxQueuedSeen = 0;
+    if (DRAIN_DIAG) {
+      // Diagnostik: logga max-värden 1 ggr/s så vi ser om pending fastnar.
+      if (pending > _maxPendingSeen) _maxPendingSeen = pending;
+      if (queued > _maxQueuedSeen) _maxQueuedSeen = queued;
+      const now = Date.now();
+      if (now - _lastDiagLog > 1000) {
+        _lastDiagLog = now;
+        const hasConn = !!conn;
+        const hasAclQueue = !!_aclQueue;
+        const connKeys = conn ? Object.keys(conn).join(',') : '(no-conn)';
+        console.log(`[controllerDrain:diag] pending=${pending} queued=${queued} maxPending=${_maxPendingSeen} maxQueued=${_maxQueuedSeen} hasConn=${hasConn} hasAclQueue=${hasAclQueue} connKeys=${connKeys}`);
+        _maxPendingSeen = 0;
+        _maxQueuedSeen = 0;
+      }
     }
 
     return pending + queued;
@@ -127,17 +125,11 @@ export function getOutstandingPackets(): number {
  * controller-internt och hör inte hemma i ett kö-mått.
  */
 export function getQueuedPackets(): number {
-  if (_attachedHandle == null) return 0;
+  if (_attachedHandle == null || !_aclQueue) return 0;
   try {
-    const n: any = getNoble();
-    const hci = n?._bindings?._hci;
-    if (!hci) return 0;
     let queued = 0;
-    const q = hci._aclQueue;
-    if (Array.isArray(q)) {
-      for (let i = 0; i < q.length; i++) {
-        if (q[i]?.handle === _attachedHandle) queued++;
-      }
+    for (let i = 0; i < _aclQueue.length; i++) {
+      if (_aclQueue[i]?.handle === _attachedHandle) queued++;
     }
     return queued;
   } catch {
