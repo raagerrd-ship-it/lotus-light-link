@@ -467,6 +467,11 @@ export class PiLightEngine {
       startKeepAlive();
       console.log(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
     } else {
+      // Ren start: rensa onset/smoothed så första riktiga beat ger en tydlig
+      // puls istället för att blandas med stale state från senaste sessionen.
+      this.smoothed = 0;
+      this.onsetBoost = 0;
+      this.onsetTarget = 0;
       stopKeepAlive();
       console.log(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
     }
