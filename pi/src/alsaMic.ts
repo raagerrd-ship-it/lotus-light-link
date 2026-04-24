@@ -301,14 +301,10 @@ function processFFT(): void {
   const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
 
 
-  smoothBass = smoothRms(rawBass, smoothBass);
-  smoothMidHi = smoothRms(rawMidHi, smoothMidHi);
-  smoothTotal = smoothRms(rawTotal, smoothTotal);
-
-  // ── Bands flödar rakt från smoothed RMS — ingen noise gate ──
-  latestBands.bassRms = smoothBass;
-  latestBands.midHiRms = smoothMidHi;
-  latestBands.totalRms = smoothTotal;
+  // ── Bands flödar rakt från rå RMS — smoothing görs i engine.tickInner ──
+  latestBands.bassRms = rawBass;
+  latestBands.midHiRms = rawMidHi;
+  latestBands.totalRms = rawTotal;
   latestBands.flux = flux;
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
