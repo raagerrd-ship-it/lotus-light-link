@@ -323,12 +323,13 @@ async function main() {
   // BLE-failures finns en flagga i /tmp. Konsumera den och starta motor + connect
   // direkt så användaren slipper trycka knappar manuellt efter en restart-cykel.
   try {
-    const { consumeReconnectOnBootFlag, connectHardcoded } = await import('./ble/connect-hardcoded.js');
+    const { consumeReconnectOnBootFlag } = await import('./ble/reconnect-flag.js');
     if (consumeReconnectOnBootFlag()) {
       console.log('[Boot] 🔁 reconnect-flagga hittad → startar BLE-motor + connectHardcoded()');
       // Starta engine först (så noble laddas), sen connect.
       const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
       await startBleEngineMinimal().catch((e: any) => console.warn('[Boot] startBleEngineMinimal fel:', e?.message ?? e));
+      const { connectHardcoded } = await import('./ble/connect-hardcoded.js');
       // Liten delay så noble hinner till poweredOn innan första scan.
       setTimeout(() => {
         connectHardcoded().then((r) => {
