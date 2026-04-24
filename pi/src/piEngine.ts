@@ -480,6 +480,7 @@ export class PiLightEngine {
       // puls istället för att blandas med stale state från senaste sessionen.
       this.onsetBoost = 0;
       this.onsetTarget = 0;
+      this.smoothed = 0;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
       stopKeepAlive();
       console.log(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
