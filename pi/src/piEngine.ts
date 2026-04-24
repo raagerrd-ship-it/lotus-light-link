@@ -504,6 +504,7 @@ export class PiLightEngine {
       // active → idle: reset onset + force idle-färg, starta keep-alive.
       this.onsetBoost = 0;
       this.onsetTarget = 0;
+      this.smoothed = 0;
       this._lastTickAtForFade = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
