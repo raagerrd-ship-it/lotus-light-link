@@ -602,6 +602,7 @@ export class PiLightEngine {
   // att tickInner körde mot en GAMMAL getLatestBands() (upp till tickMs sen).
   // Det gav smygande audio-latens utan att synas i pkt/s. Borttaget.
   private _lastTickTime = 0;
+  private _lastTickAtForFade = 0;
   private _loopActive = false;
   private _nextTickDeadline = 0;
 
@@ -764,10 +765,11 @@ export class PiLightEngine {
       // Time-based fade: använd faktisk elapsed sedan förra tick istället för
       // precomputed alpha (som antog exakt tickMs-intervall). Skyddar mot
       // jitter (sen FFT-frame, GC-paus) som annars hade gett ojämn fade-takt.
+      const _prevFadeAt = this._lastTickAtForFade || _tickStart;
       const k = this.colorFadeMs > 0
-        ? Math.min(1, (now - this._lastTickAtForFade) / this.colorFadeMs)
+        ? Math.min(1, (_tickStart - _prevFadeAt) / this.colorFadeMs)
         : 1;
-      this._lastTickAtForFade = now;
+      this._lastTickAtForFade = _tickStart;
       if (k < 1) {
         const c = this.color; const t = this.colorTarget;
         c[0] += (t[0] - c[0]) * k;
