@@ -337,7 +337,7 @@ export class PiLightEngine {
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
-    this.tc = computeTickConstants(tickMs, this.cal);
+    this.tc = computeTickConstants(tickMs, this.cal, this.colorFadeMs);
     setTickHopMs(tickMs);
     setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
@@ -350,7 +350,7 @@ export class PiLightEngine {
   setTickMs(ms: number) {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
-    this.tc = computeTickConstants(ms, this.cal);
+    this.tc = computeTickConstants(ms, this.cal, this.colorFadeMs);
     setTickHopMs(ms);
     setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
   }
@@ -371,6 +371,7 @@ export class PiLightEngine {
   /** Justera fade-tid i ms för övergången mellan gammal och ny palette-färg. */
   setColorFadeMs(ms: number) {
     this.colorFadeMs = Math.max(0, ms | 0);
+    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
   }
 
   private initOnsetBuffer(tickMs: number): void {
@@ -423,11 +424,11 @@ export class PiLightEngine {
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
     if (this.onsetBoost < this.onsetTarget) {
-      this.onsetBoost += tc.onsetRiseAlpha * (this.onsetTarget - this.onsetBoost);
+      this.onsetBoost += tc.onsetRiseAlphaFft * (this.onsetTarget - this.onsetBoost);
     } else {
-      this.onsetBoost *= tc.onsetDecay;
+      this.onsetBoost *= tc.onsetDecayFft;
     }
-    this.onsetTarget *= tc.onsetDecay;
+    this.onsetTarget *= tc.onsetDecayFft;
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
