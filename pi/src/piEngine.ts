@@ -739,8 +739,13 @@ export class PiLightEngine {
       const midHiGain = w >= 0.5 ? (1 - w) * 2 : 1;
       let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
 
-      // ── 4. Release smoothing hanteras i alsaMic.processFFT @ 100Hz ──
-      // (tidigare dubbel smoothing här gav kvadrerad effektiv alpha → slött ljud)
+      // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
+      // Körs på tick-takt (50Hz) så filtret är synkat mot output-raten och
+      // undviker alias-hack mellan FFT-takt (100Hz) och tick-takt.
+      const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
+      this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
+      energyNorm = this.smoothed;
+
       const preDynamics = energyNorm;
 
       // ── 5. Dynamics expansion ──
