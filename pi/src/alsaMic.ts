@@ -233,11 +233,16 @@ const HS_ALPHA = 0.15;
 // ── Event-driven FFT callback ──
 type FFTReadyCallback = (bands: BandResult) => void;
 let _onFFTReady: FFTReadyCallback | null = null;
+let _onFluxReady: ((flux: number) => void) | null = null;
 
 /** Register callback fired immediately after each FFT frame completes.
  *  The engine uses this to process with zero timer latency. */
 export function onFFTReady(cb: FFTReadyCallback | null): void {
   _onFFTReady = cb;
+}
+
+export function onFluxReady(cb: ((flux: number) => void) | null): void {
+  _onFluxReady = cb;
 }
 
 // ── FFT frame counter (for diagnostics: faktisk frames/s från ALSA → FFT) ──
@@ -335,6 +340,7 @@ function processFFT(): void {
   _fftFrameCount++;
 
   // Fire event immediately — engine can process with zero latency
+  if (_onFluxReady) _onFluxReady(flux);
   if (_onFFTReady) _onFFTReady(latestBands);
 }
 
@@ -349,17 +355,6 @@ export function resetFluxState(): void {
 /** Return timestamp (performance.now) of last FFT completion */
 export function getLastFFTTimestamp(): number {
   return lastFFTTimestamp;
-}
-
-/** Diagnostics — zero-alloc static object. Noise gate borttagen, behåller
- *  formen så piEngine._diag.ngFloor/ngThreshold/etc. fortsätter funka utan
- *  ändring av endpoints. floor/threshold rapporteras som 0. */
-const _ngState = { noiseFloor: 0, threshold: 0, smoothBass: 0, smoothMidHi: 0, smoothTotal: 0 };
-export function getNoiseGateState(): typeof _ngState {
-  _ngState.smoothBass = smoothBass;
-  _ngState.smoothMidHi = smoothMidHi;
-  _ngState.smoothTotal = smoothTotal;
-  return _ngState;
 }
 
 let capture: any = null;
