@@ -95,6 +95,18 @@ function paletteSig(p: [number, number, number][] | null): string {
   return p ? p.map(c => c.join(',')).join('|') : '';
 }
 
+function parsePalette(raw: any): [number, number, number][] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const filtered = raw.filter((c: any) => Array.isArray(c) && c.length >= 3);
+  return filtered.length > 0 ? filtered : null;
+}
+
+function hasPaletteChanged(next: [number, number, number][] | null, prev: [number, number, number][] | null): boolean {
+  if (next === prev) return false;
+  if ((next?.length ?? 0) !== (prev?.length ?? 0)) return true;
+  return paletteSig(next) !== paletteSig(prev);
+}
+
 function apply(next: SonosState): void {
   const changed =
     next.playbackState !== currentState.playbackState ||
@@ -102,7 +114,7 @@ function apply(next: SonosState): void {
     next.volume !== currentState.volume ||
     next.isTvMode !== currentState.isTvMode ||
     next.albumArtUrl !== currentState.albumArtUrl ||
-    paletteSig(next.palette) !== paletteSig(currentState.palette);
+    hasPaletteChanged(next.palette, currentState.palette);
   currentState = next;
   if (changed) listeners.forEach(fn => fn(next));
 }
@@ -132,11 +144,6 @@ function parseStatus(s: any): void {
   // Parse palette from gateway response (array of [r,g,b] tuples).
   // Gateway använder `currentPalette` (aktuell låt) och `nextPalette` (förcache).
   // Vi accepterar även gamla `palette`-fältet som fallback för bakåtkompatibilitet.
-  const parsePalette = (raw: any): [number, number, number][] | null => {
-    if (!Array.isArray(raw) || raw.length === 0) return null;
-    const filtered = raw.filter((c: any) => Array.isArray(c) && c.length >= 3);
-    return filtered.length > 0 ? filtered : null;
-  };
   const gwPalette = parsePalette(s.currentPalette) ?? parsePalette(s.palette);
   const gwNextPalette = parsePalette(s.nextPalette);
 
@@ -210,14 +217,20 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   // pollTimer för att undvika redundanta parseStatus-anrop var 2:a sekund
   // (sparar CPU + nätverk på Pi Zero 2W). Vid SSE-error startar vi om pollen.
   let sseActive = false;
+  let pollInFlight = false;
 
   const startPollTimer = () => {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       try {
         const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
         if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
-      } catch {}
+      } catch {
+      } finally {
+        pollInFlight = false;
+      }
     }, pollMs);
   };
 
