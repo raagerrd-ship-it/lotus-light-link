@@ -13,22 +13,11 @@ import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
-import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { setReconnectOnBootFlag } from './reconnect-flag.js';
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
 // pga consecutive connect-failures, läses i index.ts boot för att auto-anropa
 // connectHardcoded() direkt efter restart (så användaren slipper trycka Anslut).
-const RECONNECT_FLAG = '/tmp/lotus-auto-reconnect-on-boot';
-export function setReconnectOnBootFlag(): void {
-  try { writeFileSync(RECONNECT_FLAG, String(Date.now()), 'utf8'); } catch {}
-}
-export function consumeReconnectOnBootFlag(): boolean {
-  try {
-    if (!existsSync(RECONNECT_FLAG)) return false;
-    unlinkSync(RECONNECT_FLAG);
-    return true;
-  } catch { return false; }
-}
 
 // Consecutive connect-failures räknare. Mönster från fältet: BLEDOM ansluter
 // alltid på 1-2s eller aldrig. Efter 2 misslyckanden i rad är noble's HCI-state
