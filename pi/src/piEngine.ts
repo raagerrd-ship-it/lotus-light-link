@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, setMicSmoothing, type BandResult } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, setMicSmoothing } from './alsaMic.js';
 import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
@@ -39,10 +39,12 @@ interface TickConstants {
   onsetDecay: number;
   onsetRiseAlpha: number;
   centerAlpha: number;
-  
-  
   gammaIsUnity: boolean;
   dimmingGamma: number;
+  brightnessFloor: number;
+  transientGain: number;
+  perceptualGamma: number;
+  dynamicsEnabled: boolean;
 }
 
 function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
@@ -57,9 +59,12 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     onsetDecay: Math.pow(0.04, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
-    
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
     dimmingGamma: getDimmingGamma(),
+    brightnessFloor: cal.brightnessFloor ?? 0,
+    transientGain: cal.transientGain ?? 1.0,
+    perceptualGamma: cal.perceptualGamma ?? 0,
+    dynamicsEnabled: cal.dynamicsEnabled !== false,
   };
 }
 
@@ -308,6 +313,8 @@ export class PiLightEngine {
 
   // Palette state — endast lagring för API/UI; färgen sätts via setColor vid låtbyte
   private _palette: [number, number, number][] = [];
+  private _paletteVersion = 0;
+  private _lastSeenPaletteVersion = -1;
 
   // Raw mode — disables all processors for gain calibration
   private _rawMode = false;
@@ -344,11 +351,12 @@ export class PiLightEngine {
   }
 
   setPalette(palette: [number, number, number][]) {
-    this._palette = palette;
     if (palette.length > 0) {
       const p = palette[0];
       this.colorTarget = [p[0], p[1], p[2]];
     }
+    this._palette = palette;
+    this._paletteVersion++;
   }
 
   /** Justera fade-tid i ms för övergången mellan gammal och ny palette-färg. */
