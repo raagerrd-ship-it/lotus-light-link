@@ -104,7 +104,7 @@ export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 // Returnerar 'ready' = sloten är fri, write tillåten
 //            'busy'  = sloten är låst (lease eller writePending)
 // Outstanding i HCI visas i diagnostiken men blockerar INTE sändning.
-function leaseAndDrainState(now: number): { gate: 'ready' | 'busy'; outstanding: number } {
+function leaseAndDrainState(now: number): 'ready' | 'busy' {
   const outstanding = isControllerDrainAttached() ? getOutstandingPackets() : 0;
   bleStats.controllerOutstandingCount = outstanding;
 
@@ -131,9 +131,9 @@ function leaseAndDrainState(now: number): { gate: 'ready' | 'busy'; outstanding:
     }
   }
 
-  if (writePending)          return { gate: 'busy', outstanding };
-  if (now < slotLockedUntil) return { gate: 'busy', outstanding };
-  return { gate: 'ready', outstanding };
+  if (writePending)          return 'busy';
+  if (now < slotLockedUntil) return 'busy';
+  return 'ready';
 }
 
 // ── Keepalive (idle-vägen) ──
@@ -158,8 +158,7 @@ export function startKeepAlive(): void {
     if (elapsed < KEEPALIVE_MS * 0.8) return;
 
     // Keep-alive följer samma lease-gate som sendToBLE.
-    const { gate } = leaseAndDrainState(now);
-    if (gate === 'busy') return;
+    if (leaseAndDrainState(now) === 'busy') return;
 
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     writePending = true;
@@ -234,8 +233,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const now = performance.now();
 
   // ── Gate: endast lease/writePending. drain läses för diagnostik. ──
-  const { gate } = leaseAndDrainState(now);
-  if (gate === 'busy') {
+  if (leaseAndDrainState(now) === 'busy') {
     bleStats.skipBusyCount++;
     if (writePending) bleStats.skipInFlightCount++;
     if (now < slotLockedUntil) bleStats.skipLeaseLockedCount++;
