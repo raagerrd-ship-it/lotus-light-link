@@ -539,7 +539,7 @@ let _audioCbFirstAt = 0;
 export function getAudioCbStats() {
   return { count: _audioCbCount, bytes: _audioCbBytes, firstAt: _audioCbFirstAt };
 }
-function onAudioDataFast(buf: Buffer): void {
+function onAudioData(buf: Buffer): void {
   _audioCbCount++;
   _audioCbBytes += buf.byteLength;
   if (_audioCbFirstAt === 0) {
@@ -547,15 +547,13 @@ function onAudioDataFast(buf: Buffer): void {
     console.log(`[ALSA] FIRST audio callback fired at t=${_audioCbFirstAt.toFixed(1)}ms, ${buf.byteLength} bytes`);
     resolveMicReadyWaiters();
   }
-  if (_audioCbCount === 50 || _audioCbCount === 200) {
+  if (_audioCbCount === 50 || _audioCbCount === 200 || (DEBUG_ENABLED && _audioCbCount % 1000 === 0)) {
     console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
   }
   // Stereo interleaved → ta bara vänster kanal.
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
-  // Format-specifika loopar för att undvika closure-overhead per sample.
   // Hi-shelf (single-pole) inlinad i loop:en — sparar en function call per sample.
-  // Soft-clip: algebraisk x/(1+|x|) istället för Math.tanh — ~5x snabbare,
-  // samma monotona "knee"-form över [-1,+1] för våra peakar.
+  // Soft-clip: algebraisk x/(1+|x|) istället för Math.tanh — ~5x snabbare.
   const gain = micGain;
   const hsAlpha = HS_ALPHA;
   const hsG = hsGain;
@@ -564,6 +562,9 @@ function onAudioDataFast(buf: Buffer): void {
   const ring = ringBuf;
   const mask = FFT_MASK;
   let received = samplesReceived;
+  // DEBUG-branch: peak-tracking inlinad bakom konstant flagga så V8 JIT
+  // kan eliminera grenarna helt i prod (DEBUG_ENABLED=false vid boot).
+  let peak = DEBUG_ENABLED ? debugPeakRaw : 0;
 
   if (currentFormat === 'S32_LE') {
     const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
@@ -574,6 +575,10 @@ function onAudioDataFast(buf: Buffer): void {
       if (raw > 0.5 || raw < -0.5) {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
+      }
+      if (DEBUG_ENABLED) {
+        const abs = raw < 0 ? -raw : raw;
+        if (abs > peak) peak = abs;
       }
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
@@ -590,6 +595,10 @@ function onAudioDataFast(buf: Buffer): void {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
       }
+      if (DEBUG_ENABLED) {
+        const abs = raw < 0 ? -raw : raw;
+        if (abs > peak) peak = abs;
+      }
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
@@ -600,81 +609,13 @@ function onAudioDataFast(buf: Buffer): void {
   hsState = hs;
   ringPos = pos;
   samplesReceived = received;
+  if (DEBUG_ENABLED) debugPeakRaw = peak;
 
   if (samplesReceived >= HOP_SIZE) {
     processFFT();
     samplesReceived = 0;
   }
 }
-
-function onAudioDataDebug(buf: Buffer): void {
-  _audioCbCount++;
-  _audioCbBytes += buf.byteLength;
-  if (_audioCbFirstAt === 0) {
-    _audioCbFirstAt = performance.now();
-    console.log(`[ALSA] FIRST audio callback fired at t=${_audioCbFirstAt.toFixed(1)}ms, ${buf.byteLength} bytes`);
-    resolveMicReadyWaiters();
-  }
-  if (_audioCbCount === 50 || _audioCbCount === 200 || _audioCbCount % 1000 === 0) {
-    console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
-  }
-
-  const gain = micGain;
-  const hsAlpha = HS_ALPHA;
-  const hsG = hsGain;
-  let hs = hsState;
-  let pos = ringPos;
-  const ring = ringBuf;
-  const mask = FFT_MASK;
-  let received = samplesReceived;
-
-  if (currentFormat === 'S32_LE') {
-    const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
-    const frameCount = samples.length >> 1;
-    const INV_S32 = 1 / 2147483648;
-    for (let i = 0; i < frameCount; i++) {
-      let raw = samples[i << 1] * INV_S32 * gain;
-      if (raw > 0.5 || raw < -0.5) {
-        const a = raw < 0 ? -raw : raw;
-        raw = raw / (1 + a);
-      }
-      const abs = raw < 0 ? -raw : raw;
-      if (abs > debugPeakRaw) debugPeakRaw = abs;
-      hs += hsAlpha * (raw - hs);
-      ring[pos] = hs + (raw - hs) * hsG;
-      pos = (pos + 1) & mask;
-      received++;
-    }
-  } else {
-    const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
-    const frameCount = samples.length >> 1;
-    const INV_S16 = 1 / 32768;
-    for (let i = 0; i < frameCount; i++) {
-      let raw = samples[i << 1] * INV_S16 * gain;
-      if (raw > 0.5 || raw < -0.5) {
-        const a = raw < 0 ? -raw : raw;
-        raw = raw / (1 + a);
-      }
-      const abs = raw < 0 ? -raw : raw;
-      if (abs > debugPeakRaw) debugPeakRaw = abs;
-      hs += hsAlpha * (raw - hs);
-      ring[pos] = hs + (raw - hs) * hsG;
-      pos = (pos + 1) & mask;
-      received++;
-    }
-  }
-
-  hsState = hs;
-  ringPos = pos;
-  samplesReceived = received;
-
-  if (samplesReceived >= HOP_SIZE) {
-    processFFT();
-    samplesReceived = 0;
-  }
-}
-
-const onAudioData = DEBUG_ENABLED ? onAudioDataDebug : onAudioDataFast;
 
 export function stopMic(): void {
   if (!capture) return;
