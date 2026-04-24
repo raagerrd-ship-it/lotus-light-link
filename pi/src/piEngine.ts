@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, setMicSmoothing } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing } from './alsaMic.js';
 import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
@@ -38,6 +38,8 @@ interface TickConstants {
   releaseAlpha: number;
   onsetDecay: number;
   onsetRiseAlpha: number;
+  onsetRiseAlphaFft: number;
+  onsetDecayFft: number;
   centerAlpha: number;
   gammaIsUnity: boolean;
   dimmingGamma: number;
@@ -45,11 +47,15 @@ interface TickConstants {
   transientGain: number;
   perceptualGamma: number;
   dynamicsEnabled: boolean;
+  colorFadeAlpha: number;
 }
 
-function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
+function computeTickConstants(tickMs: number, cal: LightCalibration, colorFadeMs: number): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
+  const fftMs = 10; // HOP_SIZE=480 @ 48kHz → 100Hz FFT-takt
+  const fftRatio = fftMs / 125;
+  const fftSecRatio = fftMs / 1000;
 
 
   return {
@@ -58,6 +64,8 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     // Snabbare decay → kortare, skarpare puls (matchar trum-attack ~80ms)
     onsetDecay: Math.pow(0.04, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
+    onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
+    onsetDecayFft: Math.pow(0.04, fftSecRatio),
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
     dimmingGamma: getDimmingGamma(),
@@ -65,6 +73,7 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     transientGain: cal.transientGain ?? 1.0,
     perceptualGamma: cal.perceptualGamma ?? 0,
     dynamicsEnabled: cal.dynamicsEnabled !== false,
+    colorFadeAlpha: colorFadeMs > 0 ? Math.min(1, tickMs / colorFadeMs) : 1,
   };
 }
 
@@ -235,12 +244,6 @@ export interface DiagSnapshot {
   finalR: number; finalG: number; finalB: number;
   tickCount: number;
   lastTickUs: number;
-  // Noise gate diagnostics
-  ngFloor: number;       // current noise floor level
-  ngThreshold: number;   // gate opens fully above this (floor * knee)
-  ngPreBass: number;     // smoothed bass BEFORE gate
-  ngPreMidHi: number;    // smoothed midHi BEFORE gate
-  ngPreTotal: number;    // smoothed total BEFORE gate
 }
 
 const _diag: DiagSnapshot = {
@@ -250,7 +253,6 @@ const _diag: DiagSnapshot = {
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
   tickCount: 0, lastTickUs: 0,
-  ngFloor: 0, ngThreshold: 0, ngPreBass: 0, ngPreMidHi: 0, ngPreTotal: 0,
 };
 
 // Reusable TickData — mutated in place
@@ -328,7 +330,7 @@ export class PiLightEngine {
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
-    this.tc = computeTickConstants(tickMs, this.cal);
+    this.tc = computeTickConstants(tickMs, this.cal, this.colorFadeMs);
     setTickHopMs(tickMs);
     setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
@@ -341,7 +343,7 @@ export class PiLightEngine {
   setTickMs(ms: number) {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
-    this.tc = computeTickConstants(ms, this.cal);
+    this.tc = computeTickConstants(ms, this.cal, this.colorFadeMs);
     setTickHopMs(ms);
     setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
   }
@@ -362,6 +364,7 @@ export class PiLightEngine {
   /** Justera fade-tid i ms för övergången mellan gammal och ny palette-färg. */
   setColorFadeMs(ms: number) {
     this.colorFadeMs = Math.max(0, ms | 0);
+    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
   }
 
   private initOnsetBuffer(tickMs: number): void {
@@ -414,11 +417,11 @@ export class PiLightEngine {
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
     if (this.onsetBoost < this.onsetTarget) {
-      this.onsetBoost += tc.onsetRiseAlpha * (this.onsetTarget - this.onsetBoost);
+      this.onsetBoost += tc.onsetRiseAlphaFft * (this.onsetTarget - this.onsetBoost);
     } else {
-      this.onsetBoost *= tc.onsetDecay;
+      this.onsetBoost *= tc.onsetDecayFft;
     }
-    this.onsetTarget *= tc.onsetDecay;
+    this.onsetTarget *= tc.onsetDecayFft;
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
@@ -520,7 +523,7 @@ export class PiLightEngine {
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
     }
-    this.tc = computeTickConstants(this.tickMs, this.cal);
+    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -549,7 +552,7 @@ export class PiLightEngine {
       this.cal.dynamicsEnabled = false;
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
-      this.tc = computeTickConstants(this.tickMs, this.cal);
+      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
       console.log('[Engine] Raw mode ON — all processors disabled');
     } else if (!on && this._rawMode) {
       this._rawMode = false;
@@ -557,7 +560,7 @@ export class PiLightEngine {
         Object.assign(this.cal, this._savedCal);
         this._savedCal = null;
       }
-      this.tc = computeTickConstants(this.tickMs, this.cal);
+      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
       console.log('[Engine] Raw mode OFF — processors restored');
     }
   }
@@ -571,6 +574,11 @@ export class PiLightEngine {
 
     // Register for FFT-driven ticks (event-driven, not polling)
     onFFTReady(() => this.onFFTFrame());
+    onFluxReady((flux) => {
+      if (this._loopActive && this.playing && this._bleOwner === 'active') {
+        this.processOnset(flux);
+      }
+    });
     // Always start the loop — CPU is negligible
     this.startLoop();
     // Keep-alive och idle-heartbeat startar INTE här — de startas först när
@@ -595,16 +603,19 @@ export class PiLightEngine {
   // Det gav smygande audio-latens utan att synas i pkt/s. Borttaget.
   private _lastTickTime = 0;
   private _loopActive = false;
+  private _nextTickDeadline = 0;
 
   /** Called by ALSA FFT callback — runs in the audio data handler context */
   private onFFTFrame(): void {
     if (!this._loopActive) return;
 
     const now = performance.now();
-    const elapsed = now - this._lastTickTime;
-
-    if (elapsed >= this.tickMs) {
-      // Färsk FFT-frame OCH tickMs har förflutit → kör direkt (zero latency).
+    if (now >= this._nextTickDeadline) {
+      // Grid-align: nästa deadline är tickMs efter den förra, inte efter now.
+      this._nextTickDeadline += this.tickMs;
+      if (now - this._nextTickDeadline > this.tickMs) {
+        this._nextTickDeadline = now + this.tickMs;
+      }
       this._lastTickTime = now;
       this.tickInner();
     } else {
@@ -617,7 +628,9 @@ export class PiLightEngine {
   private startLoop(): void {
     if (this._loopActive) return;
     this._loopActive = true;
-    this._lastTickTime = performance.now();
+    const now = performance.now();
+    this._lastTickTime = now;
+    this._nextTickDeadline = now + this.tickMs;
   }
 
   private stopLoop(): void {
@@ -629,6 +642,7 @@ export class PiLightEngine {
     this.stopLoop();
     stopKeepAlive();
     onFFTReady(null); // unregister callback
+    onFluxReady(null);
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     console.log('[Engine] Stopped');
   }
@@ -689,7 +703,8 @@ export class PiLightEngine {
       // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
       const bassNorm = normalizeFixed(bands.bassRms);
       const midHiNorm = normalizeFixed(bands.midHiRms);
-      const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
+      // Center spårar rå energi, inte release-smoothad energi, för lägre dynamics-lag.
+      const rawEnergyForCenter = bassNorm * 0.5 + midHiNorm * 0.5;
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
       // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
@@ -707,14 +722,13 @@ export class PiLightEngine {
 
       // ── 5. Dynamics expansion ──
       if (tc.dynamicsEnabled) {
-        this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
+        this.dynamicCenter += tc.centerAlpha * (rawEnergyForCenter - this.dynamicCenter);
         if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
         if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
 
       // ── 6. Transient boost (0 = av, 1.0 = default, 2.0 = överdrivet) ──
-      this.processOnset(bands.flux);
       const transientGain = tc.transientGain;
       const fluxBoost = transientGain > 0 ? this.onsetBoost * transientGain : 0;
       energyNorm = energyNorm + fluxBoost;
@@ -747,10 +761,8 @@ export class PiLightEngine {
         this.colorTarget[2] = p0[2];
         this._lastSeenPaletteVersion = this._paletteVersion;
       }
-      // Alpha per tick = tickMs / fadeMs. Vid fadeMs=0 eller stor delta → snap.
-      if (this.colorFadeMs > 0) {
-        const a = this.tickMs / this.colorFadeMs;
-        const k = a > 1 ? 1 : a;
+      const k = tc.colorFadeAlpha;
+      if (k < 1) {
         const c = this.color; const t = this.colorTarget;
         c[0] += (t[0] - c[0]) * k;
         c[1] += (t[1] - c[1]) * k;
@@ -790,13 +802,6 @@ export class PiLightEngine {
       _diag.onsetBoost = this.onsetBoost;
       _diag.brightnessPct = pct;
       _diag.bleScaleRaw = pct / 100;
-      // Noise gate state
-      const ng = getNoiseGateState();
-      _diag.ngFloor = ng.noiseFloor;
-      _diag.ngThreshold = ng.threshold;
-      _diag.ngPreBass = ng.smoothBass;
-      _diag.ngPreMidHi = ng.smoothMidHi;
-      _diag.ngPreTotal = ng.smoothTotal;
       _diag.finalR = isPunch ? 255 : _finalColor[0];
       _diag.finalG = isPunch ? 255 : _finalColor[1];
       _diag.finalB = isPunch ? 255 : _finalColor[2];
