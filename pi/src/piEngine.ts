@@ -703,7 +703,8 @@ export class PiLightEngine {
       // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
       const bassNorm = normalizeFixed(bands.bassRms);
       const midHiNorm = normalizeFixed(bands.midHiRms);
-      const rawEnergy = bassNorm * 0.5 + midHiNorm * 0.5;
+      // Center spårar rå energi, inte release-smoothad energi, för lägre dynamics-lag.
+      const rawEnergyForCenter = bassNorm * 0.5 + midHiNorm * 0.5;
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
       // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
@@ -721,14 +722,13 @@ export class PiLightEngine {
 
       // ── 5. Dynamics expansion ──
       if (tc.dynamicsEnabled) {
-        this.dynamicCenter += tc.centerAlpha * (energyNorm - this.dynamicCenter);
+        this.dynamicCenter += tc.centerAlpha * (rawEnergyForCenter - this.dynamicCenter);
         if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
         if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
 
       // ── 6. Transient boost (0 = av, 1.0 = default, 2.0 = överdrivet) ──
-      this.processOnset(bands.flux);
       const transientGain = tc.transientGain;
       const fluxBoost = transientGain > 0 ? this.onsetBoost * transientGain : 0;
       energyNorm = energyNorm + fluxBoost;
@@ -761,10 +761,8 @@ export class PiLightEngine {
         this.colorTarget[2] = p0[2];
         this._lastSeenPaletteVersion = this._paletteVersion;
       }
-      // Alpha per tick = tickMs / fadeMs. Vid fadeMs=0 eller stor delta → snap.
-      if (this.colorFadeMs > 0) {
-        const a = this.tickMs / this.colorFadeMs;
-        const k = a > 1 ? 1 : a;
+      const k = tc.colorFadeAlpha;
+      if (k < 1) {
         const c = this.color; const t = this.colorTarget;
         c[0] += (t[0] - c[0]) * k;
         c[1] += (t[1] - c[1]) * k;
@@ -804,13 +802,6 @@ export class PiLightEngine {
       _diag.onsetBoost = this.onsetBoost;
       _diag.brightnessPct = pct;
       _diag.bleScaleRaw = pct / 100;
-      // Noise gate state
-      const ng = getNoiseGateState();
-      _diag.ngFloor = ng.noiseFloor;
-      _diag.ngThreshold = ng.threshold;
-      _diag.ngPreBass = ng.smoothBass;
-      _diag.ngPreMidHi = ng.smoothMidHi;
-      _diag.ngPreTotal = ng.smoothTotal;
       _diag.finalR = isPunch ? 255 : _finalColor[0];
       _diag.finalG = isPunch ? 255 : _finalColor[1];
       _diag.finalB = isPunch ? 255 : _finalColor[2];
