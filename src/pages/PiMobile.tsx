@@ -1224,6 +1224,8 @@ export default function PiMobile() {
   const [updatePhase, setUpdatePhase] = useState<'idle' | 'stopping' | 'downloading' | 'starting'>('idle');
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
+  const engineVersionLabel = cleanVersionLabel(piVersion?.version);
+  const engineBuildLabel = cleanBuildLabel(piVersion?.commitShort, piVersion?.branch);
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
