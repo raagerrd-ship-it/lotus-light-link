@@ -294,6 +294,7 @@ export class PiLightEngine {
   private tickMs: number;
 
   private dynamicCenter = 0.5;
+  private smoothed = 0;  // EMA-state för release-smoothing @ tick-takt
   
 
   // Onset detection state — zero-alloc insertion-sort median
