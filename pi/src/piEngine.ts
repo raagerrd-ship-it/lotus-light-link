@@ -328,7 +328,7 @@ export class PiLightEngine {
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
-    this.tc = computeTickConstants(tickMs, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
     setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
@@ -341,7 +341,7 @@ export class PiLightEngine {
   setTickMs(ms: number) {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
-    this.tc = computeTickConstants(ms, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
     setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
   }
@@ -362,7 +362,7 @@ export class PiLightEngine {
   /** Justera fade-tid i ms för övergången mellan gammal och ny palette-färg. */
   setColorFadeMs(ms: number) {
     this.colorFadeMs = Math.max(0, ms | 0);
-    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(this.tickMs, this.cal);
   }
 
   private initOnsetBuffer(tickMs: number): void {
@@ -521,7 +521,7 @@ export class PiLightEngine {
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
     }
-    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(this.tickMs, this.cal);
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -550,7 +550,7 @@ export class PiLightEngine {
       this.cal.dynamicsEnabled = false;
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
-      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+      this.tc = computeTickConstants(this.tickMs, this.cal);
       console.log('[Engine] Raw mode ON — all processors disabled');
     } else if (!on && this._rawMode) {
       this._rawMode = false;
@@ -558,7 +558,7 @@ export class PiLightEngine {
         Object.assign(this.cal, this._savedCal);
         this._savedCal = null;
       }
-      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+      this.tc = computeTickConstants(this.tickMs, this.cal);
       console.log('[Engine] Raw mode OFF — processors restored');
     }
   }
