@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, getNoiseGateState, setTickHopMs, setMicSmoothing } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing } from './alsaMic.js';
 import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
@@ -38,6 +38,8 @@ interface TickConstants {
   releaseAlpha: number;
   onsetDecay: number;
   onsetRiseAlpha: number;
+  onsetRiseAlphaFft: number;
+  onsetDecayFft: number;
   centerAlpha: number;
   gammaIsUnity: boolean;
   dimmingGamma: number;
@@ -45,11 +47,15 @@ interface TickConstants {
   transientGain: number;
   perceptualGamma: number;
   dynamicsEnabled: boolean;
+  colorFadeAlpha: number;
 }
 
-function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
+function computeTickConstants(tickMs: number, cal: LightCalibration, colorFadeMs: number): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
+  const fftMs = 10; // HOP_SIZE=480 @ 48kHz → 100Hz FFT-takt
+  const fftRatio = fftMs / 125;
+  const fftSecRatio = fftMs / 1000;
 
 
   return {
@@ -58,6 +64,8 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     // Snabbare decay → kortare, skarpare puls (matchar trum-attack ~80ms)
     onsetDecay: Math.pow(0.04, secRatio),
     onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
+    onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
+    onsetDecayFft: Math.pow(0.04, fftSecRatio),
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
     dimmingGamma: getDimmingGamma(),
@@ -65,6 +73,7 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     transientGain: cal.transientGain ?? 1.0,
     perceptualGamma: cal.perceptualGamma ?? 0,
     dynamicsEnabled: cal.dynamicsEnabled !== false,
+    colorFadeAlpha: colorFadeMs > 0 ? Math.min(1, tickMs / colorFadeMs) : 1,
   };
 }
 
