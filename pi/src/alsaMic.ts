@@ -544,16 +544,15 @@ let _audioCbFirstAt = 0;
 export function getAudioCbStats() {
   return { count: _audioCbCount, bytes: _audioCbBytes, firstAt: _audioCbFirstAt };
 }
-function onAudioData(buf: Buffer): void {
-  const tAudio = performance.now();
+function onAudioDataFast(buf: Buffer): void {
   _audioCbCount++;
   _audioCbBytes += buf.byteLength;
   if (_audioCbFirstAt === 0) {
-    _audioCbFirstAt = tAudio;
-    console.log(`[ALSA] FIRST audio callback fired at t=${tAudio.toFixed(1)}ms, ${buf.byteLength} bytes`);
+    _audioCbFirstAt = performance.now();
+    console.log(`[ALSA] FIRST audio callback fired at t=${_audioCbFirstAt.toFixed(1)}ms, ${buf.byteLength} bytes`);
     resolveMicReadyWaiters();
   }
-  if (_audioCbCount === 50 || _audioCbCount === 200 || _audioCbCount % 1000 === 0) {
+  if (_audioCbCount === 50 || _audioCbCount === 200) {
     console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
   }
   // Stereo interleaved → ta bara vänster kanal.
@@ -581,10 +580,6 @@ function onAudioData(buf: Buffer): void {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
       }
-      if (DEBUG_ENABLED) {
-        const abs = raw < 0 ? -raw : raw;
-        if (abs > debugPeakRaw) debugPeakRaw = abs;
-      }
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
@@ -599,10 +594,6 @@ function onAudioData(buf: Buffer): void {
       if (raw > 0.5 || raw < -0.5) {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
-      }
-      if (DEBUG_ENABLED) {
-        const abs = raw < 0 ? -raw : raw;
-        if (abs > debugPeakRaw) debugPeakRaw = abs;
       }
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
@@ -620,6 +611,75 @@ function onAudioData(buf: Buffer): void {
     samplesReceived = 0;
   }
 }
+
+function onAudioDataDebug(buf: Buffer): void {
+  _audioCbCount++;
+  _audioCbBytes += buf.byteLength;
+  if (_audioCbFirstAt === 0) {
+    _audioCbFirstAt = performance.now();
+    console.log(`[ALSA] FIRST audio callback fired at t=${_audioCbFirstAt.toFixed(1)}ms, ${buf.byteLength} bytes`);
+    resolveMicReadyWaiters();
+  }
+  if (_audioCbCount === 50 || _audioCbCount === 200 || _audioCbCount % 1000 === 0) {
+    console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
+  }
+
+  const gain = micGain;
+  const hsAlpha = HS_ALPHA;
+  const hsG = hsGain;
+  let hs = hsState;
+  let pos = ringPos;
+  const ring = ringBuf;
+  const mask = FFT_MASK;
+  let received = samplesReceived;
+
+  if (currentFormat === 'S32_LE') {
+    const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
+    const frameCount = samples.length >> 1;
+    const INV_S32 = 1 / 2147483648;
+    for (let i = 0; i < frameCount; i++) {
+      let raw = samples[i << 1] * INV_S32 * gain;
+      if (raw > 0.5 || raw < -0.5) {
+        const a = raw < 0 ? -raw : raw;
+        raw = raw / (1 + a);
+      }
+      const abs = raw < 0 ? -raw : raw;
+      if (abs > debugPeakRaw) debugPeakRaw = abs;
+      hs += hsAlpha * (raw - hs);
+      ring[pos] = hs + (raw - hs) * hsG;
+      pos = (pos + 1) & mask;
+      received++;
+    }
+  } else {
+    const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
+    const frameCount = samples.length >> 1;
+    const INV_S16 = 1 / 32768;
+    for (let i = 0; i < frameCount; i++) {
+      let raw = samples[i << 1] * INV_S16 * gain;
+      if (raw > 0.5 || raw < -0.5) {
+        const a = raw < 0 ? -raw : raw;
+        raw = raw / (1 + a);
+      }
+      const abs = raw < 0 ? -raw : raw;
+      if (abs > debugPeakRaw) debugPeakRaw = abs;
+      hs += hsAlpha * (raw - hs);
+      ring[pos] = hs + (raw - hs) * hsG;
+      pos = (pos + 1) & mask;
+      received++;
+    }
+  }
+
+  hsState = hs;
+  ringPos = pos;
+  samplesReceived = received;
+
+  if (samplesReceived >= HOP_SIZE) {
+    processFFT();
+    samplesReceived = 0;
+  }
+}
+
+const onAudioData = DEBUG_ENABLED ? onAudioDataDebug : onAudioDataFast;
 
 export function stopMic(): void {
   if (!capture) return;

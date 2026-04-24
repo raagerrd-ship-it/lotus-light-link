@@ -55,6 +55,7 @@ export type WriteResult =
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
+const BLE_DELTA_SKIP_ENABLED = process.env.BLE_NO_DELTA_SKIP !== 'true';
 
 // När senaste accepterade write skickades till noble (för drain-diagnostik).
 let lastSendStartedAt = 0;
@@ -76,6 +77,7 @@ export function setMinWriteIntervalMs(ms: number): void { setSlotLeaseMs(ms); }
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
 let lastWriteTime = 0;
 let writeFailCount = 0;
+let _writeLatAvgPrecise = 0;
 const WRITE_FAIL_THRESHOLD = 5;
 // Rate-limit för stuck-warn-loggen — annars kan en hängande drain-diagnostik
 // spamma journald i timmar och äta diskutrymme på Pi:n.
@@ -89,6 +91,7 @@ export function resetLastSent(): void {
   lastSendStartedAt = 0;
   stuckRecoveryInFlight = false;
   lastWriteTime = 0;
+  _writeLatAvgPrecise = 0;
   bleStats.controllerOutstandingCount = 0;
   bleStats.outstandingAgeMs = 0;
   bleStats.requestedIntervalMs = '—';
@@ -252,7 +255,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   // tyst musik, dels supervision timeout (keep-alive är AV i active mode).
   const STALE_WRITE_MS = 200;
   const isStale = (now - lastWriteTime) >= STALE_WRITE_MS;
-  if (!process.env.BLE_NO_DELTA_SKIP && !isStale &&
+  if (BLE_DELTA_SKIP_ENABLED && !isStale &&
       cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
     bleStats.skipDeltaCount++;
     return 'no-change';
@@ -283,9 +286,8 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
       const elapsed = performance.now() - writeStartedAt;
       bleStats.sentCount++;
       bleStats.writeLatMs = Math.round(elapsed * 10) / 10;
-      bleStats.writeLatAvgMs = Math.round(
-        (bleStats.writeLatAvgMs * 0.9 + elapsed * 0.1) * 10
-      ) / 10;
+      _writeLatAvgPrecise = _writeLatAvgPrecise * 0.9 + elapsed * 0.1;
+      bleStats.writeLatAvgMs = Math.round(_writeLatAvgPrecise * 10) / 10;
       if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
       if (writeFailCount > 0) console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
       writeFailCount = 0;
