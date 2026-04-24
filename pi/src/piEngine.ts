@@ -41,16 +41,16 @@ interface TickConstants {
   onsetRiseAlphaFft: number;
   onsetDecayFft: number;
   centerAlpha: number;
+  centerAlphaFft: number;
   gammaIsUnity: boolean;
   dimmingGamma: number;
   brightnessFloor: number;
   transientGain: number;
   perceptualGamma: number;
   dynamicsEnabled: boolean;
-  colorFadeAlpha: number;
 }
 
-function computeTickConstants(tickMs: number, cal: LightCalibration, colorFadeMs: number): TickConstants {
+function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
   const fftMs = 10; // HOP_SIZE=480 @ 48kHz → 100Hz FFT-takt
@@ -67,13 +67,13 @@ function computeTickConstants(tickMs: number, cal: LightCalibration, colorFadeMs
     onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
+    centerAlphaFft: 1 - Math.pow(1 - 0.002, fftRatio),
     gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
     dimmingGamma: getDimmingGamma(),
     brightnessFloor: cal.brightnessFloor ?? 0,
     transientGain: cal.transientGain ?? 1.0,
     perceptualGamma: cal.perceptualGamma ?? 0,
     dynamicsEnabled: cal.dynamicsEnabled !== false,
-    colorFadeAlpha: colorFadeMs > 0 ? Math.min(1, tickMs / colorFadeMs) : 1,
   };
 }
 
@@ -330,7 +330,7 @@ export class PiLightEngine {
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
-    this.tc = computeTickConstants(tickMs, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
     setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
@@ -343,7 +343,7 @@ export class PiLightEngine {
   setTickMs(ms: number) {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
-    this.tc = computeTickConstants(ms, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
     setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
   }
@@ -364,7 +364,7 @@ export class PiLightEngine {
   /** Justera fade-tid i ms för övergången mellan gammal och ny palette-färg. */
   setColorFadeMs(ms: number) {
     this.colorFadeMs = Math.max(0, ms | 0);
-    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(this.tickMs, this.cal);
   }
 
   private initOnsetBuffer(tickMs: number): void {
@@ -467,6 +467,11 @@ export class PiLightEngine {
       startKeepAlive();
       console.log(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
     } else {
+      // Ren start: rensa onset/smoothed så första riktiga beat ger en tydlig
+      // puls istället för att blandas med stale state från senaste sessionen.
+      this.smoothed = 0;
+      this.onsetBoost = 0;
+      this.onsetTarget = 0;
       stopKeepAlive();
       console.log(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
     }
@@ -523,7 +528,7 @@ export class PiLightEngine {
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
     }
-    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+    this.tc = computeTickConstants(this.tickMs, this.cal);
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -552,7 +557,7 @@ export class PiLightEngine {
       this.cal.dynamicsEnabled = false;
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
-      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+      this.tc = computeTickConstants(this.tickMs, this.cal);
       console.log('[Engine] Raw mode ON — all processors disabled');
     } else if (!on && this._rawMode) {
       this._rawMode = false;
@@ -560,7 +565,7 @@ export class PiLightEngine {
         Object.assign(this.cal, this._savedCal);
         this._savedCal = null;
       }
-      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
+      this.tc = computeTickConstants(this.tickMs, this.cal);
       console.log('[Engine] Raw mode OFF — processors restored');
     }
   }
@@ -577,6 +582,19 @@ export class PiLightEngine {
     onFluxReady((flux) => {
       if (this._loopActive && this.playing && this._bleOwner === 'active') {
         this.processOnset(flux);
+        // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
+        // (50Hz) — center följer då 100% av musiken, inte varannan frame.
+        if (this.tc.dynamicsEnabled) {
+          const bands = getLatestBands();
+          if (bands && Number.isFinite(bands.totalRms)) {
+            const bN = normalizeFixed(bands.bassRms);
+            const mN = normalizeFixed(bands.midHiRms);
+            const raw = bN * 0.5 + mN * 0.5;
+            this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
+            if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
+            else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
+          }
+        }
       }
     });
     // Always start the loop — CPU is negligible
@@ -602,6 +620,7 @@ export class PiLightEngine {
   // att tickInner körde mot en GAMMAL getLatestBands() (upp till tickMs sen).
   // Det gav smygande audio-latens utan att synas i pkt/s. Borttaget.
   private _lastTickTime = 0;
+  private _lastTickAtForFade = 0;
   private _loopActive = false;
   private _nextTickDeadline = 0;
 
@@ -703,8 +722,7 @@ export class PiLightEngine {
       // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
       const bassNorm = normalizeFixed(bands.bassRms);
       const midHiNorm = normalizeFixed(bands.midHiRms);
-      // Center spårar rå energi, inte release-smoothad energi, för lägre dynamics-lag.
-      const rawEnergyForCenter = bassNorm * 0.5 + midHiNorm * 0.5;
+      // (dynamicCenter spåras nu i onFluxReady @ 100Hz — inte här)
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
       // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
@@ -721,10 +739,8 @@ export class PiLightEngine {
       const preDynamics = energyNorm;
 
       // ── 5. Dynamics expansion ──
+      // (dynamicCenter uppdateras i onFluxReady @ 100Hz — se start())
       if (tc.dynamicsEnabled) {
-        this.dynamicCenter += tc.centerAlpha * (rawEnergyForCenter - this.dynamicCenter);
-        if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
-        if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
       }
 
@@ -761,7 +777,14 @@ export class PiLightEngine {
         this.colorTarget[2] = p0[2];
         this._lastSeenPaletteVersion = this._paletteVersion;
       }
-      const k = tc.colorFadeAlpha;
+      // Time-based fade: använd faktisk elapsed sedan förra tick istället för
+      // precomputed alpha (som antog exakt tickMs-intervall). Skyddar mot
+      // jitter (sen FFT-frame, GC-paus) som annars hade gett ojämn fade-takt.
+      const _prevFadeAt = this._lastTickAtForFade || _tickStart;
+      const k = this.colorFadeMs > 0
+        ? Math.min(1, (_tickStart - _prevFadeAt) / this.colorFadeMs)
+        : 1;
+      this._lastTickAtForFade = _tickStart;
       if (k < 1) {
         const c = this.color; const t = this.colorTarget;
         c[0] += (t[0] - c[0]) * k;
