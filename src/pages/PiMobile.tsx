@@ -1619,10 +1619,10 @@ export default function PiMobile() {
               <span className="opacity-60 font-mono">· {formatUptime(engineUptime)}</span>
             )}
           </div>
-          {piVersion && (
+          {(engineVersionLabel || engineBuildLabel) && (
             <div className="flex flex-col items-end font-mono leading-tight text-right">
-              <span>v{piVersion.version}</span>
-              <span>{piVersion.commitShort}@{piVersion.branch}</span>
+              {engineVersionLabel && <span>v{engineVersionLabel}</span>}
+              {engineBuildLabel && <span>{engineBuildLabel}</span>}
             </div>
           )}
         </div>
