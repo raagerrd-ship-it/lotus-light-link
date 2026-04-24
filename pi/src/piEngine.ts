@@ -530,7 +530,7 @@ export class PiLightEngine {
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
     }
-    this.tc = computeTickConstants(this.tickMs, this.cal);
+    this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -559,7 +559,7 @@ export class PiLightEngine {
       this.cal.dynamicsEnabled = false;
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
-      this.tc = computeTickConstants(this.tickMs, this.cal);
+      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
       console.log('[Engine] Raw mode ON — all processors disabled');
     } else if (!on && this._rawMode) {
       this._rawMode = false;
@@ -567,7 +567,7 @@ export class PiLightEngine {
         Object.assign(this.cal, this._savedCal);
         this._savedCal = null;
       }
-      this.tc = computeTickConstants(this.tickMs, this.cal);
+      this.tc = computeTickConstants(this.tickMs, this.cal, this.colorFadeMs);
       console.log('[Engine] Raw mode OFF — processors restored');
     }
   }
@@ -581,6 +581,11 @@ export class PiLightEngine {
 
     // Register for FFT-driven ticks (event-driven, not polling)
     onFFTReady(() => this.onFFTFrame());
+    onFluxReady((flux) => {
+      if (this._loopActive && this.playing && this._bleOwner === 'active') {
+        this.processOnset(flux);
+      }
+    });
     // Always start the loop — CPU is negligible
     this.startLoop();
     // Keep-alive och idle-heartbeat startar INTE här — de startas först när
@@ -605,6 +610,7 @@ export class PiLightEngine {
   // Det gav smygande audio-latens utan att synas i pkt/s. Borttaget.
   private _lastTickTime = 0;
   private _loopActive = false;
+  private _nextTickDeadline = 0;
 
   /** Called by ALSA FFT callback — runs in the audio data handler context */
   private onFFTFrame(): void {
