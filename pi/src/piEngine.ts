@@ -410,14 +410,15 @@ export class PiLightEngine {
 
     const mid = n >> 1;
     const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
-    // Stricter threshold (1.8x median + floor) → only real beats trigger, not noise
-    const threshold = med * 1.8 + 0.008;
+    // Stricter threshold (cal.onsetThreshold × median + floor) → only real beats trigger, not noise
+    const threshold = med * this.cal.onsetThreshold + 0.008;
     const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
 
-    // Refractory gate: minimum gap between onsets (räknat i FFT-frames @ 100Hz)
+    // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 100Hz (10ms/frame)
+    const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
     this.onsetFrameCounter++;
-    if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= PiLightEngine.ONSET_REFRACTORY_FRAMES) {
+    if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
       this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
       this.onsetLastFrameIdx = this.onsetFrameCounter;
     }
