@@ -463,12 +463,19 @@ export function startConfigServer(port = 3050): void {
     const engine = getEngine();
     const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
     const c = getHardcodedConnected();
+    // Live UI-strip: input/output/queue/färg/låt
+    const mic = attachedMic?.getLatestBands?.() ?? null;
+    const inputLevel = mic ? Math.min(1, mic.totalRms ?? 0) : 0;
+    const { getLastSent } = await import('./ble/protocol.js');
+    const sent = getLastSent();
     res.json({
       ok: true,
       ble: {
         connected: c.connected ? 1 : 0,
         devices: c.connected ? [c.name] : [],
         stats: bleStats,
+        lastSent: sent,                              // {r,g,b,brightness} | null
+        outstanding: bleStats.controllerOutstandingCount ?? 0,
       },
       commit: GIT_COMMIT_SHORT,
       branch: GIT_BRANCH,
@@ -476,6 +483,14 @@ export function startConfigServer(port = 3050): void {
       uptime: Math.floor((Date.now() - START_TIME) / 1000),
       startedAt: new Date(START_TIME).toISOString(),
       sonos,
+      live: {
+        inputLevel,                                  // 0..1 (totalRms)
+        outputBrightness: sent ? sent.brightness / 255 : 0,
+        color: sent ? { r: sent.r, g: sent.g, b: sent.b } : null,
+        track: sonos?.trackName ?? null,
+        artist: sonos?.artistName ?? null,
+        queue: bleStats.controllerOutstandingCount ?? 0,
+      },
       engine: engine
         ? {
             running: true,
