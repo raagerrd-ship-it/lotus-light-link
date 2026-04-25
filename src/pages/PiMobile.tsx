@@ -1582,8 +1582,7 @@ export default function PiMobile() {
         </div>
       </div>
 
-      {/* Realtidsstatus: Input / Output / Kö / Färg / Låt */}
-      <LiveStrip />
+      {/* (LiveStrip flyttad — visas precis ovanför profilknapparna nedan) */}
 
       {/* 0. Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
@@ -1673,6 +1672,11 @@ export default function PiMobile() {
             </>
           )}
         </button>
+      </div>
+
+      {/* Realtidsstatus precis ovanför profilknapparna */}
+      <div className="mb-4">
+        <LiveStrip />
       </div>
 
       <section className="mb-8">
