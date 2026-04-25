@@ -475,8 +475,8 @@ export function startConfigServer(port = 3050): void {
     let micBass = 0, micMidHi = 0;
     try {
       const m = getMic();
-      const b = m.getBands();
-      if (b?.active) { micBass = b.bassRms ?? 0; micMidHi = b.midHiRms ?? 0; }
+      const b = m?.getLatestBands?.();
+      if (b) { micBass = b.bassRms ?? 0; micMidHi = b.midHiRms ?? 0; }
     } catch {}
     const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi) * 4));
     const outputBrightness = diag ? Math.max(0, Math.min(1, (diag.brightnessPct ?? 0) / 100)) : 0;
