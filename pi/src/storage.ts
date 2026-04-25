@@ -92,8 +92,35 @@ export function getItem(key: string): string | null {
 }
 
 export function setItem(key: string, value: string): void {
-  ensureDir(dirFor(key));
+  const dir = dirFor(key);
+  ensureDir(dir);
   writeFileSync(filePath(key), value, 'utf-8');
+}
+
+export function getStorageDiagnostics(): Array<{ name: string; path: string; writable: boolean; error: string | null }> {
+  const dirs = [
+    ['PCC_DATA_DIR', DATA_DIR],
+    ['PCC_CONFIG_DIR', CONFIG_DIR],
+  ] as const;
+  const seen = new Set<string>();
+  return dirs
+    .filter(([, dir]) => {
+      if (seen.has(dir)) return false;
+      seen.add(dir);
+      return true;
+    })
+    .map(([name, dir]) => {
+      try {
+        ensureDir(dir);
+        accessSync(dir, constants.R_OK | constants.W_OK | constants.X_OK);
+        const probe = join(dir, `.lotus-write-test-${process.pid}.tmp`);
+        writeFileSync(probe, 'ok', 'utf-8');
+        unlinkSync(probe);
+        return { name, path: dir, writable: true, error: null };
+      } catch (e: any) {
+        return { name, path: dir, writable: false, error: e?.code ?? e?.message ?? String(e) };
+      }
+    });
 }
 
 export function removeItem(key: string): void {
