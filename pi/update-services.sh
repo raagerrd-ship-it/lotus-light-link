@@ -314,7 +314,7 @@ echo "$LOG_PREFIX Updated to v${NEW_VERSION}${NEW_COMMIT:+ (${NEW_COMMIT:0:7})} 
 # konfliktar om porten). Om en gammal user-service-rest finns, stoppa den
 # först så vi inte har två processer på samma port.
 echo "$LOG_PREFIX Forcing engine restart to load new code..."
-TARGET_USER="${SUDO_USER:-${USER:-pi}}"
+TARGET_USER="$(resolve_target_user)"
 TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)"
 if sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user is-active lotus-light-engine >/dev/null 2>&1; then
   sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user stop lotus-light-engine 2>/dev/null || true
