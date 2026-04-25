@@ -102,6 +102,12 @@ export function resetLastSent(): void {
 export function getLastWriteTime(): number { return lastWriteTime; }
 export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 
+/** Senast skickade RGB + brightness-scale (0–255). För UI-display (Output-färg). */
+export function getLastSent(): { r: number; g: number; b: number; brightness: number } | null {
+  if (lastR < 0) return null;
+  return { r: lastR, g: lastG, b: lastB, brightness: lastBr };
+}
+
 // ── Lease-gate + drain-diagnostik (delas av sendToBLE + keep-alive) ──
 //
 // Returnerar 'ready' = sloten är fri, write tillåten
