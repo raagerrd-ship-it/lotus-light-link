@@ -471,6 +471,7 @@ export function startConfigServer(port = 3050): void {
     // Output = engine.brightnessPct (samma källa som /api/ble/output i Avancerat).
     //   Detta är engine-resultatet efter floor/gamma/punch — INTE sista
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
+    const diag = engine?.getDiagnostics?.() ?? null;
     let micBass = 0, micMidHi = 0;
     try {
       const m = getMic();
