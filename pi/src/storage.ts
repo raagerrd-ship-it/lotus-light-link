@@ -15,7 +15,7 @@
  * inte "försvinner" när PCC börjar/slutar sätta variablerna.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, copyFileSync, accessSync, constants } from 'fs';
 import { join } from 'path';
 
 // Settings vs state separeras enligt PCC-kontrakt. Keys som matchar SETTINGS_KEYS
@@ -25,8 +25,8 @@ const FALLBACK_BASE =
   process.env.LOTUS_DATA_DIR ||
   (process.env.HOME ? join(process.env.HOME, '.local/share/lotus-light') : '/var/lib/lotus-light');
 
-const DATA_DIR = process.env.PCC_DATA_DIR || FALLBACK_BASE;
-const CONFIG_DIR = process.env.PCC_CONFIG_DIR || DATA_DIR;
+export const DATA_DIR = process.env.PCC_DATA_DIR || FALLBACK_BASE;
+export const CONFIG_DIR = process.env.PCC_CONFIG_DIR || DATA_DIR;
 
 // Nycklar som klassas som "settings" (config) snarare än state.
 // Allt annat (profiler, kalibrering, parade enheter, device-modes, cache) → DATA_DIR.
@@ -92,8 +92,35 @@ export function getItem(key: string): string | null {
 }
 
 export function setItem(key: string, value: string): void {
-  ensureDir(dirFor(key));
+  const dir = dirFor(key);
+  ensureDir(dir);
   writeFileSync(filePath(key), value, 'utf-8');
+}
+
+export function getStorageDiagnostics(): Array<{ name: string; path: string; writable: boolean; error: string | null }> {
+  const dirs = [
+    ['PCC_DATA_DIR', DATA_DIR],
+    ['PCC_CONFIG_DIR', CONFIG_DIR],
+  ] as const;
+  const seen = new Set<string>();
+  return dirs
+    .filter(([, dir]) => {
+      if (seen.has(dir)) return false;
+      seen.add(dir);
+      return true;
+    })
+    .map(([name, dir]) => {
+      try {
+        ensureDir(dir);
+        accessSync(dir, constants.R_OK | constants.W_OK | constants.X_OK);
+        const probe = join(dir, `.lotus-write-test-${process.pid}.tmp`);
+        writeFileSync(probe, 'ok', 'utf-8');
+        unlinkSync(probe);
+        return { name, path: dir, writable: true, error: null };
+      } catch (e: any) {
+        return { name, path: dir, writable: false, error: e?.code ?? e?.message ?? String(e) };
+      }
+    });
 }
 
 export function removeItem(key: string): void {

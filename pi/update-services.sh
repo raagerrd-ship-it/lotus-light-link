@@ -145,22 +145,43 @@ done
 
 # ── Storage-rättigheter (KRITISKT) ──
 # update-services.sh körs som root via PCC. cp -r ovan skapar nya filer/mappar
-# med ägare root:root → engine (som kör som $TARGET_USER) får EACCES vid
-# writeFileSync('storage.json', ...) → ALLA /api/* save-endpoints failar med 500.
-# Symptom i UI: "Sparning misslyckades: 8/8 misslyckades" på /api/profiles,
-# /api/tick-ms, /api/mic-gain m.fl.
-#
-# Fix: säkerställ att pi/data/ existerar och ägs av engine-användaren EFTER
-# varje update. Idempotent och billigt — körs alltid.
-TARGET_USER="${SUDO_USER:-${USER:-pi}}"
+# med ägare root:root → engine får EACCES vid writeFileSync(...) och /api/* save
+# svarar 500. Storage ligger numera primärt i PCC_DATA_DIR/PCC_CONFIG_DIR, inte
+# nödvändigtvis i /opt/lotus-light/pi/data — fixa därför ALLA kandidater.
+resolve_target_user() {
+  local svc_user=""
+  if [ -f /etc/systemd/system/lotus-light-engine.service ]; then
+    svc_user="$(grep -E '^User=' /etc/systemd/system/lotus-light-engine.service 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  fi
+  if [ -n "$svc_user" ] && [ "$svc_user" != "root" ]; then echo "$svc_user"; return; fi
+  if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then echo "$SUDO_USER"; return; fi
+  if [ -n "${USER:-}" ] && [ "${USER:-}" != "root" ]; then echo "$USER"; return; fi
+  if id lotus >/dev/null 2>&1; then echo lotus; return; fi
+  if id pi >/dev/null 2>&1; then echo pi; return; fi
+  echo root
+}
+TARGET_USER="$(resolve_target_user)"
 TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
+TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6)"
 mkdir -p "$PI_DIR/data"
+for STORAGE_DIR in \
+  "$PI_DIR/data" \
+  "${PCC_DATA_DIR:-}" \
+  "${PCC_CONFIG_DIR:-}" \
+  "${LOTUS_DATA_DIR:-}" \
+  "$TARGET_HOME/.local/share/lotus-light" \
+  "/var/lib/lotus-light"
+do
+  [ -z "$STORAGE_DIR" ] && continue
+  mkdir -p "$STORAGE_DIR" 2>/dev/null || true
+  chown -R "$TARGET_USER:$TARGET_GROUP" "$STORAGE_DIR" 2>/dev/null || true
+  chmod -R u+rwX,g+rwX "$STORAGE_DIR" 2>/dev/null || true
+done
 if ! chown -R "$TARGET_USER:$TARGET_GROUP" "$APP_DIR" 2>/dev/null; then
-  echo "$LOG_PREFIX WARN: chown $APP_DIR misslyckades — engine kan få EACCES på storage.json"
+  echo "$LOG_PREFIX WARN: chown $APP_DIR misslyckades — engine kan få EACCES på storage"
 else
-  echo "$LOG_PREFIX Storage-rättigheter verifierade: $APP_DIR ägs av $TARGET_USER:$TARGET_GROUP ✓"
+  echo "$LOG_PREFIX Storage-rättigheter verifierade: APP + data/config dirs ägs av $TARGET_USER:$TARGET_GROUP ✓"
 fi
-chmod -R u+rwX,g+rX "$PI_DIR/data" 2>/dev/null || true
 
 
 # IMPORTANT: do NOT remove /etc/systemd/system/lotus-light-engine.service here.
@@ -293,7 +314,7 @@ echo "$LOG_PREFIX Updated to v${NEW_VERSION}${NEW_COMMIT:+ (${NEW_COMMIT:0:7})} 
 # konfliktar om porten). Om en gammal user-service-rest finns, stoppa den
 # först så vi inte har två processer på samma port.
 echo "$LOG_PREFIX Forcing engine restart to load new code..."
-TARGET_USER="${SUDO_USER:-${USER:-pi}}"
+TARGET_USER="$(resolve_target_user)"
 TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)"
 if sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user is-active lotus-light-engine >/dev/null 2>&1; then
   sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$TARGET_UID systemctl --user stop lotus-light-engine 2>/dev/null || true

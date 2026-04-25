@@ -5,7 +5,7 @@
 
 import { readFileSync } from 'fs';
 import express from 'express';
-import { getItem, setItem } from './storage.js';
+import { getItem, setItem, getStorageDiagnostics } from './storage.js';
 import {
   bleStats, BLE_BUILD_TAG,
   setDimmingGamma, getDimmingGamma,
@@ -221,6 +221,7 @@ export function startConfigServer(port = 3050): void {
       bluetoothdActive: boolean;      // systemctl is-active bluetooth
       bluetoothdStatus: string;       // raw output
       nobleState: string;             // 'poweredOn' | 'unknown' | ...
+      storage: Array<{ name: string; path: string; writable: boolean; error: string | null }>;
       missing: string[];
       setupCommand: string;
     } = {
@@ -238,6 +239,7 @@ export function startConfigServer(port = 3050): void {
       bluetoothdActive: false,
       bluetoothdStatus: 'unknown',
       nobleState: 'unknown',
+      storage: [],
       missing: [],
       setupCommand: (() => {
         const cfgPort = Number(process.env.PORT ?? process.env.ENGINE_PORT ?? process.env.BACKEND_PORT ?? 3050);
@@ -308,7 +310,14 @@ export function startConfigServer(port = 3050): void {
       }
     } catch {}
 
+    // Storage write access — bannern ska även visa de faktiska katalogerna
+    // som save-endpoints skriver till (PCC_DATA_DIR/PCC_CONFIG_DIR).
+    result.storage = getStorageDiagnostics();
+
     // Missing-rapport
+    for (const dir of result.storage) {
+      if (!dir.writable) result.missing.push(`${dir.name} ${dir.path} (${dir.error ?? 'ej skrivbar'})`);
+    }
     if (!result.rfkillAccess)    result.missing.push('/dev/rfkill (BLE)');
     if (!result.hasNetdev)       result.missing.push('netdev-grupp (BLE)');
     if (!result.hasBluetooth)    result.missing.push('bluetooth-grupp (BLE)');

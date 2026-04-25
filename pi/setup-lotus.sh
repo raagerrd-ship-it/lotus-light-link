@@ -327,15 +327,25 @@ else
   echo "  ⚠ node-binär hittades inte"
 fi
 
-# 1d. Lägg till user i bluetooth+netdev-grupperna.
-#     CAP_NET_ADMIN på rfkill-binären räcker inte för att öppna /dev/rfkill —
-#     enheten kräver gruppmedlemskap (netdev). Utan detta failar `rfkill unblock`
-#     med "Permission denied" trots korrekta caps. bluetooth-gruppen behövs för
-#     BlueZ D-Bus-anrop. Kräver logout/reboot för att aktiveras i sessionen.
-TARGET_USER="${SUDO_USER:-$USER}"
+# 1d. Lägg till engine-user i bluetooth+netdev+audio-grupperna.
+#     VIKTIGT: när PCC kör scriptet som root finns ofta ingen SUDO_USER.
+#     Då måste vi INTE välja root, utan befintlig service-user eller pi/lotus.
+resolve_target_user() {
+  local svc_user=""
+  if [ -f /etc/systemd/system/lotus-light-engine.service ]; then
+    svc_user="$(grep -E '^User=' /etc/systemd/system/lotus-light-engine.service 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  fi
+  if [ -n "$svc_user" ] && [ "$svc_user" != "root" ]; then echo "$svc_user"; return; fi
+  if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then echo "$SUDO_USER"; return; fi
+  if [ -n "${USER:-}" ] && [ "${USER:-}" != "root" ]; then echo "$USER"; return; fi
+  if id lotus >/dev/null 2>&1; then echo lotus; return; fi
+  if id pi >/dev/null 2>&1; then echo pi; return; fi
+  echo root
+}
+TARGET_USER="$(resolve_target_user)"
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   ADDED_GROUPS=()
-  for GRP in bluetooth netdev; do
+  for GRP in bluetooth netdev audio; do
     if getent group "$GRP" >/dev/null 2>&1; then
       if ! id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "$GRP"; then
         sudo usermod -aG "$GRP" "$TARGET_USER" \
@@ -388,8 +398,21 @@ fi
 
 # Ägarskap så storage-shimmen kan göra mkdir/writeFile.
 sudo mkdir -p "$PI_DIR/data"
+for STORAGE_DIR in \
+  "$PI_DIR/data" \
+  "${PCC_DATA_DIR:-}" \
+  "${PCC_CONFIG_DIR:-}" \
+  "${LOTUS_DATA_DIR:-}" \
+  "$TARGET_HOME/.local/share/lotus-light" \
+  "/var/lib/lotus-light"
+do
+  [ -z "$STORAGE_DIR" ] && continue
+  sudo mkdir -p "$STORAGE_DIR" 2>/dev/null || true
+  sudo chown -R "$TARGET_USER:$TARGET_GROUP" "$STORAGE_DIR" 2>/dev/null || true
+  sudo chmod -R u+rwX,g+rwX "$STORAGE_DIR" 2>/dev/null || true
+done
 sudo chown -R "$TARGET_USER:$TARGET_GROUP" "$APP_DIR"
-echo "  Ägarskap satt: $APP_DIR → $TARGET_USER:$TARGET_GROUP ✓"
+echo "  Ägarskap satt: $APP_DIR + storage dirs → $TARGET_USER:$TARGET_GROUP ✓"
 
 # Lägg TARGET_USER i netdev + bluetooth + audio som permanenta grupper.
 # Krävs eftersom systemd's AmbientCapabilities clearar SupplementaryGroups
