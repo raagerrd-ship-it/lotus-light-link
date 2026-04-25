@@ -486,9 +486,13 @@ export function startConfigServer(port = 3050): void {
       startedAt: new Date(START_TIME).toISOString(),
       sonos,
       live: {
-        inputLevel,                                  // 0..1 (totalRms)
+        inputLevel,                                  // 0..1 (engine energyNorm, post-gain)
         outputBrightness: sent ? sent.brightness / 255 : 0,
-        color: sent ? { r: sent.r, g: sent.g, b: sent.b } : null,
+        // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
+        // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
+        // inte om motorns mellanresultat.
+        paletteCurrent: sonos?.palette ?? null,      // [r,g,b][] | null
+        paletteNext: sonos?.nextPalette ?? null,     // [r,g,b][] | null
         track: sonos?.trackName ?? null,
         artist: sonos?.artistName ?? null,
         queue: bleStats.controllerOutstandingCount ?? 0,
