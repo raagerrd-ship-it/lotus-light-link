@@ -1222,6 +1222,7 @@ export default function PiMobile() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [bleHardcodedConnected, setBleHardcodedConnected] = useState(false);
   const [bleEngineReady, setBleEngineReady] = useState(false);
+  const [startAllOk, setStartAllOk] = useState(false);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [engineUptime, setEngineUptime] = useState<number | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
