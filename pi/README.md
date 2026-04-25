@@ -235,12 +235,10 @@ cd /opt/lotus-light/pi && sudo node dist/index.js
 
 ### Update not working
 ```bash
-# Check timer
-systemctl status lotus-update.timer
 # Run manually with output
 sudo bash /opt/lotus-light/pi/update-services.sh
-# Check git remote
-cd /opt/lotus-light && git remote -v
+# Check engine status
+systemctl status lotus-light-engine
 ```
 
 ---
