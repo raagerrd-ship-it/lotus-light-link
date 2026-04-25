@@ -17,6 +17,7 @@
 
 import { getNobleAsync } from './noble-singleton.js';
 import { isHci0Up } from './adapter-hci-check.js';
+import { dlog } from "../debugLog.js";
 
 let _started = false;
 let _eventsBound = false;

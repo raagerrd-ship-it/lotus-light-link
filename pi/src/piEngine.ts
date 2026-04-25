@@ -18,6 +18,7 @@ import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAliv
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { getItem, setItem } from './storage.js';
+import { dlog } from "./debugLog.js";
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 

@@ -8,6 +8,7 @@
 
 import { noble, hasNobleLoaded } from './noble-singleton.js';
 import type { ConnectedDevice } from './types.js';
+import { dlog } from "../debugLog.js";
 export { hasNobleLoaded, noble };
 
 export const SERVICE_UUID = 'fff0';

@@ -14,6 +14,7 @@ import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
+import { dlog } from "../debugLog.js";
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
 // pga consecutive connect-failures, läses i index.ts boot för att auto-anropa

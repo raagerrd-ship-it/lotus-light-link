@@ -10,6 +10,7 @@
  */
 
 import { fft1024, FFT_N } from './fftRadix2.js';
+import { dlog } from "./debugLog.js";
 
 // Dynamic import — alsa-capture is vendored as a fork in pi/vendor/alsa-capture/
 // (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.

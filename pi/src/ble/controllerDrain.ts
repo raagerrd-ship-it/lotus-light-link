@@ -21,6 +21,7 @@
  */
 
 import { getNoble } from './noble-singleton.js';
+import { dlog } from "../debugLog.js";
 
 const DRAIN_DIAG = process.env.DRAIN_DIAG === 'true';
 
