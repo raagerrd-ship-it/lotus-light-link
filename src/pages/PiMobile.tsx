@@ -1593,39 +1593,84 @@ export default function PiMobile() {
         onEngineReadyChange={setBleEngineReady}
       />
 
-      {/* Avancerat: per-steg-kontroll om något behöver startas om individuellt */}
-      <details className="rounded-xl border border-border bg-card/40">
-        <summary className="cursor-pointer select-none px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
-          Avancerat — starta delsystem individuellt
-        </summary>
-        <div className="space-y-3 p-3 pt-0">
-          <BleControlPanel
-            piBase={piBase}
-            section="engine"
-            onEngineReadyChange={setBleEngineReady}
-          />
-          <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
-          <BleControlPanel
-            piBase={piBase}
-            section="lamp"
-            onConnectedChange={setBleHardcodedConnected}
-            onEngineReadyChange={setBleEngineReady}
-          />
-        </div>
-      </details>
+      {/* Allt nedanför kräver att frontend når Pi:n OCH att motorn faktiskt
+          körs — annars är slidrar/profiler/livestrip meningslösa.
+          Dolt (inte bara disabled) för att undvika visuell brus innan ready. */}
+      {(() => {
+        const ready = piOnline === true && engineStatus?.running === true;
+        if (!ready) {
+          return (
+            <div className="my-4 rounded-xl border border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
+              Väntar på motor och frontend…
+            </div>
+          );
+        }
+        return (
+          <>
+            {/* Avancerat: per-steg-kontroll om något behöver startas om individuellt */}
+            <details className="rounded-xl border border-border bg-card/40">
+              <summary className="cursor-pointer select-none px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
+                Avancerat — starta delsystem individuellt
+              </summary>
+              <div className="space-y-3 p-3 pt-0">
+                <BleControlPanel
+                  piBase={piBase}
+                  section="engine"
+                  onEngineReadyChange={setBleEngineReady}
+                />
+                <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
+                <BleControlPanel
+                  piBase={piBase}
+                  section="lamp"
+                  onConnectedChange={setBleHardcodedConnected}
+                  onEngineReadyChange={setBleEngineReady}
+                />
+              </div>
+            </details>
 
-      {/* Tidigare global BLE/Sonos-statusrad borttagen — sanningen finns nu
-          i lamp-rutan (BLE) respektive sonos-rutan (låt + palette).
-          Att duplicera här ledde till dubbeltydig "ELK-BLEDOM01" även när
-          lampan inte var ansluten. */}
-      {saveError && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
-          ⚠ Sparning misslyckades: {saveError}
-        </div>
-      )}
+            {saveError && (
+              <div className="mb-4 mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
+                ⚠ Sparning misslyckades: {saveError}
+              </div>
+            )}
 
-      {/* Version / Status */}
-      <div className="mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 space-y-2">
+            {/* Realtidsstatus precis ovanför profilknapparna */}
+            <div className="mb-4 mt-4">
+              <LiveStrip />
+            </div>
+
+            <section className="mb-8">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
+              <div className="grid grid-cols-2 gap-3">
+                {PRESETS.map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => {
+                      setActivePreset(name);
+                      fetch(`${piBase}/api/active-preset`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name }),
+                        signal: AbortSignal.timeout(3000),
+                      }).catch(() => {});
+                    }}
+                    className={`py-4 rounded-xl text-sm font-medium transition-all active:scale-95 ${
+                      activePreset === name
+                        ? "bg-primary text-primary-foreground ring-2 ring-ring"
+                        : "bg-secondary text-secondary-foreground"
+                    }`}
+                  >{name}</button>
+                ))}
+              </div>
+            </section>
+          </>
+        );
+      })()}
+
+      {/* Motor / Version — flyttad längst ner.
+          "Tvinga uppdatering"-knappen är borttagen; force-update finns kvar
+          via versionssymbolen i toppraden (lång-tryck) ifall den behövs. */}
+      <div className="mt-6 mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
@@ -1645,66 +1690,7 @@ export default function PiMobile() {
             </div>
           )}
         </div>
-
-        {/* Tvinga uppdatering — synlig knapp som alltid kör force-update */}
-        <button
-          onClick={() => {
-            if (updatePhase !== 'idle' || updateStatus === 'running') return;
-            if (!confirm('Tvinga ominstallation av motorn? (Stänger ner → Hämtar → Startar)')) return;
-            runForceUpdate();
-          }}
-          disabled={updatePhase !== 'idle' || updateStatus === 'running'}
-          className="w-full flex items-center justify-center gap-2 pt-2 border-t border-border/40 text-foreground/80 active:text-foreground disabled:opacity-50"
-        >
-          {updatePhase !== 'idle' ? (
-            <>
-              <Loader2 size={12} className="text-primary animate-spin" />
-              <span className="text-foreground">
-                {updatePhase === 'stopping' && 'Stänger ner motorn…'}
-                {updatePhase === 'downloading' && 'Hämtar ny version…'}
-                {updatePhase === 'starting' && 'Startar motorn igen…'}
-              </span>
-            </>
-          ) : (
-            <>
-              <Download size={12} className="text-muted-foreground" />
-              <span>Tvinga uppdatering av motorn</span>
-            </>
-          )}
-        </button>
       </div>
-
-      {/* Realtidsstatus precis ovanför profilknapparna */}
-      <div className="mb-4">
-        <LiveStrip />
-      </div>
-
-      <section className="mb-8">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {PRESETS.map((name) => (
-            <button
-              key={name}
-              onClick={() => {
-                // Byt aktiv profil — laddar profilens egna sparade värden,
-                // INGEN återställning till PRESET_CALS-defaults.
-                setActivePreset(name);
-                fetch(`${piBase}/api/active-preset`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name }),
-                  signal: AbortSignal.timeout(3000),
-                }).catch(() => {});
-              }}
-              className={`py-4 rounded-xl text-sm font-medium transition-all active:scale-95 ${
-                activePreset === name
-                  ? "bg-primary text-primary-foreground ring-2 ring-ring"
-                  : "bg-secondary text-secondary-foreground"
-              }`}
-            >{name}</button>
-          ))}
-        </div>
-      </section>
 
       {/* BLE-enhet hanteras nu helt av BleControlPanel ovan (hårdkodad ELK-BLEDOM01).
           Sök/manuell-MAC/spara/glöm är medvetet borttaget i denna iteration. */}
