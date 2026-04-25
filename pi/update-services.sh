@@ -149,15 +149,22 @@ done
 # svarar 500. Storage ligger numera primärt i PCC_DATA_DIR/PCC_CONFIG_DIR, inte
 # nödvändigtvis i /opt/lotus-light/pi/data — fixa därför ALLA kandidater.
 resolve_target_user() {
+  # Prio: explicit override → befintlig systemd User= (om ≠ root) → pi (default)
+  # → lotus → SUDO_USER → USER → root.
+  if [ -n "${LOTUS_SERVICE_USER:-}" ] && id "$LOTUS_SERVICE_USER" >/dev/null 2>&1; then
+    echo "$LOTUS_SERVICE_USER"; return
+  fi
   local svc_user=""
   if [ -f /etc/systemd/system/lotus-light-engine.service ]; then
     svc_user="$(grep -E '^User=' /etc/systemd/system/lotus-light-engine.service 2>/dev/null | head -1 | cut -d= -f2- || true)"
   fi
-  if [ -n "$svc_user" ] && [ "$svc_user" != "root" ]; then echo "$svc_user"; return; fi
+  if [ -n "$svc_user" ] && [ "$svc_user" != "root" ] && id "$svc_user" >/dev/null 2>&1; then
+    echo "$svc_user"; return
+  fi
+  if id pi >/dev/null 2>&1; then echo pi; return; fi
+  if id lotus >/dev/null 2>&1; then echo lotus; return; fi
   if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then echo "$SUDO_USER"; return; fi
   if [ -n "${USER:-}" ] && [ "${USER:-}" != "root" ]; then echo "$USER"; return; fi
-  if id lotus >/dev/null 2>&1; then echo lotus; return; fi
-  if id pi >/dev/null 2>&1; then echo pi; return; fi
   echo root
 }
 TARGET_USER="$(resolve_target_user)"

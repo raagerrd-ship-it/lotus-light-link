@@ -331,15 +331,24 @@ fi
 #     VIKTIGT: när PCC kör scriptet som root finns ofta ingen SUDO_USER.
 #     Då måste vi INTE välja root, utan befintlig service-user eller pi/lotus.
 resolve_target_user() {
+  # Prio: explicit override → befintlig systemd User= (om ≠ root) → pi (default)
+  # → lotus → SUDO_USER → USER → root.
+  # Default är HÅRT pi: PCC kör scriptet som root → vi får aldrig välja root,
+  # och vi vill heller inte chown:a allt till "lotus" om bara `pi`-kontot finns.
+  if [ -n "${LOTUS_SERVICE_USER:-}" ] && id "$LOTUS_SERVICE_USER" >/dev/null 2>&1; then
+    echo "$LOTUS_SERVICE_USER"; return
+  fi
   local svc_user=""
   if [ -f /etc/systemd/system/lotus-light-engine.service ]; then
     svc_user="$(grep -E '^User=' /etc/systemd/system/lotus-light-engine.service 2>/dev/null | head -1 | cut -d= -f2- || true)"
   fi
-  if [ -n "$svc_user" ] && [ "$svc_user" != "root" ]; then echo "$svc_user"; return; fi
+  if [ -n "$svc_user" ] && [ "$svc_user" != "root" ] && id "$svc_user" >/dev/null 2>&1; then
+    echo "$svc_user"; return
+  fi
+  if id pi >/dev/null 2>&1; then echo pi; return; fi
+  if id lotus >/dev/null 2>&1; then echo lotus; return; fi
   if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then echo "$SUDO_USER"; return; fi
   if [ -n "${USER:-}" ] && [ "${USER:-}" != "root" ]; then echo "$USER"; return; fi
-  if id lotus >/dev/null 2>&1; then echo lotus; return; fi
-  if id pi >/dev/null 2>&1; then echo pi; return; fi
   echo root
 }
 TARGET_USER="$(resolve_target_user)"
