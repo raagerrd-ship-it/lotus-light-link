@@ -13,10 +13,10 @@ const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; saturation: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 1.0, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150 },
-  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 1.0, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 110 },
-  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 1.0, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 1.0, dynamicsEnabled: true,  onsetThreshold: 1.8, onsetRefractoryMs: 110 },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150 },
+  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 0, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 110 },
+  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.8, onsetRefractoryMs: 110 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -76,7 +76,7 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
   { key: "transientGain", label: "Transient boost", min: 0, max: 2, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 2.0 = överdrivna trumslag" },
   { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 3, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 3.0 = kraftigt komprimerad" },
-  { key: "saturation", label: "Färgmättnad", min: 0, max: 1, step: 0.05, description: "0 = blekt/vitnande (gammalt), 1.0 = ren mättad färg (vit-rensad)" },
+  // saturation-slider borttagen 2026-04-25 — färgen trimmas i Sonos i stället, engine ska inte röra hue.
   { key: "brightnessFloor", label: "Golv", min: 0, max: 25, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av)" },
   { key: "punchWhiteThreshold", label: "Punch White", min: 90, max: 100, step: 0.5, unit: "%", description: "100 = av. Över detta → vit" },
 ];
