@@ -28,12 +28,3 @@ export interface ConnectedDevice {
   name: string;
   id: string;
 }
-
-/** BLE connection event for diagnostics */
-export interface BleConnectionEvent {
-  timestamp: string;
-  type: 'connect_start' | 'connect_ok' | 'connect_fail' | 'disconnect' | 'gatt_discovery' | 'gatt_retry' | 'hci_reset' | 'reconnect_start' | 'scan_start' | 'scan_done' | 'heartbeat';
-  device?: string;
-  detail?: string;
-  durationMs?: number;
-}
