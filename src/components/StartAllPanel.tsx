@@ -92,7 +92,7 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
         const engineReady = bleR?.engineReady === true;
         const lampConnected = bleR?.connected === true;
         const subs = subR?.subsystems ?? {};
-        const isOk = (s: any) => s?.state === "ready" || s?.ready === true || s === "ready";
+        const isOk = (s: any) => s?.status === "ready";
         setStates((prev) => ({
           ...prev,
           engine: engineReady ? "ok" : prev.engine,
