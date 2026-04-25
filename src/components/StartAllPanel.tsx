@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 /**
  * StartAllPanel — en knapp som startar hela kedjan i ordning:
@@ -57,9 +57,11 @@ interface Props {
   piBase: string;
   /** Anropas när motorn blivit redo så PiMobile kan visa lamp-/subsystem-paneler. */
   onEngineReadyChange?: (ready: boolean) => void;
+  /** Anropas när alla steg är ok / inte längre ok. PiMobile döljer Avancerat när allt är ok. */
+  onAllOkChange?: (ok: boolean) => void;
 }
 
-export function StartAllPanel({ piBase, onEngineReadyChange }: Props) {
+export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Props) {
   const [states, setStates] = useState<Record<StepId, StepState>>({
     engine: "pending",
     mic: "pending",
