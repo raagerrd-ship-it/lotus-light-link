@@ -1222,6 +1222,7 @@ export default function PiMobile() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [bleHardcodedConnected, setBleHardcodedConnected] = useState(false);
   const [bleEngineReady, setBleEngineReady] = useState(false);
+  const [startAllOk, setStartAllOk] = useState(false);
   const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
   const [engineUptime, setEngineUptime] = useState<number | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
@@ -1591,6 +1592,7 @@ export default function PiMobile() {
       <StartAllPanel
         piBase={piBase}
         onEngineReadyChange={setBleEngineReady}
+        onAllOkChange={setStartAllOk}
       />
 
       {/* Allt nedanför kräver att frontend når Pi:n OCH att motorn faktiskt
@@ -1607,26 +1609,29 @@ export default function PiMobile() {
         }
         return (
           <>
-            {/* Avancerat: per-steg-kontroll om något behöver startas om individuellt */}
-            <details className="rounded-xl border border-border bg-card/40">
-              <summary className="cursor-pointer select-none px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
-                Avancerat — starta delsystem individuellt
-              </summary>
-              <div className="space-y-3 p-3 pt-0">
-                <BleControlPanel
-                  piBase={piBase}
-                  section="engine"
-                  onEngineReadyChange={setBleEngineReady}
-                />
-                <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
-                <BleControlPanel
-                  piBase={piBase}
-                  section="lamp"
-                  onConnectedChange={setBleHardcodedConnected}
-                  onEngineReadyChange={setBleEngineReady}
-                />
-              </div>
-            </details>
+            {/* Avancerat: per-steg-kontroll — visas BARA om Starta-allt inte är klart
+                (dvs. när användaren behöver felsöka eller starta delsystem manuellt) */}
+            {!startAllOk && (
+              <details className="rounded-xl border border-border bg-card/40">
+                <summary className="cursor-pointer select-none px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
+                  Avancerat — starta delsystem individuellt
+                </summary>
+                <div className="space-y-3 p-3 pt-0">
+                  <BleControlPanel
+                    piBase={piBase}
+                    section="engine"
+                    onEngineReadyChange={setBleEngineReady}
+                  />
+                  <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
+                  <BleControlPanel
+                    piBase={piBase}
+                    section="lamp"
+                    onConnectedChange={setBleHardcodedConnected}
+                    onEngineReadyChange={setBleEngineReady}
+                  />
+                </div>
+              </details>
+            )}
 
             {saveError && (
               <div className="mb-4 mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">

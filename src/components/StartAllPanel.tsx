@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 /**
  * StartAllPanel — en knapp som startar hela kedjan i ordning:
@@ -57,9 +57,11 @@ interface Props {
   piBase: string;
   /** Anropas när motorn blivit redo så PiMobile kan visa lamp-/subsystem-paneler. */
   onEngineReadyChange?: (ready: boolean) => void;
+  /** Anropas när alla steg är ok / inte längre ok. PiMobile döljer Avancerat när allt är ok. */
+  onAllOkChange?: (ok: boolean) => void;
 }
 
-export function StartAllPanel({ piBase, onEngineReadyChange }: Props) {
+export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Props) {
   const [states, setStates] = useState<Record<StepId, StepState>>({
     engine: "pending",
     mic: "pending",
@@ -74,12 +76,20 @@ export function StartAllPanel({ piBase, onEngineReadyChange }: Props) {
   });
   const [running, setRunning] = useState(false);
   const [failedAt, setFailedAt] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   const allOk =
     states.engine === "ok" &&
     states.mic === "ok" &&
     states.sonos === "ok" &&
     states.lamp === "ok";
+
+  // Auto-minimera när allt blivit ok; öppna upp om något senare går till fel.
+  useEffect(() => {
+    if (allOk) setCollapsed(true);
+    else if (failedAt != null) setCollapsed(false);
+    onAllOkChange?.(allOk);
+  }, [allOk, failedAt, onAllOkChange]);
 
   async function runStep(step: Step): Promise<boolean> {
     setStates((s) => ({ ...s, [step.id]: "running" }));
@@ -146,31 +156,55 @@ export function StartAllPanel({ piBase, onEngineReadyChange }: Props) {
     if (failedAt != null) runFromIndex(failedAt);
   };
 
+  // Minimerad vy: allt ok + collapsed → tunn pill med expandera-knapp + "Starta om"
+  if (allOk && collapsed) {
+    return (
+      <div className="rounded-xl border border-border bg-card/40 px-3 py-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs text-foreground">
+          <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+          <span>Allt igång — Motor, Mic, Sonos, Lampa</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setCollapsed(false)}>
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-border bg-card/60 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">Starta allt</h2>
-        {!running && !allOk && failedAt == null && (
-          <Button size="sm" onClick={startAll}>
-            Starta
-          </Button>
-        )}
-        {!running && failedAt != null && (
-          <Button size="sm" variant="destructive" onClick={retryFromFailed}>
-            Försök igen från {STEPS[failedAt].label}
-          </Button>
-        )}
-        {!running && allOk && (
-          <Button size="sm" variant="outline" onClick={startAll}>
-            Starta om
-          </Button>
-        )}
-        {running && (
-          <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Pågår…
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {!running && !allOk && failedAt == null && (
+            <Button size="sm" onClick={startAll}>
+              Starta
+            </Button>
+          )}
+          {!running && failedAt != null && (
+            <Button size="sm" variant="destructive" onClick={retryFromFailed}>
+              Försök igen från {STEPS[failedAt].label}
+            </Button>
+          )}
+          {!running && allOk && (
+            <>
+              <Button size="sm" variant="outline" onClick={startAll}>
+                Starta om
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setCollapsed(true)}>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+          {running && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Pågår…
+            </span>
+          )}
+        </div>
       </div>
 
       <ol className="space-y-1.5">
