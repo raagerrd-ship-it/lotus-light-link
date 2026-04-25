@@ -42,6 +42,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [BLE optimization](mem://pi/ble/connection-optimization) — 20ms connection interval (var 7.5ms, sänkt 22h-hängningsfix)
 - [Update måste chown:a storage](mem://pi/deployment/update-must-chown-storage) — cp -r som root → root-ägda filer → /api/* save returnerar 500. Fix: chown -R efter varje update.
 - [Service-user måste vara pi](mem://pi/deployment/service-user-must-be-pi) — Default `pi`, override via LOTUS_SERVICE_USER eller systemd User=. Aldrig root/SUDO_USER.
+- [Manual update only](mem://pi/deployment/manual-update-only) — services.json: runInstallOnRelease:false, autoUpdate:false. Ingen auto-deploy från GitHub-releases.
 - [API routing](mem://pi/ui/api-routing) — API URLs generated as window.location.port + 50
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness

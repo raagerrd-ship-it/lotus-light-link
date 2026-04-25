@@ -113,48 +113,25 @@ You should see:
 
 ---
 
-## 🔄 Auto-Update (GitHub)
+## 🔄 Updates (Manual Only)
 
-The setup installs a systemd timer that checks GitHub every 5 minutes for updates.
-
-### How It Works
-
-```
-lotus-update.timer (every 5 min)
-       ↓
-update-services.sh
-       ↓
-git fetch → compare HEAD
-       ↓ (if changed)
-git pull → npm install (if deps changed) → npm run build → restart service
-```
-
-### What Gets Watched
-
-| Directory | Action on change |
-|---|---|
-| `pi/` | Rebuild + restart |
-| `src/lib/engine/` | Rebuild + restart |
-| Other files | Pull only, no restart |
+Auto-update is **disabled**. New GitHub releases will NOT be deployed automatically.
+PCC respects `runInstallOnRelease: false` + `autoUpdate: false` in `pi/services.json`.
 
 ### Manual Update
+
+Trigger from PCC UI ("Update" button on the Lotus Light service), or via SSH:
 
 ```bash
 sudo bash /opt/lotus-light/pi/update-services.sh
 ```
 
-### Check Update Logs
+The update script fetches the latest release tarball, extracts to `/opt/lotus-light/`,
+runs `chown -R pi:pi` on app + data dirs, and restarts `lotus-light-engine`.
 
-```bash
-journalctl -u lotus-update -f
-```
+### Re-enable Auto-Update
 
-### Disable Auto-Update
-
-```bash
-sudo systemctl disable lotus-update.timer
-sudo systemctl stop lotus-update.timer
-```
+Set `runInstallOnRelease: true` and `autoUpdate: true` in `pi/services.json`, then redeploy.
 
 ---
 
@@ -258,12 +235,10 @@ cd /opt/lotus-light/pi && sudo node dist/index.js
 
 ### Update not working
 ```bash
-# Check timer
-systemctl status lotus-update.timer
 # Run manually with output
 sudo bash /opt/lotus-light/pi/update-services.sh
-# Check git remote
-cd /opt/lotus-light && git remote -v
+# Check engine status
+systemctl status lotus-light-engine
 ```
 
 ---
