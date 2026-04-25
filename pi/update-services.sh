@@ -143,6 +143,26 @@ for script in setup-lotus.sh uninstall-lotus.sh update-services.sh; do
   [ -f "$TMP_DIR/pi/$script" ] && cp "$TMP_DIR/pi/$script" "$PI_DIR/$script" && chmod +x "$PI_DIR/$script"
 done
 
+# ── Storage-rättigheter (KRITISKT) ──
+# update-services.sh körs som root via PCC. cp -r ovan skapar nya filer/mappar
+# med ägare root:root → engine (som kör som $TARGET_USER) får EACCES vid
+# writeFileSync('storage.json', ...) → ALLA /api/* save-endpoints failar med 500.
+# Symptom i UI: "Sparning misslyckades: 8/8 misslyckades" på /api/profiles,
+# /api/tick-ms, /api/mic-gain m.fl.
+#
+# Fix: säkerställ att pi/data/ existerar och ägs av engine-användaren EFTER
+# varje update. Idempotent och billigt — körs alltid.
+TARGET_USER="${SUDO_USER:-${USER:-pi}}"
+TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
+mkdir -p "$PI_DIR/data"
+if ! chown -R "$TARGET_USER:$TARGET_GROUP" "$APP_DIR" 2>/dev/null; then
+  echo "$LOG_PREFIX WARN: chown $APP_DIR misslyckades — engine kan få EACCES på storage.json"
+else
+  echo "$LOG_PREFIX Storage-rättigheter verifierade: $APP_DIR ägs av $TARGET_USER:$TARGET_GROUP ✓"
+fi
+chmod -R u+rwX,g+rX "$PI_DIR/data" 2>/dev/null || true
+
+
 # IMPORTANT: do NOT remove /etc/systemd/system/lotus-light-engine.service here.
 # setup-lotus.sh installerar medvetet engine som SYSTEM-service (inte PCC:s
 # user-service) för att kunna sätta SupplementaryGroups=netdev bluetooth —
