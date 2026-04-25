@@ -21,6 +21,7 @@ interface SelfTestResp {
 
 // Mappar tekniska "missing"-strängar till läsbar orsak + hint till PCC/setup.
 function explainMissing(m: string): { reason: string; hint: string } {
+  if (m.includes("PCC_DATA_DIR") || m.includes("PCC_CONFIG_DIR")) return { reason: "Engine saknar skrivåtkomst till appens sparmapp", hint: "Kör chown/chmod på exakt katalogen som visas här; update/setup fixar detta automatiskt." };
   if (m.includes("rfkill"))        return { reason: "Ingen skrivåtkomst till /dev/rfkill", hint: "PCC-tjänsten behöver netdev-grupp + udev-regel (setup-lotus.sh skriver den)." };
   if (m.includes("netdev"))        return { reason: "Process saknar netdev-grupp",         hint: "Lägg till 'netdev' i PCC service.json → permissions, eller kör setup för standalone." };
   if (m.includes("bluetooth-grupp"))return { reason: "Process saknar bluetooth-grupp",     hint: "Lägg till 'bluetooth' i PCC service.json → permissions." };
