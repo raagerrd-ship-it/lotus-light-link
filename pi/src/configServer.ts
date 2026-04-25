@@ -507,7 +507,18 @@ export function startConfigServer(port = 3050): void {
         paletteNext: sonos?.nextPalette ?? null,     // [r,g,b][] | null
         track: sonos?.trackName ?? null,
         artist: sonos?.artistName ?? null,
-        queue: bleStats.controllerOutstandingCount ?? 0,
+        // Kö = bara noble's _aclQueue (mjukvarukö för vår handle), INTE pending.
+        // pending=1 är normalt (paketet just nu i flygning till controllern) och
+        // hör inte hemma i ett "kö"-mått — då skulle värdet alltid vara ≥1.
+        queue: (() => {
+          try {
+            // Lazy require — controllerDrain laddas av BLE-stacken vid connect.
+            // Synkron require här (modulen är redan i memory om vi har en aktiv
+            // anslutning) för att slippa göra hela /api/status async-tyngre.
+            const cd = require('./ble/controllerDrain.js');
+            return cd.isControllerDrainAttached?.() ? cd.getQueuedPackets?.() ?? 0 : 0;
+          } catch { return 0; }
+        })(),
       },
       engine: engine
         ? {
