@@ -7,12 +7,11 @@
  */
 
 import { noble, hasNobleLoaded } from './noble-singleton.js';
-import type { ConnectedDevice, BleConnectionEvent } from './types.js';
+import type { ConnectedDevice } from './types.js';
 export { hasNobleLoaded, noble };
 
 export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
-const MAX_EVENTS = 200;
 
 export const BLE_BUILD_TAG = '2026-04-25/conninterval-20ms';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
@@ -109,14 +108,3 @@ export const bleStats = {
   intervalSource: 'unknown' as string,
 };
 
-// ── Connection event log (kvar för disconnect-spårning) ──
-const _connectionLog: BleConnectionEvent[] = [];
-export function logConnectionEvent(event: Omit<BleConnectionEvent, 'timestamp'>): void {
-  const entry: BleConnectionEvent = { ...event, timestamp: new Date().toISOString() };
-  _connectionLog.push(entry);
-  while (_connectionLog.length > MAX_EVENTS) _connectionLog.shift();
-  const detail = entry.detail ? ` — ${entry.detail}` : '';
-  const dur = entry.durationMs != null ? ` (${entry.durationMs}ms)` : '';
-  const dev = entry.device ? ` [${entry.device}]` : '';
-  console.log(`[BLE:${entry.type}]${dev}${detail}${dur}`);
-}
