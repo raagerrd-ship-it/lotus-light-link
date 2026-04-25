@@ -3,16 +3,19 @@ import { apiBase } from "@/lib/apiBase";
 
 /**
  * LiveStrip — kompakt realtids-display av engine-state.
- * Visar (i ordning): Input level, Output level, BLE-kö, Färg, Sonos-låt.
+ * Visar (i ordning): Input level, Output level, BLE-kö, Palette (nu/nästa), Sonos-låt.
  * Pollar /api/status @ 4 Hz. Tyst vid fel (UI får inte spamma vid disconnect).
  */
+type RGB = [number, number, number];
+
 type StatusLive = {
-  inputLevel: number;            // 0..1
+  inputLevel: number;            // 0..1 (engine energyNorm, matchar output-domänen)
   outputBrightness: number;      // 0..1
-  color: { r: number; g: number; b: number } | null;
+  paletteCurrent: RGB[] | null;  // Sonos-palette för nuvarande låt
+  paletteNext: RGB[] | null;     // Pre-cached palette för nästa låt
   track: string | null;
   artist: string | null;
-  queue: number;                 // outstanding BLE packets
+  queue: number;
 };
 
 export function LiveStrip() {
@@ -51,12 +54,6 @@ export function LiveStrip() {
     };
   }, []);
 
-  const colorStyle = live?.color
-    ? {
-        backgroundColor: `rgb(${live.color.r}, ${live.color.g}, ${live.color.b})`,
-      }
-    : { backgroundColor: "transparent" };
-
   return (
     <div
       className={`rounded-xl border border-border bg-card/60 p-3 text-xs space-y-2 transition-opacity ${
@@ -74,16 +71,12 @@ export function LiveStrip() {
 
       <Row label="Kö" value={String(live?.queue ?? 0)} />
 
-      <Row label="Färg">
-        <div
-          className="h-4 w-12 rounded border border-border"
-          style={colorStyle}
-          title={
-            live?.color
-              ? `rgb(${live.color.r}, ${live.color.g}, ${live.color.b})`
-              : "—"
-          }
-        />
+      <Row label="Nu">
+        <PaletteSwatch palette={live?.paletteCurrent ?? null} />
+      </Row>
+
+      <Row label="Nästa">
+        <PaletteSwatch palette={live?.paletteNext ?? null} />
       </Row>
 
       <Row label="Låt">
@@ -125,6 +118,26 @@ function Bar({ value }: { value: number }) {
         className="h-full bg-primary transition-[width] duration-150"
         style={{ width: `${pct}%` }}
       />
+    </div>
+  );
+}
+
+function PaletteSwatch({ palette }: { palette: [number, number, number][] | null }) {
+  if (!palette || palette.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  // Visa upp till 5 färger som horisontella rutor — ren input-vy från Sonos.
+  const slice = palette.slice(0, 5);
+  return (
+    <div className="flex h-4 gap-1">
+      {slice.map(([r, g, b], i) => (
+        <div
+          key={i}
+          className="h-4 w-6 rounded border border-border"
+          style={{ backgroundColor: `rgb(${r}, ${g}, ${b})` }}
+          title={`rgb(${r}, ${g}, ${b})`}
+        />
+      ))}
     </div>
   );
 }
