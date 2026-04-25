@@ -463,9 +463,11 @@ export function startConfigServer(port = 3050): void {
     const engine = getEngine();
     const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
     const c = getHardcodedConnected();
-    // Live UI-strip: input/output/queue/färg/låt
-    const mic = attachedMic?.getLatestBands?.() ?? null;
-    const inputLevel = mic ? Math.min(1, mic.totalRms ?? 0) : 0;
+    // Live UI-strip: input/output/queue/palette/låt
+    // inputLevel: post-gain energyNorm (0..1) — samma domän som outputBrightness
+    // så att stapeln faktiskt rör sig istället för att fastna nära 0 (raw RMS är typiskt 0.001-0.05).
+    const diag = engine?.getDiagnostics?.() ?? null;
+    const inputLevel = diag ? Math.max(0, Math.min(1, diag.energyNorm ?? 0)) : 0;
     const { getLastSent } = await import('./ble/protocol.js');
     const sent = getLastSent();
     res.json({
@@ -484,9 +486,13 @@ export function startConfigServer(port = 3050): void {
       startedAt: new Date(START_TIME).toISOString(),
       sonos,
       live: {
-        inputLevel,                                  // 0..1 (totalRms)
+        inputLevel,                                  // 0..1 (engine energyNorm, post-gain)
         outputBrightness: sent ? sent.brightness / 255 : 0,
-        color: sent ? { r: sent.r, g: sent.g, b: sent.b } : null,
+        // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
+        // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
+        // inte om motorns mellanresultat.
+        paletteCurrent: sonos?.palette ?? null,      // [r,g,b][] | null
+        paletteNext: sonos?.nextPalette ?? null,     // [r,g,b][] | null
         track: sonos?.trackName ?? null,
         artist: sonos?.artistName ?? null,
         queue: bleStats.controllerOutstandingCount ?? 0,
