@@ -1581,6 +1581,9 @@ export default function PiMobile() {
         </div>
       </div>
 
+      {/* Realtidsstatus: Input / Output / Kö / Färg / Låt */}
+      <LiveStrip />
+
       {/* 0. Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
 
