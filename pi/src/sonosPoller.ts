@@ -12,6 +12,8 @@
  *   - GET  {baseUrl}/events   → SSE stream
  */
 
+import { dlog } from './debugLog.js';
+
 export interface SonosPollerConfig {
   /** Base URL for the Sonos gateway (e.g. "http://localhost:3000/api/sonos") */
   baseUrl: string;
