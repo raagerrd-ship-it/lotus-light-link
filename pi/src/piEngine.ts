@@ -455,7 +455,7 @@ export class PiLightEngine {
     if (!this.playing) {
       this.forceIdleNow();
       startKeepAlive();
-      console.log(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
+      dlog(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
     } else {
       // Ren start: rensa onset så första riktiga beat ger en tydlig
       // puls istället för att blandas med stale state från senaste sessionen.
@@ -464,7 +464,7 @@ export class PiLightEngine {
       this.smoothed = 0;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
       stopKeepAlive();
-      console.log(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
+      dlog(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
     }
   }
 
@@ -473,7 +473,7 @@ export class PiLightEngine {
     if (this._bleOwner === 'none') return;
     this._bleOwner = 'none';
     stopKeepAlive();
-    console.log('[Engine] BLE disconnected → owner=none, keep-alive STOPPAD');
+    dlog('[Engine] BLE disconnected → owner=none, keep-alive STOPPAD');
   }
 
   setPlaying(playing: boolean): void {
@@ -492,9 +492,9 @@ export class PiLightEngine {
         this._bleOwner = 'idle';
         this.forceIdleNow();
         startKeepAlive();
-        console.log('[Engine] → idle mode (owner=idle, keep-alive PÅ)');
+        dlog('[Engine] → idle mode (owner=idle, keep-alive PÅ)');
       } else {
-        console.log('[Engine] → idle mode (BLE ej ansluten)');
+        dlog('[Engine] → idle mode (BLE ej ansluten)');
       }
     } else {
       // idle → active: stoppa keep-alive (FFT-writes tar över), starta loop.
@@ -504,9 +504,9 @@ export class PiLightEngine {
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'active';
         stopKeepAlive();
-        console.log('[Engine] → active mode (owner=active, keep-alive AV, FFT-writes håller länken)');
+        dlog('[Engine] → active mode (owner=active, keep-alive AV, FFT-writes håller länken)');
       } else {
-        console.log('[Engine] → active mode (BLE ej ansluten, loop startad men inga writes)');
+        dlog('[Engine] → active mode (BLE ej ansluten, loop startad men inga writes)');
       }
     }
   }
@@ -550,7 +550,7 @@ export class PiLightEngine {
       this.cal.transientGain = 0;
       this.cal.perceptualGamma = 0;
       this.tc = computeTickConstants(this.tickMs, this.cal);
-      console.log('[Engine] Raw mode ON — all processors disabled');
+      dlog('[Engine] Raw mode ON — all processors disabled');
     } else if (!on && this._rawMode) {
       this._rawMode = false;
       if (this._savedCal) {
@@ -558,7 +558,7 @@ export class PiLightEngine {
         this._savedCal = null;
       }
       this.tc = computeTickConstants(this.tickMs, this.cal);
-      console.log('[Engine] Raw mode OFF — processors restored');
+      dlog('[Engine] Raw mode OFF — processors restored');
     }
   }
 
@@ -602,7 +602,7 @@ export class PiLightEngine {
       }
     }, 10_000);
 
-    console.log(`[Engine] Initialized (${this.tickMs}ms, loop always active, idle heartbeat until playback)`);
+    dlog(`[Engine] Initialized (${this.tickMs}ms, loop always active, idle heartbeat until playback)`);
   }
 
   // ── Event-driven tick scheduling ──
@@ -655,14 +655,14 @@ export class PiLightEngine {
     onFFTReady(null); // unregister callback
     onFluxReady(null);
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
-    console.log('[Engine] Stopped');
+    dlog('[Engine] Stopped');
   }
 
   /** Suspend engine output (for BLE tests etc.) — stops loop + keep-alive */
   suspend(): void {
     this.stopLoop();
     stopKeepAlive();
-    console.log('[Engine] Suspended (BLE test mode)');
+    dlog('[Engine] Suspended (BLE test mode)');
   }
 
   /** Resume engine output after suspend */
@@ -673,14 +673,14 @@ export class PiLightEngine {
       this.forceIdleNow();
       startKeepAlive();
     }
-    console.log(`[Engine] Resumed (${this.playing ? 'active' : 'idle'})`);
+    dlog(`[Engine] Resumed (${this.playing ? 'active' : 'idle'})`);
   }
 
   /** Restart tick scheduling — preserves all smoothing state */
   restartTimer(): void {
     this.stopLoop();
     if (this.playing) this.startLoop();
-    console.log(`[Engine] Timer restarted (${this.tickMs}ms min interval = ${(1000 / this.tickMs + 0.5) | 0} Hz max, ${this.playing ? 'active' : 'idle'})`);
+    dlog(`[Engine] Timer restarted (${this.tickMs}ms min interval = ${(1000 / this.tickMs + 0.5) | 0} Hz max, ${this.playing ? 'active' : 'idle'})`);
   }
 
   /** Guard against NaN/Infinity corrupting smoothing state */

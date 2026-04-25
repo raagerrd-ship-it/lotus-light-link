@@ -26,14 +26,14 @@ try {
   AlsaCapture = (await import('../vendor/alsa-capture/index.js')).default;
   useNative = true;
   micBackend = 'alsa-vendored';
-  console.log('[ALSA] Using native alsa-capture (vendored fork, direct snd_pcm_readi)');
+  dlog('[ALSA] Using native alsa-capture (vendored fork, direct snd_pcm_readi)');
 } catch (eVendor: any) {
   const vendorReason = eVendor?.message ?? String(eVendor);
   try {
     AlsaCapture = (await import('alsa-capture')).default;
     useNative = true;
     micBackend = 'alsa-npm';
-    console.log('[ALSA] Using native alsa-capture (npm package, direct snd_pcm_readi)');
+    dlog('[ALSA] Using native alsa-capture (npm package, direct snd_pcm_readi)');
   } catch (e: any) {
     const npmReason = e?.message ?? String(e);
     nativeImportError = `vendored: ${vendorReason}; npm: ${npmReason}`;
@@ -311,7 +311,7 @@ function processFFT(): void {
   if (DEBUG_ENABLED) {
     debugTickCount++;
     if (debugTickCount >= DEBUG_INTERVAL) {
-      console.log(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
+      dlog(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
       debugTickCount = 0;
       debugPeakRaw = 0;
     }
@@ -378,7 +378,7 @@ export function getAutoGainMultiplier(): number { return micGainAuto; }
 export function setMicGain(gain: number): void {
   micGainBase = Math.max(0.1, Math.min(50, gain));
   updateEffectiveGain();
-  console.log(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x, auto=${autoGainEnabled})`);
+  dlog(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x, auto=${autoGainEnabled})`);
 }
 
 /** Two-point gain calibration.
@@ -400,7 +400,7 @@ export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | nul
   calPoint1 = p1;
   calPoint2 = p2;
   if (p1 && p2) {
-    console.log(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
+    dlog(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
     // Räkna om direkt från senast kända volym så slider-ändringar syns omedelbart
     if (autoGainEnabled && lastSonosVol != null) {
       recomputeAutoGain(lastSonosVol);
@@ -429,13 +429,13 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   lastSonosVol = sonosVolume;
   if (!autoGainEnabled || !calPoint1 || !calPoint2) return;
   recomputeAutoGain(sonosVolume);
-  console.log(`[ALSA] Auto-gain: vol=${sonosVolume} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
+  dlog(`[ALSA] Auto-gain: vol=${sonosVolume} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
 }
 
 export function disableAutoGain(): void {
   autoGainEnabled = false;
   updateEffectiveGain();
-  console.log(`[ALSA] Auto-gain disabled → manual base gain ${micGainBase.toFixed(1)}x active`);
+  dlog(`[ALSA] Auto-gain disabled → manual base gain ${micGainBase.toFixed(1)}x active`);
 }
 
 export function enableAutoGain(): void {
@@ -444,10 +444,10 @@ export function enableAutoGain(): void {
   // tills användaren råkar dra i en slider eller volymen råkar ändras.
   if (calPoint1 && calPoint2 && lastSonosVol != null) {
     recomputeAutoGain(lastSonosVol);
-    console.log(`[ALSA] Auto-gain enabled → recomputed from cached vol=${lastSonosVol} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
+    dlog(`[ALSA] Auto-gain enabled → recomputed from cached vol=${lastSonosVol} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
   } else {
     updateEffectiveGain();
-    console.log(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (no cached vol yet, awaiting Sonos poll)`);
+    dlog(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (no cached vol yet, awaiting Sonos poll)`);
   }
 }
 
@@ -503,7 +503,7 @@ export function startMic(): void {
     capture.on('close', () => {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
-    console.log(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
+    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
 
   } else {
     handleStartFailure(
@@ -526,11 +526,11 @@ function onAudioData(buf: Buffer): void {
   _audioCbBytes += buf.byteLength;
   if (_audioCbFirstAt === 0) {
     _audioCbFirstAt = performance.now();
-    console.log(`[ALSA] FIRST audio callback fired at t=${_audioCbFirstAt.toFixed(1)}ms, ${buf.byteLength} bytes`);
+    dlog(`[ALSA] FIRST audio callback fired at t=${_audioCbFirstAt.toFixed(1)}ms, ${buf.byteLength} bytes`);
     resolveMicReadyWaiters();
   }
   if (_audioCbCount === 50 || _audioCbCount === 200 || (DEBUG_ENABLED && _audioCbCount % 1000 === 0)) {
-    console.log(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
+    dlog(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
   }
   // Stereo interleaved → ta bara vänster kanal.
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
@@ -628,5 +628,5 @@ export function stopMic(): void {
   lastFFTTimestamp = 0;
   _fftFrameCount = 0;
   micStartError = null;
-  console.log('[ALSA] Microphone stopped');
+  dlog('[ALSA] Microphone stopped');
 }

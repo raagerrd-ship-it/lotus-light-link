@@ -180,7 +180,7 @@ export function startKeepAlive(): void {
         keepAliveSentCount++;
         bleStats.sentCount++;
         if (keepAliveFailCount > 0) {
-          console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
+          dlog(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
           keepAliveFailCount = 0;
         }
       })
@@ -295,7 +295,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
       _writeLatAvgPrecise = _writeLatAvgPrecise * 0.9 + elapsed * 0.1;
       bleStats.writeLatAvgMs = Math.round(_writeLatAvgPrecise * 10) / 10;
       if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
-      if (writeFailCount > 0) console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
+      if (writeFailCount > 0) dlog(`[BLE] Write recovered after ${writeFailCount} failures`);
       writeFailCount = 0;
       if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
         bleStats.actualIntervalMs = bleStats.writeLatAvgMs.toFixed(1) + ' (est)';
