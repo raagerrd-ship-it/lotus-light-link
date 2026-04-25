@@ -463,9 +463,11 @@ export function startConfigServer(port = 3050): void {
     const engine = getEngine();
     const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
     const c = getHardcodedConnected();
-    // Live UI-strip: input/output/queue/färg/låt
-    const mic = attachedMic?.getLatestBands?.() ?? null;
-    const inputLevel = mic ? Math.min(1, mic.totalRms ?? 0) : 0;
+    // Live UI-strip: input/output/queue/palette/låt
+    // inputLevel: post-gain energyNorm (0..1) — samma domän som outputBrightness
+    // så att stapeln faktiskt rör sig istället för att fastna nära 0 (raw RMS är typiskt 0.001-0.05).
+    const diag = engine?.getDiagnostics?.() ?? null;
+    const inputLevel = diag ? Math.max(0, Math.min(1, diag.energyNorm ?? 0)) : 0;
     const { getLastSent } = await import('./ble/protocol.js');
     const sent = getLastSent();
     res.json({
