@@ -4,6 +4,7 @@ import { apiBase } from "@/lib/apiBase";
 import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 import { BleControlPanel } from "@/components/BleControlPanel";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
+import { LiveStrip } from "@/components/LiveStrip";
 
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
