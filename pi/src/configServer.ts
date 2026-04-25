@@ -482,6 +482,14 @@ export function startConfigServer(port = 3050): void {
     const outputBrightness = diag ? Math.max(0, Math.min(1, (diag.brightnessPct ?? 0) / 100)) : 0;
     const { getLastSent } = await import('./ble/protocol.js');
     const sent = getLastSent();
+    // Kö = bara noble's _aclQueue (mjukvarukö för vår handle), INTE pending.
+    // pending=1 är normalt (paketet just nu i flygning till controllern) och
+    // hör inte hemma i ett "kö"-mått — då skulle värdet alltid vara ≥1.
+    let queueLen = 0;
+    try {
+      const cd = await import('./ble/controllerDrain.js');
+      if (cd.isControllerDrainAttached?.()) queueLen = cd.getQueuedPackets?.() ?? 0;
+    } catch {}
     res.json({
       ok: true,
       ble: {
@@ -507,7 +515,7 @@ export function startConfigServer(port = 3050): void {
         paletteNext: sonos?.nextPalette ?? null,     // [r,g,b][] | null
         track: sonos?.trackName ?? null,
         artist: sonos?.artistName ?? null,
-        queue: bleStats.controllerOutstandingCount ?? 0,
+        queue: queueLen,
       },
       engine: engine
         ? {
