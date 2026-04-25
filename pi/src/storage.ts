@@ -15,7 +15,7 @@
  * inte "försvinner" när PCC börjar/slutar sätta variablerna.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, copyFileSync, accessSync, constants } from 'fs';
 import { join } from 'path';
 
 // Settings vs state separeras enligt PCC-kontrakt. Keys som matchar SETTINGS_KEYS
@@ -25,8 +25,8 @@ const FALLBACK_BASE =
   process.env.LOTUS_DATA_DIR ||
   (process.env.HOME ? join(process.env.HOME, '.local/share/lotus-light') : '/var/lib/lotus-light');
 
-const DATA_DIR = process.env.PCC_DATA_DIR || FALLBACK_BASE;
-const CONFIG_DIR = process.env.PCC_CONFIG_DIR || DATA_DIR;
+export const DATA_DIR = process.env.PCC_DATA_DIR || FALLBACK_BASE;
+export const CONFIG_DIR = process.env.PCC_CONFIG_DIR || DATA_DIR;
 
 // Nycklar som klassas som "settings" (config) snarare än state.
 // Allt annat (profiler, kalibrering, parade enheter, device-modes, cache) → DATA_DIR.
