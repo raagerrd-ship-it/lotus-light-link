@@ -464,10 +464,13 @@ export function startConfigServer(port = 3050): void {
     const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
     const c = getHardcodedConnected();
     // Live UI-strip: input/output/queue/palette/låt
-    // inputLevel: post-gain energyNorm (0..1) — samma domän som outputBrightness
-    // så att stapeln faktiskt rör sig istället för att fastna nära 0 (raw RMS är typiskt 0.001-0.05).
+    // inputLevel: rå mic-RMS efter fixed gain (RAW_SCALE=5), INNAN smoothing/dynamics/onset.
+    // Visar bara hur mycket signal mikrofonen faktiskt fångar — inte engine-resultatet.
+    // Tar max(bass, midHi) så peaks syns istället för att medelvärde dränker dem.
     const diag = engine?.getDiagnostics?.() ?? null;
-    const inputLevel = diag ? Math.max(0, Math.min(1, diag.energyNorm ?? 0)) : 0;
+    const inputLevel = diag
+      ? Math.max(0, Math.min(1, Math.max(diag.bassNorm ?? 0, diag.midHiNorm ?? 0)))
+      : 0;
     const { getLastSent } = await import('./ble/protocol.js');
     const sent = getLastSent();
     res.json({
