@@ -77,6 +77,41 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
   const [running, setRunning] = useState(false);
   const [failedAt, setFailedAt] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydrera state från servern vid mount så vi inte visar "Starta" när allt redan kör.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [bleR, subR] = await Promise.all([
+          fetch(`${piBase}/api/ble/state`).then((r) => r.json()).catch(() => null),
+          fetch(`${piBase}/api/subsystem/status`).then((r) => r.json()).catch(() => null),
+        ]);
+        if (cancelled) return;
+        const engineReady = bleR?.engineReady === true;
+        const lampConnected = bleR?.connected === true;
+        const subs = subR?.subsystems ?? {};
+        const isOk = (s: any) => s?.state === "ready" || s?.ready === true || s === "ready";
+        setStates((prev) => ({
+          ...prev,
+          engine: engineReady ? "ok" : prev.engine,
+          mic: isOk(subs.mic) ? "ok" : prev.mic,
+          sonos: isOk(subs.sonos) ? "ok" : prev.sonos,
+          lamp: lampConnected ? "ok" : prev.lamp,
+        }));
+        if (engineReady) onEngineReadyChange?.(true);
+      } catch {
+        /* ignore */
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [piBase]);
 
   const allOk =
     states.engine === "ok" &&
