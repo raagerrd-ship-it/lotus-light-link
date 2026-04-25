@@ -5,6 +5,7 @@ import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 import { BleControlPanel } from "@/components/BleControlPanel";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { LiveStrip } from "@/components/LiveStrip";
+import { StartAllPanel } from "@/components/StartAllPanel";
 
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
@@ -1587,23 +1588,32 @@ export default function PiMobile() {
       {/* 0. Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
 
-      {/* 1. BLE-motor — startas först så noble är poweredOn innan vi gör något annat */}
-      <BleControlPanel
+      {/* Förenklad start: en knapp kör Motor → Mic → Sonos → Lampa i sekvens */}
+      <StartAllPanel
         piBase={piBase}
-        section="engine"
         onEngineReadyChange={setBleEngineReady}
       />
 
-      {/* 2. Subsystem (mic + sonos) — startas när motorn är redo, så ALSA + Sonos hinner upp innan vi börjar skicka färg */}
-      <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
-
-      {/* 3. Lampa — anslut sist, när allt annat är på plats */}
-      <BleControlPanel
-        piBase={piBase}
-        section="lamp"
-        onConnectedChange={setBleHardcodedConnected}
-        onEngineReadyChange={setBleEngineReady}
-      />
+      {/* Avancerat: per-steg-kontroll om något behöver startas om individuellt */}
+      <details className="rounded-xl border border-border bg-card/40">
+        <summary className="cursor-pointer select-none px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
+          Avancerat — starta delsystem individuellt
+        </summary>
+        <div className="space-y-3 p-3 pt-0">
+          <BleControlPanel
+            piBase={piBase}
+            section="engine"
+            onEngineReadyChange={setBleEngineReady}
+          />
+          <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
+          <BleControlPanel
+            piBase={piBase}
+            section="lamp"
+            onConnectedChange={setBleHardcodedConnected}
+            onEngineReadyChange={setBleEngineReady}
+          />
+        </div>
+      </details>
 
       {/* Tidigare global BLE/Sonos-statusrad borttagen — sanningen finns nu
           i lamp-rutan (BLE) respektive sonos-rutan (låt + palette).
