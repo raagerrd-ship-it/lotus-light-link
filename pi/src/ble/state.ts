@@ -14,7 +14,7 @@ export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 const MAX_EVENTS = 200;
 
-export const BLE_BUILD_TAG = '2026-04-23/force-conninterval-hcitool';
+export const BLE_BUILD_TAG = '2026-04-25/conninterval-20ms';
 console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Subsystem state (mic + sonos + engine — bleEngine borttaget) ──
