@@ -464,13 +464,22 @@ export function startConfigServer(port = 3050): void {
     const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
     const c = getHardcodedConnected();
     // Live UI-strip: input/output/queue/palette/låt
-    // inputLevel: rå mic-RMS efter fixed gain (RAW_SCALE=5), INNAN smoothing/dynamics/onset.
-    // Visar bara hur mycket signal mikrofonen faktiskt fångar — inte engine-resultatet.
-    // Tar max(bass, midHi) så peaks syns istället för att medelvärde dränker dem.
+    // Input = rå RMS efter mic-gain (samma källa som VU-mätaren i Avancerat).
+    //   max(bass, midHi) * 4 → matchar VuMeter-skalningen (bassRms*400%) så att
+    //   topp-stapeln i LiveStrip alltid visar samma värde som högsta band-stapeln
+    //   i Avancerat. INNAN engine-smoothing/normalisering/dynamics.
+    // Output = engine.brightnessPct (samma källa som /api/ble/output i Avancerat).
+    //   Detta är engine-resultatet efter floor/gamma/punch — INTE sista
+    //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
-    const inputLevel = diag
-      ? Math.max(0, Math.min(1, Math.max(diag.bassNorm ?? 0, diag.midHiNorm ?? 0)))
-      : 0;
+    let micBass = 0, micMidHi = 0;
+    try {
+      const m = getMic();
+      const b = m.getBands();
+      if (b?.active) { micBass = b.bassRms ?? 0; micMidHi = b.midHiRms ?? 0; }
+    } catch {}
+    const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi) * 4));
+    const outputBrightness = diag ? Math.max(0, Math.min(1, (diag.brightnessPct ?? 0) / 100)) : 0;
     const { getLastSent } = await import('./ble/protocol.js');
     const sent = getLastSent();
     res.json({
@@ -489,8 +498,8 @@ export function startConfigServer(port = 3050): void {
       startedAt: new Date(START_TIME).toISOString(),
       sonos,
       live: {
-        inputLevel,                                  // 0..1 (engine energyNorm, post-gain)
-        outputBrightness: sent ? sent.brightness / 255 : 0,
+        inputLevel,                                  // 0..1 (rå RMS×4, matchar VU-meter)
+        outputBrightness,                            // 0..1 (engine brightnessPct/100)
         // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
         // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
         // inte om motorns mellanresultat.
