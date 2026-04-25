@@ -39,7 +39,8 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [Idle force on pause](mem://pi/ble/idle-force-on-pause) — sendIdleForce bypasses busy/rate-limit/delta so lamp lands on idle immediately at pause
 - [Pi exclusive focus](mem://architecture/pi-exclusive-focus) — Architecture focused on headless Pi engine
 - [Event-driven engine](mem://pi/performance/event-driven-architecture) — Engine execution triggered by FFT frames
-- [BLE optimization](mem://pi/ble/connection-optimization) — 7.5-10ms connection interval via HCI
+- [BLE optimization](mem://pi/ble/connection-optimization) — 20ms connection interval (var 7.5ms, sänkt 22h-hängningsfix)
+- [Update måste chown:a storage](mem://pi/deployment/update-must-chown-storage) — cp -r som root → root-ägda filer → /api/* save returnerar 500. Fix: chown -R efter varje update.
 - [API routing](mem://pi/ui/api-routing) — API URLs generated as window.location.port + 50
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
