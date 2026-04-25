@@ -402,7 +402,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
               }
               const r = await forceConnInterval(handle);
               if (r.ok) {
-                console.log(`${ts()}    [forceConnInterval] OK handle=${handle} → 7.5ms target (${r.durationMs}ms)`);
+                console.log(`${ts()}    [forceConnInterval] OK handle=${handle} → 20ms target (${r.durationMs}ms)`);
               } else {
                 console.warn(`${ts()}    [forceConnInterval] FAIL handle=${handle} exit=${r.exitCode} stderr="${r.stderr}" (${r.durationMs}ms) — länken körs på default interval`);
               }
