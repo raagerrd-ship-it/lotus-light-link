@@ -76,12 +76,20 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
   });
   const [running, setRunning] = useState(false);
   const [failedAt, setFailedAt] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   const allOk =
     states.engine === "ok" &&
     states.mic === "ok" &&
     states.sonos === "ok" &&
     states.lamp === "ok";
+
+  // Auto-minimera när allt blivit ok; öppna upp om något senare går till fel.
+  useEffect(() => {
+    if (allOk) setCollapsed(true);
+    else if (failedAt != null) setCollapsed(false);
+    onAllOkChange?.(allOk);
+  }, [allOk, failedAt, onAllOkChange]);
 
   async function runStep(step: Step): Promise<boolean> {
     setStates((s) => ({ ...s, [step.id]: "running" }));
