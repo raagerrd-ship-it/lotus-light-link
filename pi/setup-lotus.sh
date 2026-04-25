@@ -398,8 +398,21 @@ fi
 
 # Ägarskap så storage-shimmen kan göra mkdir/writeFile.
 sudo mkdir -p "$PI_DIR/data"
+for STORAGE_DIR in \
+  "$PI_DIR/data" \
+  "${PCC_DATA_DIR:-}" \
+  "${PCC_CONFIG_DIR:-}" \
+  "${LOTUS_DATA_DIR:-}" \
+  "$TARGET_HOME/.local/share/lotus-light" \
+  "/var/lib/lotus-light"
+do
+  [ -z "$STORAGE_DIR" ] && continue
+  sudo mkdir -p "$STORAGE_DIR" 2>/dev/null || true
+  sudo chown -R "$TARGET_USER:$TARGET_GROUP" "$STORAGE_DIR" 2>/dev/null || true
+  sudo chmod -R u+rwX,g+rwX "$STORAGE_DIR" 2>/dev/null || true
+done
 sudo chown -R "$TARGET_USER:$TARGET_GROUP" "$APP_DIR"
-echo "  Ägarskap satt: $APP_DIR → $TARGET_USER:$TARGET_GROUP ✓"
+echo "  Ägarskap satt: $APP_DIR + storage dirs → $TARGET_USER:$TARGET_GROUP ✓"
 
 # Lägg TARGET_USER i netdev + bluetooth + audio som permanenta grupper.
 # Krävs eftersom systemd's AmbientCapabilities clearar SupplementaryGroups
