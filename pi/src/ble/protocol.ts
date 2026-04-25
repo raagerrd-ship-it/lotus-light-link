@@ -13,6 +13,7 @@
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
 import { getOutstandingPackets, isControllerDrainAttached } from './controllerDrain.js';
+import { dlog } from "../debugLog.js";
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
@@ -102,6 +103,12 @@ export function resetLastSent(): void {
 export function getLastWriteTime(): number { return lastWriteTime; }
 export function setLastWriteTime(t: number): void { lastWriteTime = t; }
 
+/** Senast skickade RGB + brightness-scale (0–255). För UI-display (Output-färg). */
+export function getLastSent(): { r: number; g: number; b: number; brightness: number } | null {
+  if (lastR < 0) return null;
+  return { r: lastR, g: lastG, b: lastB, brightness: lastBr };
+}
+
 // ── Lease-gate + drain-diagnostik (delas av sendToBLE + keep-alive) ──
 //
 // Returnerar 'ready' = sloten är fri, write tillåten
@@ -174,7 +181,7 @@ export function startKeepAlive(): void {
         keepAliveSentCount++;
         bleStats.sentCount++;
         if (keepAliveFailCount > 0) {
-          console.log(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
+          dlog(`[BLE] Keep-alive recovered after ${keepAliveFailCount} failures`);
           keepAliveFailCount = 0;
         }
       })
@@ -289,7 +296,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
       _writeLatAvgPrecise = _writeLatAvgPrecise * 0.9 + elapsed * 0.1;
       bleStats.writeLatAvgMs = Math.round(_writeLatAvgPrecise * 10) / 10;
       if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
-      if (writeFailCount > 0) console.log(`[BLE] Write recovered after ${writeFailCount} failures`);
+      if (writeFailCount > 0) dlog(`[BLE] Write recovered after ${writeFailCount} failures`);
       writeFailCount = 0;
       if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
         bleStats.actualIntervalMs = bleStats.writeLatAvgMs.toFixed(1) + ' (est)';

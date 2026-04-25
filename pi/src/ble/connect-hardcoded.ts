@@ -14,6 +14,7 @@ import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
+import { dlog } from "../debugLog.js";
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
 // pga consecutive connect-failures, läses i index.ts boot för att auto-anropa
@@ -106,19 +107,19 @@ export function scheduleAutoReconnect(): void {
   _autoReconnectAttempt++;
   const backoffs = [2000, 4000, 8000, 16000, 30000];
   const delay = backoffs[Math.min(_autoReconnectAttempt - 1, backoffs.length - 1)];
-  console.log(`[auto-reconnect] försök #${_autoReconnectAttempt}/${AUTO_RECONNECT_MAX_ATTEMPTS} om ${delay}ms`);
+  dlog(`[auto-reconnect] försök #${_autoReconnectAttempt}/${AUTO_RECONNECT_MAX_ATTEMPTS} om ${delay}ms`);
   _autoReconnectTimer = setTimeout(async () => {
     _autoReconnectTimer = null;
     if (!_autoReconnectEnabled) return;
     if (_connected && _connected.state === 'connected') {
-      console.log(`[auto-reconnect] redan ansluten — avbryter loop`);
+      dlog(`[auto-reconnect] redan ansluten — avbryter loop`);
       _autoReconnectAttempt = 0;
       return;
     }
     try {
       const r = await connectHardcoded();
       if (r.connected) {
-        console.log(`[auto-reconnect] ✓ återansluten efter ${_autoReconnectAttempt} försök (${r.durationMs}ms)`);
+        dlog(`[auto-reconnect] ✓ återansluten efter ${_autoReconnectAttempt} försök (${r.durationMs}ms)`);
         _autoReconnectAttempt = 0;
       } else {
         console.warn(`[auto-reconnect] ✗ försök #${_autoReconnectAttempt} misslyckades: ${r.error ?? 'okänt fel'}`);
@@ -183,7 +184,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
   // 2. Force-disconnect stale peripheral om den ligger kvar
   if (_connected) {
     const state = _connected.state;
-    console.log(`[connect-hardcoded] cleanup (${reason}): stale peripheral state=${state}, force-disconnecting`);
+    dlog(`[connect-hardcoded] cleanup (${reason}): stale peripheral state=${state}, force-disconnecting`);
     const periph = _connected;
     const disconnectEvent = `disconnect:${periph.uuid ?? periph.id}`;
     try { n.removeAllListeners?.(disconnectEvent); } catch {}
@@ -194,7 +195,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
         new Promise((_, rej) => setTimeout(() => rej(new Error('disconnect timeout')), 1000)),
       ]);
     } catch (e: any) {
-      console.log(`[connect-hardcoded] cleanup: disconnect ignored (${e?.message ?? e})`);
+      dlog(`[connect-hardcoded] cleanup: disconnect ignored (${e?.message ?? e})`);
     }
     _connected = null;
   }
@@ -212,7 +213,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
         const paddr = (p?.address ?? '').toLowerCase();
         if (pid === targetId || paddr === targetAddr) {
           delete peripherals[key];
-          console.log(`[connect-hardcoded] cleanup: noble._peripherals[${key}] purged`);
+          dlog(`[connect-hardcoded] cleanup: noble._peripherals[${key}] purged`);
         }
       }
     }
@@ -233,17 +234,17 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   _lastConnectCallAt = Date.now();
   // Diagnostik: om någon hamrar denna endpoint vill vi se det i loggen.
   // Stack-trace ger oss caller (HTTP-route, intern reconnect, etc).
-  console.log(`[connect-hardcoded] CALL #${_connectCallCount} (${sinceLast}ms sedan förra)`);
+  dlog(`[connect-hardcoded] CALL #${_connectCallCount} (${sinceLast}ms sedan förra)`);
   if (sinceLast < 500 && _connectCallCount > 1) {
     console.warn(`[connect-hardcoded] ⚠ Hammered: ${sinceLast}ms sedan förra anropet — caller-stack:\n${new Error().stack?.split('\n').slice(2, 6).join('\n')}`);
   }
   if (_connectInFlight) {
-    console.log(`[connect-hardcoded]   → in-flight, väntar på pågående connect`);
+    dlog(`[connect-hardcoded]   → in-flight, väntar på pågående connect`);
     const r = await _connectInFlight;
     return { ...r, durationMs: 0 };
   }
   if (_connected && _connected.state === 'connected') {
-    console.log(`[connect-hardcoded]   → redan ansluten, returnerar idempotent`);
+    dlog(`[connect-hardcoded]   → redan ansluten, returnerar idempotent`);
     return { connected: true, durationMs: 0 };
   }
 
@@ -260,15 +261,15 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
 
     // 0. Pre-connect cleanup — purga ev. stale peripheral i noble's cache,
     //    annars hänger connectAsync tyst om förra länken dog utan disconnect-event.
-    console.log(`${ts()} 0. pre-connect cleanup…`);
+    dlog(`${ts()} 0. pre-connect cleanup…`);
     await forceCleanupStalePeripheral('pre-connect');
 
-    console.log(`${ts()} 1. waitForPoweredOnAsync(10s)…`);
+    dlog(`${ts()} 1. waitForPoweredOnAsync(10s)…`);
     try {
       await (n as any).waitForPoweredOnAsync(10_000);
-      console.log(`${ts()}    poweredOn (state=${n.state})`);
+      dlog(`${ts()}    poweredOn (state=${n.state})`);
     } catch (e: any) {
-      console.log(`${ts()}    waitForPoweredOnAsync FEL: ${e?.message ?? e}`);
+      dlog(`${ts()}    waitForPoweredOnAsync FEL: ${e?.message ?? e}`);
       return { connected: false, error: `waitForPoweredOnAsync failed: ${e?.message ?? e}` };
     }
 
@@ -301,15 +302,15 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         if (!isMatch) return;
         matched = true;
         const name = peripheral.advertisement?.localName ?? '(no name)';
-        console.log(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi} ← MATCH`);
-        console.log(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
+        dlog(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi} ← MATCH`);
+        dlog(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
         try {
           await n.stopScanningAsync();
-          console.log(`${ts()}    stopScanningAsync OK`);
+          dlog(`${ts()}    stopScanningAsync OK`);
         } catch (e: any) {
           console.warn(`${ts()}    stopScanningAsync warning: ${e?.message ?? e}`);
         }
-        console.log(`${ts()} 4. peripheral.connectAsync() (5s timeout)…`);
+        dlog(`${ts()} 4. peripheral.connectAsync() (5s timeout)…`);
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
           _connected = peripheral;
@@ -328,7 +329,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             if (lc > 0) console.warn(`[connect-hardcoded] ⚠ disconnect-listeners kvar EFTER cleanup: ${lc} (förväntat 0)`);
           } catch {}
           peripheral.once?.('disconnect', () => {
-            console.log(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
+            dlog(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
             _onDisconnected?.();
             detachControllerDrain();
             setDevice(null);
@@ -340,10 +341,10 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // (Aktiveras nedan vid lyckad connect så manuella connect-fel inte triggar.)
             scheduleAutoReconnect();
           });
-          console.log(`${ts()} 5. ANSLUTEN ${peripheral.address}`);
+          dlog(`${ts()} 5. ANSLUTEN ${peripheral.address}`);
 
           // ── 6. GATT discovery: hitta write-characteristic så vi kan skriva färg + hålla keep-alive ──
-          console.log(`${ts()} 6. discoverSomeServicesAndCharacteristicsAsync([${SERVICE_UUID}], [${CHAR_UUID}])…`);
+          dlog(`${ts()} 6. discoverSomeServicesAndCharacteristicsAsync([${SERVICE_UUID}], [${CHAR_UUID}])…`);
           try {
             const result = await withTimeout<any>(
               peripheral.discoverSomeServicesAndCharacteristicsAsync([SERVICE_UUID], [CHAR_UUID]),
@@ -361,16 +362,16 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // CRITICAL: samma anchor write som i vanliga connect.ts.
             // Utan den kan länken se "connected" ut men första riktiga
             // färgskrivningen hänga/tyst droppas, vilket ger 0 pkt/s.
-            console.log(`${ts()} 7. anchor write (3s timeout)…`);
+            dlog(`${ts()} 7. anchor write (3s timeout)…`);
             try {
               await withTimeout(ch.writeAsync(brightMaxBuf, true), 'anchor write', 3000);
-              console.log(`${ts()}    anchor write OK`);
+              dlog(`${ts()}    anchor write OK`);
             } catch (e: any) {
               // RACE GUARD: withTimeout(anchor write, 3000) kan kasta sent
               // om writeAsync resolvar precis runt 3s-gränsen. Om finish()
               // redan körts (resolved=true) är vi redan anslutna.
               if (resolved) {
-                console.log(`${ts()}    (ignorerar sen anchor-write-timeout: ${e?.message ?? e})`);
+                dlog(`${ts()}    (ignorerar sen anchor-write-timeout: ${e?.message ?? e})`);
                 return;
               }
               console.warn(`${ts()}    anchor write FEL: ${e?.message ?? e} — disconnectar`);
@@ -402,7 +403,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
               }
               const r = await forceConnInterval(handle);
               if (r.ok) {
-                console.log(`${ts()}    [forceConnInterval] OK handle=${handle} → 20ms target (${r.durationMs}ms)`);
+                dlog(`${ts()}    [forceConnInterval] OK handle=${handle} → 20ms target (${r.durationMs}ms)`);
               } else {
                 console.warn(`${ts()}    [forceConnInterval] FAIL handle=${handle} exit=${r.exitCode} stderr="${r.stderr}" (${r.durationMs}ms) — länken körs på default interval`);
               }
@@ -415,14 +416,14 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // (om Sonos är pausad). Vid spelande musik skippar engine
             // keep-alive eftersom mic-writes håller länken.
             _onConnected?.();
-            console.log(`${ts()} 8. anslutning klar — engine notifierad om BLE-status`);
+            dlog(`${ts()} 8. anslutning klar — engine notifierad om BLE-status`);
             finish({ connected: true });
           } catch (e: any) {
             // RACE GUARD: samma sen-timeout-mönster som connectAsync nedan.
             // GATT discovery kan resolva precis runt 8s-gränsen och tickande
             // setTimeout kastar ändå — disconnecta INTE en lyckad session.
             if (resolved) {
-              console.log(`${ts()}    (ignorerar sen GATT-discovery-timeout: ${e?.message ?? e})`);
+              dlog(`${ts()}    (ignorerar sen GATT-discovery-timeout: ${e?.message ?? e})`);
               return;
             }
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
@@ -437,10 +438,10 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           // Bevisat i fält: 22:45:28 "anslutning klar" → 22:45:29 timeout-catch
           // disconnectade samma peripheral. Om resolved=true → ignorera tyst.
           if (resolved) {
-            console.log(`${ts()}    (ignorerar sen connectAsync-timeout: ${e?.message ?? e} — vi är redan anslutna)`);
+            dlog(`${ts()}    (ignorerar sen connectAsync-timeout: ${e?.message ?? e} — vi är redan anslutna)`);
             return;
           }
-          console.log(`${ts()}    connectAsync FEL: ${e?.message ?? e} — disconnectar och ger upp`);
+          dlog(`${ts()}    connectAsync FEL: ${e?.message ?? e} — disconnectar och ger upp`);
           try { await peripheral.disconnectAsync(); } catch {}
           finish({ connected: false, error: `connectAsync failed: ${e?.message ?? e}` });
         }
@@ -452,9 +453,9 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         if (matched) {
           // Detta ska aldrig hända nu (connectAsync har egen 5s timeout) —
           // men om det gör det, säg sanningen istället för "ingen matchade".
-          console.log(`${ts()} TIMEOUT efter ${timeoutMs}ms — match hittades men connect hängde (${discoverCount} discover-events)`);
+          dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — match hittades men connect hängde (${discoverCount} discover-events)`);
         } else {
-          console.log(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
+          dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
         }
         try { await n.stopScanningAsync(); } catch {}
         finish({
@@ -465,11 +466,11 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         });
       }, timeoutMs);
 
-      console.log(`${ts()} 2. startScanningAsync([], true)…`);
+      dlog(`${ts()} 2. startScanningAsync([], true)…`);
       n.startScanningAsync([], true)
-        .then(() => console.log(`${ts()}    startScanningAsync OK — väntar på match (${HARDCODED_DEVICE.mac})`))
+        .then(() => dlog(`${ts()}    startScanningAsync OK — väntar på match (${HARDCODED_DEVICE.mac})`))
         .catch((e: any) => {
-          console.log(`${ts()}    startScanningAsync FEL: ${e?.message ?? e}`);
+          dlog(`${ts()}    startScanningAsync FEL: ${e?.message ?? e}`);
           finish({ connected: false, error: `startScanningAsync failed: ${e?.message ?? e}` });
         });
     });
@@ -481,7 +482,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
     if (r.connected) {
       // Lyckad connect → nollställ failure-räknaren.
       if (_consecutiveFailures > 0) {
-        console.log(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
+        dlog(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
       }
       _consecutiveFailures = 0;
     } else {

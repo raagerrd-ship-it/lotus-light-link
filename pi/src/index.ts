@@ -13,6 +13,9 @@
 import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
+import { logDebugBanner } from './debugLog.js';
+logDebugBanner();
+
 import { getItem } from './storage.js';
 import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,

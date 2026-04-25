@@ -17,6 +17,7 @@
 
 import { getNobleAsync } from './noble-singleton.js';
 import { isHci0Up } from './adapter-hci-check.js';
+import { dlog } from "../debugLog.js";
 
 let _started = false;
 let _eventsBound = false;
@@ -29,7 +30,7 @@ function bindEvents(noble: any): void {
     noble.on(ev, (...args: unknown[]) => {
       const arg0: any = args[0];
       if (ev === 'discover') {
-        console.log(
+        dlog(
           `[event:${ev}]`,
           arg0?.address,
           arg0?.advertisement?.localName ?? '(no name)',
@@ -44,7 +45,7 @@ function bindEvents(noble: any): void {
         }
         return String(a);
       });
-      console.log(`[event:${ev}]`, ...parts);
+      dlog(`[event:${ev}]`, ...parts);
     });
   }
 }
@@ -70,7 +71,7 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   // adaptern och tar upp den korrekt — engine ska bara vänta passivt.
   //
   // Policy: mem://pi/ble/hci-up-only-policy — engine får aldrig mutera hci0.
-  console.log(`${ts()} 0. Väntar passivt på att hci0 är UP RUNNING (bluetoothd äger wake)...`);
+  dlog(`${ts()} 0. Väntar passivt på att hci0 är UP RUNNING (bluetoothd äger wake)...`);
   const waitStart = Date.now();
   let hciUp = isHci0Up();
   while (!hciUp && Date.now() - waitStart < 8000) {
@@ -79,7 +80,7 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   }
   if (!hciUp) {
     const error = 'hci0 inte UP RUNNING efter 8s — bluetoothd nere? (kör: sudo systemctl restart bluetooth)';
-    console.log(`${ts()}    ${error}`);
+    dlog(`${ts()}    ${error}`);
     return {
       ready: false,
       rawState: null,
@@ -87,29 +88,29 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
       error,
     };
   }
-  console.log(`${ts()}    hci0 UP RUNNING ✓ (väntat ${Date.now() - waitStart}ms)`);
+  dlog(`${ts()}    hci0 UP RUNNING ✓ (väntat ${Date.now() - waitStart}ms)`);
 
-  console.log(`${ts()} 1. Importing @stoprocent/noble...`);
+  dlog(`${ts()} 1. Importing @stoprocent/noble...`);
   const noble = await getNobleAsync();
-  console.log(`${ts()} 2. Imported. typeof noble.startScanningAsync =`, typeof noble.startScanningAsync);
-  console.log(`${ts()}    noble.state =`, noble.state, '| noble._state =', (noble as any)._state);
+  dlog(`${ts()} 2. Imported. typeof noble.startScanningAsync =`, typeof noble.startScanningAsync);
+  dlog(`${ts()}    noble.state =`, noble.state, '| noble._state =', (noble as any)._state);
 
   bindEvents(noble);
 
-  console.log(`${ts()} 3. Waiting 1s for any initial stateChange events...`);
+  dlog(`${ts()} 3. Waiting 1s for any initial stateChange events...`);
   await new Promise(r => setTimeout(r, 1000));
-  console.log(`${ts()}    noble.state efter 1s =`, noble.state);
+  dlog(`${ts()}    noble.state efter 1s =`, noble.state);
 
   if (noble.state !== 'poweredOn') {
-    console.log(`${ts()} 4. State är inte poweredOn — försöker waitForPoweredOnAsync(3s)...`);
+    dlog(`${ts()} 4. State är inte poweredOn — försöker waitForPoweredOnAsync(3s)...`);
     try {
       await Promise.race([
         (noble as any).waitForPoweredOnAsync(3000),
         new Promise((_, rej) => setTimeout(() => rej(new Error('outer timeout 4s')), 4000)),
       ]);
-      console.log(`${ts()}    waitForPoweredOnAsync resolved. state =`, noble.state);
+      dlog(`${ts()}    waitForPoweredOnAsync resolved. state =`, noble.state);
     } catch (e: any) {
-      console.log(`${ts()}    waitForPoweredOnAsync FEL:`, e?.message ?? e);
+      dlog(`${ts()}    waitForPoweredOnAsync FEL:`, e?.message ?? e);
       return {
         ready: false,
         rawState: noble.state ?? null,
@@ -118,12 +119,12 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
       };
     }
   } else {
-    console.log(`${ts()} 4. State redan poweredOn — hoppar waitForPoweredOnAsync`);
+    dlog(`${ts()} 4. State redan poweredOn — hoppar waitForPoweredOnAsync`);
   }
 
   _started = true;
   const ready = noble.state === 'poweredOn';
-  console.log(`${ts()} 5. Motor redo=${ready} (state=${noble.state})`);
+  dlog(`${ts()} 5. Motor redo=${ready} (state=${noble.state})`);
   return { ready, rawState: noble.state ?? null, durationMs: Date.now() - t0 };
 }
 

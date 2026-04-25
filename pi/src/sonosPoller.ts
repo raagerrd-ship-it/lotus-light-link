@@ -12,6 +12,8 @@
  *   - GET  {baseUrl}/events   → SSE stream
  */
 
+import { dlog } from './debugLog.js';
+
 export interface SonosPollerConfig {
   /** Base URL for the Sonos gateway (e.g. "http://localhost:3000/api/sonos") */
   baseUrl: string;
@@ -48,7 +50,7 @@ let autoTvModeEnabled = false;
 
 export function setAutoTvMode(enabled: boolean): void {
   autoTvModeEnabled = enabled;
-  console.log(`[Sonos] Auto TV-mode: ${enabled ? 'ON' : 'OFF'}`);
+  dlog(`[Sonos] Auto TV-mode: ${enabled ? 'ON' : 'OFF'}`);
 }
 
 export function getAutoTvMode(): boolean {
@@ -248,7 +250,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         if (!sseActive) {
           sseActive = true;
           stopPollTimer();
-          console.log(`[Sonos] SSE active — pollTimer paused`);
+          dlog(`[Sonos] SSE active — pollTimer paused`);
         }
       };
       es.onmessage = (e: any) => {
@@ -262,9 +264,9 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         }
       };
       sseCleanup = () => es.close();
-      console.log(`[Sonos] SSE connecting → ${sseUrl}`);
+      dlog(`[Sonos] SSE connecting → ${sseUrl}`);
     } catch {
-      console.log('[Sonos] No SSE support, using poll-only mode');
+      dlog('[Sonos] No SSE support, using poll-only mode');
     }
   }
 
@@ -279,7 +281,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   // Starta pollen som fallback — SSE.onopen pausar den när den ansluter
   startPollTimer();
 
-  console.log(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, mode: trust-gateway-state)`);
+  dlog(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, mode: trust-gateway-state)`);
 }
 
 export function stopSonosPoller(): void {

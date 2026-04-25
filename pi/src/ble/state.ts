@@ -8,13 +8,14 @@
 
 import { noble, hasNobleLoaded } from './noble-singleton.js';
 import type { ConnectedDevice } from './types.js';
+import { dlog } from "../debugLog.js";
 export { hasNobleLoaded, noble };
 
 export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 
 export const BLE_BUILD_TAG = '2026-04-25/conninterval-20ms';
-console.log(`[BLE] build tag: ${BLE_BUILD_TAG}`);
+dlog(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Subsystem state (mic + sonos + engine — bleEngine borttaget) ──
 export type SubsystemId = 'mic' | 'sonos' | 'engine';
@@ -41,14 +42,14 @@ export function getAllSubsystemStates(): Record<SubsystemId, SubsystemState> {
 }
 export function markSubsystemStarting(id: SubsystemId): void {
   _subsystems[id] = { status: 'starting', startedAt: Date.now(), readyAt: null, durationMs: null, error: null };
-  console.log(`[Subsystem] ${id} → starting`);
+  dlog(`[Subsystem] ${id} → starting`);
 }
 export function markSubsystemReady(id: SubsystemId): void {
   const s = _subsystems[id];
   const startedAt = s.startedAt ?? Date.now();
   const readyAt = Date.now();
   _subsystems[id] = { status: 'ready', startedAt, readyAt, durationMs: readyAt - startedAt, error: null };
-  console.log(`[Subsystem] ${id} → ready (${_subsystems[id].durationMs}ms)`);
+  dlog(`[Subsystem] ${id} → ready (${_subsystems[id].durationMs}ms)`);
 }
 export function markSubsystemError(id: SubsystemId, error: string): void {
   const s = _subsystems[id];

@@ -21,6 +21,7 @@
  */
 
 import { getNoble } from './noble-singleton.js';
+import { dlog } from "../debugLog.js";
 
 const DRAIN_DIAG = process.env.DRAIN_DIAG === 'true';
 
@@ -51,7 +52,7 @@ export function attachControllerDrain(peripheral: any): void {
     _hci = bindings?._hci ?? null;
     _aclConnections = _hci?._aclConnections ?? null;
     _aclQueue = Array.isArray(_hci?._aclQueue) ? _hci._aclQueue : null;
-    console.log(`[controllerDrain] attached uuid=${uuid} handle=${handle}`);
+    dlog(`[controllerDrain] attached uuid=${uuid} handle=${handle}`);
   } catch (e: any) {
     console.warn(`[controllerDrain] attach FEL: ${e?.message ?? e} — drain-gate degraderas`);
     _attachedHandle = null;
@@ -64,7 +65,7 @@ export function attachControllerDrain(peripheral: any): void {
 
 export function detachControllerDrain(): void {
   if (_attachedHandle != null) {
-    console.log(`[controllerDrain] detached handle=${_attachedHandle}`);
+    dlog(`[controllerDrain] detached handle=${_attachedHandle}`);
   }
   _attachedHandle = null;
   _attachedPeripheralUuid = null;
@@ -107,7 +108,7 @@ export function getOutstandingPackets(): number {
         const hasConn = !!conn;
         const hasAclQueue = !!_aclQueue;
         const connKeys = conn ? Object.keys(conn).join(',') : '(no-conn)';
-        console.log(`[controllerDrain:diag] pending=${pending} queued=${queued} maxPending=${_maxPendingSeen} maxQueued=${_maxQueuedSeen} hasConn=${hasConn} hasAclQueue=${hasAclQueue} connKeys=${connKeys}`);
+        dlog(`[controllerDrain:diag] pending=${pending} queued=${queued} maxPending=${_maxPendingSeen} maxQueued=${_maxQueuedSeen} hasConn=${hasConn} hasAclQueue=${hasAclQueue} connKeys=${connKeys}`);
         _maxPendingSeen = 0;
         _maxQueuedSeen = 0;
       }
