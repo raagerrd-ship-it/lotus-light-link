@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, RefreshCw, Skull, Bug, HelpCircle } from "lucide-react";
+import { AlertTriangle, RefreshCw, Skull, Bug, HelpCircle, Activity } from "lucide-react";
 
 /**
  * RestartHistoryPanel — visar senaste 20 restarts från /api/status.restarts.
@@ -22,6 +22,15 @@ interface RestartEntry {
   detail: string | null;
   uptimeBeforeMs: number | null;
   memoryBeforeMb: number | null;
+}
+
+interface SubsystemTransition {
+  ts: string;
+  id: "mic" | "sonos" | "engine";
+  from: "idle" | "starting" | "ready" | "error";
+  to: "idle" | "starting" | "ready" | "error";
+  error: string | null;
+  uptimeMs: number | null;
 }
 
 interface Props {
@@ -68,6 +77,7 @@ function formatTimeAgo(iso: string): string {
 
 export function RestartHistoryPanel({ piBase }: Props) {
   const [entries, setEntries] = useState<RestartEntry[]>([]);
+  const [transitions, setTransitions] = useState<SubsystemTransition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,8 +88,10 @@ export function RestartHistoryPanel({ piBase }: Props) {
       });
       const j = await r.json();
       const list: RestartEntry[] = Array.isArray(j?.restarts) ? j.restarts : [];
+      const tlist: SubsystemTransition[] = Array.isArray(j?.subsystemTransitions) ? j.subsystemTransitions : [];
       // Nyaste först
       setEntries([...list].reverse());
+      setTransitions([...tlist].reverse());
       setError(null);
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -186,6 +198,50 @@ export function RestartHistoryPanel({ piBase }: Props) {
             })}
           </ol>
         )}
+
+        {/* Subsystem-fall: ready→error eller ready→idle = något stängdes av */}
+        {transitions.length > 0 && (() => {
+          const falls = transitions.filter(
+            (t) => t.from === "ready" && (t.to === "error" || t.to === "idle")
+          );
+          if (falls.length === 0) return null;
+          return (
+            <div className="space-y-1.5 pt-2 border-t border-border/40">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                <Activity className="h-3 w-3" />
+                Subsystem som föll bort ({falls.length})
+              </div>
+              <ol className="space-y-1">
+                {falls.slice(0, 10).map((t, idx) => (
+                  <li
+                    key={`${t.ts}-${idx}`}
+                    className="rounded-md border border-border/60 bg-background/40 p-2 space-y-0.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-mono text-foreground">{t.id}</span>
+                        <span className="text-muted-foreground">
+                          ready → {t.to}
+                        </span>
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatTimeAgo(t.ts)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/80">
+                      höll {formatUptime(t.uptimeMs)} innan fall
+                    </div>
+                    {t.error && (
+                      <div className="text-[10px] text-destructive/90 break-words font-mono leading-snug max-h-16 overflow-y-auto">
+                        {t.error}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          );
+        })()}
       </div>
     </details>
   );

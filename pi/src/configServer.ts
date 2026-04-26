@@ -10,7 +10,7 @@ import {
   bleStats, BLE_BUILD_TAG,
   setDimmingGamma, getDimmingGamma,
   getMinWriteIntervalMs, setMinWriteIntervalMs,
-  getAllSubsystemStates, getSubsystemState, type SubsystemId,
+  getAllSubsystemStates, getSubsystemState, getSubsystemTransitions, type SubsystemId,
 } from './ble/index.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
@@ -561,6 +561,13 @@ export function startConfigServer(port = 3050): void {
       // så användaren ser om motorn dör ofta och varför.
       restarts: (() => {
         try { return getRestartHistory().slice(-20); }
+        catch { return []; }
+      })(),
+      // Subsystem-transitions (senaste 30, nyaste sist) — visar varje gång ett
+      // subsystem byter status (inkl. ready→error/idle), så vi kan se exakt
+      // när och varför något föll bort utan journalctl.
+      subsystemTransitions: (() => {
+        try { return getSubsystemTransitions().slice(-30); }
         catch { return []; }
       })(),
     });
