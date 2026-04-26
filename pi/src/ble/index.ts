@@ -6,8 +6,8 @@ export type { DeviceMode, PiCharacteristic, DiscoveredDevice } from './types.js'
 
 export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID } from './state.js';
 export { getDevice, setDevice, isDemandActive } from './state.js';
-export { getSubsystemState, getAllSubsystemStates, markSubsystemStarting, markSubsystemReady, markSubsystemError, resetSubsystem } from './state.js';
-export type { SubsystemId, SubsystemStatus, SubsystemState } from './state.js';
+export { getSubsystemState, getAllSubsystemStates, markSubsystemStarting, markSubsystemReady, markSubsystemError, resetSubsystem, getSubsystemTransitions } from './state.js';
+export type { SubsystemId, SubsystemStatus, SubsystemState, SubsystemTransition } from './state.js';
 export { noble, hasNobleLoaded } from './state.js';
 
 export { sendToBLE, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma, getMinWriteIntervalMs, setMinWriteIntervalMs, getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './protocol.js';
