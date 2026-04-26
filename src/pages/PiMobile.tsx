@@ -6,6 +6,7 @@ import { BleControlPanel } from "@/components/BleControlPanel";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { LiveStrip } from "@/components/LiveStrip";
 import { StartAllPanel } from "@/components/StartAllPanel";
+import { RestartHistoryPanel } from "@/components/RestartHistoryPanel";
 
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
