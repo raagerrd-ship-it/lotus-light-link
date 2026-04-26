@@ -960,6 +960,10 @@ export class PiLightEngine {
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
 
+      // Auto-tune sampler: registrera RÅ pct innan deadband applicerats,
+      // så analysen ser den riktiga jitter-amplituden engine försökt skicka.
+      if (this.autoTuneActive) this.recordAutoTuneSample(pct);
+
       // ── 7b. Anti-flicker perceptuell deadband (Weber-Fechner) ──
       // Ögat märker större relativ förändring vid låg ljusstyrka, mindre vid hög.
       // deadbandPct skalas: ~0.5×base vid pct=0, ~1.5×base vid pct=100.
