@@ -515,6 +515,9 @@ export function startConfigServer(port = 3050): void {
         paletteNext: sonos?.nextPalette ?? null,     // [r,g,b][] | null
         track: sonos?.trackName ?? null,
         artist: sonos?.artistName ?? null,
+        nextTrack: sonos?.nextTrackName ?? null,
+        nextArtist: sonos?.nextArtistName ?? null,
+        playbackState: sonos?.playbackState ?? null,
         queue: queueLen,
       },
       engine: engine
