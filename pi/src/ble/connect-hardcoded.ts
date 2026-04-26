@@ -514,11 +514,13 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   try {
     const r = await inflight;
     if (r.connected) {
-      // Lyckad connect → nollställ failure-räknaren.
+      // Lyckad connect → nollställ failure-räknaren + disconnect-tracking.
       if (_consecutiveFailures > 0) {
         dlog(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
       }
       _consecutiveFailures = 0;
+      _lastDisconnectWasAuto = false;
+      _lastDisconnectReason = 'unknown';
     } else {
       _consecutiveFailures++;
       console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures)`);
