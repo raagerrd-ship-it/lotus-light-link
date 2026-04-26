@@ -286,7 +286,11 @@ export class PiLightEngine {
 
   private dynamicCenter = 0.5;
   private smoothed = 0;  // EMA-state för release-smoothing @ tick-takt
-  
+  // Anti-flicker: senast skickad brightness (post-slew, pre-gamma, 0..1)
+  private lastBrightness = 0;
+  // Anti-flicker: senast UI-/BLE-rapporterad pct (för deadband-jämförelse)
+  private lastSentPct = -1;
+
 
   // Onset detection state — zero-alloc insertion-sort median
   private onsetBuffer: Float64Array;
