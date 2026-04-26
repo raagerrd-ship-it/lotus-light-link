@@ -11,6 +11,41 @@
 
 import { fft1024, FFT_N } from './fftRadix2.js';
 import { dlog } from "./debugLog.js";
+import { getItem, setItem } from './storage.js';
+
+// Persistens av mic-state över restart. Tappades tidigare vid varje crash/restart →
+// användaren upplevde "den glömde autogain mitt i låten" som en buggig auto-update.
+// Sparas i DATA_DIR/mic-state.json via samma storage-shim som resten av engine.
+const MIC_STATE_KEY = 'mic-state';
+interface PersistedMicState {
+  autoGainEnabled?: boolean;
+  micGainBase?: number;
+  calPoint1?: { vol: number; gain: number } | null;
+  calPoint2?: { vol: number; gain: number } | null;
+}
+function saveMicState(): void {
+  try {
+    const s: PersistedMicState = {
+      autoGainEnabled,
+      micGainBase,
+      calPoint1,
+      calPoint2,
+    };
+    setItem(MIC_STATE_KEY, JSON.stringify(s));
+  } catch (e: any) {
+    dlog(`[ALSA] saveMicState failed: ${e?.message ?? e}`);
+  }
+}
+function loadMicState(): PersistedMicState | null {
+  try {
+    const raw = getItem(MIC_STATE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedMicState;
+  } catch (e: any) {
+    dlog(`[ALSA] loadMicState failed: ${e?.message ?? e}`);
+    return null;
+  }
+}
 
 // Dynamic import — alsa-capture is vendored as a fork in pi/vendor/alsa-capture/
 // (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.
@@ -418,6 +453,7 @@ export function getAutoGainMultiplier(): number { return micGainAuto; }
 export function setMicGain(gain: number): void {
   micGainBase = Math.max(0.1, Math.min(50, gain));
   updateEffectiveGain();
+  saveMicState();
   dlog(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x, auto=${autoGainEnabled})`);
 }
 
@@ -439,6 +475,7 @@ export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainC
 export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | null): void {
   calPoint1 = p1;
   calPoint2 = p2;
+  saveMicState();
   if (p1 && p2) {
     dlog(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
     // Räkna om direkt från senast kända volym så slider-ändringar syns omedelbart
@@ -475,6 +512,7 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
 export function disableAutoGain(): void {
   autoGainEnabled = false;
   updateEffectiveGain();
+  saveMicState();
   dlog(`[ALSA] Auto-gain disabled → manual base gain ${micGainBase.toFixed(1)}x active`);
 }
 
@@ -489,7 +527,21 @@ export function enableAutoGain(): void {
     updateEffectiveGain();
     dlog(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (no cached vol yet, awaiting Sonos poll)`);
   }
+  saveMicState();
 }
+
+// Restore persisted state vid modulinit. Körs efter att alla let:s deklarerats.
+// Krasch/restart mitt i låt → samma autogain/gain/cal som innan.
+(function restoreMicState() {
+  const s = loadMicState();
+  if (!s) { dlog('[ALSA] No persisted mic-state found, using defaults'); return; }
+  if (typeof s.micGainBase === 'number') micGainBase = Math.max(0.1, Math.min(50, s.micGainBase));
+  if (s.calPoint1 && typeof s.calPoint1.vol === 'number' && typeof s.calPoint1.gain === 'number') calPoint1 = s.calPoint1;
+  if (s.calPoint2 && typeof s.calPoint2.vol === 'number' && typeof s.calPoint2.gain === 'number') calPoint2 = s.calPoint2;
+  if (typeof s.autoGainEnabled === 'boolean') autoGainEnabled = s.autoGainEnabled;
+  updateEffectiveGain();
+  dlog(`[ALSA] Restored mic-state: base=${micGainBase.toFixed(1)}x auto=${autoGainEnabled} cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
+})();
 
 export function getAlsaDevice(): string {
   return currentDevice;
