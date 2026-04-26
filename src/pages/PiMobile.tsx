@@ -68,13 +68,11 @@ function alphaToAttack(alpha: number) {
   return 100 - alphaToCurve(alpha);
 }
 
-type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'maxRisePerSec' | 'maxFallPerSec' | 'flickerDeadband';
+type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'flickerDeadband';
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = bara disk, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
   { key: "attack", label: "Attack", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar" },
   { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
-  { key: "maxRisePerSec", label: "Anti-fladder ⤴ tak", min: 1, max: 20, step: 0.5, unit: "/s", description: "Tak på hur snabbt ljuset får stiga. 20 = praktiskt taget av, 4 = mjukt. Skyddar mot brus i toppen." },
-  { key: "maxFallPerSec", label: "Anti-fladder ⤵ tak", min: 0.5, max: 10, step: 0.25, unit: "/s", description: "Tak på hur snabbt ljuset får falla. Lägre = mjukare release-tak, eliminerar pendling i loud passager." },
   { key: "flickerDeadband", label: "Anti-fladder deadband", min: 0, max: 0.08, step: 0.005, description: "0 = av. Mikroändringar under tröskeln ignoreras helt. Skalas perceptuellt med nivå." },
   { key: "onsetThreshold", label: "Beat-känslighet", min: 1.3, max: 2.5, step: 0.05, unit: "×", description: "Lägre = fler beats triggar (känsligare). 1.3 = mycket känslig, 2.5 = bara tydliga slag" },
   { key: "onsetRefractoryMs", label: "Beat-mellanrum", min: 50, max: 250, step: 10, unit: "ms", description: "Minsta gap mellan beats. Högt värde = lugnare puls" },
@@ -596,11 +594,9 @@ function AutoTuneAntiFlickerPanel({
     setStatus(null);
   };
 
-  const apply = async (which: 'both' | 'fall' | 'deadband') => {
+  const apply = async () => {
     if (!status?.suggestion) return;
-    const body: Record<string, number> = {};
-    if (which === 'both' || which === 'fall') body.maxFallPerSec = status.suggestion.maxFallPerSec;
-    if (which === 'both' || which === 'deadband') body.flickerDeadband = status.suggestion.flickerDeadband;
+    const body: Record<string, number> = { flickerDeadband: status.suggestion.flickerDeadband };
     try {
       const r = await fetch(`${piBase}/api/autotune/apply`, {
         method: 'POST',
@@ -647,7 +643,7 @@ function AutoTuneAntiFlickerPanel({
 
       <p className="text-[10px] text-muted-foreground leading-snug">
         Spela en låt som brukar fladdra. Mätningen registrerar varje pct-rörelse och
-        föreslår mjukare ⤵ tak och deadband.
+        föreslår en lämplig deadband-tröskel.
       </p>
 
       {error && (
@@ -699,12 +695,6 @@ function AutoTuneAntiFlickerPanel({
               </span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">⤵ tak (nu → förslag)</span>
-              <span className="font-mono">
-                {cal.maxFallPerSec.toFixed(2)}/s → <span className="text-primary font-semibold">{sug.maxFallPerSec.toFixed(2)}/s</span>
-              </span>
-            </div>
-            <div className="flex justify-between text-[11px]">
               <span className="text-muted-foreground">Deadband (nu → förslag)</span>
               <span className="font-mono">
                 {cal.flickerDeadband.toFixed(3)} → <span className="text-primary font-semibold">{sug.flickerDeadband.toFixed(3)}</span>
@@ -714,26 +704,12 @@ function AutoTuneAntiFlickerPanel({
               {sug.samplesUsed} samples @ {sug.sampleRateHz.toFixed(1)} Hz
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              onClick={() => apply('fall')}
-              className="py-1.5 rounded-lg bg-secondary text-secondary-foreground text-[11px] font-medium active:scale-95"
-            >
-              Bara ⤵
-            </button>
-            <button
-              onClick={() => apply('deadband')}
-              className="py-1.5 rounded-lg bg-secondary text-secondary-foreground text-[11px] font-medium active:scale-95"
-            >
-              Bara deadb.
-            </button>
-            <button
-              onClick={() => apply('both')}
-              className="py-1.5 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold active:scale-95"
-            >
-              ✓ Båda
-            </button>
-          </div>
+          <button
+            onClick={apply}
+            className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold active:scale-95 transition-transform"
+          >
+            ✓ Tillämpa deadband-förslag
+          </button>
           <button
             onClick={() => setStatus(null)}
             className="w-full py-1 text-[10px] text-muted-foreground active:text-foreground"
