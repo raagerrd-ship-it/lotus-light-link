@@ -10,7 +10,7 @@ import {
   bleStats, BLE_BUILD_TAG,
   setDimmingGamma, getDimmingGamma,
   getMinWriteIntervalMs, setMinWriteIntervalMs,
-  getAllSubsystemStates, getSubsystemState, type SubsystemId,
+  getAllSubsystemStates, getSubsystemState, getSubsystemTransitions, type SubsystemId,
 } from './ble/index.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
