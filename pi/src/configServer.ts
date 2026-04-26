@@ -475,6 +475,7 @@ export function startConfigServer(port = 3050): void {
     const sonos = getSonosState();
     const engine = getEngine();
     const { getHardcodedConnected, getLastDisconnectReason } = await import('./ble/connect-hardcoded.js');
+    const { getRestartHistory } = await import('./restartLog.js');
     const c = getHardcodedConnected();
     // Live UI-strip: input/output/queue/palette/låt
     // Input = rå RMS efter mic-gain (samma källa som VU-mätaren i Avancerat).
