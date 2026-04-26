@@ -250,11 +250,14 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     return 'busy';
   }
 
-  // Brightness-skala + delta-check
+  // BLEDOM-quirk: skala INTE RGB med brightness — firmware blandar då in vitt
+  // för att kompensera energi-balans → blekta/pastellaktiga färger. Skicka
+  // mättat RGB och låt brightness-byten (cbr) ensam styra dimningen.
+  // Perceptual gamma-LUT är fortfarande aktiv via brightnessToScale → cbr.
   const scale = brightnessToScale(brightness);
-  const cr = (r * scale + 0.5) | 0;
-  const cg = (g * scale + 0.5) | 0;
-  const cb = (b * scale + 0.5) | 0;
+  const cr = r;
+  const cg = g;
+  const cb = b;
   const cbr = (scale * 0xff + 0.5) | 0;
 
   // Stale-write force: garanterar minst ~5 pkt/s under playing även när
