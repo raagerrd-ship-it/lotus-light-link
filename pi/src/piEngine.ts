@@ -291,6 +291,19 @@ export class PiLightEngine {
   // Anti-flicker: senast UI-/BLE-rapporterad pct (för deadband-jämförelse)
   private lastSentPct = -1;
 
+  // ── Auto-tune sampler ──
+  // När aktiv: sparar varje tick (postSlew, preDeadband) som rå pct (0..100)
+  // tillsammans med tickMs. Används av analyzeAutoTuneSamples() för att
+  // föreslå maxFallPerSec och flickerDeadband. Ringbuffer med fast tak.
+  private autoTuneActive = false;
+  private autoTuneStartedAt = 0;
+  private autoTuneDurationMs = 0;
+  private autoTuneSamples: Float32Array = new Float32Array(0);
+  private autoTuneTickMs: Float32Array = new Float32Array(0);
+  private autoTunePos = 0;
+  private autoTuneCount = 0;
+  private autoTuneCap = 0;
+
 
   // Onset detection state — zero-alloc insertion-sort median
   private onsetBuffer: Float64Array;
