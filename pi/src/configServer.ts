@@ -546,6 +546,16 @@ export function startConfigServer(port = 3050): void {
             hz: null,
             palette: [],
           },
+      idle: engine
+        ? {
+            enteredAt: engine.getIdleEnteredAt?.() ?? null,
+            disconnectInMs: engine.getIdleEnteredAt?.()
+              ? Math.max(0, (engine.getIdleEnteredAt()! + 2 * 60 * 1000) - Date.now())
+              : null,
+            micPausedForIdle: engine.isMicPausedForIdle?.() ?? false,
+            lastDisconnectReason: getLastDisconnectReason(),
+          }
+        : null,
     });
   });
 
