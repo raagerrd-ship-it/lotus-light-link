@@ -74,3 +74,4 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [Settings survive updates](mem://pi/deployment/settings-survive-updates) — pi/data/ rörs aldrig av update/setup; storage.ts auto-migrerar mellan legacy-paths
 - [Sonos stale-watchdog](mem://pi/sonos/stale-watchdog) — 10s watchdog tvingar PAUSED om status saknas i PLAYING (skydd mot fastnad output)
 - [Saturation mapping](mem://technical/lighting/saturation-mapping) — Vit-rensning (min-channel subtract + peak-boost) bevarar hue, default saturation=1.0 i alla profiler
+- [Idle-disconnect policy](mem://pi/runtime/idle-disconnect-policy) — Efter 2 min Sonos-paus: idle-färg @ 100% → BLE off → ALSA stop (~20-25% CPU). Reconnect bara via Sonos PLAYING om disconnect var auto. Manual UI-disconnect blockerar reconnect.
