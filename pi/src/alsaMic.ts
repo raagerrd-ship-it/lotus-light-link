@@ -202,6 +202,21 @@ export function setMicSmoothing(_attackAlpha: number, _releaseAlpha: number): vo
 // kicken efter en tyst passage (3× knee-ramp). bassRms etc. flödar nu rakt
 // från rå RMS — ingen attenuation, ingen recovery.
 
+// ── Anti-alias smoothing över FFT-frames ──
+// Tick:en (50 Hz) samplar bara hälften av FFT-frames (100 Hz), vilket gör att
+// frame-to-frame-brus ser ut som synliga hopp i ljuset. En kort rolling average
+// över ~3 FFT-frames glättar bruset utan att gömma transienter:
+//   - Window 3 frames ≈ 30ms total averaging
+//   - Kick-trummor (attack ~15ms) når full styrka inom 1-2 fönster (10-20ms latens)
+//   - Långt under perceptuell tröskel för "samtidig" ljud+ljus (~50ms)
+// Pre-allokerade typed arrays — noll allokering i hot path.
+const FFT_SMOOTH_WINDOW = 3;
+const fftBassHistory = new Float32Array(FFT_SMOOTH_WINDOW);
+const fftMidHiHistory = new Float32Array(FFT_SMOOTH_WINDOW);
+const fftTotalHistory = new Float32Array(FFT_SMOOTH_WINDOW);
+let fftHistoryPos = 0;
+let fftHistoryFilled = 0;
+
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
 
@@ -302,11 +317,29 @@ function processFFT(): void {
   const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
 
 
-  // ── Bands flödar rakt från rå RMS — smoothing görs i engine.tickInner ──
-  latestBands.bassRms = rawBass;
-  latestBands.midHiRms = rawMidHi;
-  latestBands.totalRms = rawTotal;
-  latestBands.flux = flux;
+  // ── Anti-alias smoothing: rolling average över senaste FFT-frames ──
+  // Eliminerar frame-to-frame-brus (alias mellan ~100Hz FFT och 50Hz tick) utan
+  // att gömma transient-respons. EMA-smoothingen i engine.tickInner körs ovanpå
+  // detta för musikalisk mjukhet. flux smoothas EJ — onset-detektion behöver
+  // skarpa transienter för att fånga kick-trummor.
+  fftBassHistory[fftHistoryPos] = rawBass;
+  fftMidHiHistory[fftHistoryPos] = rawMidHi;
+  fftTotalHistory[fftHistoryPos] = rawTotal;
+  fftHistoryPos = (fftHistoryPos + 1) % FFT_SMOOTH_WINDOW;
+  if (fftHistoryFilled < FFT_SMOOTH_WINDOW) fftHistoryFilled++;
+
+  let bassSum = 0, midHiSum = 0, totalSum_smooth = 0;
+  for (let i = 0; i < fftHistoryFilled; i++) {
+    bassSum += fftBassHistory[i];
+    midHiSum += fftMidHiHistory[i];
+    totalSum_smooth += fftTotalHistory[i];
+  }
+  const invFilled = 1 / fftHistoryFilled;
+
+  latestBands.bassRms = bassSum * invFilled;
+  latestBands.midHiRms = midHiSum * invFilled;
+  latestBands.totalRms = totalSum_smooth * invFilled;
+  latestBands.flux = flux;  // skarp — onset-detektion behöver detta
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
   if (DEBUG_ENABLED) {
@@ -333,6 +366,12 @@ export function getLatestBands(): BandResult {
 
 export function resetFluxState(): void {
   prevPower.fill(0);
+  // Nollställ anti-alias-historik så pre/post-paus-data inte blandas
+  fftBassHistory.fill(0);
+  fftMidHiHistory.fill(0);
+  fftTotalHistory.fill(0);
+  fftHistoryPos = 0;
+  fftHistoryFilled = 0;
 }
 
 /** Return timestamp (performance.now) of last FFT completion */
