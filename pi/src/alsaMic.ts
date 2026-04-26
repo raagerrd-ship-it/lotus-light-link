@@ -561,6 +561,11 @@ let _audioCbFirstAt = 0;
 export function getAudioCbStats() {
   return { count: _audioCbCount, bytes: _audioCbBytes, firstAt: _audioCbFirstAt };
 }
+
+/** True om ALSA-capture är aktiv just nu. Används av idle-disconnect-pathen. */
+export function isMicActive(): boolean {
+  return capture !== null;
+}
 function onAudioData(buf: Buffer): void {
   _audioCbCount++;
   _audioCbBytes += buf.byteLength;

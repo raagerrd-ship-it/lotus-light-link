@@ -13,10 +13,12 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing, stopMic } from './alsaMic.js';
 import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
+import { triggerIdleDisconnect } from './ble/connect-hardcoded.js';
+import { isControllerDrainAttached, getOutstandingPackets } from './ble/controllerDrain.js';
 import { getItem, setItem } from './storage.js';
 import { dlog } from "./debugLog.js";
 
@@ -475,6 +477,74 @@ export class PiLightEngine {
   /** True om BLE är ansluten (owner !== 'none'). */
   private get _bleConnected(): boolean { return this._bleOwner !== 'none'; }
 
+  // ── Idle-disconnect (2 min utan musik → koppla från lampan + stoppa ALSA) ──
+  // Sparar ~20-25% CPU på Pi Zero 2 W under långa pauser. Reconnect triggas
+  // enbart av Sonos PLAYING-event (audio-wake medvetet uteslutet pga rumssamtal).
+  // Se mem://pi/runtime/idle-disconnect-policy.
+  private _idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _idleEnteredAt: number | null = null;
+  private _micPausedForIdle = false;
+  private _lastPlayingChangeAt = 0;
+  private static readonly IDLE_DISCONNECT_MS = 2 * 60 * 1000;
+  private static readonly PLAYING_DEBOUNCE_MS = 500;
+
+  /** Status-getter för /api/status. Null om ingen idle-timer aktiv. */
+  getIdleEnteredAt(): number | null { return this._idleEnteredAt; }
+  isMicPausedForIdle(): boolean { return this._micPausedForIdle; }
+
+  private clearIdleDisconnectTimer(): void {
+    if (this._idleDisconnectTimer) {
+      clearTimeout(this._idleDisconnectTimer);
+      this._idleDisconnectTimer = null;
+    }
+    this._idleEnteredAt = null;
+  }
+
+  private async handleIdleDisconnect(): Promise<void> {
+    this._idleDisconnectTimer = null;
+    if (this.playing || this._bleOwner === 'none') {
+      this._idleEnteredAt = null;
+      dlog('[Engine] Idle-disconnect avbruten — state har ändrats');
+      return;
+    }
+    dlog('[Engine] Idle-disconnect: idle-färg @ 100% → drain HCI → BLE off → ALSA stop');
+
+    // 1. Sista write: idle-färg @ full ljusstyrka så lampan står lyst efter disconnect.
+    const idle = loadIdleColor();
+    try { sendToBLE(idle[0], idle[1], idle[2], 100); } catch (e: any) {
+      dlog(`[Engine] sendIdleFullBrightness failed: ${e?.message ?? e}`);
+    }
+
+    // 2. Vänta tills HCI-kön är tom så paketet faktiskt går iväg (max 500ms).
+    const deadline = Date.now() + 500;
+    while (isControllerDrainAttached() && getOutstandingPackets() > 0) {
+      if (Date.now() > deadline) {
+        dlog('[Engine] Outstanding-wait timeout — fortsätter ändå');
+        break;
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    // 3. Stoppa keep-alive innan disconnect (förhindrar race med write-failure).
+    stopKeepAlive();
+
+    // 4. Disconnect (markeras som auto → Sonos PLAYING får reconnecta senare).
+    try { await triggerIdleDisconnect(); } catch (e: any) {
+      dlog(`[Engine] triggerIdleDisconnect failed: ${e?.message ?? e}`);
+    }
+
+    // 5. Stoppa ALSA-mic → ~20-25% CPU-besparing under idle.
+    try {
+      stopMic();
+      this._micPausedForIdle = true;
+      dlog('[Engine] ALSA-mic stoppad — väntar på Sonos PLAYING-event');
+    } catch (e: any) {
+      dlog(`[Engine] stopMic failed: ${e?.message ?? e}`);
+    }
+
+    this._idleEnteredAt = null;
+  }
+
   /** Anropas av connect-hardcoded EFTER lyckad anchor write.
    *  Keep-alive kör BARA i idle-mode. Under playing räcker FFT-write-kedjan
    *  (med min 5 pkt/s garanti via stale-write-force i protocol.ts) för att
@@ -483,6 +553,9 @@ export class PiLightEngine {
   onBleConnected(): void {
     if (this._bleOwner !== 'none') return;
     this._bleOwner = this.playing ? 'active' : 'idle';
+    // Färsk session — rensa ev. pending idle-disconnect-timer + mic-paus-flagga.
+    this.clearIdleDisconnectTimer();
+    this._micPausedForIdle = false;
     if (!this.playing) {
       this.forceIdleNow();
       startKeepAlive();
@@ -506,10 +579,20 @@ export class PiLightEngine {
     if (this._bleOwner === 'none') return;
     this._bleOwner = 'none';
     stopKeepAlive();
+    // Rensa idle-timer (kan vara pending om disconnect kom innan timeout fyrade).
+    this.clearIdleDisconnectTimer();
     dlog('[Engine] BLE disconnected → owner=none, keep-alive STOPPAD');
   }
 
   setPlaying(playing: boolean): void {
+    // Anti-flap debounce: Sonos kan rapportera STOPPED→TRANSITIONING→PLAYING
+    // inom <1s vid trackbyte. 500ms guard filtrerar ut snabba fluktuationer.
+    const now = Date.now();
+    if (now - this._lastPlayingChangeAt < PiLightEngine.PLAYING_DEBOUNCE_MS) {
+      return;
+    }
+    this._lastPlayingChangeAt = now;
+
     const wasPlaying = this.playing;
     this.playing = playing;
     if (playing === wasPlaying) return;
@@ -528,6 +611,14 @@ export class PiLightEngine {
         this.forceIdleNow();
         startKeepAlive();
         dlog('[Engine] → idle mode (owner=idle, keep-alive PÅ)');
+        // Schemalägg auto-disconnect efter 2 min utan musik.
+        this.clearIdleDisconnectTimer();
+        this._idleEnteredAt = now;
+        this._idleDisconnectTimer = setTimeout(
+          () => { void this.handleIdleDisconnect(); },
+          PiLightEngine.IDLE_DISCONNECT_MS,
+        );
+        dlog(`[Engine] Idle-disconnect schemalagd om ${PiLightEngine.IDLE_DISCONNECT_MS / 1000}s`);
       } else {
         dlog('[Engine] → idle mode (BLE ej ansluten)');
       }
@@ -535,6 +626,7 @@ export class PiLightEngine {
       // idle → active: stoppa keep-alive (FFT-writes tar över), starta loop.
       // Keep-alive får ALDRIG köra parallellt med active path — det skulle
       // bygga kö i HCI-lagret.
+      this.clearIdleDisconnectTimer();
       this.startLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'active';

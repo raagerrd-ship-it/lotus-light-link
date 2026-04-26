@@ -60,6 +60,17 @@ let _autoReconnectGivenUp = false;
 let _lastReconnectRequestAt = 0;
 const RECONNECT_DEBOUNCE_MS = 1000;
 
+// ── Tracking av senaste disconnect-orsak ──
+// Manuell disconnect (UI-knapp) → wasAuto=false → Sonos-PLAYING-pathen i
+// index.ts blockerar auto-reconnect (manual-only-policy gäller).
+// Idle-timeout-disconnect (engine.handleIdleDisconnect) → wasAuto=true →
+// Sonos PLAYING får trigga reconnect automatiskt.
+let _lastDisconnectWasAuto = false;
+let _lastDisconnectReason: 'manual' | 'idle-timeout' | 'supervision-timeout' | 'unknown' = 'unknown';
+
+export function wasAutoDisconnected(): boolean { return _lastDisconnectWasAuto; }
+export function getLastDisconnectReason(): string { return _lastDisconnectReason; }
+
 function clearAutoReconnect(): void {
   if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
   _autoReconnectAttempt = 0;
@@ -149,6 +160,8 @@ export function getHardcodedPeripheral(): any | null {
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   // Manuell disconnect → stoppa auto-reconnect-loopen så vi inte kämpar mot användaren.
+  _lastDisconnectWasAuto = false;
+  _lastDisconnectReason = 'manual';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
   if (!_connected) return { disconnected: true };
@@ -160,6 +173,27 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   return { disconnected: true };
+}
+
+/**
+ * Idle-timeout disconnect — anropas av engine.handleIdleDisconnect efter 2 min
+ * utan musik. Markerar disconnect som AUTO så Sonos PLAYING-pathen i index.ts
+ * får trigga auto-reconnect (manual-only-policy gäller fortfarande efter
+ * UI-disconnect — se mem://pi/ble/manual-only-connection-policy).
+ */
+export async function triggerIdleDisconnect(): Promise<void> {
+  console.log('[connect-hardcoded] Idle-timeout disconnect — markerar som auto');
+  _lastDisconnectWasAuto = true;
+  _lastDisconnectReason = 'idle-timeout';
+  _autoReconnectEnabled = false;
+  clearAutoReconnect();
+  if (!_connected) return;
+  _onDisconnected?.();
+  detachControllerDrain();
+  setDevice(null);
+  resetLastSent();
+  try { await _connected.disconnectAsync(); } catch {}
+  _connected = null;
 }
 
 /**
@@ -480,11 +514,13 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   try {
     const r = await inflight;
     if (r.connected) {
-      // Lyckad connect → nollställ failure-räknaren.
+      // Lyckad connect → nollställ failure-räknaren + disconnect-tracking.
       if (_consecutiveFailures > 0) {
         dlog(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
       }
       _consecutiveFailures = 0;
+      _lastDisconnectWasAuto = false;
+      _lastDisconnectReason = 'unknown';
     } else {
       _consecutiveFailures++;
       console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures)`);
