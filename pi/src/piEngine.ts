@@ -124,6 +124,12 @@ interface LightCalibration {
   onsetThreshold: number;
   /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
   onsetRefractoryMs: number;
+  /** Anti-fladder: max stigning i normaliserade enheter per sekund (1.0 = full 0→100% på 1s). 20 = praktiskt taget av. */
+  maxRisePerSec: number;
+  /** Anti-fladder: max fall per sekund. Lägre värde = mjukare release-tak (1.0 = 100→0% tar 1s). */
+  maxFallPerSec: number;
+  /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
+  flickerDeadband: number;
   [key: string]: any;
 }
 
@@ -140,6 +146,9 @@ const DEFAULT_CAL: LightCalibration = {
   dynamicsEnabled: true,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 110,
+  maxRisePerSec: 8.0,
+  maxFallPerSec: 2.5,
+  flickerDeadband: 0.02,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
