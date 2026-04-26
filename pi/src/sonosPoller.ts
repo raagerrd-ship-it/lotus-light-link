@@ -41,6 +41,9 @@ export interface SonosState {
   palette: [number, number, number][] | null;
   /** Pre-cached palette för nästa låt — gör att vi kan börja fade direkt vid trackbyte */
   nextPalette: [number, number, number][] | null;
+  /** Nästa låt i kön (om gateway skickar) — visas i UI så man ser vad som kommer */
+  nextTrackName: string | null;
+  nextArtistName: string | null;
 }
 
 type Listener = (state: SonosState) => void;
@@ -68,6 +71,8 @@ let currentState: SonosState = {
   isTvMode: false,
   palette: null,
   nextPalette: null,
+  nextTrackName: null,
+  nextArtistName: null,
 };
 
 export function getSonosState(): SonosState {
@@ -179,6 +184,8 @@ function parseStatus(s: any): void {
     // Behåll förcachad nextPalette tills gateway skickar en ny (eller null:ar).
     // Om vi precis promotat den till `palette`, nolla så vi inte återanvänder.
     nextPalette: gwNextPalette ?? (promotedNext ? null : currentState.nextPalette),
+    nextTrackName: s.nextTrackName ?? s.nextTrack?.trackName ?? s.nextTrack?.title ?? null,
+    nextArtistName: s.nextArtistName ?? s.nextTrack?.artistName ?? s.nextTrack?.artist ?? null,
   });
 }
 
