@@ -271,7 +271,11 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     return 'no-change';
   }
 
-  // Bygg buffer + fire-and-forget write
+  // Bygg buffer + fire-and-forget write.
+  // RGB-mode: skicka mättat RGB i writeBuf OCH uppdatera brightBuf med cbr.
+  // brightBuf skickas via keep-alive-loopen (200ms) och håller dimningen.
+  // Att skala RGB med brightness triggar BLEDOM white-injection quirk →
+  // istället låter vi färg-packet och brightness-packet vara separata.
   const mode = device.mode ?? 'rgb';
   let buf: Buffer;
   if (mode === 'brightness') {
@@ -279,6 +283,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     buf = brightBuf;
   } else {
     writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
+    brightBuf[3] = cbr; // håll brightness-buffer aktuell för keep-alive
     buf = writeBuf;
   }
 
