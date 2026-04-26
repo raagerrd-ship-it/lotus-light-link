@@ -1490,6 +1490,7 @@ export default function PiMobile() {
     return (
       <ProfileSettingsView
         cal={cal} setCal={setCal} activePreset={activePreset}
+        piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
       />
     );
