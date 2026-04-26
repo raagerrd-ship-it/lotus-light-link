@@ -563,6 +563,13 @@ export function startConfigServer(port = 3050): void {
         try { return getRestartHistory().slice(-20); }
         catch { return []; }
       })(),
+      // Subsystem-transitions (senaste 30, nyaste sist) — visar varje gång ett
+      // subsystem byter status (inkl. ready→error/idle), så vi kan se exakt
+      // när och varför något föll bort utan journalctl.
+      subsystemTransitions: (() => {
+        try { return getSubsystemTransitions().slice(-30); }
+        catch { return []; }
+      })(),
     });
   });
 
