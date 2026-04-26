@@ -689,7 +689,7 @@ export function startConfigServer(port = 3050): void {
     const ms = Math.max(2000, Math.min(120_000, Number(req.body?.durationMs) || 30_000));
     const r = engine.startAutoTune(ms);
     console.log(`[Config] Auto-tune started (${r.durationMs}ms, cap=${r.capacity})`);
-    res.json({ ok: true, ...r, isPlaying: (engine as any).playing === true });
+    res.json({ ...r, isPlaying: (engine as any).playing === true });
   });
 
   app.get('/api/autotune/status', (_req, res) => {
