@@ -88,8 +88,10 @@ export function RestartHistoryPanel({ piBase }: Props) {
       });
       const j = await r.json();
       const list: RestartEntry[] = Array.isArray(j?.restarts) ? j.restarts : [];
+      const tlist: SubsystemTransition[] = Array.isArray(j?.subsystemTransitions) ? j.subsystemTransitions : [];
       // Nyaste först
       setEntries([...list].reverse());
+      setTransitions([...tlist].reverse());
       setError(null);
     } catch (e: any) {
       setError(e?.message ?? String(e));
