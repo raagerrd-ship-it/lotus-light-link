@@ -585,17 +585,23 @@ export class PiLightEngine {
   }
 
   setPlaying(playing: boolean): void {
-    // Anti-flap debounce: Sonos kan rapportera STOPPED→TRANSITIONING→PLAYING
-    // inom <1s vid trackbyte. 500ms guard filtrerar ut snabba fluktuationer.
     const now = Date.now();
-    if (now - this._lastPlayingChangeAt < PiLightEngine.PLAYING_DEBOUNCE_MS) {
+    const wasPlaying = this.playing;
+    if (playing === wasPlaying) return;
+
+    // Anti-flap debounce: Sonos kan rapportera PLAYING→STOPPED→PLAYING
+    // inom <1s vid trackbyte. 500ms guard filtrerar bort snabba PAUSED-flaps.
+    // VIKTIGT: debouncen gäller ENBART PLAYING→PAUSED. PLAYING måste alltid
+    // släppas igenom omedelbart — annars riskerar vi att engine fastnar i
+    // idle om en spurious PAUSED kom precis innan riktig PLAYING.
+    if (!playing && now - this._lastPlayingChangeAt < PiLightEngine.PLAYING_DEBOUNCE_MS) {
+      dlog('[Engine] setPlaying(false) debounced — för nära senaste flip');
       return;
     }
     this._lastPlayingChangeAt = now;
 
-    const wasPlaying = this.playing;
     this.playing = playing;
-    if (playing === wasPlaying) return;
+    dlog(`[Engine] setPlaying(${playing}) — wasPlaying=${wasPlaying}, owner=${this._bleOwner}`);
 
     if (!playing) {
       // active → idle: reset onset + force idle-färg, starta keep-alive.
