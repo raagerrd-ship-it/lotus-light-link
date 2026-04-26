@@ -1,65 +1,53 @@
 ## Mål
-Eliminera frame-to-frame-hack i ljuset som uppstår när tick:en (50 Hz) stickprovar FFT-frames (~93 Hz). Lösningen är en kort rolling average (3 frames ≈ 32 ms) över bands-RMS i `pi/src/alsaMic.ts` — utan att röra `flux` (onset-detektion behöver skarpa transienter) och utan att röra EMA-smoothingen i `engine.tickInner` (den hanterar musikalisk mjukhet).
 
-Latens-tillägg: ~10–20 ms peak-latens, väl under perceptuell tröskel (~50 ms). RAM-tillägg: ~36 bytes.
+Ta bort slew-rate limitern (block 6b i `piEngine.tickInner`) eftersom anti-alias-bufferten i `alsaMic` redan tar bort frame-to-frame-bruset som slew-en var till för. Behåll deadband (block 7b) och adaptiv onset-suppression — de har inget med latens att göra och fyller fortfarande ett musikaliskt syfte.
 
-## Ändringar — endast `pi/src/alsaMic.ts`
+## Vad försvinner
 
-### 1. Modulnivå-buffrar (direkt ovanför `let latestBands` på rad 206)
-Lägg till tre pre-allokerade `Float32Array(3)` plus position/fill-räknare. Noll allokering i hot path.
+**Block 6b i `pi/src/piEngine.ts` (rad 932–944):**
+- Slew-räknaren på `energyNorm` med `maxRisePerSec` / `maxFallPerSec`
+- Skrivningen till `this.lastBrightness` försvinner med blocket
 
-```ts
-const FFT_SMOOTH_WINDOW = 3;
-const fftBassHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-const fftMidHiHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-const fftTotalHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-let fftHistoryPos = 0;
-let fftHistoryFilled = 0;
-```
+**Effekt:** Snabba kicks/transienter går rakt igenom utan att begränsas av rise-taket. Smoothness säkras nu av:
+1. Anti-alias rolling average i `alsaMic` (~30 ms)
+2. EMA i `tickInner` (releaseAlpha)
+3. Dynamics + adaptiv onset-suppression
+4. Deadband (oförändrad)
 
-### 2. Ersätt rå-tilldelningen i `processFFT` (rad 305–309)
-Skriv in nya värden i ringbufferten, summera, dela med antal fyllda slots. `flux` passerar oförändrad.
+## Vad behålls
 
-```ts
-fftBassHistory[fftHistoryPos] = rawBass;
-fftMidHiHistory[fftHistoryPos] = rawMidHi;
-fftTotalHistory[fftHistoryPos] = rawTotal;
-fftHistoryPos = (fftHistoryPos + 1) % FFT_SMOOTH_WINDOW;
-if (fftHistoryFilled < FFT_SMOOTH_WINDOW) fftHistoryFilled++;
+- **Deadband (rad 967–978)** — fryser BLE-skick på platta partier, ingen latens-kostnad
+- **Adaptiv onset-suppression i `processOnset`** — höjer tröskel vid loud sustain, oberoende av slew
+- **Auto-tune-funktionen** — fortsätter föreslå deadband (suggested `maxFallPerSec` blir bara meta-info, inte längre applicerbart)
 
-let bassSum = 0, midHiSum = 0, totalSum_smooth = 0;
-for (let i = 0; i < fftHistoryFilled; i++) {
-  bassSum += fftBassHistory[i];
-  midHiSum += fftMidHiHistory[i];
-  totalSum_smooth += fftTotalHistory[i];
-}
-const invFilled = 1 / fftHistoryFilled;
+## Ändringar
 
-latestBands.bassRms = bassSum * invFilled;
-latestBands.midHiRms = midHiSum * invFilled;
-latestBands.totalRms = totalSum_smooth * invFilled;
-latestBands.flux = flux;  // skarp — onset-detektion behöver detta
-```
+### 1. `pi/src/piEngine.ts` — radera slew-blocket
+Ta bort rad 932–944 (block 6b). `lastBrightness`-fältet kan stå kvar (skadar inte) eller städas bort.
 
-### 3. Utöka `resetFluxState` (rad 334–336)
-Nollställ även anti-alias-historiken så att tystnadsperioder inte blandas med ny data.
+### 2. `pi/src/piEngine.ts` — pensionera `maxRisePerSec` / `maxFallPerSec`
+Behåll fälten i `LightCalibration` och `DEFAULT_CAL` för bakåtkompatibilitet med sparade profiler. Inget kod-stöd, men de bryter inte parsing.
 
-```ts
-export function resetFluxState(): void {
-  prevPower.fill(0);
-  fftBassHistory.fill(0);
-  fftMidHiHistory.fill(0);
-  fftTotalHistory.fill(0);
-  fftHistoryPos = 0;
-  fftHistoryFilled = 0;
-}
-```
+### 3. `src/pages/PiMobile.tsx` — ta bort UI-slidrar
+Ta bort "Anti-fladder ⤴ tak" och "Anti-fladder ⤵ tak" från `SLIDER_CONFIG`. Behåll "Anti-fladder deadband".
 
-## Vad lämnas orört
-- `engine.tickInner` EMA-smoothing — fortsätter att hantera musikalisk mjukhet ovanpå anti-alias-bufferten.
-- `flux` — passerar rå till onset-detektorn (smoothing skulle döda kick-detektion).
-- `processOnset`, dynamics, transient boost, color fade, BLE-output — oförändrat.
-- Inga UI-ändringar, inga nya kalibreringsvärden, inga nya endpoints.
+### 4. Auto-tune-panelen i `PiMobile.tsx`
+Ta bort UI-knappen som applicerar suggested `maxFallPerSec` (panelen visar fortfarande deadband-förslag och `flickerScore`).
 
-## Minnesnotering efteråt
-Uppdatera `mem://pi/audio/anti-flicker-pipeline.md` (eller skapa ny `mem://pi/audio/fft-anti-alias-buffer.md`) med: 3-frame rolling average i alsaMic, flux exkluderad, ~32 ms fönster, latens-tillägg < 20 ms.
+### 5. `pi/src/configServer.ts`
+Profil-defaults för `maxRisePerSec` / `maxFallPerSec` kan stå kvar (oanvända). Ingen migration krävs.
+
+## Latens efter ändringen
+
+| Steg | Latens-tillägg |
+|---|---|
+| Anti-alias buffer | ~15 ms |
+| EMA i tickInner | beror på releaseAlpha (~10–80 ms) |
+| Slew | **0 ms** (borta) |
+| Deadband | 0 ms (fryser bara output) |
+
+Snabba kicks landar nu fullt utvecklade på första tick efter onset.
+
+## Memory-uppdatering
+
+Uppdatera `mem://pi/audio/anti-flicker-pipeline.md` så det reflekterar att slew är pensionerad och endast deadband + adaptiv onset finns kvar. Lägg till hänvisning till `mem://pi/audio/fft-anti-alias-buffer.md` som ersättningen för det slew-en löste.
