@@ -557,18 +557,11 @@ export function startConfigServer(port = 3050): void {
             lastDisconnectReason: getLastDisconnectReason(),
           }
         : null,
+      // Restart-historik (senaste 20, nyaste sist) — UI visar reason + tid
+      // så användaren ser om motorn dör ofta och varför.
       restarts: (() => {
-        try {
-          // Lazy import för att undvika circular vid boot (configServer
-          // läses från index.ts, restartLog läser DATA_DIR från storage.ts)
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const rl = require('./restartLog.js');
-          const all = rl.getRestartHistory?.() ?? [];
-          // Returnera senaste 20 (nyaste sist) — räcker för UI och håller payload nere
-          return all.slice(-20);
-        } catch {
-          return [];
-        }
+        try { return getRestartHistory().slice(-20); }
+        catch { return []; }
       })(),
     });
   });
