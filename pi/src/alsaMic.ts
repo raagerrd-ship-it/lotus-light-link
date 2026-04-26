@@ -11,6 +11,41 @@
 
 import { fft1024, FFT_N } from './fftRadix2.js';
 import { dlog } from "./debugLog.js";
+import { getItem, setItem } from './storage.js';
+
+// Persistens av mic-state över restart. Tappades tidigare vid varje crash/restart →
+// användaren upplevde "den glömde autogain mitt i låten" som en buggig auto-update.
+// Sparas i DATA_DIR/mic-state.json via samma storage-shim som resten av engine.
+const MIC_STATE_KEY = 'mic-state';
+interface PersistedMicState {
+  autoGainEnabled?: boolean;
+  micGainBase?: number;
+  calPoint1?: { vol: number; gain: number } | null;
+  calPoint2?: { vol: number; gain: number } | null;
+}
+function saveMicState(): void {
+  try {
+    const s: PersistedMicState = {
+      autoGainEnabled,
+      micGainBase,
+      calPoint1,
+      calPoint2,
+    };
+    setItem(MIC_STATE_KEY, JSON.stringify(s));
+  } catch (e: any) {
+    dlog(`[ALSA] saveMicState failed: ${e?.message ?? e}`);
+  }
+}
+function loadMicState(): PersistedMicState | null {
+  try {
+    const raw = getItem(MIC_STATE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedMicState;
+  } catch (e: any) {
+    dlog(`[ALSA] loadMicState failed: ${e?.message ?? e}`);
+    return null;
+  }
+}
 
 // Dynamic import — alsa-capture is vendored as a fork in pi/vendor/alsa-capture/
 // (upstream nan@2.17 is incompatible with Node 24 V8). The fork bumps nan to ^2.26.2.
