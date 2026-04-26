@@ -539,10 +539,12 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 /* ── Profile Settings View (calibration per preset) ── */
 function ProfileSettingsView({
   cal, setCal, activePreset,
+  piBase,
   onBack, onSave, saved, saveError,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
   activePreset: string;
+  piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
