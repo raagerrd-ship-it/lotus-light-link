@@ -250,14 +250,14 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     return 'busy';
   }
 
-  // BLEDOM-quirk: skala INTE RGB med brightness — firmware blandar då in vitt
-  // för att kompensera energi-balans → blekta/pastellaktiga färger. Skicka
-  // mättat RGB och låt brightness-byten (cbr) ensam styra dimningen.
-  // Perceptual gamma-LUT är fortfarande aktiv via brightnessToScale → cbr.
+  // BLEDOM RGB-mode: brightness-byten har ingen effekt i 0x03-packet — bara
+  // RGB-värdena styr ljusstyrkan. Därför MÅSTE vi pre-skala RGB med brightness.
+  // (Tidigare försök att skicka mättat RGB gav konstant max ljusstyrka → vitt.)
+  // Perceptual gamma-LUT är aktiv via brightnessToScale().
   const scale = brightnessToScale(brightness);
-  const cr = r;
-  const cg = g;
-  const cb = b;
+  const cr = (r * scale + 0.5) | 0;
+  const cg = (g * scale + 0.5) | 0;
+  const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
   // Stale-write force: garanterar minst ~5 pkt/s under playing även när
@@ -271,11 +271,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     return 'no-change';
   }
 
-  // Bygg buffer + fire-and-forget write.
-  // RGB-mode: skicka mättat RGB i writeBuf OCH uppdatera brightBuf med cbr.
-  // brightBuf skickas via keep-alive-loopen (200ms) och håller dimningen.
-  // Att skala RGB med brightness triggar BLEDOM white-injection quirk →
-  // istället låter vi färg-packet och brightness-packet vara separata.
+  // Bygg buffer + fire-and-forget write
   const mode = device.mode ?? 'rgb';
   let buf: Buffer;
   if (mode === 'brightness') {
@@ -283,7 +279,6 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
     buf = brightBuf;
   } else {
     writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
-    brightBuf[3] = cbr; // håll brightness-buffer aktuell för keep-alive
     buf = writeBuf;
   }
 
