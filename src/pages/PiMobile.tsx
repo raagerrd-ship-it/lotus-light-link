@@ -1833,6 +1833,9 @@ export default function PiMobile() {
               </details>
             )}
 
+            {/* Restart-historik — alltid synlig så vi ser om motorn dör ofta */}
+            <RestartHistoryPanel piBase={piBase} />
+
             {saveError && (
               <div className="mb-4 mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
                 ⚠ Sparning misslyckades: {saveError}
