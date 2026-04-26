@@ -1,27 +1,30 @@
 ---
-name: BLEDOM RGB skickas alltid mättat
-description: sendToBLE skalar ALDRIG RGB med brightness. Endast brightness-byten (cbr) styr dimning. RGB-skalning triggar BLEDOM-firmware-quirk som blandar in vitt → blekta färger.
+name: BLEDOM RGB MÅSTE pre-skalas med brightness
+description: I RGB-mode (0x03-packet) ignorerar BLEDOM brightness-byten. RGB-värdena ensamma styr både färg OCH ljusstyrka. Pre-skala alltid r,g,b med brightness — annars konstant max → vitt.
 type: constraint
 ---
 
 ## Regel
-I `pi/src/ble/protocol.ts` `sendToBLE()` skickas `r,g,b` **oförändrat** till lampan. Endast `cbr` (brightness-byte) skalas via `brightnessToScale()`.
+I `pi/src/ble/protocol.ts` `sendToBLE()` MÅSTE RGB pre-skalas med brightness i RGB-mode:
 
 ```ts
 const scale = brightnessToScale(brightness);
-const cr = r;            // mättat — INTE r * scale
-const cg = g;            // mättat
-const cb = b;            // mättat
-const cbr = (scale * 0xff + 0.5) | 0;  // dimning sker här
+const cr = (r * scale + 0.5) | 0;
+const cg = (g * scale + 0.5) | 0;
+const cb = (b * scale + 0.5) | 0;
 ```
 
 ## Varför
-BLEDOM-firmware multiplicerar internt RGB × brightness. Om vi också pre-skalar RGB blir det dubbel multiplikation, och firmware kompenserar genom att blanda in vitt för "energi-balans" → mättad röd blir blekrosa, mättad blå blir ljusblå.
+BLEDOM RGB-packet `[0x7e, 0x07, 0x05, 0x03, R, G, B, 0x00, 0xef]` har ingen brightness-byte som lampan respekterar. Ljusstyrkan kommer enbart från amplituden i R/G/B. Om vi skickar mättat (255,0,0) oavsett brightness → lampan kör alltid full röd.
 
-Perceptual gamma-LUT (γ=1.8, 101 entries) är fortfarande aktiv på `cbr`, så dimningskurvan är intakt.
+Brightness-packet `[0x7e, 0x04, 0x01, brightness, ...]` används bara i 'brightness'-mode (vita lampor utan RGB).
 
-## Sidoeffekt
-Delta-skip (`BLE_DELTA_SKIP_ENABLED`) blir mer aggressiv eftersom `cr/cg/cb` nu bara ändras vid faktisk färgbyte, inte vid brightness-pulser. Önskat beteende.
+## Tidigare felaktig hypotes
+2026-04-26 testades att skicka mättat RGB för att undvika antagen "white-injection quirk". Resultat: lampan visade konstant vit/max — bekräftar att RGB-amplituden ÄR dimningen.
 
-## Återinför INTE
-Om någon i framtiden "fixar" att färgen ser ljus ut vid hög brightness genom att lägga tillbaka `r * scale` — det är fel väg. Quirken är fysisk i lampans firmware.
+Om färger ser pastellaktiga ut vid hög brightness är det förmodligen:
+- Color tween / dynamics som blandar kanaler
+- Gamma-kurva för aggressiv
+- Albumcover som faktiskt har låg mättnad
+
+Lös via `dimmingGamma`, color extraction eller dynamics — INTE genom att ta bort RGB-skalning.
