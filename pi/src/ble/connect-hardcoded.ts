@@ -21,9 +21,12 @@ import { dlog } from "../debugLog.js";
 // connectHardcoded() direkt efter restart (så användaren slipper trycka Anslut).
 
 // Consecutive connect-failures räknare. Mönster från fältet: BLEDOM ansluter
-// alltid på 1-2s eller aldrig. Efter 2 misslyckanden i rad är noble's HCI-state
+// alltid på 1-2s eller aldrig. Efter N misslyckanden i rad är noble's HCI-state
 // fastnat — enda fungerande lösning är full process-restart (systemd Restart=always).
-const CONSECUTIVE_FAIL_LIMIT = 2;
+// Höjt från 2 → 4 (2026-04-26) för att ge mer marginal innan vi nukar processen;
+// auto-reconnect-loopen täcker normala disconnects, så denna path triggas mest
+// vid initial-connect-misslyckanden där 2 var för känsligt.
+const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
@@ -523,14 +526,24 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       _lastDisconnectReason = 'unknown';
     } else {
       _consecutiveFailures++;
-      console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures)`);
+      const errStr = r.error ?? 'okänt fel';
+      console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures): ${errStr}`);
       if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
         // Mönster från fältet: BLEDOM ansluter alltid på 1-2s eller aldrig.
-        // 2 misslyckade i rad = noble's HCI-state är fastnat. Enda fungerande
+        // 4 misslyckade i rad = noble's HCI-state är fastnat. Enda fungerande
         // lösning är full process-restart (systemd Restart=always startar om).
         // Sätt flagga så engine auto-anropar connectHardcoded() vid boot.
         console.error(`[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures — sätter reconnect-flagga och process.exit(0) för systemd restart`);
         setReconnectOnBootFlag();
+        // Logga restart-orsak innan exit så UI/logg kan visa varför
+        try {
+          const { recordRestart, markGracefulShutdown } = await import('../restartLog.js');
+          recordRestart('ble-consecutive-failures', `${_consecutiveFailures} consecutive failures, last error: ${errStr}`);
+          // Ta bort session-marker så noteBootStart inte loggar en duplikat unknown-restart
+          markGracefulShutdown();
+        } catch (e: any) {
+          console.warn(`[connect-hardcoded] kunde inte logga restart: ${e?.message ?? e}`);
+        }
         // Liten delay så HTTP-svar hinner ut till UI innan vi dör.
         setTimeout(() => process.exit(0), 500);
       }

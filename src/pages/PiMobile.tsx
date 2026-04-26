@@ -6,6 +6,7 @@ import { BleControlPanel } from "@/components/BleControlPanel";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { LiveStrip } from "@/components/LiveStrip";
 import { StartAllPanel } from "@/components/StartAllPanel";
+import { RestartHistoryPanel } from "@/components/RestartHistoryPanel";
 
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
@@ -1832,6 +1833,9 @@ export default function PiMobile() {
                 </div>
               </details>
             )}
+
+            {/* Restart-historik — alltid synlig så vi ser om motorn dör ofta */}
+            <RestartHistoryPanel piBase={piBase} />
 
             {saveError && (
               <div className="mb-4 mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">

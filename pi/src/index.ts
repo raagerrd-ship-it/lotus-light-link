@@ -358,15 +358,17 @@ async function main() {
 
   console.log('[Boot] ✓ configServer up — väntar på subsystem-start från UI/API');
 
+  // ── Restart-log: detektera om förra processen dog ofrivilligt ──
+  // noteBootStart() kollar om SESSION_MARKER finns kvar (graceful shutdown
+  // skulle ha tagit bort den). Om ja → logga 'unknown-systemd-restart'
+  // (täcker OOM-kill, segfault, kill -9 etc) såvida ingen explicit reason
+  // redan loggats inom 5s (då har crash-handler eller BLE-fail-path hunnit
+  // logga den specifika orsaken).
+  const { noteBootStart, markSessionAlive, markGracefulShutdown, recordRestart } =
+    await import('./restartLog.js');
+  noteBootStart();
+
   // ── Auto-restart efter ofrivillig död ────────────────────────────────────
-  // Två triggers sätter /tmp-flaggan:
-  //   1. connect-hardcoded.ts vid 2 consecutive BLE-failures (innan exit)
-  //   2. Här: så snart en lyckad BLE-connect skett ("vi var igång")
-  // Flaggan rensas av graceful shutdown (SIGINT/SIGTERM via UI).
-  // Vid uppstart med flagga närvarande → auto-starta hela kedjan
-  // (motor + lamp + mic + sonos) så användaren slipper trycka "Starta".
-  // Detta täcker: OOM-kill från systemd MemoryMax, segfault i alsa-capture,
-  // uncaughtException, ofrivillig systemd-restart, etc.
   const {
     consumeReconnectOnBootFlag,
     setReconnectOnBootFlag,
@@ -374,22 +376,19 @@ async function main() {
   } = await import('./ble/reconnect-flag.js');
 
   // Hook in BLE-callbacks så flaggan sätts när lampa ansluts.
-  // (setEngineBleCallbacks i startMicSubsystem registrerar engine-callbacks;
-  // här lägger vi till en separat post-connect-hook utan att skriva över dem.)
   try {
     const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
-    // Wrap: när lampa ansluts → markera "vi var igång" så ofrivillig död ger restart.
-    // Behåller engine-callback (sätts senare i startMicSubsystem).
     let engineConnected: (() => void) | null = null;
     let engineDisconnected: (() => void) | null = null;
-    const _origSet = setEngineBleCallbacks;
-    // Re-export via lokal patch — enklare: sätt direkt här en första gång.
-    _origSet(
-      () => { setReconnectOnBootFlag(); engineConnected?.(); },
+    setEngineBleCallbacks(
+      () => {
+        // Sätt flagga + uppdatera session-marker så uptimeBeforeMs blir korrekt
+        setReconnectOnBootFlag();
+        markSessionAlive();
+        engineConnected?.();
+      },
       () => { engineDisconnected?.(); },
     );
-    // Tillåt startMicSubsystem att registrera sina engine-callbacks utan att
-    // klippa flagghanteringen: vi exponerar en lokal setter via globalThis.
     (globalThis as any).__lotusSetEngineCb = (onC: () => void, onD: () => void) => {
       engineConnected = onC;
       engineDisconnected = onD;
@@ -400,8 +399,6 @@ async function main() {
 
   if (consumeReconnectOnBootFlag()) {
     console.log('[Boot] 🔁 reconnect-flagga hittad → auto-startar HELA kedjan');
-    // Samma ordning som UI:s "Starta allt"-knapp:
-    //   1. BLE-motor → 2. Mic → 3. Sonos → 4. Lampa
     void (async () => {
       try {
         const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
@@ -409,17 +406,12 @@ async function main() {
         console.log('[Boot/auto] ✓ motor');
       } catch (e: any) { console.warn('[Boot/auto] motor fel:', e?.message ?? e); }
 
-      try {
-        await startMicSubsystem();
-        console.log('[Boot/auto] ✓ mic');
-      } catch (e: any) { console.warn('[Boot/auto] mic fel:', e?.message ?? e); }
+      try { await startMicSubsystem(); console.log('[Boot/auto] ✓ mic'); }
+      catch (e: any) { console.warn('[Boot/auto] mic fel:', e?.message ?? e); }
 
-      try {
-        await startSonosSubsystem();
-        console.log('[Boot/auto] ✓ sonos');
-      } catch (e: any) { console.warn('[Boot/auto] sonos fel:', e?.message ?? e); }
+      try { await startSonosSubsystem(); console.log('[Boot/auto] ✓ sonos'); }
+      catch (e: any) { console.warn('[Boot/auto] sonos fel:', e?.message ?? e); }
 
-      // Liten delay så noble hinner till poweredOn innan connect.
       await new Promise((r) => setTimeout(r, 1500));
       try {
         const { connectHardcoded } = await import('./ble/connect-hardcoded.js');
@@ -429,25 +421,33 @@ async function main() {
     })();
   }
 
-  // Crash-handlers: sätt flaggan så systemd-restart auto-startar kedjan igen.
-  // Vi exit:ar inte här explicit — låter Node/systemd hantera. Men flaggan
-  // finns redan sedan första lyckade connect, så detta är belt-and-suspenders.
+  // Crash-handlers: logga reason, sätt flagga, exit. systemd Restart=always tar oss tillbaka.
   process.on('uncaughtException', (err) => {
     console.error('[Fatal/uncaughtException]', err);
+    try {
+      recordRestart('uncaught-exception', err?.stack ?? err?.message ?? String(err));
+      markGracefulShutdown(); // säg åt nästa boot att INTE logga 'unknown' — vi har loggat reason
+    } catch {}
     setReconnectOnBootFlag();
     process.exit(1);
   });
   process.on('unhandledRejection', (reason) => {
     console.error('[Fatal/unhandledRejection]', reason);
+    try {
+      const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+      recordRestart('unhandled-rejection', detail);
+      markGracefulShutdown();
+    } catch {}
     setReconnectOnBootFlag();
     process.exit(1);
   });
 
-  // Graceful shutdown — UI eller user-initiated. Rensa flaggan så vi inte
-  // auto-startar igen efter en avsiktlig stop.
+  // Graceful shutdown — UI eller user-initiated. Rensa flagga + session-marker
+  // så nästa boot inte loggar en falsk 'unknown-systemd-restart'.
   const shutdown = async () => {
     console.log('\n[Shutdown] Cleaning up…');
     clearReconnectOnBootFlag();
+    markGracefulShutdown();
     try { engineInstance?.stop(); } catch {}
     try { alsaMic?.stopMic(); } catch {}
     try { sonos?.stopSonosPoller(); } catch {}
