@@ -537,12 +537,224 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 
 /* ── Settings View ── */
 /* ── Profile Settings View (calibration per preset) ── */
+
+/* ── Auto-tune anti-flicker panel ──
+ * Mäter pct-rörelser i 30s, föreslår maxFallPerSec + flickerDeadband.
+ * Kräver att musik spelas. Skriver i aktiv profil när användaren accepterar. */
+function AutoTuneAntiFlickerPanel({
+  piBase, cal, setCal,
+}: {
+  piBase: string;
+  cal: typeof DEFAULT_CAL;
+  setCal: (c: typeof DEFAULT_CAL) => void;
+}) {
+  const [status, setStatus] = useState<{
+    active: boolean; elapsedMs: number; durationMs: number; sampleCount: number;
+    progress: number; done: boolean;
+    suggestion?: { maxFallPerSec: number; flickerDeadband: number; flickerScore: number; samplesUsed: number; sampleRateHz: number; isPlaying: boolean };
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [duration, setDuration] = useState(30);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPoll = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const fetchStatus = async () => {
+    try {
+      const r = await fetch(`${piBase}/api/autotune/status`, { signal: AbortSignal.timeout(2000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      setStatus(j);
+      if (!j.active) stopPoll();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    }
+  };
+
+  const start = async () => {
+    setError(null);
+    try {
+      const r = await fetch(`${piBase}/api/autotune/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durationMs: duration * 1000 }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      stopPoll();
+      pollRef.current = setInterval(fetchStatus, 500);
+      fetchStatus();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    }
+  };
+
+  const cancel = async () => {
+    stopPoll();
+    try { await fetch(`${piBase}/api/autotune/cancel`, { method: 'POST' }); } catch {}
+    setStatus(null);
+  };
+
+  const apply = async (which: 'both' | 'fall' | 'deadband') => {
+    if (!status?.suggestion) return;
+    const body: Record<string, number> = {};
+    if (which === 'both' || which === 'fall') body.maxFallPerSec = status.suggestion.maxFallPerSec;
+    if (which === 'both' || which === 'deadband') body.flickerDeadband = status.suggestion.flickerDeadband;
+    try {
+      const r = await fetch(`${piBase}/api/autotune/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      // Spegla i lokal cal-state så slidrarna uppdateras direkt
+      setCal({ ...cal, ...body } as typeof DEFAULT_CAL);
+      setStatus(null);
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    }
+  };
+
+  useEffect(() => () => stopPoll(), []);
+
+  // Status-derivat
+  const running = !!status?.active;
+  const done = !!status?.done && !!status?.suggestion;
+  const progress = status?.progress ?? 0;
+  const elapsed = status ? Math.round(status.elapsedMs / 1000) : 0;
+  const total = status ? Math.round(status.durationMs / 1000) : duration;
+  const sug = status?.suggestion;
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-card/50 p-3 space-y-2">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Auto-tune anti-fladder
+        </h3>
+        {!running && !done && (
+          <select
+            value={duration}
+            onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+            className="text-[11px] bg-secondary text-foreground rounded px-1.5 py-0.5"
+          >
+            <option value={15}>15s</option>
+            <option value={30}>30s</option>
+            <option value={60}>60s</option>
+          </select>
+        )}
+      </div>
+
+      <p className="text-[10px] text-muted-foreground leading-snug">
+        Spela en låt som brukar fladdra. Mätningen registrerar varje pct-rörelse och
+        föreslår mjukare ⤵ tak och deadband.
+      </p>
+
+      {error && (
+        <div className="text-[10px] text-destructive">⚠ {error}</div>
+      )}
+
+      {!running && !done && (
+        <button
+          onClick={start}
+          className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium active:scale-95 transition-transform"
+        >
+          🎚 Starta {duration}s mätning
+        </button>
+      )}
+
+      {running && (
+        <>
+          <div className="text-[11px] font-mono text-muted-foreground flex justify-between">
+            <span>{elapsed}s / {total}s</span>
+            <span>{status?.sampleCount ?? 0} samples</span>
+          </div>
+          <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
+            <div className="h-full bg-primary transition-all" style={{ width: `${progress * 100}%` }} />
+          </div>
+          <button
+            onClick={cancel}
+            className="w-full py-1.5 rounded-lg bg-secondary text-secondary-foreground text-[11px] font-medium active:scale-95 transition-transform"
+          >
+            Avbryt
+          </button>
+        </>
+      )}
+
+      {done && sug && (
+        <div className="space-y-2">
+          {!sug.isPlaying && (
+            <div className="text-[10px] text-amber-500">
+              ⚠ Mätningen kördes utan playback — förslagen kan vara missvisande.
+            </div>
+          )}
+          <div className="rounded-md bg-background/60 p-2 space-y-1.5">
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">Fladder-poäng</span>
+              <span className="font-mono font-semibold">
+                {sug.flickerScore}/100
+                <span className="text-muted-foreground ml-1">
+                  ({sug.flickerScore < 15 ? 'låg' : sug.flickerScore < 40 ? 'medel' : 'hög'})
+                </span>
+              </span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">⤵ tak (nu → förslag)</span>
+              <span className="font-mono">
+                {cal.maxFallPerSec.toFixed(2)}/s → <span className="text-primary font-semibold">{sug.maxFallPerSec.toFixed(2)}/s</span>
+              </span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">Deadband (nu → förslag)</span>
+              <span className="font-mono">
+                {cal.flickerDeadband.toFixed(3)} → <span className="text-primary font-semibold">{sug.flickerDeadband.toFixed(3)}</span>
+              </span>
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {sug.samplesUsed} samples @ {sug.sampleRateHz.toFixed(1)} Hz
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              onClick={() => apply('fall')}
+              className="py-1.5 rounded-lg bg-secondary text-secondary-foreground text-[11px] font-medium active:scale-95"
+            >
+              Bara ⤵
+            </button>
+            <button
+              onClick={() => apply('deadband')}
+              className="py-1.5 rounded-lg bg-secondary text-secondary-foreground text-[11px] font-medium active:scale-95"
+            >
+              Bara deadb.
+            </button>
+            <button
+              onClick={() => apply('both')}
+              className="py-1.5 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold active:scale-95"
+            >
+              ✓ Båda
+            </button>
+          </div>
+          <button
+            onClick={() => setStatus(null)}
+            className="w-full py-1 text-[10px] text-muted-foreground active:text-foreground"
+          >
+            Stäng utan att tillämpa
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ProfileSettingsView({
   cal, setCal, activePreset,
+  piBase,
   onBack, onSave, saved, saveError,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
   activePreset: string;
+  piBase: string;
   onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
@@ -570,6 +782,8 @@ function ProfileSettingsView({
       <section className="space-y-5 mb-8">
         
         <SignalPreview cal={cal} height={180} showLegend={true} />
+
+        <AutoTuneAntiFlickerPanel piBase={piBase} cal={cal} setCal={setCal} />
         
         {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
           const isDyn = key === 'dynamicDamping';
@@ -1488,6 +1702,7 @@ export default function PiMobile() {
     return (
       <ProfileSettingsView
         cal={cal} setCal={setCal} activePreset={activePreset}
+        piBase={piBase}
         onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
       />
     );

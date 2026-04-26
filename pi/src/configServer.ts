@@ -680,6 +680,53 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, activePreset: name, profile: pf.profiles[name] });
   });
 
+  // ─── Auto-tune anti-flicker ───
+  // Mäter pct-rörelser i N sekunder och föreslår maxFallPerSec + flickerDeadband
+  // baserat på faktisk insignal-jitter. Användaren spelar musik under tiden.
+  app.post('/api/autotune/start', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    const ms = Math.max(2000, Math.min(120_000, Number(req.body?.durationMs) || 30_000));
+    const r = engine.startAutoTune(ms);
+    console.log(`[Config] Auto-tune started (${r.durationMs}ms, cap=${r.capacity})`);
+    res.json({ ...r, isPlaying: (engine as any).playing === true });
+  });
+
+  app.get('/api/autotune/status', (_req, res) => {
+    const engine = getEngine();
+    if (!engine) return res.status(503).json({ error: 'Engine ej redo' });
+    res.json(engine.getAutoTuneStatus());
+  });
+
+  app.post('/api/autotune/cancel', (_req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    engine.cancelAutoTune();
+    res.json({ ok: true });
+  });
+
+  // Skriver suggestion in i aktiv profil (eller i body.profile om angiven).
+  // Klienten skickar {maxFallPerSec, flickerDeadband} så användaren kan
+  // välja att inte tillämpa båda.
+  app.post('/api/autotune/apply', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
+    const { maxFallPerSec, flickerDeadband } = req.body ?? {};
+    const patch: Record<string, number> = {};
+    if (Number.isFinite(maxFallPerSec)) patch.maxFallPerSec = Math.max(0.5, Math.min(10, maxFallPerSec));
+    if (Number.isFinite(flickerDeadband)) patch.flickerDeadband = Math.max(0, Math.min(0.08, flickerDeadband));
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'Need maxFallPerSec and/or flickerDeadband' });
+    }
+    const pf = loadProfilesFile();
+    const active = pf.activePreset;
+    pf.profiles[active] = { ...pf.profiles[active], ...patch };
+    saveProfilesFile(pf);
+    engine.setActiveProfile(pf.profiles[active]);
+    console.log(`[Config] Auto-tune applied to "${active}": ${JSON.stringify(patch)}`);
+    res.json({ ok: true, activePreset: active, profile: pf.profiles[active] });
+  });
+
   // --- Raw mode (for gain calibration) ---
   app.put('/api/raw-mode', (req, res) => {
     const engine = requireEngine(res);
