@@ -453,6 +453,7 @@ export function getAutoGainMultiplier(): number { return micGainAuto; }
 export function setMicGain(gain: number): void {
   micGainBase = Math.max(0.1, Math.min(50, gain));
   updateEffectiveGain();
+  saveMicState();
   dlog(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x, auto=${autoGainEnabled})`);
 }
 
