@@ -747,6 +747,7 @@ function AutoTuneAntiFlickerPanel({
 }
 
 
+function ProfileSettingsView({
   cal, setCal, activePreset,
   piBase,
   onBack, onSave, saved, saveError,
