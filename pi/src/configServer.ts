@@ -556,6 +556,19 @@ export function startConfigServer(port = 3050): void {
             lastDisconnectReason: getLastDisconnectReason(),
           }
         : null,
+      restarts: (() => {
+        try {
+          // Lazy import för att undvika circular vid boot (configServer
+          // läses från index.ts, restartLog läser DATA_DIR från storage.ts)
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const rl = require('./restartLog.js');
+          const all = rl.getRestartHistory?.() ?? [];
+          // Returnera senaste 20 (nyaste sist) — räcker för UI och håller payload nere
+          return all.slice(-20);
+        } catch {
+          return [];
+        }
+      })(),
     });
   });
 
