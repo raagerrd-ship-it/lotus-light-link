@@ -13,10 +13,12 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing, stopMic } from './alsaMic.js';
 import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
+import { triggerIdleDisconnect } from './ble/connect-hardcoded.js';
+import { isControllerDrainAttached, getOutstandingPackets } from './ble/controllerDrain.js';
 import { getItem, setItem } from './storage.js';
 import { dlog } from "./debugLog.js";
 
