@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, RefreshCw, Skull, Bug, HelpCircle } from "lucide-react";
+import { AlertTriangle, RefreshCw, Skull, Bug, HelpCircle, Activity } from "lucide-react";
 
 /**
  * RestartHistoryPanel — visar senaste 20 restarts från /api/status.restarts.
