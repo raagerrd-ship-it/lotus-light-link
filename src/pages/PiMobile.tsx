@@ -68,11 +68,14 @@ function alphaToAttack(alpha: number) {
   return 100 - alphaToCurve(alpha);
 }
 
-type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs';
+type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'maxRisePerSec' | 'maxFallPerSec' | 'flickerDeadband';
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = bara disk, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
   { key: "attack", label: "Attack", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar" },
   { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
+  { key: "maxRisePerSec", label: "Anti-fladder ⤴ tak", min: 1, max: 20, step: 0.5, unit: "/s", description: "Tak på hur snabbt ljuset får stiga. 20 = praktiskt taget av, 4 = mjukt. Skyddar mot brus i toppen." },
+  { key: "maxFallPerSec", label: "Anti-fladder ⤵ tak", min: 0.5, max: 10, step: 0.25, unit: "/s", description: "Tak på hur snabbt ljuset får falla. Lägre = mjukare release-tak, eliminerar pendling i loud passager." },
+  { key: "flickerDeadband", label: "Anti-fladder deadband", min: 0, max: 0.08, step: 0.005, description: "0 = av. Mikroändringar under tröskeln ignoreras helt. Skalas perceptuellt med nivå." },
   { key: "onsetThreshold", label: "Beat-känslighet", min: 1.3, max: 2.5, step: 0.05, unit: "×", description: "Lägre = fler beats triggar (känsligare). 1.3 = mycket känslig, 2.5 = bara tydliga slag" },
   { key: "onsetRefractoryMs", label: "Beat-mellanrum", min: 50, max: 250, step: 10, unit: "ms", description: "Minsta gap mellan beats. Högt värde = lugnare puls" },
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
