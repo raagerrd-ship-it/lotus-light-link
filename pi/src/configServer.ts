@@ -296,7 +296,10 @@ export function startConfigServer(port = 3050): void {
       result.bluetoothdStatus = stdout.trim();
       result.bluetoothdActive = result.bluetoothdStatus === 'active';
     } catch (e: any) {
-      // is-active returnerar exit-code != 0 om inte aktiv → execFile rejectar
+      // is-active returnerar exit-code != 0 om inte aktiv → execFile rejectar.
+      // Men: i vissa PCC-miljöer saknas systemctl i PATH, eller execFile
+      // timeout:ar — då får vi 'error' utan att tjänsten faktiskt är nere.
+      // Behandla som okänt (verifieras senare via nobleState nedan).
       result.bluetoothdStatus = e?.stdout?.toString().trim() || (e?.code ?? 'error');
       result.bluetoothdActive = false;
     }
@@ -309,6 +312,16 @@ export function startConfigServer(port = 3050): void {
         result.nobleState = noble.state ?? noble._state ?? 'unknown';
       }
     } catch {}
+
+    // Om noble är poweredOn så ÄR bluetoothd uppe per definition (noble kan
+    // inte powera upp adaptern utan en aktiv bluetoothd-stack). Override
+    // systemctl-checken som kan ha failat p.g.a. PATH/timeout i PCC-miljön.
+    if (result.nobleState === 'poweredOn') {
+      result.bluetoothdActive = true;
+      if (!['active'].includes(result.bluetoothdStatus)) {
+        result.bluetoothdStatus = 'active (inferred from noble)';
+      }
+    }
 
     // Storage write access — bannern ska även visa de faktiska katalogerna
     // som save-endpoints skriver till (PCC_DATA_DIR/PCC_CONFIG_DIR).
