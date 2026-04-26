@@ -93,6 +93,32 @@ function applySonosStateToEngine(state: {
     }
   }
 
+  // ── Sonos PLAYING triggar resurs-restart efter idle-disconnect ──
+  // ALSA + BLE startas parallellt (båda non-blocking). ALSA första audio-cb
+  // ~200-300ms; BLE reconnect ~2-4s — ALSA hinner upp innan första writen behövs.
+  // Reconnect bara om senaste disconnect var auto (idle-timeout) — manuell
+  // UI-disconnect respekteras enligt manual-only-policy.
+  if (isPlaying || state.isTvMode) {
+    if (alsaMic && !alsaMic.isMicActive()) {
+      console.log('[Sonos] PLAYING — startar om ALSA-mic efter idle-paus');
+      try { alsaMic.startMic(); } catch (e: any) {
+        console.warn(`[Sonos] startMic failed: ${e?.message ?? e}`);
+      }
+    }
+    void (async () => {
+      try {
+        const { getHardcodedConnected, connectHardcoded, wasAutoDisconnected } =
+          await import('./ble/connect-hardcoded.js');
+        if (!getHardcodedConnected().connected && wasAutoDisconnected()) {
+          console.log('[Sonos] PLAYING — triggar auto-reconnect (var idle-disconnected)');
+          void connectHardcoded();
+        }
+      } catch (e: any) {
+        console.warn(`[Sonos] auto-reconnect-check failed: ${e?.message ?? e}`);
+      }
+    })();
+  }
+
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
     alsaMic?.setAutoGainFromVolume(state.volume);
