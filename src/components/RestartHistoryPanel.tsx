@@ -77,6 +77,7 @@ function formatTimeAgo(iso: string): string {
 
 export function RestartHistoryPanel({ piBase }: Props) {
   const [entries, setEntries] = useState<RestartEntry[]>([]);
+  const [transitions, setTransitions] = useState<SubsystemTransition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
