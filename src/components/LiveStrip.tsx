@@ -3,18 +3,22 @@ import { apiBase } from "@/lib/apiBase";
 
 /**
  * LiveStrip — kompakt realtids-display av engine-state.
- * Visar (i ordning): Input level, Output level, BLE-kö, Palette (nu/nästa), Sonos-låt.
- * Pollar /api/status @ 4 Hz. Tyst vid fel (UI får inte spamma vid disconnect).
+ * Visar: Input, Output (färgad med aktuell palettfärg), BLE-kö,
+ * Status (playback), Nu (färg + låt), Nästa (färg + låt).
+ * Pollar /api/status @ 4 Hz. Tyst vid fel.
  */
 type RGB = [number, number, number];
 
 type StatusLive = {
-  inputLevel: number;            // 0..1 (engine energyNorm, matchar output-domänen)
-  outputBrightness: number;      // 0..1
-  paletteCurrent: RGB[] | null;  // Sonos-palette för nuvarande låt
-  paletteNext: RGB[] | null;     // Pre-cached palette för nästa låt
+  inputLevel: number;
+  outputBrightness: number;
+  paletteCurrent: RGB[] | null;
+  paletteNext: RGB[] | null;
   track: string | null;
   artist: string | null;
+  nextTrack: string | null;
+  nextArtist: string | null;
+  playbackState: string | null;
   queue: number;
 };
 
@@ -54,6 +58,9 @@ export function LiveStrip() {
     };
   }, []);
 
+  const currentColor = live?.paletteCurrent?.[0] ?? null;
+  const nextColor = live?.paletteNext?.[0] ?? null;
+
   return (
     <div
       className={`rounded-xl border border-border bg-card/60 p-3 text-xs space-y-2 transition-opacity ${
@@ -66,23 +73,27 @@ export function LiveStrip() {
       </Row>
 
       <Row label="Output" value={fmtPct(live?.outputBrightness)}>
-        <Bar value={live?.outputBrightness ?? 0} />
+        <Bar value={live?.outputBrightness ?? 0} color={currentColor} />
       </Row>
+
+      <Row label="Status" value={fmtPlayback(live?.playbackState)} />
 
       <Row label="Kö" value={String(live?.queue ?? 0)} />
 
       <Row label="Nu">
-        <PaletteSwatch palette={live?.paletteCurrent ?? null} />
-      </Row>
-
-      <Row label="Nästa">
-        <PaletteSwatch palette={live?.paletteNext ?? null} />
-      </Row>
-
-      <Row label="Låt">
+        <Swatch color={currentColor} />
         <span className="truncate text-foreground/90">
           {live?.track
             ? `${live.track}${live.artist ? " — " + live.artist : ""}`
+            : <span className="text-muted-foreground">—</span>}
+        </span>
+      </Row>
+
+      <Row label="Nästa">
+        <Swatch color={nextColor} />
+        <span className="truncate text-foreground/90">
+          {live?.nextTrack
+            ? `${live.nextTrack}${live.nextArtist ? " — " + live.nextArtist : ""}`
             : <span className="text-muted-foreground">—</span>}
         </span>
       </Row>
@@ -110,39 +121,49 @@ function Row({
   );
 }
 
-function Bar({ value }: { value: number }) {
+function Bar({ value, color }: { value: number; color?: RGB | null }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
+  const bg = color ? `rgb(${color[0]}, ${color[1]}, ${color[2]})` : undefined;
   return (
     <div className="h-2 flex-1 rounded bg-muted overflow-hidden">
       <div
-        className="h-full bg-primary transition-[width] duration-150"
-        style={{ width: `${pct}%` }}
+        className={`h-full transition-[width] duration-150 ${color ? "" : "bg-primary"}`}
+        style={{ width: `${pct}%`, backgroundColor: bg }}
       />
     </div>
   );
 }
 
-function PaletteSwatch({ palette }: { palette: [number, number, number][] | null }) {
-  if (!palette || palette.length === 0) {
-    return <span className="text-muted-foreground">—</span>;
+function Swatch({ color }: { color: RGB | null }) {
+  if (!color) {
+    return (
+      <div
+        className="h-4 w-6 shrink-0 rounded border border-border bg-muted"
+        aria-hidden
+      />
+    );
   }
-  // Visa upp till 5 färger som horisontella rutor — ren input-vy från Sonos.
-  const slice = palette.slice(0, 5);
+  const [r, g, b] = color;
   return (
-    <div className="flex h-4 gap-1">
-      {slice.map(([r, g, b], i) => (
-        <div
-          key={i}
-          className="h-4 w-6 rounded border border-border"
-          style={{ backgroundColor: `rgb(${r}, ${g}, ${b})` }}
-          title={`rgb(${r}, ${g}, ${b})`}
-        />
-      ))}
-    </div>
+    <div
+      className="h-4 w-6 shrink-0 rounded border border-border"
+      style={{ backgroundColor: `rgb(${r}, ${g}, ${b})` }}
+      title={`rgb(${r}, ${g}, ${b})`}
+    />
   );
 }
 
 function fmtPct(v: number | undefined | null): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return `${Math.round(v * 100)}%`;
+}
+
+function fmtPlayback(s: string | null | undefined): string {
+  if (!s) return "—";
+  if (s.includes("PLAYING")) return "Spelar";
+  if (s.includes("PAUSED")) return "Pausad";
+  if (s.includes("STOPPED")) return "Stoppad";
+  if (s.includes("TRANSITION")) return "Byter…";
+  if (s.includes("IDLE")) return "Inaktiv";
+  return s;
 }
