@@ -761,6 +761,20 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
+      // ── 6b. Anti-flicker slew-rate limiter (asymmetrisk, normaliserad enhet/sekund) ──
+      // Garanterar lugn rörelse oavsett hur brusig insignalen är. Höga maxRise/Sec
+      // släpper igenom snabba attacker; lågt maxFall/Sec ger mjukt release-tak.
+      // dt = faktisk tid sedan förra tick (jitter-säkert).
+      {
+        const dtSec = Math.max(0.005, Math.min(0.2, this.tickMs / 1000));
+        const rising = energyNorm > this.lastBrightness;
+        const maxStep = (rising ? cal.maxRisePerSec : cal.maxFallPerSec) * dtSec;
+        const delta = energyNorm - this.lastBrightness;
+        if (delta > maxStep) energyNorm = this.lastBrightness + maxStep;
+        else if (-delta > maxStep) energyNorm = this.lastBrightness - maxStep;
+        this.lastBrightness = energyNorm;
+      }
+
       // ── 7. Floor + Perceptual curve ──
       const floor = tc.brightnessFloor;
       let pct = energyNorm * 100;
@@ -777,6 +791,19 @@ export class PiLightEngine {
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
+
+      // ── 7b. Anti-flicker perceptuell deadband (Weber-Fechner) ──
+      // Ögat märker större relativ förändring vid låg ljusstyrka, mindre vid hög.
+      // deadbandPct skalas: ~0.5×base vid pct=0, ~1.5×base vid pct=100.
+      // Om |pct - lastSentPct| under tröskeln → behåll lastSentPct (eliminerar mikrojitter).
+      // Stale-write-mekanismen i protocol.ts håller fortfarande BLE-länken vid liv.
+      if (this.lastSentPct >= 0 && cal.flickerDeadband > 0) {
+        const deadbandPct = cal.flickerDeadband * 100 * (0.5 + (pct / 100));
+        if (Math.abs(pct - this.lastSentPct) < deadbandPct) {
+          pct = this.lastSentPct;
+        }
+      }
+      this.lastSentPct = pct;
 
       // ── Color fade-tween (mjuk övergång till nytt palette-mål) ──
       // Läs alltid palette[0] löpande som mål — så att sena palette-uppdateringar
