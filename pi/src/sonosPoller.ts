@@ -184,6 +184,8 @@ function parseStatus(s: any): void {
     // Behåll förcachad nextPalette tills gateway skickar en ny (eller null:ar).
     // Om vi precis promotat den till `palette`, nolla så vi inte återanvänder.
     nextPalette: gwNextPalette ?? (promotedNext ? null : currentState.nextPalette),
+    nextTrackName: s.nextTrackName ?? s.nextTrack?.trackName ?? s.nextTrack?.title ?? null,
+    nextArtistName: s.nextArtistName ?? s.nextTrack?.artistName ?? s.nextTrack?.artist ?? null,
   });
 }
 
