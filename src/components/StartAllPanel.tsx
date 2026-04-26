@@ -164,6 +164,18 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
   async function runFromIndex(startIdx: number) {
     setRunning(true);
     setFailedAt(null);
+    try {
+      await fetch(`${piBase}/api/diagnostics/manual-start-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          detail: `Starta allt från ${STEPS[startIdx]?.label ?? "okänt steg"}; UI-state=${JSON.stringify(states)}`,
+        }),
+        signal: AbortSignal.timeout(2000),
+      });
+    } catch {
+      // Diagnostiken får aldrig blockera faktisk start.
+    }
     // Återställ alla steg från startIdx och framåt
     setStates((s) => {
       const next = { ...s };
