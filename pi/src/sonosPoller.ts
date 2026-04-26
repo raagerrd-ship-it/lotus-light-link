@@ -41,6 +41,9 @@ export interface SonosState {
   palette: [number, number, number][] | null;
   /** Pre-cached palette för nästa låt — gör att vi kan börja fade direkt vid trackbyte */
   nextPalette: [number, number, number][] | null;
+  /** Nästa låt i kön (om gateway skickar) — visas i UI så man ser vad som kommer */
+  nextTrackName: string | null;
+  nextArtistName: string | null;
 }
 
 type Listener = (state: SonosState) => void;
