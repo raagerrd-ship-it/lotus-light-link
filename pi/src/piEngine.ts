@@ -407,7 +407,11 @@ export class PiLightEngine {
     const mid = n >> 1;
     const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
     // Stricter threshold (cal.onsetThreshold × median + floor) → only real beats trigger, not noise
-    const threshold = med * this.cal.onsetThreshold + 0.008;
+    // Adaptiv suppression: när dynamicCenter > 0.5 (loud sustain) höj tröskeln upp till +75%.
+    // Förhindrar att flux-jitter på "fulla" mixar lägger pulser ovanpå redan hög nivå.
+    const dc = this.dynamicCenter;
+    const suppression = dc > 0.5 ? 1 + (dc - 0.5) * 1.5 : 1;
+    const threshold = med * this.cal.onsetThreshold * suppression + 0.008;
     const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
 
