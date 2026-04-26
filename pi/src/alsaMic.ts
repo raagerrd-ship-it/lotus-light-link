@@ -475,6 +475,7 @@ export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainC
 export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | null): void {
   calPoint1 = p1;
   calPoint2 = p2;
+  saveMicState();
   if (p1 && p2) {
     dlog(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
     // Räkna om direkt från senast kända volym så slider-ändringar syns omedelbart
