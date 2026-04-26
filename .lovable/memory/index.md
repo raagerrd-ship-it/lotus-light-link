@@ -12,6 +12,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 
 ## Memories
 - [Native-only mic policy](mem://pi/audio/native-only-no-arecord-fallback) — arecord-fallback borttagen, engine fail-hard utan capture.node
+- [Anti-fladder pipeline](mem://pi/audio/anti-flicker-pipeline) — slew-rate + perceptuell deadband + adaptiv onset-suppression mot mikrojitter på loud-passager
 - [Hardware limitations](mem://constraints/hardware-limitations) — BLEDOM forces color change on mic mode, use mobile mic
 - [Database persistence](mem://technical/database-persistence) — Offline-first sync logic to Supabase
 - [Sonos metadata](mem://technical/sonos-metadata-resolution) — CORS and deep extraction of album art

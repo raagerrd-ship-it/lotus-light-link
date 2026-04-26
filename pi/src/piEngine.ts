@@ -124,6 +124,12 @@ interface LightCalibration {
   onsetThreshold: number;
   /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
   onsetRefractoryMs: number;
+  /** Anti-fladder: max stigning i normaliserade enheter per sekund (1.0 = full 0→100% på 1s). 20 = praktiskt taget av. */
+  maxRisePerSec: number;
+  /** Anti-fladder: max fall per sekund. Lägre värde = mjukare release-tak (1.0 = 100→0% tar 1s). */
+  maxFallPerSec: number;
+  /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
+  flickerDeadband: number;
   [key: string]: any;
 }
 
@@ -140,6 +146,9 @@ const DEFAULT_CAL: LightCalibration = {
   dynamicsEnabled: true,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 110,
+  maxRisePerSec: 8.0,
+  maxFallPerSec: 2.5,
+  flickerDeadband: 0.02,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
@@ -277,7 +286,11 @@ export class PiLightEngine {
 
   private dynamicCenter = 0.5;
   private smoothed = 0;  // EMA-state för release-smoothing @ tick-takt
-  
+  // Anti-flicker: senast skickad brightness (post-slew, pre-gamma, 0..1)
+  private lastBrightness = 0;
+  // Anti-flicker: senast UI-/BLE-rapporterad pct (för deadband-jämförelse)
+  private lastSentPct = -1;
+
 
   // Onset detection state — zero-alloc insertion-sort median
   private onsetBuffer: Float64Array;
@@ -394,7 +407,11 @@ export class PiLightEngine {
     const mid = n >> 1;
     const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
     // Stricter threshold (cal.onsetThreshold × median + floor) → only real beats trigger, not noise
-    const threshold = med * this.cal.onsetThreshold + 0.008;
+    // Adaptiv suppression: när dynamicCenter > 0.5 (loud sustain) höj tröskeln upp till +75%.
+    // Förhindrar att flux-jitter på "fulla" mixar lägger pulser ovanpå redan hög nivå.
+    const dc = this.dynamicCenter;
+    const suppression = dc > 0.5 ? 1 + (dc - 0.5) * 1.5 : 1;
+    const threshold = med * this.cal.onsetThreshold * suppression + 0.008;
     const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
     this.onsetPrevFlux = flux;
 
@@ -463,6 +480,8 @@ export class PiLightEngine {
       this.onsetBoost = 0;
       this.onsetTarget = 0;
       this.smoothed = 0;
+      this.lastBrightness = 0;
+      this.lastSentPct = -1;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
       stopKeepAlive();
       dlog(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
@@ -487,6 +506,8 @@ export class PiLightEngine {
       this.onsetBoost = 0;
       this.onsetTarget = 0;
       this.smoothed = 0;
+      this.lastBrightness = 0;
+      this.lastSentPct = -1;
       this._lastTickAtForFade = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
@@ -689,6 +710,8 @@ export class PiLightEngine {
     if (!Number.isFinite(this.dynamicCenter)) this.dynamicCenter = 0.5;
     if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
+    if (!Number.isFinite(this.lastBrightness)) this.lastBrightness = 0;
+    if (!Number.isFinite(this.lastSentPct)) this.lastSentPct = -1;
   }
 
   getDiagnostics(): DiagSnapshot { return _diag; }
@@ -744,6 +767,20 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
+      // ── 6b. Anti-flicker slew-rate limiter (asymmetrisk, normaliserad enhet/sekund) ──
+      // Garanterar lugn rörelse oavsett hur brusig insignalen är. Höga maxRise/Sec
+      // släpper igenom snabba attacker; lågt maxFall/Sec ger mjukt release-tak.
+      // dt = faktisk tid sedan förra tick (jitter-säkert).
+      {
+        const dtSec = Math.max(0.005, Math.min(0.2, this.tickMs / 1000));
+        const rising = energyNorm > this.lastBrightness;
+        const maxStep = (rising ? cal.maxRisePerSec : cal.maxFallPerSec) * dtSec;
+        const delta = energyNorm - this.lastBrightness;
+        if (delta > maxStep) energyNorm = this.lastBrightness + maxStep;
+        else if (-delta > maxStep) energyNorm = this.lastBrightness - maxStep;
+        this.lastBrightness = energyNorm;
+      }
+
       // ── 7. Floor + Perceptual curve ──
       const floor = tc.brightnessFloor;
       let pct = energyNorm * 100;
@@ -760,6 +797,19 @@ export class PiLightEngine {
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
+
+      // ── 7b. Anti-flicker perceptuell deadband (Weber-Fechner) ──
+      // Ögat märker större relativ förändring vid låg ljusstyrka, mindre vid hög.
+      // deadbandPct skalas: ~0.5×base vid pct=0, ~1.5×base vid pct=100.
+      // Om |pct - lastSentPct| under tröskeln → behåll lastSentPct (eliminerar mikrojitter).
+      // Stale-write-mekanismen i protocol.ts håller fortfarande BLE-länken vid liv.
+      if (this.lastSentPct >= 0 && cal.flickerDeadband > 0) {
+        const deadbandPct = cal.flickerDeadband * 100 * (0.5 + (pct / 100));
+        if (Math.abs(pct - this.lastSentPct) < deadbandPct) {
+          pct = this.lastSentPct;
+        }
+      }
+      this.lastSentPct = pct;
 
       // ── Color fade-tween (mjuk övergång till nytt palette-mål) ──
       // Läs alltid palette[0] löpande som mål — så att sena palette-uppdateringar

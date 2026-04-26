@@ -41,10 +41,10 @@ type ProfileName = typeof PROFILE_NAMES[number];
 // Defaults speglar PRESET_CALS i src/pages/PiMobile.tsx — om de ändras där,
 // uppdatera även här. Båda måste vara i sync vid första boot/seed.
 const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
-  Lugn:   { bassWeight: 0.7, attackAlpha: 0.061, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6, onsetThreshold: 2.0, onsetRefractoryMs: 150 },
-  Normal: { bassWeight: 0.8, attackAlpha: 1.0,   releaseAlpha: 0.677, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 1.0, dynamicsEnabled: false, hiShelfGainDb: 6, onsetThreshold: 1.8, onsetRefractoryMs: 110 },
-  Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6, onsetThreshold: 1.6, onsetRefractoryMs: 90 },
-  Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6, onsetThreshold: 1.8, onsetRefractoryMs: 110 },
+  Lugn:   { bassWeight: 0.7, attackAlpha: 0.061, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6, onsetThreshold: 2.0, onsetRefractoryMs: 150, maxRisePerSec: 4.0, maxFallPerSec: 1.5, flickerDeadband: 0.04 },
+  Normal: { bassWeight: 0.8, attackAlpha: 1.0,   releaseAlpha: 0.677, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 1.0, dynamicsEnabled: false, hiShelfGainDb: 6, onsetThreshold: 1.8, onsetRefractoryMs: 110, maxRisePerSec: 8.0, maxFallPerSec: 2.5, flickerDeadband: 0.02 },
+  Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6, onsetThreshold: 1.6, onsetRefractoryMs: 90, maxRisePerSec: 15.0, maxFallPerSec: 5.0, flickerDeadband: 0.01 },
+  Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 1.0, dynamicsEnabled: true, hiShelfGainDb: 6, onsetThreshold: 1.8, onsetRefractoryMs: 110, maxRisePerSec: 8.0, maxFallPerSec: 2.5, flickerDeadband: 0.02 },
   // bassWeight semantik: 0=bara disk, 0.5=neutral (båda 100%), 1.0=bara bas. Asymmetrisk dämpning av "andra" sidan.
 };
 

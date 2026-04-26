@@ -12,13 +12,13 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; saturation: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number };
+type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; saturation: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; maxRisePerSec: number; maxFallPerSec: number; flickerDeadband: number };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150 },
-  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 0, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 110 },
-  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.8, onsetRefractoryMs: 110 },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, maxRisePerSec: 4.0,  maxFallPerSec: 1.5, flickerDeadband: 0.04 },
+  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 0, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 110, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
+  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  maxRisePerSec: 15.0, maxFallPerSec: 5.0, flickerDeadband: 0.01 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.8, onsetRefractoryMs: 110, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -68,11 +68,14 @@ function alphaToAttack(alpha: number) {
   return 100 - alphaToCurve(alpha);
 }
 
-type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs';
+type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'maxRisePerSec' | 'maxFallPerSec' | 'flickerDeadband';
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = bara disk, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
   { key: "attack", label: "Attack", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar" },
   { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
+  { key: "maxRisePerSec", label: "Anti-fladder ⤴ tak", min: 1, max: 20, step: 0.5, unit: "/s", description: "Tak på hur snabbt ljuset får stiga. 20 = praktiskt taget av, 4 = mjukt. Skyddar mot brus i toppen." },
+  { key: "maxFallPerSec", label: "Anti-fladder ⤵ tak", min: 0.5, max: 10, step: 0.25, unit: "/s", description: "Tak på hur snabbt ljuset får falla. Lägre = mjukare release-tak, eliminerar pendling i loud passager." },
+  { key: "flickerDeadband", label: "Anti-fladder deadband", min: 0, max: 0.08, step: 0.005, description: "0 = av. Mikroändringar under tröskeln ignoreras helt. Skalas perceptuellt med nivå." },
   { key: "onsetThreshold", label: "Beat-känslighet", min: 1.3, max: 2.5, step: 0.05, unit: "×", description: "Lägre = fler beats triggar (känsligare). 1.3 = mycket känslig, 2.5 = bara tydliga slag" },
   { key: "onsetRefractoryMs", label: "Beat-mellanrum", min: 50, max: 250, step: 10, unit: "ms", description: "Minsta gap mellan beats. Högt värde = lugnare puls" },
   { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
@@ -1268,6 +1271,9 @@ export default function PiMobile() {
           dynamicsEnabled: p.dynamicsEnabled,
           onsetThreshold: p.onsetThreshold,
           onsetRefractoryMs: p.onsetRefractoryMs,
+          maxRisePerSec: p.maxRisePerSec,
+          maxFallPerSec: p.maxFallPerSec,
+          flickerDeadband: p.flickerDeadband,
           hiShelfGainDb: 6,
         };
       }
@@ -1341,6 +1347,9 @@ export default function PiMobile() {
           dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
           onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
           onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
+          maxRisePerSec: c?.maxRisePerSec ?? DEFAULT_CAL.maxRisePerSec,
+          maxFallPerSec: c?.maxFallPerSec ?? DEFAULT_CAL.maxFallPerSec,
+          flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
         };
       };
 
