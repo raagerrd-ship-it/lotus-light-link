@@ -46,6 +46,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [Manual update only](mem://pi/deployment/manual-update-only) — services.json: runInstallOnRelease:false, autoUpdate:false. Ingen auto-deploy från GitHub-releases.
 - [Tyst loggning](mem://pi/runtime/silent-by-default-logging) — All console.log via dlog() bakom LOTUS_DEBUG=1. UI visar live-state via /api/status.live, inte via loggen.
 - [Auto-restart vid crash](mem://pi/runtime/auto-restart-on-crash) — /tmp-flagga sätts vid lyckad BLE-connect. Systemd-restart (OOM, crash, BLE-fail) startar hela kedjan automatiskt.
+- [Restart-historik & tuning](mem://pi/runtime/restart-history-and-tuning) — Ringbuffer på disk + UI-vy. CONSECUTIVE_FAIL_LIMIT=4. Loggar reason/uptime/RSS för varje restart.
 - [API routing](mem://pi/ui/api-routing) — API URLs generated as window.location.port + 50
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
