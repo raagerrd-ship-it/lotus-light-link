@@ -21,9 +21,12 @@ import { dlog } from "../debugLog.js";
 // connectHardcoded() direkt efter restart (så användaren slipper trycka Anslut).
 
 // Consecutive connect-failures räknare. Mönster från fältet: BLEDOM ansluter
-// alltid på 1-2s eller aldrig. Efter 2 misslyckanden i rad är noble's HCI-state
+// alltid på 1-2s eller aldrig. Efter N misslyckanden i rad är noble's HCI-state
 // fastnat — enda fungerande lösning är full process-restart (systemd Restart=always).
-const CONSECUTIVE_FAIL_LIMIT = 2;
+// Höjt från 2 → 4 (2026-04-26) för att ge mer marginal innan vi nukar processen;
+// auto-reconnect-loopen täcker normala disconnects, så denna path triggas mest
+// vid initial-connect-misslyckanden där 2 var för känsligt.
+const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
