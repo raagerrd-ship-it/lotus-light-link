@@ -24,6 +24,15 @@ interface RestartEntry {
   memoryBeforeMb: number | null;
 }
 
+interface SubsystemTransition {
+  ts: string;
+  id: "mic" | "sonos" | "engine";
+  from: "idle" | "starting" | "ready" | "error";
+  to: "idle" | "starting" | "ready" | "error";
+  error: string | null;
+  uptimeMs: number | null;
+}
+
 interface Props {
   piBase: string;
 }
