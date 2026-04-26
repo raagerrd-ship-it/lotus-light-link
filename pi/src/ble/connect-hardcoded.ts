@@ -160,6 +160,8 @@ export function getHardcodedPeripheral(): any | null {
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   // Manuell disconnect → stoppa auto-reconnect-loopen så vi inte kämpar mot användaren.
+  _lastDisconnectWasAuto = false;
+  _lastDisconnectReason = 'manual';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
   if (!_connected) return { disconnected: true };
@@ -171,6 +173,27 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   return { disconnected: true };
+}
+
+/**
+ * Idle-timeout disconnect — anropas av engine.handleIdleDisconnect efter 2 min
+ * utan musik. Markerar disconnect som AUTO så Sonos PLAYING-pathen i index.ts
+ * får trigga auto-reconnect (manual-only-policy gäller fortfarande efter
+ * UI-disconnect — se mem://pi/ble/manual-only-connection-policy).
+ */
+export async function triggerIdleDisconnect(): Promise<void> {
+  console.log('[connect-hardcoded] Idle-timeout disconnect — markerar som auto');
+  _lastDisconnectWasAuto = true;
+  _lastDisconnectReason = 'idle-timeout';
+  _autoReconnectEnabled = false;
+  clearAutoReconnect();
+  if (!_connected) return;
+  _onDisconnected?.();
+  detachControllerDrain();
+  setDevice(null);
+  resetLastSent();
+  try { await _connected.disconnectAsync(); } catch {}
+  _connected = null;
 }
 
 /**
