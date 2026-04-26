@@ -1347,6 +1347,9 @@ export default function PiMobile() {
           dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
           onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
           onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
+          maxRisePerSec: c?.maxRisePerSec ?? DEFAULT_CAL.maxRisePerSec,
+          maxFallPerSec: c?.maxFallPerSec ?? DEFAULT_CAL.maxFallPerSec,
+          flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
         };
       };
 
