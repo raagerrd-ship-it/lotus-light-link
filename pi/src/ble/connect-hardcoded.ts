@@ -60,6 +60,17 @@ let _autoReconnectGivenUp = false;
 let _lastReconnectRequestAt = 0;
 const RECONNECT_DEBOUNCE_MS = 1000;
 
+// ── Tracking av senaste disconnect-orsak ──
+// Manuell disconnect (UI-knapp) → wasAuto=false → Sonos-PLAYING-pathen i
+// index.ts blockerar auto-reconnect (manual-only-policy gäller).
+// Idle-timeout-disconnect (engine.handleIdleDisconnect) → wasAuto=true →
+// Sonos PLAYING får trigga reconnect automatiskt.
+let _lastDisconnectWasAuto = false;
+let _lastDisconnectReason: 'manual' | 'idle-timeout' | 'supervision-timeout' | 'unknown' = 'unknown';
+
+export function wasAutoDisconnected(): boolean { return _lastDisconnectWasAuto; }
+export function getLastDisconnectReason(): string { return _lastDisconnectReason; }
+
 function clearAutoReconnect(): void {
   if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
   _autoReconnectAttempt = 0;
