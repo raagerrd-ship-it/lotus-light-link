@@ -179,11 +179,21 @@ async function startMicSubsystem(): Promise<void> {
 
         // Koppla BLE connect/disconnect → engine, så keep-alive och idle-heartbeat
         // bara körs när lampan faktiskt är ansluten (inte vid engine.start()).
-        const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
-        setEngineBleCallbacks(
-          () => engineInstance?.onBleConnected(),
-          () => engineInstance?.onBleDisconnected(),
-        );
+        // Använd lokal setter (registrerad i main()) som wrappar engine-cb
+        // tillsammans med reconnect-flag-hook (sätts vid lyckad connect).
+        const setCb = (globalThis as any).__lotusSetEngineCb;
+        if (typeof setCb === 'function') {
+          setCb(
+            () => engineInstance?.onBleConnected(),
+            () => engineInstance?.onBleDisconnected(),
+          );
+        } else {
+          const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
+          setEngineBleCallbacks(
+            () => engineInstance?.onBleConnected(),
+            () => engineInstance?.onBleDisconnected(),
+          );
+        }
 
         // Återställ sparad dimming-gamma från storage. Utan detta hamnar engine
         // alltid på default 1.0 efter omstart, oavsett vad användaren sparat —
