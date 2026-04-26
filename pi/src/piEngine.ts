@@ -553,6 +553,9 @@ export class PiLightEngine {
   onBleConnected(): void {
     if (this._bleOwner !== 'none') return;
     this._bleOwner = this.playing ? 'active' : 'idle';
+    // Färsk session — rensa ev. pending idle-disconnect-timer + mic-paus-flagga.
+    this.clearIdleDisconnectTimer();
+    this._micPausedForIdle = false;
     if (!this.playing) {
       this.forceIdleNow();
       startKeepAlive();
@@ -576,10 +579,20 @@ export class PiLightEngine {
     if (this._bleOwner === 'none') return;
     this._bleOwner = 'none';
     stopKeepAlive();
+    // Rensa idle-timer (kan vara pending om disconnect kom innan timeout fyrade).
+    this.clearIdleDisconnectTimer();
     dlog('[Engine] BLE disconnected → owner=none, keep-alive STOPPAD');
   }
 
   setPlaying(playing: boolean): void {
+    // Anti-flap debounce: Sonos kan rapportera STOPPED→TRANSITIONING→PLAYING
+    // inom <1s vid trackbyte. 500ms guard filtrerar ut snabba fluktuationer.
+    const now = Date.now();
+    if (now - this._lastPlayingChangeAt < PiLightEngine.PLAYING_DEBOUNCE_MS) {
+      return;
+    }
+    this._lastPlayingChangeAt = now;
+
     const wasPlaying = this.playing;
     this.playing = playing;
     if (playing === wasPlaying) return;
@@ -598,6 +611,14 @@ export class PiLightEngine {
         this.forceIdleNow();
         startKeepAlive();
         dlog('[Engine] → idle mode (owner=idle, keep-alive PÅ)');
+        // Schemalägg auto-disconnect efter 2 min utan musik.
+        this.clearIdleDisconnectTimer();
+        this._idleEnteredAt = now;
+        this._idleDisconnectTimer = setTimeout(
+          () => { void this.handleIdleDisconnect(); },
+          PiLightEngine.IDLE_DISCONNECT_MS,
+        );
+        dlog(`[Engine] Idle-disconnect schemalagd om ${PiLightEngine.IDLE_DISCONNECT_MS / 1000}s`);
       } else {
         dlog('[Engine] → idle mode (BLE ej ansluten)');
       }
@@ -605,6 +626,7 @@ export class PiLightEngine {
       // idle → active: stoppa keep-alive (FFT-writes tar över), starta loop.
       // Keep-alive får ALDRIG köra parallellt med active path — det skulle
       // bygga kö i HCI-lagret.
+      this.clearIdleDisconnectTimer();
       this.startLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'active';
