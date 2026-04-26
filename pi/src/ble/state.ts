@@ -40,25 +40,70 @@ export function getAllSubsystemStates(): Record<SubsystemId, SubsystemState> {
     engine: { ..._subsystems.engine },
   };
 }
+// ── Subsystem transition log (ringbuffer för diagnostik) ──
+// Loggar varje state-byte (idle/starting/ready/error) med tid + ev. error.
+// Syfte: när användaren tvingas trycka "Starta allt" igen kan vi se EXAKT
+// vilket subsystem som föll bort och varför, utan att behöva journalctl.
+export interface SubsystemTransition {
+  ts: string;            // ISO-timestamp
+  id: SubsystemId;
+  from: SubsystemStatus;
+  to: SubsystemStatus;
+  error: string | null;  // bara satt vid → 'error'
+  uptimeMs: number | null; // hur länge subsystemet varit 'ready' innan fall
+}
+const _transitions: SubsystemTransition[] = [];
+const MAX_TRANSITIONS = 50;
+
+function _logTransition(id: SubsystemId, from: SubsystemStatus, to: SubsystemStatus, error: string | null, uptimeMs: number | null): void {
+  _transitions.push({
+    ts: new Date().toISOString(),
+    id,
+    from,
+    to,
+    error: error ? error.slice(0, 300) : null,
+    uptimeMs,
+  });
+  if (_transitions.length > MAX_TRANSITIONS) _transitions.splice(0, _transitions.length - MAX_TRANSITIONS);
+}
+
+export function getSubsystemTransitions(): SubsystemTransition[] {
+  return _transitions.slice();
+}
+
 export function markSubsystemStarting(id: SubsystemId): void {
+  const prev = _subsystems[id].status;
   _subsystems[id] = { status: 'starting', startedAt: Date.now(), readyAt: null, durationMs: null, error: null };
-  dlog(`[Subsystem] ${id} → starting`);
+  _logTransition(id, prev, 'starting', null, null);
+  dlog(`[Subsystem] ${id} ${prev} → starting`);
 }
 export function markSubsystemReady(id: SubsystemId): void {
   const s = _subsystems[id];
+  const prev = s.status;
   const startedAt = s.startedAt ?? Date.now();
   const readyAt = Date.now();
   _subsystems[id] = { status: 'ready', startedAt, readyAt, durationMs: readyAt - startedAt, error: null };
-  dlog(`[Subsystem] ${id} → ready (${_subsystems[id].durationMs}ms)`);
+  _logTransition(id, prev, 'ready', null, null);
+  dlog(`[Subsystem] ${id} ${prev} → ready (${_subsystems[id].durationMs}ms)`);
 }
 export function markSubsystemError(id: SubsystemId, error: string): void {
   const s = _subsystems[id];
+  const prev = s.status;
   const startedAt = s.startedAt ?? Date.now();
+  // Om vi var 'ready' → räkna uptime från readyAt så vi ser hur länge det höll
+  const uptimeMs = s.readyAt ? Date.now() - s.readyAt : null;
   _subsystems[id] = { status: 'error', startedAt, readyAt: null, durationMs: Date.now() - startedAt, error };
-  console.error(`[Subsystem] ${id} → error: ${error}`);
+  _logTransition(id, prev, 'error', error, uptimeMs);
+  console.error(`[Subsystem] ${id} ${prev} → error${uptimeMs != null ? ` (efter ${Math.round(uptimeMs/1000)}s ready)` : ''}: ${error}`);
 }
 export function resetSubsystem(id: SubsystemId): void {
+  const prev = _subsystems[id].status;
+  const uptimeMs = _subsystems[id].readyAt ? Date.now() - _subsystems[id].readyAt! : null;
   _subsystems[id] = { status: 'idle', startedAt: null, readyAt: null, durationMs: null, error: null };
+  if (prev !== 'idle') {
+    _logTransition(id, prev, 'idle', null, uptimeMs);
+    console.warn(`[Subsystem] ${id} ${prev} → idle (reset)${uptimeMs != null ? ` efter ${Math.round(uptimeMs/1000)}s` : ''}`);
+  }
 }
 
 // ── Connected device ──
