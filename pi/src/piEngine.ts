@@ -929,19 +929,12 @@ export class PiLightEngine {
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
 
-      // ── 6b. Anti-flicker slew-rate limiter (asymmetrisk, normaliserad enhet/sekund) ──
-      // Garanterar lugn rörelse oavsett hur brusig insignalen är. Höga maxRise/Sec
-      // släpper igenom snabba attacker; lågt maxFall/Sec ger mjukt release-tak.
-      // dt = faktisk tid sedan förra tick (jitter-säkert).
-      {
-        const dtSec = Math.max(0.005, Math.min(0.2, this.tickMs / 1000));
-        const rising = energyNorm > this.lastBrightness;
-        const maxStep = (rising ? cal.maxRisePerSec : cal.maxFallPerSec) * dtSec;
-        const delta = energyNorm - this.lastBrightness;
-        if (delta > maxStep) energyNorm = this.lastBrightness + maxStep;
-        else if (-delta > maxStep) energyNorm = this.lastBrightness - maxStep;
-        this.lastBrightness = energyNorm;
-      }
+      // ── 6b. (Slew-rate limiter borttagen 2026-04-26) ──
+      // Anti-alias-bufferten i alsaMic (~30ms rolling average) + EMA i tickInner
+      // sköter all smoothing av rå brus. Slew-en bromsade bara snabba kicks utan
+      // att tillföra något efter att aliaseringen försvann från källan.
+      // cal.maxRisePerSec / cal.maxFallPerSec finns kvar i typen för bakåt-
+      // kompatibilitet med sparade profiler men har ingen runtime-effekt längre.
 
       // ── 7. Floor + Perceptual curve ──
       const floor = tc.brightnessFloor;
