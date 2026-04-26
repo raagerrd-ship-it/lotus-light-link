@@ -730,6 +730,155 @@ export class PiLightEngine {
   getDiagnostics(): DiagSnapshot { return _diag; }
   getCalibration(): LightCalibration { return this.cal; }
 
+  // ── Auto-tune API ──
+  /** Starta sampling av rå pct (post-slew, pre-deadband) i `durationMs`.
+   *  Endast en session i taget — ny start avbryter pågående. */
+  startAutoTune(durationMs: number): { ok: boolean; durationMs: number; capacity: number } {
+    const dur = Math.max(2000, Math.min(120_000, durationMs | 0));
+    // Kapacitet: tickMs (min 5ms) → reservera dur/tickMs + 20% safety
+    const tm = Math.max(5, this.tickMs);
+    const cap = Math.ceil((dur / tm) * 1.2) + 64;
+    this.autoTuneSamples = new Float32Array(cap);
+    this.autoTuneTickMs = new Float32Array(cap);
+    this.autoTunePos = 0;
+    this.autoTuneCount = 0;
+    this.autoTuneCap = cap;
+    this.autoTuneDurationMs = dur;
+    this.autoTuneStartedAt = Date.now();
+    this.autoTuneActive = true;
+    return { ok: true, durationMs: dur, capacity: cap };
+  }
+
+  cancelAutoTune(): void {
+    this.autoTuneActive = false;
+    this.autoTuneSamples = new Float32Array(0);
+    this.autoTuneTickMs = new Float32Array(0);
+    this.autoTuneCount = 0;
+    this.autoTunePos = 0;
+    this.autoTuneCap = 0;
+  }
+
+  getAutoTuneStatus(): {
+    active: boolean;
+    elapsedMs: number;
+    durationMs: number;
+    sampleCount: number;
+    progress: number; // 0..1
+    done: boolean;
+    suggestion?: { maxFallPerSec: number; flickerDeadband: number; flickerScore: number; samplesUsed: number; sampleRateHz: number; isPlaying: boolean };
+    current?: { maxFallPerSec: number; flickerDeadband: number };
+  } {
+    const elapsed = this.autoTuneStartedAt ? Date.now() - this.autoTuneStartedAt : 0;
+    const dur = this.autoTuneDurationMs || 1;
+    const progress = Math.max(0, Math.min(1, elapsed / dur));
+    const done = !this.autoTuneActive && this.autoTuneCount > 0 && this.autoTuneStartedAt > 0;
+    const inProgress = this.autoTuneActive && elapsed < dur;
+
+    // Auto-stop när tiden gått ut
+    if (this.autoTuneActive && elapsed >= dur) {
+      this.autoTuneActive = false;
+    }
+
+    const result: any = {
+      active: inProgress,
+      elapsedMs: elapsed,
+      durationMs: dur,
+      sampleCount: this.autoTuneCount,
+      progress,
+      done: !this.autoTuneActive && this.autoTuneCount > 0,
+      current: { maxFallPerSec: this.cal.maxFallPerSec, flickerDeadband: this.cal.flickerDeadband },
+    };
+    if (!this.autoTuneActive && this.autoTuneCount > 32) {
+      result.suggestion = this.analyzeAutoTuneSamples();
+      result.suggestion.isPlaying = this.playing;
+    }
+    return result;
+  }
+
+  /** Analys: räknar pct-rörelser under sessionen och föreslår maxFallPerSec
+   *  + flickerDeadband. Algoritm:
+   *   - per-tick |Δpct|, ignorera de första 2 samplena (warmup)
+   *   - flickerDeadband ≈ p70(|Δpct|>0) / 100 * 1.2, clamp 0.005..0.08
+   *   - maxFallPerSec ≈ p90(neg-Δ-pct/sek) * 0.7, clamp 0.5..10
+   *   - flickerScore (0..100): andel ticks med |Δ| ≥ 0.5%, scaled */
+  private analyzeAutoTuneSamples(): { maxFallPerSec: number; flickerDeadband: number; flickerScore: number; samplesUsed: number; sampleRateHz: number } {
+    const N = this.autoTuneCount;
+    const cap = this.autoTuneCap;
+    const buf = this.autoTuneSamples;
+    const tms = this.autoTuneTickMs;
+    // Linearisera ringbuffer (oldest → newest)
+    const start = N < cap ? 0 : this.autoTunePos;
+    const linPct = new Float32Array(N);
+    const linDt = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const idx = (start + i) % cap;
+      linPct[i] = buf[idx];
+      linDt[i] = tms[idx];
+    }
+    const skip = Math.min(2, N - 1);
+    const absDeltas: number[] = [];
+    const fallRates: number[] = []; // pct/sek (positiva tal för fall)
+    let bigJitterCount = 0;
+    let totalCount = 0;
+    for (let i = skip + 1; i < N; i++) {
+      const d = linPct[i] - linPct[i - 1];
+      const ad = Math.abs(d);
+      absDeltas.push(ad);
+      totalCount++;
+      if (ad >= 0.5) bigJitterCount++;
+      if (d < 0) {
+        const dt = Math.max(0.005, linDt[i] / 1000);
+        fallRates.push((-d) / 100 / dt); // normaliserad enhet/sek (matchar maxFallPerSec)
+      }
+    }
+    const sortedAbs = absDeltas.filter(x => x > 0).sort((a, b) => a - b);
+    const sortedFall = fallRates.sort((a, b) => a - b);
+    const pctile = (arr: number[], p: number): number =>
+      arr.length === 0 ? 0 : arr[Math.min(arr.length - 1, Math.max(0, Math.floor(arr.length * p)))];
+
+    const p70Abs = pctile(sortedAbs, 0.70);
+    const p90Fall = pctile(sortedFall, 0.90);
+
+    // Förslag — clamp inom UI-slidrar
+    const dbRaw = (p70Abs / 100) * 1.2;
+    const flickerDeadband = Math.round(Math.max(0.005, Math.min(0.08, dbRaw)) * 1000) / 1000;
+    const fallRaw = p90Fall * 0.7;
+    const maxFallPerSec = Math.round(Math.max(0.5, Math.min(10, fallRaw)) * 4) / 4; // step 0.25
+
+    const flickerScore = totalCount > 0
+      ? Math.round(Math.min(100, (bigJitterCount / totalCount) * 200))
+      : 0;
+
+    const avgDt = N > 1 ? (linDt.reduce((a, b) => a + b, 0) / N) : this.tickMs;
+    const sampleRateHz = avgDt > 0 ? Math.round(10000 / avgDt) / 10 : 0;
+
+    return {
+      maxFallPerSec,
+      flickerDeadband,
+      flickerScore,
+      samplesUsed: N,
+      sampleRateHz,
+    };
+  }
+
+  /** Intern: kallas från tickInner med raw pct (efter slew, före deadband). */
+  private recordAutoTuneSample(rawPct: number): void {
+    if (!this.autoTuneActive) return;
+    // Auto-stop check
+    const elapsed = Date.now() - this.autoTuneStartedAt;
+    if (elapsed >= this.autoTuneDurationMs) {
+      this.autoTuneActive = false;
+      return;
+    }
+    const cap = this.autoTuneCap;
+    if (cap === 0) return;
+    this.autoTuneSamples[this.autoTunePos] = rawPct;
+    this.autoTuneTickMs[this.autoTunePos] = this.tickMs;
+    this.autoTunePos = (this.autoTunePos + 1) % cap;
+    if (this.autoTuneCount < cap) this.autoTuneCount++;
+  }
+
+
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
     // Skip processing när engine inte spelar ELLER när vi inte är BLE-active-owner.
