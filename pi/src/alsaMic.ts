@@ -512,6 +512,7 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
 export function disableAutoGain(): void {
   autoGainEnabled = false;
   updateEffectiveGain();
+  saveMicState();
   dlog(`[ALSA] Auto-gain disabled → manual base gain ${micGainBase.toFixed(1)}x active`);
 }
 
@@ -526,7 +527,21 @@ export function enableAutoGain(): void {
     updateEffectiveGain();
     dlog(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (no cached vol yet, awaiting Sonos poll)`);
   }
+  saveMicState();
 }
+
+// Restore persisted state vid modulinit. Körs efter att alla let:s deklarerats.
+// Krasch/restart mitt i låt → samma autogain/gain/cal som innan.
+(function restoreMicState() {
+  const s = loadMicState();
+  if (!s) { dlog('[ALSA] No persisted mic-state found, using defaults'); return; }
+  if (typeof s.micGainBase === 'number') micGainBase = Math.max(0.1, Math.min(50, s.micGainBase));
+  if (s.calPoint1 && typeof s.calPoint1.vol === 'number' && typeof s.calPoint1.gain === 'number') calPoint1 = s.calPoint1;
+  if (s.calPoint2 && typeof s.calPoint2.vol === 'number' && typeof s.calPoint2.gain === 'number') calPoint2 = s.calPoint2;
+  if (typeof s.autoGainEnabled === 'boolean') autoGainEnabled = s.autoGainEnabled;
+  updateEffectiveGain();
+  dlog(`[ALSA] Restored mic-state: base=${micGainBase.toFixed(1)}x auto=${autoGainEnabled} cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
+})();
 
 export function getAlsaDevice(): string {
   return currentDevice;
