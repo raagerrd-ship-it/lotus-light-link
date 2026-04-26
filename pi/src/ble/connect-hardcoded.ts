@@ -526,14 +526,24 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       _lastDisconnectReason = 'unknown';
     } else {
       _consecutiveFailures++;
-      console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures)`);
+      const errStr = r.error ?? 'okänt fel';
+      console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures): ${errStr}`);
       if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
         // Mönster från fältet: BLEDOM ansluter alltid på 1-2s eller aldrig.
-        // 2 misslyckade i rad = noble's HCI-state är fastnat. Enda fungerande
+        // 4 misslyckade i rad = noble's HCI-state är fastnat. Enda fungerande
         // lösning är full process-restart (systemd Restart=always startar om).
         // Sätt flagga så engine auto-anropar connectHardcoded() vid boot.
         console.error(`[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures — sätter reconnect-flagga och process.exit(0) för systemd restart`);
         setReconnectOnBootFlag();
+        // Logga restart-orsak innan exit så UI/logg kan visa varför
+        try {
+          const { recordRestart, markGracefulShutdown } = await import('../restartLog.js');
+          recordRestart('ble-consecutive-failures', `${_consecutiveFailures} consecutive failures, last error: ${errStr}`);
+          // Ta bort session-marker så noteBootStart inte loggar en duplikat unknown-restart
+          markGracefulShutdown();
+        } catch (e: any) {
+          console.warn(`[connect-hardcoded] kunde inte logga restart: ${e?.message ?? e}`);
+        }
         // Liten delay så HTTP-svar hinner ut till UI innan vi dör.
         setTimeout(() => process.exit(0), 500);
       }
