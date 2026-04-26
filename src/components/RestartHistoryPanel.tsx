@@ -219,7 +219,7 @@ export function RestartHistoryPanel({ piBase }: Props) {
                   >
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <span className="flex items-center gap-1.5">
-                        <span className="font-mono text-yellow-500">{t.id}</span>
+                        <span className="font-mono text-foreground">{t.id}</span>
                         <span className="text-muted-foreground">
                           ready → {t.to}
                         </span>
