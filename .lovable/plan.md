@@ -1,53 +1,158 @@
+# Auto-disconnect efter 2 min idle + ALSA-stop + Sonos-only reconnect
+
 ## Mål
+Auto-disconnect BLE efter 2 min Sonos-paus, stoppa ALSA-mikrofonen för CPU-besparing (~20-25% mindre last), och auto-reconnect + restart mic när Sonos PLAYING återkommer — endast om föregående disconnect var auto.
 
-Ta bort slew-rate limitern (block 6b i `piEngine.tickInner`) eftersom anti-alias-bufferten i `alsaMic` redan tar bort frame-to-frame-bruset som slew-en var till för. Behåll deadband (block 7b) och adaptiv onset-suppression — de har inget med latens att göra och fyller fortfarande ett musikaliskt syfte.
+## Filändringar
 
-## Vad försvinner
+### 1. `pi/src/alsaMic.ts` — lägg till `isMicActive()`
+`startMic()` (rad 507) och `stopMic()` (rad 642) finns redan med korrekt state-nollställning. `startMic()` har redan `if (capture) return` idempotency. Lägg bara till en getter:
+```ts
+export function isMicActive(): boolean { return capture !== null; }
+```
 
-**Block 6b i `pi/src/piEngine.ts` (rad 932–944):**
-- Slew-räknaren på `energyNorm` med `maxRisePerSec` / `maxFallPerSec`
-- Skrivningen till `this.lastBrightness` försvinner med blocket
+### 2. `pi/src/ble/connect-hardcoded.ts` — disconnect-tracking + idle-trigger
+Modul-state (~rad 55):
+```ts
+let _lastDisconnectWasAuto = false;
+let _lastDisconnectReason: 'manual'|'idle-timeout'|'supervision-timeout'|'unknown' = 'unknown';
+export function wasAutoDisconnected(): boolean { return _lastDisconnectWasAuto; }
+export function getLastDisconnectReason(): string { return _lastDisconnectReason; }
+```
 
-**Effekt:** Snabba kicks/transienter går rakt igenom utan att begränsas av rise-taket. Smoothness säkras nu av:
-1. Anti-alias rolling average i `alsaMic` (~30 ms)
-2. EMA i `tickInner` (releaseAlpha)
-3. Dynamics + adaptiv onset-suppression
-4. Deadband (oförändrad)
+I `disconnectHardcoded()` (rad 150) — sätt först:
+```ts
+_lastDisconnectWasAuto = false;
+_lastDisconnectReason = 'manual';
+```
 
-## Vad behålls
+Ny export `triggerIdleDisconnect()` (samma teardown som `disconnectHardcoded` men markerar som auto):
+```ts
+export async function triggerIdleDisconnect(): Promise<void> {
+  _lastDisconnectWasAuto = true;
+  _lastDisconnectReason = 'idle-timeout';
+  _autoReconnectEnabled = false;
+  clearAutoReconnect();
+  if (!_connected) return;
+  _onDisconnected?.();
+  detachControllerDrain();
+  setDevice(null);
+  resetLastSent();
+  try { await _connected.disconnectAsync(); } catch {}
+  _connected = null;
+}
+```
 
-- **Deadband (rad 967–978)** — fryser BLE-skick på platta partier, ingen latens-kostnad
-- **Adaptiv onset-suppression i `processOnset`** — höjer tröskel vid loud sustain, oberoende av slew
-- **Auto-tune-funktionen** — fortsätter föreslå deadband (suggested `maxFallPerSec` blir bara meta-info, inte längre applicerbart)
+Vid lyckad connect (där `_consecutiveFailures = 0` sätts, ~rad 487): nollställ `_lastDisconnectWasAuto = false; _lastDisconnectReason = 'unknown'`.
 
-## Ändringar
+**Obs:** Befintlig `scheduleAutoReconnect`-loop (supervision-timeout-recovery) är separat och oförändrad — den triggar EJ på idle-disconnect eftersom `_autoReconnectEnabled` slås av där.
 
-### 1. `pi/src/piEngine.ts` — radera slew-blocket
-Ta bort rad 932–944 (block 6b). `lastBrightness`-fältet kan stå kvar (skadar inte) eller städas bort.
+### 3. `pi/src/piEngine.ts` — idle-timer + handleIdleDisconnect
 
-### 2. `pi/src/piEngine.ts` — pensionera `maxRisePerSec` / `maxFallPerSec`
-Behåll fälten i `LightCalibration` och `DEFAULT_CAL` för bakåtkompatibilitet med sparade profiler. Inget kod-stöd, men de bryter inte parsing.
+Statiska imports i toppen:
+- `triggerIdleDisconnect` från `./ble/connect-hardcoded.js`
+- `isControllerDrainAttached`, `getOutstandingPackets` från `./ble/controllerDrain.js`
+- `stopMic` från `./alsaMic.js`
 
-### 3. `src/pages/PiMobile.tsx` — ta bort UI-slidrar
-Ta bort "Anti-fladder ⤴ tak" och "Anti-fladder ⤵ tak" från `SLIDER_CONFIG`. Behåll "Anti-fladder deadband".
+Nya privata fält i `PiLightEngine` (efter rad 473):
+```ts
+private _idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+private _idleEnteredAt: number | null = null;
+private _micPausedForIdle = false;
+private _lastPlayingChangeAt = 0;
+private static readonly IDLE_DISCONNECT_MS = 2 * 60 * 1000;
+private static readonly PLAYING_DEBOUNCE_MS = 500;
+```
 
-### 4. Auto-tune-panelen i `PiMobile.tsx`
-Ta bort UI-knappen som applicerar suggested `maxFallPerSec` (panelen visar fortfarande deadband-förslag och `flickerScore`).
+I `setPlaying()` (rad 512):
+- **Debounce före** befintlig `if (playing === wasPlaying) return`: om `Date.now() - _lastPlayingChangeAt < 500` → returnera. Annars uppdatera timestamp.
+- I `if (!playing)`-grenen (efter `forceIdleNow`/`startKeepAlive`, endast om `_bleOwner !== 'none'`): rensa ev. existerande timer, sätt `_idleEnteredAt = Date.now()`, schemalägg `setTimeout(() => void this.handleIdleDisconnect(), IDLE_DISCONNECT_MS)`.
+- I `else`-grenen (idle → active): clearTimeout `_idleDisconnectTimer`, nollställ `_idleEnteredAt`.
 
-### 5. `pi/src/configServer.ts`
-Profil-defaults för `maxRisePerSec` / `maxFallPerSec` kan stå kvar (oanvända). Ingen migration krävs.
+I `onBleConnected()` och `onBleDisconnected()` (rad 483/505): rensa `_idleDisconnectTimer` + `_idleEnteredAt`. Sätt `_micPausedForIdle = false` i `onBleConnected`.
 
-## Latens efter ändringen
+Ny privat metod:
+```ts
+private async handleIdleDisconnect(): Promise<void> {
+  this._idleDisconnectTimer = null;
+  if (this.playing || this._bleOwner === 'none') {
+    this._idleEnteredAt = null;
+    return;
+  }
+  // 1. Idle-färg @ 100% (sista write)
+  const idle = loadIdleColor();
+  try { sendToBLE(idle[0], idle[1], idle[2], 100); } catch {}
+  // 2. Vänta tills HCI-kö tom (max 500ms)
+  const deadline = Date.now() + 500;
+  while (isControllerDrainAttached() && getOutstandingPackets() > 0) {
+    if (Date.now() > deadline) break;
+    await new Promise(r => setTimeout(r, 20));
+  }
+  // 3. Stoppa keep-alive + disconnect (markeras som auto)
+  stopKeepAlive();
+  try { await triggerIdleDisconnect(); } catch {}
+  // 4. Stoppa ALSA → ~20-25% CPU-besparing
+  try { stopMic(); this._micPausedForIdle = true; } catch {}
+  this._idleEnteredAt = null;
+}
+```
 
-| Steg | Latens-tillägg |
-|---|---|
-| Anti-alias buffer | ~15 ms |
-| EMA i tickInner | beror på releaseAlpha (~10–80 ms) |
-| Slew | **0 ms** (borta) |
-| Deadband | 0 ms (fryser bara output) |
+Getters för status-API:
+```ts
+getIdleEnteredAt(): number | null { return this._idleEnteredAt; }
+isMicPausedForIdle(): boolean { return this._micPausedForIdle; }
+```
 
-Snabba kicks landar nu fullt utvecklade på första tick efter onset.
+### 4. `pi/src/index.ts` — Sonos PLAYING triggar mic+BLE restart
 
-## Memory-uppdatering
+Statiska imports högst upp: `isMicActive, startMic` från `./alsaMic.js`, `wasAutoDisconnected, getHardcodedConnected, connectHardcoded` från `./ble/connect-hardcoded.js`.
 
-Uppdatera `mem://pi/audio/anti-flicker-pipeline.md` så det reflekterar att slew är pensionerad och endast deadband + adaptiv onset finns kvar. Lägg till hänvisning till `mem://pi/audio/fft-anti-alias-buffer.md` som ersättningen för det slew-en löste.
+I `applySonosStateToEngine` före `engineInstance.setPlaying(isPlaying)` (rad 89):
+```ts
+if (isPlaying || state.isTvMode) {
+  if (!isMicActive()) {
+    try { startMic(); } catch (e: any) { dlog(`[Sonos] startMic failed: ${e?.message ?? e}`); }
+  }
+  if (!getHardcodedConnected().connected && wasAutoDisconnected()) {
+    void connectHardcoded();
+  }
+}
+```
+Båda är non-blocking. ALSA första audio-callback kommer ~200-300ms; BLE reconnect ~2-4s — ALSA hinner upp innan BLE behöver första writen.
+
+### 5. `pi/src/configServer.ts` — `/api/status` exponerar idle-info
+
+Importera `getLastDisconnectReason` från `./ble/connect-hardcoded.js`. I status-payload:
+```ts
+idle: engine ? {
+  enteredAt: engine.getIdleEnteredAt(),
+  disconnectInMs: engine.getIdleEnteredAt()
+    ? Math.max(0, engine.getIdleEnteredAt()! + 120000 - Date.now())
+    : null,
+  micPausedForIdle: engine.isMicPausedForIdle(),
+  lastDisconnectReason: getLastDisconnectReason(),
+} : null,
+```
+
+### 6. Memory
+Ny `mem://pi/runtime/idle-disconnect-policy.md` (type: feature):
+- 2 min idle (hårdkodat) → idle-färg @ 100% → BLE disconnect → ALSA stop
+- Sonos PLAYING-event triggar reconnect + startMic, **bara om `wasAutoDisconnected()`**
+- Manuell UI-disconnect blockerar Sonos-reconnect tills nästa manuella connect
+- 500ms debounce på setPlaying mot trackbyte-flaps
+
+Uppdatera `mem://pi/ble/manual-only-connection-policy.md` med tillägg: undantag för idle-auto-reconnect via Sonos PLAYING gäller endast efter idle-timeout-disconnect.
+
+Lägg referens i `mem://index.md` under Memories.
+
+## Acceptanskriterier
+1. Pausa Sonos i 2 min → keep-alive bär idle-färg, sedan en sista write @ 100%, sedan disconnect. `top` visar Lotus ~5% CPU (vs 25-30% under play).
+2. Spela Sonos igen → ALSA + BLE startar parallellt, ljus inom 2-4s.
+3. Manuell disconnect via UI → spela musik → INGEN auto-reconnect.
+4. Snabba play/pause inom 500ms → debounce filtrerar.
+5. `/api/status.idle` rapporterar `disconnectInMs`, `micPausedForIdle`, `lastDisconnectReason`.
+
+## Inte i scope
+- Audio-wake (medvetet uteslutet — rumssamtal = falsk-positives)
+- UI-konfigurerbar timeout
+- Disconnect i TV-läge (TV behandlas som playing)
