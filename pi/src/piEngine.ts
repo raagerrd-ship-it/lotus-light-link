@@ -477,6 +477,74 @@ export class PiLightEngine {
   /** True om BLE är ansluten (owner !== 'none'). */
   private get _bleConnected(): boolean { return this._bleOwner !== 'none'; }
 
+  // ── Idle-disconnect (2 min utan musik → koppla från lampan + stoppa ALSA) ──
+  // Sparar ~20-25% CPU på Pi Zero 2 W under långa pauser. Reconnect triggas
+  // enbart av Sonos PLAYING-event (audio-wake medvetet uteslutet pga rumssamtal).
+  // Se mem://pi/runtime/idle-disconnect-policy.
+  private _idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _idleEnteredAt: number | null = null;
+  private _micPausedForIdle = false;
+  private _lastPlayingChangeAt = 0;
+  private static readonly IDLE_DISCONNECT_MS = 2 * 60 * 1000;
+  private static readonly PLAYING_DEBOUNCE_MS = 500;
+
+  /** Status-getter för /api/status. Null om ingen idle-timer aktiv. */
+  getIdleEnteredAt(): number | null { return this._idleEnteredAt; }
+  isMicPausedForIdle(): boolean { return this._micPausedForIdle; }
+
+  private clearIdleDisconnectTimer(): void {
+    if (this._idleDisconnectTimer) {
+      clearTimeout(this._idleDisconnectTimer);
+      this._idleDisconnectTimer = null;
+    }
+    this._idleEnteredAt = null;
+  }
+
+  private async handleIdleDisconnect(): Promise<void> {
+    this._idleDisconnectTimer = null;
+    if (this.playing || this._bleOwner === 'none') {
+      this._idleEnteredAt = null;
+      dlog('[Engine] Idle-disconnect avbruten — state har ändrats');
+      return;
+    }
+    dlog('[Engine] Idle-disconnect: idle-färg @ 100% → drain HCI → BLE off → ALSA stop');
+
+    // 1. Sista write: idle-färg @ full ljusstyrka så lampan står lyst efter disconnect.
+    const idle = loadIdleColor();
+    try { sendToBLE(idle[0], idle[1], idle[2], 100); } catch (e: any) {
+      dlog(`[Engine] sendIdleFullBrightness failed: ${e?.message ?? e}`);
+    }
+
+    // 2. Vänta tills HCI-kön är tom så paketet faktiskt går iväg (max 500ms).
+    const deadline = Date.now() + 500;
+    while (isControllerDrainAttached() && getOutstandingPackets() > 0) {
+      if (Date.now() > deadline) {
+        dlog('[Engine] Outstanding-wait timeout — fortsätter ändå');
+        break;
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    // 3. Stoppa keep-alive innan disconnect (förhindrar race med write-failure).
+    stopKeepAlive();
+
+    // 4. Disconnect (markeras som auto → Sonos PLAYING får reconnecta senare).
+    try { await triggerIdleDisconnect(); } catch (e: any) {
+      dlog(`[Engine] triggerIdleDisconnect failed: ${e?.message ?? e}`);
+    }
+
+    // 5. Stoppa ALSA-mic → ~20-25% CPU-besparing under idle.
+    try {
+      stopMic();
+      this._micPausedForIdle = true;
+      dlog('[Engine] ALSA-mic stoppad — väntar på Sonos PLAYING-event');
+    } catch (e: any) {
+      dlog(`[Engine] stopMic failed: ${e?.message ?? e}`);
+    }
+
+    this._idleEnteredAt = null;
+  }
+
   /** Anropas av connect-hardcoded EFTER lyckad anchor write.
    *  Keep-alive kör BARA i idle-mode. Under playing räcker FFT-write-kedjan
    *  (med min 5 pkt/s garanti via stale-write-force i protocol.ts) för att
