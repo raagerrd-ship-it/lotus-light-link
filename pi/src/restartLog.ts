@@ -26,7 +26,7 @@ export type RestartReason =
   | 'uncaught-exception'         // process.on('uncaughtException')
   | 'unhandled-rejection'        // process.on('unhandledRejection')
   | 'unknown-systemd-restart'    // föregående process dog utan att vi hann logga
-  | 'manual-restart';            // reserverad för framtida UI-knapp
+  | 'manual-start-all';          // användaren tryckte Starta allt / Starta om
 
 export interface RestartEntry {
   ts: string;                  // ISO timestamp för restart-eventet

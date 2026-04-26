@@ -441,6 +441,19 @@ export function startConfigServer(port = 3050): void {
   app.post('/api/subsystem/mic/start',   (_req, res) => startSubsystem('mic', res));
   app.post('/api/subsystem/sonos/start', (_req, res) => startSubsystem('sonos', res));
 
+  app.post('/api/diagnostics/manual-start-all', async (req, res) => {
+    try {
+      const { recordRestart } = await import('./restartLog.js');
+      const detail = typeof req.body?.detail === 'string'
+        ? req.body.detail
+        : 'Användaren tryckte Starta allt / Starta om i UI';
+      recordRestart('manual-start-all', detail);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
+
   // --- Health (Pi Control Center standard) ---
   app.get('/api/health', async (_req, res) => {
     refreshVersionInfo();

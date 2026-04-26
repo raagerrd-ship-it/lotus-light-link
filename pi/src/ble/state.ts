@@ -6,9 +6,12 @@
  * /api/ble/state.
  */
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { noble, hasNobleLoaded } from './noble-singleton.js';
 import type { ConnectedDevice } from './types.js';
 import { dlog } from "../debugLog.js";
+import { DATA_DIR } from '../storage.js';
 export { hasNobleLoaded, noble };
 
 export const SERVICE_UUID = 'fff0';
@@ -54,6 +57,30 @@ export interface SubsystemTransition {
 }
 const _transitions: SubsystemTransition[] = [];
 const MAX_TRANSITIONS = 50;
+const TRANSITION_LOG_FILE = join(DATA_DIR, 'subsystem-transitions.json');
+
+function _loadTransitionsFromDisk(): void {
+  try {
+    if (!existsSync(TRANSITION_LOG_FILE)) return;
+    const parsed = JSON.parse(readFileSync(TRANSITION_LOG_FILE, 'utf-8'));
+    if (Array.isArray(parsed?.entries)) {
+      _transitions.splice(0, _transitions.length, ...parsed.entries.slice(-MAX_TRANSITIONS));
+    }
+  } catch (e: any) {
+    console.warn(`[Subsystem] kunde inte läsa transition-logg: ${e?.message ?? e}`);
+  }
+}
+
+function _saveTransitionsToDisk(): void {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(TRANSITION_LOG_FILE, JSON.stringify({ entries: _transitions.slice(-MAX_TRANSITIONS) }, null, 2), 'utf-8');
+  } catch (e: any) {
+    console.warn(`[Subsystem] kunde inte skriva transition-logg: ${e?.message ?? e}`);
+  }
+}
+
+_loadTransitionsFromDisk();
 
 function _logTransition(id: SubsystemId, from: SubsystemStatus, to: SubsystemStatus, error: string | null, uptimeMs: number | null): void {
   _transitions.push({
@@ -65,6 +92,7 @@ function _logTransition(id: SubsystemId, from: SubsystemStatus, to: SubsystemSta
     uptimeMs,
   });
   if (_transitions.length > MAX_TRANSITIONS) _transitions.splice(0, _transitions.length - MAX_TRANSITIONS);
+  _saveTransitionsToDisk();
 }
 
 export function getSubsystemTransitions(): SubsystemTransition[] {

@@ -14,7 +14,7 @@ type Reason =
   | "uncaught-exception"
   | "unhandled-rejection"
   | "unknown-systemd-restart"
-  | "manual-restart";
+  | "manual-start-all";
 
 interface RestartEntry {
   ts: string;
@@ -53,7 +53,7 @@ const REASON_META: Record<
     tone: "error",
     Icon: Skull,
   },
-  "manual-restart": { label: "Manuell omstart", tone: "muted", Icon: HelpCircle },
+  "manual-start-all": { label: "Manuell Starta allt", tone: "muted", Icon: HelpCircle },
 };
 
 function formatUptime(ms: number | null): string {
