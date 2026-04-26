@@ -727,6 +727,7 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, activePreset: active, profile: pf.profiles[active] });
   });
 
+  // --- Raw mode (for gain calibration) ---
   app.put('/api/raw-mode', (req, res) => {
     const engine = requireEngine(res);
     if (!engine) return;
