@@ -488,15 +488,17 @@ Group=$TARGET_GROUP
 SupplementaryGroups=netdev bluetooth audio
 WorkingDirectory=$PI_DIR
 ExecStartPre=/bin/sleep 2
-ExecStart=/usr/bin/node $PI_DIR/dist/index.js
+ExecStart=/usr/bin/node --max-old-space-size=224 $PI_DIR/dist/index.js
 Environment=NPM_CONFIG_CACHE=$APP_DIR/.npm-cache
 Environment=PORT=$ENGINE_PORT
 Environment=ENGINE_PORT=$ENGINE_PORT
 Environment=UI_PORT=$PORT
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+Environment=NODE_OPTIONS=--max-old-space-size=224
 CPUAffinity=$CORE
 AllowedCPUs=$CORE
-MemoryMax=200M
+MemoryMax=320M
+MemoryHigh=240M
 NoNewPrivileges=false
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
