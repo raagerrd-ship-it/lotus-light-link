@@ -18,7 +18,14 @@
       "entrypoint": "pi/dist/index.js",
       "service": "lotus-light-engine",
       "alwaysOn": true,
-      "manageService": false
+      "manageService": false,
+      "resources": {
+        "memoryMax": "320M",
+        "memoryHigh": "240M",
+        "memoryLow": "0",
+        "profile": "fixed"
+      },
+      "nodeOptions": "--max-old-space-size=224"
     },
     "ui": {
       "type": "static",
