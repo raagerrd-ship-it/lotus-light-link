@@ -256,7 +256,7 @@ export function setReconnectTrigger(fn: (peripheral: any, name: string) => void)
 }
 
 /**
- * SYNKRON BLE-write — lease-gate med drain-diagnostik vid sidan av.
+ * SYNKRON BLE-write — lease- + ACL-outstanding-gate.
  * Returnerar WriteResult direkt; engine kan räkna utan await. writeAsync
  * triggas fire-and-forget; resultatet rapporteras via .then/.catch.
  */
@@ -266,11 +266,17 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 
   const now = performance.now();
 
-  // ── Gate: endast lease/writePending. drain läses för diagnostik. ──
+  // ── Gate: lease + writePending + ACL-outstanding ──
   if (leaseAndDrainState(now) === 'busy') {
     bleStats.skipBusyCount++;
-    if (writePending) bleStats.skipInFlightCount++;
-    if (now < slotLockedUntil) bleStats.skipLeaseLockedCount++;
+    if (writePending) {
+      bleStats.skipInFlightCount++;
+    } else if (now < slotLockedUntil) {
+      bleStats.skipLeaseLockedCount++;
+    } else {
+      // Inte lease, inte writePending → måste vara ACL-gate.
+      bleStats.skipControllerBusyCount++;
+    }
     return 'busy';
   }
 
