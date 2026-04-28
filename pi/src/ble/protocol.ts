@@ -56,11 +56,22 @@ export type WriteResult =
 
 // ── Lease state ──
 // Lease-tiden = engine.tickMs. Sätts via setSlotLeaseMs() från piEngine.
-// controllerDrain.ts läses bara för diagnostik; den blockerar inte writes.
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
 const BLE_DELTA_SKIP_ENABLED = process.env.BLE_NO_DELTA_SKIP !== 'true';
+
+// ── ACL-outstanding gate ──
+// HCI på BCM43438 (Pi Zero 2W / Pi3) rapporterar acl_max_pkt=7. Om host
+// skickar fler ACL-paket än så utan att vänta på Number_Of_Completed_Packets
+// börjar kärnan tappa paket och logga warnings ("hci_send_acl ... no slot").
+// Vi låser oss en marginal under taket (6) för att alltid lämna headroom.
+// Override via env BLE_ACL_MAX_OUTSTANDING=N (1–7) för tuning utan rebuild.
+const ACL_MAX_OUTSTANDING = (() => {
+  const raw = parseInt(process.env.BLE_ACL_MAX_OUTSTANDING ?? '', 10);
+  if (Number.isFinite(raw) && raw >= 1 && raw <= 7) return raw;
+  return 6;
+})();
 
 // När senaste accepterade write skickades till noble (för drain-diagnostik).
 let lastSendStartedAt = 0;
