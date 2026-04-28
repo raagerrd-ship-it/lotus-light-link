@@ -1,14 +1,18 @@
 /**
  * BLE BLEDOM protocol: packet formats, write pipeline, keepalive, brightness.
  *
- * LEASE + DRAIN DIAGNOSTICS (2026-04-23):
+ * LEASE + ACL-OUTSTANDING GATE (2026-04-28):
  * sendToBLE() är SYNKRON och returnerar WriteResult direkt. Den awaitar
  * aldrig characteristic.writeAsync — det görs fire-and-forget. Backpressure
- * baseras nu ENBART på tick-lease:
+ * baseras på TVÅ saker:
  *   1. tick-lease: slotLockedUntil = now + slotLeaseMs (cadence-cap)
+ *   2. ACL-outstanding: blockerar när host-räkningen av outstanding ACL-paket
+ *      når ACL_MAX_OUTSTANDING (default 6, en marginal under HCI:s acl_max_pkt=7).
+ *      Annars riskerar vi att fylla kärnans HCI-kö och få "ACL packet for
+ *      unknown handle"/dropped-paket-loggar i dmesg samt fade-smoothing-glapp
+ *      när controllern inte hinner sända i takt.
  *
- * Controller-drain läses fortfarande via noble-internaler, men bara för
- * diagnostik i UI/logg. Den får INTE längre stoppa writes i sändvägen.
+ * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
@@ -52,11 +56,22 @@ export type WriteResult =
 
 // ── Lease state ──
 // Lease-tiden = engine.tickMs. Sätts via setSlotLeaseMs() från piEngine.
-// controllerDrain.ts läses bara för diagnostik; den blockerar inte writes.
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
 const BLE_DELTA_SKIP_ENABLED = process.env.BLE_NO_DELTA_SKIP !== 'true';
+
+// ── ACL-outstanding gate ──
+// HCI på BCM43438 (Pi Zero 2W / Pi3) rapporterar acl_max_pkt=7. Om host
+// skickar fler ACL-paket än så utan att vänta på Number_Of_Completed_Packets
+// börjar kärnan tappa paket och logga warnings ("hci_send_acl ... no slot").
+// Vi låser oss en marginal under taket (6) för att alltid lämna headroom.
+// Override via env BLE_ACL_MAX_OUTSTANDING=N (1–7) för tuning utan rebuild.
+const ACL_MAX_OUTSTANDING = (() => {
+  const raw = parseInt(process.env.BLE_ACL_MAX_OUTSTANDING ?? '', 10);
+  if (Number.isFinite(raw) && raw >= 1 && raw <= 7) return raw;
+  return 6;
+})();
 
 // När senaste accepterade write skickades till noble (för drain-diagnostik).
 let lastSendStartedAt = 0;
@@ -109,13 +124,18 @@ export function getLastSent(): { r: number; g: number; b: number; brightness: nu
   return { r: lastR, g: lastG, b: lastB, brightness: lastBr };
 }
 
-// ── Lease-gate + drain-diagnostik (delas av sendToBLE + keep-alive) ──
+// ── Lease-gate + ACL-outstanding-gate (delas av sendToBLE + keep-alive) ──
 //
 // Returnerar 'ready' = sloten är fri, write tillåten
-//            'busy'  = sloten är låst (lease eller writePending)
-// Outstanding i HCI visas i diagnostiken men blockerar INTE sändning.
+//            'busy'  = sloten är låst (lease, writePending, ELLER outstanding ≥ tak)
+//
+// outstanding ≥ ACL_MAX_OUTSTANDING ⇒ host väntar på Number_Of_Completed_Packets
+// från controllern innan vi släpper fram nästa write. Detta är vad som hindrar
+// kärnan från att logga dropped ACL-paket samt håller fade-smoothing-takten
+// jämn (ingen spike av fördröjda färgändringar när controllern hunnit ikapp).
 function leaseAndDrainState(now: number): 'ready' | 'busy' {
-  const outstanding = isControllerDrainAttached() ? getOutstandingPackets() : 0;
+  const drainAttached = isControllerDrainAttached();
+  const outstanding = drainAttached ? getOutstandingPackets() : 0;
   bleStats.controllerOutstandingCount = outstanding;
 
   if (outstanding > 0 && lastSendStartedAt > 0) {
@@ -126,7 +146,7 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
       bleStats.controllerStuckCount++;
       bleStats.lastStuckReason = `outstanding=${outstanding} age=${ageMs}ms`;
       if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
-        console.warn(`[BLE] controller-drain diag stuck: ${bleStats.lastStuckReason}`);
+        console.warn(`[BLE] controller-drain stuck: ${bleStats.lastStuckReason}`);
         lastStuckWarnAt = now;
       }
     }
@@ -143,6 +163,10 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
 
   if (writePending)          return 'busy';
   if (now < slotLockedUntil) return 'busy';
+  // Hård host-side ACL-gate: aldrig fler än ACL_MAX_OUTSTANDING paket ute samtidigt.
+  // Bara aktiv när drain faktiskt är attached — annars degraderar vi till lease-only
+  // (säkrare än att aldrig skriva när noble-internalen flyttats i en framtida build).
+  if (drainAttached && outstanding >= ACL_MAX_OUTSTANDING) return 'busy';
   return 'ready';
 }
 
@@ -232,7 +256,7 @@ export function setReconnectTrigger(fn: (peripheral: any, name: string) => void)
 }
 
 /**
- * SYNKRON BLE-write — lease-gate med drain-diagnostik vid sidan av.
+ * SYNKRON BLE-write — lease- + ACL-outstanding-gate.
  * Returnerar WriteResult direkt; engine kan räkna utan await. writeAsync
  * triggas fire-and-forget; resultatet rapporteras via .then/.catch.
  */
@@ -242,11 +266,17 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 
   const now = performance.now();
 
-  // ── Gate: endast lease/writePending. drain läses för diagnostik. ──
+  // ── Gate: lease + writePending + ACL-outstanding ──
   if (leaseAndDrainState(now) === 'busy') {
     bleStats.skipBusyCount++;
-    if (writePending) bleStats.skipInFlightCount++;
-    if (now < slotLockedUntil) bleStats.skipLeaseLockedCount++;
+    if (writePending) {
+      bleStats.skipInFlightCount++;
+    } else if (now < slotLockedUntil) {
+      bleStats.skipLeaseLockedCount++;
+    } else {
+      // Inte lease, inte writePending → måste vara ACL-gate.
+      bleStats.skipControllerBusyCount++;
+    }
     return 'busy';
   }
 
