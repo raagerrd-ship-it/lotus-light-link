@@ -1,14 +1,18 @@
 /**
  * BLE BLEDOM protocol: packet formats, write pipeline, keepalive, brightness.
  *
- * LEASE + DRAIN DIAGNOSTICS (2026-04-23):
+ * LEASE + ACL-OUTSTANDING GATE (2026-04-28):
  * sendToBLE() är SYNKRON och returnerar WriteResult direkt. Den awaitar
  * aldrig characteristic.writeAsync — det görs fire-and-forget. Backpressure
- * baseras nu ENBART på tick-lease:
+ * baseras på TVÅ saker:
  *   1. tick-lease: slotLockedUntil = now + slotLeaseMs (cadence-cap)
+ *   2. ACL-outstanding: blockerar när host-räkningen av outstanding ACL-paket
+ *      når ACL_MAX_OUTSTANDING (default 6, en marginal under HCI:s acl_max_pkt=7).
+ *      Annars riskerar vi att fylla kärnans HCI-kö och få "ACL packet for
+ *      unknown handle"/dropped-paket-loggar i dmesg samt fade-smoothing-glapp
+ *      när controllern inte hinner sända i takt.
  *
- * Controller-drain läses fortfarande via noble-internaler, men bara för
- * diagnostik i UI/logg. Den får INTE längre stoppa writes i sändvägen.
+ * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
  */
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
