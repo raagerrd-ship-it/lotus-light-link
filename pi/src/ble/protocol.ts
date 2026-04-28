@@ -124,13 +124,18 @@ export function getLastSent(): { r: number; g: number; b: number; brightness: nu
   return { r: lastR, g: lastG, b: lastB, brightness: lastBr };
 }
 
-// ── Lease-gate + drain-diagnostik (delas av sendToBLE + keep-alive) ──
+// ── Lease-gate + ACL-outstanding-gate (delas av sendToBLE + keep-alive) ──
 //
 // Returnerar 'ready' = sloten är fri, write tillåten
-//            'busy'  = sloten är låst (lease eller writePending)
-// Outstanding i HCI visas i diagnostiken men blockerar INTE sändning.
+//            'busy'  = sloten är låst (lease, writePending, ELLER outstanding ≥ tak)
+//
+// outstanding ≥ ACL_MAX_OUTSTANDING ⇒ host väntar på Number_Of_Completed_Packets
+// från controllern innan vi släpper fram nästa write. Detta är vad som hindrar
+// kärnan från att logga dropped ACL-paket samt håller fade-smoothing-takten
+// jämn (ingen spike av fördröjda färgändringar när controllern hunnit ikapp).
 function leaseAndDrainState(now: number): 'ready' | 'busy' {
-  const outstanding = isControllerDrainAttached() ? getOutstandingPackets() : 0;
+  const drainAttached = isControllerDrainAttached();
+  const outstanding = drainAttached ? getOutstandingPackets() : 0;
   bleStats.controllerOutstandingCount = outstanding;
 
   if (outstanding > 0 && lastSendStartedAt > 0) {
@@ -141,7 +146,7 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
       bleStats.controllerStuckCount++;
       bleStats.lastStuckReason = `outstanding=${outstanding} age=${ageMs}ms`;
       if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
-        console.warn(`[BLE] controller-drain diag stuck: ${bleStats.lastStuckReason}`);
+        console.warn(`[BLE] controller-drain stuck: ${bleStats.lastStuckReason}`);
         lastStuckWarnAt = now;
       }
     }
@@ -158,6 +163,10 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
 
   if (writePending)          return 'busy';
   if (now < slotLockedUntil) return 'busy';
+  // Hård host-side ACL-gate: aldrig fler än ACL_MAX_OUTSTANDING paket ute samtidigt.
+  // Bara aktiv när drain faktiskt är attached — annars degraderar vi till lease-only
+  // (säkrare än att aldrig skriva när noble-internalen flyttats i en framtida build).
+  if (drainAttached && outstanding >= ACL_MAX_OUTSTANDING) return 'busy';
   return 'ready';
 }
 
