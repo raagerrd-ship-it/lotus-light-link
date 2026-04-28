@@ -58,6 +58,7 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [HOP frikopplad](mem://pi/audio/hop-size-decoupled) — HOP=512 fast (~10.7ms), FFT 93Hz, engine gatear på tickMs
 - [Inget setTimeout i FFT-tick](mem://pi/runtime/no-settimeout-on-fft-tick-path) — onFFTFrame får aldrig schemalägga setTimeout, då körs tickInner mot gammal frame
 - [Single-slot BLE-write](mem://pi/ble/single-slot-write-contract) — En writeAsync åt gången, hard-fail vid busy, ingen rate-limit, keep-alive bara i idle
+- [ACL-outstanding gate](mem://pi/ble/acl-outstanding-gate) — outstanding ≥ 6 (HCI acl_max_pkt=7) blockerar nya writes; matchar kärnans gräns och håller fade-smoothing jämn
 - [hcitool lecup post-connect](mem://pi/ble/force-conninterval-hcitool) — Tvinga 7.5ms connection interval via hcitool 500ms efter connect — noble's egen request slår inte alltid igenom
 - [Stale peripheral cache](mem://pi/ble/stale-peripheral-cache) — Purga noble._peripherals[id] mellan reconnects mot samma MAC
 - [Late connect-timeout race](mem://pi/ble/late-connect-timeout-race) — withTimeout(connectAsync) kan kasta efter lyckad connect → catch måste guardas med resolved-flagg
