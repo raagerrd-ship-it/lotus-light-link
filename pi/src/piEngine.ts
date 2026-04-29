@@ -361,7 +361,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
+    setSlotLeaseMs(Math.max(5, (ms / 3) | 0)); // se constructor — express-path behöver utrymme i samma tick
   }
 
   setColor(rgb: [number, number, number]) {
