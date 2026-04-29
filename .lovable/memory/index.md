@@ -81,3 +81,4 @@ Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 - [Idle-disconnect policy](mem://pi/runtime/idle-disconnect-policy) — Efter 2 min Sonos-paus: idle-färg @ 100% → BLE off → ALSA stop (~20-25% CPU). Reconnect bara via Sonos PLAYING om disconnect var auto. Manual UI-disconnect blockerar reconnect.
 - [BLEDOM RGB saturation](mem://pi/ble/bledom-rgb-saturation) — Skala ALDRIG RGB med brightness i sendToBLE. Endast cbr-byten dimmar. Annars vit-injektion → blekta färger.
 - [PCC memory conflict](mem://pi/runtime/pcc-memory-limit-conflict) — PCC sätter 96MB MemoryMax → cgroup-OOM, måste höjas till 320M + heap 224M
+- [Onset express path](mem://pi/audio/onset-express-path) — Sub-frame BLE write på onset, ~17ms kick-to-light + adaptiv release-alpha + lease=tickMs/3
