@@ -348,7 +348,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
-    setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
+    setSlotLeaseMs(Math.max(5, (tickMs / 3) | 0)); // ~tickMs/3 → utrymme för tickInner-write + express-write per tick utan att överstiga ACL-gaten
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
