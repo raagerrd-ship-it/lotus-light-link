@@ -17,7 +17,7 @@ export { hasNobleLoaded, noble };
 export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 
-export const BLE_BUILD_TAG = '2026-04-28/acl-outstanding-gate-6';
+export const BLE_BUILD_TAG = '2026-04-29/onset-express';
 dlog(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Subsystem state (mic + sonos + engine — bleEngine borttaget) ──
@@ -160,6 +160,11 @@ export const bleStats = {
   controllerOutstandingCount: 0, // aktuellt antal outstanding paket i noble/HCI
   outstandingMaxObserved: 0,  // high-water mark sedan engine-start (post-deploy signal: nådde gaten taket?)
   outstandingAgeMs: 0,        // hur länge senaste observerade outstanding-paket varit ute
+  // Sub-frame onset express path (2026-04-29):
+  onsetExpressCount: 0,        // antal sub-frame writes triggade av detected onset
+  onsetExpressBusyCount: 0,    // antal gånger express-write blockerades av lease/ACL-gate
+  adaptiveReleaseAlphaMax: 0,  // high-water mark av computed release alpha (sanity 0.15–0.85)
+  slotLeaseMs: 0,              // mirror av aktuell setSlotLeaseMs() — synlig effektiv lease
   lastStuckReason: null as string | null,
   tickOkCount: 0,
   tickAbortNoMicCount: 0,

@@ -83,6 +83,7 @@ let stuckRecoveryInFlight = false;
 export function getSlotLeaseMs(): number { return slotLeaseMs; }
 export function setSlotLeaseMs(ms: number): void {
   slotLeaseMs = Math.max(5, Math.min(500, ms | 0));
+  bleStats.slotLeaseMs = slotLeaseMs;
 }
 
 // Legacy aliases — vissa callsites och API:er använder fortfarande

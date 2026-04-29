@@ -348,7 +348,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
-    setSlotLeaseMs(tickMs); // 1 tick = 1 BLE-paket (strict lease-slot)
+    setSlotLeaseMs(Math.max(5, (tickMs / 3) | 0)); // ~tickMs/3 → utrymme för tickInner-write + express-write per tick utan att överstiga ACL-gaten
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -361,7 +361,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    setSlotLeaseMs(ms); // 1 tick = 1 BLE-paket — lease följer tick
+    setSlotLeaseMs(Math.max(5, (ms / 3) | 0)); // se constructor — express-path behöver utrymme i samma tick
   }
 
   setColor(rgb: [number, number, number]) {
@@ -436,6 +436,29 @@ export class PiLightEngine {
     if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
       this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
       this.onsetLastFrameIdx = this.onsetFrameCounter;
+
+      // ── Express path (2026-04-29): sub-frame BLE write på confirmed onset ──
+      // Onset just bekräftad. Skicka aktuell färg + boostad brightness DIREKT
+      // till BLE så lampan ser kicken på FFT-takt (~13ms total latens) i
+      // stället för att vänta upp till tickMs på nästa tickInner.
+      // Refractory-gaten ovan garanterar ≤1 express-write per onset → bounded.
+      // Dependency: ACL-outstanding-gate (acl_max_pkt - margin) måste vara
+      // aktiv i protocol.ts — annars riskerar express + tickInner att fylla
+      // HCI-bufferten i samma tick-fönster.
+      if (this._bleOwner === 'active' && this.lastSentPct >= 0) {
+        const transientGain = this.cal.transientGain ?? 1.0;
+        const boostPct = ((0.45 * transientGain * 100) | 0);
+        const expressPct = Math.min(100, this.lastSentPct + boostPct);
+        const result = sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], expressPct);
+        if (result === 'sent') {
+          // Uppdatera lastSentPct så tickInner-deadband inte sväljer den
+          // naturliga down-stroke-droppen på nästa tick.
+          this.lastSentPct = expressPct;
+          bleStatsState.onsetExpressCount++;
+        } else if (result === 'busy') {
+          bleStatsState.onsetExpressBusyCount++;
+        }
+      }
     }
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
@@ -1009,7 +1032,24 @@ export class PiLightEngine {
       // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
       // Körs på tick-takt (50Hz) så filtret är synkat mot output-raten och
       // undviker alias-hack mellan FFT-takt (100Hz) och tick-takt.
-      const alpha = energyNorm > this.smoothed ? tc.attackAlpha : tc.releaseAlpha;
+      // Adaptiv release (2026-04-29): release-alpha skalas proportionellt mot
+      // dropp-magnitud. Hårda drops (track gaps, breakdowns) "punchar ut"
+      // tailen; mjuka decay-rörelser behåller silky-releasen. Threshold
+      // förhindrar boost på vanliga release-ripples; ceiling 0.85 skyddar
+      // mot fully-instant snap (visible-flicker-gränsen).
+      let alpha: number;
+      if (energyNorm > this.smoothed) {
+        alpha = tc.attackAlpha;
+      } else {
+        const drop = this.smoothed - energyNorm;
+        const dropThreshold = (this.cal as any).releaseDropThreshold ?? 0.05;
+        const dropBoost = (this.cal as any).releaseDropBoost ?? 0.6;
+        const boost = drop > dropThreshold ? drop * dropBoost : 0;
+        alpha = Math.min(0.85, tc.releaseAlpha + boost);
+        if (alpha > bleStatsState.adaptiveReleaseAlphaMax) {
+          bleStatsState.adaptiveReleaseAlphaMax = Math.round(alpha * 1000) / 1000;
+        }
+      }
       this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
       energyNorm = this.smoothed;
 
