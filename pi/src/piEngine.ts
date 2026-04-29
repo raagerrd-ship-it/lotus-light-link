@@ -436,6 +436,29 @@ export class PiLightEngine {
     if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
       this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
       this.onsetLastFrameIdx = this.onsetFrameCounter;
+
+      // ── Express path (2026-04-29): sub-frame BLE write på confirmed onset ──
+      // Onset just bekräftad. Skicka aktuell färg + boostad brightness DIREKT
+      // till BLE så lampan ser kicken på FFT-takt (~13ms total latens) i
+      // stället för att vänta upp till tickMs på nästa tickInner.
+      // Refractory-gaten ovan garanterar ≤1 express-write per onset → bounded.
+      // Dependency: ACL-outstanding-gate (acl_max_pkt - margin) måste vara
+      // aktiv i protocol.ts — annars riskerar express + tickInner att fylla
+      // HCI-bufferten i samma tick-fönster.
+      if (this._bleOwner === 'active' && this.lastSentPct >= 0) {
+        const transientGain = this.cal.transientGain ?? 1.0;
+        const boostPct = ((0.45 * transientGain * 100) | 0);
+        const expressPct = Math.min(100, this.lastSentPct + boostPct);
+        const result = sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], expressPct);
+        if (result === 'sent') {
+          // Uppdatera lastSentPct så tickInner-deadband inte sväljer den
+          // naturliga down-stroke-droppen på nästa tick.
+          this.lastSentPct = expressPct;
+          bleStatsState.onsetExpressCount++;
+        } else if (result === 'busy') {
+          bleStatsState.onsetExpressBusyCount++;
+        }
+      }
     }
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
