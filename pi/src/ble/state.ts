@@ -158,6 +158,7 @@ export const bleStats = {
   controllerCompleteCount: 0, // antal gånger drain gått från >0 → 0
   controllerStuckCount: 0,    // drain-diagnostik fastnat längre än threshold
   controllerOutstandingCount: 0, // aktuellt antal outstanding paket i noble/HCI
+  outstandingMaxObserved: 0,  // high-water mark sedan engine-start (post-deploy signal: nådde gaten taket?)
   outstandingAgeMs: 0,        // hur länge senaste observerade outstanding-paket varit ute
   lastStuckReason: null as string | null,
   tickOkCount: 0,

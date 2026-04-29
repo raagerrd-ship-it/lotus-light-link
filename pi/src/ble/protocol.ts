@@ -137,6 +137,9 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
   const drainAttached = isControllerDrainAttached();
   const outstanding = drainAttached ? getOutstandingPackets() : 0;
   bleStats.controllerOutstandingCount = outstanding;
+  if (outstanding > bleStats.outstandingMaxObserved) {
+    bleStats.outstandingMaxObserved = outstanding;
+  }
 
   if (outstanding > 0 && lastSendStartedAt > 0) {
     const ageMs = Math.round(now - lastSendStartedAt);
