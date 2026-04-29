@@ -17,7 +17,7 @@ export { hasNobleLoaded, noble };
 export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 
-export const BLE_BUILD_TAG = '2026-04-28/acl-outstanding-gate-6';
+export const BLE_BUILD_TAG = '2026-04-29/onset-express';
 dlog(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Subsystem state (mic + sonos + engine — bleEngine borttaget) ──
