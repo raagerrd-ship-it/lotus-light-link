@@ -1,50 +1,32 @@
-## Problem
+## Mål
 
-BLEDOM-lampan visar blekta/pastellaktiga färger istället för mättade. Orsak: vi skalar RGB med brightness (`r * scale`) **och** skickar brightness-byten separat. BLEDOM-firmware multiplicerar då internt en gång till och blandar in vitt för att "balansera" energin → pastell istället för mättad ton.
+Exponera en high-water-mark av `controllerOutstandingCount` sedan engine-start, så att vi efter deploy direkt kan se om ACL-gaten någonsin nått sitt tak (6).
 
-Idle-läget ser rätt ut eftersom `setIdleColor()` alltid använder `brightness = 0xff` (ingen dubbel-skalning).
+## Ändringar
 
-## Lösning
-
-Skicka **mättat RGB** (oförändrat `r,g,b`) till lampan och låt **enbart brightness-byten** (`cbr`) styra ljusstyrkan. BLEDOM dimmar då rent internt utan vit-injektion.
-
-## Ändring
-
-**Fil:** `pi/src/ble/protocol.ts` (rad ~258–264 i `sendToBLE`)
-
-Före:
+**1. `pi/src/ble/state.ts`** — lägg till fält i `bleStats`:
 ```ts
-const scale = brightnessToScale(brightness);
-const cr = (r * scale + 0.5) | 0;
-const cg = (g * scale + 0.5) | 0;
-const cb = (b * scale + 0.5) | 0;
-const cbr = (scale * 0xff + 0.5) | 0;
+outstandingMaxObserved: 0, // high-water mark sedan engine-start
 ```
 
-Efter:
+**2. `pi/src/ble/protocol.ts`** — i `leaseAndDrainState()`, direkt efter `bleStats.controllerOutstandingCount = outstanding;`:
 ```ts
-// BLEDOM-quirk: skala INTE RGB med brightness — firmware blandar då in vitt
-// för att kompensera energi-balans → blekta färger. Skicka mättat RGB och
-// låt brightness-byten ensam styra dimningen.
-const scale = brightnessToScale(brightness);
-const cr = r;
-const cg = g;
-const cb = b;
-const cbr = (scale * 0xff + 0.5) | 0;
+if (outstanding > bleStats.outstandingMaxObserved) {
+  bleStats.outstandingMaxObserved = outstanding;
+}
 ```
 
-## Sidoeffekter (positiva)
-
-- **Delta-skip blir bättre**: `cr/cg/cb` ändras nu bara vid faktisk färgbyte, inte vid brightness-pulser. Mer `skipDeltaCount`, mindre BLE-trafik på låtar med stabil palette.
-- **UI "Output-färg"** (`getLastSent()` → `/api/status`) visar nu mättad ton. `brightness`-fältet finns separat så UI kan dimma visuellt om så önskas.
-- **Perceptual gamma-LUT (1.8)** är intakt — den bygger fortfarande `cbr`.
-- **Color-tween, dynamics, punch white, flicker deadband** påverkas inte.
-
-## Memory
-
-Lägger till `mem://pi/ble/bledom-rgb-saturation.md` som constraint så jag inte råkar återinföra RGB-skalningen igen, plus rad i index.
+**3. `pi/src/ble/protocol.ts`** — i `resetLastSent()`: låt `outstandingMaxObserved` vara orörd (high-water är "sedan engine-start", inte "sedan senaste reconnect"). Ingen ändring behövs där.
 
 ## Verifiering
 
-- `npx tsc --noEmit`
-- I drift: spela låt med stark röd cover → ren röd, inte rosa. Bass-kicks ändrar luminans, inte hue.
+- `outstandingMaxObserved` syns automatiskt i `/api/status` (hela `bleStats` exponeras).
+- Förväntat värde under normal drift: 1–3. Värde = 6 ⇒ gaten har nått taket minst en gång ⇒ tick-rate eller dynamics behöver tunas.
+
+## Skip enligt din feedback
+
+- Ingen `outstandingResetCount` (2c) — räknaren är derived från noble.
+- Ingen 250 ms force-reset watchdog (5) — befintlig stuck-detection räcker.
+- Ingen HCI Read Buffer Size-probe (1) — hårdvärdet 7 är korrekt för BCM43438.
+
+Ingen ny memory-fil; uppdaterar endast `acl-outstanding-gate.md` med en rad om high-water-stat.
