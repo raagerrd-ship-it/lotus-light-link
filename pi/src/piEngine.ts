@@ -361,7 +361,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    setSlotLeaseMs(Math.max(5, (ms / 3) | 0)); // se constructor — express-path behöver utrymme i samma tick
+    setSlotLeaseMs(5); // floor — se constructor
   }
 
   setColor(rgb: [number, number, number]) {
