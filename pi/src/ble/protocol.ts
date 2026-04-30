@@ -294,16 +294,13 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  // Stale-write force: garanterar minst ~5 pkt/s under playing även när
-  // färgen inte ändras. Hindrar dels delta-skip från att tysta länken vid
-  // tyst musik, dels supervision timeout (keep-alive är AV i active mode).
-  const STALE_WRITE_MS = 200;
-  const isStale = (now - lastWriteTime) >= STALE_WRITE_MS;
-  if (BLE_DELTA_SKIP_ENABLED && !isStale &&
-      cr === lastR && cg === lastG && cb === lastB && cbr === lastBr) {
-    bleStats.skipDeltaCount++;
-    return 'no-change';
-  }
+  // Delta-skip AVSTÄNGD (2026-04-30, user-request "skicka alla paket som
+  // inte är helt identiska" → tolkat maximalt: skicka ALLT som passerar
+  // lease/ACL-gaten, även identiska. ACL-outstanding-gaten + tickMs styr
+  // takten, inte färgdelta. BLE_NO_DELTA_SKIP-env behålls som no-op-flag
+  // för bakåtkompat. Hack-symptomen kom från frames som dog som 'busy'
+  // i lease-gaten, inte från delta-skip.
+  void BLE_DELTA_SKIP_ENABLED;
 
   // Bygg buffer + fire-and-forget write
   const mode = device.mode ?? 'rgb';

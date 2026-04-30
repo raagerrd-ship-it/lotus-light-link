@@ -348,7 +348,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
     setTickHopMs(tickMs);
-    setSlotLeaseMs(Math.max(5, (tickMs / 3) | 0)); // ~tickMs/3 → utrymme för tickInner-write + express-write per tick utan att överstiga ACL-gaten
+    setSlotLeaseMs(5); // floor: släpp fram alla frames ACL-gaten tillåter (user: skicka allt som inte är identiskt → backpressure ska komma från controller, inte cadence-cap)
     setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
@@ -361,7 +361,7 @@ export class PiLightEngine {
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
     setTickHopMs(ms);
-    setSlotLeaseMs(Math.max(5, (ms / 3) | 0)); // se constructor — express-path behöver utrymme i samma tick
+    setSlotLeaseMs(5); // floor — se constructor
   }
 
   setColor(rgb: [number, number, number]) {
