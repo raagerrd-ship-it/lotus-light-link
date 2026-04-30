@@ -141,7 +141,7 @@ const DEFAULT_CAL: LightCalibration = {
   attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
   bassWeight: 0.7, hiShelfGainDb: 6,
   punchWhiteThreshold: 100,
-  brightnessFloor: 0,
+  brightnessFloor: 5,
   saturation: 0,  // disabled 2026-04-25 — color trimming sker i Sonos i stället
   transientGain: 1.0,
   perceptualGamma: 0,
@@ -150,7 +150,7 @@ const DEFAULT_CAL: LightCalibration = {
   onsetRefractoryMs: 110,
   maxRisePerSec: 8.0,
   maxFallPerSec: 2.5,
-  flickerDeadband: 0.02,
+  flickerDeadband: 0,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
@@ -167,6 +167,19 @@ function migrateLegacyCalibration(cal: any): any {
     out.perceptualGamma = out.perceptualCurve ? 1.8 : 0;
   }
   delete out.perceptualCurve;
+  // 2026-04-30: flickerDeadband moved out of profiles. Old saved cals
+  // may have any value 0-0.08 (often 0.02 from old Normal default, up
+  // to 0.07 from manual tweaks). Reset to 0 so the new always-send-on-
+  // change policy takes effect. Power-users can re-set per-cal.
+  if (typeof out.flickerDeadband === 'number' && out.flickerDeadband > 0) {
+    out.flickerDeadband = 0;
+  }
+  // 2026-04-30: brightnessFloor lowered to give quiet passages real fade.
+  // Migrate values >= 15 (old Normal=20, manual tweaks) down to 5.
+  // Preserve any explicit lower setting (Party 0, custom dim).
+  if (typeof out.brightnessFloor === 'number' && out.brightnessFloor >= 15) {
+    out.brightnessFloor = 5;
+  }
   return out;
 }
 

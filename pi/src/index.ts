@@ -44,7 +44,9 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 20;
+const TICK_MS = 30;   // 33 Hz — matches BLEDOM01-class lamp's processing
+                      // ceiling. Higher tickMs causes ~25% busy aborts on
+                      // this hardware; 33 Hz gives clean uninterrupted flow.
 
 // --- Lazy module references (filled by starters) ---
 type AlsaMicModule = typeof import('./alsaMic.js');
