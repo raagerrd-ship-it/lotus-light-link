@@ -24,6 +24,28 @@ export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef
 export const brightBuf = Buffer.from([0x7e, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xef]);
 export const brightMaxBuf = Buffer.from([0x7e, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 0x00, 0xef]);
 
+// ── BLEDOM power on/off ──
+// Lampan har intern off-state (fjärr-OFF, intern timer, power-glitch)
+// där LED-driver är släckt men BLE-radio fortfarande ACK:ar paket.
+// Power-byten väcker LED-drivern. Verifierat live på BLEDOM01 2026-05-01.
+export const powerOnBuf  = Buffer.from([0x7e, 0x04, 0x04, 0x01, 0xff, 0x00, 0x00, 0x00, 0xef]);
+export const powerOffBuf = Buffer.from([0x7e, 0x04, 0x04, 0x00, 0xff, 0x00, 0x00, 0x00, 0xef]);
+
+/** Skicka power on/off till lampan. Returnerar 'sent' | 'no-device' | 'error'. */
+export async function sendPower(on: boolean): Promise<'sent' | 'no-device' | 'error'> {
+  const device = getDevice();
+  if (!device || !device.characteristic) return 'no-device';
+  const buf = on ? powerOnBuf : powerOffBuf;
+  try {
+    await device.characteristic.writeAsync(buf, true);
+    dlog(`[protocol] sendPower(${on}) sent`);
+    return 'sent';
+  } catch (e: any) {
+    console.warn(`[protocol] sendPower(${on}) error: ${e?.message ?? e}`);
+    return 'error';
+  }
+}
+
 // ── Dimming gamma ──
 let dimmingGamma = 1.8;
 export function setDimmingGamma(v: number) {

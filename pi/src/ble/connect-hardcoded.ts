@@ -535,6 +535,15 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       _consecutiveFailures = 0;
       _lastDisconnectWasAuto = false;
       _lastDisconnectReason = 'unknown';
+      // Auto-wake the lamp's LED driver. Idempotent — sending power-on to
+      // an already-on lamp is a no-op. Fire-and-forget; even if det failar
+      // är connection uppe och färgwrites följer.
+      try {
+        const { sendPower } = await import('./protocol.js');
+        void sendPower(true);
+      } catch (e: any) {
+        dlog(`[connect-hardcoded] auto power-on send error: ${e?.message ?? e}`);
+      }
       // Avbryt slow-retry om den var aktiv — länken är uppe igen.
       if (_slowRetryActive) {
         _slowRetryActive = false;

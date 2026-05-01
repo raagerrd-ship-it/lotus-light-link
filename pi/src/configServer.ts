@@ -648,6 +648,23 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
+  // POST /api/ble/power { on: boolean } — manuell power-toggle av lampans LED-driver.
+  // BLEDOM har separat power-state från BLE-länk; denna endpoint tänder/släcker
+  // lampan utan att röra connection. Auto-wake sker även automatiskt vid connect.
+  app.post('/api/ble/power', async (req, res) => {
+    try {
+      const { on } = req.body ?? {};
+      if (typeof on !== 'boolean') {
+        return res.status(400).json({ ok: false, error: 'body needs { on: true|false }' });
+      }
+      const { sendPower } = await import('./ble/protocol.js');
+      const result = await sendPower(on);
+      res.json({ ok: result === 'sent', result, on });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
+
   app.get('/api/ble/state', async (_req, res) => {
     try {
       const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
