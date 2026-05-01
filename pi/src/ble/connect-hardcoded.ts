@@ -33,14 +33,20 @@ const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
 
 // Slow-retry: efter CONSECUTIVE_FAIL_LIMIT failures fortsätter vi försöka var 30s
-// istället för att direkt nuke processen via systemd. Engine + mic + Sonos hålls vid liv.
-// Efter SLOW_RETRY_MAX_ATTEMPTS misslyckade slow-retries (~10 min) ger vi upp den
-// mjuka vägen och kör process.exit(0) som nukleär reset — täcker fallet där lampans
-// firmware har hängt sig i ett tillstånd som bara en full HCI-reset kan lösa.
+// istället för att direkt nuke processen. Engine + mic + Sonos hålls vid liv så
+// musik-state inte tappas. Efter SLOW_RETRY_NUCLEAR_THRESHOLD misslyckade
+// slow-retries (~1 min) faller vi tillbaka på process.exit(0) som nukleär reset.
+//
+// EMPIRISKT (2026-05-01): manuell `systemctl restart lotus-light-engine` löser
+// alltid lampan direkt — radion på BLEDOM är fin, det som fastnar är host-side
+// noble HCI-socket/state. Slow-retry återanvänder samma noble-instans och kan
+// därför inte un-sticka det; en full process-restart skapar fresh noble + ny
+// HCI-socket-binding (≈ HCI reset) och får lampan att acceptera connect igen.
+// Tröskel=2 ger en retry-chans för transient RF-blip innan vi nukar.
 const SLOW_RETRY_INTERVAL_MS = 30_000;
-const SLOW_RETRY_MAX_ATTEMPTS = 20;
+const SLOW_RETRY_NUCLEAR_THRESHOLD = 2;
 let _slowRetryActive = false;
-let _slowRetryAttempt = 0;
+let _slowRetryAttempts = 0;
 let _slowRetryTimer: NodeJS.Timeout | null = null;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
