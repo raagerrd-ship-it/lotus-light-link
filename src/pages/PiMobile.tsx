@@ -17,9 +17,9 @@ type Cal = { bassWeight: number; attack: number; softness: number; dynamicDampin
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
   Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, maxRisePerSec: 4.0,  maxFallPerSec: 1.5, flickerDeadband: 0.04 },
-  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 0, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 110, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
+  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 20, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.5, saturation: 0, dynamicsEnabled: false, onsetThreshold: 3.0, onsetRefractoryMs: 110, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
   Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  maxRisePerSec: 15.0, maxFallPerSec: 5.0, flickerDeadband: 0.01 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 1.0, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.8, onsetRefractoryMs: 110, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
