@@ -70,19 +70,20 @@ function alphaToAttack(alpha: number) {
 }
 
 type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'flickerDeadband';
+// Slider-ranges = användbar zon (inte API-clamp). Power-users kan sätta extrema värden via PUT /api/calibration.
+// flickerDeadband exponeras inte här längre — sköts av AutoTuneAntiFlickerPanel (legacy BLE-bandbreddsfilter).
+// saturation/maxRisePerSec/maxFallPerSec borttagna 2026-04-25/26 (ingen runtime-effekt).
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = bara disk, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
   { key: "attack", label: "Attack", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar" },
   { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
-  { key: "flickerDeadband", label: "Anti-fladder deadband", min: 0, max: 0.08, step: 0.005, description: "0 = av. Mikroändringar under tröskeln ignoreras helt. Skalas perceptuellt med nivå." },
-  { key: "onsetThreshold", label: "Beat-känslighet", min: 1.3, max: 2.5, step: 0.05, unit: "×", description: "Lägre = fler beats triggar (känsligare). 1.3 = mycket känslig, 2.5 = bara tydliga slag" },
-  { key: "onsetRefractoryMs", label: "Beat-mellanrum", min: 50, max: 250, step: 10, unit: "ms", description: "Minsta gap mellan beats. Högt värde = lugnare puls" },
-  { key: "dynamicDamping", label: "Dynamik", min: -3, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
-  { key: "transientGain", label: "Transient boost", min: 0, max: 2, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 2.0 = överdrivna trumslag" },
-  { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 3, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 3.0 = kraftigt komprimerad" },
-  // saturation-slider borttagen 2026-04-25 — färgen trimmas i Sonos i stället, engine ska inte röra hue.
-  { key: "brightnessFloor", label: "Golv", min: 0, max: 25, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av)" },
-  { key: "punchWhiteThreshold", label: "Punch White", min: 90, max: 100, step: 0.5, unit: "%", description: "100 = av. Över detta → vit" },
+  { key: "onsetThreshold", label: "Beat-känslighet", min: 1.5, max: 4.0, step: 0.1, unit: "×", description: "Lägre = fler beats triggar (känsligare). 1.5 = mycket känslig, 4.0 = bara tydliga slag" },
+  { key: "onsetRefractoryMs", label: "Beat-mellanrum", min: 80, max: 300, step: 10, unit: "ms", description: "Minsta gap mellan beats. Högt värde = lugnare puls" },
+  { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
+  { key: "transientGain", label: "Transient boost", min: 0, max: 1.5, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 1.5 = överdrivna trumslag" },
+  { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 2.2, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 2.2 = kraftigt komprimerad" },
+  { key: "brightnessFloor", label: "Golv", min: 0, max: 30, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av)" },
+  { key: "punchWhiteThreshold", label: "Punch White", min: 90, max: 100, step: 1, unit: "%", description: "100 = av. Över detta → vit" },
 ];
 
 const CURVE_POINTS = 200; // points to draw
