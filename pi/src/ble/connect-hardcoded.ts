@@ -33,9 +33,14 @@ const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
 
 // Slow-retry: efter CONSECUTIVE_FAIL_LIMIT failures fortsätter vi försöka var 30s
-// istället för att nuke processen via systemd. Engine + mic + Sonos hålls vid liv.
+// istället för att direkt nuke processen via systemd. Engine + mic + Sonos hålls vid liv.
+// Efter SLOW_RETRY_MAX_ATTEMPTS misslyckade slow-retries (~10 min) ger vi upp den
+// mjuka vägen och kör process.exit(0) som nukleär reset — täcker fallet där lampans
+// firmware har hängt sig i ett tillstånd som bara en full HCI-reset kan lösa.
 const SLOW_RETRY_INTERVAL_MS = 30_000;
+const SLOW_RETRY_MAX_ATTEMPTS = 20;
 let _slowRetryActive = false;
+let _slowRetryAttempt = 0;
 let _slowRetryTimer: NodeJS.Timeout | null = null;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
