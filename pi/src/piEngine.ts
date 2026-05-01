@@ -143,10 +143,10 @@ const DEFAULT_CAL: LightCalibration = {
   punchWhiteThreshold: 100,
   brightnessFloor: 5,
   saturation: 0,  // disabled 2026-04-25 — color trimming sker i Sonos i stället
-  transientGain: 1.0,
+  transientGain: 0.5,
   perceptualGamma: 0,
   dynamicsEnabled: true,
-  onsetThreshold: 1.8,
+  onsetThreshold: 3.0,
   onsetRefractoryMs: 110,
   maxRisePerSec: 8.0,
   maxFallPerSec: 2.5,
