@@ -174,6 +174,10 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   _lastDisconnectReason = 'manual';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
+  if (_slowRetryActive) {
+    _slowRetryActive = false;
+    if (_slowRetryTimer) { clearTimeout(_slowRetryTimer); _slowRetryTimer = null; }
+  }
   if (!_connected) return { disconnected: true };
   // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
   _onDisconnected?.();
