@@ -535,28 +535,45 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       _consecutiveFailures = 0;
       _lastDisconnectWasAuto = false;
       _lastDisconnectReason = 'unknown';
+      // Avbryt slow-retry om den var aktiv — länken är uppe igen.
+      if (_slowRetryActive) {
+        _slowRetryActive = false;
+        if (_slowRetryTimer) { clearTimeout(_slowRetryTimer); _slowRetryTimer = null; }
+        console.warn('[connect-hardcoded] slow-retry-läge avslutat — länken är uppe igen');
+      }
     } else {
       _consecutiveFailures++;
       const errStr = r.error ?? 'okänt fel';
       console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures): ${errStr}`);
-      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
-        // Mönster från fältet: BLEDOM ansluter alltid på 1-2s eller aldrig.
-        // 4 misslyckade i rad = noble's HCI-state är fastnat. Enda fungerande
-        // lösning är full process-restart (systemd Restart=always startar om).
-        // Sätt flagga så engine auto-anropar connectHardcoded() vid boot.
-        console.error(`[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures — sätter reconnect-flagga och process.exit(0) för systemd restart`);
-        setReconnectOnBootFlag();
-        // Logga restart-orsak innan exit så UI/logg kan visa varför
+      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT && !_slowRetryActive) {
+        // Slow-retry istället för process.exit. Engine + mic + Sonos hålls vid liv —
+        // de flesta BLE-fail är transienta (lampan ur räckvidd, tillfälligt avstängd,
+        // 2.4 GHz-störning) och löser sig själv på sekunder/minuter. Att nuke processen
+        // tappar Sonos-prenumeration och kräver ny PLAYING-event för att vakna.
+        _slowRetryActive = true;
+        console.warn(`[connect-hardcoded] ${_consecutiveFailures} consecutive failures — switching to slow-retry mode (every ${SLOW_RETRY_INTERVAL_MS}ms until lamp returns)`);
         try {
-          const { recordRestart, markGracefulShutdown } = await import('../restartLog.js');
-          recordRestart('ble-consecutive-failures', `${_consecutiveFailures} consecutive failures, last error: ${errStr}`);
-          // Ta bort session-marker så noteBootStart inte loggar en duplikat unknown-restart
-          markGracefulShutdown();
+          const { recordRestart } = await import('../restartLog.js');
+          recordRestart(
+            'ble-consecutive-failures-soft',
+            `${_consecutiveFailures} fails — engine alive, slow retry every ${SLOW_RETRY_INTERVAL_MS}ms (last error: ${errStr})`,
+          );
         } catch (e: any) {
-          console.warn(`[connect-hardcoded] kunde inte logga restart: ${e?.message ?? e}`);
+          console.warn(`[connect-hardcoded] kunde inte logga slow-retry-event: ${e?.message ?? e}`);
         }
-        // Liten delay så HTTP-svar hinner ut till UI innan vi dör.
-        setTimeout(() => process.exit(0), 500);
+        const slowRetry = () => {
+          _slowRetryTimer = null;
+          if (!_slowRetryActive) return;
+          if (_connectInFlight || (_connected && _connected.state === 'connected')) return;
+          connectHardcoded()
+            .catch((e: any) => dlog(`[connect-hardcoded] slow-retry attempt error: ${e?.message ?? e}`))
+            .finally(() => {
+              if (_slowRetryActive && !(_connected && _connected.state === 'connected')) {
+                _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
+              }
+            });
+        };
+        _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
       }
     }
     return { ...r, durationMs: Date.now() - t0 };
