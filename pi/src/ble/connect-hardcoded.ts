@@ -13,8 +13,10 @@ import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
-// setReconnectOnBootFlag avlivad: process.exit på BLE-fail ersatt av slow-retry-loop nedan.
-// Flaggan + boot-hooken i index.ts blir dead code men lämnas för minimal diff.
+// setReconnectOnBootFlag återupplivad: efter N=20 slow-retry-failures faller vi
+// tillbaka på process.exit(0) som nukleär reset, och flaggan triggar
+// auto-reconnect vid nästa boot (se index.ts boot-hook).
+import { setReconnectOnBootFlag } from './reconnect-flag.js';
 import { dlog } from "../debugLog.js";
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
