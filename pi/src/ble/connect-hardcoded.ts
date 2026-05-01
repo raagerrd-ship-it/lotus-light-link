@@ -582,14 +582,36 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           _slowRetryTimer = null;
           if (!_slowRetryActive) return;
           if (_connectInFlight || (_connected && _connected.state === 'connected')) return;
+          _slowRetryAttempt++;
+          dlog(`[connect-hardcoded] slow-retry försök #${_slowRetryAttempt}/${SLOW_RETRY_MAX_ATTEMPTS}`);
           connectHardcoded()
             .catch((e: any) => dlog(`[connect-hardcoded] slow-retry attempt error: ${e?.message ?? e}`))
             .finally(() => {
-              if (_slowRetryActive && !(_connected && _connected.state === 'connected')) {
-                _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
+              if (!_slowRetryActive) return;
+              if (_connected && _connected.state === 'connected') return;
+              if (_slowRetryAttempt >= SLOW_RETRY_MAX_ATTEMPTS) {
+                // Nukleär reset: lampans firmware verkar fast i ett tillstånd
+                // som varken slow-retry eller HCI-cleanup löser. Sätt boot-flaggan
+                // så systemd-restarten auto-anropar connectHardcoded igen, och
+                // exit(0) så hela processen + noble-stacken får ny start.
+                console.error(`[connect-hardcoded] ⚠ ${SLOW_RETRY_MAX_ATTEMPTS} slow-retries misslyckade (~${Math.round(SLOW_RETRY_MAX_ATTEMPTS * SLOW_RETRY_INTERVAL_MS / 60000)} min) — kör nukleär process.exit(0) för full HCI-reset`);
+                (async () => {
+                  try {
+                    const { recordRestart } = await import('../restartLog.js');
+                    recordRestart(
+                      'ble-consecutive-failures',
+                      `Nukleär reset efter ${SLOW_RETRY_MAX_ATTEMPTS} slow-retries (~${Math.round(SLOW_RETRY_MAX_ATTEMPTS * SLOW_RETRY_INTERVAL_MS / 60000)} min utan succé)`,
+                    );
+                  } catch {}
+                  try { setReconnectOnBootFlag(); } catch {}
+                  setTimeout(() => process.exit(0), 500);
+                })();
+                return;
               }
+              _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
             });
         };
+        _slowRetryAttempt = 0;
         _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
       }
     }
