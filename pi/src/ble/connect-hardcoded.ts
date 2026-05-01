@@ -554,6 +554,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       // Avbryt slow-retry om den var aktiv — länken är uppe igen.
       if (_slowRetryActive) {
         _slowRetryActive = false;
+        _slowRetryAttempt = 0;
         if (_slowRetryTimer) { clearTimeout(_slowRetryTimer); _slowRetryTimer = null; }
         console.warn('[connect-hardcoded] slow-retry-läge avslutat — länken är uppe igen');
       }
