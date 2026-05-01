@@ -13,8 +13,10 @@ import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
-// setReconnectOnBootFlag avlivad: process.exit på BLE-fail ersatt av slow-retry-loop nedan.
-// Flaggan + boot-hooken i index.ts blir dead code men lämnas för minimal diff.
+// setReconnectOnBootFlag återupplivad: efter N=20 slow-retry-failures faller vi
+// tillbaka på process.exit(0) som nukleär reset, och flaggan triggar
+// auto-reconnect vid nästa boot (se index.ts boot-hook).
+import { setReconnectOnBootFlag } from './reconnect-flag.js';
 import { dlog } from "../debugLog.js";
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
@@ -31,9 +33,14 @@ const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
 
 // Slow-retry: efter CONSECUTIVE_FAIL_LIMIT failures fortsätter vi försöka var 30s
-// istället för att nuke processen via systemd. Engine + mic + Sonos hålls vid liv.
+// istället för att direkt nuke processen via systemd. Engine + mic + Sonos hålls vid liv.
+// Efter SLOW_RETRY_MAX_ATTEMPTS misslyckade slow-retries (~10 min) ger vi upp den
+// mjuka vägen och kör process.exit(0) som nukleär reset — täcker fallet där lampans
+// firmware har hängt sig i ett tillstånd som bara en full HCI-reset kan lösa.
 const SLOW_RETRY_INTERVAL_MS = 30_000;
+const SLOW_RETRY_MAX_ATTEMPTS = 20;
 let _slowRetryActive = false;
+let _slowRetryAttempt = 0;
 let _slowRetryTimer: NodeJS.Timeout | null = null;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
@@ -547,6 +554,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       // Avbryt slow-retry om den var aktiv — länken är uppe igen.
       if (_slowRetryActive) {
         _slowRetryActive = false;
+        _slowRetryAttempt = 0;
         if (_slowRetryTimer) { clearTimeout(_slowRetryTimer); _slowRetryTimer = null; }
         console.warn('[connect-hardcoded] slow-retry-läge avslutat — länken är uppe igen');
       }
@@ -574,14 +582,36 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           _slowRetryTimer = null;
           if (!_slowRetryActive) return;
           if (_connectInFlight || (_connected && _connected.state === 'connected')) return;
+          _slowRetryAttempt++;
+          dlog(`[connect-hardcoded] slow-retry försök #${_slowRetryAttempt}/${SLOW_RETRY_MAX_ATTEMPTS}`);
           connectHardcoded()
             .catch((e: any) => dlog(`[connect-hardcoded] slow-retry attempt error: ${e?.message ?? e}`))
             .finally(() => {
-              if (_slowRetryActive && !(_connected && _connected.state === 'connected')) {
-                _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
+              if (!_slowRetryActive) return;
+              if (_connected && _connected.state === 'connected') return;
+              if (_slowRetryAttempt >= SLOW_RETRY_MAX_ATTEMPTS) {
+                // Nukleär reset: lampans firmware verkar fast i ett tillstånd
+                // som varken slow-retry eller HCI-cleanup löser. Sätt boot-flaggan
+                // så systemd-restarten auto-anropar connectHardcoded igen, och
+                // exit(0) så hela processen + noble-stacken får ny start.
+                console.error(`[connect-hardcoded] ⚠ ${SLOW_RETRY_MAX_ATTEMPTS} slow-retries misslyckade (~${Math.round(SLOW_RETRY_MAX_ATTEMPTS * SLOW_RETRY_INTERVAL_MS / 60000)} min) — kör nukleär process.exit(0) för full HCI-reset`);
+                (async () => {
+                  try {
+                    const { recordRestart } = await import('../restartLog.js');
+                    recordRestart(
+                      'ble-consecutive-failures',
+                      `Nukleär reset efter ${SLOW_RETRY_MAX_ATTEMPTS} slow-retries (~${Math.round(SLOW_RETRY_MAX_ATTEMPTS * SLOW_RETRY_INTERVAL_MS / 60000)} min utan succé)`,
+                    );
+                  } catch {}
+                  try { setReconnectOnBootFlag(); } catch {}
+                  setTimeout(() => process.exit(0), 500);
+                })();
+                return;
               }
+              _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
             });
         };
+        _slowRetryAttempt = 0;
         _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
       }
     }
