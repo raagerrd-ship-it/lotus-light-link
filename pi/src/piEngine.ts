@@ -132,6 +132,10 @@ interface LightCalibration {
   maxFallPerSec: number;
   /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
   flickerDeadband: number;
+  /** Absolut energy-gate (totalRms) under vilken onset-detektorn inte processar.
+   *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
+   *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
+  onsetEnergyFloor: number;
   [key: string]: any;
 }
 
@@ -143,14 +147,15 @@ const DEFAULT_CAL: LightCalibration = {
   punchWhiteThreshold: 100,
   brightnessFloor: 5,
   saturation: 0,  // disabled 2026-04-25 — color trimming sker i Sonos i stället
-  transientGain: 0.5,
+  transientGain: 0.8,
   perceptualGamma: 0,
   dynamicsEnabled: true,
-  onsetThreshold: 3.0,
-  onsetRefractoryMs: 110,
+  onsetThreshold: 1.8,
+  onsetRefractoryMs: 200,
   maxRisePerSec: 8.0,
   maxFallPerSec: 2.5,
   flickerDeadband: 0,
+  onsetEnergyFloor: 0.05,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
@@ -771,19 +776,26 @@ export class PiLightEngine {
     onFFTReady(() => this.onFFTFrame());
     onFluxReady((flux) => {
       if (this._loopActive && this.playing && this._bleOwner === 'active') {
-        this.processOnset(flux);
+        // Energy gate (2026-05-02): låt inte den adaptiva tröskeln skala ner
+        // till brusgolvet och flasha i tysta partier. Hämtar bands EN gång
+        // och delar med dynamicCenter-uppdateringen nedan.
+        const bands = getLatestBands();
+        const energyFloor = this.cal.onsetEnergyFloor ?? 0;
+        const passesEnergyGate =
+          energyFloor <= 0 ||
+          (bands != null && Number.isFinite(bands.totalRms) && bands.totalRms >= energyFloor);
+        if (passesEnergyGate) {
+          this.processOnset(flux);
+        }
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
         // (50Hz) — center följer då 100% av musiken, inte varannan frame.
-        if (this.tc.dynamicsEnabled) {
-          const bands = getLatestBands();
-          if (bands && Number.isFinite(bands.totalRms)) {
-            const bN = normalizeFixed(bands.bassRms);
-            const mN = normalizeFixed(bands.midHiRms);
-            const raw = bN * 0.5 + mN * 0.5;
-            this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
-            if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
-            else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
-          }
+        if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
+          const bN = normalizeFixed(bands.bassRms);
+          const mN = normalizeFixed(bands.midHiRms);
+          const raw = bN * 0.5 + mN * 0.5;
+          this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
+          if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
+          else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         }
       }
     });

@@ -79,11 +79,42 @@ export function getSonosState(): SonosState {
   return currentState;
 }
 
-export function onSonosChange(fn: Listener): () => void {
+export async function onSonosChange(fn: Listener): Promise<() => void> {
   listeners.add(fn);
-  // Replay current state immediately so late subscribers don't miss boot-time PLAYING
+  // Race-fix (2026-05-02): den default-IDLE-state som currentState har vid
+  // boot kan annars ge subscribern en stale "paused"-bild om den registrerar
+  // sig innan första pollen hunnit svara. Hämta fresh status synkront (cap
+  // 1500ms) så engine.setPlaying(true) triggas direkt vid boot om Sonos
+  // redan spelar. Faller tillbaka på currentState om gateway är slö.
+  try {
+    const fresh = await Promise.race<any>([
+      fetchStatusOnce(),
+      new Promise(res => setTimeout(() => res(null), 1500)),
+    ]);
+    if (fresh) {
+      // Apply via parseStatus so listeners-fan-out + heartbeat-bookkeeping
+      // körs precis som vid en vanlig poll.
+      try { parseStatus(fresh); } catch {}
+    }
+  } catch {}
   fn(currentState);
   return () => listeners.delete(fn);
+}
+
+/** Internal: one-shot status fetch using the active poller config.
+ *  Returns parsed JSON or null on any failure. Used by onSonosChange. */
+async function fetchStatusOnce(): Promise<any | null> {
+  if (!activeConfig) return null;
+  const baseUrl = activeConfig.baseUrl.replace(/\/$/, '');
+  const statusPath = activeConfig.statusPath ?? DEFAULT_CONFIG.statusPath;
+  const timeout = activeConfig.pollTimeoutMs ?? DEFAULT_CONFIG.pollTimeoutMs;
+  try {
+    const res = await fetch(`${baseUrl}${statusPath}`, { signal: AbortSignal.timeout(timeout) });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 // ── Enkel state-tracking — vi litar på gatewayens playbackState rakt av ──
@@ -115,15 +146,23 @@ function hasPaletteChanged(next: [number, number, number][] | null, prev: [numbe
 }
 
 function apply(next: SonosState): void {
-  const changed =
+  const significantChanged =
     next.playbackState !== currentState.playbackState ||
     next.trackName !== currentState.trackName ||
     next.volume !== currentState.volume ||
     next.isTvMode !== currentState.isTvMode ||
     next.albumArtUrl !== currentState.albumArtUrl ||
     hasPaletteChanged(next.palette, currentState.palette);
+  // Heartbeat (2026-05-02): om engine startat mid-track och missat både
+  // initial replay och alla meta-events behöver den ändå få periodiska
+  // setPlaying(true)-pings för att kunna recovera (t.ex. starta mic). Vi
+  // räknar 10s-bucket-byte på positionMs som heartbeat-trigger.
+  const positionHeartbeat =
+    next.positionMs != null &&
+    currentState.positionMs != null &&
+    Math.floor(next.positionMs / 10000) !== Math.floor(currentState.positionMs / 10000);
   currentState = next;
-  if (changed) listeners.forEach(fn => fn(next));
+  if (significantChanged || positionHeartbeat) listeners.forEach(fn => fn(next));
 }
 
 function parseStatus(s: any): void {

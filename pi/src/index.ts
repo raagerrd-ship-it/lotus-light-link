@@ -282,7 +282,10 @@ async function startSonosSubsystem(): Promise<void> {
       const lastArtUrl = { current: null as string | null };
       const wasTvMode = { current: false };
       const lastPaletteSig = { current: null as string | null };
-      sonos.onSonosChange((state) => {
+      // await så fresh-status race (≤1500ms) hinner trigga setPlaying(true)
+      // FÖRE markSubsystemReady — annars kan engine starta i paused-state
+      // även om Sonos redan spelar.
+      await sonos.onSonosChange((state) => {
         applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
       });
 
