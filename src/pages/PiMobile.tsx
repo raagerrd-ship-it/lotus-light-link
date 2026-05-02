@@ -79,6 +79,7 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
   { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
   { key: "onsetThreshold", label: "Beat-känslighet", min: 1.5, max: 4.0, step: 0.1, unit: "×", description: "Lägre = fler beats triggar (känsligare). 1.5 = mycket känslig, 4.0 = bara tydliga slag" },
   { key: "onsetRefractoryMs", label: "Beat-mellanrum", min: 80, max: 300, step: 10, unit: "ms", description: "Minsta gap mellan beats. Högt värde = lugnare puls" },
+  { key: "onsetEnergyFloor", label: "Beat energi-golv", min: 0, max: 0.20, step: 0.005, description: "Lampan flashar bara när musik är starkare än detta. Höj om bakgrundsbrus triggar pulser i tysta partier (0 = av, 0.05 = default)" },
   { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
   { key: "transientGain", label: "Transient boost", min: 0, max: 1.5, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 1.5 = överdrivna trumslag" },
   { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 2.2, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 2.2 = kraftigt komprimerad" },
