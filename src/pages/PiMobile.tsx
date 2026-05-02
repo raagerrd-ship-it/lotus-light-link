@@ -1464,6 +1464,7 @@ export default function PiMobile() {
           dynamicsEnabled: p.dynamicsEnabled,
           onsetThreshold: p.onsetThreshold,
           onsetRefractoryMs: p.onsetRefractoryMs,
+          onsetEnergyFloor: p.onsetEnergyFloor,
           maxRisePerSec: p.maxRisePerSec,
           maxFallPerSec: p.maxFallPerSec,
           flickerDeadband: p.flickerDeadband,
