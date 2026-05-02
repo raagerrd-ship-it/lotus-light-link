@@ -146,15 +146,23 @@ function hasPaletteChanged(next: [number, number, number][] | null, prev: [numbe
 }
 
 function apply(next: SonosState): void {
-  const changed =
+  const significantChanged =
     next.playbackState !== currentState.playbackState ||
     next.trackName !== currentState.trackName ||
     next.volume !== currentState.volume ||
     next.isTvMode !== currentState.isTvMode ||
     next.albumArtUrl !== currentState.albumArtUrl ||
     hasPaletteChanged(next.palette, currentState.palette);
+  // Heartbeat (2026-05-02): om engine startat mid-track och missat både
+  // initial replay och alla meta-events behöver den ändå få periodiska
+  // setPlaying(true)-pings för att kunna recovera (t.ex. starta mic). Vi
+  // räknar 10s-bucket-byte på positionMs som heartbeat-trigger.
+  const positionHeartbeat =
+    next.positionMs != null &&
+    currentState.positionMs != null &&
+    Math.floor(next.positionMs / 10000) !== Math.floor(currentState.positionMs / 10000);
   currentState = next;
-  if (changed) listeners.forEach(fn => fn(next));
+  if (significantChanged || positionHeartbeat) listeners.forEach(fn => fn(next));
 }
 
 function parseStatus(s: any): void {
