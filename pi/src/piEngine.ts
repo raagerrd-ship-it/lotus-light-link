@@ -776,19 +776,26 @@ export class PiLightEngine {
     onFFTReady(() => this.onFFTFrame());
     onFluxReady((flux) => {
       if (this._loopActive && this.playing && this._bleOwner === 'active') {
-        this.processOnset(flux);
+        // Energy gate (2026-05-02): låt inte den adaptiva tröskeln skala ner
+        // till brusgolvet och flasha i tysta partier. Hämtar bands EN gång
+        // och delar med dynamicCenter-uppdateringen nedan.
+        const bands = getLatestBands();
+        const energyFloor = this.cal.onsetEnergyFloor ?? 0;
+        const passesEnergyGate =
+          energyFloor <= 0 ||
+          (bands != null && Number.isFinite(bands.totalRms) && bands.totalRms >= energyFloor);
+        if (passesEnergyGate) {
+          this.processOnset(flux);
+        }
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
         // (50Hz) — center följer då 100% av musiken, inte varannan frame.
-        if (this.tc.dynamicsEnabled) {
-          const bands = getLatestBands();
-          if (bands && Number.isFinite(bands.totalRms)) {
-            const bN = normalizeFixed(bands.bassRms);
-            const mN = normalizeFixed(bands.midHiRms);
-            const raw = bN * 0.5 + mN * 0.5;
-            this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
-            if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
-            else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
-          }
+        if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
+          const bN = normalizeFixed(bands.bassRms);
+          const mN = normalizeFixed(bands.midHiRms);
+          const raw = bN * 0.5 + mN * 0.5;
+          this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
+          if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
+          else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         }
       }
     });
