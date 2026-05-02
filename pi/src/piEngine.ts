@@ -132,6 +132,10 @@ interface LightCalibration {
   maxFallPerSec: number;
   /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
   flickerDeadband: number;
+  /** Absolut energy-gate (totalRms) under vilken onset-detektorn inte processar.
+   *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
+   *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
+  onsetEnergyFloor: number;
   [key: string]: any;
 }
 
