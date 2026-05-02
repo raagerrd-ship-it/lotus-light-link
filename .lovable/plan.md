@@ -1,92 +1,127 @@
-## Sub-frame onset express + adaptive release + relaxed slot-lease
 
-Three coordinated latency improvements in `pi/src/piEngine.ts` + telemetry additions in `pi/src/ble/state.ts`. Builds on the just-landed ACL-outstanding gate (live read of `noble._aclConnections` + `ACL_MAX_OUTSTANDING=6`), which is already deployed.
+## Sammanfattning av granskningen
 
-Goal: kick-to-light drops from ~25–50 ms (avg ~32) to ~13–20 ms (avg ~17) on percussive content.
+Idle-disconnect-flödet (Sonos paus → 2 min → BLE off + mic stop) och wake-flödet (Sonos PLAYING → reconnect + mic) är till 90% korrekt implementerat, men **tre defekter** gör att funktionen ofta inte triggar i praktiken:
 
-### 1. Express onset path (`processOnset`, ~line 436)
+---
 
-Right after `this.onsetTarget = 0.45; this.onsetLastFrameIdx = …`, fire a sub-frame BLE write that bypasses the tick gate:
+## Bug 1 (KRITISK): `setPlaying(false)`-debouncen kan permanent blockera idle-disconnect
 
-- Guard on `this._bleOwner === 'active'` and `this.lastSentPct >= 0` (ensures `_finalColor` is initialized by a prior `tickInner`).
-- Compute `boostPct = (0.45 * (cal.transientGain ?? 1.0) * 100) | 0`, then `expressPct = min(100, lastSentPct + boostPct)`.
-- Call `sendToBLE(_finalColor[0..2], expressPct)` — reuses module-scoped `_finalColor`.
-- On `'sent'`: update `this.lastSentPct = expressPct` (so next `tickInner` deadband doesn't suppress the natural down-stroke), bump `bleStats.onsetExpressCount`.
-- On `'busy'`: bump `bleStats.onsetExpressBusyCount`.
-- Do NOT touch `this.smoothed` — `tickInner` remains authoritative for the EMA tail.
-- Refractory gate above already bounds rate to ≤1 express write per detected onset.
-
-Note: `_finalColor` is module-scoped (line 226) — accessible inside the class method.
-
-### 2. Adaptive release alpha (`tickInner`, line 1012)
-
-Replace the constant-alpha branch:
+I `pi/src/piEngine.ts` rad 633:
 
 ```ts
-let alpha;
-if (energyNorm > this.smoothed) {
-  alpha = tc.attackAlpha;
-} else {
-  const drop = this.smoothed - energyNorm;
-  const threshold = this.cal.releaseDropThreshold ?? 0.05;
-  const boostFactor = this.cal.releaseDropBoost ?? 0.6;
-  const boost = drop > threshold ? drop * boostFactor : 0;
-  alpha = Math.min(0.85, tc.releaseAlpha + boost);
+if (!playing && now - this._lastPlayingChangeAt < PLAYING_DEBOUNCE_MS) {
+  dlog('[Engine] setPlaying(false) debounced — för nära senaste flip');
+  return;   // ← BUG: returnerar UTAN att uppdatera _lastPlayingChangeAt
 }
-this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
+this._lastPlayingChangeAt = now;
 ```
 
-- Track `bleStats.adaptiveReleaseAlphaMax` high-water for sanity (expect 0.15–0.85).
-- Add optional `releaseDropBoost` (default 0.6) and `releaseDropThreshold` (default 0.05) to the calibration type — soft-fallback so existing saved profiles work without migration.
+Problem: Sonos-pollern kallar `applySonosStateToEngine` var 2:a sekund (poll) eller vid varje SSE-event. När musik pausas:
 
-### 3. Relaxed slot-lease (constructor + `setTickMs`, lines 351 + 364)
+1. Första `setPlaying(false)` kommer t.ex. 400 ms efter senaste PLAYING-flip → debounce-blockad, return.
+2. `_lastPlayingChangeAt` uppdateras INTE.
+3. Nästa poll 2 s senare: `playing===wasPlaying` (båda `true`!) → tidig return på rad 626 (`if (playing === wasPlaying) return`). ← **engine tror fortfarande att musiken spelar**.
+4. Idle-timern startar aldrig. BLE-länken hålls vid liv. Mic fortsätter köra. CPU-besparingen sker aldrig.
 
-Change both call sites from:
+Det här triggas garanterat varje gång användaren pausar inom 500 ms av en STOPPED→PLAYING-flap (vanligt vid trackbyte → paus).
+
+**Fix:** Debouncen ska bara filtrera bort SNABBA flaps, inte tappa state. Två rena alternativ:
+
+a) Schemalägg en deferred re-check istället för att tappa eventet:
 ```ts
-setSlotLeaseMs(tickMs);
+if (!playing && now - this._lastPlayingChangeAt < PLAYING_DEBOUNCE_MS) {
+  setTimeout(() => this.setPlaying(false), PLAYING_DEBOUNCE_MS);
+  return;
+}
 ```
-to:
+
+b) Eller: ta bort debouncen helt eftersom Sonos-pollern redan bara emitar nya `playbackState`-värden och TV-mode-handling sker uppströms. Den ursprungliga motivationen (PLAYING→STOPPED→PLAYING vid trackbyte) hanteras bättre i pollern.
+
+Rekommendation: variant (a) — minimal blast radius.
+
+---
+
+## Bug 2: Wake-pathen kan trigga reconnect medan slow-retry pågår
+
+I `pi/src/index.ts` rad 110–121 görs:
+
 ```ts
-setSlotLeaseMs(Math.max(5, (tickMs / 3) | 0));
+if (!getHardcodedConnected().connected && wasAutoDisconnected()) {
+  void connectHardcoded();
+}
 ```
 
-At `tickMs=20` that gives a ~7 ms lease — leaves room for one `tickInner` write + one express write per tick window without exceeding `ACL_MAX_OUTSTANDING=6`. Floor of 5 ms protects the controller. `protocol.ts` lease implementation needs no change.
+Men `wasAutoDisconnected()` returnerar `true` även när disconnect var `'supervision-timeout'` (icke-manuell), inte bara `'idle-timeout'`. Detta är OK i sig, MEN:
 
-### 4. Telemetry (`pi/src/ble/state.ts` — `bleStats`)
+- Om slow-retry-loopen är aktiv (efter ≥4 consecutive failures) kommer Sonos-PLAYING att skjuta in extra `connectHardcoded()`-anrop ovanpå den. `_connectInFlight`-guarden räddar oss för parallella anrop, men `_slowRetryAttempts`-räknaren räknas inte upp av PLAYING-triggade försök, vilket kan fördröja den nukleära reseten.
 
-Add four counters to the existing `bleStats` object so they auto-surface in `/api/status`:
+- Viktigare: efter idle-timeout-disconnect sätts `_autoReconnectEnabled = false` (rad 218 i connect-hardcoded.ts) och `clearAutoReconnect()` körs. Bra. Men när Sonos PLAYING triggar `connectHardcoded()` och den **lyckas**, så återställs `_autoReconnectEnabled = true` (rad 477). Då fungerar nästa supervision-timeout korrekt. Detta steg är OK.
+
+**Faktisk svaghet här:** wake-pathen särskiljer inte `'idle-timeout'` från `'supervision-timeout'`. Båda betyder "auto", så villkoret är slappt men det matchar `wasAutoDisconnected()`-semantiken. Ingen fix behövs här — bara en kommentar/tightening om vi vill vara explicita.
+
+---
+
+## Bug 3: Race mellan `handleIdleDisconnect()` och en ankommande PLAYING-event
+
+`handleIdleDisconnect()` (piEngine.ts 539–582) är `async` och tar upp till ~500 ms (HCI drain) + `triggerIdleDisconnect()` + `stopMic()`. Mellan steg 4 (BLE off) och steg 5 (`stopMic`) kan Sonos-pollern kalla `applySonosStateToEngine` med PLAYING:
+
+1. PLAYING-pathen i index.ts kallar `alsaMic.startMic()` — mic startas
+2. Direkt efter kör `handleIdleDisconnect()` steg 5: `stopMic()` — mic dödas igen
+3. Användaren får tyst lampa trots att musiken spelar
+
+Sannolikheten är låg (~500 ms-fönster) men reproducerbar.
+
+**Fix:** I början av `handleIdleDisconnect()`, kontrollera även att vi inte är mitt i en wake-trigger:
 
 ```ts
-onsetExpressCount: 0,
-onsetExpressBusyCount: 0,
-adaptiveReleaseAlphaMax: 0,
-slotLeaseMs: 0,           // mirror of last setSlotLeaseMs() value
+private async handleIdleDisconnect(): Promise<void> {
+  this._idleDisconnectTimer = null;
+  if (this.playing || this._bleOwner === 'none') {
+    this._idleEnteredAt = null;
+    return;
+  }
+  // ... och igen efter varje await:
+  await new Promise(r => setTimeout(r, 20));
+  if (this.playing) { dlog('[Engine] Idle-disconnect avbruten mid-flight'); return; }
+  // ...
+}
 ```
 
-Update `slotLeaseMs` from inside `setSlotLeaseMs` in `protocol.ts` (one line) so the live effective lease is visible without poking the engine.
+Lägg in `if (this.playing) return` efter await-stället på rad 561 och igen efter `triggerIdleDisconnect()` på rad 568, innan `stopMic()`.
 
-### 5. Memory note
+---
 
-Add `mem://pi/audio/onset-express-path.md` documenting the express-write contract, dependency on the ACL gate, and the lease/3 invariant. Add to `mem://index.md` Memories list.
+## Bug 4 (mindre): `_idleEnteredAt` nollställs inte vid debounce-block
 
-### Out of scope
+Eftersom Bug 1 kan blockera setPlaying(false) återkommer vi aldrig in i grenen som rensar `_idleEnteredAt`. När Bug 1 är fixad försvinner detta.
 
-- HCI buffer probe, explicit outstanding reset, 250 ms watchdog (already decided SKIP).
-- `colorFadeMs` linearization, multi-palette, HSV/Lab fades, ALSA period sizing.
+---
 
-### Verification (post-deploy, in `/api/status`)
+## Plan — ändringar
 
-1. `onsetExpressCount` grows during drum passages (~1.5–4/s during active drumming).
-2. `onsetExpressBusyCount / onsetExpressCount` < 5%.
-3. `controllerOutstandingCount` peaks 3–4, never reaches 7.
-4. `controllerStuckCount` and `writeFailCount` stay at 0.
-5. `writeLatMaxMs` may rise from ~5 → ~10 ms; should not exceed 30 ms (else back lease floor off to `tickMs/2`).
-6. `outstandingMaxObserved` (already shipped) shouldn't reach `ACL_MAX_OUTSTANDING=6`.
-7. Visual: kicks "land" with the beat instead of trailing it.
+**Fil: `pi/src/piEngine.ts`**
 
-### Files touched
+1. Rad 633–637: Byt debounce-`return` mot deferred re-call (Bug 1).
+2. Rad 539–582 `handleIdleDisconnect`: Lägg till `if (this.playing) return` mid-flight efter de två await-stegen (Bug 3).
 
-- `pi/src/piEngine.ts` — express path in `processOnset`, adaptive alpha in `tickInner`, lease formula in constructor + `setTickMs`, optional cal fields.
-- `pi/src/ble/protocol.ts` — mirror lease into `bleStats.slotLeaseMs` inside `setSlotLeaseMs`.
-- `pi/src/ble/state.ts` — four new stats fields + bump build tag to `2026-04-29/onset-express`.
-- `.lovable/memory/pi/audio/onset-express-path.md` (new), `.lovable/memory/index.md` (one-line addition).
+**Fil: `pi/src/index.ts`** — ingen ändring behövs (wake-pathen är OK).
+
+**Fil: `pi/src/ble/connect-hardcoded.ts`** — ingen ändring behövs.
+
+---
+
+## Förväntat beteende efter fix
+
+- Pause → exakt 2 min senare: idle-färg @ 100%, BLE disconnect, mic stop. Pålitligt även om paus sker i samma sekund som ett trackbyte.
+- PLAYING under handleIdleDisconnect's drain-fönster avbryter cleanen, mic + BLE behålls, ingen tyst lampa.
+- Restart-trösklar (slow-retry, nukleär reset) oförändrade.
+
+---
+
+## Verifiering efter deploy
+
+1. Starta musik → pausa → vänta 2 min → kolla `journalctl -u lotus-light-engine | grep -E "Idle-disconnect|micPausedForIdle"` — ska visa schemalagd + utförd cleanup.
+2. Pausa direkt efter trackbyte (inom 500 ms) → vänta 2 min → samma logg ska visa cleanup. Tidigare: tom logg.
+3. Starta musik igen → BLE reconnectar inom 2–4 s, lampan svarar.
+4. `/api/status.idle` ska visa `enteredAt`, `disconnectInMs`, `micPausedForIdle: true` efter cleanup.

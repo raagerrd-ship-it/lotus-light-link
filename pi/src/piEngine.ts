@@ -559,6 +559,14 @@ export class PiLightEngine {
         break;
       }
       await new Promise(r => setTimeout(r, 20));
+      // Mid-flight abort: Sonos PLAYING kan komma in under drain-fönstret.
+      // Då har wake-pathen i index.ts redan kallat alsaMic.startMic() och
+      // ev. connectHardcoded() — vi får INTE fortsätta riva ner.
+      if (this.playing) {
+        dlog('[Engine] Idle-disconnect avbruten under drain — Sonos PLAYING kom emellan');
+        this._idleEnteredAt = null;
+        return;
+      }
     }
 
     // 3. Stoppa keep-alive innan disconnect (förhindrar race med write-failure).
@@ -567,6 +575,14 @@ export class PiLightEngine {
     // 4. Disconnect (markeras som auto → Sonos PLAYING får reconnecta senare).
     try { await triggerIdleDisconnect(); } catch (e: any) {
       dlog(`[Engine] triggerIdleDisconnect failed: ${e?.message ?? e}`);
+    }
+
+    // Mid-flight abort #2: även efter triggerIdleDisconnect kan PLAYING ha
+    // landat. Skippa stopMic så wake-pathens startMic() inte direkt dödas.
+    if (this.playing) {
+      dlog('[Engine] Idle-disconnect: BLE redan disconnectad men PLAYING kom — hoppar över stopMic');
+      this._idleEnteredAt = null;
+      return;
     }
 
     // 5. Stoppa ALSA-mic → ~20-25% CPU-besparing under idle.
@@ -630,8 +646,21 @@ export class PiLightEngine {
     // VIKTIGT: debouncen gäller ENBART PLAYING→PAUSED. PLAYING måste alltid
     // släppas igenom omedelbart — annars riskerar vi att engine fastnar i
     // idle om en spurious PAUSED kom precis innan riktig PLAYING.
+    //
+    // BUGFIX 2026-05-02: tidigare returnerade vi UTAN att schemalägga
+    // re-check, vilket innebar att PAUSED-eventet tappades för gott
+    // (nästa poll såg playing===wasPlaying och tog tidig return). Det
+    // gjorde att idle-disconnect aldrig triggade om paus skedde nära ett
+    // trackbyte. Nu schemalägger vi en deferred re-call så state följer
+    // verkligheten även när första PAUSED-flippen kommer för tidigt.
     if (!playing && now - this._lastPlayingChangeAt < PiLightEngine.PLAYING_DEBOUNCE_MS) {
-      dlog('[Engine] setPlaying(false) debounced — för nära senaste flip');
+      const remaining = PiLightEngine.PLAYING_DEBOUNCE_MS - (now - this._lastPlayingChangeAt);
+      dlog(`[Engine] setPlaying(false) debounced — re-checkar om ${remaining}ms`);
+      setTimeout(() => {
+        // Vid re-check: om engine fortfarande tror att vi spelar OCH
+        // ingen ny PLAYING har kommit emellan → applicera PAUSED nu.
+        if (this.playing) this.setPlaying(false);
+      }, remaining + 10);
       return;
     }
     this._lastPlayingChangeAt = now;
