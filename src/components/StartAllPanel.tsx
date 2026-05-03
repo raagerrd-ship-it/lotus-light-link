@@ -14,38 +14,47 @@ import { CheckCircle2, Circle, Loader2, XCircle, ChevronDown, ChevronUp } from "
  * Avancerade per-steg-knappar finns kvar bakom <details> i PiMobile.
  */
 
-type StepId = "engine" | "mic" | "sonos" | "lamp";
+type StepId = "sonos" | "engine" | "mic" | "lamp";
 type StepState = "pending" | "running" | "ok" | "error";
+type Phase = "ignition" | "motor";
 
 interface Step {
   id: StepId;
   label: string;
   endpoint: string;
+  phase: Phase;
   /** Acceptera 200 + valfri custom-validation av JSON-body. */
   isOk?: (json: any) => boolean;
 }
 
+// Bil-tändning-modell:
+//   TÄNDNING: bara Sonos-pollern (lyssnar på PLAYING).
+//   IGÅNG:    BLE-motor → Mikrofon → Lampa (Sonos PLAYING triggar dessa).
 const STEPS: Step[] = [
+  {
+    id: "sonos",
+    label: "Sonos",
+    endpoint: "/api/subsystem/sonos/start",
+    phase: "ignition",
+  },
   {
     id: "engine",
     label: "Motor",
     endpoint: "/api/ble/engine/start",
+    phase: "motor",
     isOk: (j) => j?.ready === true,
   },
   {
     id: "mic",
     label: "Mikrofon",
     endpoint: "/api/subsystem/mic/start",
-  },
-  {
-    id: "sonos",
-    label: "Sonos",
-    endpoint: "/api/subsystem/sonos/start",
+    phase: "motor",
   },
   {
     id: "lamp",
     label: "Lampa",
     endpoint: "/api/ble/connect",
+    phase: "motor",
     isOk: (j) => j?.connected === true,
   },
 ];
