@@ -327,11 +327,12 @@ async function main() {
   await logRuntimePermissions();
 
   console.log('');
-  console.log('  Boot startar INTE BLE/mic/sonos automatiskt.');
-  console.log('  BLE-motor:  POST /api/ble/engine/start');
-  console.log('  Lampa:      POST /api/ble/connect');
-  console.log('  Mic/Sonos:  POST /api/subsystem/<mic|sonos>/start');
-  console.log('');
+  console.log('  Tändning aktiv vid boot — Sonos PLAYING startar motorn automatiskt.');
+  console.log('  Manuella override-endpoints (UI):');
+  console.log('    BLE-motor:  POST /api/ble/engine/start');
+  console.log('    Lampa:      POST /api/ble/connect / disconnect');
+  console.log('    Mic/Sonos:  POST /api/subsystem/<mic|sonos>/start');
+  console.log('    Lifecycle:  POST /api/lifecycle/override { off: true|false }');
 
   configServer = await import('./configServer.js');
   configServer.startConfigServer(CONFIG_PORT);
