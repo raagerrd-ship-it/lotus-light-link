@@ -341,7 +341,7 @@ async function main() {
     startSonos: startSonosSubsystem,
   });
 
-  console.log('[Boot] ✓ configServer up — väntar på subsystem-start från UI/API');
+  console.log('[Boot] ✓ configServer up — ignite() startar BLE-stack + sonos-poller');
 
   // ── Restart-log: detektera om förra processen dog ofrivilligt ──
   // noteBootStart() kollar om SESSION_MARKER finns kvar (graceful shutdown
