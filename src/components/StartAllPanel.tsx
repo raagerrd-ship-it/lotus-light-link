@@ -23,12 +23,14 @@ interface Step {
   label: string;
   endpoint: string;
   phase: Phase;
+  /** Display-only: ingen POST sker, status hydreras enbart från servern. */
+  displayOnly?: boolean;
   /** Acceptera 200 + valfri custom-validation av JSON-body. */
   isOk?: (json: any) => boolean;
 }
 
 // Bil-tändning-modell:
-//   TÄNDNING: bara Sonos-pollern (lyssnar på PLAYING).
+//   TÄNDNING: Sonos-pollern (startas automatiskt vid boot — display only här).
 //   IGÅNG:    BLE-motor → Mikrofon → Lampa (Sonos PLAYING triggar dessa).
 const STEPS: Step[] = [
   {
@@ -36,6 +38,7 @@ const STEPS: Step[] = [
     label: "Sonos",
     endpoint: "/api/subsystem/sonos/start",
     phase: "ignition",
+    displayOnly: true,
   },
   {
     id: "engine",
