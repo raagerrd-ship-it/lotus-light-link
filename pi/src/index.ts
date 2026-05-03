@@ -383,20 +383,14 @@ async function main() {
         startMicSubsystem,
         connectHardcoded: () => connectHardcoded(),
         getHardcodedConnected,
-        isPlayingState: () => {
-          const s = sonos?.getSonosState?.();
-          return !!s && typeof s.playbackState === 'string' && s.playbackState.includes('PLAYING');
-        },
-        onSonosPlayingChange: (fn) => {
-          // sonos är garanterat satt — ignite() har just await:at startSonosSubsystem.
-          void (async () => {
-            if (!sonos) return;
-            await sonos.onSonosChange((state) => {
-              const playing = typeof state.playbackState === 'string'
-                && state.playbackState.includes('PLAYING');
-              fn(playing || state.isTvMode);
-            });
-          })();
+        getEngineInstance: () => engineInstance as any,
+        onSonosPlayingChange: async (fn) => {
+          if (!sonos) return;
+          await sonos.onSonosChange(async (state) => {
+            const playing = typeof state.playbackState === 'string'
+              && state.playbackState.includes('PLAYING');
+            await fn(playing || state.isTvMode);
+          });
         },
       });
     } catch (e: any) {
