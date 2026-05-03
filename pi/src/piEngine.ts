@@ -541,11 +541,16 @@ export class PiLightEngine {
     this._idleEnteredAt = null;
   }
 
+  /** Publik nedrivning som lifecycle anropar vid PAUSED→IGNITION-övergång.
+   *  Skickar idle-färg @ 100%, drainar HCI, stoppar keep-alive, BLE off, mic stop.
+   *  Mid-flight aborts om this.playing flippar tillbaka. */
+  async shutdownToIgnition(): Promise<void> { return this.handleIdleDisconnect(); }
+
   private async handleIdleDisconnect(): Promise<void> {
     this._idleDisconnectTimer = null;
-    if (this.playing || this._bleOwner === 'none') {
+    if (this._bleOwner === 'none') {
       this._idleEnteredAt = null;
-      dlog('[Engine] Idle-disconnect avbruten — state har ändrats');
+      dlog('[Engine] shutdownToIgnition: BLE redan disconnected — no-op');
       return;
     }
     dlog('[Engine] Idle-disconnect: idle-färg @ 100% → drain HCI → BLE off → ALSA stop');
@@ -686,15 +691,10 @@ export class PiLightEngine {
         this._bleOwner = 'idle';
         this.forceIdleNow();
         startKeepAlive();
-        dlog('[Engine] → idle mode (owner=idle, keep-alive PÅ)');
-        // Schemalägg auto-disconnect efter 2 min utan musik.
-        this.clearIdleDisconnectTimer();
-        this._idleEnteredAt = now;
-        this._idleDisconnectTimer = setTimeout(
-          () => { void this.handleIdleDisconnect(); },
-          PiLightEngine.IDLE_DISCONNECT_MS,
-        );
-        dlog(`[Engine] Idle-disconnect schemalagd om ${PiLightEngine.IDLE_DISCONNECT_MS / 1000}s`);
+        dlog('[Engine] → idle mode (owner=idle, keep-alive PÅ — väntar på lifecycle.shutdownToIgnition)');
+        // OBS: 2-min idle-disconnect-timer borttagen. Lifecycle (engineLifecycle.ts)
+        // schemalägger shutdownToIgnition() efter IGNITION_REENTRY_GRACE_MS (1500ms)
+        // och cancellerar om PLAYING kommer tillbaka inom fönstret.
       } else {
         dlog('[Engine] → idle mode (BLE ej ansluten)');
       }

@@ -1,27 +1,54 @@
 ---
-name: Sonos-driven engine lifecycle (bil-tändning-modell)
-description: Sonos playbackState är källan till sanning för engine-on/off. Boot kör ignite() (BLE-engine-minimal + sonos-poller); PLAYING triggar mic+connect. Manuell UI-disconnect sätter override som blockerar auto-start tills user reaktiverar.
+name: Sonos-driven engine lifecycle (3-state bil-tändning)
+description: Strikt 3-state lifecycle. IGNITION = bara sonos-poller. PLAYING → sekventiell motor-start (BLE-minimal → mic∥connect). PAUSED → shutdownToIgnition efter 1500ms grace. Lifecycle är ENDA setPlaying-ägaren.
 type: feature
 ---
 
-## Modell
+## States
 
 | State | Aktivt | Sover |
 |---|---|---|
-| `IGNITION` | sonos-poller, configServer, BLE-engine-minimal | mic, BLE-connect, engine produktion |
-| `MOTOR_ON` | + alsaMic, BLE connected, engine.setPlaying(true) | — |
-| `MOTOR_OFF` | sonos-poller, BLE keep-alive (idle-färg) | mic, engine produktion |
-| `IGNITION_OFF` | sonos-poller endast | mic, BLE, engine — tills user reaktiverar |
+| `IGNITION` | configServer, sonos-poller | BLE, mic, engine |
+| `MOTOR_ON` | + BLE-stack, lampa connected, alsaMic, engine.setPlaying(true) | — |
+| `IGNITION_OFF` | sonos-poller | BLE, mic, engine — tills user reaktiverar |
 
-## Implementation
-- `pi/src/engineLifecycle.ts` exporterar `ignite()`, `getLifecycleState()`, `setManualOverrideOff()`, `isManualOverrideOff()`.
-- Boot i `pi/src/index.ts` kör `ignite({...})` ovillkorligt efter configServer up. ignite() startar `startBleEngineMinimal()` + `startSonosSubsystem()` parallellt och subscribear `onSonosChange` (som replay:ar fresh state direkt — se mem://pi/sonos/subscribe-race-fix).
-- PLAYING (eller TV-mode) → `toMotorOn()` → `startMicSubsystem()` + `connectHardcoded()` parallellt. PAUSED → `toMotorOff()` → state-byte; engine.setPlaying(false) sköts av `applySonosStateToEngine`. Idle-disconnect efter 2 min hanteras av piEngine (mem://pi/runtime/idle-disconnect-policy).
-- Manuell UI-disconnect via `POST /api/ble/disconnect` → `setManualOverrideOff(true)` → `IGNITION_OFF`. Sonos PLAYING ignoreras tills `POST /api/ble/connect` eller `POST /api/lifecycle/override { off: false }` rensar override.
-- Override persisteras via `storage.setItem('lifecycle-override', 'off')` så den överlever Pi-reboot.
+`MOTOR_OFF` finns INTE som stable state — PAUSED är bara en cancellerbar
+transition tillbaka till IGNITION via `IGNITION_REENTRY_GRACE_MS = 1500ms`.
 
-## Varför detta ersatte /tmp-flaggan
-Tidigare `/tmp/lotus-auto-reconnect-on-boot` rensades av SIGTERM (inkl `systemctl restart`) och försvann vid Pi-reboot. Sonos-driven recovery fungerar oavsett restart-orsak — gateway-state är källan. Disk-flaggan kvarstår som no-op safety net (skrivs av crash-handlers + post-connect-hook) men consumeras inte längre vid boot — vi anropar `consumeReconnectOnBootFlag()` bara för att dränera ev. legacy-flagga.
+## Sekventiell motor-start (race-fix)
 
-## Status-exponering
-`/api/status.lifecycle = { state, manualOverrideOff }`. Endpoint `POST /api/lifecycle/override { off: boolean }` togglar override explicit.
+`toMotorOn()` (i `pi/src/engineLifecycle.ts`):
+1. `await startBleEngineMinimal()` — sekventiellt först, eliminerar
+   `getNoble() called before getNobleAsync()` race.
+2. Parallellt: `startMicSubsystem()` + `connectHardcoded()`.
+3. `setState('MOTOR_ON')`; `engineInstance.setPlaying(true)`.
+
+## PAUSE-grace (1500ms)
+
+PLAYING→PAUSED triggar `scheduleShutdownToIgnition()` med 1500ms timer.
+Cancelleras direkt om PLAYING återkommer (Spotify-stutter, spårbyte).
+Vid timeout: `engine.shutdownToIgnition()` → idle-färg @ 100% → drain HCI →
+BLE off → mic stop → `setState('IGNITION')`.
+
+## Lifecycle = enda setPlaying-ägaren
+
+`applySonosStateToEngine` i `pi/src/index.ts` styr ENBART palette/volym/TV-mode.
+`engine.setPlaying()` kallas uteslutande från lifecycle-transitions. Detta
+eliminerar dubbla källor som tidigare kunde flippa engine-state ur fas med
+lifecycle-state.
+
+## UI-endpoints
+- `POST /api/ble/connect` → `userStartAll()` (rensar override + toMotorOn).
+- `POST /api/ble/disconnect` → `userStopAll()` (override on + shutdown).
+- `POST /api/lifecycle/override { off }` → explicit toggle.
+- `/api/status.lifecycle` → `{ state, manualOverrideOff, pendingShutdownInMs }`.
+
+## Process.exit-recovery
+BLE 4-fails → `process.exit(0)` → systemd restart → boot → IGNITION →
+sonos-poller säger PLAYING (cached på sonos-buddy) → `toMotorOn()` →
+blink. Inget UI-klick. `/tmp/lotus-auto-reconnect-on-boot` är legacy
+(no-op vid read), kvar bara som redundant safety net.
+
+## Supersedes
+- `mem://pi/runtime/idle-disconnect-policy` — 2-min idle-disconnect-pathen
+  är borttagen. Ersatt av lifecycle-shutdown direkt vid PAUSED + 1.5s grace.

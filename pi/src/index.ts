@@ -75,30 +75,18 @@ function applySonosStateToEngine(state: {
   albumArtUrl: string | null;
 }, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }, lastPaletteSigRef?: { current: string | null }): void {
   if (!engineInstance) return;
-  // Acceptera alla PLAYING-varianter (PLAYBACK_STATE_PLAYING, PLAYING, ev.
-  // PLAYING_ad). Matchar sonosPoller.isPlaying() och UI:s play-detektion —
-  // utan detta visade UI:t play-symbol medan engine satt PAUSED.
-  const isPlaying = typeof state.playbackState === 'string'
-    && state.playbackState.includes('PLAYING');
 
+  // OBS: engine.setPlaying(...) styrs nu UTESLUTANDE av engineLifecycle.ts.
+  // Här uppdaterar vi enbart palette/volym/TV-mode-side-effects.
   if (state.isTvMode) {
-    engineInstance.setPlaying(true);
     if (wasTvModeRef && !wasTvModeRef.current) {
       console.log('[Engine] → TV-läge');
       wasTvModeRef.current = true;
     }
-  } else {
-    engineInstance.setPlaying(isPlaying);
-    if (wasTvModeRef?.current) {
-      console.log('[Engine] TV-läge → Normal');
-      wasTvModeRef.current = false;
-    }
+  } else if (wasTvModeRef?.current) {
+    console.log('[Engine] TV-läge → Normal');
+    wasTvModeRef.current = false;
   }
-
-  // OBS: Sonos-driven mic/BLE-start hanteras nu av engineLifecycle.ts
-  // (mem://pi/runtime/sonos-driven-lifecycle). Här uppdaterar vi bara
-  // engine-state utifrån sonos. Lifecycle-state-machinen lyssnar separat
-  // och triggar startMicSubsystem + connectHardcoded vid PLAYING.
 
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
@@ -107,10 +95,6 @@ function applySonosStateToEngine(state: {
 
   if (!state.isTvMode) {
     const artChanged = !!lastArtUrlRef && state.albumArtUrl !== lastArtUrlRef.current;
-
-    // Trackbyte upptäckt → rensa engine-palette OMEDELBART så motorn inte
-    // fortsätter välja förra låtens färg medan vi väntar på ny palette från gw.
-    // Engine fade:ar då från nuvarande färg mot nästa palette[0] när den landar.
     if (artChanged) {
       if (lastArtUrlRef) lastArtUrlRef.current = state.albumArtUrl;
       if (lastPaletteSigRef) lastPaletteSigRef.current = null;
@@ -399,20 +383,14 @@ async function main() {
         startMicSubsystem,
         connectHardcoded: () => connectHardcoded(),
         getHardcodedConnected,
-        isPlayingState: () => {
-          const s = sonos?.getSonosState?.();
-          return !!s && typeof s.playbackState === 'string' && s.playbackState.includes('PLAYING');
-        },
-        onSonosPlayingChange: (fn) => {
-          // sonos är garanterat satt — ignite() har just await:at startSonosSubsystem.
-          void (async () => {
-            if (!sonos) return;
-            await sonos.onSonosChange((state) => {
-              const playing = typeof state.playbackState === 'string'
-                && state.playbackState.includes('PLAYING');
-              fn(playing || state.isTvMode);
-            });
-          })();
+        getEngineInstance: () => engineInstance as any,
+        onSonosPlayingChange: async (fn) => {
+          if (!sonos) return;
+          await sonos.onSonosChange(async (state) => {
+            const playing = typeof state.playbackState === 'string'
+              && state.playbackState.includes('PLAYING');
+            await fn(playing || state.isTvMode);
+          });
         },
       });
     } catch (e: any) {
