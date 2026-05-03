@@ -1432,6 +1432,8 @@ export default function PiMobile() {
   const [lifecycleState, setLifecycleState] = useState<string | null>(null);
   const [lifecycleOverride, setLifecycleOverride] = useState(false);
   const [pendingShutdownInMs, setPendingShutdownInMs] = useState<number | null>(null);
+  const [subsystems, setSubsystems] = useState<Record<string, { status: string }> | null>(null);
+  const [bleConnected, setBleConnected] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTriggered = useRef(false);
