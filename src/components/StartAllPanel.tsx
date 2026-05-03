@@ -90,6 +90,12 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
   const [failedAt, setFailedAt] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [sonosStatus, setSonosStatus] = useState<{
+    playbackState: string | null;
+    lifecycle: string | null;
+    pendingShutdownInMs: number | null;
+    overrideOff: boolean;
+  }>({ playbackState: null, lifecycle: null, pendingShutdownInMs: null, overrideOff: false });
 
   // Hydrera state från servern vid mount så vi inte visar "Starta" när allt redan kör.
   useEffect(() => {
@@ -123,6 +129,40 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [piBase]);
+
+  // Live-poll Sonos + lifecycle-status (3s) så användaren ser PLAYING/PAUSED
+  // och om motorn håller på att startas/dras ner.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!r.ok || cancelled) return;
+        const j = await r.json();
+        if (cancelled) return;
+        setSonosStatus({
+          playbackState:
+            typeof j.sonos?.playbackState === "string" ? j.sonos.playbackState : null,
+          lifecycle: j.lifecycle?.state ?? null,
+          pendingShutdownInMs:
+            typeof j.lifecycle?.pendingShutdownInMs === "number"
+              ? j.lifecycle.pendingShutdownInMs
+              : null,
+          overrideOff: !!j.lifecycle?.manualOverrideOff,
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [piBase]);
 
   const allOk =
