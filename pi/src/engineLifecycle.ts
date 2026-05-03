@@ -1,26 +1,31 @@
 /**
- * Engine lifecycle state-machine — bil-tändning-modell.
+ * Engine lifecycle — strikt bil-tändning-modell.
  *
- *   IGNITION   — sonos-poller + BLE-engine-minimal redo. Mic/connect sover.
- *   MOTOR_ON   — Sonos säger PLAYING. Mic + BLE connect + engine.setPlaying(true).
- *   MOTOR_OFF  — Sonos säger PAUSED. Engine setPlaying(false). Mic/BLE pausas
- *                via befintlig idle-disconnect-policy efter 2 min.
- *   IGNITION_OFF — användaren har manuellt disconnectat via UI. Vi ignorerar
- *                Sonos PLAYING tills user reaktiverar (override flag).
+ *   IGNITION     — endast Sonos-poller + configServer. BLE/mic sover.
+ *   MOTOR_ON     — Sonos = PLAYING. Sekventiellt:
+ *                    1. await startBleEngineMinimal()  (race-fix mot getNoble)
+ *                    2. parallellt: startMicSubsystem() + connectHardcoded()
+ *                    3. setState(MOTOR_ON); engine.setPlaying(true)
+ *   IGNITION_OFF — manuell UI-disconnect. PLAYING ignoreras tills user reaktiverar.
  *
- * Källan till sanning för auto-start är Sonos playbackState — INTE
- * /tmp/lotus-auto-reconnect-on-boot. Disk-flaggan kvarstår som redundant
- * safety net (no-op på read-sidan) men driver inte längre lifecyclen.
+ * PAUSE-grace: PLAYING→PAUSED triggar shutdownToIgnition() efter
+ * IGNITION_REENTRY_GRACE_MS (1500ms). Cancelleras om PLAYING kommer tillbaka.
+ *
+ * Lifecycle är ENDA kallaren av engine.setPlaying() i nya flödet.
+ * applySonosStateToEngine i index.ts har bara palette/volym/TV-mode kvar.
  */
 
 import { getItem, setItem, removeItem } from './storage.js';
 import { getSubsystemState } from './ble/state.js';
 
-export type LifecycleState = 'IGNITION' | 'MOTOR_ON' | 'MOTOR_OFF' | 'IGNITION_OFF';
+export type LifecycleState = 'IGNITION' | 'MOTOR_ON' | 'IGNITION_OFF';
 
-const OVERRIDE_KEY = 'lifecycle-override'; // 'off' = IGNITION_OFF, '' / saknas = auto
+const OVERRIDE_KEY = 'lifecycle-override';
+const IGNITION_REENTRY_GRACE_MS = 1500;
 
 let state: LifecycleState = 'IGNITION';
+let pendingShutdownTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingShutdownAt = 0;
 const listeners = new Set<(s: LifecycleState) => void>();
 
 function setState(next: LifecycleState): void {
@@ -32,8 +37,11 @@ function setState(next: LifecycleState): void {
   }
 }
 
-export function getLifecycleState(): LifecycleState {
-  return state;
+export function getLifecycleState(): LifecycleState { return state; }
+
+export function getPendingShutdownInMs(): number | null {
+  if (!pendingShutdownTimer) return null;
+  return Math.max(0, pendingShutdownAt - Date.now());
 }
 
 export function subscribeLifecycle(fn: (s: LifecycleState) => void): () => void {
@@ -46,40 +54,87 @@ export function isManualOverrideOff(): boolean {
   try { return getItem(OVERRIDE_KEY) === 'off'; } catch { return false; }
 }
 
-export function setManualOverrideOff(off: boolean): void {
+function persistOverride(off: boolean): void {
   try {
     if (off) setItem(OVERRIDE_KEY, 'off');
     else removeItem(OVERRIDE_KEY);
   } catch {}
-  setState(off ? 'IGNITION_OFF' : 'IGNITION');
 }
 
 interface IgniteDeps {
-  startBleEngineMinimal: () => Promise<unknown>;
+  startBleEngineMinimal: () => Promise<{ ready: boolean }>;
   startSonosSubsystem: () => Promise<void>;
   startMicSubsystem: () => Promise<void>;
   connectHardcoded: () => Promise<{ connected: boolean }>;
   getHardcodedConnected: () => { connected: boolean };
-  isPlayingState: () => boolean;
-  onSonosPlayingChange: (fn: (playing: boolean) => void) => void;
+  getEngineInstance: () => { setPlaying: (p: boolean) => void; shutdownToIgnition: () => Promise<void> } | null;
+  onSonosPlayingChange: (fn: (playing: boolean) => Promise<void> | void) => Promise<void> | void;
 }
 
+let _deps: IgniteDeps | null = null;
 let _ignited = false;
 let _motorOnInflight: Promise<void> | null = null;
 
-async function toMotorOn(deps: IgniteDeps): Promise<void> {
+function cancelScheduledShutdown(): void {
+  if (pendingShutdownTimer) {
+    clearTimeout(pendingShutdownTimer);
+    pendingShutdownTimer = null;
+    pendingShutdownAt = 0;
+    console.log('[Lifecycle] Pending shutdown cancelled (PLAYING resumed inom grace)');
+  }
+}
+
+async function doShutdown(): Promise<void> {
+  pendingShutdownTimer = null;
+  pendingShutdownAt = 0;
+  if (state !== 'MOTOR_ON') return;
+  const eng = _deps?.getEngineInstance();
+  if (eng) {
+    try { eng.setPlaying(false); } catch {}
+    try { await eng.shutdownToIgnition(); } catch (e: any) {
+      console.warn('[Lifecycle] shutdownToIgnition fel:', e?.message ?? e);
+    }
+  }
+  setState('IGNITION');
+}
+
+function scheduleShutdownToIgnition(): void {
+  if (pendingShutdownTimer) return;
+  pendingShutdownAt = Date.now() + IGNITION_REENTRY_GRACE_MS;
+  console.log(`[Lifecycle] PAUSED — schemalägger shutdown om ${IGNITION_REENTRY_GRACE_MS}ms (cancellerbar)`);
+  pendingShutdownTimer = setTimeout(() => { void doShutdown(); }, IGNITION_REENTRY_GRACE_MS);
+}
+
+async function toMotorOn(): Promise<void> {
+  if (!_deps) return;
   if (_motorOnInflight) return _motorOnInflight;
   if (state === 'IGNITION_OFF') {
-    console.log('[Lifecycle] PLAYING ignorerad — manuell override aktiv (IGNITION_OFF)');
+    console.log('[Lifecycle] PLAYING ignorerad — IGNITION_OFF (manuell override)');
     return;
   }
+  if (state === 'MOTOR_ON') return;
+
+  const deps = _deps;
   _motorOnInflight = (async () => {
-    console.log('[Lifecycle] Sonos PLAYING — startar motor (mic + BLE)');
+    console.log('[Lifecycle] PLAYING → startar motor sekventiellt (BLE-minimal → mic ∥ connect)');
+    // STEG 1: BLE-stack ready först (sekventiellt — eliminerar getNoble race).
+    try {
+      const r = await deps.startBleEngineMinimal();
+      if (!r.ready) {
+        console.warn('[Lifecycle] startBleEngineMinimal returnerade ready=false — avbryter motor-start');
+        return;
+      }
+    } catch (e: any) {
+      console.warn('[Lifecycle] startBleEngineMinimal fel:', e?.message ?? e);
+      return;
+    }
+
+    // STEG 2: parallellt mic + connect.
     const tasks: Promise<unknown>[] = [];
     if (getSubsystemState('mic').status !== 'ready') {
       tasks.push(
         deps.startMicSubsystem().catch(e =>
-          console.warn('[Lifecycle] mic-start fel:', e?.message ?? e),
+          console.warn('[Lifecycle] startMicSubsystem fel:', e?.message ?? e),
         ),
       );
     }
@@ -91,53 +146,68 @@ async function toMotorOn(deps: IgniteDeps): Promise<void> {
       );
     }
     await Promise.all(tasks);
+
+    // STEG 3: state + setPlaying.
     setState('MOTOR_ON');
+    const eng = deps.getEngineInstance();
+    try { eng?.setPlaying(true); } catch {}
   })();
   try { await _motorOnInflight; } finally { _motorOnInflight = null; }
 }
 
-function toMotorOff(): void {
-  // Engine.setPlaying(false) sköts redan av applySonosStateToEngine.
-  // Idle-disconnect efter 2 min sköts av piEngine (idle-disconnect-policy).
-  // Här uppdaterar vi bara state-flaggan.
-  if (state === 'MOTOR_ON') setState('MOTOR_OFF');
+/** Manuellt UI: "Starta allt". Rensar override och tvingar motor-start. */
+export async function userStartAll(): Promise<void> {
+  persistOverride(false);
+  if (state === 'IGNITION_OFF') setState('IGNITION');
+  cancelScheduledShutdown();
+  await toMotorOn();
+}
+
+/** Manuellt UI: "Stoppa allt"/disconnect. Sätter override + river ner direkt. */
+export async function userStopAll(): Promise<void> {
+  persistOverride(true);
+  cancelScheduledShutdown();
+  await doShutdown();
+  setState('IGNITION_OFF');
+}
+
+/** Bakåtkompat. Behålls för configServer-endpoint. */
+export function setManualOverrideOff(off: boolean): void {
+  if (off) void userStopAll();
+  else void userStartAll();
 }
 
 /**
- * Boot-tid: startar BLE-engine-minimal + sonos-poller ovillkorligt och
- * subscribear på Sonos-events. Vid första PLAYING (eller om Sonos redan
- * spelar) körs mic+connect. Manuell UI-disconnect sätter override som
- * blockerar denna auto-path tills user reaktiverar.
+ * Boot-tid: starta endast Sonos-poller + subscriba. BLE/mic startas först
+ * vid första PLAYING via toMotorOn(). Override blockerar auto-start.
  */
 export async function ignite(deps: IgniteDeps): Promise<void> {
   if (_ignited) return;
   _ignited = true;
+  _deps = deps;
 
-  // Respektera tidigare manuell disconnect.
   if (isManualOverrideOff()) {
     setState('IGNITION_OFF');
-    console.log('[Lifecycle] Manual override aktiv vid boot — IGNITION_OFF (väntar på UI-reaktivering)');
+    console.log('[Lifecycle] Manual override aktiv vid boot — IGNITION_OFF');
   } else {
     setState('IGNITION');
   }
 
-  // BLE-stack ready (laddar noble men connectar inte) + sonos-poller.
-  // Båda parallellt — ingen blockerar den andra.
-  const bleReady = deps.startBleEngineMinimal().catch(e =>
-    console.warn('[Lifecycle/ignite] startBleEngineMinimal fel:', e?.message ?? e),
-  );
-  const sonosReady = deps.startSonosSubsystem().catch(e =>
-    console.warn('[Lifecycle/ignite] startSonosSubsystem fel:', e?.message ?? e),
-  );
-  await Promise.all([bleReady, sonosReady]);
+  try {
+    await deps.startSonosSubsystem();
+  } catch (e: any) {
+    console.warn('[Lifecycle/ignite] startSonosSubsystem fel:', e?.message ?? e);
+  }
 
-  // Subscriba på Sonos-state. onSonosChange replay:ar current state direkt
-  // (fresh-status-race i sonosPoller säkerställer non-stale värde) — så om
-  // Sonos redan spelar vid boot triggar vi motor på direkt.
-  deps.onSonosPlayingChange((playing) => {
+  await deps.onSonosPlayingChange(async (playing) => {
     if (state === 'IGNITION_OFF') return;
-    if (playing) void toMotorOn(deps);
-    else toMotorOff();
+    if (playing) {
+      cancelScheduledShutdown();
+      await toMotorOn();
+    } else {
+      // PAUSED: schemalägg nedrivning (cancelleras om PLAYING kommer tillbaka).
+      if (state === 'MOTOR_ON') scheduleShutdownToIgnition();
+    }
   });
 
   console.log(`[Lifecycle] ignite() klart — state=${state}, väntar på Sonos PLAYING`);
