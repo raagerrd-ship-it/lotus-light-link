@@ -517,8 +517,16 @@ export function startConfigServer(port = 3050): void {
       const cd = await import('./ble/controllerDrain.js');
       if (cd.isControllerDrainAttached?.()) queueLen = cd.getQueuedPackets?.() ?? 0;
     } catch {}
+    let lifecycleState: string | null = null;
+    let lifecycleOverride = false;
+    try {
+      const lc = await import('./engineLifecycle.js');
+      lifecycleState = lc.getLifecycleState();
+      lifecycleOverride = lc.isManualOverrideOff();
+    } catch {}
     res.json({
       ok: true,
+      lifecycle: { state: lifecycleState, manualOverrideOff: lifecycleOverride },
       ble: {
         connected: c.connected ? 1 : 0,
         devices: c.connected ? [c.name] : [],
