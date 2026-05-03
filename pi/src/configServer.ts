@@ -593,8 +593,11 @@ export function startConfigServer(port = 3050): void {
         try { return getSubsystemTransitions().slice(-30); }
         catch { return []; }
       })(),
-    });
-  });
+      // Subsystem-states — UI visar vad som är aktivt under tändning vs motor.
+      subsystems: (() => {
+        try { return getAllSubsystemStates(); }
+        catch { return null; }
+      })(),
 
   // --- Version ---
   app.get('/api/version', (_req, res) => {

@@ -1432,6 +1432,8 @@ export default function PiMobile() {
   const [lifecycleState, setLifecycleState] = useState<string | null>(null);
   const [lifecycleOverride, setLifecycleOverride] = useState(false);
   const [pendingShutdownInMs, setPendingShutdownInMs] = useState<number | null>(null);
+  const [subsystems, setSubsystems] = useState<Record<string, { status: string }> | null>(null);
+  const [bleConnected, setBleConnected] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTriggered = useRef(false);
@@ -1616,6 +1618,8 @@ export default function PiMobile() {
             ? data.lifecycle.pendingShutdownInMs
             : null,
         );
+        setSubsystems(data.subsystems ?? null);
+        setBleConnected(!!data.ble?.connected);
 
       } catch {
         if (!cancelled) setPiOnline(false);
@@ -1947,6 +1951,25 @@ export default function PiMobile() {
             </div>
           )}
         </div>
+        {/* Aktiva subsystem — visar exakt vad som körs i nuvarande lifecycle-state.
+            IGNITION  → bara Sonos-pollern (config alltid).
+            MOTOR_ON  → + BLE + Mic + Engine. */}
+        {lifecycleState && (
+          <div className="mt-1.5 pt-1.5 border-t border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="opacity-50">Aktivt:</span>
+            {([
+              { id: 'sonos', label: 'Sonos-poller', on: subsystems?.sonos?.status === 'ready' },
+              { id: 'ble',   label: 'BLE-stack',    on: bleConnected || lifecycleState === 'MOTOR_ON' },
+              { id: 'mic',   label: 'Mic',          on: subsystems?.mic?.status === 'ready' },
+              { id: 'eng',   label: 'Engine',       on: !!engineStatus?.running },
+            ] as const).map(s => (
+              <span key={s.id} className="flex items-center gap-1">
+                <div className={`w-1 h-1 rounded-full ${s.on ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                <span className={s.on ? '' : 'opacity-40 line-through'}>{s.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* BLE-enhet hanteras nu helt av BleControlPanel ovan (hårdkodad ELK-BLEDOM01).
