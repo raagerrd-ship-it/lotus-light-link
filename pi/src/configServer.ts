@@ -633,19 +633,17 @@ export function startConfigServer(port = 3050): void {
 
   app.post('/api/ble/connect', async (_req, res) => {
     try {
-      // Manuell connect via UI rensar lifecycle-override så Sonos-driven
-      // auto-start tar över igen.
-      try {
-        const { setManualOverrideOff } = await import('./engineLifecycle.js');
-        setManualOverrideOff(false);
-      } catch {}
-      const { connectHardcoded } = await import('./ble/connect-hardcoded.js');
+      // UI "Starta allt" → lifecycle tar över hela start-sekvensen
+      // (BLE-minimal → mic ∥ connect). Rensar override först.
+      const { userStartAll } = await import('./engineLifecycle.js');
       const { HARDCODED_DEVICE } = await import('./ble/hardcoded-device.js');
-      const r = await connectHardcoded(6000);
-      if (r.connected) {
-        res.json({ connected: true, name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac, durationMs: r.durationMs });
+      const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
+      await userStartAll();
+      const c = getHardcodedConnected();
+      if (c.connected) {
+        res.json({ connected: true, name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac });
       } else {
-        res.status(500).json({ connected: false, error: r.error, durationMs: r.durationMs });
+        res.status(500).json({ connected: false, error: 'lifecycle.userStartAll did not yield BLE connection' });
       }
     } catch (e: any) {
       res.status(500).json({ connected: false, error: e?.message ?? String(e) });
@@ -654,15 +652,10 @@ export function startConfigServer(port = 3050): void {
 
   app.post('/api/ble/disconnect', async (_req, res) => {
     try {
-      // Manuell disconnect via UI sätter lifecycle-override = off så att
-      // Sonos PLAYING inte triggar auto-reconnect förrän user reaktiverar.
-      try {
-        const { setManualOverrideOff } = await import('./engineLifecycle.js');
-        setManualOverrideOff(true);
-      } catch {}
-      const { disconnectHardcoded } = await import('./ble/connect-hardcoded.js');
-      const r = await disconnectHardcoded();
-      res.json(r);
+      // UI "Stoppa" → lifecycle drar ner motorn och sätter override.
+      const { userStopAll } = await import('./engineLifecycle.js');
+      await userStopAll();
+      res.json({ disconnected: true });
     } catch (e: any) {
       res.status(500).json({ disconnected: false, error: e?.message ?? String(e) });
     }
