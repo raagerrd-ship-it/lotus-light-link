@@ -188,15 +188,19 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
     } catch {
       // Diagnostiken får aldrig blockera faktisk start.
     }
-    // Återställ alla steg från startIdx och framåt
+    // Återställ alla körbara steg från startIdx och framåt (skippa displayOnly).
     setStates((s) => {
       const next = { ...s };
-      for (let i = startIdx; i < STEPS.length; i++) next[STEPS[i].id] = "pending";
+      for (let i = startIdx; i < STEPS.length; i++) {
+        if (!STEPS[i].displayOnly) next[STEPS[i].id] = "pending";
+      }
       return next;
     });
 
     for (let i = startIdx; i < STEPS.length; i++) {
-      const ok = await runStep(STEPS[i]);
+      const step = STEPS[i];
+      if (step.displayOnly) continue; // Sonos startas redan i tändning
+      const ok = await runStep(step);
       if (!ok) {
         setFailedAt(i);
         setRunning(false);
