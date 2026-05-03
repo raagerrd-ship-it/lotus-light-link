@@ -1618,6 +1618,8 @@ export default function PiMobile() {
             ? data.lifecycle.pendingShutdownInMs
             : null,
         );
+        setSubsystems(data.subsystems ?? null);
+        setBleConnected(!!data.ble?.connected);
 
       } catch {
         if (!cancelled) setPiOnline(false);
