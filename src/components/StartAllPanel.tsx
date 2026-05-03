@@ -263,43 +263,55 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
         </div>
       </div>
 
-      <ol className="space-y-1.5">
-        {STEPS.map((step, idx) => {
-          const state = states[step.id];
-          const err = errors[step.id];
-          return (
-            <li key={step.id} className="space-y-0.5">
-              <div className="flex items-center gap-2 text-xs">
-                <StepIcon state={state} />
-                <span
-                  className={
-                    state === "ok"
-                      ? "text-foreground"
-                      : state === "error"
-                      ? "text-destructive"
-                      : state === "running"
-                      ? "text-foreground"
-                      : "text-muted-foreground"
-                  }
-                >
-                  {idx + 1}. {step.label}
-                </span>
-                {state === "running" && (
-                  <span className="text-muted-foreground">— startar…</span>
-                )}
-                {state === "ok" && (
-                  <span className="text-muted-foreground">— klar</span>
-                )}
-              </div>
-              {state === "error" && err && (
-                <div className="ml-6 text-[11px] text-destructive break-words">
-                  {err}
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      {(["ignition", "motor"] as const).map((phase) => {
+        const phaseSteps = STEPS.map((s, idx) => ({ s, idx })).filter(
+          (x) => x.s.phase === phase,
+        );
+        return (
+          <div key={phase} className="space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
+              {phase === "ignition" ? "Tändning" : "Igång"}
+            </div>
+            <ol className="space-y-1.5">
+              {phaseSteps.map(({ s: step, idx }) => {
+                const state = states[step.id];
+                const err = errors[step.id];
+                return (
+                  <li key={step.id} className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-xs">
+                      <StepIcon state={state} />
+                      <span
+                        className={
+                          state === "ok"
+                            ? "text-foreground"
+                            : state === "error"
+                            ? "text-destructive"
+                            : state === "running"
+                            ? "text-foreground"
+                            : "text-muted-foreground"
+                        }
+                      >
+                        {idx + 1}. {step.label}
+                      </span>
+                      {state === "running" && (
+                        <span className="text-muted-foreground">— startar…</span>
+                      )}
+                      {state === "ok" && (
+                        <span className="text-muted-foreground">— klar</span>
+                      )}
+                    </div>
+                    {state === "error" && err && (
+                      <div className="ml-6 text-[11px] text-destructive break-words">
+                        {err}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        );
+      })}
     </div>
   );
 }
