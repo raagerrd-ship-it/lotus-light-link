@@ -519,14 +519,16 @@ export function startConfigServer(port = 3050): void {
     } catch {}
     let lifecycleState: string | null = null;
     let lifecycleOverride = false;
+    let pendingShutdownInMs: number | null = null;
     try {
       const lc = await import('./engineLifecycle.js');
       lifecycleState = lc.getLifecycleState();
       lifecycleOverride = lc.isManualOverrideOff();
+      pendingShutdownInMs = lc.getPendingShutdownInMs();
     } catch {}
     res.json({
       ok: true,
-      lifecycle: { state: lifecycleState, manualOverrideOff: lifecycleOverride },
+      lifecycle: { state: lifecycleState, manualOverrideOff: lifecycleOverride, pendingShutdownInMs },
       ble: {
         connected: c.connected ? 1 : 0,
         devices: c.connected ? [c.name] : [],
