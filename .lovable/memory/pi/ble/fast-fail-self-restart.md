@@ -1,16 +1,18 @@
 ---
 name: BLE fast-fail + self-restart strategy
-description: BLEDOM ansluter på 1-2s eller aldrig. Efter 2 consecutive failures: process.exit(0), systemd restart, /tmp-flagga triggar auto-connect vid boot.
+description: BLEDOM HCI-stuck recovery requires process.exit after 4 consecutive failures. Slow-retry/soft-retry is banned.
 type: feature
 ---
-**Empirisk observation:** BLEDOM-lampor på Raspberry Pi ansluter alltid på 1-2 sekunder eller aldrig. Längre timeout hjälper inte — när första försöket misslyckas är noble's HCI-state internt fastnat och inga retries löser det. Manuell `systemctl restart lotus-light-engine` är enda fungerande fix.
+**Empirisk observation:** BLEDOM-lampor på Raspberry Pi ansluter alltid på 1-2 sekunder eller aldrig. Längre timeout hjälper inte — när connect-försök börjar misslyckas i rad är noble's HCI-state internt fastnat och retries i samma process löser det inte. Manuell `systemctl restart lotus-light-engine` är enda fungerande fix.
+
+**Permanent guardrail:** Lägg aldrig tillbaka slow-retry/soft-retry (`slowRetry`, `_slowRetryActive`, `ble-consecutive-failures-soft` etc). Tre separata försök har orsakat långvariga outages. Recovery måste vara `process.exit(0)` så systemd ger fresh noble-instans + fresh HCI socket.
 
 **Implementation i `pi/src/ble/connect-hardcoded.ts`:**
 
 - `connectHardcoded(timeoutMs = 6000)` (yttre watchdog, var 8000)
 - Inre `withTimeout(connectAsync, 4000)` (var 5000)
 - `_consecutiveFailures` räknare nollställs vid lyckad connect
-- Efter `CONSECUTIVE_FAIL_LIMIT = 2` failures i rad:
+- Efter `CONSECUTIVE_FAIL_LIMIT = 4` failures i rad:
   1. `setReconnectOnBootFlag()` → skapar `/tmp/lotus-auto-reconnect-on-boot`
   2. `setTimeout(() => process.exit(0), 500)` — låter HTTP-svar hinna ut
   3. systemd `Restart=always` startar processen igen efter 5s
