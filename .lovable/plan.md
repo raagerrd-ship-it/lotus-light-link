@@ -1,127 +1,88 @@
 
-## Sammanfattning av granskningen
+# Sonos-driven engine lifecycle
 
-Idle-disconnect-flödet (Sonos paus → 2 min → BLE off + mic stop) och wake-flödet (Sonos PLAYING → reconnect + mic) är till 90% korrekt implementerat, men **tre defekter** gör att funktionen ofta inte triggar i praktiken:
+Ersätt dagens fragila `/tmp/lotus-auto-reconnect-on-boot`-baserade auto-restart med en lifecycle-state-machine där **Sonos playbackState är källan till sanning** för om motorn ska köra. Pi:n beter sig som en bil: tändningen är alltid på (sonos-poller + BLE-stack ready), och musik = motor på.
 
----
+## States
 
-## Bug 1 (KRITISK): `setPlaying(false)`-debouncen kan permanent blockera idle-disconnect
+| State | Aktivt | Sover |
+|---|---|---|
+| TÄNDNING | sonos-poller, configServer, BLE-engine-minimal | mic, BLE-connect, engine.tickInner |
+| MOTOR_PÅ | + alsaMic, BLE connected, engine.setPlaying(true) | — |
+| MOTOR_AV | sonos-poller, BLE keep-alive (idle-färg) | mic, engine produktion |
+| TÄNDNING_AV | sonos-poller endast | mic, BLE, engine — tills användaren manuellt återaktiverar |
 
-I `pi/src/piEngine.ts` rad 633:
+## Triggers
 
-```ts
-if (!playing && now - this._lastPlayingChangeAt < PLAYING_DEBOUNCE_MS) {
-  dlog('[Engine] setPlaying(false) debounced — för nära senaste flip');
-  return;   // ← BUG: returnerar UTAN att uppdatera _lastPlayingChangeAt
-}
-this._lastPlayingChangeAt = now;
+```text
+Boot → ignite():
+  startBleEngineMinimal()   // ovillkorligt, ingen connect
+  startSonosSubsystem()     // alltid igång
+  läs lifecycleOverride från storage (TÄNDNING_AV?)
+    → om ja: stanna i TÄNDNING_AV, ignorera sonos
+    → annars: state = TÄNDNING, lyssna på sonos
+
+onSonosChange:
+  PLAYING && state ∈ {TÄNDNING, MOTOR_AV}  → toMotorOn()
+  PAUSED  && state === MOTOR_PÅ            → toMotorOff() (engine.setPlaying(false))
+  PAUSED >2 min → idle-disconnect path (befintlig)
+
+UI manual disconnect → state = TÄNDNING_AV, persist override
+UI manual "Starta allt" → rensa override, ignite() pathen
 ```
 
-Problem: Sonos-pollern kallar `applySonosStateToEngine` var 2:a sekund (poll) eller vid varje SSE-event. När musik pausas:
+## Filer att ändra (pi/src/)
 
-1. Första `setPlaying(false)` kommer t.ex. 400 ms efter senaste PLAYING-flip → debounce-blockad, return.
-2. `_lastPlayingChangeAt` uppdateras INTE.
-3. Nästa poll 2 s senare: `playing===wasPlaying` (båda `true`!) → tidig return på rad 626 (`if (playing === wasPlaying) return`). ← **engine tror fortfarande att musiken spelar**.
-4. Idle-timern startar aldrig. BLE-länken hålls vid liv. Mic fortsätter köra. CPU-besparingen sker aldrig.
+**Ny: `pi/src/engineLifecycle.ts`**
+- Exporterar `LifecycleState` enum + `getLifecycleState()` + `subscribeLifecycle()`.
+- `ignite()` — kallas från boot. Startar BLE-engine-minimal + sonos-subsystem ovillkorligt. Subscribear sonos-state och driver transitions.
+- `toMotorOn()` — `startMicSubsystem()` + `connectHardcoded()` parallellt (flytta logiken som idag sitter i `applySonosStateToEngine`).
+- `toMotorOff()` — `engineInstance.setPlaying(false)`. Idle-disconnect efter 2 min hanteras redan av piEngine (`idle-disconnect-policy`).
+- `manualDisconnect()` / `manualOverrideOff()` — sätter persistent flagga via `storage.setItem('lifecycle-override', 'off' | '')`.
 
-Det här triggas garanterat varje gång användaren pausar inom 500 ms av en STOPPED→PLAYING-flap (vanligt vid trackbyte → paus).
+**`pi/src/index.ts`**
+- Ta bort `consumeReconnectOnBootFlag()`-blocket (rad 405–427). Ersätt med `await ignite()`.
+- Behåll `setReconnectOnBootFlag`-anropen i crash-handlers (rad 436, 446) — blir no-op på read-sidan men billigt och bevarar bakåtkompatibilitet om någon downgrade. *(Alternativt: städa bort hela `reconnect-flag.ts` — fråga om önskat.)*
+- Flytta sonos→engine-couplingen från `applySonosStateToEngine` (rad 103–122, ALSA + connectHardcoded i sonos-handlern) in i `engineLifecycle.toMotorOn()` så det körs via state-machinen istället för direkt i poller-callbacken.
+- Lämna kvar `applySonosStateToEngine`'s palette/volym/TV-mode-arbete — det behöver fortfarande köras varje state-tick.
+- Behåll `/api/subsystem/mic/start`, `/api/ble/connect`, `/api/subsystem/sonos/start` som override-endpoints (UI-knapp). De ska kunna trigga `manualOverrideOff()`-clear så lifecycle tar över igen.
+- Boot-loggar: skriv "Tändning aktiv — väntar på Sonos PLAYING" istället för "väntar på subsystem-start från UI/API".
 
-**Fix:** Debouncen ska bara filtrera bort SNABBA flaps, inte tappa state. Två rena alternativ:
+**`pi/src/sonosPoller.ts`**
+- Inga större ändringar. §2A (fresh-status-on-subscribe) + §2B (position-heartbeat) är redan på plats.
+- Bekräfta att `onSonosChange` resolvar innan `markSubsystemReady('sonos')` så lifecycle ser current state direkt.
 
-a) Schemalägg en deferred re-check istället för att tappa eventet:
-```ts
-if (!playing && now - this._lastPlayingChangeAt < PLAYING_DEBOUNCE_MS) {
-  setTimeout(() => this.setPlaying(false), PLAYING_DEBOUNCE_MS);
-  return;
-}
-```
+**`pi/src/ble/connect-hardcoded.ts`**
+- Ingen ändring. `process.exit(0)` på 4 consecutive fails kvarstår — efter exit startar systemd, `ignite()` körs, sonos säger PLAYING → motor på igen. Disk-flagga behövs inte längre för recovery, bara som redundant skydd.
 
-b) Eller: ta bort debouncen helt eftersom Sonos-pollern redan bara emitar nya `playbackState`-värden och TV-mode-handling sker uppströms. Den ursprungliga motivationen (PLAYING→STOPPED→PLAYING vid trackbyte) hanteras bättre i pollern.
+**`pi/src/configServer.ts`**
+- Lägg till `lifecycleState` + `lifecycleOverride` i `/api/status`-payloaden.
+- Nytt endpoint `POST /api/lifecycle/override` med `{ off: boolean }` så UI kan toggla TÄNDNING_AV explicit.
 
-Rekommendation: variant (a) — minimal blast radius.
+## Migration / kompabilitet
 
----
+- `reconnect-flag.ts` lämnas kvar men `consumeReconnectOnBootFlag()` anropas inte längre. Crash-handlers fortsätter sätta flaggan (no-op effekt), så vi kan rolla tillbaka utan migration om något går snett.
+- `/tmp`-flagga vid Pi-reboot: nu irrelevant — sonos-state-driven återstart fungerar oavsett om `/tmp` wipas.
+- Befintlig idle-disconnect-policy (mem://pi/runtime/idle-disconnect-policy) bevaras helt — den är nu en transition INOM MOTOR_AV, inte konkurrerande med lifecycle.
 
-## Bug 2: Wake-pathen kan trigga reconnect medan slow-retry pågår
+## Verifieringsscenarier
 
-I `pi/src/index.ts` rad 110–121 görs:
+1. Pi-reboot mid-PLAYING → engine blinkar inom ~10s, ingen UI-klick.
+2. `systemctl restart lotus-light-engine` mid-PLAYING → samma.
+3. BLE 4 consecutive fails → process.exit → systemd restart → ignite → sonos PLAYING → motor på.
+4. Sonos pause 1s + play → engine stannar kort, vaknar direkt.
+5. Sonos pause >2 min → MOTOR_AV, BLE keep-alive idle-färg, BLE disconnect efter 2 min idle.
+6. UI manual disconnect → TÄNDNING_AV, sonos PLAYING triggar INTE motor förrän user reaktiverar.
 
-```ts
-if (!getHardcodedConnected().connected && wasAutoDisconnected()) {
-  void connectHardcoded();
-}
-```
+## Memory-uppdatering
 
-Men `wasAutoDisconnected()` returnerar `true` även när disconnect var `'supervision-timeout'` (icke-manuell), inte bara `'idle-timeout'`. Detta är OK i sig, MEN:
+- Ny memory: `mem://pi/runtime/sonos-driven-lifecycle.md` (feature) — beskriver state-machine + override-flagga.
+- Uppdatera `mem://pi/runtime/auto-restart-on-crash.md` — markera reconnect-flag som "legacy redundant" (kvar som safety net, ej primär driver).
+- Uppdatera `mem://index.md` Core: "Lifecycle drivs av Sonos playbackState. Manual UI-disconnect sätter override som blockerar auto-start."
 
-- Om slow-retry-loopen är aktiv (efter ≥4 consecutive failures) kommer Sonos-PLAYING att skjuta in extra `connectHardcoded()`-anrop ovanpå den. `_connectInFlight`-guarden räddar oss för parallella anrop, men `_slowRetryAttempts`-räknaren räknas inte upp av PLAYING-triggade försök, vilket kan fördröja den nukleära reseten.
+## Out of scope
 
-- Viktigare: efter idle-timeout-disconnect sätts `_autoReconnectEnabled = false` (rad 218 i connect-hardcoded.ts) och `clearAutoReconnect()` körs. Bra. Men när Sonos PLAYING triggar `connectHardcoded()` och den **lyckas**, så återställs `_autoReconnectEnabled = true` (rad 477). Då fungerar nästa supervision-timeout korrekt. Detta steg är OK.
-
-**Faktisk svaghet här:** wake-pathen särskiljer inte `'idle-timeout'` från `'supervision-timeout'`. Båda betyder "auto", så villkoret är slappt men det matchar `wasAutoDisconnected()`-semantiken. Ingen fix behövs här — bara en kommentar/tightening om vi vill vara explicita.
-
----
-
-## Bug 3: Race mellan `handleIdleDisconnect()` och en ankommande PLAYING-event
-
-`handleIdleDisconnect()` (piEngine.ts 539–582) är `async` och tar upp till ~500 ms (HCI drain) + `triggerIdleDisconnect()` + `stopMic()`. Mellan steg 4 (BLE off) och steg 5 (`stopMic`) kan Sonos-pollern kalla `applySonosStateToEngine` med PLAYING:
-
-1. PLAYING-pathen i index.ts kallar `alsaMic.startMic()` — mic startas
-2. Direkt efter kör `handleIdleDisconnect()` steg 5: `stopMic()` — mic dödas igen
-3. Användaren får tyst lampa trots att musiken spelar
-
-Sannolikheten är låg (~500 ms-fönster) men reproducerbar.
-
-**Fix:** I början av `handleIdleDisconnect()`, kontrollera även att vi inte är mitt i en wake-trigger:
-
-```ts
-private async handleIdleDisconnect(): Promise<void> {
-  this._idleDisconnectTimer = null;
-  if (this.playing || this._bleOwner === 'none') {
-    this._idleEnteredAt = null;
-    return;
-  }
-  // ... och igen efter varje await:
-  await new Promise(r => setTimeout(r, 20));
-  if (this.playing) { dlog('[Engine] Idle-disconnect avbruten mid-flight'); return; }
-  // ...
-}
-```
-
-Lägg in `if (this.playing) return` efter await-stället på rad 561 och igen efter `triggerIdleDisconnect()` på rad 568, innan `stopMic()`.
-
----
-
-## Bug 4 (mindre): `_idleEnteredAt` nollställs inte vid debounce-block
-
-Eftersom Bug 1 kan blockera setPlaying(false) återkommer vi aldrig in i grenen som rensar `_idleEnteredAt`. När Bug 1 är fixad försvinner detta.
-
----
-
-## Plan — ändringar
-
-**Fil: `pi/src/piEngine.ts`**
-
-1. Rad 633–637: Byt debounce-`return` mot deferred re-call (Bug 1).
-2. Rad 539–582 `handleIdleDisconnect`: Lägg till `if (this.playing) return` mid-flight efter de två await-stegen (Bug 3).
-
-**Fil: `pi/src/index.ts`** — ingen ändring behövs (wake-pathen är OK).
-
-**Fil: `pi/src/ble/connect-hardcoded.ts`** — ingen ändring behövs.
-
----
-
-## Förväntat beteende efter fix
-
-- Pause → exakt 2 min senare: idle-färg @ 100%, BLE disconnect, mic stop. Pålitligt även om paus sker i samma sekund som ett trackbyte.
-- PLAYING under handleIdleDisconnect's drain-fönster avbryter cleanen, mic + BLE behålls, ingen tyst lampa.
-- Restart-trösklar (slow-retry, nukleär reset) oförändrade.
-
----
-
-## Verifiering efter deploy
-
-1. Starta musik → pausa → vänta 2 min → kolla `journalctl -u lotus-light-engine | grep -E "Idle-disconnect|micPausedForIdle"` — ska visa schemalagd + utförd cleanup.
-2. Pausa direkt efter trackbyte (inom 500 ms) → vänta 2 min → samma logg ska visa cleanup. Tidigare: tom logg.
-3. Starta musik igen → BLE reconnectar inom 2–4 s, lampan svarar.
-4. `/api/status.idle` ska visa `enteredAt`, `disconnectInMs`, `micPausedForIdle: true` efter cleanup.
+- BLEDOM-firmware-quirks
+- PCC autoscaler-bursts
+- Sonos-buddy (separat process, ingen ändring)
+- Frontend-ändringar (förutom ev. liten badge för lifecycleState i `PiMobile.tsx` om önskat — kan göras i uppföljnings-PR)
