@@ -541,11 +541,16 @@ export class PiLightEngine {
     this._idleEnteredAt = null;
   }
 
+  /** Publik nedrivning som lifecycle anropar vid PAUSED→IGNITION-övergång.
+   *  Skickar idle-färg @ 100%, drainar HCI, stoppar keep-alive, BLE off, mic stop.
+   *  Mid-flight aborts om this.playing flippar tillbaka. */
+  async shutdownToIgnition(): Promise<void> { return this.handleIdleDisconnect(); }
+
   private async handleIdleDisconnect(): Promise<void> {
     this._idleDisconnectTimer = null;
-    if (this.playing || this._bleOwner === 'none') {
+    if (this._bleOwner === 'none') {
       this._idleEnteredAt = null;
-      dlog('[Engine] Idle-disconnect avbruten — state har ändrats');
+      dlog('[Engine] shutdownToIgnition: BLE redan disconnected — no-op');
       return;
     }
     dlog('[Engine] Idle-disconnect: idle-färg @ 100% → drain HCI → BLE off → ALSA stop');
