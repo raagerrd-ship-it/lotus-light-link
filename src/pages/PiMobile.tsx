@@ -1951,25 +1951,6 @@ export default function PiMobile() {
             </div>
           )}
         </div>
-        {/* Aktiva subsystem — visar exakt vad som körs i nuvarande lifecycle-state.
-            IGNITION  → bara Sonos-pollern (config alltid).
-            MOTOR_ON  → + BLE + Mic + Engine. */}
-        {lifecycleState && (
-          <div className="mt-1.5 pt-1.5 border-t border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="opacity-50">Aktivt:</span>
-            {([
-              { id: 'sonos', label: 'Sonos-poller', on: subsystems?.sonos?.status === 'ready' },
-              { id: 'ble',   label: 'BLE-stack',    on: bleConnected || lifecycleState === 'MOTOR_ON' },
-              { id: 'mic',   label: 'Mic',          on: subsystems?.mic?.status === 'ready' },
-              { id: 'eng',   label: 'Engine',       on: !!engineStatus?.running },
-            ] as const).map(s => (
-              <span key={s.id} className="flex items-center gap-1">
-                <div className={`w-1 h-1 rounded-full ${s.on ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-                <span className={s.on ? '' : 'opacity-40 line-through'}>{s.label}</span>
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* BLE-enhet hanteras nu helt av BleControlPanel ovan (hårdkodad ELK-BLEDOM01).
