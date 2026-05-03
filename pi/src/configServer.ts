@@ -598,6 +598,8 @@ export function startConfigServer(port = 3050): void {
         try { return getAllSubsystemStates(); }
         catch { return null; }
       })(),
+    });
+  });
 
   // --- Version ---
   app.get('/api/version', (_req, res) => {
