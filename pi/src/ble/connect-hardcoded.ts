@@ -189,13 +189,9 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   _lastDisconnectReason = 'manual';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
-  if (_slowRetryActive) {
-    _slowRetryActive = false;
-    if (_slowRetryTimer) { clearTimeout(_slowRetryTimer); _slowRetryTimer = null; }
-  }
   // Nollställ alltid räknaren vid manuell disconnect så nästa
   // connect-cykel börjar från noll (poison-skydd).
-  _slowRetryAttempts = 0;
+  _consecutiveFailures = 0;
   if (!_connected) return { disconnected: true };
   // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
   _onDisconnected?.();
