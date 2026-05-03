@@ -1428,6 +1428,8 @@ export default function PiMobile() {
   const engineVersionLabel = cleanVersionLabel(piVersion?.version);
   const engineBuildLabel = cleanBuildLabel(piVersion?.commitShort, piVersion?.branch);
   const [sonosPlaying, setSonosPlaying] = useState(false);
+  const [sonosState, setSonosState] = useState<string | null>(null);
+  const [lifecycleState, setLifecycleState] = useState<string | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTriggered = useRef(false);
@@ -1604,6 +1606,8 @@ export default function PiMobile() {
         if (typeof data.uptime === 'number') setEngineUptime(data.uptime);
         if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
         setSonosPlaying(typeof data.sonos?.playbackState === 'string' && data.sonos.playbackState.includes('PLAYING'));
+        setSonosState(typeof data.sonos?.playbackState === 'string' ? data.sonos.playbackState : null);
+        setLifecycleState(data.lifecycle?.state ?? null);
 
       } catch {
         if (!cancelled) setPiOnline(false);
@@ -1894,6 +1898,18 @@ export default function PiMobile() {
             <span>Motor {engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz` : 'Stoppad') : '…'}</span>
             {engineUptime != null && (
               <span className="opacity-60 font-mono">· {formatUptime(engineUptime)}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              sonosPlaying ? 'bg-green-500'
+                : sonosState ? 'bg-amber-500'
+                : piOnline === false ? 'bg-destructive'
+                : 'bg-muted-foreground animate-pulse'
+            }`} />
+            <span>Sonos {sonosPlaying ? 'Spelar' : sonosState ? 'Pausad' : 'Av'}</span>
+            {lifecycleState && (
+              <span className="opacity-60 font-mono">· {lifecycleState.replace('IGNITION', 'IGN').replace('MOTOR_', '')}</span>
             )}
           </div>
           {(engineVersionLabel || engineBuildLabel) && (
