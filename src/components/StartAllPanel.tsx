@@ -90,6 +90,12 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
   const [failedAt, setFailedAt] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [sonosStatus, setSonosStatus] = useState<{
+    playbackState: string | null;
+    lifecycle: string | null;
+    pendingShutdownInMs: number | null;
+    overrideOff: boolean;
+  }>({ playbackState: null, lifecycle: null, pendingShutdownInMs: null, overrideOff: false });
 
   // Hydrera state från servern vid mount så vi inte visar "Starta" när allt redan kör.
   useEffect(() => {
@@ -123,6 +129,40 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [piBase]);
+
+  // Live-poll Sonos + lifecycle-status (3s) så användaren ser PLAYING/PAUSED
+  // och om motorn håller på att startas/dras ner.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!r.ok || cancelled) return;
+        const j = await r.json();
+        if (cancelled) return;
+        setSonosStatus({
+          playbackState:
+            typeof j.sonos?.playbackState === "string" ? j.sonos.playbackState : null,
+          lifecycle: j.lifecycle?.state ?? null,
+          pendingShutdownInMs:
+            typeof j.lifecycle?.pendingShutdownInMs === "number"
+              ? j.lifecycle.pendingShutdownInMs
+              : null,
+          overrideOff: !!j.lifecycle?.manualOverrideOff,
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [piBase]);
 
   const allOk =
@@ -276,8 +316,35 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
         );
         return (
           <div key={phase} className="space-y-1">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
-              {phase === "ignition" ? "Tändning" : "Igång"}
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
+                {phase === "ignition" ? "Tändning" : "Igång"}
+              </div>
+              {phase === "ignition" && (sonosStatus.lifecycle || sonosStatus.playbackState) && (
+                <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+                  {sonosStatus.playbackState && (
+                    <span>
+                      Sonos: <span className="text-foreground font-mono">{sonosStatus.playbackState}</span>
+                    </span>
+                  )}
+                  {sonosStatus.lifecycle && (
+                    <span>
+                      ·{" "}
+                      <span className={
+                        sonosStatus.lifecycle === "MOTOR_ON" ? "text-primary font-mono" :
+                        sonosStatus.lifecycle === "IGNITION_OFF" ? "text-destructive font-mono" :
+                        "text-amber-500 font-mono"
+                      }>
+                        {sonosStatus.lifecycle === "MOTOR_ON" ? "motor på"
+                          : sonosStatus.lifecycle === "IGNITION_OFF" ? "av (override)"
+                          : sonosStatus.pendingShutdownInMs && sonosStatus.pendingShutdownInMs > 0
+                          ? `stänger av om ${Math.ceil(sonosStatus.pendingShutdownInMs / 100) / 10}s`
+                          : "väntar på PLAYING"}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <ol className="space-y-1.5">
               {phaseSteps.map(({ s: step, idx }) => {
@@ -303,7 +370,12 @@ export function StartAllPanel({ piBase, onEngineReadyChange, onAllOkChange }: Pr
                       {state === "running" && (
                         <span className="text-muted-foreground">— startar…</span>
                       )}
-                      {state === "ok" && (
+                      {state === "ok" && step.id === "sonos" && sonosStatus.playbackState && (
+                        <span className="text-muted-foreground">
+                          — {sonosStatus.playbackState.toLowerCase().includes("playing") ? "spelar" : "pausad"}
+                        </span>
+                      )}
+                      {state === "ok" && step.id !== "sonos" && (
                         <span className="text-muted-foreground">— klar</span>
                       )}
                     </div>
