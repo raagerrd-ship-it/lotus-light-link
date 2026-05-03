@@ -6,6 +6,7 @@ Audio capture requires OS routing. Uses native alsa-capture binding.
 Offline-first: localStorage syncs to Supabase user_settings on login.
 Engine decoupled from UI. API URLs use port + 50.
 Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
+Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnect sätter override som blockerar auto-start.
 BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process retry.
 
 ## Memories
