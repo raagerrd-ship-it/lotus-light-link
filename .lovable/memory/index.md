@@ -6,7 +6,7 @@ Audio capture requires OS routing. Uses native alsa-capture binding.
 Offline-first: localStorage syncs to Supabase user_settings on login.
 Engine decoupled from UI. API URLs use port + 50.
 Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
-BLEDOM HCI-stuck recovery is process.exit via systemd. Never add slow-retry/soft-retry.
+BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process retry.
 
 ## Memories
 - [Hardware limitations](mem://constraints/hardware-limitations) — BLEDOM forces color change on mic mode, use mobile mic
@@ -32,7 +32,7 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add slow-retry/soft
 - [Noble compatibility](mem://pi/runtime/noble-compatibility) — Check state and _state on noble object
 - [Build resources](mem://pi/deployment/build-and-resources) — RAM/swap requirements for building on Pi Zero 2W
 - [BLE keep-alive](mem://pi/ble/keep-alive) — 1s keep-alive packet to prevent BLEDOM timeout
-- [BLE fast-fail restart](mem://pi/ble/fast-fail-self-restart) — Process restart after 4 consecutive failures; slow-retry banned
+- [BLE fast-fail restart](mem://pi/ble/fast-fail-self-restart) — Process restart after 4 consecutive failures; same-process retry banned
 - [Pi exclusive focus](mem://architecture/pi-exclusive-focus) — Architecture focused on headless Pi engine
 - [Event-driven engine](mem://pi/performance/event-driven-architecture) — Engine execution triggered by FFT frames
 - [BLE optimization](mem://pi/ble/connection-optimization) — 7.5-10ms connection interval via HCI
