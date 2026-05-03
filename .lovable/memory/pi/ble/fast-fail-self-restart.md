@@ -1,11 +1,11 @@
 ---
 name: BLE fast-fail + self-restart strategy
-description: BLEDOM HCI-stuck recovery requires process.exit after 4 consecutive failures. Slow-retry/soft-retry is banned.
+description: BLEDOM HCI-stuck recovery requires process.exit after 4 consecutive failures. Same-process retries are banned.
 type: feature
 ---
 **Empirisk observation:** BLEDOM-lampor på Raspberry Pi ansluter alltid på 1-2 sekunder eller aldrig. Längre timeout hjälper inte — när connect-försök börjar misslyckas i rad är noble's HCI-state internt fastnat och retries i samma process löser det inte. Manuell `systemctl restart lotus-light-engine` är enda fungerande fix.
 
-**Permanent guardrail:** Lägg aldrig tillbaka slow-retry/soft-retry (`slowRetry`, `_slowRetryActive`, `ble-consecutive-failures-soft` etc). Tre separata försök har orsakat långvariga outages. Recovery måste vara `process.exit(0)` så systemd ger fresh noble-instans + fresh HCI socket.
+**Permanent guardrail:** Lägg aldrig tillbaka samma-process-retry efter consecutive BLE failures. Tre separata försök har orsakat långvariga outages. Recovery måste vara `process.exit(0)` så systemd ger fresh noble-instans + fresh HCI socket.
 
 **Implementation i `pi/src/ble/connect-hardcoded.ts`:**
 
