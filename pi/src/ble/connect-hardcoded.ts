@@ -558,71 +558,27 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       } catch (e: any) {
         dlog(`[connect-hardcoded] auto power-on send error: ${e?.message ?? e}`);
       }
-      // Avbryt slow-retry om den var aktiv — länken är uppe igen.
-      if (_slowRetryActive) {
-        _slowRetryActive = false;
-        if (_slowRetryTimer) { clearTimeout(_slowRetryTimer); _slowRetryTimer = null; }
-        console.warn('[connect-hardcoded] slow-retry-läge avslutat — länken är uppe igen');
-      }
-      // Nollställ alltid räknaren vid lyckad connect (poison-skydd).
-      _slowRetryAttempts = 0;
     } else {
       _consecutiveFailures++;
       const errStr = r.error ?? 'okänt fel';
       console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures): ${errStr}`);
-      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT && !_slowRetryActive) {
-        // Slow-retry istället för direkt process.exit. Engine + mic + Sonos hålls vid liv —
-        // de flesta BLE-fail är transienta (lampan ur räckvidd, tillfälligt avstängd,
-        // 2.4 GHz-störning) och löser sig själv på sekunder/minuter.
-        _slowRetryActive = true;
-        _slowRetryAttempts = 0;
-        console.warn(`[connect-hardcoded] ${_consecutiveFailures} consecutive failures — switching to slow-retry mode (every ${SLOW_RETRY_INTERVAL_MS}ms, nuclear restart after ${SLOW_RETRY_NUCLEAR_THRESHOLD} fails)`);
+      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
+        console.error(
+          `[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures` +
+          ` — sätter reconnect-flagga och process.exit(0) för systemd restart`
+        );
+        setReconnectOnBootFlag();
         try {
-          const { recordRestart } = await import('../restartLog.js');
+          const { recordRestart, markGracefulShutdown } = await import('../restartLog.js');
           recordRestart(
-            'ble-consecutive-failures-soft',
-            `${_consecutiveFailures} fails — engine alive, slow retry every ${SLOW_RETRY_INTERVAL_MS}ms (last error: ${errStr})`,
+            'ble-consecutive-failures',
+            `${_consecutiveFailures} consecutive failures, last error: ${errStr}`,
           );
+          markGracefulShutdown();
         } catch (e: any) {
-          console.warn(`[connect-hardcoded] kunde inte logga slow-retry-event: ${e?.message ?? e}`);
+          console.warn(`[connect-hardcoded] kunde inte logga restart: ${e?.message ?? e}`);
         }
-        const slowRetry = () => {
-          _slowRetryTimer = null;
-          if (!_slowRetryActive) return;
-          if (_connectInFlight || (_connected && _connected.state === 'connected')) return;
-          _slowRetryAttempts++;
-          dlog(`[connect-hardcoded] slow-retry försök #${_slowRetryAttempts}/${SLOW_RETRY_NUCLEAR_THRESHOLD}`);
-          connectHardcoded()
-            .catch((e: any) => dlog(`[connect-hardcoded] slow-retry attempt error: ${e?.message ?? e}`))
-            .finally(() => {
-              if (!_slowRetryActive) return;
-              if (_connected && _connected.state === 'connected') return;
-              if (_slowRetryAttempts >= SLOW_RETRY_NUCLEAR_THRESHOLD) {
-                // Nukleär reset: empiriskt löser `systemctl restart` lampan
-                // direkt — det är host-side noble HCI-state som är fast, inte
-                // lampans radio. process.exit(0) → systemd restart → fresh
-                // noble-singleton + ny HCI-socket-binding (≈ HCI reset).
-                // setReconnectOnBootFlag() triggar auto-connect efter restart
-                // så användaren slipper trycka knappar.
-                const totalSec = Math.round(SLOW_RETRY_NUCLEAR_THRESHOLD * SLOW_RETRY_INTERVAL_MS / 1000);
-                console.error(`[connect-hardcoded] ⚠ ${SLOW_RETRY_NUCLEAR_THRESHOLD} slow-retries misslyckade (~${totalSec}s) — kör nukleär process.exit(0) för fresh HCI-socket`);
-                (async () => {
-                  try {
-                    const { recordRestart } = await import('../restartLog.js');
-                    recordRestart(
-                      'ble-slow-retry-exhausted',
-                      `Nukleär reset efter ${SLOW_RETRY_NUCLEAR_THRESHOLD} slow-retries (~${totalSec}s utan succé) — fresh noble-instans behövs`,
-                    );
-                  } catch {}
-                  try { setReconnectOnBootFlag(); } catch {}
-                  setTimeout(() => process.exit(0), 500);
-                })();
-                return;
-              }
-              _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
-            });
-        };
-        _slowRetryTimer = setTimeout(slowRetry, SLOW_RETRY_INTERVAL_MS);
+        setTimeout(() => process.exit(0), 500);
       }
     }
     return { ...r, durationMs: Date.now() - t0 };
