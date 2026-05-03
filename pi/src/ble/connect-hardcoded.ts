@@ -16,26 +16,24 @@ import { forceConnInterval } from './forceConnInterval.js';
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
 import { dlog } from "../debugLog.js";
 
-// ─── SLOW-RETRY BAN — REGRESSION TARGET ──────────────────────────
-// Three separate attempts to add a "slow-retry instead of process-
-// exit" path have all caused the engine to sit forever without
+// ─── SAME-PROCESS RETRY BAN — REGRESSION TARGET ──────────────────
+// Three separate attempts to add a "retry instead of process exit"
+// path have all caused the engine to sit forever without
 // recovering when noble's HCI socket gets stuck (well-documented
 // BLEDOM-class hardware behavior). Each time it took the user
 // hours to debug.
 //
 // The ONLY recovery for noble HCI-stuck-state is process restart
 // (systemd Restart=always brings it back with a fresh HCI socket).
-// Slow-retry from the same noble instance cannot un-stick it.
+// Retrying from the same noble instance cannot un-stick it.
 //
 // Sonos sync auto-recovery is handled by callback-wire-on-create
 // (in src/index.ts) + sonos-poller fresh-state-on-subscribe
 // (in src/sonosPoller.ts) so process.exit is invisible to the user.
 //
-// If you find yourself adding `slowRetry`, `softRetry`,
-// `_slowRetryActive`, `ble-consecutive-failures-soft`, or any
-// mechanism that delays process.exit on consecutive failures:
-// STOP. Read the regression history (commit grep for this comment
-// block). The fix is NOT slow-retry. The fix is process.exit.
+// If you find yourself adding any mechanism that delays process.exit
+// on consecutive failures: STOP. Read the regression history. The fix
+// is NOT same-process retry. The fix is process.exit.
 // ─────────────────────────────────────────────────────────────────
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
