@@ -17,7 +17,7 @@ export { hasNobleLoaded, noble };
 export const SERVICE_UUID = 'fff0';
 export const CHAR_UUID = 'fff3';
 
-export const BLE_BUILD_TAG = '2026-05-01/slow-retry-no-exit';
+export const BLE_BUILD_TAG = '2026-05-03/process-exit-on-consecutive-failures';
 dlog(`[BLE] build tag: ${BLE_BUILD_TAG}`);
 
 // ── Subsystem state (mic + sonos + engine — bleEngine borttaget) ──

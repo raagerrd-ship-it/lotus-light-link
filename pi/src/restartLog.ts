@@ -22,9 +22,7 @@ import { join } from 'node:path';
 import { DATA_DIR } from './storage.js';
 
 export type RestartReason =
-  | 'ble-consecutive-failures'   // (legacy) CONSECUTIVE_FAIL_LIMIT nått → process.exit(0)
-  | 'ble-consecutive-failures-soft' // CONSECUTIVE_FAIL_LIMIT nått → slow-retry istället för exit
-  | 'ble-slow-retry-exhausted'   // SLOW_RETRY_NUCLEAR_THRESHOLD nått → process.exit(0) för fresh HCI-socket
+  | 'ble-consecutive-failures'   // CONSECUTIVE_FAIL_LIMIT nått → process.exit(0)
   | 'uncaught-exception'         // process.on('uncaughtException')
   | 'unhandled-rejection'        // process.on('unhandledRejection')
   | 'unknown-systemd-restart'    // föregående process dog utan att vi hann logga
