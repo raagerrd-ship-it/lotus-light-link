@@ -517,8 +517,16 @@ export function startConfigServer(port = 3050): void {
       const cd = await import('./ble/controllerDrain.js');
       if (cd.isControllerDrainAttached?.()) queueLen = cd.getQueuedPackets?.() ?? 0;
     } catch {}
+    let lifecycleState: string | null = null;
+    let lifecycleOverride = false;
+    try {
+      const lc = await import('./engineLifecycle.js');
+      lifecycleState = lc.getLifecycleState();
+      lifecycleOverride = lc.isManualOverrideOff();
+    } catch {}
     res.json({
       ok: true,
+      lifecycle: { state: lifecycleState, manualOverrideOff: lifecycleOverride },
       ble: {
         connected: c.connected ? 1 : 0,
         devices: c.connected ? [c.name] : [],
@@ -623,10 +631,14 @@ export function startConfigServer(port = 3050): void {
 
   app.post('/api/ble/connect', async (_req, res) => {
     try {
+      // Manuell connect via UI rensar lifecycle-override så Sonos-driven
+      // auto-start tar över igen.
+      try {
+        const { setManualOverrideOff } = await import('./engineLifecycle.js');
+        setManualOverrideOff(false);
+      } catch {}
       const { connectHardcoded } = await import('./ble/connect-hardcoded.js');
       const { HARDCODED_DEVICE } = await import('./ble/hardcoded-device.js');
-      // 6s yttre watchdog: BLEDOM ansluter alltid på 1-2s eller aldrig
-      // (mem://pi/ble/fast-fail-self-restart). Längre timeout hjälper inte.
       const r = await connectHardcoded(6000);
       if (r.connected) {
         res.json({ connected: true, name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac, durationMs: r.durationMs });
@@ -640,11 +652,33 @@ export function startConfigServer(port = 3050): void {
 
   app.post('/api/ble/disconnect', async (_req, res) => {
     try {
+      // Manuell disconnect via UI sätter lifecycle-override = off så att
+      // Sonos PLAYING inte triggar auto-reconnect förrän user reaktiverar.
+      try {
+        const { setManualOverrideOff } = await import('./engineLifecycle.js');
+        setManualOverrideOff(true);
+      } catch {}
       const { disconnectHardcoded } = await import('./ble/connect-hardcoded.js');
       const r = await disconnectHardcoded();
       res.json(r);
     } catch (e: any) {
       res.status(500).json({ disconnected: false, error: e?.message ?? String(e) });
+    }
+  });
+
+  // POST /api/lifecycle/override { off: boolean }
+  // Manuell override som blockerar Sonos-driven auto-start (TÄNDNING_AV).
+  app.post('/api/lifecycle/override', async (req, res) => {
+    try {
+      const { off } = req.body ?? {};
+      if (typeof off !== 'boolean') {
+        return res.status(400).json({ ok: false, error: 'body needs { off: true|false }' });
+      }
+      const { setManualOverrideOff, getLifecycleState } = await import('./engineLifecycle.js');
+      setManualOverrideOff(off);
+      res.json({ ok: true, override: off ? 'off' : null, state: getLifecycleState() });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message ?? String(e) });
     }
   });
 

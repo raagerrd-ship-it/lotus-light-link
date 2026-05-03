@@ -95,31 +95,10 @@ function applySonosStateToEngine(state: {
     }
   }
 
-  // ── Sonos PLAYING triggar resurs-restart efter idle-disconnect ──
-  // ALSA + BLE startas parallellt (båda non-blocking). ALSA första audio-cb
-  // ~200-300ms; BLE reconnect ~2-4s — ALSA hinner upp innan första writen behövs.
-  // Reconnect bara om senaste disconnect var auto (idle-timeout) — manuell
-  // UI-disconnect respekteras enligt manual-only-policy.
-  if (isPlaying || state.isTvMode) {
-    if (alsaMic && !alsaMic.isMicActive()) {
-      console.log('[Sonos] PLAYING — startar om ALSA-mic efter idle-paus');
-      try { alsaMic.startMic(); } catch (e: any) {
-        console.warn(`[Sonos] startMic failed: ${e?.message ?? e}`);
-      }
-    }
-    void (async () => {
-      try {
-        const { getHardcodedConnected, connectHardcoded, wasAutoDisconnected } =
-          await import('./ble/connect-hardcoded.js');
-        if (!getHardcodedConnected().connected && wasAutoDisconnected()) {
-          console.log('[Sonos] PLAYING — triggar auto-reconnect (var idle-disconnected)');
-          void connectHardcoded();
-        }
-      } catch (e: any) {
-        console.warn(`[Sonos] auto-reconnect-check failed: ${e?.message ?? e}`);
-      }
-    })();
-  }
+  // OBS: Sonos-driven mic/BLE-start hanteras nu av engineLifecycle.ts
+  // (mem://pi/runtime/sonos-driven-lifecycle). Här uppdaterar vi bara
+  // engine-state utifrån sonos. Lifecycle-state-machinen lyssnar separat
+  // och triggar startMicSubsystem + connectHardcoded vid PLAYING.
 
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
@@ -348,11 +327,12 @@ async function main() {
   await logRuntimePermissions();
 
   console.log('');
-  console.log('  Boot startar INTE BLE/mic/sonos automatiskt.');
-  console.log('  BLE-motor:  POST /api/ble/engine/start');
-  console.log('  Lampa:      POST /api/ble/connect');
-  console.log('  Mic/Sonos:  POST /api/subsystem/<mic|sonos>/start');
-  console.log('');
+  console.log('  Tändning aktiv vid boot — Sonos PLAYING startar motorn automatiskt.');
+  console.log('  Manuella override-endpoints (UI):');
+  console.log('    BLE-motor:  POST /api/ble/engine/start');
+  console.log('    Lampa:      POST /api/ble/connect / disconnect');
+  console.log('    Mic/Sonos:  POST /api/subsystem/<mic|sonos>/start');
+  console.log('    Lifecycle:  POST /api/lifecycle/override { off: true|false }');
 
   configServer = await import('./configServer.js');
   configServer.startConfigServer(CONFIG_PORT);
@@ -361,7 +341,7 @@ async function main() {
     startSonos: startSonosSubsystem,
   });
 
-  console.log('[Boot] ✓ configServer up — väntar på subsystem-start från UI/API');
+  console.log('[Boot] ✓ configServer up — ignite() startar BLE-stack + sonos-poller');
 
   // ── Restart-log: detektera om förra processen dog ofrivilligt ──
   // noteBootStart() kollar om SESSION_MARKER finns kvar (graceful shutdown
@@ -402,29 +382,43 @@ async function main() {
     console.warn('[Boot] kunde inte koppla post-connect flagg-hook:', e?.message ?? e);
   }
 
-  if (consumeReconnectOnBootFlag()) {
-    console.log('[Boot] 🔁 reconnect-flagga hittad → auto-startar HELA kedjan');
-    void (async () => {
-      try {
-        const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
-        await startBleEngineMinimal();
-        console.log('[Boot/auto] ✓ motor');
-      } catch (e: any) { console.warn('[Boot/auto] motor fel:', e?.message ?? e); }
-
-      try { await startMicSubsystem(); console.log('[Boot/auto] ✓ mic'); }
-      catch (e: any) { console.warn('[Boot/auto] mic fel:', e?.message ?? e); }
-
-      try { await startSonosSubsystem(); console.log('[Boot/auto] ✓ sonos'); }
-      catch (e: any) { console.warn('[Boot/auto] sonos fel:', e?.message ?? e); }
-
-      await new Promise((r) => setTimeout(r, 1500));
-      try {
-        const { connectHardcoded } = await import('./ble/connect-hardcoded.js');
-        const r = await connectHardcoded();
-        console.log(`[Boot/auto] lampa: connected=${r.connected} ${r.error ? `error=${r.error}` : ''} (${r.durationMs}ms)`);
-      } catch (e: any) { console.warn('[Boot/auto] lampa fel:', e?.message ?? e); }
-    })();
-  }
+  // ── Sonos-driven lifecycle (bil-tändning-modell) ─────────────────────────
+  // Ersätter den tidigare /tmp-flagga-baserade auto-restart-pathen.
+  // Sonos playbackState är nu källan till sanning för om motorn ska köra.
+  // /tmp-flaggan kvarstår som redundant safety net (skrivs av crash-handlers
+  // nedan + post-connect-hook ovan) men consumeras inte längre vid boot.
+  consumeReconnectOnBootFlag(); // dränera ev. gammal flagga så den inte hänger kvar
+  void (async () => {
+    try {
+      const { ignite } = await import('./engineLifecycle.js');
+      const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
+      const { connectHardcoded, getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
+      await ignite({
+        startBleEngineMinimal,
+        startSonosSubsystem,
+        startMicSubsystem,
+        connectHardcoded: () => connectHardcoded(),
+        getHardcodedConnected,
+        isPlayingState: () => {
+          const s = sonos?.getSonosState?.();
+          return !!s && typeof s.playbackState === 'string' && s.playbackState.includes('PLAYING');
+        },
+        onSonosPlayingChange: (fn) => {
+          // sonos är garanterat satt — ignite() har just await:at startSonosSubsystem.
+          void (async () => {
+            if (!sonos) return;
+            await sonos.onSonosChange((state) => {
+              const playing = typeof state.playbackState === 'string'
+                && state.playbackState.includes('PLAYING');
+              fn(playing || state.isTvMode);
+            });
+          })();
+        },
+      });
+    } catch (e: any) {
+      console.warn('[Boot] ignite() fel:', e?.message ?? e);
+    }
+  })();
 
   // Crash-handlers: logga reason, sätt flagga, exit. systemd Restart=always tar oss tillbaka.
   process.on('uncaughtException', (err) => {
