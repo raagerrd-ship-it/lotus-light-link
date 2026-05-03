@@ -13,11 +13,30 @@ import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
-// setReconnectOnBootFlag återupplivad: efter N=20 slow-retry-failures faller vi
-// tillbaka på process.exit(0) som nukleär reset, och flaggan triggar
-// auto-reconnect vid nästa boot (se index.ts boot-hook).
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
 import { dlog } from "../debugLog.js";
+
+// ─── SLOW-RETRY BAN — REGRESSION TARGET ──────────────────────────
+// Three separate attempts to add a "slow-retry instead of process-
+// exit" path have all caused the engine to sit forever without
+// recovering when noble's HCI socket gets stuck (well-documented
+// BLEDOM-class hardware behavior). Each time it took the user
+// hours to debug.
+//
+// The ONLY recovery for noble HCI-stuck-state is process restart
+// (systemd Restart=always brings it back with a fresh HCI socket).
+// Slow-retry from the same noble instance cannot un-stick it.
+//
+// Sonos sync auto-recovery is handled by callback-wire-on-create
+// (in src/index.ts) + sonos-poller fresh-state-on-subscribe
+// (in src/sonosPoller.ts) so process.exit is invisible to the user.
+//
+// If you find yourself adding `slowRetry`, `softRetry`,
+// `_slowRetryActive`, `ble-consecutive-failures-soft`, or any
+// mechanism that delays process.exit on consecutive failures:
+// STOP. Read the regression history (commit grep for this comment
+// block). The fix is NOT slow-retry. The fix is process.exit.
+// ─────────────────────────────────────────────────────────────────
 
 // Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
 // pga consecutive connect-failures, läses i index.ts boot för att auto-anropa
@@ -31,23 +50,6 @@ import { dlog } from "../debugLog.js";
 // vid initial-connect-misslyckanden där 2 var för känsligt.
 const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
-
-// Slow-retry: efter CONSECUTIVE_FAIL_LIMIT failures fortsätter vi försöka var 30s
-// istället för att direkt nuke processen. Engine + mic + Sonos hålls vid liv så
-// musik-state inte tappas. Efter SLOW_RETRY_NUCLEAR_THRESHOLD misslyckade
-// slow-retries (~1 min) faller vi tillbaka på process.exit(0) som nukleär reset.
-//
-// EMPIRISKT (2026-05-01): manuell `systemctl restart lotus-light-engine` löser
-// alltid lampan direkt — radion på BLEDOM är fin, det som fastnar är host-side
-// noble HCI-socket/state. Slow-retry återanvänder samma noble-instans och kan
-// därför inte un-sticka det; en full process-restart skapar fresh noble + ny
-// HCI-socket-binding (≈ HCI reset) och får lampan att acceptera connect igen.
-// Tröskel=2 ger en retry-chans för transient RF-blip innan vi nukar.
-const SLOW_RETRY_INTERVAL_MS = 30_000;
-const SLOW_RETRY_NUCLEAR_THRESHOLD = 2;
-let _slowRetryActive = false;
-let _slowRetryAttempts = 0;
-let _slowRetryTimer: NodeJS.Timeout | null = null;
 
 // Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
 // Används så att engine kan toggla keep-alive/idle-heartbeat baserat på
