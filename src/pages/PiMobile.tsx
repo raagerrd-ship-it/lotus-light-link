@@ -1430,6 +1430,8 @@ export default function PiMobile() {
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const [sonosState, setSonosState] = useState<string | null>(null);
   const [lifecycleState, setLifecycleState] = useState<string | null>(null);
+  const [lifecycleOverride, setLifecycleOverride] = useState(false);
+  const [pendingShutdownInMs, setPendingShutdownInMs] = useState<number | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const longPressTriggered = useRef(false);
@@ -1608,6 +1610,12 @@ export default function PiMobile() {
         setSonosPlaying(typeof data.sonos?.playbackState === 'string' && data.sonos.playbackState.includes('PLAYING'));
         setSonosState(typeof data.sonos?.playbackState === 'string' ? data.sonos.playbackState : null);
         setLifecycleState(data.lifecycle?.state ?? null);
+        setLifecycleOverride(!!data.lifecycle?.manualOverrideOff);
+        setPendingShutdownInMs(
+          typeof data.lifecycle?.pendingShutdownInMs === 'number'
+            ? data.lifecycle.pendingShutdownInMs
+            : null,
+        );
 
       } catch {
         if (!cancelled) setPiOnline(false);
@@ -1908,10 +1916,30 @@ export default function PiMobile() {
                 : 'bg-muted-foreground animate-pulse'
             }`} />
             <span>Sonos {sonosPlaying ? 'Spelar' : sonosState ? 'Pausad' : 'Av'}</span>
-            {lifecycleState && (
-              <span className="opacity-60 font-mono">· {lifecycleState.replace('IGNITION', 'IGN').replace('MOTOR_', '')}</span>
-            )}
           </div>
+          {lifecycleState && (() => {
+            // Bil-tändning: IGNITION = IGN (gul), MOTOR_ON = ON (grön),
+            // IGNITION_OFF = OFF (röd, manuell override).
+            const label =
+              lifecycleState === 'MOTOR_ON' ? 'ON' :
+              lifecycleState === 'IGNITION_OFF' ? 'OFF' : 'IGN';
+            const dot =
+              lifecycleState === 'MOTOR_ON' ? 'bg-green-500' :
+              lifecycleState === 'IGNITION_OFF' ? 'bg-destructive' :
+              'bg-amber-500';
+            return (
+              <div className="flex items-center gap-1.5">
+                <div className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+                <span>Tändning {label}</span>
+                {pendingShutdownInMs != null && pendingShutdownInMs > 0 && (
+                  <span className="opacity-60 font-mono">· shutdown {Math.ceil(pendingShutdownInMs / 100) / 10}s</span>
+                )}
+                {lifecycleOverride && lifecycleState !== 'IGNITION_OFF' && (
+                  <span className="opacity-60 font-mono">· override</span>
+                )}
+              </div>
+            );
+          })()}
           {(engineVersionLabel || engineBuildLabel) && (
             <div className="flex flex-col items-end font-mono leading-tight text-right">
               {engineVersionLabel && <span>v{engineVersionLabel}</span>}
