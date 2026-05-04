@@ -89,18 +89,36 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
 
 const CURVE_POINTS = 200; // points to draw
 
-/** Pre-compute a 3-wave sinus: low → mid → high amplitude */
+/** Time-domain testsignal: tystnad → bas-svall → mellanband → diskant → tystnad.
+ *  Värdena representerar peakBand (max(bassRms, midHiRms)) i samma skala
+ *  som engine ser, så silence-gate + alphor jämförs på rätt enheter. */
 function buildRawCurve(): number[] {
   const pts: number[] = [];
-  const third = CURVE_POINTS / 3;
   for (let i = 0; i < CURVE_POINTS; i++) {
-    const t = i / CURVE_POINTS;
-    // Which wave section (0=low, 1=mid, 2=high)
-    const section = Math.min(2, Math.floor(i / third));
-    const amp = [0.2, 0.5, 0.9][section];
-    const freq = 6 * Math.PI; // ~3 full waves per section
-    const val = 0.5 + amp * 0.5 * Math.sin(t * freq);
-    pts.push(Math.max(0, Math.min(1, val)));
+    const t = i / (CURVE_POINTS - 1); // 0..1
+    let amp = 0;
+    if (t < 0.10) {
+      amp = 0.005; // tyst (rumsbrus, under tickEnergyFloor=0.01)
+    } else if (t < 0.40) {
+      // Bas-tung passage — låg frekvens, måttlig nivå
+      const u = (t - 0.10) / 0.30;
+      const env = Math.sin(u * Math.PI); // mjuk in/ut
+      amp = 0.05 + env * 0.35 * (0.7 + 0.3 * Math.sin(u * 18));
+    } else if (t < 0.70) {
+      // Mellanband — högre, mer puls
+      const u = (t - 0.40) / 0.30;
+      const env = Math.sin(u * Math.PI);
+      amp = 0.05 + env * 0.55 * (0.6 + 0.4 * Math.sin(u * 30));
+    } else if (t < 0.90) {
+      // Diskant — kort men intensivt med transienter
+      const u = (t - 0.70) / 0.20;
+      const env = Math.sin(u * Math.PI);
+      const transient = Math.pow(Math.max(0, Math.sin(u * 50)), 6);
+      amp = 0.05 + env * (0.45 + 0.4 * transient);
+    } else {
+      amp = 0.005; // tyst igen
+    }
+    pts.push(Math.max(0, Math.min(1, amp)));
   }
   return pts;
 }
