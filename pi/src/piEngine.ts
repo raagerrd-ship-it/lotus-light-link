@@ -799,9 +799,10 @@ export class PiLightEngine {
         // och delar med dynamicCenter-uppdateringen nedan.
         const bands = getLatestBands();
         const energyFloor = this.cal.onsetEnergyFloor ?? 0;
+        const peakBand = bands ? Math.max(bands.bassRms, bands.midHiRms) : 0;
         const passesEnergyGate =
           energyFloor <= 0 ||
-          (bands != null && Number.isFinite(bands.totalRms) && bands.totalRms >= energyFloor);
+          (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
         if (passesEnergyGate) {
           this.processOnset(flux);
         }
