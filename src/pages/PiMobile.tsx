@@ -300,18 +300,24 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
     const yMax = showBoost ? Math.max(1.35, Math.ceil(procMax * 10) / 10) : 1;
     const toY = (v: number) => pad + ch * (1 - Math.min(v, yMax) / yMax);
 
-    // Section labels
-    const labels = ["Tyst", "Bas", "Mellan", "Diskant", "Tyst"];
-    const third = w / 3;
+    // Section labels (matchar buildRawCurve: 0-10% tyst, 10-40% bas, 40-70% mellan, 70-90% diskant, 90-100% tyst)
+    const sections: { label: string; t0: number; t1: number }[] = [
+      { label: "Tyst",    t0: 0.00, t1: 0.10 },
+      { label: "Bas",     t0: 0.10, t1: 0.40 },
+      { label: "Mellan",  t0: 0.40, t1: 0.70 },
+      { label: "Diskant", t0: 0.70, t1: 0.90 },
+      { label: "Tyst",    t0: 0.90, t1: 1.00 },
+    ];
     ctx.font = `${10 * dpr}px sans-serif`;
     ctx.textAlign = "center";
     ctx.fillStyle = "rgba(255,255,255,0.25)";
-    for (let s = 0; s < 3; s++) {
-      ctx.fillText(labels[s], third * s + third / 2, h - 2 * dpr);
-      if (s > 0) {
+    for (const sec of sections) {
+      const cx = w * (sec.t0 + sec.t1) / 2;
+      ctx.fillText(sec.label, cx, h - 2 * dpr);
+      if (sec.t0 > 0) {
         ctx.beginPath();
-        ctx.moveTo(third * s, 0);
-        ctx.lineTo(third * s, h);
+        ctx.moveTo(w * sec.t0, 0);
+        ctx.lineTo(w * sec.t0, h);
         ctx.strokeStyle = "rgba(255,255,255,0.08)";
         ctx.lineWidth = 1;
         ctx.stroke();
