@@ -191,6 +191,15 @@ function migrateLegacyCalibration(cal: any): any {
   if (typeof out.brightnessFloor === 'number' && out.brightnessFloor >= 15) {
     out.brightnessFloor = 5;
   }
+  // 2026-05-04: silence-gate skala bytte från bands.totalRms (avg-per-bin)
+  // till peakBand = max(bassRms, midHiRms). Gamla värden ≥ 0.04 var
+  // kalibrerade mot fel signal — migrera ner till 0.01 (peakBand-skala).
+  if (typeof out.onsetEnergyFloor === 'number' && out.onsetEnergyFloor >= 0.04) {
+    out.onsetEnergyFloor = 0.01;
+  }
+  if (typeof out.tickEnergyFloor === 'number' && out.tickEnergyFloor >= 0.04) {
+    out.tickEnergyFloor = 0.01;
+  }
   return out;
 }
 
