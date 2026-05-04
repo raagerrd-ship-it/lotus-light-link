@@ -216,7 +216,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
 
     // Transient boost — engine: processOnset(flux) sätter onsetTarget=0.20 vid candidate,
     // sen rise mot target via onsetRiseAlpha + decay via onsetDecay. Additiv på energyNorm.
-    if ((cal.transientGain ?? 0) > 0) {
+    if ((cal.transientGain ?? 0) > 0 && !inSilence) {
       const flux = Math.max(0, r - (i > 0 ? weighted[i - 1] : r));
       fluxBuf[fluxIdx % onsetBufLen] = flux;
       fluxIdx++;
