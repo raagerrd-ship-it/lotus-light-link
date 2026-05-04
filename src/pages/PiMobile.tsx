@@ -172,19 +172,13 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   // bassWeight: speglar engine — asymmetrisk dämpning runt 0.5 (neutral).
   // bw=0 → bara disk (bas dämpad). bw=0.5 → båda 100% (neutral). bw=1 → bara bas (disk dämpad).
   // Rå-kurvans 3 sektioner tolkas som band: Låg=bass, Mellan=50/50, Hög=midHi.
-  const bw = cal.bassWeight;
-  const bassGain = bw <= 0.5 ? bw * 2 : 1;
-  const midHiGain = bw >= 0.5 ? (1 - bw) * 2 : 1;
-  const weighted: number[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    const t = i / raw.length;
-    const section = t < 1 / 3 ? 0 : t < 2 / 3 ? 1 : 2;
-    const bassShare = section === 0 ? 1 : section === 1 ? 0.5 : 0;
-    const midHiShare = 1 - bassShare;
-    const gain = bassShare * bassGain + midHiShare * midHiGain;
-    const scaled = raw[i] * gain;
-    weighted.push(Math.max(0, Math.min(1, scaled)));
-  }
+  // Rå-signalen är redan i peakBand-skala (0..1, samma enheter som engine ser).
+  // bassWeight skippas i visualiseringen — den verkar i frekvensdomänen
+  // (bands.bassRms vs bands.midHiRms) och kan inte återges meningsfullt på
+  // en time-domain-kurva utan separata band.
+  const weighted = raw.slice();
+
+  const tickFloor = (cal as any).tickEnergyFloor ?? 0.01;
 
   const values: number[] = [];
   const rising: boolean[] = [];
@@ -192,6 +186,20 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   let prev = weighted[0];
   let dynamicCenter = 0.5;
 
+  // Onset state — engine använder rise/decay-alphor via processOnset(), spegla samma logik
+  const onsetBufLen = 7;
+  const fluxBuf: number[] = new Array(onsetBufLen).fill(0);
+  let fluxIdx = 0;
+  let prevFlux = 0;
+  let onsetBoost = 0;
+  let onsetTarget = 0;
+
+  for (let i = 0; i < weighted.length; i++) {
+    const r = weighted[i];
+    // Silence-gate (matchar piEngine.tickInner): om peakBand < tickFloor →
+    // energyNorm=0, alpha=releaseAlpha (glide ner till floor).
+    const inSilence = tickFloor > 0 && r < tickFloor;
+    const effR = inSilence ? 0 : r;
   // Onset state — engine använder rise/decay-alphor via processOnset(), spegla samma logik
   const onsetBufLen = 7;
   const fluxBuf: number[] = new Array(onsetBufLen).fill(0);
