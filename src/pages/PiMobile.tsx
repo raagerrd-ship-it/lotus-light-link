@@ -71,7 +71,7 @@ function alphaToAttack(alpha: number) {
 
 type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'onsetEnergyFloor' | 'flickerDeadband';
 // Slider-ranges = användbar zon (inte API-clamp). Power-users kan sätta extrema värden via PUT /api/calibration.
-// flickerDeadband exponeras inte här längre — sköts av AutoTuneAntiFlickerPanel (legacy BLE-bandbreddsfilter).
+// flickerDeadband exponeras inte här längre — sköts av SilenceAnalysisPanel (legacy BLE-bandbreddsfilter).
 // saturation/maxRisePerSec/maxFallPerSec borttagna 2026-04-25/26 (ingen runtime-effekt).
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = bara disk, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
@@ -539,10 +539,11 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 /* ── Settings View ── */
 /* ── Profile Settings View (calibration per preset) ── */
 
-/* ── Auto-tune anti-flicker panel ──
- * Mäter pct-rörelser i 30s, föreslår maxFallPerSec + flickerDeadband.
- * Kräver att musik spelas. Skriver i aktiv profil när användaren accepterar. */
-function AutoTuneAntiFlickerPanel({
+/* ── Tystnads-analys panel ──
+ * Mäter rå mic-RMS i 60s, hittar brusgolv (tysta partier) och musik-nivå,
+ * föreslår tickEnergyFloor + onsetEnergyFloor så lampan inte triggar på rumsbrus.
+ * Kräver att en låt med tyst parti spelas (eller paus mellan låtar). */
+function SilenceAnalysisPanel({
   piBase, cal, setCal,
 }: {
   piBase: string;
@@ -552,10 +553,17 @@ function AutoTuneAntiFlickerPanel({
   const [status, setStatus] = useState<{
     active: boolean; elapsedMs: number; durationMs: number; sampleCount: number;
     progress: number; done: boolean;
-    suggestion?: { maxFallPerSec: number; flickerDeadband: number; flickerScore: number; samplesUsed: number; sampleRateHz: number; isPlaying: boolean };
+    suggestion?: {
+      tickEnergyFloor: number; onsetEnergyFloor: number;
+      silenceRms: number; musicRms: number;
+      silenceRatio: number; separation: number;
+      samplesUsed: number; sampleRateHz: number;
+      isPlaying: boolean; hasSilentSection: boolean;
+    };
+    current?: { tickEnergyFloor: number; onsetEnergyFloor: number };
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [duration, setDuration] = useState(30);
+  const [duration, setDuration] = useState(60);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPoll = () => {
@@ -599,7 +607,10 @@ function AutoTuneAntiFlickerPanel({
 
   const apply = async () => {
     if (!status?.suggestion) return;
-    const body: Record<string, number> = { flickerDeadband: status.suggestion.flickerDeadband };
+    const body = {
+      tickEnergyFloor: status.suggestion.tickEnergyFloor,
+      onsetEnergyFloor: status.suggestion.onsetEnergyFloor,
+    };
     try {
       const r = await fetch(`${piBase}/api/autotune/apply`, {
         method: 'POST',
@@ -607,7 +618,6 @@ function AutoTuneAntiFlickerPanel({
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      // Spegla i lokal cal-state så slidrarna uppdateras direkt
       setCal({ ...cal, ...body } as typeof DEFAULT_CAL);
       setStatus(null);
     } catch (e: any) {
@@ -617,7 +627,6 @@ function AutoTuneAntiFlickerPanel({
 
   useEffect(() => () => stopPoll(), []);
 
-  // Status-derivat
   const running = !!status?.active;
   const done = !!status?.done && !!status?.suggestion;
   const progress = status?.progress ?? 0;
@@ -629,7 +638,7 @@ function AutoTuneAntiFlickerPanel({
     <div className="rounded-lg border border-border/40 bg-card/50 p-3 space-y-2">
       <div className="flex items-baseline justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Auto-tune anti-fladder
+          Tystnads-analys
         </h3>
         {!running && !done && (
           <select
@@ -637,16 +646,17 @@ function AutoTuneAntiFlickerPanel({
             onChange={(e) => setDuration(parseInt(e.target.value, 10))}
             className="text-[11px] bg-secondary text-foreground rounded px-1.5 py-0.5"
           >
-            <option value={15}>15s</option>
             <option value={30}>30s</option>
             <option value={60}>60s</option>
+            <option value={90}>90s</option>
           </select>
         )}
       </div>
 
       <p className="text-[10px] text-muted-foreground leading-snug">
-        Spela en låt som brukar fladdra. Mätningen registrerar varje pct-rörelse och
-        föreslår en lämplig deadband-tröskel.
+        Spela en passage som innehåller <strong>både tysta partier och musik</strong>
+        {' '}(t.ex. en intro/breakdown, eller låt en låt sluta och nästa börja).
+        Mätningen jämför brusgolv med musiknivå och föreslår tystnads-trösklar.
       </p>
 
       {error && (
@@ -658,7 +668,7 @@ function AutoTuneAntiFlickerPanel({
           onClick={start}
           className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium active:scale-95 transition-transform"
         >
-          🎚 Starta {duration}s mätning
+          🎚 Starta {duration}s analys
         </button>
       )}
 
@@ -687,31 +697,55 @@ function AutoTuneAntiFlickerPanel({
               ⚠ Mätningen kördes utan playback — förslagen kan vara missvisande.
             </div>
           )}
+          {!sug.hasSilentSection && (
+            <div className="text-[10px] text-amber-500">
+              ⚠ Inget tyst parti registrerat. För bästa resultat: kör om under en
+              breakdown eller mellan två låtar.
+            </div>
+          )}
           <div className="rounded-md bg-background/60 p-2 space-y-1.5">
             <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Fladder-poäng</span>
+              <span className="text-muted-foreground">Brusgolv (tystnad)</span>
+              <span className="font-mono">{sug.silenceRms.toFixed(3)}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">Musiknivå (p70)</span>
+              <span className="font-mono">{sug.musicRms.toFixed(3)}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">Separation</span>
               <span className="font-mono font-semibold">
-                {sug.flickerScore}/100
+                {sug.separation}×
                 <span className="text-muted-foreground ml-1">
-                  ({sug.flickerScore < 15 ? 'låg' : sug.flickerScore < 40 ? 'medel' : 'hög'})
+                  ({sug.separation < 2 ? 'svag' : sug.separation < 5 ? 'okej' : 'bra'})
                 </span>
               </span>
             </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Deadband (nu → förslag)</span>
-              <span className="font-mono">
-                {cal.flickerDeadband.toFixed(3)} → <span className="text-primary font-semibold">{sug.flickerDeadband.toFixed(3)}</span>
-              </span>
+            <div className="border-t border-border/40 pt-1.5 mt-1.5 space-y-1">
+              <div className="flex justify-between text-[11px]">
+                <span className="text-muted-foreground">Tystnads­tröskel (tick)</span>
+                <span className="font-mono">
+                  {(cal.tickEnergyFloor ?? 0).toFixed(3)} →{' '}
+                  <span className="text-primary font-semibold">{sug.tickEnergyFloor.toFixed(3)}</span>
+                </span>
+              </div>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-muted-foreground">Beat energi-golv</span>
+                <span className="font-mono">
+                  {(cal.onsetEnergyFloor ?? 0).toFixed(3)} →{' '}
+                  <span className="text-primary font-semibold">{sug.onsetEnergyFloor.toFixed(3)}</span>
+                </span>
+              </div>
             </div>
-            <div className="text-[10px] text-muted-foreground">
-              {sug.samplesUsed} samples @ {sug.sampleRateHz.toFixed(1)} Hz
+            <div className="text-[10px] text-muted-foreground pt-1">
+              {sug.samplesUsed} samples @ {sug.sampleRateHz.toFixed(1)} Hz · {Math.round(sug.silenceRatio * 100)}% tyst
             </div>
           </div>
           <button
             onClick={apply}
             className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold active:scale-95 transition-transform"
           >
-            ✓ Tillämpa deadband-förslag
+            ✓ Tillämpa förslag
           </button>
           <button
             onClick={() => setStatus(null)}
@@ -762,7 +796,7 @@ function ProfileSettingsView({
         
         <SignalPreview cal={cal} height={180} showLegend={true} />
 
-        <AutoTuneAntiFlickerPanel piBase={piBase} cal={cal} setCal={setCal} />
+        <SilenceAnalysisPanel piBase={piBase} cal={cal} setCal={setCal} />
         
         {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
           const isDyn = key === 'dynamicDamping';
