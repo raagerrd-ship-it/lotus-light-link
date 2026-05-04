@@ -89,18 +89,36 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
 
 const CURVE_POINTS = 200; // points to draw
 
-/** Pre-compute a 3-wave sinus: low → mid → high amplitude */
+/** Time-domain testsignal: tystnad → bas-svall → mellanband → diskant → tystnad.
+ *  Värdena representerar peakBand (max(bassRms, midHiRms)) i samma skala
+ *  som engine ser, så silence-gate + alphor jämförs på rätt enheter. */
 function buildRawCurve(): number[] {
   const pts: number[] = [];
-  const third = CURVE_POINTS / 3;
   for (let i = 0; i < CURVE_POINTS; i++) {
-    const t = i / CURVE_POINTS;
-    // Which wave section (0=low, 1=mid, 2=high)
-    const section = Math.min(2, Math.floor(i / third));
-    const amp = [0.2, 0.5, 0.9][section];
-    const freq = 6 * Math.PI; // ~3 full waves per section
-    const val = 0.5 + amp * 0.5 * Math.sin(t * freq);
-    pts.push(Math.max(0, Math.min(1, val)));
+    const t = i / (CURVE_POINTS - 1); // 0..1
+    let amp = 0;
+    if (t < 0.10) {
+      amp = 0.005; // tyst (rumsbrus, under tickEnergyFloor=0.01)
+    } else if (t < 0.40) {
+      // Bas-tung passage — låg frekvens, måttlig nivå
+      const u = (t - 0.10) / 0.30;
+      const env = Math.sin(u * Math.PI); // mjuk in/ut
+      amp = 0.05 + env * 0.35 * (0.7 + 0.3 * Math.sin(u * 18));
+    } else if (t < 0.70) {
+      // Mellanband — högre, mer puls
+      const u = (t - 0.40) / 0.30;
+      const env = Math.sin(u * Math.PI);
+      amp = 0.05 + env * 0.55 * (0.6 + 0.4 * Math.sin(u * 30));
+    } else if (t < 0.90) {
+      // Diskant — kort men intensivt med transienter
+      const u = (t - 0.70) / 0.20;
+      const env = Math.sin(u * Math.PI);
+      const transient = Math.pow(Math.max(0, Math.sin(u * 50)), 6);
+      amp = 0.05 + env * (0.45 + 0.4 * transient);
+    } else {
+      amp = 0.005; // tyst igen
+    }
+    pts.push(Math.max(0, Math.min(1, amp)));
   }
   return pts;
 }
@@ -154,19 +172,13 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   // bassWeight: speglar engine — asymmetrisk dämpning runt 0.5 (neutral).
   // bw=0 → bara disk (bas dämpad). bw=0.5 → båda 100% (neutral). bw=1 → bara bas (disk dämpad).
   // Rå-kurvans 3 sektioner tolkas som band: Låg=bass, Mellan=50/50, Hög=midHi.
-  const bw = cal.bassWeight;
-  const bassGain = bw <= 0.5 ? bw * 2 : 1;
-  const midHiGain = bw >= 0.5 ? (1 - bw) * 2 : 1;
-  const weighted: number[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    const t = i / raw.length;
-    const section = t < 1 / 3 ? 0 : t < 2 / 3 ? 1 : 2;
-    const bassShare = section === 0 ? 1 : section === 1 ? 0.5 : 0;
-    const midHiShare = 1 - bassShare;
-    const gain = bassShare * bassGain + midHiShare * midHiGain;
-    const scaled = raw[i] * gain;
-    weighted.push(Math.max(0, Math.min(1, scaled)));
-  }
+  // Rå-signalen är redan i peakBand-skala (0..1, samma enheter som engine ser).
+  // bassWeight skippas i visualiseringen — den verkar i frekvensdomänen
+  // (bands.bassRms vs bands.midHiRms) och kan inte återges meningsfullt på
+  // en time-domain-kurva utan separata band.
+  const weighted = raw.slice();
+
+  const tickFloor = (cal as any).tickEnergyFloor ?? 0.01;
 
   const values: number[] = [];
   const rising: boolean[] = [];
@@ -184,11 +196,14 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
 
   for (let i = 0; i < weighted.length; i++) {
     const r = weighted[i];
-    // Riktning bestäms av rå-insignalen (inte filtrerad prev) — det är så engine
-    // väljer attack vs release-alpha (energyNorm > smoothed).
-    const isRising = r >= prev;
+    // Silence-gate (matchar piEngine.tickInner): om peakBand < tickFloor →
+    // energyNorm=0, tvinga releaseAlpha (glide ner till floor).
+    const inSilence = tickFloor > 0 && r < tickFloor;
+    const effR = inSilence ? 0 : r;
+    // Riktning bestäms av rå-insignalen — men vid silence tvingas release.
+    const isRising = !inSilence && effR >= prev;
     const alpha = isRising ? attackAlpha : releaseAlpha;
-    let val = prev + alpha * (r - prev);
+    let val = prev + alpha * (effR - prev);
 
     // Dynamics — speglar engine: hoppa över helt om dynamicsEnabled === false,
     // använd centerAlpha (tick-rate-skalad), clamp dynamicCenter till [0.2, 0.7]
@@ -201,7 +216,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
 
     // Transient boost — engine: processOnset(flux) sätter onsetTarget=0.20 vid candidate,
     // sen rise mot target via onsetRiseAlpha + decay via onsetDecay. Additiv på energyNorm.
-    if ((cal.transientGain ?? 0) > 0) {
+    if ((cal.transientGain ?? 0) > 0 && !inSilence) {
       const flux = Math.max(0, r - (i > 0 ? weighted[i - 1] : r));
       fluxBuf[fluxIdx % onsetBufLen] = flux;
       fluxIdx++;
@@ -285,18 +300,24 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
     const yMax = showBoost ? Math.max(1.35, Math.ceil(procMax * 10) / 10) : 1;
     const toY = (v: number) => pad + ch * (1 - Math.min(v, yMax) / yMax);
 
-    // Section labels
-    const labels = ["Låg", "Mellan", "Hög"];
-    const third = w / 3;
+    // Section labels (matchar buildRawCurve: 0-10% tyst, 10-40% bas, 40-70% mellan, 70-90% diskant, 90-100% tyst)
+    const sections: { label: string; t0: number; t1: number }[] = [
+      { label: "Tyst",    t0: 0.00, t1: 0.10 },
+      { label: "Bas",     t0: 0.10, t1: 0.40 },
+      { label: "Mellan",  t0: 0.40, t1: 0.70 },
+      { label: "Diskant", t0: 0.70, t1: 0.90 },
+      { label: "Tyst",    t0: 0.90, t1: 1.00 },
+    ];
     ctx.font = `${10 * dpr}px sans-serif`;
     ctx.textAlign = "center";
     ctx.fillStyle = "rgba(255,255,255,0.25)";
-    for (let s = 0; s < 3; s++) {
-      ctx.fillText(labels[s], third * s + third / 2, h - 2 * dpr);
-      if (s > 0) {
+    for (const sec of sections) {
+      const cx = w * (sec.t0 + sec.t1) / 2;
+      ctx.fillText(sec.label, cx, h - 2 * dpr);
+      if (sec.t0 > 0) {
         ctx.beginPath();
-        ctx.moveTo(third * s, 0);
-        ctx.lineTo(third * s, h);
+        ctx.moveTo(w * sec.t0, 0);
+        ctx.lineTo(w * sec.t0, h);
         ctx.strokeStyle = "rgba(255,255,255,0.08)";
         ctx.lineWidth = 1;
         ctx.stroke();
