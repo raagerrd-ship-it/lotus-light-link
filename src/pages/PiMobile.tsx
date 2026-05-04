@@ -71,7 +71,7 @@ function alphaToAttack(alpha: number) {
 
 type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'onsetEnergyFloor' | 'flickerDeadband';
 // Slider-ranges = användbar zon (inte API-clamp). Power-users kan sätta extrema värden via PUT /api/calibration.
-// flickerDeadband exponeras inte här längre — sköts av AutoTuneAntiFlickerPanel (legacy BLE-bandbreddsfilter).
+// flickerDeadband exponeras inte här längre — sköts av SilenceAnalysisPanel (legacy BLE-bandbreddsfilter).
 // saturation/maxRisePerSec/maxFallPerSec borttagna 2026-04-25/26 (ingen runtime-effekt).
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = bara disk, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
@@ -796,7 +796,7 @@ function ProfileSettingsView({
         
         <SignalPreview cal={cal} height={180} showLegend={true} />
 
-        <AutoTuneAntiFlickerPanel piBase={piBase} cal={cal} setCal={setCal} />
+        <SilenceAnalysisPanel piBase={piBase} cal={cal} setCal={setCal} />
         
         {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
           const isDyn = key === 'dynamicDamping';
