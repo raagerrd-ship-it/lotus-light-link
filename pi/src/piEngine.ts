@@ -161,7 +161,7 @@ const DEFAULT_CAL: LightCalibration = {
   maxFallPerSec: 2.5,
   flickerDeadband: 0,
   onsetEnergyFloor: 0.05,
-  tickEnergyFloor: 0.05,
+  tickEnergyFloor: 0.02,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
