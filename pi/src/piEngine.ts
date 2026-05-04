@@ -160,8 +160,8 @@ const DEFAULT_CAL: LightCalibration = {
   maxRisePerSec: 8.0,
   maxFallPerSec: 2.5,
   flickerDeadband: 0,
-  onsetEnergyFloor: 0.05,
-  tickEnergyFloor: 0.02,
+  onsetEnergyFloor: 0.01,
+  tickEnergyFloor: 0.01,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
@@ -190,6 +190,15 @@ function migrateLegacyCalibration(cal: any): any {
   // Preserve any explicit lower setting (Party 0, custom dim).
   if (typeof out.brightnessFloor === 'number' && out.brightnessFloor >= 15) {
     out.brightnessFloor = 5;
+  }
+  // 2026-05-04: silence-gate skala bytte från bands.totalRms (avg-per-bin)
+  // till peakBand = max(bassRms, midHiRms). Gamla värden ≥ 0.04 var
+  // kalibrerade mot fel signal — migrera ner till 0.01 (peakBand-skala).
+  if (typeof out.onsetEnergyFloor === 'number' && out.onsetEnergyFloor >= 0.04) {
+    out.onsetEnergyFloor = 0.01;
+  }
+  if (typeof out.tickEnergyFloor === 'number' && out.tickEnergyFloor >= 0.04) {
+    out.tickEnergyFloor = 0.01;
   }
   return out;
 }
@@ -790,9 +799,10 @@ export class PiLightEngine {
         // och delar med dynamicCenter-uppdateringen nedan.
         const bands = getLatestBands();
         const energyFloor = this.cal.onsetEnergyFloor ?? 0;
+        const peakBand = bands ? Math.max(bands.bassRms, bands.midHiRms) : 0;
         const passesEnergyGate =
           energyFloor <= 0 ||
-          (bands != null && Number.isFinite(bands.totalRms) && bands.totalRms >= energyFloor);
+          (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
         if (passesEnergyGate) {
           this.processOnset(flux);
         }
@@ -1117,7 +1127,8 @@ export class PiLightEngine {
       // Forcera energyNorm=0 + använd release så smoothed glidar mjukt ner mot
       // brightnessFloor utan att attackAlpha=1.0 snappar upp på brus-spikar.
       const tickFloor = cal.tickEnergyFloor ?? 0;
-      const inSilence = tickFloor > 0 && bands.totalRms < tickFloor;
+      const peakBand = Math.max(bands.bassRms, bands.midHiRms);
+      const inSilence = tickFloor > 0 && peakBand < tickFloor;
       if (inSilence) energyNorm = 0;
 
       // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
