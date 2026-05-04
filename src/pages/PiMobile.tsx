@@ -197,24 +197,13 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   for (let i = 0; i < weighted.length; i++) {
     const r = weighted[i];
     // Silence-gate (matchar piEngine.tickInner): om peakBand < tickFloor →
-    // energyNorm=0, alpha=releaseAlpha (glide ner till floor).
+    // energyNorm=0, tvinga releaseAlpha (glide ner till floor).
     const inSilence = tickFloor > 0 && r < tickFloor;
     const effR = inSilence ? 0 : r;
-  // Onset state — engine använder rise/decay-alphor via processOnset(), spegla samma logik
-  const onsetBufLen = 7;
-  const fluxBuf: number[] = new Array(onsetBufLen).fill(0);
-  let fluxIdx = 0;
-  let prevFlux = 0;
-  let onsetBoost = 0;
-  let onsetTarget = 0;
-
-  for (let i = 0; i < weighted.length; i++) {
-    const r = weighted[i];
-    // Riktning bestäms av rå-insignalen (inte filtrerad prev) — det är så engine
-    // väljer attack vs release-alpha (energyNorm > smoothed).
-    const isRising = r >= prev;
+    // Riktning bestäms av rå-insignalen — men vid silence tvingas release.
+    const isRising = !inSilence && effR >= prev;
     const alpha = isRising ? attackAlpha : releaseAlpha;
-    let val = prev + alpha * (r - prev);
+    let val = prev + alpha * (effR - prev);
 
     // Dynamics — speglar engine: hoppa över helt om dynamicsEnabled === false,
     // använd centerAlpha (tick-rate-skalad), clamp dynamicCenter till [0.2, 0.7]
