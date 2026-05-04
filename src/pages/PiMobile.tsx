@@ -301,7 +301,7 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
     const toY = (v: number) => pad + ch * (1 - Math.min(v, yMax) / yMax);
 
     // Section labels
-    const labels = ["Låg", "Mellan", "Hög"];
+    const labels = ["Tyst", "Bas", "Mellan", "Diskant", "Tyst"];
     const third = w / 3;
     ctx.font = `${10 * dpr}px sans-serif`;
     ctx.textAlign = "center";
