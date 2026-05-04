@@ -136,6 +136,11 @@ interface LightCalibration {
    *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
    *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
   onsetEnergyFloor: number;
+  /** Tystnads-gate i tickInner. När bands.totalRms < tickEnergyFloor behandlas
+   *  input som rumsbrus: energyNorm forceras till 0 via release, fluxBoost
+   *  blockeras, onsetBoost bleed:as. brightnessFloor håller lampan dim solid.
+   *  0 = av, 0.05 = default. */
+  tickEnergyFloor: number;
   [key: string]: any;
 }
 
@@ -156,6 +161,7 @@ const DEFAULT_CAL: LightCalibration = {
   maxFallPerSec: 2.5,
   flickerDeadband: 0,
   onsetEnergyFloor: 0.05,
+  tickEnergyFloor: 0.05,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
@@ -260,6 +266,8 @@ export interface DiagSnapshot {
   finalR: number; finalG: number; finalB: number;
   tickCount: number;
   lastTickUs: number;
+  inSilence: boolean;
+  tickSilenceCount: number;
 }
 
 const _diag: DiagSnapshot = {
@@ -269,6 +277,7 @@ const _diag: DiagSnapshot = {
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
   tickCount: 0, lastTickUs: 0,
+  inSilence: false, tickSilenceCount: 0,
 };
 
 // Reusable TickData — mutated in place
@@ -1083,6 +1092,15 @@ export class PiLightEngine {
       const midHiGain = w >= 0.5 ? (1 - w) * 2 : 1;
       let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
 
+      // ── 3.5. Tystnads-gate (2026-05-04) ──
+      // Spegelbild av onsetEnergyFloor som gatear express-onset i onFluxReady.
+      // När absolut mic-energi < tickEnergyFloor är det rumsbrus, inte musik.
+      // Forcera energyNorm=0 + använd release så smoothed glidar mjukt ner mot
+      // brightnessFloor utan att attackAlpha=1.0 snappar upp på brus-spikar.
+      const tickFloor = cal.tickEnergyFloor ?? 0;
+      const inSilence = tickFloor > 0 && bands.totalRms < tickFloor;
+      if (inSilence) energyNorm = 0;
+
       // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
       // Körs på tick-takt (50Hz) så filtret är synkat mot output-raten och
       // undviker alias-hack mellan FFT-takt (100Hz) och tick-takt.
@@ -1092,7 +1110,10 @@ export class PiLightEngine {
       // förhindrar boost på vanliga release-ripples; ceiling 0.85 skyddar
       // mot fully-instant snap (visible-flicker-gränsen).
       let alpha: number;
-      if (energyNorm > this.smoothed) {
+      if (inSilence) {
+        // Tystnad: dra mot 0 via release oavsett brus-spikar
+        alpha = tc.releaseAlpha;
+      } else if (energyNorm > this.smoothed) {
         alpha = tc.attackAlpha;
       } else {
         const drop = this.smoothed - energyNorm;
@@ -1117,9 +1138,14 @@ export class PiLightEngine {
 
       // ── 6. Transient boost (0 = av, 1.0 = default, 2.0 = överdrivet) ──
       const transientGain = tc.transientGain;
-      const fluxBoost = transientGain > 0 ? this.onsetBoost * transientGain : 0;
+      const fluxBoost = (transientGain > 0 && !inSilence) ? this.onsetBoost * transientGain : 0;
       energyNorm = energyNorm + fluxBoost;
       if (energyNorm > 1) energyNorm = 1;
+      if (inSilence) {
+        // Bleed onsetBoost-state så gammal flux inte väcker upp på nästa frame
+        this.onsetBoost *= 0.5;
+        if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
+      }
 
       // ── 6b. (Slew-rate limiter borttagen 2026-04-26) ──
       // Anti-alias-bufferten i alsaMic (~30ms rolling average) + EMA i tickInner
@@ -1225,6 +1251,8 @@ export class PiLightEngine {
       _diag.finalB = isPunch ? 255 : _finalColor[2];
       _diag.tickCount++;
       _diag.lastTickUs = ((performance.now() - _tickStart) * 1000 + 0.5) | 0;
+      _diag.inSilence = inSilence;
+      if (inSilence) _diag.tickSilenceCount++;
 
       // ── Emit ──
       const td = _tickData;
