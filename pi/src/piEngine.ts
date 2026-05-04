@@ -1127,7 +1127,8 @@ export class PiLightEngine {
       // Forcera energyNorm=0 + använd release så smoothed glidar mjukt ner mot
       // brightnessFloor utan att attackAlpha=1.0 snappar upp på brus-spikar.
       const tickFloor = cal.tickEnergyFloor ?? 0;
-      const inSilence = tickFloor > 0 && bands.totalRms < tickFloor;
+      const peakBand = Math.max(bands.bassRms, bands.midHiRms);
+      const inSilence = tickFloor > 0 && peakBand < tickFloor;
       if (inSilence) energyNorm = 0;
 
       // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
