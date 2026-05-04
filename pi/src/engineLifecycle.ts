@@ -9,7 +9,9 @@
  *   IGNITION_OFF — manuell UI-disconnect. PLAYING ignoreras tills user reaktiverar.
  *
  * PAUSE-grace: PLAYING→PAUSED triggar shutdownToIgnition() efter
- * IGNITION_REENTRY_GRACE_MS (1500ms). Cancelleras om PLAYING kommer tillbaka.
+ * IGNITION_REENTRY_GRACE_MS (5 min). Cancelleras om PLAYING kommer tillbaka.
+ * Silence-gaten håller lampan dim under pause utan BLE-disconnect, så vi
+ * behöver inte den aggressiva nedrivningen — undviker 3-5s respawn-delay.
  *
  * Lifecycle är ENDA kallaren av engine.setPlaying() i nya flödet.
  * applySonosStateToEngine i index.ts har bara palette/volym/TV-mode kvar.
@@ -21,7 +23,7 @@ import { getSubsystemState } from './ble/state.js';
 export type LifecycleState = 'IGNITION' | 'MOTOR_ON' | 'IGNITION_OFF';
 
 const OVERRIDE_KEY = 'lifecycle-override';
-const IGNITION_REENTRY_GRACE_MS = 1500;
+const IGNITION_REENTRY_GRACE_MS = 5 * 60 * 1000;
 
 let state: LifecycleState = 'IGNITION';
 let pendingShutdownTimer: ReturnType<typeof setTimeout> | null = null;
