@@ -23,7 +23,7 @@ import { getSubsystemState } from './ble/state.js';
 export type LifecycleState = 'IGNITION' | 'MOTOR_ON' | 'IGNITION_OFF';
 
 const OVERRIDE_KEY = 'lifecycle-override';
-const IGNITION_REENTRY_GRACE_MS = 1500;
+const IGNITION_REENTRY_GRACE_MS = 5 * 60 * 1000;
 
 let state: LifecycleState = 'IGNITION';
 let pendingShutdownTimer: ReturnType<typeof setTimeout> | null = null;
