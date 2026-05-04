@@ -809,18 +809,18 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true });
   });
 
-  // Skriver suggestion in i aktiv profil (eller i body.profile om angiven).
-  // Klienten skickar {maxFallPerSec, flickerDeadband} så användaren kan
+  // Skriver suggestion in i aktiv profil.
+  // Klienten skickar {tickEnergyFloor, onsetEnergyFloor} så användaren kan
   // välja att inte tillämpa båda.
   app.post('/api/autotune/apply', (req, res) => {
     const engine = requireEngine(res);
     if (!engine) return;
-    const { maxFallPerSec, flickerDeadband } = req.body ?? {};
+    const { tickEnergyFloor, onsetEnergyFloor } = req.body ?? {};
     const patch: Record<string, number> = {};
-    if (Number.isFinite(maxFallPerSec)) patch.maxFallPerSec = Math.max(0.5, Math.min(10, maxFallPerSec));
-    if (Number.isFinite(flickerDeadband)) patch.flickerDeadband = Math.max(0, Math.min(0.08, flickerDeadband));
+    if (Number.isFinite(tickEnergyFloor)) patch.tickEnergyFloor = Math.max(0, Math.min(0.20, tickEnergyFloor));
+    if (Number.isFinite(onsetEnergyFloor)) patch.onsetEnergyFloor = Math.max(0, Math.min(0.20, onsetEnergyFloor));
     if (Object.keys(patch).length === 0) {
-      return res.status(400).json({ error: 'Need maxFallPerSec and/or flickerDeadband' });
+      return res.status(400).json({ error: 'Need tickEnergyFloor and/or onsetEnergyFloor' });
     }
     const pf = loadProfilesFile();
     const active = pf.activePreset;
