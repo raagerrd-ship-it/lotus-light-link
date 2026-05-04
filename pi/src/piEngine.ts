@@ -160,8 +160,8 @@ const DEFAULT_CAL: LightCalibration = {
   maxRisePerSec: 8.0,
   maxFallPerSec: 2.5,
   flickerDeadband: 0,
-  onsetEnergyFloor: 0.05,
-  tickEnergyFloor: 0.02,
+  onsetEnergyFloor: 0.01,
+  tickEnergyFloor: 0.01,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
