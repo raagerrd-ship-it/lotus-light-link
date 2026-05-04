@@ -949,16 +949,25 @@ export class PiLightEngine {
     sampleCount: number;
     progress: number; // 0..1
     done: boolean;
-    suggestion?: { maxFallPerSec: number; flickerDeadband: number; flickerScore: number; samplesUsed: number; sampleRateHz: number; isPlaying: boolean };
-    current?: { maxFallPerSec: number; flickerDeadband: number };
+    suggestion?: {
+      tickEnergyFloor: number;
+      onsetEnergyFloor: number;
+      silenceRms: number;
+      musicRms: number;
+      silenceRatio: number;        // andel ticks tolkade som tysta (0..1)
+      separation: number;          // music/silence-ratio, högt = tydligt gap
+      samplesUsed: number;
+      sampleRateHz: number;
+      isPlaying: boolean;
+      hasSilentSection: boolean;   // true om vi sett < 0.02 i någon del
+    };
+    current?: { tickEnergyFloor: number; onsetEnergyFloor: number };
   } {
     const elapsed = this.autoTuneStartedAt ? Date.now() - this.autoTuneStartedAt : 0;
     const dur = this.autoTuneDurationMs || 1;
     const progress = Math.max(0, Math.min(1, elapsed / dur));
-    const done = !this.autoTuneActive && this.autoTuneCount > 0 && this.autoTuneStartedAt > 0;
     const inProgress = this.autoTuneActive && elapsed < dur;
 
-    // Auto-stop när tiden gått ut
     if (this.autoTuneActive && elapsed >= dur) {
       this.autoTuneActive = false;
     }
@@ -970,85 +979,95 @@ export class PiLightEngine {
       sampleCount: this.autoTuneCount,
       progress,
       done: !this.autoTuneActive && this.autoTuneCount > 0,
-      current: { maxFallPerSec: this.cal.maxFallPerSec, flickerDeadband: this.cal.flickerDeadband },
+      current: {
+        tickEnergyFloor: this.cal.tickEnergyFloor ?? 0,
+        onsetEnergyFloor: this.cal.onsetEnergyFloor ?? 0,
+      },
     };
     if (!this.autoTuneActive && this.autoTuneCount > 32) {
-      result.suggestion = this.analyzeAutoTuneSamples();
-      result.suggestion.isPlaying = this.playing;
+      const s = this.analyzeAutoTuneSamples();
+      result.suggestion = { ...s, isPlaying: this.playing };
     }
     return result;
   }
 
-  /** Analys: räknar pct-rörelser under sessionen och föreslår maxFallPerSec
-   *  + flickerDeadband. Algoritm:
-   *   - per-tick |Δpct|, ignorera de första 2 samplena (warmup)
-   *   - flickerDeadband ≈ p70(|Δpct|>0) / 100 * 1.2, clamp 0.005..0.08
-   *   - maxFallPerSec ≈ p90(neg-Δ-pct/sek) * 0.7, clamp 0.5..10
-   *   - flickerScore (0..100): andel ticks med |Δ| ≥ 0.5%, scaled */
-  private analyzeAutoTuneSamples(): { maxFallPerSec: number; flickerDeadband: number; flickerScore: number; samplesUsed: number; sampleRateHz: number } {
+  /** Analys: hittar tystnads-partier (brusgolv) och musik-nivå i mic-RMS-loggen.
+   *  - silenceRms = p10 av samples (representerar tysta partier / mellan-låt-glapp)
+   *  - musicRms   = p70 av samples (representerar typisk musik-nivå)
+   *  - tickEnergyFloor föreslås halvvägs mellan dem (geometriskt medel) men aldrig
+   *    > 80% av musicRms — så musik aldrig gatas bort.
+   *  - onsetEnergyFloor sätts något högre (×1.4) — beat-detektorn är känsligare.
+   *  - hasSilentSection = true om vi sett samples ≤ 0.015 (rumsbrus-nivå). */
+  private analyzeAutoTuneSamples(): {
+    tickEnergyFloor: number;
+    onsetEnergyFloor: number;
+    silenceRms: number;
+    musicRms: number;
+    silenceRatio: number;
+    separation: number;
+    samplesUsed: number;
+    sampleRateHz: number;
+    hasSilentSection: boolean;
+  } {
     const N = this.autoTuneCount;
     const cap = this.autoTuneCap;
     const buf = this.autoTuneSamples;
     const tms = this.autoTuneTickMs;
-    // Linearisera ringbuffer (oldest → newest)
     const start = N < cap ? 0 : this.autoTunePos;
-    const linPct = new Float32Array(N);
-    const linDt = new Float32Array(N);
+    const lin = new Float32Array(N);
+    let totalDt = 0;
     for (let i = 0; i < N; i++) {
       const idx = (start + i) % cap;
-      linPct[i] = buf[idx];
-      linDt[i] = tms[idx];
+      lin[i] = buf[idx];
+      totalDt += tms[idx];
     }
-    const skip = Math.min(2, N - 1);
-    const absDeltas: number[] = [];
-    const fallRates: number[] = []; // pct/sek (positiva tal för fall)
-    let bigJitterCount = 0;
-    let totalCount = 0;
-    for (let i = skip + 1; i < N; i++) {
-      const d = linPct[i] - linPct[i - 1];
-      const ad = Math.abs(d);
-      absDeltas.push(ad);
-      totalCount++;
-      if (ad >= 0.5) bigJitterCount++;
-      if (d < 0) {
-        const dt = Math.max(0.005, linDt[i] / 1000);
-        fallRates.push((-d) / 100 / dt); // normaliserad enhet/sek (matchar maxFallPerSec)
-      }
-    }
-    const sortedAbs = absDeltas.filter(x => x > 0).sort((a, b) => a - b);
-    const sortedFall = fallRates.sort((a, b) => a - b);
+    // Hoppa warmup (första 5 samples), sortera resten
+    const skip = Math.min(5, N - 1);
+    const sorted = Array.from(lin.slice(skip)).sort((a, b) => a - b);
     const pctile = (arr: number[], p: number): number =>
       arr.length === 0 ? 0 : arr[Math.min(arr.length - 1, Math.max(0, Math.floor(arr.length * p)))];
 
-    const p70Abs = pctile(sortedAbs, 0.70);
-    const p90Fall = pctile(sortedFall, 0.90);
+    const silenceRms = pctile(sorted, 0.10);
+    const musicRms = pctile(sorted, 0.70);
 
-    // Förslag — clamp inom UI-slidrar
-    const dbRaw = (p70Abs / 100) * 1.2;
-    const flickerDeadband = Math.round(Math.max(0.005, Math.min(0.08, dbRaw)) * 1000) / 1000;
-    const fallRaw = p90Fall * 0.7;
-    const maxFallPerSec = Math.round(Math.max(0.5, Math.min(10, fallRaw)) * 4) / 4; // step 0.25
+    // Geometriskt medel mellan brusgolv och musik = robust separator.
+    // Faller tillbaka till silenceRms*1.5 om gap saknas (ingen tystnad samplad).
+    const gm = silenceRms > 0 && musicRms > silenceRms
+      ? Math.sqrt(silenceRms * musicRms)
+      : silenceRms * 1.5;
+    const cap80 = musicRms * 0.8;
+    const tickRaw = Math.min(gm, cap80);
+    const tickEnergyFloor = Math.round(Math.max(0.005, Math.min(0.20, tickRaw)) * 1000) / 1000;
+    const onsetRaw = tickEnergyFloor * 1.4;
+    const onsetEnergyFloor = Math.round(Math.max(0.005, Math.min(0.20, onsetRaw)) * 1000) / 1000;
 
-    const flickerScore = totalCount > 0
-      ? Math.round(Math.min(100, (bigJitterCount / totalCount) * 200))
-      : 0;
+    // Andel samples under tickEnergyFloor (= det som skulle ha gatats)
+    let belowCount = 0;
+    for (let i = skip; i < N; i++) if (lin[i] < tickEnergyFloor) belowCount++;
+    const silenceRatio = N > skip ? belowCount / (N - skip) : 0;
 
-    const avgDt = N > 1 ? (linDt.reduce((a, b) => a + b, 0) / N) : this.tickMs;
+    const separation = silenceRms > 0 ? Math.round((musicRms / silenceRms) * 10) / 10 : 0;
+    const hasSilentSection = silenceRms <= 0.015 || sorted[0] <= 0.010;
+
+    const avgDt = N > 0 ? totalDt / N : this.tickMs;
     const sampleRateHz = avgDt > 0 ? Math.round(10000 / avgDt) / 10 : 0;
 
     return {
-      maxFallPerSec,
-      flickerDeadband,
-      flickerScore,
-      samplesUsed: N,
+      tickEnergyFloor,
+      onsetEnergyFloor,
+      silenceRms: Math.round(silenceRms * 1000) / 1000,
+      musicRms: Math.round(musicRms * 1000) / 1000,
+      silenceRatio: Math.round(silenceRatio * 100) / 100,
+      separation,
+      samplesUsed: N - skip,
       sampleRateHz,
+      hasSilentSection,
     };
   }
 
-  /** Intern: kallas från tickInner med raw pct (efter slew, före deadband). */
-  private recordAutoTuneSample(rawPct: number): void {
+  /** Intern: kallas från tickInner med bands.totalRms (rå mic-energi). */
+  private recordAutoTuneSample(rms: number): void {
     if (!this.autoTuneActive) return;
-    // Auto-stop check
     const elapsed = Date.now() - this.autoTuneStartedAt;
     if (elapsed >= this.autoTuneDurationMs) {
       this.autoTuneActive = false;
@@ -1056,7 +1075,7 @@ export class PiLightEngine {
     }
     const cap = this.autoTuneCap;
     if (cap === 0) return;
-    this.autoTuneSamples[this.autoTunePos] = rawPct;
+    this.autoTuneSamples[this.autoTunePos] = rms;
     this.autoTuneTickMs[this.autoTunePos] = this.tickMs;
     this.autoTunePos = (this.autoTunePos + 1) % cap;
     if (this.autoTuneCount < cap) this.autoTuneCount++;
