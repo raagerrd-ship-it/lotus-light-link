@@ -82,6 +82,7 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
   { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast (expanderad), negativt = utjämning (komprimerad)" },
   { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "Bas/Diskant-filter — 0 = endast diskant (högpass), 0.5 = 50/50 mix, 1.0 = endast bas (lågpass)" },
   { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 100, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
+  { key: "flickerDeadband", label: "Stabilitet", min: 0, max: 0.05, step: 0.005, description: "Anti-flicker (Weber-Fechner) — 0 = av, 0.01 subtil, 0.02 balanserad, 0.04 aggressiv" },
 ];
 
 // Avancerat: perceptualGamma + transientGain + punchWhiteThreshold + två sammanslagna meta-sliders.
