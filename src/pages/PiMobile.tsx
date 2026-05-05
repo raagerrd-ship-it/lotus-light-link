@@ -1527,10 +1527,7 @@ export default function PiMobile() {
           onsetRefractoryMs: p.onsetRefractoryMs,
           onsetEnergyFloor: p.onsetEnergyFloor,
           tickEnergyFloor: p.tickEnergyFloor,
-          maxRisePerSec: p.maxRisePerSec,
-          maxFallPerSec: p.maxFallPerSec,
           flickerDeadband: p.flickerDeadband,
-          hiShelfGainDb: 6,
         };
       }
       const results = await Promise.allSettled([
@@ -1599,14 +1596,11 @@ export default function PiMobile() {
           punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
           perceptualGamma: c?.perceptualGamma ?? (typeof c?.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
           transientGain: c?.transientGain ?? (typeof c?.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
-          saturation: c?.saturation ?? DEFAULT_CAL.saturation,
           dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
           onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
           onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
           onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
           tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
-          maxRisePerSec: c?.maxRisePerSec ?? DEFAULT_CAL.maxRisePerSec,
-          maxFallPerSec: c?.maxFallPerSec ?? DEFAULT_CAL.maxFallPerSec,
           flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
         };
       };
