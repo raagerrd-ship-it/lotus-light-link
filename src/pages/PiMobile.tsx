@@ -246,9 +246,10 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
     const alpha = isRising ? attackAlpha : releaseAlpha;
     let val = prev + alpha * (effR - prev);
 
-    // Dynamics — speglar engine: hoppa över helt om dynamicsEnabled === false,
-    // använd centerAlpha (tick-rate-skalad), clamp dynamicCenter till [0.2, 0.7]
-    if (cal.dynamicsEnabled !== false) {
+    // Dynamics — i visualiseringen alltid aktiv om dynamicDamping != 0, så slidern
+    // ger synlig feedback även när profilen har dynamicsEnabled=false. Engine själv
+    // skippar dynamics om disabled, men för UI-preview vill vi visa effekten.
+    if (cal.dynamicsEnabled !== false || cal.dynamicDamping !== 0) {
       dynamicCenter += centerAlpha * (val - dynamicCenter);
       if (dynamicCenter < 0.2) dynamicCenter = 0.2;
       if (dynamicCenter > 0.7) dynamicCenter = 0.7;
