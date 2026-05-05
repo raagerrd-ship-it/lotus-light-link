@@ -178,25 +178,10 @@ function migrateLegacyCalibration(cal: any): any {
     out.perceptualGamma = out.perceptualCurve ? 1.8 : 0;
   }
   delete out.perceptualCurve;
-  // 2026-04-30: flickerDeadband moved out of profiles. Old saved cals
-  // may have any value 0-0.08 (often 0.02 from old Normal default, up
-  // to 0.07 from manual tweaks). Reset to 0 so the new always-send-on-
-  // change policy takes effect. Power-users can re-set per-cal.
-  if (typeof out.flickerDeadband === 'number' && out.flickerDeadband > 0) {
-    out.flickerDeadband = 0;
-  }
-  // 2026-04-30: brightnessFloor migration removed — user-justerbar slider
-  // ska respekteras. Tidigare tvingades floor >= 15 ner till 5, vilket
-  // skrev över medvetna inställningar (t.ex. 20%) vid varje load.
-  // 2026-05-04: silence-gate skala bytte från bands.totalRms (avg-per-bin)
-  // till peakBand = max(bassRms, midHiRms). Gamla värden ≥ 0.04 var
-  // kalibrerade mot fel signal — migrera ner till 0.01 (peakBand-skala).
-  if (typeof out.onsetEnergyFloor === 'number' && out.onsetEnergyFloor >= 0.04) {
-    out.onsetEnergyFloor = 0.01;
-  }
-  if (typeof out.tickEnergyFloor === 'number' && out.tickEnergyFloor >= 0.04) {
-    out.tickEnergyFloor = 0.01;
-  }
+  // Inga värde-migreringar — slider-inställningar respekteras alltid.
+  // (Tidigare clampades flickerDeadband>0 → 0, brightnessFloor≥15 → 5,
+  //  onsetEnergyFloor≥0.04 → 0.01, tickEnergyFloor≥0.04 → 0.01 vid varje
+  //  load, vilket skrev över medvetna user-värden. Borttaget 2026-05-05.)
   return out;
 }
 
