@@ -241,6 +241,7 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   const punched: boolean[] = [];
   let smoothed = 0;
   let dynamicCenter = Math.max(0.2, Math.min(0.7, centerSeed));
+  let prevEnergyNorm = weighted[0]?.energyNorm ?? 0;
 
   // Onset state — engine använder rise/decay-alphor via processOnset(), spegla samma logik
   const onsetBufLen = 7;
@@ -251,21 +252,22 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   let onsetTarget = 0;
 
   for (let i = 0; i < weighted.length; i++) {
-    const r = weighted[i];
+    const point = weighted[i];
     // Silence-gate (matchar piEngine.tickInner): om peakBand < tickFloor →
     // energyNorm=0, tvinga releaseAlpha (glide ner till floor).
-    const inSilence = tickFloor > 0 && r < tickFloor;
-    const effR = inSilence ? 0 : r;
+    const inSilence = tickFloor > 0 && point.peakRms < tickFloor;
+    const effR = inSilence ? 0 : point.energyNorm;
     // Riktning bestäms av rå-insignalen — men vid silence tvingas release.
-    const isRising = !inSilence && effR >= prev;
+    const isRising = !inSilence && effR >= smoothed;
     const alpha = isRising ? attackAlpha : releaseAlpha;
-    let val = prev + alpha * (effR - prev);
+    smoothed = smoothed + alpha * (effR - smoothed);
+    let val = smoothed;
 
     // Dynamics — i visualiseringen alltid aktiv om dynamicDamping != 0, så slidern
     // ger synlig feedback även när profilen har dynamicsEnabled=false. Engine själv
     // skippar dynamics om disabled, men för UI-preview vill vi visa effekten.
     if (cal.dynamicsEnabled !== false || cal.dynamicDamping !== 0) {
-      dynamicCenter += centerAlpha * (val - dynamicCenter);
+      dynamicCenter += centerAlpha * (point.centerRaw - dynamicCenter);
       if (dynamicCenter < 0.2) dynamicCenter = 0.2;
       if (dynamicCenter > 0.7) dynamicCenter = 0.7;
       val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
@@ -274,7 +276,8 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
     // Transient boost — engine: processOnset(flux) sätter onsetTarget=0.20 vid candidate,
     // sen rise mot target via onsetRiseAlpha + decay via onsetDecay. Additiv på energyNorm.
     if ((cal.transientGain ?? 0) > 0 && !inSilence) {
-      const flux = Math.max(0, r - (i > 0 ? weighted[i - 1] : r));
+      const flux = Math.max(0, point.energyNorm - (i > 0 ? prevEnergyNorm : point.energyNorm));
+      prevEnergyNorm = point.energyNorm;
       fluxBuf[fluxIdx % onsetBufLen] = flux;
       fluxIdx++;
       const sorted = fluxBuf.slice().sort((a, b) => a - b);
@@ -321,7 +324,6 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
 
     val = pct / 100;
     if (val < 0) val = 0;
-    prev = val > 1 ? 1 : val;
     values.push(val);
     rising.push(isRising);
     punched.push(didPunch);
