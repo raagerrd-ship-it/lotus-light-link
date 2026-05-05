@@ -199,10 +199,25 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   const onsetRiseAlpha = 1 - Math.pow(0.05, RATIO);
 
   // bassWeight: monotonic crossfade i engine (bassGain=w, midHiGain=1-w).
-  // Skippas i visualiseringen — verkar i frekvensdomänen (bands.bassRms vs
-  // bands.midHiRms) och kan inte återges meningsfullt på en time-domain-kurva
-  // utan separata band.
-  const weighted = raw.slice();
+  // Visualiseringen mappar kurvans 3 sektioner till band:
+  //   t<0.40 = bas (skalas med bassGain=w)
+  //   0.40<=t<0.70 = mellan (linjär blend mellan bassGain och midHiGain)
+  //   t>=0.70 = diskant (skalas med midHiGain=1-w)
+  // Tystnads-sektioner lämnas oförändrade.
+  const w = cal.bassWeight;
+  const bassGain = w;
+  const midHiGain = 1 - w;
+  const weighted = raw.map((v, i) => {
+    const t = i / (raw.length - 1);
+    if (t < 0.10 || t >= 0.90) return v;
+    let g: number;
+    if (t < 0.40) g = bassGain;
+    else if (t < 0.70) {
+      const u = (t - 0.40) / 0.30;
+      g = bassGain * (1 - u) + midHiGain * u;
+    } else g = midHiGain;
+    return v * g;
+  });
 
   const tickFloor = (cal as any).tickEnergyFloor ?? 0.01;
 
