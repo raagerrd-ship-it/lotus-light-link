@@ -429,9 +429,13 @@ function SignalPreview({ cal, height = 90, showLegend = true }: { cal: typeof DE
     ctx.strokeStyle = "rgba(255,255,255,0.6)";
     ctx.lineWidth = 1.5 * dpr;
     ctx.beginPath();
+    // Normalisera rå-kurvan med samma skala (×PREVIEW_RAW_SCALE) som processCurve använder
+    // — annars blir input pytteliten (0–0.25) jämfört med output (0–1) och visuellt
+    // ojämförbart även när dynamik är avstängd.
     for (let i = 0; i < CURVE_POINTS; i++) {
       const x = i * step;
-      i === 0 ? ctx.moveTo(x, toY(RAW_CURVE[i])) : ctx.lineTo(x, toY(RAW_CURVE[i]));
+      const yv = normalizePreviewRms(RAW_CURVE[i]);
+      i === 0 ? ctx.moveTo(x, toY(yv)) : ctx.lineTo(x, toY(yv));
     }
     ctx.stroke();
     ctx.restore();
