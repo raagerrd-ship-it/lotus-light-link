@@ -163,7 +163,7 @@ export const bleStats = {
   // Sub-frame onset express path (2026-04-29):
   onsetExpressCount: 0,        // antal sub-frame writes triggade av detected onset
   onsetExpressBusyCount: 0,    // antal gånger express-write blockerades av lease/ACL-gate
-  adaptiveReleaseAlphaMax: 0,  // high-water mark av computed release alpha (sanity 0.15–0.85)
+  // adaptiveReleaseAlphaMax borttagen 2026-05-04 — adaptive release-boost slopad
   slotLeaseMs: 0,              // mirror av aktuell setSlotLeaseMs() — synlig effektiv lease
   lastStuckReason: null as string | null,
   tickOkCount: 0,
