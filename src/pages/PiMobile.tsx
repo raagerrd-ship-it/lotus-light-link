@@ -843,6 +843,43 @@ function SilenceAnalysisPanel({
   );
 }
 
+/** Live-indikator: % av frames där anti-flicker deadband blockerade en write. Pollar /api/status @ 1s. */
+function DeadbandActivityIndicator({ piBase, active }: { piBase: string; active: boolean }) {
+  const [pct, setPct] = useState<number | null>(null);
+  const prev = useRef<{ ok: number; blocked: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2500) });
+        if (!r.ok || cancelled) return;
+        const json = await r.json();
+        const s = json?.ble?.stats;
+        if (!s || cancelled) return;
+        const ok = Number(s.tickOkCount ?? 0);
+        const blocked = Number(s.deadbandBlockedCount ?? 0);
+        if (prev.current) {
+          const dOk = ok - prev.current.ok;
+          const dBlocked = blocked - prev.current.blocked;
+          const total = dOk + dBlocked;
+          if (total > 0) setPct((dBlocked / total) * 100);
+        }
+        prev.current = { ok, blocked };
+      } catch {}
+    };
+    poll();
+    const iv = setInterval(poll, 1000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [piBase]);
+
+  if (!active) return <p className="text-[10px] text-muted-foreground/60 mt-0.5 italic">Av — varje mikro-ändring skickas</p>;
+  if (pct === null) return <p className="text-[10px] text-muted-foreground/60 mt-0.5">Mäter aktivitet…</p>;
+  const rounded = Math.round(pct);
+  const tone = pct < 5 ? 'text-muted-foreground/60' : pct > 60 ? 'text-orange-400' : 'text-muted-foreground';
+  const note = pct < 5 ? ' (knappt aktiv)' : pct > 60 ? ' (mycket stel — överväg sänka)' : '';
+  return <p className={`text-[10px] mt-0.5 ${tone}`}>Aktiv på {rounded}% av frames{note}</p>;
+}
+
 
 function ProfileSettingsView({
   cal, setCal, activePreset,
@@ -918,6 +955,7 @@ function ProfileSettingsView({
                 )}
               </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+              {key === 'flickerDeadband' && <DeadbandActivityIndicator piBase={piBase} active={cal.flickerDeadband > 0} />}
             </div>
           );
         })}
