@@ -133,18 +133,18 @@ function buildRawCurve(): number[] {
       // Bas-tung passage — låg frekvens, måttlig nivå
       const u = (t - 0.10) / 0.30;
       const env = Math.sin(u * Math.PI); // mjuk in/ut
-      amp = 0.03 + env * 0.18 * (0.7 + 0.3 * Math.sin(u * 18));
+      amp = 0.025 + env * 0.10 * (0.7 + 0.3 * Math.sin(u * 18));
     } else if (t < 0.70) {
       // Mellanband — högre, mer puls
       const u = (t - 0.40) / 0.30;
       const env = Math.sin(u * Math.PI);
-      amp = 0.03 + env * 0.28 * (0.6 + 0.4 * Math.sin(u * 30));
+      amp = 0.025 + env * 0.15 * (0.6 + 0.4 * Math.sin(u * 30));
     } else if (t < 0.90) {
       // Diskant — kort men intensivt med transienter
       const u = (t - 0.70) / 0.20;
       const env = Math.sin(u * Math.PI);
       const transient = Math.pow(Math.max(0, Math.sin(u * 50)), 6);
-      amp = 0.03 + env * (0.22 + 0.20 * transient);
+      amp = 0.025 + env * (0.13 + 0.12 * transient);
     } else {
       amp = 0.005; // tyst igen
     }
