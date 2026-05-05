@@ -43,7 +43,7 @@ type ProfileName = typeof PROFILE_NAMES[number];
 const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
   Lugn:   { bassWeight: 0.7, attackAlpha: 0.061, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 3, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true, onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05 },
   Normal: { bassWeight: 0.8, attackAlpha: 1.0,   releaseAlpha: 0.15,  dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.05 },
-  Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, onsetThreshold: 1.6, onsetRefractoryMs: 90, onsetEnergyFloor: 0.03 },
+  Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.5,   dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, onsetThreshold: 1.6, onsetRefractoryMs: 90, onsetEnergyFloor: 0.03 },
   Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true, onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05 },
   // bassWeight semantik: 0=bara disk, 0.5=neutral (båda 100%), 1.0=bara bas. Asymmetrisk dämpning av "andra" sidan.
   // saturation/maxRisePerSec/maxFallPerSec/hiShelfGainDb borttagna 2026-05-04 — ingen runtime-effekt.
