@@ -185,12 +185,9 @@ function migrateLegacyCalibration(cal: any): any {
   if (typeof out.flickerDeadband === 'number' && out.flickerDeadband > 0) {
     out.flickerDeadband = 0;
   }
-  // 2026-04-30: brightnessFloor lowered to give quiet passages real fade.
-  // Migrate values >= 15 (old Normal=20, manual tweaks) down to 5.
-  // Preserve any explicit lower setting (Party 0, custom dim).
-  if (typeof out.brightnessFloor === 'number' && out.brightnessFloor >= 15) {
-    out.brightnessFloor = 5;
-  }
+  // 2026-04-30: brightnessFloor migration removed — user-justerbar slider
+  // ska respekteras. Tidigare tvingades floor >= 15 ner till 5, vilket
+  // skrev över medvetna inställningar (t.ex. 20%) vid varje load.
   // 2026-05-04: silence-gate skala bytte från bands.totalRms (avg-per-bin)
   // till peakBand = max(bassRms, midHiRms). Gamla värden ≥ 0.04 var
   // kalibrerade mot fel signal — migrera ner till 0.01 (peakBand-skala).
