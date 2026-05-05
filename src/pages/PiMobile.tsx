@@ -943,6 +943,49 @@ function AdvancedCalibrationSection({ cal, setCal }: { cal: Cal; setCal: (c: Cal
             <p className="text-[10px] text-muted-foreground mt-0.5">Höj om bakgrundsbrus triggar pulser i tysta partier (0 = av, 0.02 = default). Styr tick + onset energy-floor symmetriskt.</p>
           </div>
 
+          {/* Transient boost */}
+          {(() => {
+            const c = ADVANCED_TRANSIENT_CONFIG;
+            const v = cal.transientGain;
+            const display = v === 0 ? 'av' : `${v}${c.unit}`;
+            return (
+              <div>
+                <div className="flex justify-between text-sm mb-0.5">
+                  <span>{c.label}</span>
+                  <span className={`font-mono text-xs ${v === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{display}</span>
+                </div>
+                <input
+                  type="range" min={c.min} max={c.max} step={c.step} value={v}
+                  onChange={(e) => setCal({ ...cal, transientGain: parseFloat(e.target.value) })}
+                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">{c.description}</p>
+              </div>
+            );
+          })()}
+
+          {/* Vita peaks */}
+          {(() => {
+            const c = ADVANCED_PUNCH_WHITE_CONFIG;
+            const v = cal.punchWhiteThreshold;
+            const display = v >= 100 ? 'av' : `${v}${c.unit}`;
+            return (
+              <div>
+                <div className="flex justify-between text-sm mb-0.5">
+                  <span>{c.label}</span>
+                  <span className={`font-mono text-xs ${v >= 100 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{display}</span>
+                </div>
+                <input
+                  type="range" min={c.min} max={c.max} step={c.step} value={v}
+                  onChange={(e) => setCal({ ...cal, punchWhiteThreshold: parseFloat(e.target.value) })}
+                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">{c.description}</p>
+              </div>
+            );
+          })()}
+
+          {/* Perceptuell kurva */}
           {(() => {
             const c = ADVANCED_GAMMA_CONFIG;
             const v = cal.perceptualGamma;
