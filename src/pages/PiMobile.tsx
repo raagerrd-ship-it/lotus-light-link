@@ -153,6 +153,12 @@ function buildRawCurve(): number[] {
 }
 
 const RAW_CURVE = buildRawCurve();
+const PREVIEW_RAW_SCALE = 5; // matchar piEngine normalizeFixed(): RMS ~0–0.2 → 0–1-domän
+
+function normalizePreviewRms(value: number): number {
+  const n = value * PREVIEW_RAW_SCALE;
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
 
 function normalizeMacInput(value: string): string {
   const hex = value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 12);
@@ -198,34 +204,44 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   const onsetDecay = Math.pow(0.04, SEC_RATIO);
   const onsetRiseAlpha = 1 - Math.pow(0.05, RATIO);
 
-  // bassWeight: monotonic crossfade i engine (bassGain=w, midHiGain=1-w).
-  // Visualiseringen mappar kurvans 3 sektioner till band:
-  //   t<0.40 = bas (skalas med bassGain=w)
-  //   0.40<=t<0.70 = mellan (linjär blend mellan bassGain och midHiGain)
-  //   t>=0.70 = diskant (skalas med midHiGain=1-w)
-  // Tystnads-sektioner lämnas oförändrade.
+  // bassWeight: spegla engine-pipelinen: RMS-band → normalizeFixed(*5) → monotonic crossfade.
+  // Dynamics får också ett warm-startat center från samma normaliserade bandnivåer;
+  // annars startar en statisk preview från 0.5 och positiv dynamik trycker allt mot golvet.
   const w = cal.bassWeight;
   const bassGain = w;
   const midHiGain = 1 - w;
   const weighted = raw.map((v, i) => {
     const t = i / (raw.length - 1);
-    if (t < 0.10 || t >= 0.90) return v;
-    let g: number;
-    if (t < 0.40) g = bassGain;
+    let bassRms = v;
+    let midHiRms = v;
+    if (t >= 0.10 && t < 0.40) midHiRms = 0;
     else if (t < 0.70) {
       const u = (t - 0.40) / 0.30;
-      g = bassGain * (1 - u) + midHiGain * u;
-    } else g = midHiGain;
-    return v * g;
+      bassRms = v * (1 - u);
+      midHiRms = v * u;
+    } else if (t < 0.90) bassRms = 0;
+
+    const bassNorm = normalizePreviewRms(bassRms);
+    const midHiNorm = normalizePreviewRms(midHiRms);
+    return {
+      energyNorm: bassNorm * bassGain + midHiNorm * midHiGain,
+      peakRms: Math.max(bassRms, midHiRms),
+      centerRaw: bassNorm * 0.5 + midHiNorm * 0.5,
+    };
   });
 
   const tickFloor = (cal as any).tickEnergyFloor ?? 0.01;
+  const centerSeedSamples = weighted.filter((p) => !(tickFloor > 0 && p.peakRms < tickFloor)).map((p) => p.centerRaw);
+  const centerSeed = centerSeedSamples.length
+    ? centerSeedSamples.reduce((sum, v) => sum + v, 0) / centerSeedSamples.length
+    : 0.5;
 
   const values: number[] = [];
   const rising: boolean[] = [];
   const punched: boolean[] = [];
-  let prev = weighted[0];
-  let dynamicCenter = 0.5;
+  let smoothed = 0;
+  let dynamicCenter = Math.max(0.2, Math.min(0.7, centerSeed));
+  let prevEnergyNorm = weighted[0]?.energyNorm ?? 0;
 
   // Onset state — engine använder rise/decay-alphor via processOnset(), spegla samma logik
   const onsetBufLen = 7;
@@ -236,21 +252,22 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   let onsetTarget = 0;
 
   for (let i = 0; i < weighted.length; i++) {
-    const r = weighted[i];
+    const point = weighted[i];
     // Silence-gate (matchar piEngine.tickInner): om peakBand < tickFloor →
     // energyNorm=0, tvinga releaseAlpha (glide ner till floor).
-    const inSilence = tickFloor > 0 && r < tickFloor;
-    const effR = inSilence ? 0 : r;
+    const inSilence = tickFloor > 0 && point.peakRms < tickFloor;
+    const effR = inSilence ? 0 : point.energyNorm;
     // Riktning bestäms av rå-insignalen — men vid silence tvingas release.
-    const isRising = !inSilence && effR >= prev;
+    const isRising = !inSilence && effR >= smoothed;
     const alpha = isRising ? attackAlpha : releaseAlpha;
-    let val = prev + alpha * (effR - prev);
+    smoothed = smoothed + alpha * (effR - smoothed);
+    let val = smoothed;
 
     // Dynamics — i visualiseringen alltid aktiv om dynamicDamping != 0, så slidern
     // ger synlig feedback även när profilen har dynamicsEnabled=false. Engine själv
     // skippar dynamics om disabled, men för UI-preview vill vi visa effekten.
     if (cal.dynamicsEnabled !== false || cal.dynamicDamping !== 0) {
-      dynamicCenter += centerAlpha * (val - dynamicCenter);
+      dynamicCenter += centerAlpha * (point.centerRaw - dynamicCenter);
       if (dynamicCenter < 0.2) dynamicCenter = 0.2;
       if (dynamicCenter > 0.7) dynamicCenter = 0.7;
       val = applyDynamics(val, dynamicCenter, cal.dynamicDamping);
@@ -259,7 +276,8 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
     // Transient boost — engine: processOnset(flux) sätter onsetTarget=0.20 vid candidate,
     // sen rise mot target via onsetRiseAlpha + decay via onsetDecay. Additiv på energyNorm.
     if ((cal.transientGain ?? 0) > 0 && !inSilence) {
-      const flux = Math.max(0, r - (i > 0 ? weighted[i - 1] : r));
+      const flux = Math.max(0, point.energyNorm - (i > 0 ? prevEnergyNorm : point.energyNorm));
+      prevEnergyNorm = point.energyNorm;
       fluxBuf[fluxIdx % onsetBufLen] = flux;
       fluxIdx++;
       const sorted = fluxBuf.slice().sort((a, b) => a - b);
@@ -306,7 +324,6 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
 
     val = pct / 100;
     if (val < 0) val = 0;
-    prev = val > 1 ? 1 : val;
     values.push(val);
     rising.push(isRising);
     punched.push(didPunch);
