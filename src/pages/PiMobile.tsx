@@ -210,16 +210,15 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   const w = cal.bassWeight;
   const bassGain = w;
   const midHiGain = 1 - w;
+  // Testsignalen har tre tydliga zoner: ren bas (t<0.40), tystnad/övergång (0.40–0.60),
+  // ren diskant (t>=0.60). Banden är ömsesidigt exklusiva så att bassWeight=1 verkligen
+  // bara visar bas-energin och bassWeight=0 bara visar diskant-energin.
   const weighted = raw.map((v, i) => {
     const t = i / (raw.length - 1);
-    let bassRms = v;
-    let midHiRms = v;
-    if (t >= 0.10 && t < 0.40) midHiRms = 0;
-    else if (t < 0.70) {
-      const u = (t - 0.40) / 0.30;
-      bassRms = v * (1 - u);
-      midHiRms = v * u;
-    } else if (t < 0.90) bassRms = 0;
+    let bassRms = 0;
+    let midHiRms = 0;
+    if (t < 0.40) bassRms = v;
+    else if (t >= 0.60) midHiRms = v;
 
     const bassNorm = normalizePreviewRms(bassRms);
     const midHiNorm = normalizePreviewRms(midHiRms);
