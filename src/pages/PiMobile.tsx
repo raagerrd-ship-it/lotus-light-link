@@ -74,21 +74,20 @@ type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | '
 // flickerDeadband exponeras inte här längre — sköts av SilenceAnalysisPanel (legacy BLE-bandbreddsfilter).
 // saturation/maxRisePerSec/maxFallPerSec/hiShelfGainDb borttagna 2026-04-25 / 2026-05-04 (ingen runtime-effekt).
 //
-// 2026-05-04: 7 essentiella sliders i primär-vy. perceptualGamma + onset-finjustering
-// flyttade till "Avancerat"-collapsible nedan. onsetThreshold + onsetRefractoryMs slås
-// ihop till EN "Onset-känslighet" 0-1; tickEnergyFloor + onsetEnergyFloor → EN "Tystnadströskel".
+// 2026-05-04: 5 essentiella sliders i primär-vy. transientGain, punchWhiteThreshold,
+// perceptualGamma, onset-finjustering + tystnadströskel flyttade till "Avancerat".
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
   { key: "attack", label: "Punch", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar attack på beats" },
   { key: "softness", label: "Softness", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjuk fade-out" },
+  { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast (expanderad), negativt = utjämning (komprimerad)" },
   { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "0 = bara diskant, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
-  { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
-  { key: "transientGain", label: "Transient boost", min: 0, max: 1.5, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 1.5 = överdrivna trumslag" },
-  { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 30, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
-  { key: "punchWhiteThreshold", label: "Vita peaks", min: 90, max: 100, step: 1, unit: "%", description: "100 = av. Över detta värde flashas vit (maximala intensitets-peaks)" },
+  { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 100, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
 ];
 
-// Avancerat: perceptualGamma + två sammanslagna meta-sliders (mappar internt 2 fält var).
+// Avancerat: perceptualGamma + transientGain + punchWhiteThreshold + två sammanslagna meta-sliders.
 const ADVANCED_GAMMA_CONFIG = { key: 'perceptualGamma' as NumericCalKey, label: 'Perceptuell kurva', min: 0, max: 2.2, step: 0.1, description: '0 = av, 1.0 = linjär, 1.8 = mjuk, 2.2 = kraftigt komprimerad' };
+const ADVANCED_TRANSIENT_CONFIG = { key: 'transientGain' as NumericCalKey, label: 'Transient boost', min: 0, max: 1.5, step: 0.1, unit: '×', description: '0 = av, 1.0 = normal, 1.5 = överdrivna trumslag' };
+const ADVANCED_PUNCH_WHITE_CONFIG = { key: 'punchWhiteThreshold' as NumericCalKey, label: 'Vita peaks', min: 90, max: 100, step: 1, unit: '%', description: '100 = av. Över detta värde flashas vit (maximala intensitets-peaks)' };
 
 /** Onset-känslighet 0–1 (1 = mest känslig). Mappar linjärt till threshold (4.0→1.5) + refractory (300→80ms). */
 function onsetSensToFields(s: number): { onsetThreshold: number; onsetRefractoryMs: number } {
