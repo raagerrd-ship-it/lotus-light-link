@@ -918,6 +918,7 @@ function ProfileSettingsView({
                 )}
               </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+              {key === 'flickerDeadband' && <DeadbandActivityIndicator piBase={piBase} active={cal.flickerDeadband > 0} />}
             </div>
           );
         })}
