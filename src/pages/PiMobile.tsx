@@ -80,7 +80,7 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
   { key: "attack", label: "Punch", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar attack på beats" },
   { key: "softness", label: "Softness", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjuk fade-out" },
   { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast (expanderad), negativt = utjämning (komprimerad)" },
-  { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "0 = bara diskant, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
+  { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "Bas/Diskant-filter — 0 = endast diskant (högpass), 0.5 = 50/50 mix, 1.0 = endast bas (lågpass)" },
   { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 100, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
 ];
 
