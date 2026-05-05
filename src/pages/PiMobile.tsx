@@ -16,9 +16,9 @@ const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.04 },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03 },
   Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02 },
-  Party:  { bassWeight: 0.3, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.01 },
+  Party:  { bassWeight: 0.3, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005 },
   Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02 },
 };
 
@@ -82,6 +82,7 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
   { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast (expanderad), negativt = utjämning (komprimerad)" },
   { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "Bas/Diskant-filter — 0 = endast diskant (högpass), 0.5 = 50/50 mix, 1.0 = endast bas (lågpass)" },
   { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 100, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
+  { key: "flickerDeadband", label: "Stabilitet", min: 0, max: 0.05, step: 0.005, description: "Anti-flicker (Weber-Fechner) — 0 = av, 0.01 subtil, 0.02 balanserad, 0.04 aggressiv" },
 ];
 
 // Avancerat: perceptualGamma + transientGain + punchWhiteThreshold + två sammanslagna meta-sliders.
