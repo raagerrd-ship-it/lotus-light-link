@@ -1116,11 +1116,9 @@ export class PiLightEngine {
       // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
       // Körs på tick-takt (50Hz) så filtret är synkat mot output-raten och
       // undviker alias-hack mellan FFT-takt (100Hz) och tick-takt.
-      // Adaptiv release (2026-04-29): release-alpha skalas proportionellt mot
-      // dropp-magnitud. Hårda drops (track gaps, breakdowns) "punchar ut"
-      // tailen; mjuka decay-rörelser behåller silky-releasen. Threshold
-      // förhindrar boost på vanliga release-ripples; ceiling 0.85 skyddar
-      // mot fully-instant snap (visible-flicker-gränsen).
+      // Adaptive "punch on drop" borttagen 2026-05-04 — punch hör till
+      // attack-pathen (attackAlpha=1.0), inte release. Användarens
+      // releaseAlpha (softness-slider) ska vara enda kontrollen för fade-out.
       let alpha: number;
       if (inSilence) {
         // Tystnad: dra mot 0 via release oavsett brus-spikar
@@ -1128,14 +1126,7 @@ export class PiLightEngine {
       } else if (energyNorm > this.smoothed) {
         alpha = tc.attackAlpha;
       } else {
-        const drop = this.smoothed - energyNorm;
-        const dropThreshold = (this.cal as any).releaseDropThreshold ?? 0.05;
-        const dropBoost = (this.cal as any).releaseDropBoost ?? 0.6;
-        const boost = drop > dropThreshold ? drop * dropBoost : 0;
-        alpha = Math.min(0.85, tc.releaseAlpha + boost);
-        if (alpha > bleStatsState.adaptiveReleaseAlphaMax) {
-          bleStatsState.adaptiveReleaseAlphaMax = Math.round(alpha * 1000) / 1000;
-        }
+        alpha = tc.releaseAlpha;
       }
       this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
       energyNorm = this.smoothed;
