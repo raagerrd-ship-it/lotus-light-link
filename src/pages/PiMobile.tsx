@@ -964,7 +964,7 @@ function AdvancedCalibrationSection({ cal, setCal }: { cal: Cal; setCal: (c: Cal
   );
 }
 
-
+/* ── Mode-aware gain control: Manual XOR Auto (Sonos vol)
  *  Auto-läget använder två fasta referenspunkter (vol 15 & vol 50) som
  *  användaren själv kan dra i — motorn interpolerar mellan dem live. */
 const AUTO_VOL_LOW = 15;
