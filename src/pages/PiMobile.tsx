@@ -848,20 +848,12 @@ function ProfileSettingsView({
           const isDyn = key === 'dynamicDamping';
           const isFloor = key === 'brightnessFloor';
           const isTransient = key === 'transientGain';
-          const isPerceptual = key === 'perceptualGamma';
-          const isOffAtZero = isDyn || isFloor || isTransient || isPerceptual;
+          const isOffAtZero = isDyn || isFloor || isTransient;
           const displayValue = isOffAtZero && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
-          // Tick-position i procent längs slidern där "av"-läget ligger (0)
           const zeroPct = ((0 - min) / (max - min)) * 100;
           const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
-          const showSoftnessHeader = key === 'attack';
           return (
             <div key={key}>
-              {showSoftnessHeader && (
-                <div className="pt-2 pb-1 mb-2 border-t border-border/40">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mjukhet</h3>
-                </div>
-              )}
               <div className="flex justify-between text-sm mb-0.5">
                 <span>{label}</span>
                 <span className={`font-mono text-xs ${isOffAtZero && cal[key] === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{displayValue}</span>
@@ -872,7 +864,6 @@ function ProfileSettingsView({
                   onChange={(e) => {
                     const v = parseFloat(e.target.value);
                     if (isDyn) {
-                      // Slider = enda kontrollen: 0 = av, ≠0 = på
                       setCal({ ...cal, dynamicDamping: v, dynamicsEnabled: v !== 0 });
                     } else {
                       setCal({ ...cal, [key]: v });
@@ -893,7 +884,7 @@ function ProfileSettingsView({
           );
         })}
 
-        {/* Togglar borttagna — Perceptuell kurva & Transient boost är nu sliders i SLIDER_CONFIG ovan */}
+        <AdvancedCalibrationSection cal={cal} setCal={setCal} />
       </section>
     </div>
   );
