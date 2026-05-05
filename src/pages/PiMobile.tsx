@@ -198,13 +198,10 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   const onsetDecay = Math.pow(0.04, SEC_RATIO);
   const onsetRiseAlpha = 1 - Math.pow(0.05, RATIO);
 
-  // bassWeight: speglar engine — asymmetrisk dämpning runt 0.5 (neutral).
-  // bw=0 → bara disk (bas dämpad). bw=0.5 → båda 100% (neutral). bw=1 → bara bas (disk dämpad).
-  // Rå-kurvans 3 sektioner tolkas som band: Låg=bass, Mellan=50/50, Hög=midHi.
-  // Rå-signalen är redan i peakBand-skala (0..1, samma enheter som engine ser).
-  // bassWeight skippas i visualiseringen — den verkar i frekvensdomänen
-  // (bands.bassRms vs bands.midHiRms) och kan inte återges meningsfullt på
-  // en time-domain-kurva utan separata band.
+  // bassWeight: monotonic crossfade i engine (bassGain=w, midHiGain=1-w).
+  // Skippas i visualiseringen — verkar i frekvensdomänen (bands.bassRms vs
+  // bands.midHiRms) och kan inte återges meningsfullt på en time-domain-kurva
+  // utan separata band.
   const weighted = raw.slice();
 
   const tickFloor = (cal as any).tickEnergyFloor ?? 0.01;
