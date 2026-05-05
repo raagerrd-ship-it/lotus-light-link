@@ -116,7 +116,12 @@ const CURVE_POINTS = 200; // points to draw
 
 /** Time-domain testsignal: tystnad → bas-svall → mellanband → diskant → tystnad.
  *  Värdena representerar peakBand (max(bassRms, midHiRms)) i samma skala
- *  som engine ser, så silence-gate + alphor jämförs på rätt enheter. */
+ *  som engine ser, så silence-gate + alphor jämförs på rätt enheter.
+ *
+ *  2026-05-04: Skalat ner amplituder (max ~0.35 i stället för 0.64) så att
+ *  presets med attackAlpha=1.0 + transient boost inte pegar 100% genom
+ *  hela passagen — annars syns ingen modulation i grafen. Realistiska
+ *  peakBand-värden för "normal-loud music" ligger typiskt 0.1-0.3. */
 function buildRawCurve(): number[] {
   const pts: number[] = [];
   for (let i = 0; i < CURVE_POINTS; i++) {
@@ -128,18 +133,18 @@ function buildRawCurve(): number[] {
       // Bas-tung passage — låg frekvens, måttlig nivå
       const u = (t - 0.10) / 0.30;
       const env = Math.sin(u * Math.PI); // mjuk in/ut
-      amp = 0.05 + env * 0.35 * (0.7 + 0.3 * Math.sin(u * 18));
+      amp = 0.03 + env * 0.18 * (0.7 + 0.3 * Math.sin(u * 18));
     } else if (t < 0.70) {
       // Mellanband — högre, mer puls
       const u = (t - 0.40) / 0.30;
       const env = Math.sin(u * Math.PI);
-      amp = 0.05 + env * 0.55 * (0.6 + 0.4 * Math.sin(u * 30));
+      amp = 0.03 + env * 0.28 * (0.6 + 0.4 * Math.sin(u * 30));
     } else if (t < 0.90) {
       // Diskant — kort men intensivt med transienter
       const u = (t - 0.70) / 0.20;
       const env = Math.sin(u * Math.PI);
       const transient = Math.pow(Math.max(0, Math.sin(u * 50)), 6);
-      amp = 0.05 + env * (0.45 + 0.4 * transient);
+      amp = 0.03 + env * (0.22 + 0.20 * transient);
     } else {
       amp = 0.005; // tyst igen
     }
