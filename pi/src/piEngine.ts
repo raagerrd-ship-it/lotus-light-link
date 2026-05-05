@@ -1187,6 +1187,7 @@ export class PiLightEngine {
         const deadbandPct = cal.flickerDeadband * 100 * (0.5 + (pct / 100));
         if (Math.abs(pct - this.lastSentPct) < deadbandPct) {
           pct = this.lastSentPct;
+          bleStatsState.deadbandBlockedCount++;
         }
       }
       this.lastSentPct = pct;
