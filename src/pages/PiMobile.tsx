@@ -13,13 +13,13 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
 
-type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; saturation: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; maxRisePerSec: number; maxFallPerSec: number; flickerDeadband: number };
+type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, maxRisePerSec: 4.0,  maxFallPerSec: 1.5, flickerDeadband: 0.04 },
-  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, saturation: 0, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
-  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, maxRisePerSec: 15.0, maxFallPerSec: 5.0, flickerDeadband: 0.01 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, saturation: 0, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, maxRisePerSec: 8.0,  maxFallPerSec: 2.5, flickerDeadband: 0.02 },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.04 },
+  Normal: { bassWeight: 0.8, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02 },
+  Party:  { bassWeight: 0.3, attack: 100, softness: 5,  dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.01 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -69,23 +69,48 @@ function alphaToAttack(alpha: number) {
   return 100 - alphaToCurve(alpha);
 }
 
-type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'saturation' | 'onsetThreshold' | 'onsetRefractoryMs' | 'onsetEnergyFloor' | 'flickerDeadband';
+type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'onsetThreshold' | 'onsetRefractoryMs' | 'onsetEnergyFloor' | 'flickerDeadband';
 // Slider-ranges = användbar zon (inte API-clamp). Power-users kan sätta extrema värden via PUT /api/calibration.
 // flickerDeadband exponeras inte här längre — sköts av SilenceAnalysisPanel (legacy BLE-bandbreddsfilter).
-// saturation/maxRisePerSec/maxFallPerSec borttagna 2026-04-25/26 (ingen runtime-effekt).
+// saturation/maxRisePerSec/maxFallPerSec/hiShelfGainDb borttagna 2026-04-25 / 2026-05-04 (ingen runtime-effekt).
+//
+// 2026-05-04: 7 essentiella sliders i primär-vy. perceptualGamma + onset-finjustering
+// flyttade till "Avancerat"-collapsible nedan. onsetThreshold + onsetRefractoryMs slås
+// ihop till EN "Onset-känslighet" 0-1; tickEnergyFloor + onsetEnergyFloor → EN "Tystnadströskel".
 const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
-  { key: "bassWeight", label: "Bas ↔ Disk", min: 0, max: 1, step: 0.05, description: "0 = bara disk, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
-  { key: "attack", label: "Attack", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar" },
-  { key: "softness", label: "Release", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjukt" },
-  { key: "onsetThreshold", label: "Beat-känslighet", min: 1.5, max: 4.0, step: 0.1, unit: "×", description: "Lägre = fler beats triggar (känsligare). 1.5 = mycket känslig, 4.0 = bara tydliga slag" },
-  { key: "onsetRefractoryMs", label: "Beat-mellanrum", min: 80, max: 300, step: 10, unit: "ms", description: "Minsta gap mellan beats. Högt värde = lugnare puls" },
-  { key: "onsetEnergyFloor", label: "Beat energi-golv", min: 0, max: 0.20, step: 0.005, description: "Lampan flashar bara när musik är starkare än detta. Höj om bakgrundsbrus triggar pulser i tysta partier (0 = av, 0.05 = default)" },
+  { key: "attack", label: "Punch", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar attack på beats" },
+  { key: "softness", label: "Softness", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjuk fade-out" },
+  { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "0 = bara diskant, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
   { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast, negativt = utjämning" },
   { key: "transientGain", label: "Transient boost", min: 0, max: 1.5, step: 0.1, unit: "×", description: "0 = av, 1.0 = normal, 1.5 = överdrivna trumslag" },
-  { key: "perceptualGamma", label: "Perceptuell kurva", min: 0, max: 2.2, step: 0.1, description: "0 = av, 1.0 = linjär, 1.8 = mjuk, 2.2 = kraftigt komprimerad" },
-  { key: "brightnessFloor", label: "Golv", min: 0, max: 30, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av)" },
-  { key: "punchWhiteThreshold", label: "Punch White", min: 90, max: 100, step: 1, unit: "%", description: "100 = av. Över detta → vit" },
+  { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 30, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
+  { key: "punchWhiteThreshold", label: "Vita peaks", min: 90, max: 100, step: 1, unit: "%", description: "100 = av. Över detta värde flashas vit (maximala intensitets-peaks)" },
 ];
+
+// Avancerat: perceptualGamma + två sammanslagna meta-sliders (mappar internt 2 fält var).
+const ADVANCED_GAMMA_CONFIG = { key: 'perceptualGamma' as NumericCalKey, label: 'Perceptuell kurva', min: 0, max: 2.2, step: 0.1, description: '0 = av, 1.0 = linjär, 1.8 = mjuk, 2.2 = kraftigt komprimerad' };
+
+/** Onset-känslighet 0–1 (1 = mest känslig). Mappar linjärt till threshold (4.0→1.5) + refractory (300→80ms). */
+function onsetSensToFields(s: number): { onsetThreshold: number; onsetRefractoryMs: number } {
+  const t = Math.max(0, Math.min(1, s));
+  return {
+    onsetThreshold: Math.round((4.0 - t * 2.5) * 10) / 10,         // 4.0 → 1.5
+    onsetRefractoryMs: Math.round(300 - t * 220 / 10) * 10,        // approx 300 → 80
+  };
+}
+function fieldsToOnsetSens(threshold: number, refractoryMs: number): number {
+  const fromThr = (4.0 - threshold) / 2.5;
+  const fromRef = (300 - refractoryMs) / 220;
+  return Math.max(0, Math.min(1, (fromThr + fromRef) / 2));
+}
+/** Tystnadströskel 0–0.05 styr både tick- och onset-energy-floor symmetriskt. */
+function silenceFloorToFields(v: number): { tickEnergyFloor: number; onsetEnergyFloor: number } {
+  const f = Math.max(0, Math.min(0.05, v));
+  return { tickEnergyFloor: Math.round(f * 1000) / 1000, onsetEnergyFloor: Math.round(f * 1000) / 1000 };
+}
+function fieldsToSilenceFloor(tickFloor: number, onsetFloor: number): number {
+  return Math.round(((tickFloor + onsetFloor) / 2) * 1000) / 1000;
+}
 
 const CURVE_POINTS = 200; // points to draw
 
@@ -823,20 +848,12 @@ function ProfileSettingsView({
           const isDyn = key === 'dynamicDamping';
           const isFloor = key === 'brightnessFloor';
           const isTransient = key === 'transientGain';
-          const isPerceptual = key === 'perceptualGamma';
-          const isOffAtZero = isDyn || isFloor || isTransient || isPerceptual;
+          const isOffAtZero = isDyn || isFloor || isTransient;
           const displayValue = isOffAtZero && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
-          // Tick-position i procent längs slidern där "av"-läget ligger (0)
           const zeroPct = ((0 - min) / (max - min)) * 100;
           const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
-          const showSoftnessHeader = key === 'attack';
           return (
             <div key={key}>
-              {showSoftnessHeader && (
-                <div className="pt-2 pb-1 mb-2 border-t border-border/40">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mjukhet</h3>
-                </div>
-              )}
               <div className="flex justify-between text-sm mb-0.5">
                 <span>{label}</span>
                 <span className={`font-mono text-xs ${isOffAtZero && cal[key] === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{displayValue}</span>
@@ -847,7 +864,6 @@ function ProfileSettingsView({
                   onChange={(e) => {
                     const v = parseFloat(e.target.value);
                     if (isDyn) {
-                      // Slider = enda kontrollen: 0 = av, ≠0 = på
                       setCal({ ...cal, dynamicDamping: v, dynamicsEnabled: v !== 0 });
                     } else {
                       setCal({ ...cal, [key]: v });
@@ -868,12 +884,85 @@ function ProfileSettingsView({
           );
         })}
 
-        {/* Togglar borttagna — Perceptuell kurva & Transient boost är nu sliders i SLIDER_CONFIG ovan */}
+        <AdvancedCalibrationSection cal={cal} setCal={setCal} />
       </section>
     </div>
   );
 }
 
+/** Avancerat-sektion: perceptuell kurva + 2 sammanslagna meta-sliders. Default-collapsed. */
+function AdvancedCalibrationSection({ cal, setCal }: { cal: Cal; setCal: (c: Cal) => void }) {
+  const [open, setOpen] = useState(false);
+  const onsetSens = fieldsToOnsetSens(cal.onsetThreshold, cal.onsetRefractoryMs);
+  const silenceFloor = fieldsToSilenceFloor(cal.tickEnergyFloor, cal.onsetEnergyFloor);
+  return (
+    <div className="pt-3 mt-2 border-t border-border/40">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground py-1"
+      >
+        <span>Avancerat</span>
+        <span className="font-mono">{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <div className="space-y-5 mt-3">
+          <div>
+            <div className="flex justify-between text-sm mb-0.5">
+              <span>Onset-känslighet</span>
+              <span className="font-mono text-xs text-muted-foreground">{onsetSens.toFixed(2)}</span>
+            </div>
+            <input
+              type="range" min={0} max={1} step={0.05} value={onsetSens}
+              onChange={(e) => {
+                const f = onsetSensToFields(parseFloat(e.target.value));
+                setCal({ ...cal, onsetThreshold: f.onsetThreshold, onsetRefractoryMs: f.onsetRefractoryMs });
+              }}
+              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+            />
+            <p className="text-[10px] text-muted-foreground mt-0.5">0 = bara tydliga slag (lugnt), 1 = mycket känslig (hög puls). Styr threshold + refractory ihop.</p>
+          </div>
+
+          <div>
+            <div className="flex justify-between text-sm mb-0.5">
+              <span>Tystnadströskel</span>
+              <span className="font-mono text-xs text-muted-foreground">{silenceFloor.toFixed(3)}</span>
+            </div>
+            <input
+              type="range" min={0} max={0.05} step={0.005} value={silenceFloor}
+              onChange={(e) => {
+                const f = silenceFloorToFields(parseFloat(e.target.value));
+                setCal({ ...cal, tickEnergyFloor: f.tickEnergyFloor, onsetEnergyFloor: f.onsetEnergyFloor });
+              }}
+              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+            />
+            <p className="text-[10px] text-muted-foreground mt-0.5">Höj om bakgrundsbrus triggar pulser i tysta partier (0 = av, 0.02 = default). Styr tick + onset energy-floor symmetriskt.</p>
+          </div>
+
+          {(() => {
+            const c = ADVANCED_GAMMA_CONFIG;
+            const v = cal.perceptualGamma;
+            const display = v === 0 ? 'av' : `${v}`;
+            return (
+              <div>
+                <div className="flex justify-between text-sm mb-0.5">
+                  <span>{c.label}</span>
+                  <span className={`font-mono text-xs ${v === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{display}</span>
+                </div>
+                <input
+                  type="range" min={c.min} max={c.max} step={c.step} value={v}
+                  onChange={(e) => setCal({ ...cal, perceptualGamma: parseFloat(e.target.value) })}
+                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">{c.description}</p>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── Mode-aware gain control: Manual XOR Auto (Sonos vol)
  *  Auto-läget använder två fasta referenspunkter (vol 15 & vol 50) som
@@ -1527,10 +1616,7 @@ export default function PiMobile() {
           onsetRefractoryMs: p.onsetRefractoryMs,
           onsetEnergyFloor: p.onsetEnergyFloor,
           tickEnergyFloor: p.tickEnergyFloor,
-          maxRisePerSec: p.maxRisePerSec,
-          maxFallPerSec: p.maxFallPerSec,
           flickerDeadband: p.flickerDeadband,
-          hiShelfGainDb: 6,
         };
       }
       const results = await Promise.allSettled([
@@ -1599,14 +1685,11 @@ export default function PiMobile() {
           punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
           perceptualGamma: c?.perceptualGamma ?? (typeof c?.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
           transientGain: c?.transientGain ?? (typeof c?.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
-          saturation: c?.saturation ?? DEFAULT_CAL.saturation,
           dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
           onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
           onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
           onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
           tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
-          maxRisePerSec: c?.maxRisePerSec ?? DEFAULT_CAL.maxRisePerSec,
-          maxFallPerSec: c?.maxFallPerSec ?? DEFAULT_CAL.maxFallPerSec,
           flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
         };
       };
