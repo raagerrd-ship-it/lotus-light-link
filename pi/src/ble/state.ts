@@ -172,6 +172,7 @@ export const bleStats = {
   tickAbortBleRateLimitCount: 0,
   tickAbortNoChangeCount: 0,
   tickAbortNoDeviceCount: 0,
+  deadbandBlockedCount: 0,        // anti-flicker deadband held last value (no write generated)
 
   writeLatMs: 0,
   writeLatAvgMs: 0,
