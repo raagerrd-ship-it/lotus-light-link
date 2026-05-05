@@ -1099,8 +1099,8 @@ export class PiLightEngine {
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
       // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
       const w = cal.bassWeight;
-      const bassGain  = w <= 0.5 ? w * 2 : 1;
-      const midHiGain = w >= 0.5 ? (1 - w) * 2 : 1;
+      const bassGain  = w;       // monotonic crossfade: 0 = no bass, 1 = full bass
+      const midHiGain = 1 - w;   // 0 = no treble, 1 = full treble
       let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
 
       // ── 3.5. Tystnads-gate (2026-05-04) ──

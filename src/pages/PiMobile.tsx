@@ -80,7 +80,7 @@ const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: numb
   { key: "attack", label: "Punch", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar attack på beats" },
   { key: "softness", label: "Softness", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjuk fade-out" },
   { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast (expanderad), negativt = utjämning (komprimerad)" },
-  { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "0 = bara diskant, 0.5 = neutral, 1.0 = bara bas (dämpar motsatt sida)" },
+  { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "Bas/Diskant-filter — 0 = endast diskant (högpass), 0.5 = 50/50 mix, 1.0 = endast bas (lågpass)" },
   { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 100, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
 ];
 
@@ -198,13 +198,10 @@ function processCurve(raw: number[], cal: typeof DEFAULT_CAL): { values: number[
   const onsetDecay = Math.pow(0.04, SEC_RATIO);
   const onsetRiseAlpha = 1 - Math.pow(0.05, RATIO);
 
-  // bassWeight: speglar engine — asymmetrisk dämpning runt 0.5 (neutral).
-  // bw=0 → bara disk (bas dämpad). bw=0.5 → båda 100% (neutral). bw=1 → bara bas (disk dämpad).
-  // Rå-kurvans 3 sektioner tolkas som band: Låg=bass, Mellan=50/50, Hög=midHi.
-  // Rå-signalen är redan i peakBand-skala (0..1, samma enheter som engine ser).
-  // bassWeight skippas i visualiseringen — den verkar i frekvensdomänen
-  // (bands.bassRms vs bands.midHiRms) och kan inte återges meningsfullt på
-  // en time-domain-kurva utan separata band.
+  // bassWeight: monotonic crossfade i engine (bassGain=w, midHiGain=1-w).
+  // Skippas i visualiseringen — verkar i frekvensdomänen (bands.bassRms vs
+  // bands.midHiRms) och kan inte återges meningsfullt på en time-domain-kurva
+  // utan separata band.
   const weighted = raw.slice();
 
   const tickFloor = (cal as any).tickEnergyFloor ?? 0.01;
