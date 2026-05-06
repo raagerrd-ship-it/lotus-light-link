@@ -556,6 +556,58 @@ export function setAlsaDevice(device: string): void {
   }
 }
 
+// ─── ALSA-watchdog: detektera frusen FFT-loop och self-restart ──────────────
+// Bakgrund: alsa-capture-objektet kan tystna utan att emitta 'error'/'close'.
+// Om audioCbCount inte växer på 5s → process.exit(1) → systemd Restart=always.
+const WATCHDOG_INTERVAL_MS = 2000;
+const WATCHDOG_STUCK_THRESHOLD_MS = 5000;
+let _watchdogTimer: NodeJS.Timeout | null = null;
+let _watchdogLastCbCount = 0;
+let _watchdogStuckMs = 0;
+
+function startWatchdog(): void {
+  if (_watchdogTimer) return;
+  _watchdogLastCbCount = 0;
+  _watchdogStuckMs = 0;
+  _watchdogTimer = setInterval(() => {
+    if (_audioCbCount === 0) return; // boot-grace tills första cb
+    if (_audioCbCount === _watchdogLastCbCount) {
+      _watchdogStuckMs += WATCHDOG_INTERVAL_MS;
+      if (_watchdogStuckMs >= WATCHDOG_STUCK_THRESHOLD_MS) {
+        console.error(
+          `[ALSA-WATCHDOG] FFT-loop frusen ${_watchdogStuckMs}ms ` +
+          `(audioCbCount=${_audioCbCount}, fftFrameCount=${_fftFrameCount}). ` +
+          `Exit(1) för systemd-restart.`,
+        );
+        try {
+          // Bäst-effort: notera reason så restartLog inte loggar 'unknown'.
+          // Dynamic require för att undvika circular import vid module-load.
+          import('./restartLog.js').then(m => {
+            try { m.recordRestart('alsa-watchdog-stuck', `audioCbCount=${_audioCbCount}, fftFrameCount=${_fftFrameCount}`); } catch {}
+            try { m.markGracefulShutdown(); } catch {}
+          }).catch(() => {}).finally(() => process.exit(1));
+          // Säkerhet: om import hänger, exit ändå efter 500ms.
+          setTimeout(() => process.exit(1), 500);
+        } catch {
+          process.exit(1);
+        }
+      }
+    } else {
+      _watchdogStuckMs = 0;
+      _watchdogLastCbCount = _audioCbCount;
+    }
+  }, WATCHDOG_INTERVAL_MS);
+}
+
+function stopWatchdog(): void {
+  if (_watchdogTimer) {
+    clearInterval(_watchdogTimer);
+    _watchdogTimer = null;
+  }
+  _watchdogLastCbCount = 0;
+  _watchdogStuckMs = 0;
+}
+
 export function startMic(): void {
   if (capture) return;
 
@@ -596,6 +648,7 @@ export function startMic(): void {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
     dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
+    startWatchdog();
 
   } else {
     handleStartFailure(
@@ -698,6 +751,7 @@ function onAudioData(buf: Buffer): void {
 
 export function stopMic(): void {
   if (!capture) return;
+  stopWatchdog();
 
   if (_audioCbCount === 0) {
     rejectMicReadyWaiters('[ALSA] Microphone stopped before first audio callback');
