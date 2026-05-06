@@ -26,7 +26,8 @@ export type RestartReason =
   | 'uncaught-exception'         // process.on('uncaughtException')
   | 'unhandled-rejection'        // process.on('unhandledRejection')
   | 'unknown-systemd-restart'    // föregående process dog utan att vi hann logga
-  | 'manual-start-all';          // användaren tryckte Starta allt / Starta om
+  | 'manual-start-all'           // användaren tryckte Starta allt / Starta om
+  | 'alsa-watchdog-stuck';       // ALSA-watchdog: FFT-loop frusen → exit(1)
 
 export interface RestartEntry {
   ts: string;                  // ISO timestamp för restart-eventet
