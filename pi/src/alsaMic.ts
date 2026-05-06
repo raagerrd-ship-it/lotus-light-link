@@ -648,6 +648,7 @@ export function startMic(): void {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
     dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
+    startWatchdog();
 
   } else {
     handleStartFailure(
