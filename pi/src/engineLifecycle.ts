@@ -180,6 +180,7 @@ async function doShutdown(): Promise<void> {
 
 function scheduleShutdownToIgnition(): void {
   if (pendingShutdownTimer) return;
+  cancelConnectRetries('PAUSED — shutdown schemalagt');
   pendingShutdownAt = Date.now() + IGNITION_REENTRY_GRACE_MS;
   console.log(`[Lifecycle] PAUSED — schemalägger shutdown om ${IGNITION_REENTRY_GRACE_MS}ms (cancellerbar)`);
   pendingShutdownTimer = setTimeout(() => { void doShutdown(); }, IGNITION_REENTRY_GRACE_MS);
