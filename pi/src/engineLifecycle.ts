@@ -196,6 +196,7 @@ async function toMotorOn(): Promise<void> {
   if (state === 'MOTOR_ON') return;
 
   const deps = _deps;
+  cancelConnectRetries('ny toMotorOn-cykel');
   _motorOnInflight = (async () => {
     console.log('[Lifecycle] PLAYING → setPlaying(true) omedelbart, subsystem startas i bakgrunden');
 
@@ -233,6 +234,12 @@ async function toMotorOn(): Promise<void> {
       );
     }
     await Promise.all(tasks);
+
+    // Initial connect failed? Starta backoff-retry tills PAUSED/IGNITION_OFF/connected.
+    if (state === 'MOTOR_ON' && !deps.getHardcodedConnected().connected) {
+      console.warn('[Lifecycle] initial connect failade — startar retry-sekvens (2/5/10/20s)');
+      scheduleConnectRetries(deps);
+    }
   })();
   try { await _motorOnInflight; } finally { _motorOnInflight = null; }
 }
