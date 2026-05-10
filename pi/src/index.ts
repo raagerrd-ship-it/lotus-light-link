@@ -185,18 +185,19 @@ async function startMicSubsystem(): Promise<void> {
         }
       } catch {}
 
+      const eng = engineInstance!;
       configServer?.attachConfigRuntime?.({
-        engine: engineInstance,
+        engine: eng,
         mic: alsaMic,
         invalidateIdleColorCache: engineMod?.invalidateIdleColorCache,
       });
 
       alsaMic.startMic();
-      engineInstance.start();
+      eng.start();
       try {
         await alsaMic.waitForFirstAudio(3000);
       } catch (e: any) {
-        try { engineInstance.stop(); } catch {}
+        try { eng.stop(); } catch {}
         try { alsaMic.stopMic(); } catch {}
         throw e;
       }
