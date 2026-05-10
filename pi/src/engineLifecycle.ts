@@ -118,12 +118,19 @@ async function toMotorOn(): Promise<void> {
 
   const deps = _deps;
   _motorOnInflight = (async () => {
-    console.log('[Lifecycle] PLAYING → startar motor sekventiellt (BLE-minimal → mic ∥ connect)');
-    // STEG 1: BLE-stack ready först (sekventiellt — eliminerar getNoble race).
+    console.log('[Lifecycle] PLAYING → setPlaying(true) omedelbart, subsystem startas i bakgrunden');
+
+    // STEG 1: setPlaying(true) UNCONDITIONALLY — engine.playing måste följa
+    // Sonos PLAYING direkt. BLE/mic-startup får aldrig gata detta; om de
+    // misslyckas tar FFT-writes över när de blir ready.
+    setState('MOTOR_ON');
+    try { deps.getEngineInstance()?.setPlaying(true); } catch {}
+
+    // STEG 2: BLE-stack + mic + connect i bakgrunden (sekventiellt BLE först).
     try {
       const r = await deps.startBleEngineMinimal();
       if (!r.ready) {
-        console.warn('[Lifecycle] startBleEngineMinimal returnerade ready=false — avbryter motor-start');
+        console.warn('[Lifecycle] startBleEngineMinimal ready=false — engine.playing kvar, väntar på recovery');
         return;
       }
     } catch (e: any) {
@@ -131,7 +138,6 @@ async function toMotorOn(): Promise<void> {
       return;
     }
 
-    // STEG 2: parallellt mic + connect.
     const tasks: Promise<unknown>[] = [];
     if (getSubsystemState('mic').status !== 'ready') {
       tasks.push(
@@ -148,11 +154,6 @@ async function toMotorOn(): Promise<void> {
       );
     }
     await Promise.all(tasks);
-
-    // STEG 3: state + setPlaying.
-    setState('MOTOR_ON');
-    const eng = deps.getEngineInstance();
-    try { eng?.setPlaying(true); } catch {}
   })();
   try { await _motorOnInflight; } finally { _motorOnInflight = null; }
 }
