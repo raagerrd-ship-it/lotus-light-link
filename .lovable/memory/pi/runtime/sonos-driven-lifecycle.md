@@ -43,6 +43,20 @@ lifecycle-state.
 - `POST /api/lifecycle/override { off }` → explicit toggle.
 - `/api/status.lifecycle` → `{ state, manualOverrideOff, pendingShutdownInMs }`.
 
+## Connect-retry inom MOTOR_ON
+
+Om initial `connectHardcoded()` failar i `toMotorOn()` (t.ex. BLEDOM svarar
+inte) startas en backoff-sekvens i `engineLifecycle.ts`:
+`scheduleConnectRetries()` med schema `[2s, 5s, 10s, 20s]` (4 försök, ger
+upp efter ~37s). Cancelleras direkt av:
+- PAUSED (`scheduleShutdownToIgnition` kallar `cancelConnectRetries`)
+- `userStopAll()` (manuell disconnect)
+- Ny `toMotorOn()`-cykel (cycle-token bumpas)
+- Lyckad connect (egen path eller annan)
+
+Räknas oberoende av `CONSECUTIVE_FAIL_LIMIT` i `connect-hardcoded.ts` —
+process.exit-pathen där lever kvar som last-resort.
+
 ## Process.exit-recovery
 BLE 4-fails → `process.exit(0)` → systemd restart → boot → IGNITION →
 sonos-poller säger PLAYING (cached på sonos-buddy) → `toMotorOn()` →
