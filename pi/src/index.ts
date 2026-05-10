@@ -116,7 +116,46 @@ function applySonosStateToEngine(state: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Subsystem: Mikrofon (alsa-capture native) — engine startas implicit här
+// Eager engine init — körs vid boot (FÖRE ignite()) så att lifecycle.toMotorOn()
+// kan kalla engineInstance.setPlaying(true) omedelbart utan att vänta på att
+// startMicSubsystem skapar engine. Engine.start() körs fortfarande först när
+// mic startas (tickInner kräver mic-frames för att göra något meningsfullt).
+// ─────────────────────────────────────────────────────────────────────────────
+async function ensureEngineInstance(): Promise<void> {
+  if (engineInstance) return;
+  engineMod = await import('./piEngine.js');
+  const savedTickMs = getItem('tick-ms');
+  const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
+  engineInstance = new engineMod.PiLightEngine(tick);
+
+  const setCb = (globalThis as any).__lotusSetEngineCb;
+  if (typeof setCb === 'function') {
+    setCb(
+      () => engineInstance?.onBleConnected(),
+      () => engineInstance?.onBleDisconnected(),
+    );
+  } else {
+    const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
+    setEngineBleCallbacks(
+      () => engineInstance?.onBleConnected(),
+      () => engineInstance?.onBleDisconnected(),
+    );
+  }
+
+  try {
+    const savedGamma = getItem('dimming-gamma');
+    if (savedGamma) {
+      const g = parseFloat(savedGamma);
+      if (g >= 1 && g <= 3) {
+        const { setDimmingGamma } = await import('./ble/index.js');
+        setDimmingGamma(g);
+      }
+    }
+  } catch {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Subsystem: Mikrofon (alsa-capture native)
 // ─────────────────────────────────────────────────────────────────────────────
 async function startMicSubsystem(): Promise<void> {
   if (_inflight.mic) return _inflight.mic;
@@ -136,44 +175,7 @@ async function startMicSubsystem(): Promise<void> {
         if (g >= 0.1 && g <= 50) alsaMic.setMicGain(g);
       }
 
-      if (!engineInstance) {
-        engineMod = await import('./piEngine.js');
-        const savedTickMs = getItem('tick-ms');
-        const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
-        engineInstance = new engineMod.PiLightEngine(tick);
-
-        // Koppla BLE connect/disconnect → engine, så keep-alive och idle-heartbeat
-        // bara körs när lampan faktiskt är ansluten (inte vid engine.start()).
-        // Använd lokal setter (registrerad i main()) som wrappar engine-cb
-        // tillsammans med reconnect-flag-hook (sätts vid lyckad connect).
-        const setCb = (globalThis as any).__lotusSetEngineCb;
-        if (typeof setCb === 'function') {
-          setCb(
-            () => engineInstance?.onBleConnected(),
-            () => engineInstance?.onBleDisconnected(),
-          );
-        } else {
-          const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
-          setEngineBleCallbacks(
-            () => engineInstance?.onBleConnected(),
-            () => engineInstance?.onBleDisconnected(),
-          );
-        }
-
-        // Återställ sparad dimming-gamma från storage. Utan detta hamnar engine
-        // alltid på default 1.0 efter omstart, oavsett vad användaren sparat —
-        // vilket gör att brightness-kurvan blir fel tills profil sparas igen.
-        try {
-          const savedGamma = getItem('dimming-gamma');
-          if (savedGamma) {
-            const g = parseFloat(savedGamma);
-            if (g >= 1 && g <= 3) {
-              const { setDimmingGamma } = await import('./ble/index.js');
-              setDimmingGamma(g);
-            }
-          }
-        } catch {}
-      }
+      await ensureEngineInstance();
 
       try {
         const saved = getItem('gain-cal-points');
@@ -372,6 +374,15 @@ async function main() {
   // /tmp-flaggan kvarstår som redundant safety net (skrivs av crash-handlers
   // nedan + post-connect-hook ovan) men consumeras inte längre vid boot.
   consumeReconnectOnBootFlag(); // dränera ev. gammal flagga så den inte hänger kvar
+  // Eager engine init: skapa engineInstance INNAN ignite() så lifecycle.toMotorOn()
+  // kan kalla setPlaying(true) omedelbart utan race mot startMicSubsystem.
+  try {
+    await ensureEngineInstance();
+    console.log('[Boot] ✓ engineInstance skapad eagerly (mic startas vid PLAYING)');
+  } catch (e: any) {
+    console.warn('[Boot] ensureEngineInstance fel:', e?.message ?? e);
+  }
+
   void (async () => {
     try {
       const { ignite } = await import('./engineLifecycle.js');
