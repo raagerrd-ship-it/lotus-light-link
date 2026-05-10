@@ -256,6 +256,7 @@ export async function userStartAll(): Promise<void> {
 export async function userStopAll(): Promise<void> {
   persistOverride(true);
   cancelScheduledShutdown();
+  cancelConnectRetries('userStopAll');
   await doShutdown();
   setState('IGNITION_OFF');
 }
