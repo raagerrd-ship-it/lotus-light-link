@@ -236,7 +236,7 @@ async function toMotorOn(): Promise<void> {
     await Promise.all(tasks);
 
     // Initial connect failed? Starta backoff-retry tills PAUSED/IGNITION_OFF/connected.
-    if (state === 'MOTOR_ON' && !deps.getHardcodedConnected().connected) {
+    if ((state as LifecycleState) === 'MOTOR_ON' && !deps.getHardcodedConnected().connected) {
       console.warn('[Lifecycle] initial connect failade — startar retry-sekvens (2/5/10/20s)');
       scheduleConnectRetries(deps);
     }
