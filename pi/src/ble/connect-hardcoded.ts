@@ -213,13 +213,24 @@ export async function triggerIdleDisconnect(): Promise<void> {
   _lastDisconnectReason = 'idle-timeout';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
-  if (!_connected) return;
+  // Nollställ failure-räknaren så ev. partial-fails från förra cykeln inte
+  // cascadar och tripper CONSECUTIVE_FAIL_LIMIT vid nästa PLAYING.
+  _consecutiveFailures = 0;
+  if (!_connected) {
+    // Defensiv cache-purge ändå — BLEDOM kan ha tappat länken tyst utan
+    // att _connected nullats. Garanterar att nästa connectHardcoded() får fresh peripheral.
+    await forceCleanupStalePeripheral('idle-disconnect-no-connected').catch(() => {});
+    return;
+  }
   _onDisconnected?.();
   detachControllerDrain();
   setDevice(null);
   resetLastSent();
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
+  // Purga noble's interna peripheral-cache så nästa connect garanterat
+  // skapar en fresh peripheral-instans (BLEDOM tål inte stale GATT-state).
+  await forceCleanupStalePeripheral('idle-disconnect-post').catch(() => {});
 }
 
 /**
