@@ -30,6 +30,15 @@ let pendingShutdownTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingShutdownAt = 0;
 const listeners = new Set<(s: LifecycleState) => void>();
 
+// Connect-retry inom MOTOR_ON: körs om initial connectHardcoded failar.
+// Cancelleras av PAUSED, IGNITION_OFF, ny toMotorOn-cykel, eller lyckad connect.
+const CONNECT_RETRY_SCHEDULE_MS = [2000, 5000, 10000, 20000];
+let _connectRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let _connectRetryActive = false;
+let _connectRetryAttempt = 0;
+let _connectRetryNextAt = 0;
+let _connectRetryCycle = 0;
+
 function setState(next: LifecycleState): void {
   if (next === state) return;
   console.log(`[Lifecycle] ${state} → ${next}`);
