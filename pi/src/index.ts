@@ -374,6 +374,15 @@ async function main() {
   // /tmp-flaggan kvarstår som redundant safety net (skrivs av crash-handlers
   // nedan + post-connect-hook ovan) men consumeras inte längre vid boot.
   consumeReconnectOnBootFlag(); // dränera ev. gammal flagga så den inte hänger kvar
+  // Eager engine init: skapa engineInstance INNAN ignite() så lifecycle.toMotorOn()
+  // kan kalla setPlaying(true) omedelbart utan race mot startMicSubsystem.
+  try {
+    await ensureEngineInstance();
+    console.log('[Boot] ✓ engineInstance skapad eagerly (mic startas vid PLAYING)');
+  } catch (e: any) {
+    console.warn('[Boot] ensureEngineInstance fel:', e?.message ?? e);
+  }
+
   void (async () => {
     try {
       const { ignite } = await import('./engineLifecycle.js');
