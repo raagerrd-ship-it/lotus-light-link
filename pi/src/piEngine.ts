@@ -137,11 +137,8 @@ interface LightCalibration {
   offsetR: number; offsetG: number; offsetB: number;
   attackAlpha: number; releaseAlpha: number;
   dynamicDamping: number; bassWeight: number;
-  hiShelfGainDb: number;
   punchWhiteThreshold: number;
   brightnessFloor: number;
-  /** 0 = av (ingen vit-rensning, gammalt blekt beteende), 1.0 = full vit-rensning (rena mättade färger) */
-  saturation: number;
   /** 0 = av (ingen boost), 1.0 = nuvarande default, upp till ~2.0 = överdrivna transienter */
   transientGain: number;
   /** 0 = av (linjärt, kurvan hoppas helt över), 1.0 = linjärt via math, 1.8 = tidigare default, upp till 3.0 = kraftig mörkkomprimering */
@@ -151,10 +148,6 @@ interface LightCalibration {
   onsetThreshold: number;
   /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
   onsetRefractoryMs: number;
-  /** Anti-fladder: max stigning i normaliserade enheter per sekund (1.0 = full 0→100% på 1s). 20 = praktiskt taget av. */
-  maxRisePerSec: number;
-  /** Anti-fladder: max fall per sekund. Lägre värde = mjukare release-tak (1.0 = 100→0% tar 1s). */
-  maxFallPerSec: number;
   /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
   flickerDeadband: number;
   /** Absolut energy-gate (totalRms) under vilken onset-detektorn inte processar.
@@ -173,18 +166,15 @@ const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
   attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
-  bassWeight: 0.7, hiShelfGainDb: 6,
+  bassWeight: 0.7,
   punchWhiteThreshold: 100,
   brightnessFloor: 5,
-  saturation: 0,  // disabled 2026-04-25 — color trimming sker i Sonos i stället
   transientGain: 0.8,
   perceptualGamma: 0,
   dynamicsEnabled: true,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
-  maxRisePerSec: 8.0,
-  maxFallPerSec: 2.5,
-  flickerDeadband: 0,
+  flickerDeadband: 0.02,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
 };
