@@ -168,6 +168,7 @@ function apply(next: SonosState): void {
 function parseStatus(s: any): void {
   if (!s?.ok) return;
   lastResponseTime = Date.now();
+  staleEmitted = false;
 
   // ENKEL REGEL: lita på gatewayens playbackState. Inga inferenser från
   // position, tystnad, eller saknad trackName. Är status PLAYING → output på.
@@ -232,6 +233,11 @@ let pollTimer: NodeJS.Timeout | null = null;
 let sseCleanup: (() => void) | null = null;
 let activeConfig: SonosPollerConfig | null = null;
 let lastSuccessfulPollAt: number | null = null;
+let staleWatchdogTimer: NodeJS.Timeout | null = null;
+let staleEmitted = false;
+
+const STALE_THRESHOLD_MS = 30_000;
+const STALE_CHECK_INTERVAL_MS = 5_000;
 
 const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   ssePath: '/events',
@@ -327,6 +333,22 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   // Starta pollen som fallback — SSE.onopen pausar den när den ansluter
   startPollTimer();
 
+  // Stale-buddy-detector (FIX 15D): om gateway slutar svara medan vi tror
+  // den spelar → emittera syntetisk PAUSED så lifecycle river ner BLE.
+  // Bryter WiFi-coex chicken-egg: buddy stale → BLE off → radio fri →
+  // WiFi vaknar → buddy fresh igen.
+  if (staleWatchdogTimer) clearInterval(staleWatchdogTimer);
+  staleWatchdogTimer = setInterval(() => {
+    if (staleEmitted) return;
+    if (lastResponseTime === 0) return;
+    if (!isPlaying(currentState.playbackState)) return;
+    const age = Date.now() - lastResponseTime;
+    if (age < STALE_THRESHOLD_MS) return;
+    console.warn(`[Sonos] Stale state ${age}ms (no fresh poll); emitting synthetic PAUSED`);
+    staleEmitted = true;
+    apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED' });
+  }, STALE_CHECK_INTERVAL_MS);
+
   dlog(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, mode: trust-gateway-state)`);
 }
 
@@ -334,6 +356,8 @@ export function stopSonosPoller(): void {
   sseCleanup?.();
   sseCleanup = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (staleWatchdogTimer) { clearInterval(staleWatchdogTimer); staleWatchdogTimer = null; }
+  staleEmitted = false;
   activeConfig = null;
 }
 
