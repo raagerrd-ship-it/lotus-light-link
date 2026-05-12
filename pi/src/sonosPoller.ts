@@ -168,6 +168,7 @@ function apply(next: SonosState): void {
 function parseStatus(s: any): void {
   if (!s?.ok) return;
   lastResponseTime = Date.now();
+  staleEmitted = false;
 
   // ENKEL REGEL: lita på gatewayens playbackState. Inga inferenser från
   // position, tystnad, eller saknad trackName. Är status PLAYING → output på.
