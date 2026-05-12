@@ -51,6 +51,9 @@ interface TickConstants {
   transientGain: number;
   perceptualGamma: number;
   dynamicsEnabled: boolean;
+  lutR: Uint8Array;
+  lutG: Uint8Array;
+  lutB: Uint8Array;
 }
 
 function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
@@ -60,6 +63,25 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
   const fftRatio = fftMs / 125;
   const fftSecRatio = fftMs / 1000;
 
+
+  const gammaIsUnity = cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0;
+
+  const lutR = new Uint8Array(256);
+  const lutG = new Uint8Array(256);
+  const lutB = new Uint8Array(256);
+
+  for (let i = 0; i < 256; i++) {
+    if (gammaIsUnity) {
+      lutR[i] = Math.max(0, Math.min(255, (i + cal.offsetR + 0.5) | 0));
+      lutG[i] = Math.max(0, Math.min(255, (i + cal.offsetG + 0.5) | 0));
+      lutB[i] = Math.max(0, Math.min(255, (i + cal.offsetB + 0.5) | 0));
+    } else {
+      const n = i / 255;
+      lutR[i] = Math.max(0, Math.min(255, (Math.pow(n, cal.gammaR) * 255 + cal.offsetR + 0.5) | 0));
+      lutG[i] = Math.max(0, Math.min(255, (Math.pow(n, cal.gammaG) * 255 + cal.offsetG + 0.5) | 0));
+      lutB[i] = Math.max(0, Math.min(255, (Math.pow(n, cal.gammaB) * 255 + cal.offsetB + 0.5) | 0));
+    }
+  }
 
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
@@ -71,12 +93,15 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
     centerAlphaFft: 1 - Math.pow(1 - 0.002, fftRatio),
-    gammaIsUnity: cal.gammaR === 1.0 && cal.gammaG === 1.0 && cal.gammaB === 1.0,
+    gammaIsUnity,
     dimmingGamma: getDimmingGamma(),
     brightnessFloor: cal.brightnessFloor ?? 0,
     transientGain: cal.transientGain ?? 1.0,
     perceptualGamma: cal.perceptualGamma ?? 0,
     dynamicsEnabled: cal.dynamicsEnabled !== false,
+    lutR,
+    lutG,
+    lutB,
   };
 }
 
@@ -90,7 +115,7 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
     const normalized = (result - center) / range;
     // Fast pow approximation: exp(exponent * ln(|x|)) via Math.exp/Math.log
     const absN = normalized < 0 ? -normalized : normalized;
-    const powered = absN > 0.0001 ? Math.pow(absN, exponent) : 0;
+    const powered = absN > 0.0001 ? Math.exp(exponent * Math.log(absN)) : 0;
     const expanded = normalized < 0 ? -powered : powered;
     const gain = 1 + amount * 0.5;
     result = center + expanded * range * gain;
@@ -224,17 +249,18 @@ export function invalidateIdleColorCache(): void {
  *  i Sonos i stället, så palette-färgen ska komma orörd genom engine.
  *  cal.saturation läses inte längre — fältet bevaras i typen för
  *  bakåtkompatibilitet med sparade profiler. */
-function applyColorCalibrationFast(r: number, g: number, b: number, cal: LightCalibration, gammaIsUnity: boolean): void {
-  if (gammaIsUnity) {
-    _finalColor[0] = Math.max(0, Math.min(255, (r + cal.offsetR + 0.5) | 0));
-    _finalColor[1] = Math.max(0, Math.min(255, (g + cal.offsetG + 0.5) | 0));
-    _finalColor[2] = Math.max(0, Math.min(255, (b + cal.offsetB + 0.5) | 0));
-  } else {
-    const rn = r / 255, gn = g / 255, bn = b / 255;
-    _finalColor[0] = Math.max(0, Math.min(255, (Math.pow(rn < 0 ? 0 : rn > 1 ? 1 : rn, cal.gammaR) * 255 + cal.offsetR + 0.5) | 0));
-    _finalColor[1] = Math.max(0, Math.min(255, (Math.pow(gn < 0 ? 0 : gn > 1 ? 1 : gn, cal.gammaG) * 255 + cal.offsetG + 0.5) | 0));
-    _finalColor[2] = Math.max(0, Math.min(255, (Math.pow(bn < 0 ? 0 : bn > 1 ? 1 : bn, cal.gammaB) * 255 + cal.offsetB + 0.5) | 0));
-  }
+function applyColorCalibrationFast(r: number, g: number, b: number, tc: TickConstants): void {
+  // Clamp input values quickly and use LUT
+  let ri = (r + 0.5) | 0;
+  ri = ri < 0 ? 0 : ri > 255 ? 255 : ri;
+  let gi = (g + 0.5) | 0;
+  gi = gi < 0 ? 0 : gi > 255 ? 255 : gi;
+  let bi = (b + 0.5) | 0;
+  bi = bi < 0 ? 0 : bi > 255 ? 255 : bi;
+
+  _finalColor[0] = tc.lutR[ri];
+  _finalColor[1] = tc.lutG[gi];
+  _finalColor[2] = tc.lutB[bi];
 }
 
 // Reusable static arrays — zero-alloc
@@ -1223,7 +1249,7 @@ export class PiLightEngine {
 
       // ── Color calibration ──
       const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
-      applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], cal, tc.gammaIsUnity);
+      applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], tc);
 
       // ── BLE output (synkron hard-fail) ──
       // sendToBLE returnerar direkt med WriteResult — engine räknar utfallet
