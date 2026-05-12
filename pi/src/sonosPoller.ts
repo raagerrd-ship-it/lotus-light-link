@@ -232,6 +232,11 @@ let pollTimer: NodeJS.Timeout | null = null;
 let sseCleanup: (() => void) | null = null;
 let activeConfig: SonosPollerConfig | null = null;
 let lastSuccessfulPollAt: number | null = null;
+let staleWatchdogTimer: NodeJS.Timeout | null = null;
+let staleEmitted = false;
+
+const STALE_THRESHOLD_MS = 30_000;
+const STALE_CHECK_INTERVAL_MS = 5_000;
 
 const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   ssePath: '/events',
