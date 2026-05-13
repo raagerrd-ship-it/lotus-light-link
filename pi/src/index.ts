@@ -330,6 +330,48 @@ async function main() {
 
   console.log('[Boot] ✓ configServer up — ignite() startar BLE-stack + sonos-poller');
 
+  // ── FIX 24: Playback-Watchdog — auto-recover från stuck engine.playing ──
+  // Om lifecycle är MOTOR_ON men bleStats.tickOkCount inte växer på 8s →
+  // engine sitter i stale state (playing=false eller _bleOwner='idle' trots
+  // MOTOR_ON). process.exit(1) → systemd Restart=always gör återställning.
+  void (async () => {
+    try {
+      const { bleStats } = await import('./ble/index.js');
+      const lc = await import('./engineLifecycle.js');
+      let lastTickOk = 0;
+      let stuckMs = 0;
+      const INTERVAL_MS = 2000;
+      const STUCK_THRESHOLD_MS = 8000;
+
+      setInterval(() => {
+        try {
+          if (lc.getLifecycleState() !== 'MOTOR_ON') {
+            stuckMs = 0;
+            lastTickOk = bleStats.tickOkCount;
+            return;
+          }
+          const cur = bleStats.tickOkCount;
+          if (cur === lastTickOk) {
+            stuckMs += INTERVAL_MS;
+            if (stuckMs >= STUCK_THRESHOLD_MS) {
+              console.error(
+                `[Playback-Watchdog] tickOk frozen ${stuckMs}ms while ` +
+                `MOTOR_ON (tickOk=${cur}). Exit(1) for systemd restart.`
+              );
+              process.exit(1);
+            }
+          } else {
+            stuckMs = 0;
+            lastTickOk = cur;
+          }
+        } catch { /* watchdog must never crash */ }
+      }, INTERVAL_MS);
+      console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms)`);
+    } catch (e: any) {
+      console.warn('[Boot] Playback-Watchdog failed to start:', e?.message ?? e);
+    }
+  })();
+
   // ── Restart-log: detektera om förra processen dog ofrivilligt ──
   // noteBootStart() kollar om SESSION_MARKER finns kvar (graceful shutdown
   // skulle ha tagit bort den). Om ja → logga 'unknown-systemd-restart'
