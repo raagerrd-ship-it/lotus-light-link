@@ -702,7 +702,7 @@ function onAudioData(buf: Buffer): void {
 
 export function stopMic(): void {
   if (!capture) return;
-  stopWatchdog();
+  
 
   if (_audioCbCount === 0) {
     rejectMicReadyWaiters('[ALSA] Microphone stopped before first audio callback');
