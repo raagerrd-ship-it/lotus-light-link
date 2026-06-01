@@ -1477,6 +1477,22 @@ export function startConfigServer(port = 3050): void {
     res.status(ok ? 200 : 404).json({ ok });
   });
 
+  // Låt-studio: analys + förhandsgranskning + ångra.
+  app.get('/api/light-seq/:key', (req, res) => {
+    res.json(lightRecorder.getSequence(req.params.key));
+  });
+
+  app.post('/api/light-seq/:key/preview', (req, res) => {
+    const variant = req.body?.variant === 'raw' ? 'raw' : 'polished';
+    const ok = lightRecorder.previewSequence(req.params.key, variant);
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  app.post('/api/light-seq/:key/revert', (req, res) => {
+    const ok = lightRecorder.revertSequence(req.params.key);
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
   app.get('/api/acr', (_req, res) => {
     res.json(lightRecorder.getAcrState());
   });
