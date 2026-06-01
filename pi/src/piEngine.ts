@@ -1344,6 +1344,12 @@ export class PiLightEngine {
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
       }
 
+      // ── Frame-tap: rapportera faktiskt skickad färg+brightness till recorder ──
+      if (this._frameTap && writeResult === 'sent') {
+        if (isPunch) this._frameTap(pct, 255, 255, 255);
+        else this._frameTap(pct, _finalColor[0], _finalColor[1], _finalColor[2]);
+      }
+
       // ── Diagnostics ──
       _diag.rawRms = bands.totalRms;
       _diag.bassRms = bands.bassRms;
