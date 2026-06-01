@@ -25,9 +25,10 @@ export interface SeqAnalysis {
 
 const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz (matchar lightRecorder)
 const SMOOTH_ALPHA = 0.5;        // EMA-faktor för färg-övergångar
-const ATTACK_ALPHA = 0.75;       // brightness stiger snabbt (skarp attack)
-const RELEASE_ALPHA = 0.35;      // brightness faller mjukt (musikalisk release)
+const ATTACK_ALPHA = 0.85;       // brightness stiger snabbt (skarp attack)
+const RELEASE_ALPHA = 0.55;      // brightness faller raskt → tydliga dalar mellan slag
 const TRANSIENT_DELTA = 40;      // pct-hopp som alltid bevaras (säkerhet)
+const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
 
 // Beat-detektering på pct-envelopen.
 const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
@@ -38,7 +39,7 @@ const BEAT_FLUX_FLOOR = 6;       // minsta flux (pct) för att räknas som beat
 // Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
 // reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
 // och en musikalisk decay-svans — den klassiska ljus-"bumpen".
-const BEAT_BOOST = 1.12;         // topp-boost på slaget
+const BEAT_BOOST = 1.35;         // topp-boost på slaget
 const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
 const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
 
@@ -225,6 +226,19 @@ function normalize(frames: Frame[]): Frame[] {
 }
 
 /**
+ * Dynamik-expansion: drar brightness bort från medelvärdet så dalar blir mörkare
+ * och toppar ljusare — återger ljusshow-känslan som smoothing annars plattar ut.
+ */
+function expand(frames: Frame[]): Frame[] {
+  const n = frames.length;
+  if (n === 0) return frames;
+  let sum = 0;
+  for (const f of frames) sum += f[1];
+  const avg = sum / n;
+  return frames.map((f) => [f[0], clamp8(avg + (f[1] - avg) * CONTRAST), f[2], f[3], f[4]]);
+}
+
+/**
  * Lägger en skarp attack + exponentiell decay-svans på varje grid-slag — den
  * klassiska ljus-"bumpen". Boosten är additiv så övergångar mellan slag behålls.
  */
@@ -251,7 +265,7 @@ export function polish(frames: Frame[]): Frame[] {
   const rawBeats = detectBeats(filled);
   const grid = buildBeatGrid(filled, rawBeats);
   const beats = grid.length ? grid : rawBeats;
-  const shaped = normalize(smooth(filled, new Set(beats)));
+  const shaped = normalize(expand(smooth(filled, new Set(beats))));
   return applyBeatEnvelope(shaped, beats);
 }
 
