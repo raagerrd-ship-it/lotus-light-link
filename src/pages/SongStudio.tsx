@@ -214,6 +214,7 @@ function SongStudio() {
 
           {detail ? (
             <div className="mb-4">
+              <BeforeAfter raw={detail.raw} polished={detail.polished} />
               <div className="flex items-center justify-end text-[10px] text-muted-foreground mb-1">
                 <span>rå → polerad</span>
               </div>
