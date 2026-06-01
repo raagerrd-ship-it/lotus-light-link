@@ -16,6 +16,7 @@ export interface SeqAnalysis {
   frameCount: number;
   gaps: number;          // antal glapp (> 2× medianintervall)
   beats: number;         // antal detekterade beats
+  bpm: number;           // skattat tempo (0 = okänt)
   brightnessMin: number;
   brightnessAvg: number;
   brightnessMax: number;
@@ -31,7 +32,13 @@ const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
 const BEAT_REFRACTORY = 3;       // min 3 frames (~120 ms) mellan beats
 const BEAT_K = 1.4;              // tröskel = medel + K·std av flux i fönstret
 const BEAT_FLUX_FLOOR = 6;       // minsta flux (pct) för att räknas som beat
-const BEAT_EMPHASIS = 1.08;      // lätt emfas på beat-toppen
+
+// Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
+// reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
+// och en musikalisk decay-svans — den klassiska ljus-"bumpen".
+const BEAT_BOOST = 1.12;         // topp-boost på slaget
+const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
+const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
 
 /**
  * Detekterar beats ur pct-envelopen via positiv flux + adaptiv tröskel med
