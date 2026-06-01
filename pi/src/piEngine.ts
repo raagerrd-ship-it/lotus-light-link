@@ -478,7 +478,7 @@ export class PiLightEngine {
 
   /** Spela upp aktuell frame ur sekvensen mot interpolerad position. */
   private playbackTick(): void {
-    const posMs = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
+    const posMs = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock) + this._pbLeadMs;
     const t = this._pbTimes;
     const hiIdx = this._pbCount - 1;
     let idx: number;
