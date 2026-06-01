@@ -374,6 +374,22 @@ export class PiLightEngine {
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
 
+  // ── Record / Playback (lärda ljus-sekvenser) ──
+  // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som FAKTISKT
+  // skickades till BLE. lightRecorder prenumererar och buffrar nedsamplat.
+  private _frameTap: ((pct: number, r: number, g: number, b: number) => void) | null = null;
+  // Playback-state: när aktiv hoppar tickInner över den reaktiva pathen och
+  // spelar upp en inspelad sekvens synkad mot Sonos-position.
+  private _pbActive = false;
+  private _pbTimes: Float64Array = new Float64Array(0);
+  private _pbPct: Uint8Array = new Uint8Array(0);
+  private _pbR: Uint8Array = new Uint8Array(0);
+  private _pbG: Uint8Array = new Uint8Array(0);
+  private _pbB: Uint8Array = new Uint8Array(0);
+  private _pbCount = 0;
+  private _pbAnchorPosMs = 0;
+  private _pbAnchorClock = 0;
+
   constructor(tickMs = 20) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
