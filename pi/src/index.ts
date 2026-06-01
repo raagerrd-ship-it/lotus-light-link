@@ -128,6 +128,9 @@ async function ensureEngineInstance(): Promise<void> {
   const savedTickMs = getItem('tick-ms');
   const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
   engineInstance = new engineMod.PiLightEngine(tick);
+  lightRecorder.attachEngine(engineInstance);
+
+
 
   const setCb = (globalThis as any).__lotusSetEngineCb;
   if (typeof setCb === 'function') {
