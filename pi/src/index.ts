@@ -257,6 +257,7 @@ async function startSonosSubsystem(): Promise<void> {
       // även om Sonos redan spelar.
       await sonos.onSonosChange((state) => {
         applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
+        lightRecorder.onSonosUpdate(state);
       });
 
       markSubsystemReady('sonos');
