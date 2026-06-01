@@ -39,20 +39,31 @@ function StatRow({ label, raw, polished, suffix = "" }: { label: string; raw?: n
   );
 }
 
+type RecState = { recording: boolean; currentKey: string | null; bufferFrames: number; playingBack: boolean };
+
 function SongStudio() {
   const [seqs, setSeqs] = useState<Seq[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [rec, setRec] = useState<RecState | null>(null);
 
   const loadList = useCallback(() => {
     fetch(`${piBase}/api/light-seq/list`, { signal: AbortSignal.timeout(2000) })
       .then((r) => r.json())
       .then((d) => setSeqs(Array.isArray(d.sequences) ? d.sequences : []))
       .catch(() => {});
+    fetch(`${piBase}/api/record`, { signal: AbortSignal.timeout(2000) })
+      .then((r) => r.json())
+      .then((d) => setRec(d))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => {
+    loadList();
+    const t = setInterval(loadList, 2000);
+    return () => clearInterval(t);
+  }, [loadList]);
 
   const openDetail = (key: string) => {
     setSelected(key);
@@ -102,9 +113,22 @@ function SongStudio() {
         Inspelade ljus-shower finslipas automatiskt. Här ser du analysen (rå → polerad), kan förhandsgranska på slingan och ångra till råinspelningen.
       </p>
 
+      <div className="text-[11px] rounded-lg bg-secondary/40 px-3 py-2 mb-4">
+        {!rec ? (
+          <span className="text-muted-foreground">Kontaktar motorn…</span>
+        ) : !rec.recording ? (
+          <span className="text-destructive">● Inspelning är AV — slå på "Spela in ljus-sekvenser" på startsidan.</span>
+        ) : rec.currentKey ? (
+          <span className="text-green-500">● Spelar in: {rec.currentKey.replace("__", " — ")} ({rec.bufferFrames} frames)</span>
+        ) : (
+          <span className="text-muted-foreground">● Inspelning på, väntar på låt-info (Sonos-metadata eller ACR).</span>
+        )}
+      </div>
+
       {seqs.length === 0 && (
         <p className="text-xs text-muted-foreground">Inga inspelade sekvenser än.</p>
       )}
+
 
       <div className="space-y-1.5">
         {seqs.map((s) => (
