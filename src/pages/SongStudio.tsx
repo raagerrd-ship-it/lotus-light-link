@@ -113,9 +113,22 @@ function SongStudio() {
         Inspelade ljus-shower finslipas automatiskt. Här ser du analysen (rå → polerad), kan förhandsgranska på slingan och ångra till råinspelningen.
       </p>
 
+      <div className="text-[11px] rounded-lg bg-secondary/40 px-3 py-2 mb-4">
+        {!rec ? (
+          <span className="text-muted-foreground">Kontaktar motorn…</span>
+        ) : !rec.recording ? (
+          <span className="text-destructive">● Inspelning är AV — slå på "Spela in ljus-sekvenser" på startsidan.</span>
+        ) : rec.currentKey ? (
+          <span className="text-green-500">● Spelar in: {rec.currentKey.replace("__", " — ")} ({rec.bufferFrames} frames)</span>
+        ) : (
+          <span className="text-muted-foreground">● Inspelning på, väntar på låt-info (Sonos-metadata eller ACR).</span>
+        )}
+      </div>
+
       {seqs.length === 0 && (
         <p className="text-xs text-muted-foreground">Inga inspelade sekvenser än.</p>
       )}
+
 
       <div className="space-y-1.5">
         {seqs.map((s) => (
