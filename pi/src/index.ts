@@ -21,6 +21,7 @@ import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,
   getSubsystemState, type SubsystemId,
 } from './ble/state.js';
+import * as lightRecorder from './lightRecorder.js';
 
 // --- Config ---
 const SONOS_BUDDY_API_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3053/api';
