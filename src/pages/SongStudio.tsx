@@ -15,6 +15,7 @@ type Analysis = {
   durationMs: number;
   frameCount: number;
   gaps: number;
+  beats: number;
   brightnessMin: number;
   brightnessAvg: number;
   brightnessMax: number;
@@ -131,6 +132,7 @@ function SongStudio() {
               <StatRow label="Längd" raw={detail.raw ? Math.round(detail.raw.durationMs / 1000) : undefined} polished={detail.polished ? Math.round(detail.polished.durationMs / 1000) : undefined} suffix="s" />
               <StatRow label="Frames" raw={detail.raw?.frameCount} polished={detail.polished?.frameCount} />
               <StatRow label="Glapp" raw={detail.raw?.gaps} polished={detail.polished?.gaps} />
+              <StatRow label="Beats" raw={detail.raw?.beats} polished={detail.polished?.beats} />
               <StatRow label="Ljus min" raw={detail.raw?.brightnessMin} polished={detail.polished?.brightnessMin} />
               <StatRow label="Ljus snitt" raw={detail.raw?.brightnessAvg} polished={detail.polished?.brightnessAvg} />
               <StatRow label="Ljus max" raw={detail.raw?.brightnessMax} polished={detail.polished?.brightnessMax} />
