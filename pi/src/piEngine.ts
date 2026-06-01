@@ -389,6 +389,8 @@ export class PiLightEngine {
   private _pbCount = 0;
   private _pbAnchorPosMs = 0;
   private _pbAnchorClock = 0;
+  /** Lead-offset: hämta framen N ms framåt för att kompensera kedjans latens. */
+  private _pbLeadMs = 50;
 
   constructor(tickMs = 20) {
     this.tickMs = tickMs;
@@ -476,7 +478,7 @@ export class PiLightEngine {
 
   /** Spela upp aktuell frame ur sekvensen mot interpolerad position. */
   private playbackTick(): void {
-    const posMs = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
+    const posMs = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock) + this._pbLeadMs;
     const t = this._pbTimes;
     const hiIdx = this._pbCount - 1;
     let idx: number;
