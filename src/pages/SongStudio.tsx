@@ -39,6 +39,69 @@ function StatRow({ label, raw, polished, suffix = "" }: { label: string; raw?: n
   );
 }
 
+/** Vertikal ljusprofil 0–255: band min→max med snittlinje. */
+function BrightnessBand({ a, label, accent }: { a: Analysis; label: string; accent: boolean }) {
+  const H = 96;
+  const y = (v: number) => H - (Math.max(0, Math.min(255, v)) / 255) * H;
+  const top = y(a.brightnessMax);
+  const bottom = y(a.brightnessMin);
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <svg width="48" height={H} className="overflow-visible">
+        <rect x="14" y="0" width="20" height={H} rx="3" className="fill-border/30" />
+        <rect
+          x="14" y={top} width="20" height={Math.max(2, bottom - top)} rx="3"
+          className={accent ? "fill-primary/70" : "fill-muted-foreground/50"}
+        />
+        <line
+          x1="10" x2="38" y1={y(a.brightnessAvg)} y2={y(a.brightnessAvg)}
+          className={accent ? "stroke-primary" : "stroke-foreground"} strokeWidth="2"
+        />
+      </svg>
+      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <span className="text-[10px] tabular-nums text-foreground font-medium">{a.brightnessAvg}</span>
+    </div>
+  );
+}
+
+/** Före/efter-diagram: ljusprofil + flimmer jämförelse. */
+function BeforeAfter({ raw, polished }: { raw: Analysis | null; polished: Analysis | null }) {
+  if (!raw && !polished) return null;
+  const maxFlicker = Math.max(1, raw?.flicker ?? 0, polished?.flicker ?? 0);
+  const flickerBar = (v: number | undefined, accent: boolean) => (
+    <div className="flex-1">
+      <div className="h-2 rounded-full bg-border/30 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${accent ? "bg-primary/70" : "bg-muted-foreground/50"}`}
+          style={{ width: `${((v ?? 0) / maxFlicker) * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+  return (
+    <div className="mb-4 rounded-lg bg-background/40 p-3">
+      <div className="text-[10px] text-muted-foreground mb-2">Ljusprofil (min–max, snitt)</div>
+      <div className="flex items-end justify-center gap-8">
+        {raw && <BrightnessBand a={raw} label="Rå" accent={false} />}
+        {polished && <BrightnessBand a={polished} label="Polerad" accent={true} />}
+      </div>
+      <div className="mt-3">
+        <div className="text-[10px] text-muted-foreground mb-1">Flimmer (lägre = jämnare)</div>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="w-12 text-muted-foreground">Rå</span>
+          {flickerBar(raw?.flicker, false)}
+          <span className="w-8 text-right tabular-nums text-muted-foreground">{raw?.flicker ?? "–"}</span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] mt-1">
+          <span className="w-12 text-foreground">Polerad</span>
+          {flickerBar(polished?.flicker, true)}
+          <span className="w-8 text-right tabular-nums text-foreground font-medium">{polished?.flicker ?? "–"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type RecState = { recording: boolean; currentKey: string | null; bufferFrames: number; playingBack: boolean };
 
 function SongStudio() {
@@ -151,6 +214,7 @@ function SongStudio() {
 
           {detail ? (
             <div className="mb-4">
+              <BeforeAfter raw={detail.raw} polished={detail.polished} />
               <div className="flex items-center justify-end text-[10px] text-muted-foreground mb-1">
                 <span>rå → polerad</span>
               </div>
