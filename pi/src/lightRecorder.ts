@@ -16,7 +16,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from 'fs';
 import { join } from 'path';
 import { DATA_DIR, getItem, setItem } from './storage.js';
-import { songKeyFromSonos } from './songIdentity.js';
+import { songKeyFromSonos, identifyViaAcr } from './songIdentity.js';
 
 type Frame = [number, number, number, number, number]; // [tMs, pct, r, g, b]
 
@@ -26,14 +26,25 @@ interface EngineLike {
   updatePlaybackPosition(positionMs: number): void;
 }
 
+interface MicLike {
+  startAcrCapture(): void;
+  stopAcrCapture(): void;
+  getAcrCaptureWav(): Buffer | null;
+}
+
 const SEQ_DIR = join(DATA_DIR, 'light-seq');
 const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz nedsampling
 const MIN_FRAMES_TO_SAVE = 50;   // ignorera korta/avbrutna takes
 const MAX_FRAMES = 20000;        // ~13 min tak, skydd mot runaway
 
+const ACR_CAPTURE_MS = 10500;    // ~10s capture + marginal
+const ACR_COOLDOWN_MS = 30000;   // undvik att spamma ACRCloud vid okänd källa
+
 let engine: EngineLike | null = null;
+let mic: MicLike | null = null;
 let recording = getItem('record-enabled') === 'true';
 let autoPlay = getItem('autoplay-enabled') === 'true';
+let acrEnabled = getItem('acr-enabled') === 'true';
 
 let currentKey: string | null = null;
 let pbActive = false;            // enginen kör uppspelning för currentKey
@@ -41,6 +52,13 @@ let buffer: Frame[] = [];
 let lastRecT = -Infinity;
 let posAnchorMs = 0;
 let posAnchorClock = 0;
+
+// ACR-state
+let acrActiveKey: string | null = null;
+let acrInFlight = false;
+let acrCooldownUntil = 0;
+let lastIdentified: { artist: string; track: string; key: string; at: number } | null = null;
+
 
 function ensureDir(): void {
   if (!existsSync(SEQ_DIR)) mkdirSync(SEQ_DIR, { recursive: true });
