@@ -286,6 +286,61 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 let _fftFrameCount = 0;
 export function getFFTFrameCount(): number { return _fftFrameCount; }
 
+// ── ACR-capture: valbar rå-PCM-tap för ACRCloud-igenkänning ──
+// Tappar rå vänster-kanal PRE-gain/PRE-EQ (renast fingerprint), decimerar
+// 48k→8k (var 6:e sample) och buffrar Int16 mono. Bakom flagga → noll arbete
+// när av (V8 eliminerar grenen i hot-path, samma mönster som DEBUG).
+const ACR_SAMPLE_RATE = 8000;
+const ACR_DECIM = SAMPLE_RATE / ACR_SAMPLE_RATE; // 6
+const ACR_SECONDS = 10;
+const ACR_MAX_SAMPLES = ACR_SAMPLE_RATE * ACR_SECONDS; // 80000
+let acrCaptureActive = false;
+let acrBuf = new Int16Array(ACR_MAX_SAMPLES);
+let acrLen = 0;
+let acrDecimCount = 0;
+
+/** Starta en ~10s rå-PCM-capture (8kHz mono) för ACR-identifiering. */
+export function startAcrCapture(): void {
+  acrLen = 0;
+  acrDecimCount = 0;
+  acrCaptureActive = true;
+}
+
+/** Avbryt pågående ACR-capture utan att bygga WAV. */
+export function stopAcrCapture(): void {
+  acrCaptureActive = false;
+  acrLen = 0;
+}
+
+/** True när ~10s samlats. */
+export function isAcrCaptureReady(): boolean {
+  return acrLen >= ACR_MAX_SAMPLES;
+}
+
+/** Bygg WAV-buffer från capturad PCM. null om inte tillräckligt samlat. */
+export function getAcrCaptureWav(): Buffer | null {
+  if (acrLen < ACR_SAMPLE_RATE * 3) return null; // minst 3s
+  acrCaptureActive = false;
+  const dataBytes = acrLen * 2;
+  const buf = Buffer.alloc(44 + dataBytes);
+  // RIFF header
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataBytes, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);          // PCM chunk size
+  buf.writeUInt16LE(1, 20);           // PCM format
+  buf.writeUInt16LE(1, 22);           // mono
+  buf.writeUInt32LE(ACR_SAMPLE_RATE, 24);
+  buf.writeUInt32LE(ACR_SAMPLE_RATE * 2, 28); // byte rate
+  buf.writeUInt16LE(2, 32);           // block align
+  buf.writeUInt16LE(16, 34);          // bits per sample
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataBytes, 40);
+  for (let i = 0; i < acrLen; i++) buf.writeInt16LE(acrBuf[i], 44 + i * 2);
+  return buf;
+}
+
 // NOTE: applyHighShelfSample inlined directly into onAudioData hot loop
 // (function call overhead per sample × 1920/cb = measurable on Pi Zero 2W).
 
