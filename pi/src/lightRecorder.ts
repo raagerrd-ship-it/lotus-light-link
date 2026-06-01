@@ -117,9 +117,17 @@ function finalizeRecording(): void {
     if (!existingRaw || buffer.length >= existingRaw.length) {
       // Spara råinspelningen (för ångra) och en auto-finslipad version som spelas upp.
       writeFrames(rawPath(currentKey), currentKey, buffer);
-      const polished = polish(buffer);
-      writeFrames(seqPath(currentKey), currentKey, polished);
-      console.log(`[lightRecorder] Sparade + finslipade "${currentKey}" (${buffer.length} → ${polished.length} frames)`);
+      // Finslipning får aldrig blockera sparningen: faller finslipningen så
+      // spelas rå-versionen upp i stället (annars saknas <key>.json helt och
+      // låten "försvinner" ur listan).
+      let playable = buffer;
+      try {
+        playable = polish(buffer);
+      } catch (e: any) {
+        console.error('[lightRecorder] Finslipning misslyckades, sparar rå:', e?.message ?? e);
+      }
+      writeFrames(seqPath(currentKey), currentKey, playable);
+      console.log(`[lightRecorder] Sparade "${currentKey}" (${buffer.length} → ${playable.length} frames)`);
     }
   } catch (e: any) {
     console.error('[lightRecorder] Kunde inte spara sekvens:', e?.message ?? e);
