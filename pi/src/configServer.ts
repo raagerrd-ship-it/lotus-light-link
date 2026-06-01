@@ -710,7 +710,8 @@ export function startConfigServer(port = 3050): void {
       let engineReady = false;
       if (hasNobleLoaded()) {
         const { getNoble } = await import('./ble/noble-singleton.js');
-        rawState = getNoble().state ?? null;
+        const n = getNoble() as any;
+        rawState = n?.state ?? n?._state ?? null;
         engineReady = rawState === 'poweredOn';
       }
       const c = getHardcodedConnected();
