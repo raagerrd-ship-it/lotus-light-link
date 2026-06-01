@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity, Download, Timer } from "lucide-react";
+import { Link } from "react-router-dom";
 import { apiBase } from "@/lib/apiBase";
 import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 import { BleControlPanel } from "@/components/BleControlPanel";
@@ -1401,6 +1402,10 @@ function RecordPlaybackPanel({ piBase }: { piBase: string }) {
       {seqs.length === 0 && (
         <p className="text-[10px] text-muted-foreground mt-1">Inga inspelade sekvenser än.</p>
       )}
+
+      <Link to="/pi-mobile/song" className="inline-block mt-3 text-xs text-primary active:scale-95">
+        ✨ Öppna Låt-studio →
+      </Link>
     </section>
   );
 }

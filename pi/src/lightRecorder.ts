@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlink
 import { join } from 'path';
 import { DATA_DIR, getItem, setItem } from './storage.js';
 import { songKeyFromSonos, identifyViaAcr } from './songIdentity.js';
+import { analyze, polish, type SeqAnalysis } from './seqPolish.js';
 
 type Frame = [number, number, number, number, number]; // [tMs, pct, r, g, b]
 
@@ -59,6 +60,10 @@ let acrInFlight = false;
 let acrCooldownUntil = 0;
 let lastIdentified: { artist: string; track: string; key: string; at: number } | null = null;
 
+// Preview-lås: under förhandsgranskning ignoreras Sonos-uppdateringar så att
+// uppspelningen inte avbryts mitt i.
+let previewUntil = 0;
+
 
 function ensureDir(): void {
   if (!existsSync(SEQ_DIR)) mkdirSync(SEQ_DIR, { recursive: true });
@@ -68,15 +73,36 @@ function seqPath(key: string): string {
   return join(SEQ_DIR, `${key}.json`);
 }
 
-function loadSequence(key: string): number[][] | null {
+function rawPath(key: string): string {
+  return join(SEQ_DIR, `${key}.raw.json`);
+}
+
+function loadFramesFrom(path: string): number[][] | null {
   try {
-    const raw = readFileSync(seqPath(key), 'utf-8');
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'));
     const frames = parsed?.frames;
     return Array.isArray(frames) && frames.length > 0 ? frames : null;
   } catch {
     return null;
   }
+}
+
+function loadSequence(key: string): number[][] | null {
+  return loadFramesFrom(seqPath(key));
+}
+
+function loadRawSequence(key: string): number[][] | null {
+  return loadFramesFrom(rawPath(key));
+}
+
+function writeFrames(path: string, key: string, frames: number[][]): void {
+  const payload = {
+    key,
+    durationMs: frames.length ? frames[frames.length - 1][0] : 0,
+    frames,
+    updatedAt: Date.now(),
+  };
+  writeFileSync(path, JSON.stringify(payload), 'utf-8');
 }
 
 function finalizeRecording(): void {
@@ -86,17 +112,14 @@ function finalizeRecording(): void {
   }
   try {
     ensureDir();
-    const existing = loadSequence(currentKey);
+    const existingRaw = loadRawSequence(currentKey) ?? loadSequence(currentKey);
     // Skriv bara om vi inte har en sekvens, eller om den nya är minst lika komplett.
-    if (!existing || buffer.length >= existing.length) {
-      const payload = {
-        key: currentKey,
-        durationMs: buffer[buffer.length - 1][0],
-        frames: buffer,
-        updatedAt: Date.now(),
-      };
-      writeFileSync(seqPath(currentKey), JSON.stringify(payload), 'utf-8');
-      console.log(`[lightRecorder] Sparade sekvens "${currentKey}" (${buffer.length} frames)`);
+    if (!existingRaw || buffer.length >= existingRaw.length) {
+      // Spara råinspelningen (för ångra) och en auto-finslipad version som spelas upp.
+      writeFrames(rawPath(currentKey), currentKey, buffer);
+      const polished = polish(buffer);
+      writeFrames(seqPath(currentKey), currentKey, polished);
+      console.log(`[lightRecorder] Sparade + finslipade "${currentKey}" (${buffer.length} → ${polished.length} frames)`);
     }
   } catch (e: any) {
     console.error('[lightRecorder] Kunde inte spara sekvens:', e?.message ?? e);
@@ -183,6 +206,9 @@ export function onSonosUpdate(state: {
 }): void {
   if (!engine) return;
 
+  // Under förhandsgranskning: lämna uppspelningen ifred tills previewen är klar.
+  if (Date.now() < previewUntil) return;
+
   // Ankra position löpande (för både inspelning och uppspelning).
   if (state.positionMs != null) {
     posAnchorMs = state.positionMs;
@@ -260,7 +286,7 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
   try {
     ensureDir();
     return readdirSync(SEQ_DIR)
-      .filter((f) => f.endsWith('.json'))
+      .filter((f) => f.endsWith('.json') && !f.endsWith('.raw.json'))
       .map((f) => {
         const key = f.slice(0, -5);
         try {
@@ -284,6 +310,7 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
 export function deleteSequence(key: string): boolean {
   try {
     unlinkSync(seqPath(key));
+    try { unlinkSync(rawPath(key)); } catch { /* ingen rå-kopia */ }
     if (key === currentKey) {
       pbActive = false;
       engine?.setPlaybackSequence(null);
@@ -293,3 +320,41 @@ export function deleteSequence(key: string): boolean {
     return false;
   }
 }
+
+/** Analys av rå (inspelad) och polerad (uppspelad) version för Låt-studion. */
+export function getSequence(key: string): { raw: SeqAnalysis | null; polished: SeqAnalysis | null } {
+  const raw = loadRawSequence(key);
+  const polished = loadSequence(key);
+  return {
+    raw: raw ? analyze(raw) : null,
+    polished: polished ? analyze(polished) : null,
+  };
+}
+
+/** Spela upp vald variant på slingan, oberoende av Sonos, under sekvensens längd. */
+export function previewSequence(key: string, variant: 'raw' | 'polished'): boolean {
+  if (!engine) return false;
+  const frames = variant === 'raw' ? loadRawSequence(key) : loadSequence(key);
+  if (!frames || frames.length === 0) return false;
+  finalizeRecording();
+  currentKey = null;
+  engine.setPlaybackSequence(frames);
+  engine.updatePlaybackPosition(0);
+  pbActive = true;
+  const durationMs = frames[frames.length - 1][0];
+  previewUntil = Date.now() + durationMs + 500;
+  return true;
+}
+
+/** Återställ till råinspelningen och finslipa om från den. */
+export function revertSequence(key: string): boolean {
+  const raw = loadRawSequence(key);
+  if (!raw) return false;
+  try {
+    writeFrames(seqPath(key), key, polish(raw));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
