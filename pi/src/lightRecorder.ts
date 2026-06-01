@@ -120,7 +120,7 @@ function finalizeRecording(): void {
       // Finslipning får aldrig blockera sparningen: faller finslipningen så
       // spelas rå-versionen upp i stället (annars saknas <key>.json helt och
       // låten "försvinner" ur listan).
-      let playable = buffer;
+      let playable: number[][] = buffer;
       try {
         playable = polish(buffer);
       } catch (e: any) {
