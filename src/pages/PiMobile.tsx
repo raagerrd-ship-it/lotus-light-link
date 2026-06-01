@@ -1288,12 +1288,21 @@ function GainCalibrationPanel({
 function RecordPlaybackPanel({ piBase }: { piBase: string }) {
   const [recording, setRecording] = useState(false);
   const [autoPlay, setAutoPlay] = useState(false);
+  const [acrEnabled, setAcrEnabled] = useState(false);
+  const [lastId, setLastId] = useState<{ artist: string; track: string } | null>(null);
   const [seqs, setSeqs] = useState<{ key: string; frames: number; durationMs: number }[]>([]);
 
   const refresh = useCallback(() => {
     fetch(`${piBase}/api/record`, { signal: AbortSignal.timeout(2000) })
       .then(r => r.json())
       .then(d => { setRecording(!!d.recording); setAutoPlay(!!d.autoPlay); })
+      .catch(() => {});
+    fetch(`${piBase}/api/acr`, { signal: AbortSignal.timeout(2000) })
+      .then(r => r.json())
+      .then(d => {
+        setAcrEnabled(!!d.acrEnabled);
+        setLastId(d.lastIdentified ? { artist: d.lastIdentified.artist, track: d.lastIdentified.track } : null);
+      })
       .catch(() => {});
     fetch(`${piBase}/api/light-seq/list`, { signal: AbortSignal.timeout(2000) })
       .then(r => r.json())
@@ -1318,6 +1327,15 @@ function RecordPlaybackPanel({ piBase }: { piBase: string }) {
     fetch(`${piBase}/api/playback`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ autoPlay: next }),
+    }).then(() => refresh()).catch(() => {});
+  };
+
+  const toggleAcr = () => {
+    const next = !acrEnabled;
+    setAcrEnabled(next);
+    fetch(`${piBase}/api/acr`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
     }).then(() => refresh()).catch(() => {});
   };
 
