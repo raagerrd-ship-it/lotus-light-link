@@ -1477,6 +1477,19 @@ export function startConfigServer(port = 3050): void {
     res.status(ok ? 200 : 404).json({ ok });
   });
 
+  app.get('/api/acr', (_req, res) => {
+    res.json(lightRecorder.getAcrState());
+  });
+
+  app.put('/api/acr', (req, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Need enabled: boolean' });
+    }
+    lightRecorder.setAcrMode(enabled);
+    res.json(lightRecorder.getAcrState());
+  });
+
 
 
   // --- Sonos gateway config ---

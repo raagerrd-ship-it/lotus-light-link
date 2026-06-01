@@ -170,6 +170,7 @@ async function startMicSubsystem(): Promise<void> {
     try {
       console.log('[Subsystem:mic] importing alsaMic (native ALSA-bindning)…');
       alsaMic = await import('./alsaMic.js');
+      lightRecorder.attachMic(alsaMic);
 
       const savedAlsaDevice = getItem('alsa-device');
       const savedMicGain = getItem('mic-gain');
