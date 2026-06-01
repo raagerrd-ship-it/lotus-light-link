@@ -265,7 +265,7 @@ export function polish(frames: Frame[]): Frame[] {
   const rawBeats = detectBeats(filled);
   const grid = buildBeatGrid(filled, rawBeats);
   const beats = grid.length ? grid : rawBeats;
-  const shaped = normalize(smooth(filled, new Set(beats)));
+  const shaped = normalize(expand(smooth(filled, new Set(beats))));
   return applyBeatEnvelope(shaped, beats);
 }
 
