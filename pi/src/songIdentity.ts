@@ -22,6 +22,14 @@ export function songKeyFromSonos(
   trackName: string | null | undefined,
   artistName: string | null | undefined,
 ): string | null {
+  return songKeyFromParts(trackName, artistName);
+}
+
+/** Bygg song-key från valfri (artist, track)-källa (Sonos eller ACRCloud). */
+export function songKeyFromParts(
+  trackName: string | null | undefined,
+  artistName: string | null | undefined,
+): string | null {
   if (!trackName) return null;
   const t = slug(trackName);
   if (!t) return null;
@@ -29,7 +37,14 @@ export function songKeyFromSonos(
   return a ? `${a}__${t}` : t;
 }
 
-/** Extension-point för ACRCloud (TV/extern källa). Inte implementerad än. */
-export async function identifyViaAcr(): Promise<string | null> {
-  return null;
+/** Identifiera via ACRCloud från WAV. Returnerar { key, artist, track } eller null. */
+export async function identifyViaAcr(
+  wav: Buffer,
+): Promise<{ key: string; artist: string; track: string } | null> {
+  const { identify } = await import('./acrIdentify.js');
+  const match = await identify(wav);
+  if (!match) return null;
+  const key = songKeyFromParts(match.track, match.artist);
+  if (!key) return null;
+  return { key, artist: match.artist, track: match.track };
 }
