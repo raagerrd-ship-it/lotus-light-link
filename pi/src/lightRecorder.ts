@@ -236,6 +236,22 @@ export function setAutoPlay(on: boolean): void {
   }
 }
 
+export function setAcrMode(on: boolean): void {
+  acrEnabled = on;
+  setItem('acr-enabled', String(on));
+  if (!on) {
+    acrActiveKey = null;
+    if (acrInFlight) { mic?.stopAcrCapture(); acrInFlight = false; }
+  }
+}
+
+export function getAcrState(): {
+  acrEnabled: boolean;
+  lastIdentified: { artist: string; track: string; key: string; at: number } | null;
+} {
+  return { acrEnabled, lastIdentified };
+}
+
 export function getRecorderState(): { recording: boolean; autoPlay: boolean; currentKey: string | null; playingBack: boolean } {
   return { recording, autoPlay, currentKey, playingBack: pbActive };
 }
