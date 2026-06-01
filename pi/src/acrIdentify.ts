@@ -42,7 +42,7 @@ export async function identify(wav: Buffer): Promise<AcrMatch | null> {
     const signature = createHmac('sha1', ACCESS_SECRET).update(stringToSign).digest('base64');
 
     const form = new FormData();
-    form.append('sample', new Blob([wav], { type: 'audio/wav' }), 'sample.wav');
+    form.append('sample', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'sample.wav');
     form.append('sample_bytes', String(wav.byteLength));
     form.append('access_key', ACCESS_KEY);
     form.append('data_type', 'audio');
