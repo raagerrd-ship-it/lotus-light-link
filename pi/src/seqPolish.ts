@@ -190,13 +190,12 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   for (let i = 1; i < n; i++) {
     const f = frames[i];
     // Vid en beat (eller stort hopp): skarp attack — nollställ EMA till råvärdet
-    // och lägg lätt emfas på toppen så slaget poppar.
+    // så slaget landar oförmjukat. Toppen-boost/decay läggs av applyBeatEnvelope.
     const isBeat = beatSet.has(i);
     const transient = isBeat || Math.abs(f[1] - frames[i - 1][1]) >= TRANSIENT_DELTA;
     if (transient) {
-      const emph = isBeat ? clamp8(f[1] * BEAT_EMPHASIS) : f[1];
-      pp = emph; pr = f[2]; pg = f[3]; pb = f[4];
-      out.push([f[0], emph, f[2], f[3], f[4]]);
+      pp = f[1]; pr = f[2]; pg = f[3]; pb = f[4];
+      out.push([f[0], f[1], f[2], f[3], f[4]]);
     } else {
       pp = pp + (f[1] - pp) * SMOOTH_ALPHA;
       pr = pr + (f[2] - pr) * SMOOTH_ALPHA;
