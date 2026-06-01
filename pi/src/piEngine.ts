@@ -433,6 +433,72 @@ export class PiLightEngine {
     this.tc = computeTickConstants(this.tickMs, this.cal);
   }
 
+  // ── Record / Playback API ──
+
+  /** Sätt frame-tap (eller null för att koppla bort). */
+  setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null) {
+    this._frameTap = cb;
+  }
+
+  isPlaybackActive(): boolean { return this._pbActive; }
+
+  /** Aktivera playback av en inspelad sekvens.
+   *  frames = [tMs, pct, r, g, b][] sorterad stigande på tMs. null = reaktiv mode. */
+  setPlaybackSequence(frames: number[][] | null): void {
+    if (!frames || frames.length === 0) {
+      this._pbActive = false;
+      this._pbCount = 0;
+      return;
+    }
+    const n = frames.length;
+    this._pbTimes = new Float64Array(n);
+    this._pbPct = new Uint8Array(n);
+    this._pbR = new Uint8Array(n);
+    this._pbG = new Uint8Array(n);
+    this._pbB = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const f = frames[i];
+      this._pbTimes[i] = f[0];
+      this._pbPct[i] = f[1];
+      this._pbR[i] = f[2];
+      this._pbG[i] = f[3];
+      this._pbB[i] = f[4];
+    }
+    this._pbCount = n;
+    this._pbActive = true;
+  }
+
+  /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
+  updatePlaybackPosition(positionMs: number): void {
+    this._pbAnchorPosMs = positionMs;
+    this._pbAnchorClock = performance.now();
+  }
+
+  /** Spela upp aktuell frame ur sekvensen mot interpolerad position. */
+  private playbackTick(): void {
+    const posMs = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
+    const t = this._pbTimes;
+    const hiIdx = this._pbCount - 1;
+    let idx: number;
+    if (posMs <= t[0]) {
+      idx = 0;
+    } else if (posMs >= t[hiIdx]) {
+      idx = hiIdx;
+    } else {
+      let lo = 0, hi = hiIdx;
+      idx = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (t[mid] <= posMs) { idx = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+    }
+    const pct = this._pbPct[idx];
+    const result = sendToBLE(this._pbR[idx], this._pbG[idx], this._pbB[idx], pct);
+    if (result === 'sent') bleStatsState.tickOkCount++;
+    this.lastSentPct = pct;
+  }
+
   private initOnsetBuffer(tickMs: number): void {
     this.onsetSize = Math.max(3, ((175 / tickMs + 0.5) | 0));
     if (this.onsetBuffer.length < this.onsetSize) {
