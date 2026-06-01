@@ -206,6 +206,9 @@ export function onSonosUpdate(state: {
 }): void {
   if (!engine) return;
 
+  // Under förhandsgranskning: lämna uppspelningen ifred tills previewen är klar.
+  if (Date.now() < previewUntil) return;
+
   // Ankra position löpande (för både inspelning och uppspelning).
   if (state.positionMs != null) {
     posAnchorMs = state.positionMs;
