@@ -286,7 +286,7 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
   try {
     ensureDir();
     return readdirSync(SEQ_DIR)
-      .filter((f) => f.endsWith('.json'))
+      .filter((f) => f.endsWith('.json') && !f.endsWith('.raw.json'))
       .map((f) => {
         const key = f.slice(0, -5);
         try {
@@ -310,6 +310,7 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
 export function deleteSequence(key: string): boolean {
   try {
     unlinkSync(seqPath(key));
+    try { unlinkSync(rawPath(key)); } catch { /* ingen rå-kopia */ }
     if (key === currentKey) {
       pbActive = false;
       engine?.setPlaybackSequence(null);
@@ -319,3 +320,41 @@ export function deleteSequence(key: string): boolean {
     return false;
   }
 }
+
+/** Analys av rå (inspelad) och polerad (uppspelad) version för Låt-studion. */
+export function getSequence(key: string): { raw: SeqAnalysis | null; polished: SeqAnalysis | null } {
+  const raw = loadRawSequence(key);
+  const polished = loadSequence(key);
+  return {
+    raw: raw ? analyze(raw) : null,
+    polished: polished ? analyze(polished) : null,
+  };
+}
+
+/** Spela upp vald variant på slingan, oberoende av Sonos, under sekvensens längd. */
+export function previewSequence(key: string, variant: 'raw' | 'polished'): boolean {
+  if (!engine) return false;
+  const frames = variant === 'raw' ? loadRawSequence(key) : loadSequence(key);
+  if (!frames || frames.length === 0) return false;
+  finalizeRecording();
+  currentKey = null;
+  engine.setPlaybackSequence(frames);
+  engine.updatePlaybackPosition(0);
+  pbActive = true;
+  const durationMs = frames[frames.length - 1][0];
+  previewUntil = Date.now() + durationMs + 500;
+  return true;
+}
+
+/** Återställ till råinspelningen och finslipa om från den. */
+export function revertSequence(key: string): boolean {
+  const raw = loadRawSequence(key);
+  if (!raw) return false;
+  try {
+    writeFrames(seqPath(key), key, polish(raw));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
