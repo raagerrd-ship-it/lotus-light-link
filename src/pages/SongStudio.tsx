@@ -39,20 +39,31 @@ function StatRow({ label, raw, polished, suffix = "" }: { label: string; raw?: n
   );
 }
 
+type RecState = { recording: boolean; currentKey: string | null; bufferFrames: number; playingBack: boolean };
+
 function SongStudio() {
   const [seqs, setSeqs] = useState<Seq[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [rec, setRec] = useState<RecState | null>(null);
 
   const loadList = useCallback(() => {
     fetch(`${piBase}/api/light-seq/list`, { signal: AbortSignal.timeout(2000) })
       .then((r) => r.json())
       .then((d) => setSeqs(Array.isArray(d.sequences) ? d.sequences : []))
       .catch(() => {});
+    fetch(`${piBase}/api/record`, { signal: AbortSignal.timeout(2000) })
+      .then((r) => r.json())
+      .then((d) => setRec(d))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => {
+    loadList();
+    const t = setInterval(loadList, 2000);
+    return () => clearInterval(t);
+  }, [loadList]);
 
   const openDetail = (key: string) => {
     setSelected(key);
