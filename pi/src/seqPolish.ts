@@ -15,6 +15,7 @@ export interface SeqAnalysis {
   durationMs: number;
   frameCount: number;
   gaps: number;          // antal glapp (> 2× medianintervall)
+  beats: number;         // antal detekterade beats
   brightnessMin: number;
   brightnessAvg: number;
   brightnessMax: number;
@@ -23,12 +24,52 @@ export interface SeqAnalysis {
 
 const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz (matchar lightRecorder)
 const SMOOTH_ALPHA = 0.5;        // EMA-faktor för mjukare övergångar
-const TRANSIENT_DELTA = 40;      // pct-hopp som räknas som beat-träff (bevaras)
+const TRANSIENT_DELTA = 40;      // pct-hopp som alltid bevaras (säkerhet)
+
+// Beat-detektering på pct-envelopen.
+const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
+const BEAT_REFRACTORY = 3;       // min 3 frames (~120 ms) mellan beats
+const BEAT_K = 1.4;              // tröskel = medel + K·std av flux i fönstret
+const BEAT_FLUX_FLOOR = 6;       // minsta flux (pct) för att räknas som beat
+const BEAT_EMPHASIS = 1.08;      // lätt emfas på beat-toppen
+
+/**
+ * Detekterar beats ur pct-envelopen via positiv flux + adaptiv tröskel med
+ * refraktärtid. Returnerar index på beat-frames (stigande).
+ */
+export function detectBeats(frames: Frame[]): number[] {
+  const n = frames.length;
+  if (n < 3) return [];
+  const flux = new Float64Array(n);
+  for (let i = 1; i < n; i++) {
+    const d = frames[i][1] - frames[i - 1][1];
+    flux[i] = d > 0 ? d : 0;
+  }
+  const beats: number[] = [];
+  let lastBeat = -BEAT_REFRACTORY;
+  const half = BEAT_WINDOW >> 1;
+  for (let i = 1; i < n; i++) {
+    const lo = Math.max(1, i - half), hi = Math.min(n - 1, i + half);
+    let sum = 0, cnt = 0;
+    for (let j = lo; j <= hi; j++) { sum += flux[j]; cnt++; }
+    const mean = sum / cnt;
+    let varSum = 0;
+    for (let j = lo; j <= hi; j++) { const d = flux[j] - mean; varSum += d * d; }
+    const std = Math.sqrt(varSum / cnt);
+    const thr = Math.max(BEAT_FLUX_FLOOR, mean + BEAT_K * std);
+    // Lokalt max över sina grannar + över tröskeln + refraktär.
+    if (flux[i] >= thr && flux[i] >= flux[i - 1] && flux[i] >= (flux[i + 1] ?? 0) && i - lastBeat >= BEAT_REFRACTORY) {
+      beats.push(i);
+      lastBeat = i;
+    }
+  }
+  return beats;
+}
 
 export function analyze(frames: Frame[]): SeqAnalysis {
   const n = frames.length;
   if (n === 0) {
-    return { durationMs: 0, frameCount: 0, gaps: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
+    return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
   }
   let min = 255, max = 0, sum = 0, flickerSum = 0, gaps = 0;
   for (let i = 0; i < n; i++) {
@@ -46,6 +87,7 @@ export function analyze(frames: Frame[]): SeqAnalysis {
     durationMs: frames[n - 1][0],
     frameCount: n,
     gaps,
+    beats: detectBeats(frames).length,
     brightnessMin: min,
     brightnessAvg: Math.round(sum / n),
     brightnessMax: max,
