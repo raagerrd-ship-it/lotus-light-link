@@ -183,7 +183,11 @@ function fillGaps(frames: Frame[]): Frame[] {
   return out;
 }
 
-/** EMA-utjämning som bevarar skarpa transienter (stora pct-hopp). */
+/**
+ * Asymmetrisk attack/release-utjämning: brightness följer snabbt uppåt (skarp
+ * attack) men släpps mjukt nedåt (musikalisk release). Färg jämnas symmetriskt.
+ * Skarpa transienter/beats nollställer filtret så slaget landar oförmjukat.
+ */
 function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   const n = frames.length;
   if (n < 2) return frames;
@@ -191,15 +195,14 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   let pp = frames[0][1], pr = frames[0][2], pg = frames[0][3], pb = frames[0][4];
   for (let i = 1; i < n; i++) {
     const f = frames[i];
-    // Vid en beat (eller stort hopp): skarp attack — nollställ EMA till råvärdet
-    // så slaget landar oförmjukat. Toppen-boost/decay läggs av applyBeatEnvelope.
     const isBeat = beatSet.has(i);
     const transient = isBeat || Math.abs(f[1] - frames[i - 1][1]) >= TRANSIENT_DELTA;
     if (transient) {
       pp = f[1]; pr = f[2]; pg = f[3]; pb = f[4];
       out.push([f[0], f[1], f[2], f[3], f[4]]);
     } else {
-      pp = pp + (f[1] - pp) * SMOOTH_ALPHA;
+      const a = f[1] > pp ? ATTACK_ALPHA : RELEASE_ALPHA;
+      pp = pp + (f[1] - pp) * a;
       pr = pr + (f[2] - pr) * SMOOTH_ALPHA;
       pg = pg + (f[3] - pg) * SMOOTH_ALPHA;
       pb = pb + (f[4] - pb) * SMOOTH_ALPHA;
