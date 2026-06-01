@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity, Download, Timer } from "lucide-react";
+import { Link } from "react-router-dom";
 import { apiBase } from "@/lib/apiBase";
 import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 import { BleControlPanel } from "@/components/BleControlPanel";
