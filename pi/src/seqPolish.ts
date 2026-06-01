@@ -16,6 +16,7 @@ export interface SeqAnalysis {
   frameCount: number;
   gaps: number;          // antal glapp (> 2× medianintervall)
   beats: number;         // antal detekterade beats
+  bpm: number;           // skattat tempo (0 = okänt)
   brightnessMin: number;
   brightnessAvg: number;
   brightnessMax: number;
@@ -31,7 +32,13 @@ const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
 const BEAT_REFRACTORY = 3;       // min 3 frames (~120 ms) mellan beats
 const BEAT_K = 1.4;              // tröskel = medel + K·std av flux i fönstret
 const BEAT_FLUX_FLOOR = 6;       // minsta flux (pct) för att räknas som beat
-const BEAT_EMPHASIS = 1.08;      // lätt emfas på beat-toppen
+
+// Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
+// reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
+// och en musikalisk decay-svans — den klassiska ljus-"bumpen".
+const BEAT_BOOST = 1.12;         // topp-boost på slaget
+const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
+const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
 
 /**
  * Detekterar beats ur pct-envelopen via positiv flux + adaptiv tröskel med
@@ -66,10 +73,56 @@ export function detectBeats(frames: Frame[]): number[] {
   return beats;
 }
 
+/**
+ * Skattar tempo (BPM) från inter-beat-intervallen. Veckar oktav-fel (dubbla/
+ * halva slag) mot medianen och normaliserar till ett musikaliskt spann.
+ */
+export function estimateBpm(frames: Frame[], beats: number[]): number {
+  if (beats.length < 4) return 0;
+  const intervals: number[] = [];
+  for (let i = 1; i < beats.length; i++) {
+    intervals.push(frames[beats[i]][0] - frames[beats[i - 1]][0]);
+  }
+  intervals.sort((a, b) => a - b);
+  const median = intervals[intervals.length >> 1];
+  if (median <= 0) return 0;
+  let sum = 0;
+  for (let iv of intervals) {
+    while (iv > median * 1.4) iv /= 2;
+    while (iv < median * 0.7) iv *= 2;
+    sum += iv;
+  }
+  let bpm = 60000 / (sum / intervals.length);
+  while (bpm < 70) bpm *= 2;
+  while (bpm > 180) bpm /= 2;
+  return Math.round(bpm);
+}
+
+/**
+ * Bygger ett jämnt beat-grid förankrat i första detekterade slaget och snappar
+ * varje rutnäts-slag till närmaste lokala energi-topp (±2 frames).
+ */
+function buildBeatGrid(frames: Frame[], beats: number[]): number[] {
+  const bpm = estimateBpm(frames, beats);
+  if (!bpm || beats.length < 4) return [];
+  const periodFrames = (60000 / bpm) / SAMPLE_INTERVAL_MS;
+  const grid: number[] = [];
+  for (let t = beats[0] % periodFrames; t < frames.length; t += periodFrames) {
+    const idx = Math.round(t);
+    let best = idx, bestV = frames[idx]?.[1] ?? -1;
+    for (let k = -2; k <= 2; k++) {
+      const j = idx + k;
+      if (j >= 0 && j < frames.length && frames[j][1] > bestV) { bestV = frames[j][1]; best = j; }
+    }
+    if (grid[grid.length - 1] !== best) grid.push(best);
+  }
+  return grid;
+}
+
 export function analyze(frames: Frame[]): SeqAnalysis {
   const n = frames.length;
   if (n === 0) {
-    return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
+    return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, bpm: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
   }
   let min = 255, max = 0, sum = 0, flickerSum = 0, gaps = 0;
   for (let i = 0; i < n; i++) {
@@ -83,11 +136,13 @@ export function analyze(frames: Frame[]): SeqAnalysis {
       if (dt > SAMPLE_INTERVAL_MS * 2.5) gaps++;
     }
   }
+  const beats = detectBeats(frames);
   return {
     durationMs: frames[n - 1][0],
     frameCount: n,
     gaps,
-    beats: detectBeats(frames).length,
+    beats: beats.length,
+    bpm: estimateBpm(frames, beats),
     brightnessMin: min,
     brightnessAvg: Math.round(sum / n),
     brightnessMax: max,
@@ -135,13 +190,12 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   for (let i = 1; i < n; i++) {
     const f = frames[i];
     // Vid en beat (eller stort hopp): skarp attack — nollställ EMA till råvärdet
-    // och lägg lätt emfas på toppen så slaget poppar.
+    // så slaget landar oförmjukat. Toppen-boost/decay läggs av applyBeatEnvelope.
     const isBeat = beatSet.has(i);
     const transient = isBeat || Math.abs(f[1] - frames[i - 1][1]) >= TRANSIENT_DELTA;
     if (transient) {
-      const emph = isBeat ? clamp8(f[1] * BEAT_EMPHASIS) : f[1];
-      pp = emph; pr = f[2]; pg = f[3]; pb = f[4];
-      out.push([f[0], emph, f[2], f[3], f[4]]);
+      pp = f[1]; pr = f[2]; pg = f[3]; pb = f[4];
+      out.push([f[0], f[1], f[2], f[3], f[4]]);
     } else {
       pp = pp + (f[1] - pp) * SMOOTH_ALPHA;
       pr = pr + (f[2] - pr) * SMOOTH_ALPHA;
@@ -165,10 +219,34 @@ function normalize(frames: Frame[]): Frame[] {
   return frames.map((f) => [f[0], clamp8(f[1] * scale), f[2], f[3], f[4]]);
 }
 
+/**
+ * Lägger en skarp attack + exponentiell decay-svans på varje grid-slag — den
+ * klassiska ljus-"bumpen". Boosten är additiv så övergångar mellan slag behålls.
+ */
+function applyBeatEnvelope(frames: Frame[], grid: number[]): Frame[] {
+  if (grid.length === 0) return frames;
+  const out = frames.map((f) => f.slice());
+  for (const b of grid) {
+    const base = out[b][1];
+    const peakBoost = clamp8(base * BEAT_BOOST) - base;
+    if (peakBoost <= 0) continue;
+    for (let k = 0; k <= BEAT_TAIL; k++) {
+      const idx = b + k;
+      if (idx >= out.length) break;
+      const extra = peakBoost * Math.pow(BEAT_DECAY, k);
+      out[idx][1] = clamp8(out[idx][1] + extra);
+    }
+  }
+  return out;
+}
+
 export function polish(frames: Frame[]): Frame[] {
   if (frames.length < 2) return frames.map((f) => f.slice());
   const filled = fillGaps(frames);
-  const beatSet = new Set(detectBeats(filled));
-  return normalize(smooth(filled, beatSet));
+  const rawBeats = detectBeats(filled);
+  const grid = buildBeatGrid(filled, rawBeats);
+  const beats = grid.length ? grid : rawBeats;
+  const shaped = normalize(smooth(filled, new Set(beats)));
+  return applyBeatEnvelope(shaped, beats);
 }
 
