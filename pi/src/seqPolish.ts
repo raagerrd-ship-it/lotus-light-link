@@ -219,10 +219,34 @@ function normalize(frames: Frame[]): Frame[] {
   return frames.map((f) => [f[0], clamp8(f[1] * scale), f[2], f[3], f[4]]);
 }
 
+/**
+ * Lägger en skarp attack + exponentiell decay-svans på varje grid-slag — den
+ * klassiska ljus-"bumpen". Boosten är additiv så övergångar mellan slag behålls.
+ */
+function applyBeatEnvelope(frames: Frame[], grid: number[]): Frame[] {
+  if (grid.length === 0) return frames;
+  const out = frames.map((f) => f.slice());
+  for (const b of grid) {
+    const base = out[b][1];
+    const peakBoost = clamp8(base * BEAT_BOOST) - base;
+    if (peakBoost <= 0) continue;
+    for (let k = 0; k <= BEAT_TAIL; k++) {
+      const idx = b + k;
+      if (idx >= out.length) break;
+      const extra = peakBoost * Math.pow(BEAT_DECAY, k);
+      out[idx][1] = clamp8(out[idx][1] + extra);
+    }
+  }
+  return out;
+}
+
 export function polish(frames: Frame[]): Frame[] {
   if (frames.length < 2) return frames.map((f) => f.slice());
   const filled = fillGaps(frames);
-  const beatSet = new Set(detectBeats(filled));
-  return normalize(smooth(filled, beatSet));
+  const rawBeats = detectBeats(filled);
+  const grid = buildBeatGrid(filled, rawBeats);
+  const beats = grid.length ? grid : rawBeats;
+  const shaped = normalize(smooth(filled, new Set(beats)));
+  return applyBeatEnvelope(shaped, beats);
 }
 
