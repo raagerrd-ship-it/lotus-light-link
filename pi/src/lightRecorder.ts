@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlink
 import { join } from 'path';
 import { DATA_DIR, getItem, setItem } from './storage.js';
 import { songKeyFromSonos, identifyViaAcr } from './songIdentity.js';
+import { analyze, polish, type SeqAnalysis } from './seqPolish.js';
 
 type Frame = [number, number, number, number, number]; // [tMs, pct, r, g, b]
 
