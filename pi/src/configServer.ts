@@ -15,6 +15,7 @@ import {
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
+import * as lightRecorder from './lightRecorder.js';
 
 
 type AlsaMicModule = typeof import('./alsaMic.js');
@@ -1439,6 +1440,44 @@ export function startConfigServer(port = 3050): void {
       res.status(400).json({ error: 'Need enabled: boolean' });
     }
   });
+
+  // --- Record / Playback (lärda ljus-sekvenser) ---
+  app.get('/api/record', (_req, res) => {
+    res.json(lightRecorder.getRecorderState());
+  });
+
+  app.put('/api/record', (req, res) => {
+    const { recording } = req.body;
+    if (typeof recording !== 'boolean') {
+      return res.status(400).json({ error: 'Need recording: boolean' });
+    }
+    lightRecorder.setRecording(recording);
+    res.json(lightRecorder.getRecorderState());
+  });
+
+  app.get('/api/playback', (_req, res) => {
+    res.json(lightRecorder.getRecorderState());
+  });
+
+  app.put('/api/playback', (req, res) => {
+    const { autoPlay } = req.body;
+    if (typeof autoPlay !== 'boolean') {
+      return res.status(400).json({ error: 'Need autoPlay: boolean' });
+    }
+    lightRecorder.setAutoPlay(autoPlay);
+    res.json(lightRecorder.getRecorderState());
+  });
+
+  app.get('/api/light-seq/list', (_req, res) => {
+    res.json({ sequences: lightRecorder.listSequences() });
+  });
+
+  app.delete('/api/light-seq/:key', (req, res) => {
+    const ok = lightRecorder.deleteSequence(req.params.key);
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+
 
   // --- Sonos gateway config ---
   const normalizeSonosGatewayConfig = (config: Partial<SonosPollerConfig> | null | undefined): SonosPollerConfig => {

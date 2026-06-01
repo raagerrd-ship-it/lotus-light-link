@@ -374,6 +374,22 @@ export class PiLightEngine {
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
 
+  // ── Record / Playback (lärda ljus-sekvenser) ──
+  // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som FAKTISKT
+  // skickades till BLE. lightRecorder prenumererar och buffrar nedsamplat.
+  private _frameTap: ((pct: number, r: number, g: number, b: number) => void) | null = null;
+  // Playback-state: när aktiv hoppar tickInner över den reaktiva pathen och
+  // spelar upp en inspelad sekvens synkad mot Sonos-position.
+  private _pbActive = false;
+  private _pbTimes: Float64Array = new Float64Array(0);
+  private _pbPct: Uint8Array = new Uint8Array(0);
+  private _pbR: Uint8Array = new Uint8Array(0);
+  private _pbG: Uint8Array = new Uint8Array(0);
+  private _pbB: Uint8Array = new Uint8Array(0);
+  private _pbCount = 0;
+  private _pbAnchorPosMs = 0;
+  private _pbAnchorClock = 0;
+
   constructor(tickMs = 20) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
@@ -415,6 +431,72 @@ export class PiLightEngine {
   setColorFadeMs(ms: number) {
     this.colorFadeMs = Math.max(0, ms | 0);
     this.tc = computeTickConstants(this.tickMs, this.cal);
+  }
+
+  // ── Record / Playback API ──
+
+  /** Sätt frame-tap (eller null för att koppla bort). */
+  setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null) {
+    this._frameTap = cb;
+  }
+
+  isPlaybackActive(): boolean { return this._pbActive; }
+
+  /** Aktivera playback av en inspelad sekvens.
+   *  frames = [tMs, pct, r, g, b][] sorterad stigande på tMs. null = reaktiv mode. */
+  setPlaybackSequence(frames: number[][] | null): void {
+    if (!frames || frames.length === 0) {
+      this._pbActive = false;
+      this._pbCount = 0;
+      return;
+    }
+    const n = frames.length;
+    this._pbTimes = new Float64Array(n);
+    this._pbPct = new Uint8Array(n);
+    this._pbR = new Uint8Array(n);
+    this._pbG = new Uint8Array(n);
+    this._pbB = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const f = frames[i];
+      this._pbTimes[i] = f[0];
+      this._pbPct[i] = f[1];
+      this._pbR[i] = f[2];
+      this._pbG[i] = f[3];
+      this._pbB[i] = f[4];
+    }
+    this._pbCount = n;
+    this._pbActive = true;
+  }
+
+  /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
+  updatePlaybackPosition(positionMs: number): void {
+    this._pbAnchorPosMs = positionMs;
+    this._pbAnchorClock = performance.now();
+  }
+
+  /** Spela upp aktuell frame ur sekvensen mot interpolerad position. */
+  private playbackTick(): void {
+    const posMs = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
+    const t = this._pbTimes;
+    const hiIdx = this._pbCount - 1;
+    let idx: number;
+    if (posMs <= t[0]) {
+      idx = 0;
+    } else if (posMs >= t[hiIdx]) {
+      idx = hiIdx;
+    } else {
+      let lo = 0, hi = hiIdx;
+      idx = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (t[mid] <= posMs) { idx = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+    }
+    const pct = this._pbPct[idx];
+    const result = sendToBLE(this._pbR[idx], this._pbG[idx], this._pbB[idx], pct);
+    if (result === 'sent') bleStatsState.tickOkCount++;
+    this.lastSentPct = pct;
   }
 
   private initOnsetBuffer(tickMs: number): void {
@@ -701,6 +783,7 @@ export class PiLightEngine {
       this.smoothed = 0;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
+      this._pbActive = false;  // playback hör till en spelande låt
       this._lastTickAtForFade = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
@@ -1096,6 +1179,13 @@ export class PiLightEngine {
     // Sista guard mot sen FFT-frame som anländer efter setPlaying(false) → annars
     // kan en mic-write krocka med keep-alive som just tagit över.
     if (!this.playing || this._bleOwner !== 'active') return;
+
+    // ── Playback-mode: spela upp inspelad sekvens istället för reaktiv FFT ──
+    if (this._pbActive && this._pbCount > 0) {
+      this.playbackTick();
+      return;
+    }
+
     const _tickStart = performance.now();
     try {
       const cal = this.cal;
@@ -1252,6 +1342,12 @@ export class PiLightEngine {
         case 'busy':         bleStatsState.tickAbortBleBusyCount++; break;
         case 'no-change':    bleStatsState.tickAbortNoChangeCount++; break;
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
+      }
+
+      // ── Frame-tap: rapportera faktiskt skickad färg+brightness till recorder ──
+      if (this._frameTap && writeResult === 'sent') {
+        if (isPunch) this._frameTap(pct, 255, 255, 255);
+        else this._frameTap(pct, _finalColor[0], _finalColor[1], _finalColor[2]);
       }
 
       // ── Diagnostics ──
