@@ -358,8 +358,14 @@ export function previewSequence(key: string, variant: 'raw' | 'polished'): boole
 export function revertSequence(key: string): boolean {
   const raw = loadRawSequence(key);
   if (!raw) return false;
+  let playable = raw;
   try {
-    writeFrames(seqPath(key), key, polish(raw));
+    playable = polish(raw);
+  } catch (e: any) {
+    console.error('[lightRecorder] Finslipning misslyckades vid ångra, använder rå:', e?.message ?? e);
+  }
+  try {
+    writeFrames(seqPath(key), key, playable);
     return true;
   } catch {
     return false;
