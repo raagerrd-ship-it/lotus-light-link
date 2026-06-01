@@ -39,7 +39,7 @@ const BEAT_FLUX_FLOOR = 6;       // minsta flux (pct) för att räknas som beat
 // Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
 // reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
 // och en musikalisk decay-svans — den klassiska ljus-"bumpen".
-const BEAT_BOOST = 1.12;         // topp-boost på slaget
+const BEAT_BOOST = 1.35;         // topp-boost på slaget
 const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
 const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
 
