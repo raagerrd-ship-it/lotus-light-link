@@ -73,10 +73,56 @@ export function detectBeats(frames: Frame[]): number[] {
   return beats;
 }
 
+/**
+ * Skattar tempo (BPM) från inter-beat-intervallen. Veckar oktav-fel (dubbla/
+ * halva slag) mot medianen och normaliserar till ett musikaliskt spann.
+ */
+export function estimateBpm(frames: Frame[], beats: number[]): number {
+  if (beats.length < 4) return 0;
+  const intervals: number[] = [];
+  for (let i = 1; i < beats.length; i++) {
+    intervals.push(frames[beats[i]][0] - frames[beats[i - 1]][0]);
+  }
+  intervals.sort((a, b) => a - b);
+  const median = intervals[intervals.length >> 1];
+  if (median <= 0) return 0;
+  let sum = 0;
+  for (let iv of intervals) {
+    while (iv > median * 1.4) iv /= 2;
+    while (iv < median * 0.7) iv *= 2;
+    sum += iv;
+  }
+  let bpm = 60000 / (sum / intervals.length);
+  while (bpm < 70) bpm *= 2;
+  while (bpm > 180) bpm /= 2;
+  return Math.round(bpm);
+}
+
+/**
+ * Bygger ett jämnt beat-grid förankrat i första detekterade slaget och snappar
+ * varje rutnäts-slag till närmaste lokala energi-topp (±2 frames).
+ */
+function buildBeatGrid(frames: Frame[], beats: number[]): number[] {
+  const bpm = estimateBpm(frames, beats);
+  if (!bpm || beats.length < 4) return [];
+  const periodFrames = (60000 / bpm) / SAMPLE_INTERVAL_MS;
+  const grid: number[] = [];
+  for (let t = beats[0] % periodFrames; t < frames.length; t += periodFrames) {
+    const idx = Math.round(t);
+    let best = idx, bestV = frames[idx]?.[1] ?? -1;
+    for (let k = -2; k <= 2; k++) {
+      const j = idx + k;
+      if (j >= 0 && j < frames.length && frames[j][1] > bestV) { bestV = frames[j][1]; best = j; }
+    }
+    if (grid[grid.length - 1] !== best) grid.push(best);
+  }
+  return grid;
+}
+
 export function analyze(frames: Frame[]): SeqAnalysis {
   const n = frames.length;
   if (n === 0) {
-    return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
+    return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, bpm: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
   }
   let min = 255, max = 0, sum = 0, flickerSum = 0, gaps = 0;
   for (let i = 0; i < n; i++) {
@@ -90,11 +136,13 @@ export function analyze(frames: Frame[]): SeqAnalysis {
       if (dt > SAMPLE_INTERVAL_MS * 2.5) gaps++;
     }
   }
+  const beats = detectBeats(frames);
   return {
     durationMs: frames[n - 1][0],
     frameCount: n,
     gaps,
-    beats: detectBeats(frames).length,
+    beats: beats.length,
+    bpm: estimateBpm(frames, beats),
     brightnessMin: min,
     brightnessAvg: Math.round(sum / n),
     brightnessMax: max,
