@@ -112,17 +112,14 @@ function finalizeRecording(): void {
   }
   try {
     ensureDir();
-    const existing = loadSequence(currentKey);
+    const existingRaw = loadRawSequence(currentKey) ?? loadSequence(currentKey);
     // Skriv bara om vi inte har en sekvens, eller om den nya är minst lika komplett.
-    if (!existing || buffer.length >= existing.length) {
-      const payload = {
-        key: currentKey,
-        durationMs: buffer[buffer.length - 1][0],
-        frames: buffer,
-        updatedAt: Date.now(),
-      };
-      writeFileSync(seqPath(currentKey), JSON.stringify(payload), 'utf-8');
-      console.log(`[lightRecorder] Sparade sekvens "${currentKey}" (${buffer.length} frames)`);
+    if (!existingRaw || buffer.length >= existingRaw.length) {
+      // Spara råinspelningen (för ångra) och en auto-finslipad version som spelas upp.
+      writeFrames(rawPath(currentKey), currentKey, buffer);
+      const polished = polish(buffer);
+      writeFrames(seqPath(currentKey), currentKey, polished);
+      console.log(`[lightRecorder] Sparade + finslipade "${currentKey}" (${buffer.length} → ${polished.length} frames)`);
     }
   } catch (e: any) {
     console.error('[lightRecorder] Kunde inte spara sekvens:', e?.message ?? e);
