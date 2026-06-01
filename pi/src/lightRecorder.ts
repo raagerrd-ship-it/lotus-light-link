@@ -119,6 +119,60 @@ export function attachEngine(e: EngineLike): void {
   e.setFrameTap(onFrame);
 }
 
+export function attachMic(m: MicLike): void {
+  mic = m;
+}
+
+/** Växla currentKey och sätt upp record/replay för den. */
+function applyKeyTransition(key: string): void {
+  if (!engine || key === currentKey) return;
+  finalizeRecording();
+  currentKey = key;
+  lastRecT = -Infinity;
+
+  const saved = autoPlay ? loadSequence(key) : null;
+  if (saved) {
+    engine.setPlaybackSequence(saved);
+    engine.updatePlaybackPosition(posAnchorMs);
+    pbActive = true;
+    console.log(`[lightRecorder] ▶ Spelar upp lärd sekvens "${key}" (${saved.length} frames)`);
+  } else {
+    engine.setPlaybackSequence(null);
+    pbActive = false;
+    if (recording) console.log(`[lightRecorder] ● Spelar in "${key}"`);
+  }
+}
+
+/** Starta ~10s ACR-capture och identifiera. Respekterar cooldown/in-flight. */
+function maybeStartAcr(): void {
+  if (!mic || acrInFlight || acrActiveKey) return;
+  if (Date.now() < acrCooldownUntil) return;
+  acrInFlight = true;
+  mic.startAcrCapture();
+  console.log('[lightRecorder] ♪ ACR: spelar in ~10s för igenkänning…');
+  setTimeout(async () => {
+    try {
+      const wav = mic!.getAcrCaptureWav();
+      if (!wav) { return; }
+      const res = await identifyViaAcr(wav);
+      acrCooldownUntil = Date.now() + ACR_COOLDOWN_MS;
+      if (res) {
+        acrActiveKey = res.key;
+        lastIdentified = { artist: res.artist, track: res.track, key: res.key, at: Date.now() };
+        console.log(`[lightRecorder] ✓ ACR-träff: ${res.artist} — ${res.track} (${res.key})`);
+        applyKeyTransition(res.key);
+      } else {
+        console.log('[lightRecorder] ACR: ingen träff.');
+      }
+    } catch (e: any) {
+      acrCooldownUntil = Date.now() + ACR_COOLDOWN_MS;
+      console.warn('[lightRecorder] ACR-fel:', e?.message ?? e);
+    } finally {
+      acrInFlight = false;
+    }
+  }, ACR_CAPTURE_MS);
+}
+
 /** Anropas vid varje Sonos-uppdatering från index.ts. */
 export function onSonosUpdate(state: {
   trackName: string | null;
@@ -137,7 +191,19 @@ export function onSonosUpdate(state: {
   }
 
   const playing = state.playbackState === 'PLAYING' && !state.isTvMode;
-  const key = playing ? songKeyFromSonos(state.trackName, state.artistName) : null;
+  const sourceActive = state.playbackState === 'PLAYING' || state.isTvMode;
+  const sonosKey = playing ? songKeyFromSonos(state.trackName, state.artistName) : null;
+
+  // ACR-läge: källa aktiv men ingen Sonos-metadata → identifiera via mic.
+  if (!sonosKey && sourceActive && acrEnabled) {
+    maybeStartAcr();
+  } else {
+    // Sonos har metadata, eller källa inaktiv → släpp ev. ACR-nyckel.
+    acrActiveKey = null;
+  }
+
+  // Sonos-metadata vinner; annars ACR-nyckel om källan är aktiv.
+  const key = sonosKey ?? (sourceActive ? acrActiveKey : null);
 
   if (!key) {
     // Inget spelar / okänd källa → avsluta ev. inspelning, tillbaka till reaktivt.
@@ -152,22 +218,7 @@ export function onSonosUpdate(state: {
 
   if (key === currentKey) return; // samma låt, inget byte
 
-  // Låtbyte: avsluta gammal inspelning, sätt upp nya läget.
-  finalizeRecording();
-  currentKey = key;
-  lastRecT = -Infinity;
-
-  const saved = autoPlay ? loadSequence(key) : null;
-  if (saved) {
-    engine.setPlaybackSequence(saved);
-    engine.updatePlaybackPosition(posAnchorMs);
-    pbActive = true;
-    console.log(`[lightRecorder] ▶ Spelar upp lärd sekvens "${key}" (${saved.length} frames)`);
-  } else {
-    engine.setPlaybackSequence(null);
-    pbActive = false;
-    if (recording) console.log(`[lightRecorder] ● Spelar in "${key}"`);
-  }
+  applyKeyTransition(key);
 }
 
 export function setRecording(on: boolean): void {
