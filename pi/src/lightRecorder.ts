@@ -224,8 +224,9 @@ export function onSonosUpdate(state: {
     if (pbActive) engine.updatePlaybackPosition(state.positionMs);
   }
 
-  const playing = state.playbackState === 'PLAYING' && !state.isTvMode;
-  const sourceActive = state.playbackState === 'PLAYING' || state.isTvMode;
+  const isPlaying = typeof state.playbackState === 'string' && state.playbackState.includes('PLAYING');
+  const playing = isPlaying && !state.isTvMode;
+  const sourceActive = isPlaying || state.isTvMode;
   const sonosKey = playing ? songKeyFromSonos(state.trackName, state.artistName) : null;
 
   // ACR-läge: källa aktiv men ingen Sonos-metadata → identifiera via mic.
