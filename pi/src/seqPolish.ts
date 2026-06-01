@@ -25,9 +25,10 @@ export interface SeqAnalysis {
 
 const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz (matchar lightRecorder)
 const SMOOTH_ALPHA = 0.5;        // EMA-faktor för färg-övergångar
-const ATTACK_ALPHA = 0.75;       // brightness stiger snabbt (skarp attack)
-const RELEASE_ALPHA = 0.35;      // brightness faller mjukt (musikalisk release)
+const ATTACK_ALPHA = 0.85;       // brightness stiger snabbt (skarp attack)
+const RELEASE_ALPHA = 0.55;      // brightness faller raskt → tydliga dalar mellan slag
 const TRANSIENT_DELTA = 40;      // pct-hopp som alltid bevaras (säkerhet)
+const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
 
 // Beat-detektering på pct-envelopen.
 const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
