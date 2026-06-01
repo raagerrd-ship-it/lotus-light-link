@@ -286,8 +286,8 @@ export function getAcrState(): {
   return { acrEnabled, lastIdentified };
 }
 
-export function getRecorderState(): { recording: boolean; autoPlay: boolean; currentKey: string | null; playingBack: boolean } {
-  return { recording, autoPlay, currentKey, playingBack: pbActive };
+export function getRecorderState(): { recording: boolean; autoPlay: boolean; currentKey: string | null; playingBack: boolean; bufferFrames: number } {
+  return { recording, autoPlay, currentKey, playingBack: pbActive, bufferFrames: buffer.length };
 }
 
 export function listSequences(): Array<{ key: string; frames: number; durationMs: number; updatedAt: number }> {
