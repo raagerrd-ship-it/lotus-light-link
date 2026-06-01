@@ -1373,6 +1373,18 @@ function RecordPlaybackPanel({ piBase }: { piBase: string }) {
         <Toggle on={autoPlay} onClick={toggleAutoPlay} />
       </label>
 
+      <label className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-sm">♪ Känn igen låt (ACRCloud)</div>
+          <p className="text-[10px] text-muted-foreground">Identifiera låtar via mikrofonen när Sonos-metadata saknas (TV/extern källa)</p>
+          {lastId && (
+            <p className="text-[10px] text-primary mt-0.5">Senast: {lastId.artist ? `${lastId.artist} — ` : ''}{lastId.track}</p>
+          )}
+        </div>
+        <Toggle on={acrEnabled} onClick={toggleAcr} />
+      </label>
+
+
       {seqs.length > 0 && (
         <div className="space-y-1.5 mt-2">
           {seqs.map(s => (
