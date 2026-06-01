@@ -389,6 +389,8 @@ export class PiLightEngine {
   private _pbCount = 0;
   private _pbAnchorPosMs = 0;
   private _pbAnchorClock = 0;
+  /** Lead-offset: hämta framen N ms framåt för att kompensera kedjans latens. */
+  private _pbLeadMs = 50;
 
   constructor(tickMs = 20) {
     this.tickMs = tickMs;
