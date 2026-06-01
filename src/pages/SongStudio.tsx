@@ -15,6 +15,7 @@ type Analysis = {
   durationMs: number;
   frameCount: number;
   gaps: number;
+  beats: number;
   brightnessMin: number;
   brightnessAvg: number;
   brightnessMax: number;
