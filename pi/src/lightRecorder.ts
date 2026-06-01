@@ -60,6 +60,10 @@ let acrInFlight = false;
 let acrCooldownUntil = 0;
 let lastIdentified: { artist: string; track: string; key: string; at: number } | null = null;
 
+// Preview-lås: under förhandsgranskning ignoreras Sonos-uppdateringar så att
+// uppspelningen inte avbryts mitt i.
+let previewUntil = 0;
+
 
 function ensureDir(): void {
   if (!existsSync(SEQ_DIR)) mkdirSync(SEQ_DIR, { recursive: true });
@@ -69,15 +73,36 @@ function seqPath(key: string): string {
   return join(SEQ_DIR, `${key}.json`);
 }
 
-function loadSequence(key: string): number[][] | null {
+function rawPath(key: string): string {
+  return join(SEQ_DIR, `${key}.raw.json`);
+}
+
+function loadFramesFrom(path: string): number[][] | null {
   try {
-    const raw = readFileSync(seqPath(key), 'utf-8');
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'));
     const frames = parsed?.frames;
     return Array.isArray(frames) && frames.length > 0 ? frames : null;
   } catch {
     return null;
   }
+}
+
+function loadSequence(key: string): number[][] | null {
+  return loadFramesFrom(seqPath(key));
+}
+
+function loadRawSequence(key: string): number[][] | null {
+  return loadFramesFrom(rawPath(key));
+}
+
+function writeFrames(path: string, key: string, frames: number[][]): void {
+  const payload = {
+    key,
+    durationMs: frames.length ? frames[frames.length - 1][0] : 0,
+    frames,
+    updatedAt: Date.now(),
+  };
+  writeFileSync(path, JSON.stringify(payload), 'utf-8');
 }
 
 function finalizeRecording(): void {
