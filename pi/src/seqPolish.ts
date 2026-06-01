@@ -127,17 +127,21 @@ function fillGaps(frames: Frame[]): Frame[] {
 }
 
 /** EMA-utjämning som bevarar skarpa transienter (stora pct-hopp). */
-function smooth(frames: Frame[]): Frame[] {
+function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   const n = frames.length;
   if (n < 2) return frames;
   const out: Frame[] = [frames[0].slice()];
   let pp = frames[0][1], pr = frames[0][2], pg = frames[0][3], pb = frames[0][4];
   for (let i = 1; i < n; i++) {
     const f = frames[i];
-    const transient = Math.abs(f[1] - frames[i - 1][1]) >= TRANSIENT_DELTA;
+    // Vid en beat (eller stort hopp): skarp attack — nollställ EMA till råvärdet
+    // och lägg lätt emfas på toppen så slaget poppar.
+    const isBeat = beatSet.has(i);
+    const transient = isBeat || Math.abs(f[1] - frames[i - 1][1]) >= TRANSIENT_DELTA;
     if (transient) {
-      pp = f[1]; pr = f[2]; pg = f[3]; pb = f[4];
-      out.push(f.slice());
+      const emph = isBeat ? clamp8(f[1] * BEAT_EMPHASIS) : f[1];
+      pp = emph; pr = f[2]; pg = f[3]; pb = f[4];
+      out.push([f[0], emph, f[2], f[3], f[4]]);
     } else {
       pp = pp + (f[1] - pp) * SMOOTH_ALPHA;
       pr = pr + (f[2] - pr) * SMOOTH_ALPHA;
@@ -163,5 +167,8 @@ function normalize(frames: Frame[]): Frame[] {
 
 export function polish(frames: Frame[]): Frame[] {
   if (frames.length < 2) return frames.map((f) => f.slice());
-  return normalize(smooth(fillGaps(frames)));
+  const filled = fillGaps(frames);
+  const beatSet = new Set(detectBeats(filled));
+  return normalize(smooth(filled, beatSet));
 }
+
