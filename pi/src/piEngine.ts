@@ -783,6 +783,7 @@ export class PiLightEngine {
       this.smoothed = 0;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
+      this._pbActive = false;  // playback hör till en spelande låt
       this._lastTickAtForFade = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
