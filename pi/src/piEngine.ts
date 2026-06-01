@@ -1179,6 +1179,13 @@ export class PiLightEngine {
     // Sista guard mot sen FFT-frame som anländer efter setPlaying(false) → annars
     // kan en mic-write krocka med keep-alive som just tagit över.
     if (!this.playing || this._bleOwner !== 'active') return;
+
+    // ── Playback-mode: spela upp inspelad sekvens istället för reaktiv FFT ──
+    if (this._pbActive && this._pbCount > 0) {
+      this.playbackTick();
+      return;
+    }
+
     const _tickStart = performance.now();
     try {
       const cal = this.cal;
