@@ -226,6 +226,19 @@ function normalize(frames: Frame[]): Frame[] {
 }
 
 /**
+ * Dynamik-expansion: drar brightness bort från medelvärdet så dalar blir mörkare
+ * och toppar ljusare — återger ljusshow-känslan som smoothing annars plattar ut.
+ */
+function expand(frames: Frame[]): Frame[] {
+  const n = frames.length;
+  if (n === 0) return frames;
+  let sum = 0;
+  for (const f of frames) sum += f[1];
+  const avg = sum / n;
+  return frames.map((f) => [f[0], clamp8(avg + (f[1] - avg) * CONTRAST), f[2], f[3], f[4]]);
+}
+
+/**
  * Lägger en skarp attack + exponentiell decay-svans på varje grid-slag — den
  * klassiska ljus-"bumpen". Boosten är additiv så övergångar mellan slag behålls.
  */
