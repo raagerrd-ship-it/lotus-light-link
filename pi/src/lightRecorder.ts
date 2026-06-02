@@ -115,6 +115,10 @@ function rawPath(key: string): string {
   return join(SEQ_DIR, `${key}.raw.json`);
 }
 
+function analysisPath(key: string): string {
+  return join(SEQ_DIR, `${key}.analysis.json`);
+}
+
 function loadFramesFrom(path: string): number[][] | null {
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8'));
@@ -131,6 +135,28 @@ function loadSequence(key: string): number[][] | null {
 
 function loadRawSequence(key: string): number[][] | null {
   return loadFramesFrom(rawPath(key));
+}
+
+/** Läs lagrade (skalade) analys-frames och unscale till råa RMS/flux-värden. */
+function loadAnalysis(key: string): number[][] | null {
+  const raw = loadFramesFrom(analysisPath(key));
+  if (!raw) return null;
+  const S = ANALYSIS_SCALE;
+  return raw.map((f) => [f[0], f[1] / S, f[2] / S, f[3] / S, f[4] / S, f[5], f[6], f[7]]);
+}
+
+/** Rendera den OPOLERADE ljus-sekvensen ur analysen (≈ enginens reaktiva output
+ *  @100Hz). Faller tillbaka på legacy .raw.json om analys saknas. */
+function renderRawFromAnalysis(key: string): number[][] | null {
+  const a = loadAnalysis(key);
+  if (a && engine) {
+    try {
+      return renderLightFromAnalysis(a, engine.getCalibration());
+    } catch (e: any) {
+      console.error('[lightRecorder] Rendering ur analys misslyckades:', e?.message ?? e);
+    }
+  }
+  return loadRawSequence(key);
 }
 
 function writeFrames(path: string, key: string, frames: number[][]): void {
