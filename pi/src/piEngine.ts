@@ -36,7 +36,7 @@ export function normalizeFixed(value: number): number {
 
 
 // --- Precomputed tick constants ---
-interface TickConstants {
+export interface TickConstants {
   attackAlpha: number;
   releaseAlpha: number;
   onsetDecay: number;
