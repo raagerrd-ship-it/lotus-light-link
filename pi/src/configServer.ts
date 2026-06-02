@@ -15,7 +15,7 @@ import {
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
-import * as lightRecorder from './lightRecorder.js';
+// lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
 
 
 type AlsaMicModule = typeof import('./alsaMic.js');
