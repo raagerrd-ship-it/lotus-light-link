@@ -1484,6 +1484,7 @@ export function startConfigServer(port = 3050): void {
     res.json({ leadMs: engine.getPlaybackLeadMs() });
   });
 
+  app.get('/api/light-seq/list', (_req, res) => {
     res.json({ sequences: lightRecorder.listSequences() });
   });
 
