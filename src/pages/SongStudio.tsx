@@ -200,6 +200,25 @@ function SongStudio() {
         )}
       </div>
 
+      {leadMs !== null && (
+        <div className="rounded-lg bg-secondary/40 px-3 py-3 mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] text-muted-foreground">Synk-justering (Sonos-fördröjning)</span>
+            <span className="text-[11px] tabular-nums font-medium">{leadMs > 0 ? "+" : ""}{leadMs} ms</span>
+          </div>
+          <input
+            type="range" min={-1500} max={500} step={25} value={leadMs}
+            onChange={(e) => setLeadMs(Number(e.target.value))}
+            onMouseUp={(e) => commitLead(Number((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => commitLead(Number((e.target as HTMLInputElement).value))}
+            className="w-full accent-primary"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Negativt = fördröj ljuset så det matchar ljudet ur högtalarna (öka om ljuset ligger före).
+          </p>
+        </div>
+      )}
+
       {seqs.length === 0 && (
         <p className="text-xs text-muted-foreground">Inga inspelade sekvenser än.</p>
       )}
