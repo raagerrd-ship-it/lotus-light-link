@@ -1866,6 +1866,10 @@ export default function PiMobile() {
           onsetEnergyFloor: p.onsetEnergyFloor,
           tickEnergyFloor: p.tickEnergyFloor,
           flickerDeadband: p.flickerDeadband,
+          beatSource: p.beatSource,
+          dropEnabled: p.dropEnabled,
+          dropSensitivity: p.dropSensitivity,
+          dropFlashMs: p.dropFlashMs,
         };
       }
       const results = await Promise.allSettled([
