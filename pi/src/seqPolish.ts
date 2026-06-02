@@ -26,42 +26,94 @@ export interface SeqAnalysis {
 // VIKTIGT: brightness (pct) ligger på 0–100-skalan — samma som enginen skickar
 // till BLE. Färgkanalerna (r,g,b) ligger på 0–255. Polish rör bara pct.
 const PCT_MAX = 100;             // ljus-taket (0–100)
-const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz (matchar lightRecorder)
-const SMOOTH_ALPHA = 0.5;        // EMA-faktor för färg-övergångar
-const ATTACK_ALPHA = 0.85;       // brightness stiger snabbt (skarp attack)
-const RELEASE_ALPHA = 0.55;      // brightness faller raskt → tydliga dalar mellan slag
-const TRANSIENT_DELTA = 16;      // pct-hopp som alltid bevaras (0–100-skala)
+
+// ── Frame-rate-oberoende konstanter ──
 const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
-
-// Sång-mjukhet: lugna partier (låg flux) jämnas extra mjukt så vokaler inte ryckar.
-const VOCAL_ALPHA = 0.18;        // mycket mjuk EMA för lugna/sång-partier
-const CALM_FLUX_REF = 10;        // flux-referens: under detta → fullt "calm"
-const CALM_WINDOW = 5;           // ±frames för lokal flux-medel (calm-mått)
-
-// Beat-detektering på pct-envelopen.
-const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
-const BEAT_REFRACTORY = 3;       // min 3 frames (~120 ms) mellan beats
 const BEAT_K = 1.6;              // tröskel = medel + K·std av flux i fönstret
-const BEAT_FLUX_FLOOR = 8;       // minsta flux (pct) för att räknas som beat
 const BEAT_PROMINENCE = 1.25;    // topp måste vara prominent över näst-största i ±2
-const GRID_ONSET_MIN = 6;        // min positiv flux runt grid-slot, annars falskt beat
-
-// Golv + punch-dip.
 const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
-const PREDIP_FRAMES = 2;         // antal frames dip före slaget
 const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
-
-// Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
-// reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
-// och en musikalisk decay-svans — den klassiska ljus-"bumpen".
 const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
-const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
-const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
-
-// Mellan slagen: allt som inte är ett (grid-)beat ska vara mycket mjukare och
-// dämpas mot golvet så takten verkligen sticker ut på lampan.
 const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
-const NONBEAT_FALLOFF = 4;       // frames runt ett beat som lämnas oförändrade (skydda attack/svans)
+
+// ── Referensvärden, tunade för 40 ms/frame (25 Hz) ──
+// Alla frame-/flux-beroende konstanter räknas om i configureFrameRate() utifrån
+// sekvensens faktiska frame-intervall, så finslipningen ger samma "feel" oavsett
+// inspelningstakt (nu 100 Hz / 10 ms).
+const REF_MS = 40;
+const SMOOTH_ALPHA_REF = 0.5;    // EMA-faktor för färg-övergångar
+const ATTACK_ALPHA_REF = 0.85;   // brightness stiger snabbt (skarp attack)
+const RELEASE_ALPHA_REF = 0.55;  // brightness faller raskt → tydliga dalar mellan slag
+const VOCAL_ALPHA_REF = 0.18;    // mycket mjuk EMA för lugna/sång-partier
+const TRANSIENT_DELTA_REF = 16;  // pct-hopp som alltid bevaras (per ref-frame)
+const CALM_FLUX_BASE = 10;       // flux-referens: under detta → fullt "calm"
+const CALM_WINDOW_REF = 5;       // ±frames för lokal flux-medel (calm-mått)
+const BEAT_WINDOW_REF = 21;      // ~840 ms adaptivt tröskelfönster
+const BEAT_REFRACTORY_REF = 3;   // min ~120 ms mellan beats
+const BEAT_FLUX_FLOOR_REF = 8;   // minsta flux (per ref-frame) för att räknas som beat
+const GRID_ONSET_MIN_REF = 6;    // min positiv flux runt grid-slot, annars falskt beat
+const PREDIP_FRAMES_REF = 2;     // antal frames dip före slaget
+const BEAT_DECAY_REF = 0.5;      // additiv boost halveras varje ref-frame efteråt
+const BEAT_TAIL_REF = 5;         // antal frames decay-svansen sträcker sig
+const NONBEAT_FALLOFF_REF = 4;   // frames runt ett beat som lämnas oförändrade
+
+// ── Runtime-konstanter (sätts av configureFrameRate per sekvens) ──
+let SAMPLE_INTERVAL_MS = REF_MS;
+let SMOOTH_ALPHA = SMOOTH_ALPHA_REF;
+let ATTACK_ALPHA = ATTACK_ALPHA_REF;
+let RELEASE_ALPHA = RELEASE_ALPHA_REF;
+let VOCAL_ALPHA = VOCAL_ALPHA_REF;
+let TRANSIENT_DELTA = TRANSIENT_DELTA_REF;
+let CALM_FLUX_REF = CALM_FLUX_BASE;
+let CALM_WINDOW = CALM_WINDOW_REF;
+let BEAT_WINDOW = BEAT_WINDOW_REF;
+let BEAT_REFRACTORY = BEAT_REFRACTORY_REF;
+let BEAT_FLUX_FLOOR = BEAT_FLUX_FLOOR_REF;
+let GRID_ONSET_MIN = GRID_ONSET_MIN_REF;
+let PREDIP_FRAMES = PREDIP_FRAMES_REF;
+let BEAT_DECAY = BEAT_DECAY_REF;
+let BEAT_TAIL = BEAT_TAIL_REF;
+let NONBEAT_FALLOFF = NONBEAT_FALLOFF_REF;
+
+/** Mediant frame-intervall (ms) ur tidsstämplarna. */
+function medianFrameMs(frames: Frame[]): number {
+  const n = frames.length;
+  if (n < 3) return REF_MS;
+  const d: number[] = [];
+  for (let i = 1; i < n; i++) d.push(frames[i][0] - frames[i - 1][0]);
+  d.sort((a, b) => a - b);
+  const m = d[d.length >> 1];
+  return m > 0 ? m : REF_MS;
+}
+
+/**
+ * Skala om alla frame-/flux-beroende konstanter till sekvensens faktiska takt.
+ * - EMA-alfor: 1−(1−a)^r så tidskonstanten bevaras.
+ * - Fönster (frames): ×REF_MS/frameMs (fler frames vid högre takt).
+ * - Per-frame flux/delta: ×frameMs/REF_MS (mindre Δ per frame vid högre takt).
+ */
+function configureFrameRate(frames: Frame[]): void {
+  const fm = medianFrameMs(frames);
+  SAMPLE_INTERVAL_MS = fm;
+  const r = fm / REF_MS;     // <1 vid snabbare takt
+  const inv = REF_MS / fm;   // >1 vid snabbare takt
+  const ema = (a: number) => 1 - Math.pow(1 - a, r);
+  SMOOTH_ALPHA = ema(SMOOTH_ALPHA_REF);
+  ATTACK_ALPHA = ema(ATTACK_ALPHA_REF);
+  RELEASE_ALPHA = ema(RELEASE_ALPHA_REF);
+  VOCAL_ALPHA = ema(VOCAL_ALPHA_REF);
+  TRANSIENT_DELTA = TRANSIENT_DELTA_REF * r;
+  CALM_FLUX_REF = CALM_FLUX_BASE * r;
+  BEAT_FLUX_FLOOR = BEAT_FLUX_FLOOR_REF * r;
+  GRID_ONSET_MIN = GRID_ONSET_MIN_REF * r;
+  CALM_WINDOW = Math.max(1, Math.round(CALM_WINDOW_REF * inv));
+  BEAT_WINDOW = Math.max(3, Math.round(BEAT_WINDOW_REF * inv));
+  BEAT_REFRACTORY = Math.max(1, Math.round(BEAT_REFRACTORY_REF * inv));
+  PREDIP_FRAMES = Math.max(1, Math.round(PREDIP_FRAMES_REF * inv));
+  BEAT_TAIL = Math.max(1, Math.round(BEAT_TAIL_REF * inv));
+  NONBEAT_FALLOFF = Math.max(1, Math.round(NONBEAT_FALLOFF_REF * inv));
+  BEAT_DECAY = Math.pow(BEAT_DECAY_REF, r);
+}
 
 
 
@@ -169,6 +221,7 @@ export function analyze(frames: Frame[]): SeqAnalysis {
   if (n === 0) {
     return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, bpm: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
   }
+  configureFrameRate(frames);
   let min = PCT_MAX, max = 0, sum = 0, flickerSum = 0, gaps = 0;
   for (let i = 0; i < n; i++) {
     const pct = frames[i][1];
@@ -373,6 +426,7 @@ function softenNonBeats(frames: Frame[], grid: number[]): Frame[] {
 
 export function polish(frames: Frame[]): Frame[] {
   if (frames.length < 2) return frames.map((f) => f.slice());
+  configureFrameRate(frames);
   const filled = fillGaps(frames);
   const rawBeats = detectBeats(filled);
   const grid = buildBeatGrid(filled, rawBeats);

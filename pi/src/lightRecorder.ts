@@ -18,11 +18,13 @@ import { join } from 'path';
 import { DATA_DIR, getItem, setItem } from './storage.js';
 import { songKeyFromSonos, identifyViaAcr } from './songIdentity.js';
 import { analyze, polish, type SeqAnalysis } from './seqPolish.js';
-
-type Frame = [number, number, number, number, number]; // [tMs, pct, r, g, b]
+import { renderLightFromAnalysis } from './seqRender.js';
+import type { LightCalibration } from './piEngine.js';
 
 interface EngineLike {
   setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null): void;
+  setAnalysisTap(cb: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null): void;
+  getCalibration(): LightCalibration;
   setPlaybackSequence(frames: number[][] | null, rawRef?: number[][] | null, warmup?: boolean): void;
   updatePlaybackPosition(positionMs: number): void;
   setPlaybackSyncMs(ms: number): void;
@@ -35,9 +37,9 @@ interface MicLike {
 }
 
 const SEQ_DIR = join(DATA_DIR, 'light-seq');
-const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz nedsampling
 const MIN_FRAMES_TO_SAVE = 50;   // ignorera korta/avbrutna takes
-const MAX_FRAMES = 20000;        // ~13 min tak, skydd mot runaway
+const MAX_FRAMES = 80000;        // ~13 min @100Hz, skydd mot runaway
+const ANALYSIS_SCALE = 10000;    // RMS/flux lagras som heltal (×1e4) för kompakthet
 
 const ACR_CAPTURE_MS = 10500;    // ~10s capture + marginal
 const ACR_COOLDOWN_MS = 30000;   // undvik att spamma ACRCloud vid okänd källa
@@ -50,8 +52,9 @@ let acrEnabled = getItem('acr-enabled') === 'true';
 
 let currentKey: string | null = null;
 let pbActive = false;            // enginen kör uppspelning för currentKey
-let buffer: Frame[] = [];
-let lastRecT = -Infinity;
+// Analys-buffert @100Hz: [tMs, bass*S, midHi*S, total*S, flux*S, r, g, b]
+let analysisBuf: number[][] = [];
+let lastColor: [number, number, number] = [255, 255, 255];
 let posAnchorMs = 0;
 let posAnchorClock = 0;
 
@@ -112,6 +115,10 @@ function rawPath(key: string): string {
   return join(SEQ_DIR, `${key}.raw.json`);
 }
 
+function analysisPath(key: string): string {
+  return join(SEQ_DIR, `${key}.analysis.json`);
+}
+
 function loadFramesFrom(path: string): number[][] | null {
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8'));
@@ -130,6 +137,28 @@ function loadRawSequence(key: string): number[][] | null {
   return loadFramesFrom(rawPath(key));
 }
 
+/** Läs lagrade (skalade) analys-frames och unscale till råa RMS/flux-värden. */
+function loadAnalysis(key: string): number[][] | null {
+  const raw = loadFramesFrom(analysisPath(key));
+  if (!raw) return null;
+  const S = ANALYSIS_SCALE;
+  return raw.map((f) => [f[0], f[1] / S, f[2] / S, f[3] / S, f[4] / S, f[5], f[6], f[7]]);
+}
+
+/** Rendera den OPOLERADE ljus-sekvensen ur analysen (≈ enginens reaktiva output
+ *  @100Hz). Faller tillbaka på legacy .raw.json om analys saknas. */
+function renderRawFromAnalysis(key: string): number[][] | null {
+  const a = loadAnalysis(key);
+  if (a && engine) {
+    try {
+      return renderLightFromAnalysis(a, engine.getCalibration());
+    } catch (e: any) {
+      console.error('[lightRecorder] Rendering ur analys misslyckades:', e?.message ?? e);
+    }
+  }
+  return loadRawSequence(key);
+}
+
 function writeFrames(path: string, key: string, frames: number[][]): void {
   const payload = {
     key,
@@ -141,41 +170,44 @@ function writeFrames(path: string, key: string, frames: number[][]): void {
 }
 
 function finalizeRecording(): void {
-  if (!recording || !currentKey || buffer.length < MIN_FRAMES_TO_SAVE) {
-    buffer = [];
+  if (!recording || !currentKey || analysisBuf.length < MIN_FRAMES_TO_SAVE) {
+    analysisBuf = [];
     return;
   }
   try {
     ensureDir();
-    const existingRaw = loadRawSequence(currentKey) ?? loadSequence(currentKey);
+    const existing = loadAnalysis(currentKey) ?? loadSequence(currentKey);
     // Skriv bara om vi inte har en sekvens, eller om den nya är minst lika komplett.
-    if (!existingRaw || buffer.length >= existingRaw.length) {
-      // Spara råinspelningen (för ångra) och en auto-finslipad version som spelas upp.
-      writeFrames(rawPath(currentKey), currentKey, buffer);
-      // Finslipning får aldrig blockera sparningen: faller finslipningen så
-      // spelas rå-versionen upp i stället (annars saknas <key>.json helt och
-      // låten "försvinner" ur listan).
-      let playable: number[][] = buffer;
+    if (!existing || analysisBuf.length >= existing.length) {
+      // Spara den oförvrängda analysen (för ångra/om-trimning) och rendera +
+      // finslipa en uppspelnings-version.
+      writeFrames(analysisPath(currentKey), currentKey, analysisBuf);
+      const raw = renderRawFromAnalysis(currentKey) ?? [];
+      // Finslipning får aldrig blockera sparningen: faller den så spelas den
+      // renderade rå-versionen upp i stället.
+      let playable: number[][] = raw;
       try {
-        playable = polish(buffer);
+        if (raw.length >= 2) playable = polish(raw);
       } catch (e: any) {
         console.error('[lightRecorder] Finslipning misslyckades, sparar rå:', e?.message ?? e);
       }
       writeFrames(seqPath(currentKey), currentKey, playable);
-      console.log(`[lightRecorder] Sparade "${currentKey}" (${buffer.length} → ${playable.length} frames)`);
+      console.log(`[lightRecorder] Sparade "${currentKey}" (${analysisBuf.length} analys → ${playable.length} frames)`);
     }
   } catch (e: any) {
     console.error('[lightRecorder] Kunde inte spara sekvens:', e?.message ?? e);
   }
-  buffer = [];
+  analysisBuf = [];
 }
 
-/** Engine frame-tap. */
+/** Engine frame-tap (50Hz) — driver auto-synk och håller senaste färgen. */
 function onFrame(pct: number, r: number, g: number, b: number): void {
+  lastColor[0] = r; lastColor[1] = g; lastColor[2] = b;
+
   const tMs = posAnchorMs + (Date.now() - posAnchorClock);
 
   // Auto-synk: samla live-ljusenveloppen under ett 5s-fönster och korrelera
-  // mot RÅ-inspelningen. Fönstret startar vid FÖRSTA live-framen (mic-warmup).
+  // mot RÅ-referensen. Fönstret startar vid FÖRSTA live-framen (mic-warmup).
   if (syncing) {
     if (syncDeadline === 0) {
       syncDeadline = Date.now() + SYNC_WINDOW_MS;
@@ -191,17 +223,26 @@ function onFrame(pct: number, r: number, g: number, b: number): void {
     }
     return;
   }
+}
 
-  if (!recording || pbActive || !currentKey) return;
-  if (tMs - lastRecT < SAMPLE_INTERVAL_MS) return;
-  if (buffer.length >= MAX_FRAMES) return;
-  lastRecT = tMs;
-  buffer.push([tMs | 0, pct, r, g, b]);
+/** Engine analys-tap (100Hz) — spelar in oförvrängda FFT-band + flux. */
+function onAnalysis(bassRms: number, midHiRms: number, totalRms: number, flux: number): void {
+  if (syncing || !recording || pbActive || !currentKey) return;
+  if (analysisBuf.length >= MAX_FRAMES) return;
+  const tMs = posAnchorMs + (Date.now() - posAnchorClock);
+  const S = ANALYSIS_SCALE;
+  analysisBuf.push([
+    tMs | 0,
+    Math.round(bassRms * S), Math.round(midHiRms * S),
+    Math.round(totalRms * S), Math.round(flux * S),
+    lastColor[0], lastColor[1], lastColor[2],
+  ]);
 }
 
 export function attachEngine(e: EngineLike): void {
   engine = e;
   e.setFrameTap(onFrame);
+  e.setAnalysisTap(onAnalysis);
   e.setPlaybackSyncMs(syncMs);
 }
 
@@ -314,7 +355,6 @@ function applyKeyTransition(key: string): void {
   cancelSync();
   finalizeRecording();
   currentKey = key;
-  lastRecT = -Infinity;
   lastAnchorPos = -1;
 
   const saved = autoPlay ? loadSequence(key) : null;
@@ -327,7 +367,7 @@ function applyKeyTransition(key: string): void {
     syncSamples = [];
     syncDeadline = 0;
     syncHardCap = 0;
-    syncCorrSeq = loadRawSequence(key) ?? saved;
+    syncCorrSeq = renderRawFromAnalysis(key) ?? saved;
     syncPlaySeq = saved;
     console.log(`[lightRecorder] ◐ Auto-synkar "${key}" mot rå-inspelningen…`);
   } else if (saved) {
@@ -500,7 +540,7 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
   try {
     ensureDir();
     return readdirSync(SEQ_DIR)
-      .filter((f) => f.endsWith('.json') && !f.endsWith('.raw.json'))
+      .filter((f) => f.endsWith('.json') && !f.endsWith('.raw.json') && !f.endsWith('.analysis.json'))
       .map((f) => {
         const key = f.slice(0, -5);
         try {
@@ -524,7 +564,8 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
 export function deleteSequence(key: string): boolean {
   try {
     unlinkSync(seqPath(key));
-    try { unlinkSync(rawPath(key)); } catch { /* ingen rå-kopia */ }
+    try { unlinkSync(analysisPath(key)); } catch { /* ingen analys-kopia */ }
+    try { unlinkSync(rawPath(key)); } catch { /* ingen legacy rå-kopia */ }
     if (key === currentKey) {
       pbActive = false;
       engine?.setPlaybackSequence(null);
@@ -535,9 +576,9 @@ export function deleteSequence(key: string): boolean {
   }
 }
 
-/** Analys av rå (inspelad) och polerad (uppspelad) version för Låt-studion. */
+/** Analys av rå (renderad ur analysen) och polerad (uppspelad) version för Låt-studion. */
 export function getSequence(key: string): { raw: SeqAnalysis | null; polished: SeqAnalysis | null } {
-  const raw = loadRawSequence(key);
+  const raw = renderRawFromAnalysis(key);
   const polished = loadSequence(key);
   return {
     raw: raw ? analyze(raw) : null,
@@ -548,7 +589,7 @@ export function getSequence(key: string): { raw: SeqAnalysis | null; polished: S
 /** Spela upp vald variant på slingan, oberoende av Sonos, under sekvensens längd. */
 export function previewSequence(key: string, variant: 'raw' | 'polished'): boolean {
   if (!engine) return false;
-  const frames = variant === 'raw' ? loadRawSequence(key) : loadSequence(key);
+  const frames = variant === 'raw' ? renderRawFromAnalysis(key) : loadSequence(key);
   if (!frames || frames.length === 0) return false;
   finalizeRecording();
   currentKey = null;
@@ -560,13 +601,13 @@ export function previewSequence(key: string, variant: 'raw' | 'polished'): boole
   return true;
 }
 
-/** Återställ till råinspelningen och finslipa om från den. */
+/** Återställ uppspelnings-versionen genom att rendera + finslipa om ur analysen. */
 export function revertSequence(key: string): boolean {
-  const raw = loadRawSequence(key);
-  if (!raw) return false;
+  const raw = renderRawFromAnalysis(key);
+  if (!raw || raw.length === 0) return false;
   let playable = raw;
   try {
-    playable = polish(raw);
+    if (raw.length >= 2) playable = polish(raw);
   } catch (e: any) {
     console.error('[lightRecorder] Finslipning misslyckades vid ångra, använder rå:', e?.message ?? e);
   }
