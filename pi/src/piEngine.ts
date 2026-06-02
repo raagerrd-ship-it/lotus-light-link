@@ -1318,10 +1318,13 @@ export class PiLightEngine {
     if (!this.playing || this._bleOwner !== 'active') return;
 
     // ── Playback-mode: spela upp inspelad sekvens istället för reaktiv FFT ──
-    if (this._pbActive && this._pbCount > 0) {
+    // Under warm-up faller vi igenom till reaktiva pathen (live mic styr lamporna)
+    // och samplar auto-sync mot RÅ-referensen tills offseten låsts.
+    if (this._pbActive && this._pbCount > 0 && !this._pbWarmup) {
       this.playbackTick();
       return;
     }
+
 
     const _tickStart = performance.now();
     try {
