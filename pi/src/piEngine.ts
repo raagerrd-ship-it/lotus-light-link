@@ -389,6 +389,8 @@ export class PiLightEngine {
   private _pbCount = 0;
   private _pbAnchorPosMs = 0;
   private _pbAnchorClock = 0;
+  /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
+  private _pbSyncMs = 0;
   /** Lead-offset (ms): positivt = hämta framen framåt (kompenserar BLE-kedjan);
    *  negativt = fördröj ljuset (kompenserar Sonos högtalar-latens vid låtstart). */
   private _pbLeadMs = (() => {
@@ -539,6 +541,9 @@ export class PiLightEngine {
     this._pbAnchorClock = performance.now();
   }
 
+  /** Sätt sync-offset (ms): positivt = ljuset ligger före ljudet. */
+  setPlaybackSyncMs(ms: number): void { this._pbSyncMs = Number.isFinite(ms) ? ms : 0; }
+
   /** Hitta index i en sekvens vars tMs ≤ posMs (närmast föregående). */
   private indexForPosIn(times: Float64Array, count: number, posMs: number): number {
     const hiIdx = count - 1;
@@ -629,7 +634,7 @@ export class PiLightEngine {
   private playbackTick(): void {
     const rawPos = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
     if (this._autoSync) this.autoSyncSample(rawPos);
-    const idx = this.indexForPos(rawPos + this._pbLeadMs);
+    const idx = this.indexForPos(rawPos + this._pbLeadMs + this._pbSyncMs);
     const pct = this._pbPct[idx];
     const result = sendToBLE(this._pbR[idx], this._pbG[idx], this._pbB[idx], pct);
     if (result === 'sent') bleStatsState.tickOkCount++;

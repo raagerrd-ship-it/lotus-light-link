@@ -1486,6 +1486,26 @@ export function startConfigServer(port = 3050): void {
     res.json(engine.getAutoSyncStatus());
   });
 
+  // Manuell sync-offset (ms): positivt = ljuset ligger före ljudet.
+  app.put('/api/playback/sync', (req, res) => {
+    const { syncMs } = req.body;
+    if (typeof syncMs !== 'number' || !Number.isFinite(syncMs)) {
+      return res.status(400).json({ error: 'Need syncMs: finite number' });
+    }
+    const applied = lightRecorder.setSyncOffset(syncMs);
+    res.json({ syncMs: applied });
+  });
+
+  // Auto-synk på/av (korskorrelerar live-ljus mot rå-inspelningen vid låtstart).
+  app.put('/api/autosync', (req, res) => {
+    const { autoSync } = req.body;
+    if (typeof autoSync !== 'boolean') {
+      return res.status(400).json({ error: 'Need autoSync: boolean' });
+    }
+    lightRecorder.setAutoSync(autoSync);
+    res.json(lightRecorder.getRecorderState());
+  });
+
   app.get('/api/light-seq/list', (_req, res) => {
     res.json({ sequences: lightRecorder.listSequences() });
   });
