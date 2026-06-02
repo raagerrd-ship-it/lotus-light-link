@@ -144,9 +144,9 @@ export function detectBeats(frames: Frame[]): number[] {
     const std = Math.sqrt(varSum / cnt);
     const thr = Math.max(BEAT_FLUX_FLOOR, mean + BEAT_K * std);
     if (flux[i] < thr || i - lastBeat < BEAT_REFRACTORY) continue;
-    // Strikt lokal topp över ±2 frames + prominens över näst-största i fönstret.
+    // Strikt lokal topp över ±3 frames + prominens över näst-största i fönstret.
     let isPeak = true, secondMax = 0;
-    for (let k = -2; k <= 2; k++) {
+    for (let k = -3; k <= 3; k++) {
       if (k === 0) continue;
       const v = flux[i + k] ?? 0;
       if (v > flux[i]) { isPeak = false; break; }
