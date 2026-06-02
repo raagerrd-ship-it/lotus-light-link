@@ -397,11 +397,12 @@ export class PiLightEngine {
   private _pbAnchorClock = 0;
   /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
   private _pbSyncMs = 0;
-  /** Lead-offset (ms): positivt = hämta framen framåt (kompenserar BLE-kedjan);
-   *  negativt = fördröj ljuset (kompenserar Sonos högtalar-latens vid låtstart). */
+  /** Legacy lead-offset för äldre motor-auto-sync. Offline-playback använder i
+   *  praktiken lightRecorder:s _pbSyncMs så stale persisted lead inte dubblar
+   *  offseten. */
   private _pbLeadMs = (() => {
     const v = parseInt(getItem('playback-lead-ms') ?? '', 10);
-    return Number.isFinite(v) ? v : 50;
+    return Number.isFinite(v) ? v : 0;
   })();
 
   // ── Auto-sync ──
@@ -653,7 +654,7 @@ export class PiLightEngine {
     // ägs av lightRecorder (kort mic↔råsekvens-mätning före playback) och
     // appliceras via _pbSyncMs. Att samtidigt glida _pbLeadMs under playback kan
     // låsa på grannbeats och skapa drift.
-    const target = this.indexForPos(rawPos + this._pbLeadMs + this._pbSyncMs);
+    const target = this.indexForPos(rawPos + this._pbSyncMs);
     const idx = target;
     this._pbCursor = idx;
 
