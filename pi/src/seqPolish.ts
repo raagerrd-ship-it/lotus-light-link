@@ -134,6 +134,12 @@ function buildBeatGrid(frames: Frame[], beats: number[]): number[] {
   const bpm = estimateBpm(frames, beats);
   if (!bpm || beats.length < 4) return [];
   const periodFrames = (60000 / bpm) / SAMPLE_INTERVAL_MS;
+  // Lokal positiv flux för onset-validering av varje grid-slot.
+  const flux = new Float64Array(frames.length);
+  for (let i = 1; i < frames.length; i++) {
+    const d = frames[i][1] - frames[i - 1][1];
+    flux[i] = d > 0 ? d : 0;
+  }
   const grid: number[] = [];
   for (let t = beats[0] % periodFrames; t < frames.length; t += periodFrames) {
     const idx = Math.round(t);
@@ -142,10 +148,15 @@ function buildBeatGrid(frames: Frame[], beats: number[]): number[] {
       const j = idx + k;
       if (j >= 0 && j < frames.length && frames[j][1] > bestV) { bestV = frames[j][1]; best = j; }
     }
+    // Hoppa över slag utan tillräcklig onset-energi (falskt beat).
+    let maxFlux = 0;
+    for (let k = -1; k <= 1; k++) { const v = flux[best + k] ?? 0; if (v > maxFlux) maxFlux = v; }
+    if (maxFlux < GRID_ONSET_MIN) continue;
     if (grid[grid.length - 1] !== best) grid.push(best);
   }
   return grid;
 }
+
 
 export function analyze(frames: Frame[]): SeqAnalysis {
   const n = frames.length;
