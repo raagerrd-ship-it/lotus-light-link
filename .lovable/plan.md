@@ -1,72 +1,54 @@
-# Analys: ljud→ljus-kedjan och var CPU slösas
+# Bättre beat/drop-detektion på Pi Zero 2W — kick-only grund + drop-flash
 
-## Nuvarande kedja (uppmätta takter)
+## Kapacitetssvar först
+Pi Zero 2W (quad A53) klarar 100 Hz-analysen med stor marginal. Den tunga delen — 1024-punkts FFT @ 100 Hz — körs **redan** idag (`alsaMic.ts:162`), och onset + dynamicCenter räknas redan @ 100 Hz (`piEngine.ts:1027`). Det vi lägger till nedan är några extra EMA:er och en bas-bands-flux per frame — försumbar CPU (<<1 %). Vi behöver alltså INTE höja någon takt; vi använder strömmen vi redan har bättre.
 
-```text
-ALSA mic (48 kHz)
-   └─ FFT hop 480 → ~100 Hz frames ──onFFTReady──▶ onFFTFrame()
-                                                      │  (gate 1: tickMs-deadline)
-                                                      ▼
-                                                  tickInner()  ~33 Hz (tickMs=30)
-                                                      │  full beräkning:
-                                                      │  norm → bas/disk-mix → tystnadsgate
-                                                      │  → EMA-smoothing → dynamics (exp/log)
-                                                      │  → transient → floor → perceptual gamma
-                                                      │  → deadband → color-fade → kalibrering
-                                                      ▼
-                                                  sendToBLE()  (gate 2: lease + ACL-outstanding)
-                                                      │
-                                                      ▼  BLEDOM ~6 paket outstanding-tak
-```
+## Mål (från dina svar)
+- **Grund:** mjuk, driven av **bara bas** (kick/sub), diskant ignoreras i grundnivån.
+- **Beat:** pulsen triggas av **bara kick/bastrumma**, inte hi-hats/snare.
+- **Drop:** egen detektor → **stor vit punch/flash**, sen tillbaka till grund.
 
-Centrala konstanter:
-- FFT-takt: ~100 Hz (`HOP_SIZE=480 @ 48 kHz`, `piEngine.ts:62`)
-- Tick: `tickMs=30` → ~33 Hz tak (`index.ts:TICK_MS`, `piEngine.ts:445`)
-- `slotLeaseMs` golvas till **5 ms** (cadence-cap i praktiken avstängd, `piEngine.ts:437/450`)
-- Backpressure kommer från **ACL-outstanding-gaten** (`ACL_MAX_OUTSTANDING=6`, `protocol.ts:195`)
+## Ändringar
 
-## Var slöseriet uppstår
+### 1. Bas-bands-flux (kick-only beat-källa) — `alsaMic.ts`
+Idag summeras spectral flux över hela spektrumet (alla 4 segment), så hi-hats och cymbaler triggar onset lika mycket som kicken. Lägg till en separat `bassFlux` som bara summerar flux från sub+bas-bins (segment 1+2, < 150 Hz). Lägg `bassFlux` på `BandResult` och skicka den till `onFluxReady` vid sidan av (eller i stället för) dagens full-spektrum-flux. Full `flux` behålls för bakåtkompat.
 
-Det finns **två gates** men de sitter på fel sida om beräkningen:
+### 2. Onset på bas-flux — `piEngine.ts processOnset`
+Mata `processOnset` med `bassFlux` i stället för full-spektrum-flux. Behåll alla befintliga skydd (median×PROMINENCE, ABS_FLUX_FLOOR, refractory, dynamicCenter-suppression). Eftersom bas-flux har annan magnitud justeras `ABS_FLUX_FLOOR` för bas-bandet (lägre absolut energi i 3 bas-bins). Resultat: pulsen sitter på 4-on-the-floor-kicken, inte på hi-hats.
 
-1. **Gate 1 — bra** (`onFFTFrame`, `piEngine.ts:1087`): släng FFT-frame om `tickMs` inte passerat. Sker FÖRE beräkning → ingen CPU bränns. ✅
+### 3. Drop-detektor (ny, lång tidshorisont) — `piEngine.ts` i `onFluxReady`
+Drops är en struktur över sekunder, inte 70 ms. Spåra på 100 Hz-strömmen av **bas-energi**:
+- `bassFast` = EMA ~150 ms (aktuell bas-nivå)
+- `bassSlow` = EMA ~2.5 s (baslinje)
+- `breakdownTimer` = hur länge `bassFast` legat lågt (breakdown/build-up)
 
-2. **Gate 2 — slöseri** (`sendToBLE → leaseAndDrainState`, `protocol.ts:296`): körs EFTER att hela `tickInner` räknat klart. Om BLE är upptaget (lease-lock eller ≥6 outstanding ACL-paket) returneras `'busy'` och **allt arbete kastas** — räknas som `tickAbortBleBusyCount` (`piEngine.ts:1500`). ❌
+Trigga **drop** när: ett tydligt lugnt/nedbrutet parti (`bassFast` < andel av `bassSlow` under ≥X ms) följs av ett plötsligt stort hopp (`bassFast` ≥ faktor × baslinje OCH absolut energi hög). Refractory ~4 s så ett parti bara triggar en gång.
 
-Det här är exakt vad du såg som "mycket körs inte i takt": vid tick=30 ms (33 Hz) men en BLEDOM som realistiskt orkar ~20–25 paket/s, räknar motorn dynamics (`Math.exp/Math.log`), perceptuell gammakurva, color-fade och kalibrering för var 3:e–4:e frame **i onödan** — resultatet dör i lease/ACL-gaten.
+### 4. Drop → stor vit punch — `piEngine.ts`
+Vid drop: sätt en `dropFlashUntil`-tidsstämpel. Medan den är aktiv (~150–300 ms) overridas output i `tickInner` till full vit punch (pct=100, RGB 255/255/255 — samma path som `punchWhiteThreshold`), sen decay tillbaka till grund. Express-write skickas direkt vid drop (samma sub-frame BLE-path som onset) så blixten sitter i takt. Respekterar `canWriteNow()`-pre-gaten.
 
-## Förslag: låt BLE-out driva motorns takt
+### 5. Grund på bara bas
+Grundnivån styrs redan av `energyNorm = bassNorm*bassWeight + midHiNorm*(1-bassWeight)`. Sätt default mot bas-tungt (bassWeight → ~0.9–1.0) så grunden blir mjuk bas-pulsering. Behåll release-smoothing (softness-slidern) som mjukhetskontroll. Diskant-bidraget till grunden tonas ner; beats/drops sticker ut ovanpå.
 
-Princip: BLE-readiness är sanningen för om en tick är värd att räkna. Flytta gaten FÖRE den dyra delen.
-
-### 1. Pre-gate i `onFFTFrame` (huvudfix)
-Exportera en billig, biverkningsfri readiness-check från `protocol.ts` (t.ex. `canWriteNow()` som returnerar `leaseAndDrainState(now) === 'ready'` utan att räkna stats-spikar). I `onFFTFrame`, efter `tickMs`-deadlinen passerat men FÖRE `tickInner()`:
-- om BLE **inte** är redo → räkna ny `tickSkippedBleBusyCount`, uppdatera `_nextTickDeadline` och returnera utan att köra `tickInner`.
-- om redo → kör `tickInner` som vanligt.
-
-Effekt: ingen dynamics/gamma/fade-beräkning för frames som ändå inte kan skickas. CPU följer faktisk BLE-throughput.
-
-### 2. Tidsbaserad smoothing-korrekthet
-EMA och color-fade får inte desynka när ticks hoppas över. Color-fade är redan tidsbaserad (`piEngine.ts:1472`). EMA-smoothing (`piEngine.ts:1388`) använder precomputed `attackAlpha/releaseAlpha` baserade på fast `tickMs`. När intervallet mellan faktiska ticks varierar, gör attack/release-alpha tidsbaserad (alpha ur faktisk elapsed sedan förra körda tick) så ljusbilden blir identisk oavsett hoppade frames. `onsetBoost`/`dynamicCenter` uppdateras redan @100 Hz i `onFluxReady` och påverkas inte.
-
-### 3. Behåll onset-express-pathen
-`onFluxReady`-express-writen (skarpa beat/drop-puls, `piEngine.ts:~711`) ska fortsatt gå direkt men respektera samma readiness-check, så en express-write inte heller bränns i onödan. Den hårda onset-guarden (ABS_FLUX_FLOOR + median×1.6 + energy-gate) lämnas orörd.
-
-### 4. Diagnostik
-Lägg till `tickSkippedBleBusyCount` i `bleStats` (state.ts) och exponera i `/status` så vi kan mäta hur många ticks som nu sparas. Förväntan: `tickAbortBleBusyCount` ska gå mot ~0 och ersättas av billiga pre-gate-skips.
+### 6. Config + UI + diagnostik
+- Nya calibration-fält: `dropEnabled`, `dropSensitivity`, `dropFlashMs` (+ ev. `beatSource` = bass/full). Defaultar enligt ovan.
+- Exponera i PiMobile-kalibrering: drop-känslighet-slider + på/av, samt beat-källa.
+- `bleStats`/`/status`: `dropCount`, `dropFlashActive` för att kunna verifiera att drops triggar rätt antal gånger (inte på varje kick).
 
 ## Vad som INTE ändras
-- Ingen ändring av ljudbilden/tuning (samma dynamics, gamma, deadband, onset-trösklar).
-- Ingen ändring av ACL-taket eller lease-golvet.
-- Realtime-arkitekturen (event-driven, ingen setTimeout i FFT-pipen) behålls.
+- Ingen ändring av FFT-takt, hop-size, tick-takt eller BLE-gates.
+- Onset-false-positive-guarden och BLE-pre-gaten (v1.0.437) lämnas orörda.
+- Express-onset-pathen återanvänds för drop-flash.
 
-## Teknisk sektion (filer som berörs)
-- `pi/src/ble/protocol.ts` — ny exporterad `canWriteNow()` (read-only spegling av `leaseAndDrainState`).
-- `pi/src/piEngine.ts` — pre-gate i `onFFTFrame`; tidsbaserad attack/release-alpha i `tickInner`; readiness-check i onset-express-pathen.
-- `pi/src/ble/state.ts` — ny `tickSkippedBleBusyCount`-räknare.
-- `pi/src/configServer.ts` — exponera nya räknaren i `/status`.
+## Teknisk sektion (filer)
+- `pi/src/alsaMic.ts` — `bassFlux` i `BandResult`, summera sub+bas-bins, emit till `onFluxReady`.
+- `pi/src/piEngine.ts` — onset på bassFlux; drop-detektor (3 EMA + state) i onFluxReady; dropFlash-override i tickInner; nya cal-fält + defaults + drop-räknare.
+- `pi/src/ble/state.ts` — `dropCount`, `dropFlashActive`.
+- `pi/src/configServer.ts` — exponera drop-stats i `/status`, persistens av nya cal-fält.
+- `src/pages/PiMobile.tsx` (eller kalibrerings-UI) — drop-sensitivity/på-av + beat-källa-kontroller.
 - `pi/package.json` — versionsbump.
 
 ## Risk / verifiering
-- Risk: tidsbaserad EMA fel-implementerad → ljuset känns segare/snabbare. Mitigeras genom att härleda alpha ur samma `1 - (1-base)^(elapsed/125)`-formel som `computeTickConstants` redan använder, fast med faktisk elapsed.
-- Verifiering: bygg, kontrollera att `tickAbortBleBusyCount` faller och `tickSkippedBleBusyCount` stiger i `/status` medan pkt/s mot lampan är oförändrat eller bättre.
+- **Falska drops** på täta/högenergi-låtar: mitigeras av kravet på föregående breakdown + refractory; `dropSensitivity` låter dig dra åt/ifrån. Verifiera via `/status.dropCount` att en typisk EDM-låt ger ~1–3 drops, inte tiotal.
+- **Kick missas** efter byte till bas-flux: justera `ABS_FLUX_FLOOR`/`onsetThreshold` för bas-bandet; verifiera mot kick-tung referenslåt.
+- Bygg + tsc (pi), kontrollera att grunden känns mjuk (bara bas) och att hi-hats inte längre blixtrar.
