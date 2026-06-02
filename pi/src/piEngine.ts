@@ -583,17 +583,21 @@ export class PiLightEngine {
     }
   }
 
-  /** Korskorrelera live-energi mot inspelad pct över kandidat-latenser och
-   *  glid _pbLeadMs mot bästa lag. D = högtalar-latens (ms) → lead = -D. */
+  /** Korskorrelera live-energi mot RÅ-referensens pct över kandidat-latenser och
+   *  glid _pbLeadMs mot bästa lag. D = högtalar-latens (ms) → lead = -D.
+   *  Under warm-up: lås upp uppspelning först när korrelationen håller i sig. */
   private autoSyncEval(): void {
     const cap = PiLightEngine.AS_N, n = this._asCount;
+    const refT = this._pbRefCount ? this._pbRefTimes : this._pbTimes;
+    const refP = this._pbRefCount ? this._pbRefPct : this._pbPct;
+    const refN = this._pbRefCount || this._pbCount;
     let bestD = 0, bestCorr = -2;
     for (let D = -200; D <= 1500; D += 25) {
       let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
       for (let k = 0; k < n; k++) {
         const i = (this._asHead - 1 - k + cap * 2) % cap;
         const e = this._asEng[i];
-        const p = this._pbPct[this.indexForPos(this._asPos[i] - D)] / 100;
+        const p = refP[this.indexForPosIn(refT, refN, this._asPos[i] - D)] / 100;
         sx += e; sy += p; sxx += e * e; syy += p * p; sxy += e * p;
       }
       const cov = sxy - (sx * sy) / n;
@@ -604,9 +608,16 @@ export class PiLightEngine {
       if (corr > bestCorr) { bestCorr = corr; bestD = D; }
     }
     this._asConfidence = bestCorr;
-    if (bestCorr < 0.35) return; // svag korrelation → behåll nuvarande lead
+    if (bestCorr < 0.35) { this._asLockStreak = 0; return; } // svag korrelation → behåll
     const targetLead = -bestD;
-    this._pbLeadMs = Math.max(-2000, Math.min(2000, Math.round(this._pbLeadMs + 0.3 * (targetLead - this._pbLeadMs))));
+    if (this._pbWarmup) {
+      // Hoppa direkt till uppmätt lag (ingen EMA-trög uppstart) och lås efter
+      // två stabila mätningar i rad, byt sen från reaktivt → uppspelning.
+      this._pbLeadMs = Math.max(-2000, Math.min(2000, targetLead));
+      if (++this._asLockStreak >= 2) this._pbWarmup = false;
+    } else {
+      this._pbLeadMs = Math.max(-2000, Math.min(2000, Math.round(this._pbLeadMs + 0.3 * (targetLead - this._pbLeadMs))));
+    }
     // SD-skonsam persistering: spara bara vid märkbar drift.
     if (Math.abs(this._pbLeadMs - this._asPersistedLead) >= 15) {
       this._asPersistedLead = this._pbLeadMs;
