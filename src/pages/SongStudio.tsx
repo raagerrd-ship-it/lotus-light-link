@@ -110,7 +110,7 @@ function SongStudio() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [rec, setRec] = useState<RecState | null>(null);
-  const [leadMs, setLeadMs] = useState<number | null>(null);
+  const [sync, setSync] = useState<{ enabled: boolean; leadMs: number; confidence: number } | null>(null);
 
   const loadList = useCallback(() => {
     fetch(`${piBase}/api/light-seq/list`, { signal: AbortSignal.timeout(2000) })
@@ -121,22 +121,23 @@ function SongStudio() {
       .then((r) => r.json())
       .then((d) => setRec(d))
       .catch(() => {});
+    fetch(`${piBase}/api/playback-sync`, { signal: AbortSignal.timeout(2000) })
+      .then((r) => r.json())
+      .then((d) => setSync(d))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     loadList();
     const t = setInterval(loadList, 2000);
-    fetch(`${piBase}/api/playback-lead`, { signal: AbortSignal.timeout(2000) })
-      .then((r) => r.json())
-      .then((d) => setLeadMs(typeof d.leadMs === "number" ? d.leadMs : 0))
-      .catch(() => {});
     return () => clearInterval(t);
   }, [loadList]);
 
-  const commitLead = (ms: number) => {
-    fetch(`${piBase}/api/playback-lead`, {
+  const toggleSync = (enabled: boolean) => {
+    setSync((s) => (s ? { ...s, enabled } : s));
+    fetch(`${piBase}/api/playback-sync`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ leadMs: ms }),
+      body: JSON.stringify({ enabled }),
     }).catch(() => {});
   };
 
