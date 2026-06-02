@@ -564,7 +564,8 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
 export function deleteSequence(key: string): boolean {
   try {
     unlinkSync(seqPath(key));
-    try { unlinkSync(rawPath(key)); } catch { /* ingen rå-kopia */ }
+    try { unlinkSync(analysisPath(key)); } catch { /* ingen analys-kopia */ }
+    try { unlinkSync(rawPath(key)); } catch { /* ingen legacy rå-kopia */ }
     if (key === currentKey) {
       pbActive = false;
       engine?.setPlaybackSequence(null);
@@ -575,9 +576,9 @@ export function deleteSequence(key: string): boolean {
   }
 }
 
-/** Analys av rå (inspelad) och polerad (uppspelad) version för Låt-studion. */
+/** Analys av rå (renderad ur analysen) och polerad (uppspelad) version för Låt-studion. */
 export function getSequence(key: string): { raw: SeqAnalysis | null; polished: SeqAnalysis | null } {
-  const raw = loadRawSequence(key);
+  const raw = renderRawFromAnalysis(key);
   const polished = loadSequence(key);
   return {
     raw: raw ? analyze(raw) : null,
@@ -588,7 +589,7 @@ export function getSequence(key: string): { raw: SeqAnalysis | null; polished: S
 /** Spela upp vald variant på slingan, oberoende av Sonos, under sekvensens längd. */
 export function previewSequence(key: string, variant: 'raw' | 'polished'): boolean {
   if (!engine) return false;
-  const frames = variant === 'raw' ? loadRawSequence(key) : loadSequence(key);
+  const frames = variant === 'raw' ? renderRawFromAnalysis(key) : loadSequence(key);
   if (!frames || frames.length === 0) return false;
   finalizeRecording();
   currentKey = null;
@@ -600,13 +601,13 @@ export function previewSequence(key: string, variant: 'raw' | 'polished'): boole
   return true;
 }
 
-/** Återställ till råinspelningen och finslipa om från den. */
+/** Återställ uppspelnings-versionen genom att rendera + finslipa om ur analysen. */
 export function revertSequence(key: string): boolean {
-  const raw = loadRawSequence(key);
-  if (!raw) return false;
+  const raw = renderRawFromAnalysis(key);
+  if (!raw || raw.length === 0) return false;
   let playable = raw;
   try {
-    playable = polish(raw);
+    if (raw.length >= 2) playable = polish(raw);
   } catch (e: any) {
     console.error('[lightRecorder] Finslipning misslyckades vid ångra, använder rå:', e?.message ?? e);
   }
