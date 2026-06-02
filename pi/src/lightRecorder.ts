@@ -170,41 +170,44 @@ function writeFrames(path: string, key: string, frames: number[][]): void {
 }
 
 function finalizeRecording(): void {
-  if (!recording || !currentKey || buffer.length < MIN_FRAMES_TO_SAVE) {
-    buffer = [];
+  if (!recording || !currentKey || analysisBuf.length < MIN_FRAMES_TO_SAVE) {
+    analysisBuf = [];
     return;
   }
   try {
     ensureDir();
-    const existingRaw = loadRawSequence(currentKey) ?? loadSequence(currentKey);
+    const existing = loadAnalysis(currentKey) ?? loadSequence(currentKey);
     // Skriv bara om vi inte har en sekvens, eller om den nya är minst lika komplett.
-    if (!existingRaw || buffer.length >= existingRaw.length) {
-      // Spara råinspelningen (för ångra) och en auto-finslipad version som spelas upp.
-      writeFrames(rawPath(currentKey), currentKey, buffer);
-      // Finslipning får aldrig blockera sparningen: faller finslipningen så
-      // spelas rå-versionen upp i stället (annars saknas <key>.json helt och
-      // låten "försvinner" ur listan).
-      let playable: number[][] = buffer;
+    if (!existing || analysisBuf.length >= existing.length) {
+      // Spara den oförvrängda analysen (för ångra/om-trimning) och rendera +
+      // finslipa en uppspelnings-version.
+      writeFrames(analysisPath(currentKey), currentKey, analysisBuf);
+      const raw = renderRawFromAnalysis(currentKey) ?? [];
+      // Finslipning får aldrig blockera sparningen: faller den så spelas den
+      // renderade rå-versionen upp i stället.
+      let playable: number[][] = raw;
       try {
-        playable = polish(buffer);
+        if (raw.length >= 2) playable = polish(raw);
       } catch (e: any) {
         console.error('[lightRecorder] Finslipning misslyckades, sparar rå:', e?.message ?? e);
       }
       writeFrames(seqPath(currentKey), currentKey, playable);
-      console.log(`[lightRecorder] Sparade "${currentKey}" (${buffer.length} → ${playable.length} frames)`);
+      console.log(`[lightRecorder] Sparade "${currentKey}" (${analysisBuf.length} analys → ${playable.length} frames)`);
     }
   } catch (e: any) {
     console.error('[lightRecorder] Kunde inte spara sekvens:', e?.message ?? e);
   }
-  buffer = [];
+  analysisBuf = [];
 }
 
-/** Engine frame-tap. */
+/** Engine frame-tap (50Hz) — driver auto-synk och håller senaste färgen. */
 function onFrame(pct: number, r: number, g: number, b: number): void {
+  lastColor[0] = r; lastColor[1] = g; lastColor[2] = b;
+
   const tMs = posAnchorMs + (Date.now() - posAnchorClock);
 
   // Auto-synk: samla live-ljusenveloppen under ett 5s-fönster och korrelera
-  // mot RÅ-inspelningen. Fönstret startar vid FÖRSTA live-framen (mic-warmup).
+  // mot RÅ-referensen. Fönstret startar vid FÖRSTA live-framen (mic-warmup).
   if (syncing) {
     if (syncDeadline === 0) {
       syncDeadline = Date.now() + SYNC_WINDOW_MS;
@@ -220,12 +223,20 @@ function onFrame(pct: number, r: number, g: number, b: number): void {
     }
     return;
   }
+}
 
-  if (!recording || pbActive || !currentKey) return;
-  if (tMs - lastRecT < SAMPLE_INTERVAL_MS) return;
-  if (buffer.length >= MAX_FRAMES) return;
-  lastRecT = tMs;
-  buffer.push([tMs | 0, pct, r, g, b]);
+/** Engine analys-tap (100Hz) — spelar in oförvrängda FFT-band + flux. */
+function onAnalysis(bassRms: number, midHiRms: number, totalRms: number, flux: number): void {
+  if (syncing || !recording || pbActive || !currentKey) return;
+  if (analysisBuf.length >= MAX_FRAMES) return;
+  const tMs = posAnchorMs + (Date.now() - posAnchorClock);
+  const S = ANALYSIS_SCALE;
+  analysisBuf.push([
+    tMs | 0,
+    Math.round(bassRms * S), Math.round(midHiRms * S),
+    Math.round(totalRms * S), Math.round(flux * S),
+    lastColor[0], lastColor[1], lastColor[2],
+  ]);
 }
 
 export function attachEngine(e: EngineLike): void {
