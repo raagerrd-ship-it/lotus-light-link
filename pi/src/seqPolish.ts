@@ -33,11 +33,23 @@ const RELEASE_ALPHA = 0.55;      // brightness faller raskt → tydliga dalar me
 const TRANSIENT_DELTA = 16;      // pct-hopp som alltid bevaras (0–100-skala)
 const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
 
+// Sång-mjukhet: lugna partier (låg flux) jämnas extra mjukt så vokaler inte ryckar.
+const VOCAL_ALPHA = 0.18;        // mycket mjuk EMA för lugna/sång-partier
+const CALM_FLUX_REF = 10;        // flux-referens: under detta → fullt "calm"
+const CALM_WINDOW = 5;           // ±frames för lokal flux-medel (calm-mått)
+
 // Beat-detektering på pct-envelopen.
 const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
 const BEAT_REFRACTORY = 3;       // min 3 frames (~120 ms) mellan beats
-const BEAT_K = 1.4;              // tröskel = medel + K·std av flux i fönstret
-const BEAT_FLUX_FLOOR = 2.5;     // minsta flux (pct) för att räknas som beat
+const BEAT_K = 1.6;              // tröskel = medel + K·std av flux i fönstret
+const BEAT_FLUX_FLOOR = 8;       // minsta flux (pct) för att räknas som beat
+const BEAT_PROMINENCE = 1.25;    // topp måste vara prominent över näst-största i ±2
+const GRID_ONSET_MIN = 6;        // min positiv flux runt grid-slot, annars falskt beat
+
+// Golv + punch-dip.
+const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
+const PREDIP_FRAMES = 2;         // antal frames dip före slaget
+const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
 
 // Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
 // reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
@@ -45,6 +57,7 @@ const BEAT_FLUX_FLOOR = 2.5;     // minsta flux (pct) för att räknas som beat
 const BEAT_BOOST = 1.35;         // topp-boost på slaget
 const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
 const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
+
 
 /**
  * Detekterar beats ur pct-envelopen via positiv flux + adaptiv tröskel med
