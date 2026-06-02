@@ -672,6 +672,13 @@ export class PiLightEngine {
     this.onsetTarget = 0;
     this.onsetFrameCounter = 0;
     this.onsetLastFrameIdx = -1000;
+    // Drop-detektor-state
+    this.bassFast = 0;
+    this.bassSlow = 0;
+    this.breakdownFrames = 0;
+    this.dropFrameCounter = 0;
+    this.dropLastFrameIdx = -100000;
+    this.dropFlashUntil = 0;
   }
 
   /** Zero-alloc onset detection using precomputed constants.
