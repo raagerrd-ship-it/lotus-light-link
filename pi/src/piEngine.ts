@@ -366,6 +366,14 @@ export class PiLightEngine {
   private onsetLastFrameIdx = -1000;
   // Refractory räknas dynamiskt från cal.onsetRefractoryMs (FFT @ 100Hz → 10ms/frame)
 
+  // ── Drop-detektor (lång tidshorisont, @100Hz på bas-energi) ──
+  // Drops är en struktur över sekunder: breakdown/uppbyggnad → plötslig bas-explosion.
+  private bassFast = 0;          // EMA ~150ms — aktuell bas-nivå
+  private bassSlow = 0;          // EMA ~2.5s — baslinje
+  private breakdownFrames = 0;   // antal frames bassFast legat lågt (i förhållande till baslinjen)
+  private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
+  private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
+
   private cal: LightCalibration;
 
   // Precomputed tick constants — refreshed only when tickMs or cal changes
