@@ -401,8 +401,8 @@ export class PiLightEngine {
   // energin mot den inspelade pct-kurvan och glider _pbLeadMs mot bästa lag.
   private _autoSync = (getItem('playback-autosync') ?? 'true') !== 'false';
   private static readonly AS_N = 160;            // ~3.2 s historik @ 50 Hz
-  private _asPos = new Float64Array(PiEngine.AS_N);  // Sonos-pos (utan lead)
-  private _asEng = new Float64Array(PiEngine.AS_N);  // live mic-energi-proxy
+  private _asPos = new Float64Array(PiLightEngine.AS_N);  // Sonos-pos (utan lead)
+  private _asEng = new Float64Array(PiLightEngine.AS_N);  // live mic-energi-proxy
   private _asCount = 0;
   private _asHead = 0;
   private _asLastEvalClock = 0;
@@ -540,7 +540,7 @@ export class PiLightEngine {
   private autoSyncSample(rawPos: number): void {
     const eng = this.liveEnergyProxy();
     if (eng < 0) return;
-    const cap = PiEngine.AS_N;
+    const cap = PiLightEngine.AS_N;
     this._asPos[this._asHead] = rawPos;
     this._asEng[this._asHead] = eng;
     this._asHead = (this._asHead + 1) % cap;
@@ -555,7 +555,7 @@ export class PiLightEngine {
   /** Korskorrelera live-energi mot inspelad pct över kandidat-latenser och
    *  glid _pbLeadMs mot bästa lag. D = högtalar-latens (ms) → lead = -D. */
   private autoSyncEval(): void {
-    const cap = PiEngine.AS_N, n = this._asCount;
+    const cap = PiLightEngine.AS_N, n = this._asCount;
     let bestD = 0, bestCorr = -2;
     for (let D = -200; D <= 1500; D += 25) {
       let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
