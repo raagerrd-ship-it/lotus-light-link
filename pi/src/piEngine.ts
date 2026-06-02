@@ -511,41 +511,13 @@ export class PiLightEngine {
    *  frames = uppspelnings-sekvensen (polerad). rawRef = rå-inspelning som
    *  korrelations-referens. warmup = kör reaktivt tills auto-sync låst.
    *  null = reaktiv mode. */
-  setPlaybackSequence(frames: number[][] | null, rawRef: number[][] | null = null, warmup = true): void {
-    if (!frames || frames.length === 0) {
-      this._pbActive = false;
-      this._pbWarmup = false;
-      this._pbCount = 0;
-      this._pbRefCount = 0;
-      return;
-    }
-    const n = frames.length;
-    this._pbTimes = new Float64Array(n);
-    this._pbPct = new Uint8Array(n);
-    this._pbR = new Uint8Array(n);
-    this._pbG = new Uint8Array(n);
-    this._pbB = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      const f = frames[i];
-      this._pbTimes[i] = f[0];
-      this._pbPct[i] = f[1];
-      this._pbR[i] = f[2];
-      this._pbG[i] = f[3];
-      this._pbB[i] = f[4];
-    }
-    this._pbCount = n;
-    this._pbCursor = -1;
-    this._pbActive = true;
-    // RÅ-referens (faller tillbaka till uppspelnings-pct om den saknas).
-    const ref = rawRef && rawRef.length ? rawRef : frames;
-    const m = ref.length;
-    this._pbRefTimes = new Float64Array(m);
-    this._pbRefPct = new Uint8Array(m);
-    for (let i = 0; i < m; i++) { this._pbRefTimes[i] = ref[i][0]; this._pbRefPct[i] = ref[i][1]; }
-    this._pbRefCount = m;
-    // Warm-up bara när auto-sync är på: håll lamporna live tills offseten låst.
-    this._pbWarmup = warmup && this._autoSync;
-    this._asCount = 0; this._asHead = 0; this._asLockStreak = 0;
+  setPlaybackSequence(_frames: number[][] | null, _rawRef: number[][] | null = null, _warmup = true): void {
+    // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
+    // Behålls som no-op så ev. äldre anropare inte kraschar.
+    this._pbActive = false;
+    this._pbWarmup = false;
+    this._pbCount = 0;
+    this._pbRefCount = 0;
   }
 
   /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
