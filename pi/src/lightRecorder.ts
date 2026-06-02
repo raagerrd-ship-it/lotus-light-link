@@ -172,8 +172,27 @@ function finalizeRecording(): void {
 
 /** Engine frame-tap. */
 function onFrame(pct: number, r: number, g: number, b: number): void {
-  if (!recording || pbActive || !currentKey) return;
   const tMs = posAnchorMs + (Date.now() - posAnchorClock);
+
+  // Auto-synk: samla live-ljusenveloppen under ett 5s-fönster och korrelera
+  // mot RÅ-inspelningen. Fönstret startar vid FÖRSTA live-framen (mic-warmup).
+  if (syncing) {
+    if (syncDeadline === 0) {
+      syncDeadline = Date.now() + SYNC_WINDOW_MS;
+      syncHardCap = Date.now() + SYNC_WINDOW_MS * 2;
+    }
+    syncSamples.push([tMs | 0, pct]);
+    if (
+      syncSamples.length >= SYNC_MAX_SAMPLES ||
+      Date.now() >= syncDeadline ||
+      Date.now() >= syncHardCap
+    ) {
+      finalizeSync();
+    }
+    return;
+  }
+
+  if (!recording || pbActive || !currentKey) return;
   if (tMs - lastRecT < SAMPLE_INTERVAL_MS) return;
   if (buffer.length >= MAX_FRAMES) return;
   lastRecT = tMs;
@@ -183,23 +202,137 @@ function onFrame(pct: number, r: number, g: number, b: number): void {
 export function attachEngine(e: EngineLike): void {
   engine = e;
   e.setFrameTap(onFrame);
+  e.setPlaybackSyncMs(syncMs);
 }
 
 export function attachMic(m: MicLike): void {
   mic = m;
 }
 
+/** Interpolerar pct ur en [tMs,pct,...]-sekvens vid given position. */
+function seqValueAt(seq: number[][], posMs: number): number {
+  const n = seq.length;
+  if (n === 0) return 0;
+  if (posMs <= seq[0][0]) return seq[0][1];
+  if (posMs >= seq[n - 1][0]) return seq[n - 1][1];
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (seq[mid][0] <= posMs) lo = mid; else hi = mid;
+  }
+  const a = seq[lo], b = seq[hi];
+  const dt = b[0] - a[0];
+  const t = dt > 0 ? (posMs - a[0]) / dt : 0;
+  return a[1] + (b[1] - a[1]) * t;
+}
+
+/**
+ * Pearson-korskorrelation mellan live-samples och referenssekvensen över lag
+ * ±150 ms i 20 ms-steg. score = corr − bias·|lag| (favoriserar lag nära 0 så vi
+ * inte låser på en grann-beat). Returnerar bästa {lagMs, score} eller null.
+ */
+function bestSyncLag(
+  samples: Array<[number, number]>,
+  seq: number[][],
+): { lagMs: number; score: number } | null {
+  if (samples.length < SYNC_MIN_SAMPLES || seq.length < 2) return null;
+  // Förberäkna live-medel/variation.
+  let sx = 0;
+  for (const s of samples) sx += s[1];
+  const mx = sx / samples.length;
+  let varX = 0;
+  for (const s of samples) { const dx = s[1] - mx; varX += dx * dx; }
+  if (varX <= 1e-6) return null; // platt live → ingen info
+
+  let best: { lagMs: number; score: number } | null = null;
+  for (let lag = -SYNC_SEARCH_MS; lag <= SYNC_SEARCH_MS; lag += SYNC_STEP_MS) {
+    let sy = 0;
+    const ys: number[] = new Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+      const y = seqValueAt(seq, samples[i][0] + lag);
+      ys[i] = y; sy += y;
+    }
+    const my = sy / samples.length;
+    let cov = 0, varY = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const dx = samples[i][1] - mx;
+      const dy = ys[i] - my;
+      cov += dx * dy; varY += dy * dy;
+    }
+    if (varY <= 1e-6) continue;
+    const corr = cov / Math.sqrt(varX * varY);
+    const score = corr - SYNC_CENTER_BIAS * Math.abs(lag);
+    if (!best || score > best.score) best = { lagMs: lag, score: corr };
+  }
+  return best;
+}
+
+/** Avbryt pågående auto-synk och nollställ state. */
+function cancelSync(): void {
+  syncing = false;
+  syncSamples = [];
+  syncDeadline = 0;
+  syncHardCap = 0;
+  syncCorrSeq = null;
+  syncPlaySeq = null;
+}
+
+/** Mät offset, applicera och växla till uppspelning. */
+function finalizeSync(): void {
+  if (!engine || !syncPlaySeq) { cancelSync(); return; }
+  const playSeq = syncPlaySeq;
+  const corrSeq = syncCorrSeq ?? playSeq;
+  const res = bestSyncLag(syncSamples, corrSeq);
+  let autoOffset = 0;
+  if (res && res.score >= SYNC_MIN_SCORE) {
+    autoOffset = res.lagMs;
+    lastSyncScore = res.score;
+    console.log(`[lightRecorder] ✓ Auto-synk: offset ${autoOffset}ms (score ${res.score.toFixed(2)})`);
+  } else {
+    lastSyncScore = res ? res.score : 0;
+    console.log('[lightRecorder] Auto-synk: ingen säker matchning, behåller manuell lead.');
+  }
+  lastSyncOffsetMs = autoOffset;
+  engine.setPlaybackSyncMs(syncMs + autoOffset);
+
+  const elapsed = Date.now() - posAnchorClock;
+  engine.setPlaybackSequence(playSeq, null, false);
+  engine.updatePlaybackPosition(posAnchorMs + elapsed);
+  pbActive = true;
+
+  syncing = false;
+  syncSamples = [];
+  syncDeadline = 0;
+  syncHardCap = 0;
+  syncCorrSeq = null;
+  syncPlaySeq = null;
+}
+
 /** Växla currentKey och sätt upp record/replay för den. */
 function applyKeyTransition(key: string): void {
   if (!engine || key === currentKey) return;
+  cancelSync();
   finalizeRecording();
   currentKey = key;
   lastRecT = -Infinity;
+  lastAnchorPos = -1;
 
   const saved = autoPlay ? loadSequence(key) : null;
-  if (saved) {
-    const rawRef = loadRawSequence(key); // RÅ-referens för auto-sync (samma mic-pipeline)
-    engine.setPlaybackSequence(saved, rawRef, true);
+  if (saved && autoSync) {
+    // Starta auto-synk: kör reaktivt (live mic) tills offseten låst.
+    engine.setPlaybackSyncMs(syncMs);
+    engine.setPlaybackSequence(null);
+    pbActive = false;
+    syncing = true;
+    syncSamples = [];
+    syncDeadline = 0;
+    syncHardCap = 0;
+    syncCorrSeq = loadRawSequence(key) ?? saved;
+    syncPlaySeq = saved;
+    console.log(`[lightRecorder] ◐ Auto-synkar "${key}" mot rå-inspelningen…`);
+  } else if (saved) {
+    engine.setPlaybackSyncMs(syncMs);
+    engine.setPlaybackSequence(saved, null, false);
     engine.updatePlaybackPosition(posAnchorMs);
     pbActive = true;
     console.log(`[lightRecorder] ▶ Spelar upp lärd sekvens "${key}" (${saved.length} frames)`);
