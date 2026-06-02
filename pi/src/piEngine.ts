@@ -132,7 +132,7 @@ export function applyDynamics(energyNorm: number, center: number, dynamicDamping
 
 // --- Calibration ---
 
-interface LightCalibration {
+export interface LightCalibration {
   gammaR: number; gammaG: number; gammaB: number;
   offsetR: number; offsetG: number; offsetB: number;
   attackAlpha: number; releaseAlpha: number;
