@@ -1090,6 +1090,19 @@ export class PiLightEngine {
       if (now - this._nextTickDeadline > this.tickMs) {
         this._nextTickDeadline = now + this.tickMs;
       }
+
+      // ── BLE-styrd pre-gate (2026-06-02) ──
+      // BLE-out är den verkliga takt-styrningen. Om länken inte kan ta emot en
+      // write just nu (lease-lock, pending write eller ACL-outstanding-tak) är
+      // det meningslöst att räkna en hel tick (dynamics/gamma/fade/kalibrering)
+      // — resultatet hade ändå dött som 'busy' i sendToBLE. Skippa FÖRE den
+      // dyra beräkningen och spara CPU. Gäller bara under aktiv playback;
+      // idle-pathen styrs av keep-alive, inte tickInner.
+      if (this.playing && this._bleOwner === 'active' && !canWriteNow()) {
+        bleStatsState.tickSkippedBleBusyCount++;
+        return;
+      }
+
       this._lastTickTime = now;
       this.tickInner();
     } else {
