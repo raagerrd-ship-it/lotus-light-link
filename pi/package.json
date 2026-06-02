@@ -1,6 +1,6 @@
 {
   "name": "lotus-light-pi",
-  "version": "1.0.432",
+  "version": "1.0.433",
   "private": true,
   "type": "module",
   "scripts": {
