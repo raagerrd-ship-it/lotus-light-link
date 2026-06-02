@@ -213,8 +213,9 @@ function SongStudio() {
           </label>
           {sync.enabled && (
             <p className="text-[10px] text-muted-foreground mt-1.5 tabular-nums">
-              Uppmätt fördröjning: <span className="text-foreground font-medium">{-sync.leadMs} ms</span>
-              {" · "}säkerhet: <span className="text-foreground font-medium">{Math.round(Math.max(0, sync.confidence) * 100)}%</span>
+              {sync.warmup
+                ? "Synkar live (ALSA-mic) mot rå-inspelningen…"
+                : <>Uppmätt fördröjning: <span className="text-foreground font-medium">{-sync.leadMs} ms</span>{" · "}säkerhet: <span className="text-foreground font-medium">{Math.round(Math.max(0, sync.confidence) * 100)}%</span></>}
             </p>
           )}
         </div>
