@@ -539,19 +539,24 @@ export class PiLightEngine {
     this._pbAnchorClock = performance.now();
   }
 
-  /** Hitta index i sekvensen vars tMs ≤ posMs (närmast föregående). */
-  private indexForPos(posMs: number): number {
-    const t = this._pbTimes;
-    const hiIdx = this._pbCount - 1;
-    if (posMs <= t[0]) return 0;
-    if (posMs >= t[hiIdx]) return hiIdx;
+  /** Hitta index i en sekvens vars tMs ≤ posMs (närmast föregående). */
+  private indexForPosIn(times: Float64Array, count: number, posMs: number): number {
+    const hiIdx = count - 1;
+    if (hiIdx < 0) return 0;
+    if (posMs <= times[0]) return 0;
+    if (posMs >= times[hiIdx]) return hiIdx;
     let lo = 0, hi = hiIdx, idx = 0;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (t[mid] <= posMs) { idx = mid; lo = mid + 1; }
+      if (times[mid] <= posMs) { idx = mid; lo = mid + 1; }
       else hi = mid - 1;
     }
     return idx;
+  }
+
+  /** Index i uppspelnings-sekvensen (det som faktiskt skickas till BLE). */
+  private indexForPos(posMs: number): number {
+    return this.indexForPosIn(this._pbTimes, this._pbCount, posMs);
   }
 
   /** Live mic-energi-proxy [0..1] (samma mix som reaktiva pipen, pre-dynamics). */
