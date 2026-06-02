@@ -37,9 +37,9 @@ interface MicLike {
 }
 
 const SEQ_DIR = join(DATA_DIR, 'light-seq');
-const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz nedsampling
 const MIN_FRAMES_TO_SAVE = 50;   // ignorera korta/avbrutna takes
-const MAX_FRAMES = 20000;        // ~13 min tak, skydd mot runaway
+const MAX_FRAMES = 80000;        // ~13 min @100Hz, skydd mot runaway
+const ANALYSIS_SCALE = 10000;    // RMS/flux lagras som heltal (×1e4) för kompakthet
 
 const ACR_CAPTURE_MS = 10500;    // ~10s capture + marginal
 const ACR_COOLDOWN_MS = 30000;   // undvik att spamma ACRCloud vid okänd källa
@@ -52,8 +52,9 @@ let acrEnabled = getItem('acr-enabled') === 'true';
 
 let currentKey: string | null = null;
 let pbActive = false;            // enginen kör uppspelning för currentKey
-let buffer: Frame[] = [];
-let lastRecT = -Infinity;
+// Analys-buffert @100Hz: [tMs, bass*S, midHi*S, total*S, flux*S, r, g, b]
+let analysisBuf: number[][] = [];
+let lastColor: [number, number, number] = [255, 255, 255];
 let posAnchorMs = 0;
 let posAnchorClock = 0;
 
