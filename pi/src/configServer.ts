@@ -1262,6 +1262,8 @@ export function startConfigServer(port = 3050): void {
       const tickAbortNoMicPerSec = perSec(bleStats.tickAbortNoMicCount ?? 0, _lastTickAbortNoMic);
       const tickAbortNoChangePerSec = perSec(bleStats.tickAbortNoChangeCount ?? 0, _lastTickAbortNoChange);
       const tickAbortNoDevicePerSec = perSec(bleStats.tickAbortNoDeviceCount ?? 0, _lastTickAbortNoDevice);
+      const tickAbortBleBusyPerSec = perSec(bleStats.tickAbortBleBusyCount ?? 0, _lastTickAbortBleBusy);
+      const tickSkippedBleBusyPerSec = perSec(bleStats.tickSkippedBleBusyCount ?? 0, _lastTickSkippedBleBusy);
 
       const fftFrames = mic.getFFTFrameCount?.() ?? 0;
       const tickCount = engine?.getDiagnostics().tickCount ?? 0;
