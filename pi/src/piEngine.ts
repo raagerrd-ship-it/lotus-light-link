@@ -398,7 +398,8 @@ export class PiLightEngine {
 
   // ── Auto-sync ──
   // Mäter Sonos högtalar-latens automatiskt genom att korskorrelera live-mic-
-  // energin mot den inspelade pct-kurvan och glider _pbLeadMs mot bästa lag.
+  // energin mot RÅ-inspelningens pct-kurva (samma mic-pipeline → bäst matchning)
+  // och glider _pbLeadMs mot bästa lag.
   private _autoSync = (getItem('playback-autosync') ?? 'true') !== 'false';
   private static readonly AS_N = 160;            // ~3.2 s historik @ 50 Hz
   private _asPos = new Float64Array(PiLightEngine.AS_N);  // Sonos-pos (utan lead)
@@ -408,6 +409,13 @@ export class PiLightEngine {
   private _asLastEvalClock = 0;
   private _asPersistedLead = 0;
   private _asConfidence = 0;
+  // RÅ-referens för korrelation (kan saknas → fall tillbaka till uppspelnings-pct).
+  private _pbRefTimes: Float64Array = new Float64Array(0);
+  private _pbRefPct: Uint8Array = new Uint8Array(0);
+  private _pbRefCount = 0;
+  // Warm-up: kör reaktivt (live mic) tills auto-sync låst, byt sen till uppspelning.
+  private _pbWarmup = false;
+  private _asLockStreak = 0;
 
   constructor(tickMs = 20) {
     this.tickMs = tickMs;
