@@ -472,6 +472,11 @@ export class PiLightEngine {
     this._frameTap = cb;
   }
 
+  /** Sätt analys-tap (rå band/flux per FFT-frame), eller null för att koppla bort. */
+  setAnalysisTap(cb: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null) {
+    this._analysisTap = cb;
+  }
+
   isPlaybackActive(): boolean { return this._pbActive; }
 
   /** Läs/sätt lead-offset (ms) för inspelad uppspelning. Persistas. */
