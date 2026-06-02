@@ -23,7 +23,7 @@ type Frame = [number, number, number, number, number]; // [tMs, pct, r, g, b]
 
 interface EngineLike {
   setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null): void;
-  setPlaybackSequence(frames: number[][] | null): void;
+  setPlaybackSequence(frames: number[][] | null, rawRef?: number[][] | null, warmup?: boolean): void;
   updatePlaybackPosition(positionMs: number): void;
 }
 
