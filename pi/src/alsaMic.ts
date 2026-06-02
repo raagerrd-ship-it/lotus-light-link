@@ -256,7 +256,7 @@ let fftHistoryPos = 0;
 let fftHistoryFilled = 0;
 
 // Latest computed bands (static object — mutated in place)
-let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
+let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0 };
 
 // Timestamp of last FFT completion (performance.now())
 let lastFFTTimestamp = 0;
