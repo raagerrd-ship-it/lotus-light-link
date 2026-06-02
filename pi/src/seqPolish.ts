@@ -313,8 +313,18 @@ function expand(frames: Frame[]): Frame[] {
 function applyBeatEnvelope(frames: Frame[], grid: number[]): Frame[] {
   if (grid.length === 0) return frames;
   const out = frames.map((f) => f.slice());
+  const range = WHITE_TARGET - FLOOR_PCT;
   for (const b of grid) {
     const base = out[b][1];
+    let strength = (base - FLOOR_PCT) / range;
+    strength = strength < 0 ? 0 : strength > 1 ? 1 : strength;
+    // Pre-dip: dra ned ljuset strax före slaget för extra punch.
+    for (let k = 1; k <= PREDIP_FRAMES; k++) {
+      const idx = b - k;
+      if (idx < 0) continue;
+      const w = (PREDIP_FRAMES - k + 1) / PREDIP_FRAMES;
+      out[idx][1] = clampPct(out[idx][1] - out[idx][1] * PREDIP_DEPTH * w * strength);
+    }
     const peakBoost = clampPct(base * BEAT_BOOST) - base;
     if (peakBoost <= 0) continue;
     for (let k = 0; k <= BEAT_TAIL; k++) {
@@ -324,6 +334,7 @@ function applyBeatEnvelope(frames: Frame[], grid: number[]): Frame[] {
       out[idx][1] = clampPct(out[idx][1] + extra);
     }
   }
+
   return out;
 }
 
