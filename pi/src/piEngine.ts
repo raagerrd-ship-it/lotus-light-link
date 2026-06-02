@@ -1321,13 +1321,8 @@ export class PiLightEngine {
     // kan en mic-write krocka med keep-alive som just tagit över.
     if (!this.playing || this._bleOwner !== 'active') return;
 
-    // ── Playback-mode: spela upp inspelad sekvens istället för reaktiv FFT ──
-    // Under warm-up faller vi igenom till reaktiva pathen (live mic styr lamporna)
-    // och samplar auto-sync mot RÅ-referensen tills offseten låsts.
-    if (this._pbActive && this._pbCount > 0 && !this._pbWarmup) {
-      this.playbackTick();
-      return;
-    }
+    // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
+
 
 
     const _tickStart = performance.now();
