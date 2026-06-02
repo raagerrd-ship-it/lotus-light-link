@@ -29,14 +29,23 @@ const PCT_MAX = 100;             // ljus-taket (0–100)
 
 // ── Frame-rate-oberoende konstanter ──
 const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
-const BEAT_K = 2.0;              // tröskel = medel + K·std av flux i fönstret (striktare)
-const BEAT_PROMINENCE = 1.5;     // topp måste vara prominent över näst-största i ±3 (striktare)
+const BEAT_K = 1.8;              // tröskel = medel + K·std av flux i fönstret
+const BEAT_PROMINENCE = 1.4;     // topp måste vara prominent över näst-största i ±3
+const BEAT_MIN_LEVEL = 0.30;     // normaliserad ljusnivå (0–1) ett beat minst måste ligga på
 const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
 const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
 const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
 const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
 const BLE_FRAME_MS = 33;         // ~30 Hz — säker BLEDOM-nivå (sample-and-hold)
-const LEAD_MS = 25;              // ljuset leder ljudet i sparad sekvens (offline-anticipation)
+// Drop-effekt (ms-baserat → frame-rate-oberoende via SAMPLE_INTERVAL_MS).
+const DROP_PEAK_FRAC = 0.80;     // toppnivå ≥ 80 % av låtens spann
+const DROP_LULL_FRAC = 0.55;     // medel före ≤ 55 % av toppen ⇒ tydlig dal
+const DROP_PRE_WINDOW_MS = 700;  // fönster för dal-mätning före slaget
+const DROP_REFRACTORY_MS = 4000; // min tid mellan drops
+const DROP_PREDIP_MS = 120;      // hur länge lampan släcks före dropen
+const DROP_DARK_PCT = 2;         // hur mörkt pre-dippen drar (~släckt)
+const DROP_PUNCH_MS = 90;        // 100 % vit punch-längd
+const DROP_TAIL_MS = 350;        // decay tillbaka mot underliggande nivå
 
 // ── Referensvärden, tunade för 40 ms/frame (25 Hz) ──
 // Alla frame-/flux-beroende konstanter räknas om i configureFrameRate() utifrån
@@ -53,7 +62,7 @@ const CALM_WINDOW_REF = 5;       // ±frames för lokal flux-medel (calm-mått)
 const BEAT_WINDOW_REF = 21;      // ~840 ms adaptivt tröskelfönster
 const BEAT_REFRACTORY_REF = 3;   // min ~120 ms mellan beats
 const BEAT_FLUX_FLOOR_REF = 12;  // minsta flux (per ref-frame) för att räknas som beat (striktare)
-const GRID_ONSET_MIN_REF = 6;    // min positiv flux runt grid-slot, annars falskt beat
+const GRID_ONSET_MIN_REF = 8;    // min positiv flux runt grid-slot, annars falskt beat
 const PREDIP_FRAMES_REF = 2;     // antal frames dip före slaget
 const BEAT_DECAY_REF = 0.5;      // additiv boost halveras varje ref-frame efteråt
 const BEAT_TAIL_REF = 5;         // antal frames decay-svansen sträcker sig
