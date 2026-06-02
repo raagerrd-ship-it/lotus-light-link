@@ -29,14 +29,14 @@ import { dlog } from "./debugLog.js";
 // Bands från ALSA är redan rätt-skalade när de når engine.
 
 const RAW_SCALE = 5; // Fast skalning från RMS (~0–0.2 normalt) till 0–1-domän
-function normalizeFixed(value: number): number {
+export function normalizeFixed(value: number): number {
   const n = value * RAW_SCALE;
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
 
 // --- Precomputed tick constants ---
-interface TickConstants {
+export interface TickConstants {
   attackAlpha: number;
   releaseAlpha: number;
   onsetDecay: number;
@@ -56,7 +56,7 @@ interface TickConstants {
   lutB: Uint8Array;
 }
 
-function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
+export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
   const fftMs = 10; // HOP_SIZE=480 @ 48kHz → 100Hz FFT-takt
@@ -106,7 +106,7 @@ function computeTickConstants(tickMs: number, cal: LightCalibration): TickConsta
 }
 
 // --- Dynamics (zero-alloc, no Math.pow/Math.sign) ---
-function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
+export function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
   let result = energyNorm;
   if (dynamicDamping > 0) {
     const amount = dynamicDamping < 2 ? dynamicDamping * 0.5 : 1;
@@ -132,7 +132,7 @@ function applyDynamics(energyNorm: number, center: number, dynamicDamping: numbe
 
 // --- Calibration ---
 
-interface LightCalibration {
+export interface LightCalibration {
   gammaR: number; gammaG: number; gammaB: number;
   offsetR: number; offsetG: number; offsetB: number;
   attackAlpha: number; releaseAlpha: number;
@@ -378,6 +378,9 @@ export class PiLightEngine {
   // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som FAKTISKT
   // skickades till BLE. lightRecorder prenumererar och buffrar nedsamplat.
   private _frameTap: ((pct: number, r: number, g: number, b: number) => void) | null = null;
+  // Analys-tap: anropas per FFT-frame (~100Hz) med RÅ band/flux FÖRE ljus-estetik.
+  // lightRecorder buffrar detta som oförvrängd käll-ström för offline-render.
+  private _analysisTap: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null = null;
   // Playback-state: när aktiv hoppar tickInner över den reaktiva pathen och
   // spelar upp en inspelad sekvens synkad mot Sonos-position.
   private _pbActive = false;
@@ -467,6 +470,11 @@ export class PiLightEngine {
   /** Sätt frame-tap (eller null för att koppla bort). */
   setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null) {
     this._frameTap = cb;
+  }
+
+  /** Sätt analys-tap (rå band/flux per FFT-frame), eller null för att koppla bort. */
+  setAnalysisTap(cb: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null) {
+    this._analysisTap = cb;
   }
 
   isPlaybackActive(): boolean { return this._pbActive; }
@@ -1038,6 +1046,10 @@ export class PiLightEngine {
           this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
           if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
           else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
+        }
+        // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @100Hz till recorder.
+        if (this._analysisTap && bands) {
+          this._analysisTap(bands.bassRms, bands.midHiRms, bands.totalRms, flux);
         }
       }
     });
