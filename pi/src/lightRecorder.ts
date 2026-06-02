@@ -18,11 +18,13 @@ import { join } from 'path';
 import { DATA_DIR, getItem, setItem } from './storage.js';
 import { songKeyFromSonos, identifyViaAcr } from './songIdentity.js';
 import { analyze, polish, type SeqAnalysis } from './seqPolish.js';
-
-type Frame = [number, number, number, number, number]; // [tMs, pct, r, g, b]
+import { renderLightFromAnalysis } from './seqRender.js';
+import type { LightCalibration } from './piEngine.js';
 
 interface EngineLike {
   setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null): void;
+  setAnalysisTap(cb: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null): void;
+  getCalibration(): LightCalibration;
   setPlaybackSequence(frames: number[][] | null, rawRef?: number[][] | null, warmup?: boolean): void;
   updatePlaybackPosition(positionMs: number): void;
   setPlaybackSyncMs(ms: number): void;
