@@ -1076,6 +1076,7 @@ export class PiLightEngine {
   // Det gav smygande audio-latens utan att synas i pkt/s. Borttaget.
   private _lastTickTime = 0;
   private _lastTickAtForFade = 0;
+  private _lastSmoothAt = 0;   // för tidsbaserad EMA-alpha (robust mot hoppade ticks)
   private _loopActive = false;
   private _nextTickDeadline = 0;
 
