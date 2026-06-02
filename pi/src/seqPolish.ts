@@ -36,7 +36,7 @@ const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
 const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
 const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
 const NONBEAT_DAMP = 0.60;       // mer av icke-beat-dynamik bevaras → jämnare/ljusare grund (var 0.45)
-const BLE_FRAME_MS = 33;         // ~30 Hz — säker BLEDOM-nivå (sample-and-hold)
+const BLE_FRAME_MS = 25;         // ~40 Hz — närmare realtime, men fortfarande BLE-säkert
 // Drop-effekt (ms-baserat → frame-rate-oberoende via SAMPLE_INTERVAL_MS).
 const DROP_PEAK_FRAC = 0.80;     // toppnivå ≥ 80 % av låtens spann
 const DROP_LULL_FRAC = 0.55;     // medel före ≤ 55 % av toppen ⇒ tydlig dal
@@ -56,7 +56,7 @@ const SMOOTH_ALPHA_REF = 0.5;    // EMA-faktor för färg-övergångar
 const ATTACK_ALPHA_REF = 0.85;   // brightness stiger snabbt (skarp attack)
 const RELEASE_ALPHA_REF = 0.40;  // brightness faller mjukare mellan slag → jämnare grund (var 0.55)
 const VOCAL_ALPHA_REF = 0.18;    // mycket mjuk EMA för lugna/sång-partier
-const TRANSIENT_DELTA_REF = 16;  // pct-hopp som alltid bevaras (per ref-frame)
+const TRANSIENT_DELTA_REF = 22;  // pct-hopp som alltid bevaras (per ref-frame); högre = mindre offline-flimmer
 const CALM_FLUX_BASE = 10;       // flux-referens: under detta → fullt "calm"
 const CALM_WINDOW_REF = 5;       // ±frames för lokal flux-medel (calm-mått)
 const BEAT_WINDOW_REF = 21;      // ~840 ms adaptivt tröskelfönster
@@ -443,9 +443,9 @@ function softenNonBeats(frames: Frame[], grid: number[]): Frame[] {
 /**
  * Decimerar en färdig-finslipad sekvens till ett fast ~BLE_FRAME_MS-raster.
  * BLEDOM över BLE är sample-and-hold och hinner bara ~20–40 uppdateringar/s,
- * så 100 fps-features flimrar in/ut fas-beroende. Brightness (pct) tas som
- * MAX i varje bin (peak-bevarande) så skarpa punch/drop-träffar överlever
- * decimeringen; färg medel-värdas (mjuka övergångar). Returnerar oförändrat
+ * så 100 fps-features flimrar in/ut fas-beroende. Brightness blandar medel och
+ * peak: jämnare grund, men riktiga punch/drop-toppar bevaras. Färg medel-värdas.
+ * Returnerar oförändrat
  * om redan på/under måltakten.
  */
 function decimateToBle(frames: Frame[], intervalMs: number): Frame[] {
@@ -456,15 +456,20 @@ function decimateToBle(frames: Frame[], intervalMs: number): Frame[] {
   let i = 0;
   for (let binStart = frames[0][0]; i < n; binStart += intervalMs) {
     const binEnd = binStart + intervalMs;
-    let st = 0, mp = 0, sr = 0, sg = 0, sb = 0, cnt = 0;
+    let st = 0, sp = 0, mp = 0, sr = 0, sg = 0, sb = 0, cnt = 0;
     while (i < n && frames[i][0] < binEnd) {
       const f = frames[i];
       st += f[0];
-      if (f[1] > mp) mp = f[1];   // peak-bevarande brightness
+      sp += f[1];
+      if (f[1] > mp) mp = f[1];
       sr += f[2]; sg += f[3]; sb += f[4];
       cnt++; i++;
     }
-    if (cnt > 0) out.push([Math.round(st / cnt), clampPct(mp), clamp8(sr / cnt), clamp8(sg / cnt), clamp8(sb / cnt)]);
+    if (cnt > 0) {
+      const avgP = sp / cnt;
+      const pct = mp >= 96 ? mp : avgP * 0.7 + mp * 0.3;
+      out.push([Math.round(st / cnt), clampPct(pct), clamp8(sr / cnt), clamp8(sg / cnt), clamp8(sb / cnt)]);
+    }
   }
   return out;
 }

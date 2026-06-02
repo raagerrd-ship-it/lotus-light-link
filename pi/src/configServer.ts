@@ -1469,10 +1469,10 @@ export function startConfigServer(port = 3050): void {
     res.json(lightRecorder.getRecorderState());
   });
 
-  // Auto-sync: mäter Sonos högtalar-latens automatiskt och justerar lead.
+  // Auto-sync: lightRecorder mäter Sonos-fördröjning före offline-playback.
   app.get('/api/playback-sync', (_req, res) => {
-    const engine = getEngine();
-    res.json(engine ? engine.getAutoSyncStatus() : { enabled: false, leadMs: 0, confidence: 0 });
+    const s = lightRecorder.getRecorderState();
+    res.json({ enabled: s.autoSync, leadMs: s.lastSyncOffsetMs, confidence: s.lastSyncScore, warmup: s.syncing });
   });
 
   app.put('/api/playback-sync', (req, res) => {
@@ -1482,8 +1482,10 @@ export function startConfigServer(port = 3050): void {
     if (typeof enabled !== 'boolean') {
       return res.status(400).json({ error: 'Need enabled: boolean' });
     }
-    engine.setAutoSync(enabled);
-    res.json(engine.getAutoSyncStatus());
+    engine.setAutoSync(false);
+    lightRecorder.setAutoSync(enabled);
+    const s = lightRecorder.getRecorderState();
+    res.json({ enabled: s.autoSync, leadMs: s.lastSyncOffsetMs, confidence: s.lastSyncScore, warmup: s.syncing });
   });
 
   // Manuell sync-offset (ms): positivt = ljuset ligger före ljudet.

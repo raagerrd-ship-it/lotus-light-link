@@ -397,11 +397,12 @@ export class PiLightEngine {
   private _pbAnchorClock = 0;
   /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
   private _pbSyncMs = 0;
-  /** Lead-offset (ms): positivt = hämta framen framåt (kompenserar BLE-kedjan);
-   *  negativt = fördröj ljuset (kompenserar Sonos högtalar-latens vid låtstart). */
+  /** Legacy lead-offset för äldre motor-auto-sync. Offline-playback använder i
+   *  praktiken lightRecorder:s _pbSyncMs så stale persisted lead inte dubblar
+   *  offseten. */
   private _pbLeadMs = (() => {
     const v = parseInt(getItem('playback-lead-ms') ?? '', 10);
-    return Number.isFinite(v) ? v : 50;
+    return Number.isFinite(v) ? v : 0;
   })();
 
   // ── Auto-sync ──
@@ -643,25 +644,18 @@ export class PiLightEngine {
     }
   }
 
-  /** Spela upp sekvensen genom att stega en frame i taget mot positionen, så att
-   *  VARJE lagrad frame skickas till BLE (ingen position-sampling som rensar bort
-   *  nästan-lika frames). Vid seek/stort hopp snappar cursorn till målet. */
+  /** Spela upp sekvensen positionslåst mot Sonos-klockan.
+   *  Viktigt: skicka aktuell frame direkt, inte "catch-up" genom gamla frames.
+   *  Annars hamnar offline-ljuset efter vid BLE-busy/missade ticks och känns
+   *  både ryckigt och ur synk. */
   private playbackTick(): void {
     const rawPos = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
-    if (this._autoSync) this.autoSyncSample(rawPos);
-    const target = this.indexForPos(rawPos + this._pbLeadMs + this._pbSyncMs);
-
-    let idx: number;
-    if (this._pbCursor < 0 || target < this._pbCursor || target - this._pbCursor > 3) {
-      // Första framen, bakåt-hopp eller seek → snappa till målet.
-      idx = target;
-    } else if (target > this._pbCursor) {
-      // Stega framåt EN frame i taget så ingen frame hoppas över.
-      idx = this._pbCursor + 1;
-    } else {
-      // Positionen har inte nått nästa frame ännu → upprepa nuvarande (skicka allt).
-      idx = this._pbCursor;
-    }
+    // Kontinuerlig engine-auto-sync är avsiktligt inte aktiv här. Offline-sync
+    // ägs av lightRecorder (kort mic↔råsekvens-mätning före playback) och
+    // appliceras via _pbSyncMs. Att samtidigt glida _pbLeadMs under playback kan
+    // låsa på grannbeats och skapa drift.
+    const target = this.indexForPos(rawPos + this._pbSyncMs);
+    const idx = target;
     this._pbCursor = idx;
 
     const pct = this._pbPct[idx];
