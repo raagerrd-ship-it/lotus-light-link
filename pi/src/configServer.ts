@@ -1299,6 +1299,7 @@ export function startConfigServer(port = 3050): void {
         fftPerSec, tickPerSec,
         tickOkPerSec, tickAbortNoMicPerSec, tickAbortNoChangePerSec, tickAbortNoDevicePerSec,
         tickAbortBleBusyPerSec, tickSkippedBleBusyPerSec,
+        dropCount: bleStats.dropCount ?? 0,
       };
     } catch { /* protocol module not loaded yet */ }
     res.json({
