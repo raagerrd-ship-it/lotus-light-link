@@ -389,8 +389,12 @@ export class PiLightEngine {
   private _pbCount = 0;
   private _pbAnchorPosMs = 0;
   private _pbAnchorClock = 0;
-  /** Lead-offset: hämta framen N ms framåt för att kompensera kedjans latens. */
-  private _pbLeadMs = 50;
+  /** Lead-offset (ms): positivt = hämta framen framåt (kompenserar BLE-kedjan);
+   *  negativt = fördröj ljuset (kompenserar Sonos högtalar-latens vid låtstart). */
+  private _pbLeadMs = (() => {
+    const v = parseInt(getItem('playback-lead-ms') ?? '', 10);
+    return Number.isFinite(v) ? v : 50;
+  })();
 
   constructor(tickMs = 20) {
     this.tickMs = tickMs;
@@ -443,6 +447,13 @@ export class PiLightEngine {
   }
 
   isPlaybackActive(): boolean { return this._pbActive; }
+
+  /** Läs/sätt lead-offset (ms) för inspelad uppspelning. Persistas. */
+  getPlaybackLeadMs(): number { return this._pbLeadMs; }
+  setPlaybackLeadMs(ms: number): void {
+    this._pbLeadMs = Math.round(ms);
+    setItem('playback-lead-ms', String(this._pbLeadMs));
+  }
 
   /** Aktivera playback av en inspelad sekvens.
    *  frames = [tMs, pct, r, g, b][] sorterad stigande på tMs. null = reaktiv mode. */
