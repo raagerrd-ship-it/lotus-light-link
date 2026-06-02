@@ -233,6 +233,20 @@ function fillGaps(frames: Frame[]): Frame[] {
 function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   const n = frames.length;
   if (n < 2) return frames;
+  // Positiv flux + per-frame "calm": låg lokal flux → mjukare (vokal-vänligt).
+  const flux = new Float64Array(n);
+  for (let i = 1; i < n; i++) {
+    const d = frames[i][1] - frames[i - 1][1];
+    flux[i] = d > 0 ? d : 0;
+  }
+  const calm = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const lo = Math.max(0, i - CALM_WINDOW), hi = Math.min(n - 1, i + CALM_WINDOW);
+    let sum = 0, cnt = 0;
+    for (let j = lo; j <= hi; j++) { sum += flux[j]; cnt++; }
+    let c = 1 - (sum / cnt) / CALM_FLUX_REF;
+    calm[i] = c < 0 ? 0 : c > 1 ? 1 : c;
+  }
   const out: Frame[] = [frames[0].slice()];
   let pp = frames[0][1], pr = frames[0][2], pg = frames[0][3], pb = frames[0][4];
   for (let i = 1; i < n; i++) {
@@ -243,7 +257,10 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
       pp = f[1]; pr = f[2]; pg = f[3]; pb = f[4];
       out.push([f[0], f[1], f[2], f[3], f[4]]);
     } else {
-      const a = f[1] > pp ? ATTACK_ALPHA : RELEASE_ALPHA;
+      const c = calm[i];
+      const aUp = ATTACK_ALPHA * (1 - c) + VOCAL_ALPHA * c;
+      const aDn = RELEASE_ALPHA * (1 - c) + VOCAL_ALPHA * c;
+      const a = f[1] > pp ? aUp : aDn;
       pp = pp + (f[1] - pp) * a;
       pr = pr + (f[2] - pr) * SMOOTH_ALPHA;
       pg = pg + (f[3] - pg) * SMOOTH_ALPHA;
@@ -253,6 +270,7 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   }
   return out;
 }
+
 
 // Kontraststräckning mot 0–100: mappar [svart-percentil, vit-percentil] till
 // [0, WHITE_TARGET] med en lätt gamma så dynamiken utnyttjar hela pct-spannet.
