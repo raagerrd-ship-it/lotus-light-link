@@ -1390,14 +1390,24 @@ export class PiLightEngine {
       // Adaptive "punch on drop" borttagen 2026-05-04 — punch hör till
       // attack-pathen (attackAlpha=1.0), inte release. Användarens
       // releaseAlpha (softness-slider) ska vara enda kontrollen för fade-out.
+      // Tidsbaserad alpha (2026-06-02): BLE-pre-gaten gör att ticks nu kommer
+      // med varierande intervall (hoppade frames när BLE är busy). En precomputed
+      // per-tickMs-alpha skulle då ge ojämn fade-takt. Härled alpha ur FAKTISK
+      // elapsed med samma 1-(1-base)^(elapsed/125)-formel som computeTickConstants,
+      // så ljusbilden blir identisk oavsett hur många frames som hoppats över.
+      const _smoothElapsed = this._lastSmoothAt > 0
+        ? Math.min(250, _tickStart - this._lastSmoothAt)
+        : this.tickMs;
+      this._lastSmoothAt = _tickStart;
+      const _eRatio = _smoothElapsed / 125;
       let alpha: number;
       if (inSilence) {
         // Tystnad: dra mot 0 via release oavsett brus-spikar
-        alpha = tc.releaseAlpha;
+        alpha = 1 - Math.pow(1 - this.cal.releaseAlpha, _eRatio);
       } else if (energyNorm > this.smoothed) {
-        alpha = tc.attackAlpha;
+        alpha = 1 - Math.pow(1 - this.cal.attackAlpha, _eRatio);
       } else {
-        alpha = tc.releaseAlpha;
+        alpha = 1 - Math.pow(1 - this.cal.releaseAlpha, _eRatio);
       }
       this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
       energyNorm = this.smoothed;
