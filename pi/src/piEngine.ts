@@ -1056,8 +1056,15 @@ export class PiLightEngine {
           energyFloor <= 0 ||
           (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
         if (passesEnergyGate) {
-          this.processOnset(flux);
+          // Kick/bas-only onset: använd bassFlux om beatSource='bass' (default),
+          // annars full-spektrum-flux. Hi-hats/snare triggar då inte pulsen.
+          const beatFlux = (this.cal.beatSource !== 'full' && bands)
+            ? bands.bassFlux
+            : flux;
+          this.processOnset(beatFlux);
         }
+        // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
+        if (bands) this.processDrop(bands.bassRms);
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
         // (50Hz) — center följer då 100% av musiken, inte varannan frame.
         if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
