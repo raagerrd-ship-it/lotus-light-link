@@ -592,7 +592,7 @@ export class PiLightEngine {
     const refP = this._pbRefCount ? this._pbRefPct : this._pbPct;
     const refN = this._pbRefCount || this._pbCount;
     let bestD = 0, bestCorr = -2;
-    for (let D = -200; D <= 1500; D += 25) {
+    for (let D = -500; D <= 500; D += 25) {
       let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
       for (let k = 0; k < n; k++) {
         const i = (this._asHead - 1 - k + cap * 2) % cap;
