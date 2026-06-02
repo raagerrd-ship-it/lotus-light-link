@@ -1058,6 +1058,53 @@ function AdvancedCalibrationSection({ cal, setCal }: { cal: Cal; setCal: (c: Cal
             );
           })()}
 
+          {/* Beat-källa: kick/bas vs hela spektrumet */}
+          <div>
+            <div className="flex justify-between items-center text-sm mb-1">
+              <span>Beat-källa</span>
+              <div className="flex gap-1">
+                {(['bass', 'full'] as const).map((src) => (
+                  <button
+                    key={src}
+                    onClick={() => setCal({ ...cal, beatSource: src })}
+                    className={`px-2 py-0.5 rounded text-xs ${cal.beatSource === src ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+                  >
+                    {src === 'bass' ? 'Bara kick/bas' : 'Hela spektrumet'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Bara kick/bas = pulsen sitter på bastrumman, hi-hats/snare ignoreras.</p>
+          </div>
+
+          {/* Drop-detektor */}
+          <div>
+            <div className="flex justify-between items-center text-sm mb-1">
+              <span>Drop-flash</span>
+              <button
+                onClick={() => setCal({ ...cal, dropEnabled: !cal.dropEnabled })}
+                className={`px-2 py-0.5 rounded text-xs ${cal.dropEnabled ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+              >
+                {cal.dropEnabled ? 'På' : 'Av'}
+              </button>
+            </div>
+            {cal.dropEnabled && (
+              <>
+                <div className="flex justify-between text-sm mb-0.5">
+                  <span>Drop-känslighet</span>
+                  <span className="font-mono text-xs text-muted-foreground">{cal.dropSensitivity.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range" min={0.5} max={2.0} step={0.05} value={cal.dropSensitivity}
+                  onChange={(e) => setCal({ ...cal, dropSensitivity: parseFloat(e.target.value) })}
+                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Lägre = lättare att trigga (mer drops). Triggar stor vit blixt efter ett nedbrutet parti.</p>
+              </>
+            )}
+          </div>
+
+
           {/* Perceptuell kurva */}
           {(() => {
             const c = ADVANCED_GAMMA_CONFIG;
