@@ -221,17 +221,23 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   return out;
 }
 
-/** Skalar brightness så att 95:e percentilen når nära taket (100) utan att klippa. */
+// Kontraststräckning mot 0–100: mappar [svart-percentil, vit-percentil] till
+// [0, WHITE_TARGET] med en lätt gamma så dynamiken utnyttjar hela pct-spannet.
+const BLACK_PCTL = 0.10, WHITE_PCTL = 0.95, WHITE_TARGET = 92,
+      STRETCH_GAMMA = 1.25, MIN_SPAN = 4;
+
 function normalize(frames: Frame[]): Frame[] {
   const n = frames.length;
   if (n === 0) return frames;
   const sorted = frames.map((f) => f[1]).sort((a, b) => a - b);
-  const p95 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
-  const ceil = PCT_MAX * 0.96; // ~96
-  if (p95 <= 0 || p95 >= ceil) return frames;
-  const scale = ceil / p95;
-  if (scale <= 1.02) return frames; // redan bra utnyttjat spann
-  return frames.map((f) => [f[0], clampPct(f[1] * scale), f[2], f[3], f[4]]);
+  const at = (q: number) => sorted[Math.min(n - 1, Math.max(0, Math.floor(n * q)))];
+  const black = at(BLACK_PCTL), white = at(WHITE_PCTL), span = white - black;
+  if (span < MIN_SPAN) return frames;
+  const invSpan = 1 / span;
+  return frames.map((f) => {
+    let t = (f[1] - black) * invSpan; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return [f[0], clampPct(Math.pow(t, STRETCH_GAMMA) * WHITE_TARGET), f[2], f[3], f[4]];
+  });
 }
 
 /**
