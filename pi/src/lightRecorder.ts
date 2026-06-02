@@ -431,9 +431,23 @@ export function onSonosUpdate(state: {
   // om-ankra bara vid verklig seek (avvikelse > tröskel).
   if (state.positionMs != null) {
     const RESYNC_THRESHOLD_MS = 1500;
+    const RESTART_THRESHOLD_MS = 3000; // bakåt-hopp ⇒ låten började om
     const reported = state.positionMs;
     const extrapolated = posAnchorMs + (Date.now() - posAnchorClock);
     const firstAnchor = lastAnchorPos < 0;
+
+    // Samma låt har loopats/spelats om medan vi spelar in → avsluta nuvarande
+    // take (sparas bara om den är minst lika komplett) och börja en ny buffer,
+    // så att varv 2 inte läggs ovanpå varv 1.
+    if (!firstAnchor && recording && !pbActive && currentKey &&
+        (extrapolated - reported) > RESTART_THRESHOLD_MS) {
+      finalizeRecording();           // sparar ev. det fulla varvet, tömmer analysisBuf
+      posAnchorMs = reported;
+      posAnchorClock = Date.now();
+      lastAnchorPos = reported;
+      return;                        // resten av denna uppdatering hoppas över
+    }
+
     if (firstAnchor || Math.abs(reported - extrapolated) > RESYNC_THRESHOLD_MS) {
       posAnchorMs = reported;
       posAnchorClock = Date.now();
