@@ -29,7 +29,7 @@ import { dlog } from "./debugLog.js";
 // Bands från ALSA är redan rätt-skalade när de når engine.
 
 const RAW_SCALE = 5; // Fast skalning från RMS (~0–0.2 normalt) till 0–1-domän
-function normalizeFixed(value: number): number {
+export function normalizeFixed(value: number): number {
   const n = value * RAW_SCALE;
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
