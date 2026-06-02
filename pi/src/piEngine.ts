@@ -878,6 +878,7 @@ export class PiLightEngine {
       this.lastBrightness = 0;
       this.lastSentPct = -1;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
+      this._lastSmoothAt = 0;       // återställ tidsbaserad EMA-klocka
       stopKeepAlive();
       dlog(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
     }
