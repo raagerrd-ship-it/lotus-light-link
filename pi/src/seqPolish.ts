@@ -37,7 +37,7 @@ const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare t
 const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
 const BEAT_REFRACTORY = 3;       // min 3 frames (~120 ms) mellan beats
 const BEAT_K = 1.4;              // tröskel = medel + K·std av flux i fönstret
-const BEAT_FLUX_FLOOR = 6;       // minsta flux (pct) för att räknas som beat
+const BEAT_FLUX_FLOOR = 2.5;     // minsta flux (pct) för att räknas som beat
 
 // Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
 // reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
