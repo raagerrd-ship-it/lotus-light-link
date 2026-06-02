@@ -221,6 +221,7 @@ export function analyze(frames: Frame[]): SeqAnalysis {
   if (n === 0) {
     return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, bpm: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
   }
+  configureFrameRate(frames);
   let min = PCT_MAX, max = 0, sum = 0, flickerSum = 0, gaps = 0;
   for (let i = 0; i < n; i++) {
     const pct = frames[i][1];
