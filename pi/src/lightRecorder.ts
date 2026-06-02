@@ -421,9 +421,11 @@ export function onSonosUpdate(state: {
   if (!key) {
     // Inget spelar / okänd källa → avsluta ev. inspelning, tillbaka till reaktivt.
     if (currentKey) {
+      cancelSync();
       finalizeRecording();
       currentKey = null;
       pbActive = false;
+      lastAnchorPos = -1;
       engine.setPlaybackSequence(null);
     }
     return;
