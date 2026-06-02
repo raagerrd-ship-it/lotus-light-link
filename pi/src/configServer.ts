@@ -1469,22 +1469,21 @@ export function startConfigServer(port = 3050): void {
     res.json(lightRecorder.getRecorderState());
   });
 
-  // Lead/fördröjning (ms) för inspelad uppspelning. Negativt = fördröj ljuset
-  // för att kompensera Sonos högtalar-latens vid låtstart.
-  app.get('/api/playback-lead', (_req, res) => {
+  // Auto-sync: mäter Sonos högtalar-latens automatiskt och justerar lead.
+  app.get('/api/playback-sync', (_req, res) => {
     const engine = getEngine();
-    res.json({ leadMs: engine ? engine.getPlaybackLeadMs() : 0 });
+    res.json(engine ? engine.getAutoSyncStatus() : { enabled: false, leadMs: 0, confidence: 0 });
   });
 
-  app.put('/api/playback-lead', (req, res) => {
+  app.put('/api/playback-sync', (req, res) => {
     const engine = requireEngine(res);
     if (!engine) return;
-    const { leadMs } = req.body;
-    if (typeof leadMs !== 'number' || !Number.isFinite(leadMs)) {
-      return res.status(400).json({ error: 'Need leadMs: number' });
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Need enabled: boolean' });
     }
-    engine.setPlaybackLeadMs(Math.max(-2000, Math.min(2000, leadMs)));
-    res.json({ leadMs: engine.getPlaybackLeadMs() });
+    engine.setAutoSync(enabled);
+    res.json(engine.getAutoSyncStatus());
   });
 
   app.get('/api/light-seq/list', (_req, res) => {
