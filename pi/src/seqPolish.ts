@@ -160,6 +160,11 @@ function clamp8(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
 }
 
+/** Klampar brightness/pct till 0–100 (BLE-skalan enginen använder). */
+function clampPct(v: number): number {
+  return v < 0 ? 0 : v > PCT_MAX ? PCT_MAX : Math.round(v);
+}
+
 /** Skapar en jämn tidsaxel och interpolerar frames över glapp. */
 function fillGaps(frames: Frame[]): Frame[] {
   const n = frames.length;
