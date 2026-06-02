@@ -28,14 +28,14 @@ export interface SeqAnalysis {
 const PCT_MAX = 100;             // ljus-taket (0–100)
 
 // ── Frame-rate-oberoende konstanter ──
-const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
+const CONTRAST = 1.2;            // dynamik-expansion: lägre = jämnare grund (var 1.45)
 const BEAT_K = 1.8;              // tröskel = medel + K·std av flux i fönstret
 const BEAT_PROMINENCE = 1.4;     // topp måste vara prominent över näst-största i ±3
 const BEAT_MIN_LEVEL = 0.30;     // normaliserad ljusnivå (0–1) ett beat minst måste ligga på
 const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
 const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
 const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
-const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
+const NONBEAT_DAMP = 0.60;       // mer av icke-beat-dynamik bevaras → jämnare/ljusare grund (var 0.45)
 const BLE_FRAME_MS = 33;         // ~30 Hz — säker BLEDOM-nivå (sample-and-hold)
 // Drop-effekt (ms-baserat → frame-rate-oberoende via SAMPLE_INTERVAL_MS).
 const DROP_PEAK_FRAC = 0.80;     // toppnivå ≥ 80 % av låtens spann
@@ -54,7 +54,7 @@ const DROP_TAIL_MS = 350;        // decay tillbaka mot underliggande nivå
 const REF_MS = 40;
 const SMOOTH_ALPHA_REF = 0.5;    // EMA-faktor för färg-övergångar
 const ATTACK_ALPHA_REF = 0.85;   // brightness stiger snabbt (skarp attack)
-const RELEASE_ALPHA_REF = 0.55;  // brightness faller raskt → tydliga dalar mellan slag
+const RELEASE_ALPHA_REF = 0.40;  // brightness faller mjukare mellan slag → jämnare grund (var 0.55)
 const VOCAL_ALPHA_REF = 0.18;    // mycket mjuk EMA för lugna/sång-partier
 const TRANSIENT_DELTA_REF = 16;  // pct-hopp som alltid bevaras (per ref-frame)
 const CALM_FLUX_BASE = 10;       // flux-referens: under detta → fullt "calm"
