@@ -390,6 +390,9 @@ export class PiLightEngine {
   private _pbG: Uint8Array = new Uint8Array(0);
   private _pbB: Uint8Array = new Uint8Array(0);
   private _pbCount = 0;
+  // Frame-stegnings-cursor: senast skickade index. Stegar framåt en frame i taget
+  // så VARJE lagrad frame skickas till BLE (ingen position-sampling som hoppar).
+  private _pbCursor = -1;
   private _pbAnchorPosMs = 0;
   private _pbAnchorClock = 0;
   /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
@@ -530,6 +533,7 @@ export class PiLightEngine {
       this._pbB[i] = f[4];
     }
     this._pbCount = n;
+    this._pbCursor = -1;
     this._pbActive = true;
     // RÅ-referens (faller tillbaka till uppspelnings-pct om den saknas).
     const ref = rawRef && rawRef.length ? rawRef : frames;
@@ -547,6 +551,7 @@ export class PiLightEngine {
   updatePlaybackPosition(positionMs: number): void {
     this._pbAnchorPosMs = positionMs;
     this._pbAnchorClock = performance.now();
+    this._pbCursor = -1; // seek/re-ankring → snappa cursorn till nya positionen
   }
 
   /** Sätt sync-offset (ms): positivt = ljuset ligger före ljudet. */
@@ -638,11 +643,27 @@ export class PiLightEngine {
     }
   }
 
-  /** Spela upp aktuell frame ur sekvensen mot interpolerad position. */
+  /** Spela upp sekvensen genom att stega en frame i taget mot positionen, så att
+   *  VARJE lagrad frame skickas till BLE (ingen position-sampling som rensar bort
+   *  nästan-lika frames). Vid seek/stort hopp snappar cursorn till målet. */
   private playbackTick(): void {
     const rawPos = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
     if (this._autoSync) this.autoSyncSample(rawPos);
-    const idx = this.indexForPos(rawPos + this._pbLeadMs + this._pbSyncMs);
+    const target = this.indexForPos(rawPos + this._pbLeadMs + this._pbSyncMs);
+
+    let idx: number;
+    if (this._pbCursor < 0 || target < this._pbCursor || target - this._pbCursor > 3) {
+      // Första framen, bakåt-hopp eller seek → snappa till målet.
+      idx = target;
+    } else if (target > this._pbCursor) {
+      // Stega framåt EN frame i taget så ingen frame hoppas över.
+      idx = this._pbCursor + 1;
+    } else {
+      // Positionen har inte nått nästa frame ännu → upprepa nuvarande (skicka allt).
+      idx = this._pbCursor;
+    }
+    this._pbCursor = idx;
+
     const pct = this._pbPct[idx];
     const result = sendToBLE(this._pbR[idx], this._pbG[idx], this._pbB[idx], pct);
     if (result === 'sent') bleStatsState.tickOkCount++;

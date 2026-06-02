@@ -1,47 +1,66 @@
 ## Mål
 
-Två relaterade fixar i Pi-koden för inspelad ljus-uppspelning, så att uppspelningen blir stabil mot BLEDOM-lampans verkliga uppdateringstakt och att en omspelad/loopad låt inte korrumperar inspelningsbufferten.
+Förbättra den **inspelade/uppspelade** ljus-sekvensen (offline-pipelinen i `pi/src/seqPolish.ts`, full lookahead) + uppspelnings­vägen, på fyra punkter så den känns minst lika bra som realtime:
 
-## FIX 1 — Decimera färdig sekvens till BLE-takt (`pi/src/seqPolish.ts`)
+1. Synk ~25 ms tidigare (ljuset leder ljudet).
+2. Striktare false-beat-filter.
+3. Drops: lampan dippar kort på breaken precis före dropet → slår till 100 % för max effekt.
+4. Vid uppspelning av sparad låt: skicka **alla** frames till BLE, rensa inte bort nästan lika.
 
-Problem: vi finslipar @100 fps men BLEDOM (sample-and-hold) klarar bara ~20–40 uppdateringar/s. 100 fps-features (1-frame-attack, 10 ms white-punch) flimrar in/ut fas-beroende.
+Ändringar i `pi/src/seqPolish.ts` (1–3 + decimerings­justering) och `pi/src/piEngine.ts` (uppspelnings-stegning). Live/realtime-reaktiva pathen lämnas i övrigt orörd.
 
-Lösning — som sista steg i `polish()`:
+## FIX 1 — Lead ~25 ms i den renderade sekvensen
 
-1. Lägg konstanten nära övriga polish-konstanter (vid rad ~28–37):
-   ```ts
-   const BLE_FRAME_MS = 33; // ~30 Hz — säker BLEDOM-nivå
-   ```
-2. Lägg till `decimateToBle(frames, intervalMs)` (återanvänder `medianFrameMs`, `clampPct`, `clamp8`): box-medel per `intervalMs`-bin. Returnerar oförändrad sekvens om den redan är på/under måltakten (`medianFrameMs >= intervalMs * 0.9`).
-3. Ändra slutet på `polish()` (rad 436) från:
-   ```ts
-   return applyBeatEnvelope(softened, beats);
-   ```
-   till:
-   ```ts
-   const enveloped = applyBeatEnvelope(softened, beats);
-   return decimateToBle(enveloped, BLE_FRAME_MS);
-   ```
+Offline-render känner hela låten → baka in lead i den polerade sekvensen.
 
-## FIX 2 — Hantera loop/omspelning under inspelning (`pi/src/lightRecorder.ts`)
+- Ny konstant: `const LEAD_MS = 25;`
+- Sista steg i `polish()`: hjälpfunktion `shiftEarlier(frames, ms)` drar varje frames `tMs` tidigare med `LEAD_MS`, klampat till ≥ första tidsstämpeln (ingen negativ tid).
 
-Problem: vid omstart av samma låt är `key` oförändrad → `finalizeRecording()` triggas aldrig, så `analysisBuf` fylls på med varv 2 ovanpå varv 1 → bakåt-hopp i tidsstämplar + spök-frames.
+## FIX 2 — Striktare false-beat-filter (`detectBeats`)
 
-Lösning — i `onSonosUpdate`, i positionsankrings-blocket (`if (state.positionMs != null) { ... }`): innan vanlig RESYNC-logik, detektera bakåt-hopp (`extrapolated - reported > 3000 ms`) under pågående inspelning (`recording && !pbActive && currentKey`) och starta en ny take:
-- `finalizeRecording()` (sparar bara om minst lika komplett → kort omstarts-take skriver aldrig över ett fullt varv)
-- om-ankra `posAnchorMs/posAnchorClock/lastAnchorPos` till `reported`
-- `return` (hoppa över resten av uppdateringen)
+- `BEAT_K` 1.6 → 2.0
+- `BEAT_PROMINENCE` 1.25 → 1.5
+- `BEAT_FLUX_FLOOR_REF` 8 → 12
+- Utöka strikta lokala-topp-testet från ±2 → ±3 frames.
 
-`currentKey` behålls så den nya bufferten fortsätter på samma låt.
+Ger även renare `buildBeatGrid` (samma beats som grund).
+
+## FIX 3 — Drop-detektion: pre-dip på break + 100 % punch
+
+Ny `applyDrops(frames, beats)` i `polish()`, efter `applyBeatEnvelope`, före decimering. Med lookahead:
+
+1. Detektera drop: grid-beat där brightness går från en relativ break (lågt medel ~300 ms före) till nära toppen, dvs pct-hopp ≥ ~45 enheter och topp ≥ ~85.
+2. Pre-dip: ramp ned mot `FLOOR_PCT` under ~150 ms precis före dropet ("släcks kort").
+3. Punch: `pct = 100` på drop-framen + kort svans (~120 ms) nära 100.
+4. Refraktär: minst ~2 s mellan drops så vanliga beats inte triggar.
+
+Fönster i ms → frames via befintlig `SAMPLE_INTERVAL_MS`.
+
+## FIX 4 — Skicka alla frames vid uppspelning, rensa inte nästan lika
+
+Två orsaker till att sparat läge "rensar" detaljer idag:
+
+1. **`decimateToBle` box-medlar** → snabba punch-/drop-frames slätas ut. Ändra brightness-aggregeringen till **peak-bevarande** (max pct i binet) medan färg fortsatt medel-värdas. Då matchas BLE-takten men punch/drop överlever.
+2. **`playbackTick` position-samplar** vid tickMs → kan hoppa över/upprepa lagrade frames. Ändra uppspelningen så den **stegar igenom varje lagrad frame i tur och ordning** (frame-stegning ankrad mot position) så varje frame skickas en gång. Ingen deadband/no-change-rensning i uppspelnings-pathen (deltaskip i `protocol.ts` är redan av).
+
+Notera: eftersom sekvensen redan ligger på BLE-takt (~30 Hz) ger "skicka alla" ingen flimmer-risk — den matchar lampans verkliga uppdaterings­takt.
+
+## Pipeline-ordning i polish()
+
+```text
+fillGaps → smooth → expand → normalize → softenNonBeats
+  → applyBeatEnvelope → applyDrops → decimateToBle(peak-bevarande) → shiftEarlier
+```
 
 ## Build & release
 
-- Bumpa `pi/package.json` version (1.0.430 → 1.0.431).
-- `tsc -p tsconfig.json --noEmit` för att verifiera kompilering.
-- Påminn om att tagga/publicera ny release så ändringarna kommer med i tarballen (annars skrivs de över vid nästa `/api/update`).
+- Bumpa `pi/package.json` (1.0.431 → 1.0.432).
+- `tsc -p tsconfig.json --noEmit`.
+- Påminn om att tagga/publicera release så ändringarna kommer med i tarballen.
 
 ## Tekniska noter
 
-- Inga BLE-filer (`pi/src/ble/**`) berörs → ingen `BLE_BUILD_TAG`-bump krävs.
-- Live-beteendet (reaktiv engine) är oförändrat; båda fixarna rör endast inspelnings-/finslipnings-pipelinen.
-- `decimateToBle` är idempotent vid redan låg takt, så `revertSequence`/preview påverkas inte negativt.
+- `seqPolish.ts` (DSP) + `piEngine.ts` (uppspelnings-stegning) ändras. Inga BLE-protokoll-filer → ingen `BLE_BUILD_TAG`-bump.
+- Drop-pre-dip är äkta anticipation (offline lookahead).
+- Lead bakas i sparad sekvens; engineens playback-lead/auto-sync verkar additivt och rörs inte.
+- Slår igenom vid om-rendering: nya inspelningar + `revertSequence`/finalize som kör `polish()`.

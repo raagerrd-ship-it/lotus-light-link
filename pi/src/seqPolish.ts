@@ -29,13 +29,14 @@ const PCT_MAX = 100;             // ljus-taket (0–100)
 
 // ── Frame-rate-oberoende konstanter ──
 const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
-const BEAT_K = 1.6;              // tröskel = medel + K·std av flux i fönstret
-const BEAT_PROMINENCE = 1.25;    // topp måste vara prominent över näst-största i ±2
+const BEAT_K = 2.0;              // tröskel = medel + K·std av flux i fönstret (striktare)
+const BEAT_PROMINENCE = 1.5;     // topp måste vara prominent över näst-största i ±3 (striktare)
 const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
 const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
 const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
 const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
 const BLE_FRAME_MS = 33;         // ~30 Hz — säker BLEDOM-nivå (sample-and-hold)
+const LEAD_MS = 25;              // ljuset leder ljudet i sparad sekvens (offline-anticipation)
 
 // ── Referensvärden, tunade för 40 ms/frame (25 Hz) ──
 // Alla frame-/flux-beroende konstanter räknas om i configureFrameRate() utifrån
@@ -51,7 +52,7 @@ const CALM_FLUX_BASE = 10;       // flux-referens: under detta → fullt "calm"
 const CALM_WINDOW_REF = 5;       // ±frames för lokal flux-medel (calm-mått)
 const BEAT_WINDOW_REF = 21;      // ~840 ms adaptivt tröskelfönster
 const BEAT_REFRACTORY_REF = 3;   // min ~120 ms mellan beats
-const BEAT_FLUX_FLOOR_REF = 8;   // minsta flux (per ref-frame) för att räknas som beat
+const BEAT_FLUX_FLOOR_REF = 12;  // minsta flux (per ref-frame) för att räknas som beat (striktare)
 const GRID_ONSET_MIN_REF = 6;    // min positiv flux runt grid-slot, annars falskt beat
 const PREDIP_FRAMES_REF = 2;     // antal frames dip före slaget
 const BEAT_DECAY_REF = 0.5;      // additiv boost halveras varje ref-frame efteråt
@@ -143,9 +144,9 @@ export function detectBeats(frames: Frame[]): number[] {
     const std = Math.sqrt(varSum / cnt);
     const thr = Math.max(BEAT_FLUX_FLOOR, mean + BEAT_K * std);
     if (flux[i] < thr || i - lastBeat < BEAT_REFRACTORY) continue;
-    // Strikt lokal topp över ±2 frames + prominens över näst-största i fönstret.
+    // Strikt lokal topp över ±3 frames + prominens över näst-största i fönstret.
     let isPeak = true, secondMax = 0;
-    for (let k = -2; k <= 2; k++) {
+    for (let k = -3; k <= 3; k++) {
       if (k === 0) continue;
       const v = flux[i + k] ?? 0;
       if (v > flux[i]) { isPeak = false; break; }
@@ -426,10 +427,12 @@ function softenNonBeats(frames: Frame[], grid: number[]): Frame[] {
 }
 
 /**
- * Decimerar en färdig-finslipad sekvens till ett fast ~BLE_FRAME_MS-raster med
- * box-medel (anti-alias). BLEDOM över BLE är sample-and-hold och hinner bara
- * ~20–40 uppdateringar/s, så 100 fps-features (1-frame-attack, white-punch)
- * flimrar in/ut fas-beroende. Returnerar oförändrat om redan på/under måltakten.
+ * Decimerar en färdig-finslipad sekvens till ett fast ~BLE_FRAME_MS-raster.
+ * BLEDOM över BLE är sample-and-hold och hinner bara ~20–40 uppdateringar/s,
+ * så 100 fps-features flimrar in/ut fas-beroende. Brightness (pct) tas som
+ * MAX i varje bin (peak-bevarande) så skarpa punch/drop-träffar överlever
+ * decimeringen; färg medel-värdas (mjuka övergångar). Returnerar oförändrat
+ * om redan på/under måltakten.
  */
 function decimateToBle(frames: Frame[], intervalMs: number): Frame[] {
   const n = frames.length;
@@ -439,15 +442,73 @@ function decimateToBle(frames: Frame[], intervalMs: number): Frame[] {
   let i = 0;
   for (let binStart = frames[0][0]; i < n; binStart += intervalMs) {
     const binEnd = binStart + intervalMs;
-    let st = 0, sp = 0, sr = 0, sg = 0, sb = 0, cnt = 0;
+    let st = 0, mp = 0, sr = 0, sg = 0, sb = 0, cnt = 0;
     while (i < n && frames[i][0] < binEnd) {
       const f = frames[i];
-      st += f[0]; sp += f[1]; sr += f[2]; sg += f[3]; sb += f[4];
+      st += f[0];
+      if (f[1] > mp) mp = f[1];   // peak-bevarande brightness
+      sr += f[2]; sg += f[3]; sb += f[4];
       cnt++; i++;
     }
-    if (cnt > 0) out.push([Math.round(st / cnt), clampPct(sp / cnt), clamp8(sr / cnt), clamp8(sg / cnt), clamp8(sb / cnt)]);
+    if (cnt > 0) out.push([Math.round(st / cnt), clampPct(mp), clamp8(sr / cnt), clamp8(sg / cnt), clamp8(sb / cnt)]);
   }
   return out;
+}
+
+/**
+ * Drop-detektion med lookahead: hittar grid-beats där brightness går från en
+ * relativ break (lågt medel före) till nära toppen, och gör en kort släckning
+ * precis före → 100 % punch på slaget + kort hold. Refraktär ~2 s så vanliga
+ * beats inte triggar.
+ */
+function applyDrops(frames: Frame[], grid: number[]): Frame[] {
+  const n = frames.length;
+  if (n < 4 || grid.length === 0) return frames;
+  const PRE_WINDOW = Math.max(2, Math.round(300 / SAMPLE_INTERVAL_MS)); // ~300 ms före (break-mått)
+  const DIP_FRAMES = Math.max(1, Math.round(150 / SAMPLE_INTERVAL_MS)); // ~150 ms släckning
+  const HOLD_FRAMES = Math.max(1, Math.round(120 / SAMPLE_INTERVAL_MS)); // ~120 ms 100 %-svans
+  const REFRACTORY = Math.max(1, Math.round(2000 / SAMPLE_INTERVAL_MS)); // ~2 s mellan drops
+  const JUMP_MIN = 45;   // pct-hopp break→drop
+  const PEAK_MIN = 85;   // drop-toppen måste vara hög
+  const out = frames.map((f) => f.slice());
+  let lastDrop = -REFRACTORY;
+  for (const b of grid) {
+    if (b - lastDrop < REFRACTORY) continue;
+    const lo = Math.max(0, b - PRE_WINDOW);
+    if (lo >= b) continue;
+    let sum = 0, cnt = 0;
+    for (let j = lo; j < b; j++) { sum += frames[j][1]; cnt++; }
+    const preMean = cnt > 0 ? sum / cnt : frames[b][1];
+    const peak = frames[b][1];
+    if (peak < PEAK_MIN || (peak - preMean) < JUMP_MIN) continue;
+    // Pre-dip: ramp ned mot golvet de sista DIP_FRAMES före slaget.
+    for (let k = 1; k <= DIP_FRAMES; k++) {
+      const idx = b - k;
+      if (idx < 0) break;
+      const w = (DIP_FRAMES - k + 1) / DIP_FRAMES; // djupast närmast slaget
+      const target = FLOOR_PCT + (out[idx][1] - FLOOR_PCT) * (1 - w);
+      if (target < out[idx][1]) out[idx][1] = clampPct(target);
+    }
+    // Punch: 100 % på slaget + kort hold.
+    for (let k = 0; k <= HOLD_FRAMES; k++) {
+      const idx = b + k;
+      if (idx >= n) break;
+      out[idx][1] = 100;
+    }
+    lastDrop = b;
+  }
+  return out;
+}
+
+/** Skjut hela sekvensen tidigare (ljuset leder ljudet), klampat till start. */
+function shiftEarlier(frames: Frame[], ms: number): Frame[] {
+  if (ms <= 0 || frames.length === 0) return frames;
+  const t0 = frames[0][0];
+  return frames.map((f) => {
+    const g = f.slice();
+    g[0] = Math.max(t0, f[0] - ms);
+    return g;
+  });
 }
 
 export function polish(frames: Frame[]): Frame[] {
@@ -460,7 +521,10 @@ export function polish(frames: Frame[]): Frame[] {
   const shaped = normalize(expand(smooth(filled, new Set(beats))));
   const softened = softenNonBeats(shaped, beats);
   const enveloped = applyBeatEnvelope(softened, beats);
-  return decimateToBle(enveloped, BLE_FRAME_MS);
+  const dropped = applyDrops(enveloped, beats);
+  const decimated = decimateToBle(dropped, BLE_FRAME_MS);
+  return shiftEarlier(decimated, LEAD_MS);
 }
+
 
 
