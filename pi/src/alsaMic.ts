@@ -143,6 +143,9 @@ export interface BandResult {
   midHiRms: number;
   totalRms: number;
   flux: number;
+  /** Spectral flux summerad ENBART över sub+bas-bins (< 150 Hz). Används för
+   *  kick/bastrumme-onset så hi-hats/snare inte triggar pulsen. */
+  bassFlux: number;
 }
 
 const SAMPLE_RATE = 48000;
