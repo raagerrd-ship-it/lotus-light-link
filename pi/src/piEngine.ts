@@ -398,7 +398,8 @@ export class PiLightEngine {
 
   // ── Auto-sync ──
   // Mäter Sonos högtalar-latens automatiskt genom att korskorrelera live-mic-
-  // energin mot den inspelade pct-kurvan och glider _pbLeadMs mot bästa lag.
+  // energin mot RÅ-inspelningens pct-kurva (samma mic-pipeline → bäst matchning)
+  // och glider _pbLeadMs mot bästa lag.
   private _autoSync = (getItem('playback-autosync') ?? 'true') !== 'false';
   private static readonly AS_N = 160;            // ~3.2 s historik @ 50 Hz
   private _asPos = new Float64Array(PiLightEngine.AS_N);  // Sonos-pos (utan lead)
@@ -408,6 +409,13 @@ export class PiLightEngine {
   private _asLastEvalClock = 0;
   private _asPersistedLead = 0;
   private _asConfidence = 0;
+  // RÅ-referens för korrelation (kan saknas → fall tillbaka till uppspelnings-pct).
+  private _pbRefTimes: Float64Array = new Float64Array(0);
+  private _pbRefPct: Uint8Array = new Uint8Array(0);
+  private _pbRefCount = 0;
+  // Warm-up: kör reaktivt (live mic) tills auto-sync låst, byt sen till uppspelning.
+  private _pbWarmup = false;
+  private _asLockStreak = 0;
 
   constructor(tickMs = 20) {
     this.tickMs = tickMs;
@@ -476,16 +484,25 @@ export class PiLightEngine {
     setItem('playback-autosync', String(on));
     if (on) { this._asCount = 0; this._asHead = 0; }
   }
-  getAutoSyncStatus(): { enabled: boolean; leadMs: number; confidence: number } {
-    return { enabled: this._autoSync, leadMs: this._pbLeadMs, confidence: Math.round(this._asConfidence * 100) / 100 };
+  getAutoSyncStatus(): { enabled: boolean; leadMs: number; confidence: number; warmup: boolean } {
+    return {
+      enabled: this._autoSync,
+      leadMs: this._pbLeadMs,
+      confidence: Math.round(this._asConfidence * 100) / 100,
+      warmup: this._pbWarmup,
+    };
   }
 
   /** Aktivera playback av en inspelad sekvens.
-   *  frames = [tMs, pct, r, g, b][] sorterad stigande på tMs. null = reaktiv mode. */
-  setPlaybackSequence(frames: number[][] | null): void {
+   *  frames = uppspelnings-sekvensen (polerad). rawRef = rå-inspelning som
+   *  korrelations-referens. warmup = kör reaktivt tills auto-sync låst.
+   *  null = reaktiv mode. */
+  setPlaybackSequence(frames: number[][] | null, rawRef: number[][] | null = null, warmup = true): void {
     if (!frames || frames.length === 0) {
       this._pbActive = false;
+      this._pbWarmup = false;
       this._pbCount = 0;
+      this._pbRefCount = 0;
       return;
     }
     const n = frames.length;
@@ -504,7 +521,16 @@ export class PiLightEngine {
     }
     this._pbCount = n;
     this._pbActive = true;
-    this._asCount = 0; this._asHead = 0; // ny sekvens → samla färsk auto-sync-historik
+    // RÅ-referens (faller tillbaka till uppspelnings-pct om den saknas).
+    const ref = rawRef && rawRef.length ? rawRef : frames;
+    const m = ref.length;
+    this._pbRefTimes = new Float64Array(m);
+    this._pbRefPct = new Uint8Array(m);
+    for (let i = 0; i < m; i++) { this._pbRefTimes[i] = ref[i][0]; this._pbRefPct[i] = ref[i][1]; }
+    this._pbRefCount = m;
+    // Warm-up bara när auto-sync är på: håll lamporna live tills offseten låst.
+    this._pbWarmup = warmup && this._autoSync;
+    this._asCount = 0; this._asHead = 0; this._asLockStreak = 0;
   }
 
   /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
@@ -513,19 +539,24 @@ export class PiLightEngine {
     this._pbAnchorClock = performance.now();
   }
 
-  /** Hitta index i sekvensen vars tMs ≤ posMs (närmast föregående). */
-  private indexForPos(posMs: number): number {
-    const t = this._pbTimes;
-    const hiIdx = this._pbCount - 1;
-    if (posMs <= t[0]) return 0;
-    if (posMs >= t[hiIdx]) return hiIdx;
+  /** Hitta index i en sekvens vars tMs ≤ posMs (närmast föregående). */
+  private indexForPosIn(times: Float64Array, count: number, posMs: number): number {
+    const hiIdx = count - 1;
+    if (hiIdx < 0) return 0;
+    if (posMs <= times[0]) return 0;
+    if (posMs >= times[hiIdx]) return hiIdx;
     let lo = 0, hi = hiIdx, idx = 0;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (t[mid] <= posMs) { idx = mid; lo = mid + 1; }
+      if (times[mid] <= posMs) { idx = mid; lo = mid + 1; }
       else hi = mid - 1;
     }
     return idx;
+  }
+
+  /** Index i uppspelnings-sekvensen (det som faktiskt skickas till BLE). */
+  private indexForPos(posMs: number): number {
+    return this.indexForPosIn(this._pbTimes, this._pbCount, posMs);
   }
 
   /** Live mic-energi-proxy [0..1] (samma mix som reaktiva pipen, pre-dynamics). */
@@ -552,17 +583,21 @@ export class PiLightEngine {
     }
   }
 
-  /** Korskorrelera live-energi mot inspelad pct över kandidat-latenser och
-   *  glid _pbLeadMs mot bästa lag. D = högtalar-latens (ms) → lead = -D. */
+  /** Korskorrelera live-energi mot RÅ-referensens pct över kandidat-latenser och
+   *  glid _pbLeadMs mot bästa lag. D = högtalar-latens (ms) → lead = -D.
+   *  Under warm-up: lås upp uppspelning först när korrelationen håller i sig. */
   private autoSyncEval(): void {
     const cap = PiLightEngine.AS_N, n = this._asCount;
+    const refT = this._pbRefCount ? this._pbRefTimes : this._pbTimes;
+    const refP = this._pbRefCount ? this._pbRefPct : this._pbPct;
+    const refN = this._pbRefCount || this._pbCount;
     let bestD = 0, bestCorr = -2;
     for (let D = -200; D <= 1500; D += 25) {
       let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
       for (let k = 0; k < n; k++) {
         const i = (this._asHead - 1 - k + cap * 2) % cap;
         const e = this._asEng[i];
-        const p = this._pbPct[this.indexForPos(this._asPos[i] - D)] / 100;
+        const p = refP[this.indexForPosIn(refT, refN, this._asPos[i] - D)] / 100;
         sx += e; sy += p; sxx += e * e; syy += p * p; sxy += e * p;
       }
       const cov = sxy - (sx * sy) / n;
@@ -573,9 +608,16 @@ export class PiLightEngine {
       if (corr > bestCorr) { bestCorr = corr; bestD = D; }
     }
     this._asConfidence = bestCorr;
-    if (bestCorr < 0.35) return; // svag korrelation → behåll nuvarande lead
+    if (bestCorr < 0.35) { this._asLockStreak = 0; return; } // svag korrelation → behåll
     const targetLead = -bestD;
-    this._pbLeadMs = Math.max(-2000, Math.min(2000, Math.round(this._pbLeadMs + 0.3 * (targetLead - this._pbLeadMs))));
+    if (this._pbWarmup) {
+      // Hoppa direkt till uppmätt lag (ingen EMA-trög uppstart) och lås efter
+      // två stabila mätningar i rad, byt sen från reaktivt → uppspelning.
+      this._pbLeadMs = Math.max(-2000, Math.min(2000, targetLead));
+      if (++this._asLockStreak >= 2) this._pbWarmup = false;
+    } else {
+      this._pbLeadMs = Math.max(-2000, Math.min(2000, Math.round(this._pbLeadMs + 0.3 * (targetLead - this._pbLeadMs))));
+    }
     // SD-skonsam persistering: spara bara vid märkbar drift.
     if (Math.abs(this._pbLeadMs - this._asPersistedLead) >= 15) {
       this._asPersistedLead = this._pbLeadMs;
@@ -1276,10 +1318,13 @@ export class PiLightEngine {
     if (!this.playing || this._bleOwner !== 'active') return;
 
     // ── Playback-mode: spela upp inspelad sekvens istället för reaktiv FFT ──
-    if (this._pbActive && this._pbCount > 0) {
+    // Under warm-up faller vi igenom till reaktiva pathen (live mic styr lamporna)
+    // och samplar auto-sync mot RÅ-referensen tills offseten låsts.
+    if (this._pbActive && this._pbCount > 0 && !this._pbWarmup) {
       this.playbackTick();
       return;
     }
+
 
     const _tickStart = performance.now();
     try {
@@ -1378,6 +1423,13 @@ export class PiLightEngine {
       // Auto-tune sampler: registrera RÅ mic-RMS (innan smoothing/dynamics) så
       // analysen kan separera tysta partier (rumsbrus) från musik-nivå.
       if (this.autoTuneActive) this.recordAutoTuneSample(bands.totalRms);
+
+      // Warm-up auto-sync: medan lamporna körs reaktivt mäter vi lag mot RÅ-
+      // referensen. autoSyncEval låser upp uppspelningen när korrelationen håller.
+      if (this._pbActive && this._pbWarmup && this._autoSync) {
+        this.autoSyncSample(this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock));
+      }
+
 
       // ── 7b. Anti-flicker perceptuell deadband (Weber-Fechner) ──
       // Ögat märker större relativ förändring vid låg ljusstyrka, mindre vid hög.

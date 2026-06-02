@@ -23,7 +23,7 @@ type Frame = [number, number, number, number, number]; // [tMs, pct, r, g, b]
 
 interface EngineLike {
   setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null): void;
-  setPlaybackSequence(frames: number[][] | null): void;
+  setPlaybackSequence(frames: number[][] | null, rawRef?: number[][] | null, warmup?: boolean): void;
   updatePlaybackPosition(positionMs: number): void;
 }
 
@@ -163,7 +163,8 @@ function applyKeyTransition(key: string): void {
 
   const saved = autoPlay ? loadSequence(key) : null;
   if (saved) {
-    engine.setPlaybackSequence(saved);
+    const rawRef = loadRawSequence(key); // RÅ-referens för auto-sync (samma mic-pipeline)
+    engine.setPlaybackSequence(saved, rawRef, true);
     engine.updatePlaybackPosition(posAnchorMs);
     pbActive = true;
     console.log(`[lightRecorder] ▶ Spelar upp lärd sekvens "${key}" (${saved.length} frames)`);
@@ -347,7 +348,7 @@ export function previewSequence(key: string, variant: 'raw' | 'polished'): boole
   if (!frames || frames.length === 0) return false;
   finalizeRecording();
   currentKey = null;
-  engine.setPlaybackSequence(frames);
+  engine.setPlaybackSequence(frames, null, false); // preview: spela direkt, ingen warm-up
   engine.updatePlaybackPosition(0);
   pbActive = true;
   const durationMs = frames[frames.length - 1][0];
