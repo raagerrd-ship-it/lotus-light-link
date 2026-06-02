@@ -484,16 +484,25 @@ export class PiLightEngine {
     setItem('playback-autosync', String(on));
     if (on) { this._asCount = 0; this._asHead = 0; }
   }
-  getAutoSyncStatus(): { enabled: boolean; leadMs: number; confidence: number } {
-    return { enabled: this._autoSync, leadMs: this._pbLeadMs, confidence: Math.round(this._asConfidence * 100) / 100 };
+  getAutoSyncStatus(): { enabled: boolean; leadMs: number; confidence: number; warmup: boolean } {
+    return {
+      enabled: this._autoSync,
+      leadMs: this._pbLeadMs,
+      confidence: Math.round(this._asConfidence * 100) / 100,
+      warmup: this._pbWarmup,
+    };
   }
 
   /** Aktivera playback av en inspelad sekvens.
-   *  frames = [tMs, pct, r, g, b][] sorterad stigande på tMs. null = reaktiv mode. */
-  setPlaybackSequence(frames: number[][] | null): void {
+   *  frames = uppspelnings-sekvensen (polerad). rawRef = rå-inspelning som
+   *  korrelations-referens. warmup = kör reaktivt tills auto-sync låst.
+   *  null = reaktiv mode. */
+  setPlaybackSequence(frames: number[][] | null, rawRef: number[][] | null = null, warmup = true): void {
     if (!frames || frames.length === 0) {
       this._pbActive = false;
+      this._pbWarmup = false;
       this._pbCount = 0;
+      this._pbRefCount = 0;
       return;
     }
     const n = frames.length;
@@ -512,7 +521,16 @@ export class PiLightEngine {
     }
     this._pbCount = n;
     this._pbActive = true;
-    this._asCount = 0; this._asHead = 0; // ny sekvens → samla färsk auto-sync-historik
+    // RÅ-referens (faller tillbaka till uppspelnings-pct om den saknas).
+    const ref = rawRef && rawRef.length ? rawRef : frames;
+    const m = ref.length;
+    this._pbRefTimes = new Float64Array(m);
+    this._pbRefPct = new Uint8Array(m);
+    for (let i = 0; i < m; i++) { this._pbRefTimes[i] = ref[i][0]; this._pbRefPct[i] = ref[i][1]; }
+    this._pbRefCount = m;
+    // Warm-up bara när auto-sync är på: håll lamporna live tills offseten låst.
+    this._pbWarmup = warmup && this._autoSync;
+    this._asCount = 0; this._asHead = 0; this._asLockStreak = 0;
   }
 
   /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
