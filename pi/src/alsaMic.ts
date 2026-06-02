@@ -797,6 +797,7 @@ export function stopMic(): void {
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
   latestBands.flux = 0;
+  latestBands.bassFlux = 0;
   _audioCbCount = 0;
   _audioCbBytes = 0;
   _audioCbFirstAt = 0;
