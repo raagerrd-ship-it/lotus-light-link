@@ -371,6 +371,7 @@ export class PiLightEngine {
   private bassFast = 0;          // EMA ~150ms — aktuell bas-nivå
   private bassSlow = 0;          // EMA ~2.5s — baslinje
   private breakdownFrames = 0;   // antal frames bassFast legat lågt (i förhållande till baslinjen)
+  private dropFrameCounter = 0;   // räknar varje processDrop-anrop (@100Hz)
   private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
   private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
 
