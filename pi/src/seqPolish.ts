@@ -215,7 +215,7 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
       pr = pr + (f[2] - pr) * SMOOTH_ALPHA;
       pg = pg + (f[3] - pg) * SMOOTH_ALPHA;
       pb = pb + (f[4] - pb) * SMOOTH_ALPHA;
-      out.push([f[0], clamp8(pp), clamp8(pr), clamp8(pg), clamp8(pb)]);
+      out.push([f[0], clampPct(pp), clamp8(pr), clamp8(pg), clamp8(pb)]);
     }
   }
   return out;
