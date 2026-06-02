@@ -434,6 +434,7 @@ function processFFT(): void {
   latestBands.midHiRms = midHiSum * invFilled;
   latestBands.totalRms = totalSum_smooth * invFilled;
   latestBands.flux = flux;  // skarp — onset-detektion behöver detta
+  latestBands.bassFlux = bassFlux;  // kick/bas-only flux
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
   if (DEBUG_ENABLED) {
