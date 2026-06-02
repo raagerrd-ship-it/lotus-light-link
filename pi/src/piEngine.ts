@@ -504,6 +504,7 @@ export class PiLightEngine {
     }
     this._pbCount = n;
     this._pbActive = true;
+    this._asCount = 0; this._asHead = 0; // ny sekvens → samla färsk auto-sync-historik
   }
 
   /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
