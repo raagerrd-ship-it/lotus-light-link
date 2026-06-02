@@ -355,7 +355,6 @@ function applyKeyTransition(key: string): void {
   cancelSync();
   finalizeRecording();
   currentKey = key;
-  lastRecT = -Infinity;
   lastAnchorPos = -1;
 
   const saved = autoPlay ? loadSequence(key) : null;
@@ -368,7 +367,7 @@ function applyKeyTransition(key: string): void {
     syncSamples = [];
     syncDeadline = 0;
     syncHardCap = 0;
-    syncCorrSeq = loadRawSequence(key) ?? saved;
+    syncCorrSeq = renderRawFromAnalysis(key) ?? saved;
     syncPlaySeq = saved;
     console.log(`[lightRecorder] ◐ Auto-synkar "${key}" mot rå-inspelningen…`);
   } else if (saved) {
