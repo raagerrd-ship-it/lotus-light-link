@@ -201,24 +201,25 @@ function SongStudio() {
         )}
       </div>
 
-      {leadMs !== null && (
+      {sync && (
         <div className="rounded-lg bg-secondary/40 px-3 py-3 mb-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] text-muted-foreground">Synk-justering (Sonos-fördröjning)</span>
-            <span className="text-[11px] tabular-nums font-medium">{leadMs > 0 ? "+" : ""}{leadMs} ms</span>
-          </div>
-          <input
-            type="range" min={-1500} max={500} step={25} value={leadMs}
-            onChange={(e) => setLeadMs(Number(e.target.value))}
-            onMouseUp={(e) => commitLead(Number((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => commitLead(Number((e.target as HTMLInputElement).value))}
-            className="w-full accent-primary"
-          />
-          <p className="text-[10px] text-muted-foreground mt-1">
-            Negativt = fördröj ljuset så det matchar ljudet ur högtalarna (öka om ljuset ligger före).
-          </p>
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-[11px] text-muted-foreground">Auto-synk (mäter Sonos-fördröjning)</span>
+            <input
+              type="checkbox" checked={sync.enabled}
+              onChange={(e) => toggleSync(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+          </label>
+          {sync.enabled && (
+            <p className="text-[10px] text-muted-foreground mt-1.5 tabular-nums">
+              Uppmätt fördröjning: <span className="text-foreground font-medium">{-sync.leadMs} ms</span>
+              {" · "}säkerhet: <span className="text-foreground font-medium">{Math.round(Math.max(0, sync.confidence) * 100)}%</span>
+            </p>
+          )}
         </div>
       )}
+
 
       {seqs.length === 0 && (
         <p className="text-xs text-muted-foreground">Inga inspelade sekvenser än.</p>
