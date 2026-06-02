@@ -39,10 +39,10 @@ function StatRow({ label, raw, polished, suffix = "" }: { label: string; raw?: n
   );
 }
 
-/** Vertikal ljusprofil 0–255: band min→max med snittlinje. */
+/** Vertikal ljusprofil 0–100: band min→max med snittlinje. */
 function BrightnessBand({ a, label, accent }: { a: Analysis; label: string; accent: boolean }) {
   const H = 96;
-  const y = (v: number) => H - (Math.max(0, Math.min(255, v)) / 255) * H;
+  const y = (v: number) => H - (Math.max(0, Math.min(100, v)) / 100) * H;
   const top = y(a.brightnessMax);
   const bottom = y(a.brightnessMin);
   return (
