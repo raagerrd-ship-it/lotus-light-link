@@ -362,24 +362,25 @@ function processFFT(): void {
   let loSum = 0, hiSum = 0;
   let totalSum = 0;
   let flux = 0;
+  let bassFlux = 0; // flux endast < 150 Hz (segment 1+2) — kick/bas
 
-  // Segment 1: 0 .. LO_BIN_LOW (only total + flux)
+  // Segment 1: 0 .. LO_BIN_LOW (only total + flux; ingår i bassFlux = sub)
   for (let i = 0; i < LO_BIN_LOW; i++) {
     const r = fftRe[i], m = fftIm[i];
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) flux += diff;
+    if (diff > 0) { flux += diff; bassFlux += diff; }
     prevPower[i] = power;
   }
-  // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum)
+  // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum; ingår i bassFlux = bas)
   for (let i = LO_BIN_LOW; i < LO_BIN_HIGH; i++) {
     const r = fftRe[i], m = fftIm[i];
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
     loSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) flux += diff;
+    if (diff > 0) { flux += diff; bassFlux += diff; }
     prevPower[i] = power;
   }
   // Segment 3: HI_BIN_LOW .. HI_BIN_HIGH (hiSum)
