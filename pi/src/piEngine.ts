@@ -378,6 +378,9 @@ export class PiLightEngine {
   // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som FAKTISKT
   // skickades till BLE. lightRecorder prenumererar och buffrar nedsamplat.
   private _frameTap: ((pct: number, r: number, g: number, b: number) => void) | null = null;
+  // Analys-tap: anropas per FFT-frame (~100Hz) med RÅ band/flux FÖRE ljus-estetik.
+  // lightRecorder buffrar detta som oförvrängd käll-ström för offline-render.
+  private _analysisTap: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null = null;
   // Playback-state: när aktiv hoppar tickInner över den reaktiva pathen och
   // spelar upp en inspelad sekvens synkad mot Sonos-position.
   private _pbActive = false;
