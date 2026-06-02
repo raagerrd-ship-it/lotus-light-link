@@ -448,6 +448,13 @@ export class PiLightEngine {
 
   isPlaybackActive(): boolean { return this._pbActive; }
 
+  /** Läs/sätt lead-offset (ms) för inspelad uppspelning. Persistas. */
+  getPlaybackLeadMs(): number { return this._pbLeadMs; }
+  setPlaybackLeadMs(ms: number): void {
+    this._pbLeadMs = Math.round(ms);
+    setItem('playback-lead-ms', String(this._pbLeadMs));
+  }
+
   /** Aktivera playback av en inspelad sekvens.
    *  frames = [tMs, pct, r, g, b][] sorterad stigande på tMs. null = reaktiv mode. */
   setPlaybackSequence(frames: number[][] | null): void {
