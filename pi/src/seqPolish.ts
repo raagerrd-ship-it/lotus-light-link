@@ -425,6 +425,31 @@ function softenNonBeats(frames: Frame[], grid: number[]): Frame[] {
   });
 }
 
+/**
+ * Decimerar en färdig-finslipad sekvens till ett fast ~BLE_FRAME_MS-raster med
+ * box-medel (anti-alias). BLEDOM över BLE är sample-and-hold och hinner bara
+ * ~20–40 uppdateringar/s, så 100 fps-features (1-frame-attack, white-punch)
+ * flimrar in/ut fas-beroende. Returnerar oförändrat om redan på/under måltakten.
+ */
+function decimateToBle(frames: Frame[], intervalMs: number): Frame[] {
+  const n = frames.length;
+  if (n < 2 || intervalMs <= 0) return frames;
+  if (medianFrameMs(frames) >= intervalMs * 0.9) return frames; // redan på/under måltakten
+  const out: Frame[] = [];
+  let i = 0;
+  for (let binStart = frames[0][0]; i < n; binStart += intervalMs) {
+    const binEnd = binStart + intervalMs;
+    let st = 0, sp = 0, sr = 0, sg = 0, sb = 0, cnt = 0;
+    while (i < n && frames[i][0] < binEnd) {
+      const f = frames[i];
+      st += f[0]; sp += f[1]; sr += f[2]; sg += f[3]; sb += f[4];
+      cnt++; i++;
+    }
+    if (cnt > 0) out.push([Math.round(st / cnt), clampPct(sp / cnt), clamp8(sr / cnt), clamp8(sg / cnt), clamp8(sb / cnt)]);
+  }
+  return out;
+}
+
 export function polish(frames: Frame[]): Frame[] {
   if (frames.length < 2) return frames.map((f) => f.slice());
   configureFrameRate(frames);
@@ -434,7 +459,8 @@ export function polish(frames: Frame[]): Frame[] {
   const beats = grid.length ? grid : rawBeats;
   const shaped = normalize(expand(smooth(filled, new Set(beats))));
   const softened = softenNonBeats(shaped, beats);
-  return applyBeatEnvelope(softened, beats);
+  const enveloped = applyBeatEnvelope(softened, beats);
+  return decimateToBle(enveloped, BLE_FRAME_MS);
 }
 
 
