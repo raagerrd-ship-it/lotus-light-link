@@ -348,7 +348,7 @@ export function previewSequence(key: string, variant: 'raw' | 'polished'): boole
   if (!frames || frames.length === 0) return false;
   finalizeRecording();
   currentKey = null;
-  engine.setPlaybackSequence(frames);
+  engine.setPlaybackSequence(frames, null, false); // preview: spela direkt, ingen warm-up
   engine.updatePlaybackPosition(0);
   pbActive = true;
   const durationMs = frames[frames.length - 1][0];
