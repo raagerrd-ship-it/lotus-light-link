@@ -82,7 +82,7 @@ let syncMs = storedSync != null ? clampSync(parseInt(storedSync, 10)) : DEFAULT_
 // Kör reaktiv ALSA-mic ~5s i början av en känd låt, korskorrelerar live-ljus-
 // enveloppen mot RÅ-inspelningen och låser en auto-offset ovanpå manuell lead.
 let autoSync = getItem('autosync-enabled') !== 'false'; // default på
-const SYNC_WINDOW_MS = 5000;
+const SYNC_WINDOW_MS = 2500;
 const SYNC_SEARCH_MS = 150;
 const SYNC_STEP_MS = 20;
 const SYNC_CENTER_BIAS = 0.0006;  // favorisera lag nära 0 (undvik grann-beat)
