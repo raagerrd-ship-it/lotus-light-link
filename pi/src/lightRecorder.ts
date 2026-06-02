@@ -386,11 +386,20 @@ export function onSonosUpdate(state: {
   // Under förhandsgranskning: lämna uppspelningen ifred tills previewen är klar.
   if (Date.now() < previewUntil) return;
 
-  // Ankra position löpande (för både inspelning och uppspelning).
+  // FRI-LÖPANDE POSITIONSANKRING: Sonos positionMs är ~1 s-kvantiserad och
+  // uppdateras ojämnt. Ankra EN gång och låt den lokala klockan löpa fritt;
+  // om-ankra bara vid verklig seek (avvikelse > tröskel).
   if (state.positionMs != null) {
-    posAnchorMs = state.positionMs;
-    posAnchorClock = Date.now();
-    if (pbActive) engine.updatePlaybackPosition(state.positionMs);
+    const RESYNC_THRESHOLD_MS = 1500;
+    const reported = state.positionMs;
+    const extrapolated = posAnchorMs + (Date.now() - posAnchorClock);
+    const firstAnchor = lastAnchorPos < 0;
+    if (firstAnchor || Math.abs(reported - extrapolated) > RESYNC_THRESHOLD_MS) {
+      posAnchorMs = reported;
+      posAnchorClock = Date.now();
+      if (pbActive) engine.updatePlaybackPosition(reported);
+    }
+    lastAnchorPos = reported;
   }
 
   const isPlaying = typeof state.playbackState === 'string' && state.playbackState.includes('PLAYING');
