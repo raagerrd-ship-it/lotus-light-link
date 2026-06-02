@@ -143,6 +143,9 @@ export interface BandResult {
   midHiRms: number;
   totalRms: number;
   flux: number;
+  /** Spectral flux summerad ENBART över sub+bas-bins (< 150 Hz). Används för
+   *  kick/bastrumme-onset så hi-hats/snare inte triggar pulsen. */
+  bassFlux: number;
 }
 
 const SAMPLE_RATE = 48000;
@@ -253,7 +256,7 @@ let fftHistoryPos = 0;
 let fftHistoryFilled = 0;
 
 // Latest computed bands (static object — mutated in place)
-let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0 };
+let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0 };
 
 // Timestamp of last FFT completion (performance.now())
 let lastFFTTimestamp = 0;
@@ -359,24 +362,25 @@ function processFFT(): void {
   let loSum = 0, hiSum = 0;
   let totalSum = 0;
   let flux = 0;
+  let bassFlux = 0; // flux endast < 150 Hz (segment 1+2) — kick/bas
 
-  // Segment 1: 0 .. LO_BIN_LOW (only total + flux)
+  // Segment 1: 0 .. LO_BIN_LOW (only total + flux; ingår i bassFlux = sub)
   for (let i = 0; i < LO_BIN_LOW; i++) {
     const r = fftRe[i], m = fftIm[i];
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) flux += diff;
+    if (diff > 0) { flux += diff; bassFlux += diff; }
     prevPower[i] = power;
   }
-  // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum)
+  // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum; ingår i bassFlux = bas)
   for (let i = LO_BIN_LOW; i < LO_BIN_HIGH; i++) {
     const r = fftRe[i], m = fftIm[i];
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
     loSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) flux += diff;
+    if (diff > 0) { flux += diff; bassFlux += diff; }
     prevPower[i] = power;
   }
   // Segment 3: HI_BIN_LOW .. HI_BIN_HIGH (hiSum)
@@ -430,6 +434,7 @@ function processFFT(): void {
   latestBands.midHiRms = midHiSum * invFilled;
   latestBands.totalRms = totalSum_smooth * invFilled;
   latestBands.flux = flux;  // skarp — onset-detektion behöver detta
+  latestBands.bassFlux = bassFlux;  // kick/bas-only flux
 
   // Debug logging every ~2 seconds (only when DEBUG=true)
   if (DEBUG_ENABLED) {
@@ -792,6 +797,7 @@ export function stopMic(): void {
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
   latestBands.flux = 0;
+  latestBands.bassFlux = 0;
   _audioCbCount = 0;
   _audioCbBytes = 0;
   _audioCbFirstAt = 0;

@@ -174,6 +174,7 @@ export const bleStats = {
   tickAbortNoDeviceCount: 0,
   deadbandBlockedCount: 0,        // anti-flicker deadband held last value (no write generated)
   tickSkippedBleBusyCount: 0,     // pre-gate: tick hoppades över FÖRE beräkning pga BLE busy (sparad CPU)
+  dropCount: 0,                   // antal detekterade drops (lång-horisont bas-explosion → vit punch)
 
   writeLatMs: 0,
   writeLatAvgMs: 0,

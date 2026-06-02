@@ -159,6 +159,14 @@ export interface LightCalibration {
    *  blockeras, onsetBoost bleed:as. brightnessFloor håller lampan dim solid.
    *  0 = av, 0.05 = default. */
   tickEnergyFloor: number;
+  /** Beat-källa för onset: 'bass' = endast kick/bas (<150Hz), 'full' = hela spektrumet. Default 'bass'. */
+  beatSource: 'bass' | 'full';
+  /** Drop-detektor på/av. Default true. */
+  dropEnabled: boolean;
+  /** Drop-känslighet 0.5–3.0 (lägre = lättare att trigga). Default 1.0. */
+  dropSensitivity: number;
+  /** Varaktighet (ms) för den vita drop-blixten. Default 220. */
+  dropFlashMs: number;
   [key: string]: any;
 }
 
@@ -166,7 +174,7 @@ const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
   attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
-  bassWeight: 0.7,
+  bassWeight: 0.9,
   punchWhiteThreshold: 100,
   brightnessFloor: 5,
   transientGain: 0.8,
@@ -177,6 +185,10 @@ const DEFAULT_CAL: LightCalibration = {
   flickerDeadband: 0.02,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
+  beatSource: 'bass',
+  dropEnabled: true,
+  dropSensitivity: 1.0,
+  dropFlashMs: 220,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
@@ -353,6 +365,15 @@ export class PiLightEngine {
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
   // Refractory räknas dynamiskt från cal.onsetRefractoryMs (FFT @ 100Hz → 10ms/frame)
+
+  // ── Drop-detektor (lång tidshorisont, @100Hz på bas-energi) ──
+  // Drops är en struktur över sekunder: breakdown/uppbyggnad → plötslig bas-explosion.
+  private bassFast = 0;          // EMA ~150ms — aktuell bas-nivå
+  private bassSlow = 0;          // EMA ~2.5s — baslinje
+  private breakdownFrames = 0;   // antal frames bassFast legat lågt (i förhållande till baslinjen)
+  private dropFrameCounter = 0;   // räknar varje processDrop-anrop (@100Hz)
+  private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
+  private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
 
   private cal: LightCalibration;
 
@@ -651,6 +672,13 @@ export class PiLightEngine {
     this.onsetTarget = 0;
     this.onsetFrameCounter = 0;
     this.onsetLastFrameIdx = -1000;
+    // Drop-detektor-state
+    this.bassFast = 0;
+    this.bassSlow = 0;
+    this.breakdownFrames = 0;
+    this.dropFrameCounter = 0;
+    this.dropLastFrameIdx = -100000;
+    this.dropFlashUntil = 0;
   }
 
   /** Zero-alloc onset detection using precomputed constants.
@@ -736,6 +764,62 @@ export class PiLightEngine {
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
+
+  /**
+   * Drop-detektor @100Hz på bas-energi. Drops är en lång-horisont-struktur:
+   * breakdown/uppbyggnad (lugnt parti) → plötslig bas-explosion. Skiljer sig
+   * från onset (70ms-transient) genom att kräva ett föregående nedbrutet parti.
+   * Triggar en stor vit punch-blixt (dropFlashUntil) som overridas i tickInner.
+   */
+  private processDrop(bassRms: number): void {
+    if (!this.cal.dropEnabled) return;
+    this.dropFrameCounter++;
+
+    // Tidsbaserade EMA:er @100Hz (dt=10ms): fast ~150ms, slow ~2.5s.
+    const FAST_ALPHA = 0.064;
+    const SLOW_ALPHA = 0.004;
+    if (this.bassSlow <= 0) {
+      this.bassFast = bassRms;
+      this.bassSlow = bassRms;
+    } else {
+      this.bassFast += FAST_ALPHA * (bassRms - this.bassFast);
+      this.bassSlow += SLOW_ALPHA * (bassRms - this.bassSlow);
+    }
+
+    const sens = this.cal.dropSensitivity > 0 ? this.cal.dropSensitivity : 1.0;
+    const BREAKDOWN_RATIO = 0.6;          // bassFast < 60% av baslinjen = lugnt parti
+    const MIN_BREAKDOWN_FRAMES = 40;      // ≥400ms lugnt innan ett drop kan triggas
+    const JUMP_FACTOR = 1.8 * sens;       // bassFast måste överstiga baslinjen så mycket
+    const ABS_BASS_FLOOR = 0.06;          // absolut energi → ingen drop i tystnad
+    const REFRACTORY_FRAMES = 400;        // ~4s mellan drops
+
+    // Spåra/erodera breakdown-minnet.
+    if (this.bassFast < this.bassSlow * BREAKDOWN_RATIO) {
+      if (this.breakdownFrames < 1000) this.breakdownFrames++;
+    } else if (this.breakdownFrames > 0) {
+      this.breakdownFrames -= 2; // erodera över ~1s när det blir högt igen
+      if (this.breakdownFrames < 0) this.breakdownFrames = 0;
+    }
+
+    const isDrop =
+      this.breakdownFrames >= MIN_BREAKDOWN_FRAMES &&
+      this.bassFast >= ABS_BASS_FLOOR &&
+      this.bassFast >= this.bassSlow * JUMP_FACTOR &&
+      (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+
+    if (isDrop) {
+      this.dropLastFrameIdx = this.dropFrameCounter;
+      this.breakdownFrames = 0;
+      this.dropFlashUntil = performance.now() + (this.cal.dropFlashMs ?? 220);
+      bleStatsState.dropCount++;
+      // Express-write: skicka full vit punch direkt så blixten sitter i takt.
+      if (this._bleOwner === 'active' && canWriteNow()) {
+        const result = sendToBLE(255, 255, 255, 100);
+        if (result === 'sent') this.lastSentPct = 100;
+      }
+    }
+  }
+
 
   private forceIdleNow(): void {
     const idle = loadIdleColor();
@@ -1036,8 +1120,15 @@ export class PiLightEngine {
           energyFloor <= 0 ||
           (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
         if (passesEnergyGate) {
-          this.processOnset(flux);
+          // Kick/bas-only onset: använd bassFlux om beatSource='bass' (default),
+          // annars full-spektrum-flux. Hi-hats/snare triggar då inte pulsen.
+          const beatFlux = (this.cal.beatSource !== 'full' && bands)
+            ? bands.bassFlux
+            : flux;
+          this.processOnset(beatFlux);
         }
+        // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
+        if (bands) this.processDrop(bands.bassRms);
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
         // (50Hz) — center följer då 100% av musiken, inte varannan frame.
         if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
@@ -1512,7 +1603,14 @@ export class PiLightEngine {
       }
 
       // ── Color calibration ──
-      const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
+      // Drop-flash: medan dropFlashUntil är aktiv forceras full vit punch (pct=100)
+      // som overridar normal output, sen decay tillbaka till grund nästa tick.
+      const dropFlash = this.dropFlashUntil > _tickStart;
+      if (dropFlash) {
+        pct = 100;
+        this.lastSentPct = 100; // bypassa deadband så blixten alltid skickas
+      }
+      const isPunch = dropFlash || (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], tc);
 
       // ── BLE output (synkron hard-fail) ──
