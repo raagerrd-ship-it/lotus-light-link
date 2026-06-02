@@ -110,7 +110,7 @@ function SongStudio() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [rec, setRec] = useState<RecState | null>(null);
-  const [sync, setSync] = useState<{ enabled: boolean; leadMs: number; confidence: number } | null>(null);
+  const [sync, setSync] = useState<{ enabled: boolean; leadMs: number; confidence: number; warmup?: boolean } | null>(null);
 
   const loadList = useCallback(() => {
     fetch(`${piBase}/api/light-seq/list`, { signal: AbortSignal.timeout(2000) })
