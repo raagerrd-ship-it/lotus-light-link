@@ -159,6 +159,14 @@ export interface LightCalibration {
    *  blockeras, onsetBoost bleed:as. brightnessFloor håller lampan dim solid.
    *  0 = av, 0.05 = default. */
   tickEnergyFloor: number;
+  /** Beat-källa för onset: 'bass' = endast kick/bas (<150Hz), 'full' = hela spektrumet. Default 'bass'. */
+  beatSource: 'bass' | 'full';
+  /** Drop-detektor på/av. Default true. */
+  dropEnabled: boolean;
+  /** Drop-känslighet 0.5–3.0 (lägre = lättare att trigga). Default 1.0. */
+  dropSensitivity: number;
+  /** Varaktighet (ms) för den vita drop-blixten. Default 220. */
+  dropFlashMs: number;
   [key: string]: any;
 }
 
