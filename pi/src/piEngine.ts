@@ -680,8 +680,20 @@ export class PiLightEngine {
     const dc = this.dynamicCenter;
     const suppression = dc > 0.5 ? 1 + (dc - 0.5) * 1.5 : 1;
     const threshold = med * this.cal.onsetThreshold * suppression + 0.008;
-    const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
+    // False-positive-skydd (2026-06-02):
+    //  1) ABS_FLUX_FLOOR — i tystnad/brus faller median mot 0 och tröskeln
+    //     kollapsar till +0.008; ett absolut golv hindrar flimmer i tysta partier.
+    //  2) PROMINENCE — kräv att flux sticker ut TYDLIGT över median (×1.6),
+    //     inte bara passerar den adaptiva tröskeln. Sållar bort sustain-jitter.
+    const ABS_FLUX_FLOOR = 0.045;
+    const PROMINENCE = 1.6;
+    const isCandidate =
+      flux > threshold &&
+      flux >= this.onsetPrevFlux &&
+      flux >= ABS_FLUX_FLOOR &&
+      flux >= med * PROMINENCE;
     this.onsetPrevFlux = flux;
+
 
     // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 100Hz (10ms/frame)
     const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
