@@ -426,6 +426,7 @@ function softenNonBeats(frames: Frame[], grid: number[]): Frame[] {
 
 export function polish(frames: Frame[]): Frame[] {
   if (frames.length < 2) return frames.map((f) => f.slice());
+  configureFrameRate(frames);
   const filled = fillGaps(frames);
   const rawBeats = detectBeats(filled);
   const grid = buildBeatGrid(filled, rawBeats);
