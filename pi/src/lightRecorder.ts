@@ -25,6 +25,7 @@ interface EngineLike {
   setFrameTap(cb: ((pct: number, r: number, g: number, b: number) => void) | null): void;
   setPlaybackSequence(frames: number[][] | null, rawRef?: number[][] | null, warmup?: boolean): void;
   updatePlaybackPosition(positionMs: number): void;
+  setPlaybackSyncMs(ms: number): void;
 }
 
 interface MicLike {
