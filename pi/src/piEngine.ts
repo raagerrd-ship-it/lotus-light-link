@@ -513,25 +513,81 @@ export class PiLightEngine {
     this._pbAnchorClock = performance.now();
   }
 
-  /** Spela upp aktuell frame ur sekvensen mot interpolerad position. */
-  private playbackTick(): void {
-    const posMs = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock) + this._pbLeadMs;
+  /** Hitta index i sekvensen vars tMs ≤ posMs (närmast föregående). */
+  private indexForPos(posMs: number): number {
     const t = this._pbTimes;
     const hiIdx = this._pbCount - 1;
-    let idx: number;
-    if (posMs <= t[0]) {
-      idx = 0;
-    } else if (posMs >= t[hiIdx]) {
-      idx = hiIdx;
-    } else {
-      let lo = 0, hi = hiIdx;
-      idx = 0;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (t[mid] <= posMs) { idx = mid; lo = mid + 1; }
-        else hi = mid - 1;
-      }
+    if (posMs <= t[0]) return 0;
+    if (posMs >= t[hiIdx]) return hiIdx;
+    let lo = 0, hi = hiIdx, idx = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (t[mid] <= posMs) { idx = mid; lo = mid + 1; }
+      else hi = mid - 1;
     }
+    return idx;
+  }
+
+  /** Live mic-energi-proxy [0..1] (samma mix som reaktiva pipen, pre-dynamics). */
+  private liveEnergyProxy(): number {
+    const bands = getLatestBands();
+    if (!bands || !Number.isFinite(bands.totalRms)) return -1;
+    const w = this.cal.bassWeight;
+    return normalizeFixed(bands.bassRms) * w + normalizeFixed(bands.midHiRms) * (1 - w);
+  }
+
+  /** Samla ett auto-sync-sampel och utvärdera periodvis. */
+  private autoSyncSample(rawPos: number): void {
+    const eng = this.liveEnergyProxy();
+    if (eng < 0) return;
+    const cap = PiEngine.AS_N;
+    this._asPos[this._asHead] = rawPos;
+    this._asEng[this._asHead] = eng;
+    this._asHead = (this._asHead + 1) % cap;
+    if (this._asCount < cap) this._asCount++;
+    const now = performance.now();
+    if (now - this._asLastEvalClock >= 750 && this._asCount >= cap * 0.8) {
+      this._asLastEvalClock = now;
+      this.autoSyncEval();
+    }
+  }
+
+  /** Korskorrelera live-energi mot inspelad pct över kandidat-latenser och
+   *  glid _pbLeadMs mot bästa lag. D = högtalar-latens (ms) → lead = -D. */
+  private autoSyncEval(): void {
+    const cap = PiEngine.AS_N, n = this._asCount;
+    let bestD = 0, bestCorr = -2;
+    for (let D = -200; D <= 1500; D += 25) {
+      let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+      for (let k = 0; k < n; k++) {
+        const i = (this._asHead - 1 - k + cap * 2) % cap;
+        const e = this._asEng[i];
+        const p = this._pbPct[this.indexForPos(this._asPos[i] - D)] / 100;
+        sx += e; sy += p; sxx += e * e; syy += p * p; sxy += e * p;
+      }
+      const cov = sxy - (sx * sy) / n;
+      const vx = sxx - (sx * sx) / n;
+      const vy = syy - (sy * sy) / n;
+      const denom = Math.sqrt(vx * vy);
+      const corr = denom > 1e-9 ? cov / denom : 0;
+      if (corr > bestCorr) { bestCorr = corr; bestD = D; }
+    }
+    this._asConfidence = bestCorr;
+    if (bestCorr < 0.35) return; // svag korrelation → behåll nuvarande lead
+    const targetLead = -bestD;
+    this._pbLeadMs = Math.max(-2000, Math.min(2000, Math.round(this._pbLeadMs + 0.3 * (targetLead - this._pbLeadMs))));
+    // SD-skonsam persistering: spara bara vid märkbar drift.
+    if (Math.abs(this._pbLeadMs - this._asPersistedLead) >= 15) {
+      this._asPersistedLead = this._pbLeadMs;
+      setItem('playback-lead-ms', String(this._pbLeadMs));
+    }
+  }
+
+  /** Spela upp aktuell frame ur sekvensen mot interpolerad position. */
+  private playbackTick(): void {
+    const rawPos = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
+    if (this._autoSync) this.autoSyncSample(rawPos);
+    const idx = this.indexForPos(rawPos + this._pbLeadMs);
     const pct = this._pbPct[idx];
     const result = sendToBLE(this._pbR[idx], this._pbG[idx], this._pbB[idx], pct);
     if (result === 'sent') bleStatsState.tickOkCount++;
