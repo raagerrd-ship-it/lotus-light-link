@@ -106,7 +106,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
 }
 
 // --- Dynamics (zero-alloc, no Math.pow/Math.sign) ---
-function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
+export function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
   let result = energyNorm;
   if (dynamicDamping > 0) {
     const amount = dynamicDamping < 2 ? dynamicDamping * 0.5 : 1;
