@@ -56,7 +56,7 @@ export interface TickConstants {
   lutB: Uint8Array;
 }
 
-function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
+export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
   const fftMs = 10; // HOP_SIZE=480 @ 48kHz → 100Hz FFT-takt
