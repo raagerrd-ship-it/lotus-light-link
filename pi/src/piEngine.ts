@@ -185,6 +185,10 @@ const DEFAULT_CAL: LightCalibration = {
   flickerDeadband: 0.02,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
+  beatSource: 'bass',
+  dropEnabled: true,
+  dropSensitivity: 1.0,
+  dropFlashMs: 220,
 };
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
