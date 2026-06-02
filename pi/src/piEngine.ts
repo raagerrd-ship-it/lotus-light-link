@@ -1424,6 +1424,13 @@ export class PiLightEngine {
       // analysen kan separera tysta partier (rumsbrus) från musik-nivå.
       if (this.autoTuneActive) this.recordAutoTuneSample(bands.totalRms);
 
+      // Warm-up auto-sync: medan lamporna körs reaktivt mäter vi lag mot RÅ-
+      // referensen. autoSyncEval låser upp uppspelningen när korrelationen håller.
+      if (this._pbActive && this._pbWarmup && this._autoSync) {
+        this.autoSyncSample(this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock));
+      }
+
+
       // ── 7b. Anti-flicker perceptuell deadband (Weber-Fechner) ──
       // Ögat märker större relativ förändring vid låg ljusstyrka, mindre vid hög.
       // deadbandPct skalas: ~0.5×base vid pct=0, ~1.5×base vid pct=100.
