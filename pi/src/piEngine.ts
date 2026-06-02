@@ -541,6 +541,9 @@ export class PiLightEngine {
     this._pbAnchorClock = performance.now();
   }
 
+  /** Sätt sync-offset (ms): positivt = ljuset ligger före ljudet. */
+  setPlaybackSyncMs(ms: number): void { this._pbSyncMs = Number.isFinite(ms) ? ms : 0; }
+
   /** Hitta index i en sekvens vars tMs ≤ posMs (närmast föregående). */
   private indexForPosIn(times: Float64Array, count: number, posMs: number): number {
     const hiIdx = count - 1;
