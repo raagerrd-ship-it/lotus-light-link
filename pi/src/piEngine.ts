@@ -935,6 +935,7 @@ export class PiLightEngine {
       this.lastSentPct = -1;
       this._pbActive = false;  // playback hör till en spelande låt
       this._lastTickAtForFade = 0;
+      this._lastSmoothAt = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'idle';
