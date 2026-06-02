@@ -54,9 +54,15 @@ const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt
 // Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
 // reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
 // och en musikalisk decay-svans — den klassiska ljus-"bumpen".
-const BEAT_BOOST = 1.35;         // topp-boost på slaget
+const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
 const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
 const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
+
+// Mellan slagen: allt som inte är ett (grid-)beat ska vara mycket mjukare och
+// dämpas mot golvet så takten verkligen sticker ut på lampan.
+const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
+const NONBEAT_FALLOFF = 4;       // frames runt ett beat som lämnas oförändrade (skydda attack/svans)
+
 
 
 /**
@@ -338,6 +344,33 @@ function applyBeatEnvelope(frames: Frame[], grid: number[]): Frame[] {
   return out;
 }
 
+/**
+ * Dämpar allt som ligger utanför beat-slagen mot golvet så takten dominerar.
+ * Frames nära ett grid-slag (±NONBEAT_FALLOFF) lämnas orörda så attack + svans
+ * behåller sin punch; resten dras mjukt ned mot FLOOR_PCT.
+ */
+function softenNonBeats(frames: Frame[], grid: number[]): Frame[] {
+  if (grid.length === 0) return frames;
+  const n = frames.length;
+  // Avstånd (i frames) till närmaste beat → 0..1-vikt för beat-närhet.
+  const near = new Float64Array(n);
+  for (const b of grid) {
+    for (let k = -NONBEAT_FALLOFF; k <= BEAT_TAIL; k++) {
+      const idx = b + k;
+      if (idx < 0 || idx >= n) continue;
+      const span = k < 0 ? NONBEAT_FALLOFF : BEAT_TAIL;
+      const w = 1 - Math.abs(k) / (span + 1);
+      if (w > near[idx]) near[idx] = w;
+    }
+  }
+  return frames.map((f, i) => {
+    const keep = near[i];                       // 1 vid beat, 0 långt ifrån
+    const damp = NONBEAT_DAMP + (1 - NONBEAT_DAMP) * keep;
+    const v = FLOOR_PCT + (f[1] - FLOOR_PCT) * damp;
+    return [f[0], clampPct(v), f[2], f[3], f[4]];
+  });
+}
+
 export function polish(frames: Frame[]): Frame[] {
   if (frames.length < 2) return frames.map((f) => f.slice());
   const filled = fillGaps(frames);
@@ -345,6 +378,8 @@ export function polish(frames: Frame[]): Frame[] {
   const grid = buildBeatGrid(filled, rawBeats);
   const beats = grid.length ? grid : rawBeats;
   const shaped = normalize(expand(smooth(filled, new Set(beats))));
-  return applyBeatEnvelope(shaped, beats);
+  const softened = softenNonBeats(shaped, beats);
+  return applyBeatEnvelope(softened, beats);
 }
+
 
