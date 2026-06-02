@@ -244,7 +244,7 @@ function expand(frames: Frame[]): Frame[] {
   let sum = 0;
   for (const f of frames) sum += f[1];
   const avg = sum / n;
-  return frames.map((f) => [f[0], clamp8(avg + (f[1] - avg) * CONTRAST), f[2], f[3], f[4]]);
+  return frames.map((f) => [f[0], clampPct(avg + (f[1] - avg) * CONTRAST), f[2], f[3], f[4]]);
 }
 
 /**
