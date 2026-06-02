@@ -390,6 +390,9 @@ export class PiLightEngine {
   private _pbG: Uint8Array = new Uint8Array(0);
   private _pbB: Uint8Array = new Uint8Array(0);
   private _pbCount = 0;
+  // Frame-stegnings-cursor: senast skickade index. Stegar framåt en frame i taget
+  // så VARJE lagrad frame skickas till BLE (ingen position-sampling som hoppar).
+  private _pbCursor = -1;
   private _pbAnchorPosMs = 0;
   private _pbAnchorClock = 0;
   /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
