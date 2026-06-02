@@ -140,6 +140,10 @@ export function detectBeats(frames: Frame[]): number[] {
     const d = frames[i][1] - frames[i - 1][1];
     flux[i] = d > 0 ? d : 0;
   }
+  // Nivå-grind: beats i mörka verser/andningar räknas inte.
+  let pMin = Infinity, pMax = -Infinity;
+  for (const f of frames) { if (f[1] < pMin) pMin = f[1]; if (f[1] > pMax) pMax = f[1]; }
+  const pRange = (pMax - pMin) || 1;
   const beats: number[] = [];
   let lastBeat = -BEAT_REFRACTORY;
   const half = BEAT_WINDOW >> 1;
@@ -153,6 +157,7 @@ export function detectBeats(frames: Frame[]): number[] {
     const std = Math.sqrt(varSum / cnt);
     const thr = Math.max(BEAT_FLUX_FLOOR, mean + BEAT_K * std);
     if (flux[i] < thr || i - lastBeat < BEAT_REFRACTORY) continue;
+    if ((frames[i][1] - pMin) / pRange < BEAT_MIN_LEVEL) continue; // för mörkt → false beat
     // Strikt lokal topp över ±3 frames + prominens över näst-största i fönstret.
     let isPeak = true, secondMax = 0;
     for (let k = -3; k <= 3; k++) {
