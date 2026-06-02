@@ -23,18 +23,21 @@ export interface SeqAnalysis {
   flicker: number;       // medel-|Δpct| mellan frames (0-255-skala)
 }
 
+// VIKTIGT: brightness (pct) ligger på 0–100-skalan — samma som enginen skickar
+// till BLE. Färgkanalerna (r,g,b) ligger på 0–255. Polish rör bara pct.
+const PCT_MAX = 100;             // ljus-taket (0–100)
 const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz (matchar lightRecorder)
 const SMOOTH_ALPHA = 0.5;        // EMA-faktor för färg-övergångar
 const ATTACK_ALPHA = 0.85;       // brightness stiger snabbt (skarp attack)
 const RELEASE_ALPHA = 0.55;      // brightness faller raskt → tydliga dalar mellan slag
-const TRANSIENT_DELTA = 40;      // pct-hopp som alltid bevaras (säkerhet)
+const TRANSIENT_DELTA = 16;      // pct-hopp som alltid bevaras (0–100-skala)
 const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
 
 // Beat-detektering på pct-envelopen.
 const BEAT_WINDOW = 21;          // ~840 ms adaptivt tröskelfönster
 const BEAT_REFRACTORY = 3;       // min 3 frames (~120 ms) mellan beats
 const BEAT_K = 1.4;              // tröskel = medel + K·std av flux i fönstret
-const BEAT_FLUX_FLOOR = 6;       // minsta flux (pct) för att räknas som beat
+const BEAT_FLUX_FLOOR = 2.5;     // minsta flux (pct) för att räknas som beat
 
 // Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
 // reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
@@ -127,7 +130,7 @@ export function analyze(frames: Frame[]): SeqAnalysis {
   if (n === 0) {
     return { durationMs: 0, frameCount: 0, gaps: 0, beats: 0, bpm: 0, brightnessMin: 0, brightnessAvg: 0, brightnessMax: 0, flicker: 0 };
   }
-  let min = 255, max = 0, sum = 0, flickerSum = 0, gaps = 0;
+  let min = PCT_MAX, max = 0, sum = 0, flickerSum = 0, gaps = 0;
   for (let i = 0; i < n; i++) {
     const pct = frames[i][1];
     if (pct < min) min = pct;
@@ -157,6 +160,11 @@ function clamp8(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
 }
 
+/** Klampar brightness/pct till 0–100 (BLE-skalan enginen använder). */
+function clampPct(v: number): number {
+  return v < 0 ? 0 : v > PCT_MAX ? PCT_MAX : Math.round(v);
+}
+
 /** Skapar en jämn tidsaxel och interpolerar frames över glapp. */
 function fillGaps(frames: Frame[]): Frame[] {
   const n = frames.length;
@@ -172,7 +180,7 @@ function fillGaps(frames: Frame[]): Frame[] {
         const t = s / (steps + 1);
         out.push([
           Math.round(a[0] + dt * t),
-          clamp8(a[1] + (b[1] - a[1]) * t),
+          clampPct(a[1] + (b[1] - a[1]) * t),
           clamp8(a[2] + (b[2] - a[2]) * t),
           clamp8(a[3] + (b[3] - a[3]) * t),
           clamp8(a[4] + (b[4] - a[4]) * t),
@@ -207,22 +215,23 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
       pr = pr + (f[2] - pr) * SMOOTH_ALPHA;
       pg = pg + (f[3] - pg) * SMOOTH_ALPHA;
       pb = pb + (f[4] - pb) * SMOOTH_ALPHA;
-      out.push([f[0], clamp8(pp), clamp8(pr), clamp8(pg), clamp8(pb)]);
+      out.push([f[0], clampPct(pp), clamp8(pr), clamp8(pg), clamp8(pb)]);
     }
   }
   return out;
 }
 
-/** Skalar brightness så att 95:e percentilen når nära taket utan att klippa. */
+/** Skalar brightness så att 95:e percentilen når nära taket (100) utan att klippa. */
 function normalize(frames: Frame[]): Frame[] {
   const n = frames.length;
   if (n === 0) return frames;
   const sorted = frames.map((f) => f[1]).sort((a, b) => a - b);
   const p95 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
-  if (p95 <= 0 || p95 >= 245) return frames;
-  const scale = 245 / p95;
+  const ceil = PCT_MAX * 0.96; // ~96
+  if (p95 <= 0 || p95 >= ceil) return frames;
+  const scale = ceil / p95;
   if (scale <= 1.02) return frames; // redan bra utnyttjat spann
-  return frames.map((f) => [f[0], clamp8(f[1] * scale), f[2], f[3], f[4]]);
+  return frames.map((f) => [f[0], clampPct(f[1] * scale), f[2], f[3], f[4]]);
 }
 
 /**
@@ -235,7 +244,7 @@ function expand(frames: Frame[]): Frame[] {
   let sum = 0;
   for (const f of frames) sum += f[1];
   const avg = sum / n;
-  return frames.map((f) => [f[0], clamp8(avg + (f[1] - avg) * CONTRAST), f[2], f[3], f[4]]);
+  return frames.map((f) => [f[0], clampPct(avg + (f[1] - avg) * CONTRAST), f[2], f[3], f[4]]);
 }
 
 /**
@@ -247,13 +256,13 @@ function applyBeatEnvelope(frames: Frame[], grid: number[]): Frame[] {
   const out = frames.map((f) => f.slice());
   for (const b of grid) {
     const base = out[b][1];
-    const peakBoost = clamp8(base * BEAT_BOOST) - base;
+    const peakBoost = clampPct(base * BEAT_BOOST) - base;
     if (peakBoost <= 0) continue;
     for (let k = 0; k <= BEAT_TAIL; k++) {
       const idx = b + k;
       if (idx >= out.length) break;
       const extra = peakBoost * Math.pow(BEAT_DECAY, k);
-      out[idx][1] = clamp8(out[idx][1] + extra);
+      out[idx][1] = clampPct(out[idx][1] + extra);
     }
   }
   return out;
