@@ -23,11 +23,14 @@ export interface SeqAnalysis {
   flicker: number;       // medel-|Δpct| mellan frames (0-255-skala)
 }
 
+// VIKTIGT: brightness (pct) ligger på 0–100-skalan — samma som enginen skickar
+// till BLE. Färgkanalerna (r,g,b) ligger på 0–255. Polish rör bara pct.
+const PCT_MAX = 100;             // ljus-taket (0–100)
 const SAMPLE_INTERVAL_MS = 40;   // ~25 Hz (matchar lightRecorder)
 const SMOOTH_ALPHA = 0.5;        // EMA-faktor för färg-övergångar
 const ATTACK_ALPHA = 0.85;       // brightness stiger snabbt (skarp attack)
 const RELEASE_ALPHA = 0.55;      // brightness faller raskt → tydliga dalar mellan slag
-const TRANSIENT_DELTA = 40;      // pct-hopp som alltid bevaras (säkerhet)
+const TRANSIENT_DELTA = 16;      // pct-hopp som alltid bevaras (0–100-skala)
 const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
 
 // Beat-detektering på pct-envelopen.
