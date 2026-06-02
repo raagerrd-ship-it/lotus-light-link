@@ -1,66 +1,45 @@
-## Mål
+# Inspelad uppspelning: false-beat-grind + vit drop-punch
 
-Förbättra den **inspelade/uppspelade** ljus-sekvensen (offline-pipelinen i `pi/src/seqPolish.ts`, full lookahead) + uppspelnings­vägen, på fyra punkter så den känns minst lika bra som realtime:
+Slår ihop Claudes prompt med den redan driftsatta v1.0.432-logiken. Synken är redan fixad permanent på enheten (`pb-sync-ms` 50→100 via `PUT /api/playback/sync`), så ingen synk-/engine-kod rörs här.
 
-1. Synk ~25 ms tidigare (ljuset leder ljudet).
-2. Striktare false-beat-filter.
-3. Drops: lampan dippar kort på breaken precis före dropet → slår till 100 % för max effekt.
-4. Vid uppspelning av sparad låt: skicka **alla** frames till BLE, rensa inte bort nästan lika.
+## Ändringar i `pi/src/seqPolish.ts`
 
-Ändringar i `pi/src/seqPolish.ts` (1–3 + decimerings­justering) och `pi/src/piEngine.ts` (uppspelnings-stegning). Live/realtime-reaktiva pathen lämnas i övrigt orörd.
+### 1. Beat-trösklar → Claudes värden + ny nivå-grind
+- `BEAT_K` 2.0 → **1.8**
+- `BEAT_PROMINENCE` 1.5 → **1.4**
+- `GRID_ONSET_MIN_REF` 6 → **8**
+- Ny konstant `BEAT_MIN_LEVEL = 0.30` (normaliserad ljusnivå 0–1).
+- I `detectBeats`: beräkna `pMin`/`pMax`/`pRange` en gång före loopen, och direkt efter tröskel-/refraktär-kollen lägga: `if ((frames[i][1] - pMin) / pRange < BEAT_MIN_LEVEL) continue;` → beats i mörka verser/andningar räknas inte.
 
-## FIX 1 — Lead ~25 ms i den renderade sekvensen
+### 2. Ersätt drop-logiken med Claudes relativa + 100 % VIT punch
+Ta bort nuvarande absoluta `applyDrops` (pct=100, ingen färg) och ersätt med två funktioner:
+- `detectDrops(frames, beats)` — relativ detektion mot låtens eget pct-spann:
+  - `DROP_PEAK_FRAC = 0.80` (topp ≥ 80 % av spannet)
+  - `DROP_LULL_FRAC = 0.55` (medel före ≤ 55 % av toppen ⇒ tydlig dal)
+  - `DROP_PRE_WINDOW_MS = 700`, `DROP_REFRACTORY_MS = 4000`
+- `applyDropEnvelope(frames, drops)`:
+  - `DROP_PREDIP_MS = 120`, `DROP_DARK_PCT = 2` → kort släckning mot svart precis före slaget
+  - `DROP_PUNCH_MS = 90` → `pct=100` **och r=g=b=255** (vit punch)
+  - `DROP_TAIL_MS = 350` → decay tillbaka mot underliggande nivå
+- Alla ms-konstanter skalas via `SAMPLE_INTERVAL_MS` (frame-rate-oberoende). Pre-dip (~120 ms) och punch (~90 ms) är medvetet > BLE-rastret (33 ms) så de överlever decimeringen.
 
-Offline-render känner hela låten → baka in lead i den polerade sekvensen.
+### 3. Ta bort baked offline-lead
+- `LEAD_MS` = 25 → **0** (eller ta bort `shiftEarlier`-anropet). All lead styrs nu av `pb-sync-ms` på enheten, ingen dubbelräkning.
 
-- Ny konstant: `const LEAD_MS = 25;`
-- Sista steg i `polish()`: hjälpfunktion `shiftEarlier(frames, ms)` drar varje frames `tMs` tidigare med `LEAD_MS`, klampat till ≥ första tidsstämpeln (ingen negativ tid).
-
-## FIX 2 — Striktare false-beat-filter (`detectBeats`)
-
-- `BEAT_K` 1.6 → 2.0
-- `BEAT_PROMINENCE` 1.25 → 1.5
-- `BEAT_FLUX_FLOOR_REF` 8 → 12
-- Utöka strikta lokala-topp-testet från ±2 → ±3 frames.
-
-Ger även renare `buildBeatGrid` (samma beats som grund).
-
-## FIX 3 — Drop-detektion: pre-dip på break + 100 % punch
-
-Ny `applyDrops(frames, beats)` i `polish()`, efter `applyBeatEnvelope`, före decimering. Med lookahead:
-
-1. Detektera drop: grid-beat där brightness går från en relativ break (lågt medel ~300 ms före) till nära toppen, dvs pct-hopp ≥ ~45 enheter och topp ≥ ~85.
-2. Pre-dip: ramp ned mot `FLOOR_PCT` under ~150 ms precis före dropet ("släcks kort").
-3. Punch: `pct = 100` på drop-framen + kort svans (~120 ms) nära 100.
-4. Refraktär: minst ~2 s mellan drops så vanliga beats inte triggar.
-
-Fönster i ms → frames via befintlig `SAMPLE_INTERVAL_MS`.
-
-## FIX 4 — Skicka alla frames vid uppspelning, rensa inte nästan lika
-
-Två orsaker till att sparat läge "rensar" detaljer idag:
-
-1. **`decimateToBle` box-medlar** → snabba punch-/drop-frames slätas ut. Ändra brightness-aggregeringen till **peak-bevarande** (max pct i binet) medan färg fortsatt medel-värdas. Då matchas BLE-takten men punch/drop överlever.
-2. **`playbackTick` position-samplar** vid tickMs → kan hoppa över/upprepa lagrade frames. Ändra uppspelningen så den **stegar igenom varje lagrad frame i tur och ordning** (frame-stegning ankrad mot position) så varje frame skickas en gång. Ingen deadband/no-change-rensning i uppspelnings-pathen (deltaskip i `protocol.ts` är redan av).
-
-Notera: eftersom sekvensen redan ligger på BLE-takt (~30 Hz) ger "skicka alla" ingen flimmer-risk — den matchar lampans verkliga uppdaterings­takt.
-
-## Pipeline-ordning i polish()
-
+### 4. polish()-pipeline
+Detektera drops på `softened` (renast dal-kontrast), applicera efter beat-envelopen, behåll `decimateToBle` sist i ljus-bearbetningen:
 ```text
-fillGaps → smooth → expand → normalize → softenNonBeats
-  → applyBeatEnvelope → applyDrops → decimateToBle(peak-bevarande) → shiftEarlier
+fillGaps → smooth → expand → normalize → softenNonBeats → applyBeatEnvelope
+  → applyDropEnvelope(…, detectDrops(softened, beats)) → decimateToBle
 ```
 
+## Ändring i `pi/src/lightRecorder.ts`
+- `DEFAULT_LEAD_MS` 50 → **100** (parity med lead som redan satts i drift, för nyinstallationer).
+
 ## Build & release
+- Bumpa `pi/package.json` (→ 1.0.433).
+- Verifiera med `npx tsc -p tsconfig.json --noEmit`.
+- Publicera ny release så tarballen innehåller ändringarna (annars skrivs de över vid nästa `/api/update`).
 
-- Bumpa `pi/package.json` (1.0.431 → 1.0.432).
-- `tsc -p tsconfig.json --noEmit`.
-- Påminn om att tagga/publicera release så ändringarna kommer med i tarballen.
-
-## Tekniska noter
-
-- `seqPolish.ts` (DSP) + `piEngine.ts` (uppspelnings-stegning) ändras. Inga BLE-protokoll-filer → ingen `BLE_BUILD_TAG`-bump.
-- Drop-pre-dip är äkta anticipation (offline lookahead).
-- Lead bakas i sparad sekvens; engineens playback-lead/auto-sync verkar additivt och rörs inte.
-- Slår igenom vid om-rendering: nya inspelningar + `revertSequence`/finalize som kör `polish()`.
+## Att känna till
+- Befintliga inspelningar får inte nya beat/drop-behandlingen automatiskt — kör revert per låt (renderar om från `.analysis.json`) eller spela in på nytt. Analys-mastern finns kvar.

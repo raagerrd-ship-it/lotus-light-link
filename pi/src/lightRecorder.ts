@@ -74,7 +74,7 @@ function clampSync(ms: number): number {
   if (!Number.isFinite(ms)) return 0;
   return ms < -SYNC_MS_MAX ? -SYNC_MS_MAX : ms > SYNC_MS_MAX ? SYNC_MS_MAX : Math.round(ms);
 }
-const DEFAULT_LEAD_MS = 50;
+const DEFAULT_LEAD_MS = 100;
 const storedSync = getItem('pb-sync-ms');
 let syncMs = storedSync != null ? clampSync(parseInt(storedSync, 10)) : DEFAULT_LEAD_MS;
 
