@@ -1047,6 +1047,10 @@ export class PiLightEngine {
           if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
           else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
         }
+        // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @100Hz till recorder.
+        if (this._analysisTap && bands) {
+          this._analysisTap(bands.bassRms, bands.midHiRms, bands.totalRms, flux);
+        }
       }
     });
     // Always start the loop — CPU is negligible
