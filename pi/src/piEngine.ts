@@ -533,6 +533,7 @@ export class PiLightEngine {
       this._pbB[i] = f[4];
     }
     this._pbCount = n;
+    this._pbCursor = -1;
     this._pbActive = true;
     // RÅ-referens (faller tillbaka till uppspelnings-pct om den saknas).
     const ref = rawRef && rawRef.length ? rawRef : frames;
