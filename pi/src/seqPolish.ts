@@ -221,16 +221,17 @@ function smooth(frames: Frame[], beatSet: Set<number>): Frame[] {
   return out;
 }
 
-/** Skalar brightness så att 95:e percentilen når nära taket utan att klippa. */
+/** Skalar brightness så att 95:e percentilen når nära taket (100) utan att klippa. */
 function normalize(frames: Frame[]): Frame[] {
   const n = frames.length;
   if (n === 0) return frames;
   const sorted = frames.map((f) => f[1]).sort((a, b) => a - b);
   const p95 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
-  if (p95 <= 0 || p95 >= 245) return frames;
-  const scale = 245 / p95;
+  const ceil = PCT_MAX * 0.96; // ~96
+  if (p95 <= 0 || p95 >= ceil) return frames;
+  const scale = ceil / p95;
   if (scale <= 1.02) return frames; // redan bra utnyttjat spann
-  return frames.map((f) => [f[0], clamp8(f[1] * scale), f[2], f[3], f[4]]);
+  return frames.map((f) => [f[0], clampPct(f[1] * scale), f[2], f[3], f[4]]);
 }
 
 /**
