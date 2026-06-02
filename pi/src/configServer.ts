@@ -1226,6 +1226,8 @@ export function startConfigServer(port = 3050): void {
   let _lastTickAbortNoMic = 0;
   let _lastTickAbortNoChange = 0;
   let _lastTickAbortNoDevice = 0;
+  let _lastTickAbortBleBusy = 0;
+  let _lastTickSkippedBleBusy = 0;
 
   app.get('/api/mic/level', async (_req, res) => {
     const mic = getMic();
@@ -1260,6 +1262,8 @@ export function startConfigServer(port = 3050): void {
       const tickAbortNoMicPerSec = perSec(bleStats.tickAbortNoMicCount ?? 0, _lastTickAbortNoMic);
       const tickAbortNoChangePerSec = perSec(bleStats.tickAbortNoChangeCount ?? 0, _lastTickAbortNoChange);
       const tickAbortNoDevicePerSec = perSec(bleStats.tickAbortNoDeviceCount ?? 0, _lastTickAbortNoDevice);
+      const tickAbortBleBusyPerSec = perSec(bleStats.tickAbortBleBusyCount ?? 0, _lastTickAbortBleBusy);
+      const tickSkippedBleBusyPerSec = perSec(bleStats.tickSkippedBleBusyCount ?? 0, _lastTickSkippedBleBusy);
 
       const fftFrames = mic.getFFTFrameCount?.() ?? 0;
       const tickCount = engine?.getDiagnostics().tickCount ?? 0;
@@ -1284,6 +1288,8 @@ export function startConfigServer(port = 3050): void {
       _lastTickAbortNoMic = bleStats.tickAbortNoMicCount ?? 0;
       _lastTickAbortNoChange = bleStats.tickAbortNoChangeCount ?? 0;
       _lastTickAbortNoDevice = bleStats.tickAbortNoDeviceCount ?? 0;
+      _lastTickAbortBleBusy = bleStats.tickAbortBleBusyCount ?? 0;
+      _lastTickSkippedBleBusy = bleStats.tickSkippedBleBusyCount ?? 0;
 
       ble = {
         sentPerSec, skipDeltaPerSec, skipBusyPerSec, skipInFlightPerSec,
@@ -1292,6 +1298,7 @@ export function startConfigServer(port = 3050): void {
         writeLatMaxMs,
         fftPerSec, tickPerSec,
         tickOkPerSec, tickAbortNoMicPerSec, tickAbortNoChangePerSec, tickAbortNoDevicePerSec,
+        tickAbortBleBusyPerSec, tickSkippedBleBusyPerSec,
       };
     } catch { /* protocol module not loaded yet */ }
     res.json({

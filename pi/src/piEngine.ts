@@ -14,7 +14,7 @@
  */
 
 import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing, stopMic } from './alsaMic.js';
-import { sendToBLE, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
+import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
 import { triggerIdleDisconnect } from './ble/connect-hardcoded.js';
@@ -878,6 +878,7 @@ export class PiLightEngine {
       this.lastBrightness = 0;
       this.lastSentPct = -1;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
+      this._lastSmoothAt = 0;       // återställ tidsbaserad EMA-klocka
       stopKeepAlive();
       dlog(`[Engine] BLE connected → active mode (keep-alive AV — FFT-writes håller länken)`);
     }
@@ -934,6 +935,7 @@ export class PiLightEngine {
       this.lastSentPct = -1;
       this._pbActive = false;  // playback hör till en spelande låt
       this._lastTickAtForFade = 0;
+      this._lastSmoothAt = 0;
       this.stopLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'idle';
@@ -1076,6 +1078,7 @@ export class PiLightEngine {
   // Det gav smygande audio-latens utan att synas i pkt/s. Borttaget.
   private _lastTickTime = 0;
   private _lastTickAtForFade = 0;
+  private _lastSmoothAt = 0;   // för tidsbaserad EMA-alpha (robust mot hoppade ticks)
   private _loopActive = false;
   private _nextTickDeadline = 0;
 
@@ -1090,6 +1093,19 @@ export class PiLightEngine {
       if (now - this._nextTickDeadline > this.tickMs) {
         this._nextTickDeadline = now + this.tickMs;
       }
+
+      // ── BLE-styrd pre-gate (2026-06-02) ──
+      // BLE-out är den verkliga takt-styrningen. Om länken inte kan ta emot en
+      // write just nu (lease-lock, pending write eller ACL-outstanding-tak) är
+      // det meningslöst att räkna en hel tick (dynamics/gamma/fade/kalibrering)
+      // — resultatet hade ändå dött som 'busy' i sendToBLE. Skippa FÖRE den
+      // dyra beräkningen och spara CPU. Gäller bara under aktiv playback;
+      // idle-pathen styrs av keep-alive, inte tickInner.
+      if (this.playing && this._bleOwner === 'active' && !canWriteNow()) {
+        bleStatsState.tickSkippedBleBusyCount++;
+        return;
+      }
+
       this._lastTickTime = now;
       this.tickInner();
     } else {
@@ -1376,14 +1392,24 @@ export class PiLightEngine {
       // Adaptive "punch on drop" borttagen 2026-05-04 — punch hör till
       // attack-pathen (attackAlpha=1.0), inte release. Användarens
       // releaseAlpha (softness-slider) ska vara enda kontrollen för fade-out.
+      // Tidsbaserad alpha (2026-06-02): BLE-pre-gaten gör att ticks nu kommer
+      // med varierande intervall (hoppade frames när BLE är busy). En precomputed
+      // per-tickMs-alpha skulle då ge ojämn fade-takt. Härled alpha ur FAKTISK
+      // elapsed med samma 1-(1-base)^(elapsed/125)-formel som computeTickConstants,
+      // så ljusbilden blir identisk oavsett hur många frames som hoppats över.
+      const _smoothElapsed = this._lastSmoothAt > 0
+        ? Math.min(250, _tickStart - this._lastSmoothAt)
+        : this.tickMs;
+      this._lastSmoothAt = _tickStart;
+      const _eRatio = _smoothElapsed / 125;
       let alpha: number;
       if (inSilence) {
         // Tystnad: dra mot 0 via release oavsett brus-spikar
-        alpha = tc.releaseAlpha;
+        alpha = 1 - Math.pow(1 - this.cal.releaseAlpha, _eRatio);
       } else if (energyNorm > this.smoothed) {
-        alpha = tc.attackAlpha;
+        alpha = 1 - Math.pow(1 - this.cal.attackAlpha, _eRatio);
       } else {
-        alpha = tc.releaseAlpha;
+        alpha = 1 - Math.pow(1 - this.cal.releaseAlpha, _eRatio);
       }
       this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
       energyNorm = this.smoothed;

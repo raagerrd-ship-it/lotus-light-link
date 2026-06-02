@@ -173,6 +173,7 @@ export const bleStats = {
   tickAbortNoChangeCount: 0,
   tickAbortNoDeviceCount: 0,
   deadbandBlockedCount: 0,        // anti-flicker deadband held last value (no write generated)
+  tickSkippedBleBusyCount: 0,     // pre-gate: tick hoppades över FÖRE beräkning pga BLE busy (sparad CPU)
 
   writeLatMs: 0,
   writeLatAvgMs: 0,

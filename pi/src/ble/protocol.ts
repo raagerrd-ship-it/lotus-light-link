@@ -196,6 +196,23 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
   return 'ready';
 }
 
+/**
+ * BILLIG, BIVERKNINGSFRI readiness-check (2026-06-02).
+ * Speglar leaseAndDrainState()'s 'ready'-villkor UTAN att mutera stats eller
+ * trigga stuck-recovery. Används av engine.onFFTFrame som pre-gate så att den
+ * dyra tickInner-beräkningen hoppas över när BLE ändå inte kan ta emot writen
+ * (lease-lock, pending write, eller ACL-outstanding-tak). BLE-out blir därmed
+ * den faktiska takt-styrningen — ingen CPU bränns på frames som dör som 'busy'.
+ */
+export function canWriteNow(): boolean {
+  if (!getDevice()) return false;
+  if (writePending) return false;
+  if (performance.now() < slotLockedUntil) return false;
+  const drainAttached = isControllerDrainAttached();
+  if (drainAttached && getOutstandingPackets() >= ACL_MAX_OUTSTANDING) return false;
+  return true;
+}
+
 // ── Keepalive (idle-vägen) ──
 const KEEPALIVE_MS = 200;
 const KEEPALIVE_FAIL_THRESHOLD = 5;
