@@ -389,6 +389,8 @@ export class PiLightEngine {
   private _pbCount = 0;
   private _pbAnchorPosMs = 0;
   private _pbAnchorClock = 0;
+  /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
+  private _pbSyncMs = 0;
   /** Lead-offset (ms): positivt = hämta framen framåt (kompenserar BLE-kedjan);
    *  negativt = fördröj ljuset (kompenserar Sonos högtalar-latens vid låtstart). */
   private _pbLeadMs = (() => {
