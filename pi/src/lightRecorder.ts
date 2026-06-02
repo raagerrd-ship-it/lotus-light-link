@@ -163,7 +163,8 @@ function applyKeyTransition(key: string): void {
 
   const saved = autoPlay ? loadSequence(key) : null;
   if (saved) {
-    engine.setPlaybackSequence(saved);
+    const rawRef = loadRawSequence(key); // RÅ-referens för auto-sync (samma mic-pipeline)
+    engine.setPlaybackSequence(saved, rawRef, true);
     engine.updatePlaybackPosition(posAnchorMs);
     pbActive = true;
     console.log(`[lightRecorder] ▶ Spelar upp lärd sekvens "${key}" (${saved.length} frames)`);
