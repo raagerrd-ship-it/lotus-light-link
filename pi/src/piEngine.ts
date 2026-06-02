@@ -465,7 +465,19 @@ export class PiLightEngine {
   getPlaybackLeadMs(): number { return this._pbLeadMs; }
   setPlaybackLeadMs(ms: number): void {
     this._pbLeadMs = Math.round(ms);
+    this._asPersistedLead = this._pbLeadMs;
     setItem('playback-lead-ms', String(this._pbLeadMs));
+  }
+
+  /** Auto-sync på/av + status (uppmätt lead och korrelations-styrka). */
+  isAutoSync(): boolean { return this._autoSync; }
+  setAutoSync(on: boolean): void {
+    this._autoSync = on;
+    setItem('playback-autosync', String(on));
+    if (on) { this._asCount = 0; this._asHead = 0; }
+  }
+  getAutoSyncStatus(): { enabled: boolean; leadMs: number; confidence: number } {
+    return { enabled: this._autoSync, leadMs: this._pbLeadMs, confidence: Math.round(this._asConfidence * 100) / 100 };
   }
 
   /** Aktivera playback av en inspelad sekvens.
