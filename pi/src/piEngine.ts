@@ -174,7 +174,7 @@ const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
   attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
-  bassWeight: 0.7,
+  bassWeight: 0.9,
   punchWhiteThreshold: 100,
   brightnessFloor: 5,
   transientGain: 0.8,
