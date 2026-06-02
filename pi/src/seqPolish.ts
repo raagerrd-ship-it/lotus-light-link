@@ -83,11 +83,20 @@ export function detectBeats(frames: Frame[]): number[] {
     for (let j = lo; j <= hi; j++) { const d = flux[j] - mean; varSum += d * d; }
     const std = Math.sqrt(varSum / cnt);
     const thr = Math.max(BEAT_FLUX_FLOOR, mean + BEAT_K * std);
-    // Lokalt max över sina grannar + över tröskeln + refraktär.
-    if (flux[i] >= thr && flux[i] >= flux[i - 1] && flux[i] >= (flux[i + 1] ?? 0) && i - lastBeat >= BEAT_REFRACTORY) {
+    if (flux[i] < thr || i - lastBeat < BEAT_REFRACTORY) continue;
+    // Strikt lokal topp över ±2 frames + prominens över näst-största i fönstret.
+    let isPeak = true, secondMax = 0;
+    for (let k = -2; k <= 2; k++) {
+      if (k === 0) continue;
+      const v = flux[i + k] ?? 0;
+      if (v > flux[i]) { isPeak = false; break; }
+      if (v > secondMax) secondMax = v;
+    }
+    if (isPeak && flux[i] >= BEAT_PROMINENCE * secondMax) {
       beats.push(i);
       lastBeat = i;
     }
+
   }
   return beats;
 }
