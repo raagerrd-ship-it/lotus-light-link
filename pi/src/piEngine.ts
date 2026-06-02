@@ -1603,7 +1603,14 @@ export class PiLightEngine {
       }
 
       // ── Color calibration ──
-      const isPunch = cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold;
+      // Drop-flash: medan dropFlashUntil är aktiv forceras full vit punch (pct=100)
+      // som overridar normal output, sen decay tillbaka till grund nästa tick.
+      const dropFlash = this.dropFlashUntil > _tickStart;
+      if (dropFlash) {
+        pct = 100;
+        this.lastSentPct = 100; // bypassa deadband så blixten alltid skickas
+      }
+      const isPunch = dropFlash || (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], tc);
 
       // ── BLE output (synkron hard-fail) ──
