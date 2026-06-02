@@ -287,9 +287,11 @@ function normalize(frames: Frame[]): Frame[] {
   const invSpan = 1 / span;
   return frames.map((f) => {
     let t = (f[1] - black) * invSpan; t = t < 0 ? 0 : t > 1 ? 1 : t;
-    return [f[0], clampPct(Math.pow(t, STRETCH_GAMMA) * WHITE_TARGET), f[2], f[3], f[4]];
+    const shaped = FLOOR_PCT + (WHITE_TARGET - FLOOR_PCT) * Math.pow(t, STRETCH_GAMMA);
+    return [f[0], clampPct(shaped), f[2], f[3], f[4]];
   });
 }
+
 
 /**
  * Dynamik-expansion: drar brightness bort från medelvärdet så dalar blir mörkare
