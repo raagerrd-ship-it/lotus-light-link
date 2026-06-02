@@ -242,6 +242,7 @@ function onAnalysis(bassRms: number, midHiRms: number, totalRms: number, flux: n
 export function attachEngine(e: EngineLike): void {
   engine = e;
   e.setFrameTap(onFrame);
+  e.setAnalysisTap(onAnalysis);
   e.setPlaybackSyncMs(syncMs);
 }
 
