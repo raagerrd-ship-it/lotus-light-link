@@ -551,6 +551,7 @@ export class PiLightEngine {
   updatePlaybackPosition(positionMs: number): void {
     this._pbAnchorPosMs = positionMs;
     this._pbAnchorClock = performance.now();
+    this._pbCursor = -1; // seek/re-ankring → snappa cursorn till nya positionen
   }
 
   /** Sätt sync-offset (ms): positivt = ljuset ligger före ljudet. */
