@@ -15,7 +15,7 @@ import {
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
-import * as lightRecorder from './lightRecorder.js';
+// lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
 
 
 type AlsaMicModule = typeof import('./alsaMic.js');
@@ -1442,109 +1442,29 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
-  // --- Record / Playback (lärda ljus-sekvenser) ---
-  app.get('/api/record', (_req, res) => {
-    res.json(lightRecorder.getRecorderState());
-  });
+  // --- Record / Playback BORTTAGET (2026-06-02) ---
+  // Inspelning/offline-playback är avvecklad; allt körs realtime. Endpoints
+  // behålls som inerta stubbar så äldre UI-klienter inte kraschar.
+  const recorderDisabled = {
+    recording: false, autoPlay: false, acr: false, autoSync: false,
+    syncing: false, lastSyncOffsetMs: 0, lastSyncScore: 0, disabled: true,
+  };
+  app.get('/api/record', (_req, res) => res.json(recorderDisabled));
+  app.put('/api/record', (_req, res) => res.json(recorderDisabled));
+  app.get('/api/playback', (_req, res) => res.json(recorderDisabled));
+  app.put('/api/playback', (_req, res) => res.json(recorderDisabled));
+  app.get('/api/playback-sync', (_req, res) => res.json({ enabled: false, leadMs: 0, confidence: 0, warmup: false, disabled: true }));
+  app.put('/api/playback-sync', (_req, res) => res.json({ enabled: false, leadMs: 0, confidence: 0, warmup: false, disabled: true }));
+  app.put('/api/playback/sync', (_req, res) => res.json({ syncMs: 0, disabled: true }));
+  app.put('/api/autosync', (_req, res) => res.json(recorderDisabled));
+  app.get('/api/light-seq/list', (_req, res) => res.json({ sequences: [] }));
+  app.delete('/api/light-seq/:key', (_req, res) => res.status(404).json({ ok: false, disabled: true }));
+  app.get('/api/light-seq/:key', (_req, res) => res.status(404).json({ disabled: true }));
+  app.post('/api/light-seq/:key/preview', (_req, res) => res.status(404).json({ ok: false, disabled: true }));
+  app.post('/api/light-seq/:key/revert', (_req, res) => res.status(404).json({ ok: false, disabled: true }));
+  app.get('/api/acr', (_req, res) => res.json({ enabled: false, disabled: true }));
+  app.put('/api/acr', (_req, res) => res.json({ enabled: false, disabled: true }));
 
-  app.put('/api/record', (req, res) => {
-    const { recording } = req.body;
-    if (typeof recording !== 'boolean') {
-      return res.status(400).json({ error: 'Need recording: boolean' });
-    }
-    lightRecorder.setRecording(recording);
-    res.json(lightRecorder.getRecorderState());
-  });
-
-  app.get('/api/playback', (_req, res) => {
-    res.json(lightRecorder.getRecorderState());
-  });
-
-  app.put('/api/playback', (req, res) => {
-    const { autoPlay } = req.body;
-    if (typeof autoPlay !== 'boolean') {
-      return res.status(400).json({ error: 'Need autoPlay: boolean' });
-    }
-    lightRecorder.setAutoPlay(autoPlay);
-    res.json(lightRecorder.getRecorderState());
-  });
-
-  // Auto-sync: lightRecorder mäter Sonos-fördröjning före offline-playback.
-  app.get('/api/playback-sync', (_req, res) => {
-    const s = lightRecorder.getRecorderState();
-    res.json({ enabled: s.autoSync, leadMs: s.lastSyncOffsetMs, confidence: s.lastSyncScore, warmup: s.syncing });
-  });
-
-  app.put('/api/playback-sync', (req, res) => {
-    const engine = requireEngine(res);
-    if (!engine) return;
-    const { enabled } = req.body;
-    if (typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: 'Need enabled: boolean' });
-    }
-    engine.setAutoSync(false);
-    lightRecorder.setAutoSync(enabled);
-    const s = lightRecorder.getRecorderState();
-    res.json({ enabled: s.autoSync, leadMs: s.lastSyncOffsetMs, confidence: s.lastSyncScore, warmup: s.syncing });
-  });
-
-  // Manuell sync-offset (ms): positivt = ljuset ligger före ljudet.
-  app.put('/api/playback/sync', (req, res) => {
-    const { syncMs } = req.body;
-    if (typeof syncMs !== 'number' || !Number.isFinite(syncMs)) {
-      return res.status(400).json({ error: 'Need syncMs: finite number' });
-    }
-    const applied = lightRecorder.setSyncOffset(syncMs);
-    res.json({ syncMs: applied });
-  });
-
-  // Auto-synk på/av (korskorrelerar live-ljus mot rå-inspelningen vid låtstart).
-  app.put('/api/autosync', (req, res) => {
-    const { autoSync } = req.body;
-    if (typeof autoSync !== 'boolean') {
-      return res.status(400).json({ error: 'Need autoSync: boolean' });
-    }
-    lightRecorder.setAutoSync(autoSync);
-    res.json(lightRecorder.getRecorderState());
-  });
-
-  app.get('/api/light-seq/list', (_req, res) => {
-    res.json({ sequences: lightRecorder.listSequences() });
-  });
-
-  app.delete('/api/light-seq/:key', (req, res) => {
-    const ok = lightRecorder.deleteSequence(req.params.key);
-    res.status(ok ? 200 : 404).json({ ok });
-  });
-
-  // Låt-studio: analys + förhandsgranskning + ångra.
-  app.get('/api/light-seq/:key', (req, res) => {
-    res.json(lightRecorder.getSequence(req.params.key));
-  });
-
-  app.post('/api/light-seq/:key/preview', (req, res) => {
-    const variant = req.body?.variant === 'raw' ? 'raw' : 'polished';
-    const ok = lightRecorder.previewSequence(req.params.key, variant);
-    res.status(ok ? 200 : 404).json({ ok });
-  });
-
-  app.post('/api/light-seq/:key/revert', (req, res) => {
-    const ok = lightRecorder.revertSequence(req.params.key);
-    res.status(ok ? 200 : 404).json({ ok });
-  });
-
-  app.get('/api/acr', (_req, res) => {
-    res.json(lightRecorder.getAcrState());
-  });
-
-  app.put('/api/acr', (req, res) => {
-    const { enabled } = req.body;
-    if (typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: 'Need enabled: boolean' });
-    }
-    lightRecorder.setAcrMode(enabled);
-    res.json(lightRecorder.getAcrState());
-  });
 
 
 

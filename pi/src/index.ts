@@ -21,7 +21,7 @@ import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,
   getSubsystemState, type SubsystemId,
 } from './ble/state.js';
-import * as lightRecorder from './lightRecorder.js';
+// lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad, allt körs realtime.
 
 // --- Config ---
 const SONOS_BUDDY_API_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3053/api';
@@ -128,7 +128,7 @@ async function ensureEngineInstance(): Promise<void> {
   const savedTickMs = getItem('tick-ms');
   const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
   engineInstance = new engineMod.PiLightEngine(tick);
-  lightRecorder.attachEngine(engineInstance);
+  
 
 
 
@@ -170,7 +170,7 @@ async function startMicSubsystem(): Promise<void> {
     try {
       console.log('[Subsystem:mic] importing alsaMic (native ALSA-bindning)…');
       alsaMic = await import('./alsaMic.js');
-      lightRecorder.attachMic(alsaMic);
+      
 
       const savedAlsaDevice = getItem('alsa-device');
       const savedMicGain = getItem('mic-gain');
@@ -258,7 +258,6 @@ async function startSonosSubsystem(): Promise<void> {
       // även om Sonos redan spelar.
       await sonos.onSonosChange((state) => {
         applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
-        lightRecorder.onSonosUpdate(state);
       });
 
       markSubsystemReady('sonos');

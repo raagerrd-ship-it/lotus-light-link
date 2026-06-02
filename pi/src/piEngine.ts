@@ -511,41 +511,13 @@ export class PiLightEngine {
    *  frames = uppspelnings-sekvensen (polerad). rawRef = rå-inspelning som
    *  korrelations-referens. warmup = kör reaktivt tills auto-sync låst.
    *  null = reaktiv mode. */
-  setPlaybackSequence(frames: number[][] | null, rawRef: number[][] | null = null, warmup = true): void {
-    if (!frames || frames.length === 0) {
-      this._pbActive = false;
-      this._pbWarmup = false;
-      this._pbCount = 0;
-      this._pbRefCount = 0;
-      return;
-    }
-    const n = frames.length;
-    this._pbTimes = new Float64Array(n);
-    this._pbPct = new Uint8Array(n);
-    this._pbR = new Uint8Array(n);
-    this._pbG = new Uint8Array(n);
-    this._pbB = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      const f = frames[i];
-      this._pbTimes[i] = f[0];
-      this._pbPct[i] = f[1];
-      this._pbR[i] = f[2];
-      this._pbG[i] = f[3];
-      this._pbB[i] = f[4];
-    }
-    this._pbCount = n;
-    this._pbCursor = -1;
-    this._pbActive = true;
-    // RÅ-referens (faller tillbaka till uppspelnings-pct om den saknas).
-    const ref = rawRef && rawRef.length ? rawRef : frames;
-    const m = ref.length;
-    this._pbRefTimes = new Float64Array(m);
-    this._pbRefPct = new Uint8Array(m);
-    for (let i = 0; i < m; i++) { this._pbRefTimes[i] = ref[i][0]; this._pbRefPct[i] = ref[i][1]; }
-    this._pbRefCount = m;
-    // Warm-up bara när auto-sync är på: håll lamporna live tills offseten låst.
-    this._pbWarmup = warmup && this._autoSync;
-    this._asCount = 0; this._asHead = 0; this._asLockStreak = 0;
+  setPlaybackSequence(_frames: number[][] | null, _rawRef: number[][] | null = null, _warmup = true): void {
+    // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
+    // Behålls som no-op så ev. äldre anropare inte kraschar.
+    this._pbActive = false;
+    this._pbWarmup = false;
+    this._pbCount = 0;
+    this._pbRefCount = 0;
   }
 
   /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
@@ -708,8 +680,20 @@ export class PiLightEngine {
     const dc = this.dynamicCenter;
     const suppression = dc > 0.5 ? 1 + (dc - 0.5) * 1.5 : 1;
     const threshold = med * this.cal.onsetThreshold * suppression + 0.008;
-    const isCandidate = flux > threshold && flux >= this.onsetPrevFlux;
+    // False-positive-skydd (2026-06-02):
+    //  1) ABS_FLUX_FLOOR — i tystnad/brus faller median mot 0 och tröskeln
+    //     kollapsar till +0.008; ett absolut golv hindrar flimmer i tysta partier.
+    //  2) PROMINENCE — kräv att flux sticker ut TYDLIGT över median (×1.6),
+    //     inte bara passerar den adaptiva tröskeln. Sållar bort sustain-jitter.
+    const ABS_FLUX_FLOOR = 0.045;
+    const PROMINENCE = 1.6;
+    const isCandidate =
+      flux > threshold &&
+      flux >= this.onsetPrevFlux &&
+      flux >= ABS_FLUX_FLOOR &&
+      flux >= med * PROMINENCE;
     this.onsetPrevFlux = flux;
+
 
     // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 100Hz (10ms/frame)
     const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
@@ -1349,13 +1333,8 @@ export class PiLightEngine {
     // kan en mic-write krocka med keep-alive som just tagit över.
     if (!this.playing || this._bleOwner !== 'active') return;
 
-    // ── Playback-mode: spela upp inspelad sekvens istället för reaktiv FFT ──
-    // Under warm-up faller vi igenom till reaktiva pathen (live mic styr lamporna)
-    // och samplar auto-sync mot RÅ-referensen tills offseten låsts.
-    if (this._pbActive && this._pbCount > 0 && !this._pbWarmup) {
-      this.playbackTick();
-      return;
-    }
+    // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
+
 
 
     const _tickStart = performance.now();
