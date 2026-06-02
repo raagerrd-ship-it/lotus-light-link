@@ -1944,6 +1944,10 @@ export default function PiMobile() {
           onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
           tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
           flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
+          beatSource: c?.beatSource ?? DEFAULT_CAL.beatSource,
+          dropEnabled: c?.dropEnabled ?? DEFAULT_CAL.dropEnabled,
+          dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
+          dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
         };
       };
 
