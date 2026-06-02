@@ -29,12 +29,14 @@ const PCT_MAX = 100;             // ljus-taket (0–100)
 
 // ── Frame-rate-oberoende konstanter ──
 const CONTRAST = 1.45;           // dynamik-expansion: mörkare dalar, ljusare toppar
-const BEAT_K = 1.6;              // tröskel = medel + K·std av flux i fönstret
-const BEAT_PROMINENCE = 1.25;    // topp måste vara prominent över näst-största i ±2
+const BEAT_K = 2.0;              // tröskel = medel + K·std av flux i fönstret (striktare)
+const BEAT_PROMINENCE = 1.5;     // topp måste vara prominent över näst-största i ±3 (striktare)
 const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
 const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
 const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
 const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
+const BLE_FRAME_MS = 33;         // ~30 Hz — säker BLEDOM-nivå (sample-and-hold)
+const LEAD_MS = 25;              // ljuset leder ljudet i sparad sekvens (offline-anticipation)
 const BLE_FRAME_MS = 33;         // ~30 Hz — säker BLEDOM-nivå (sample-and-hold)
 
 // ── Referensvärden, tunade för 40 ms/frame (25 Hz) ──
