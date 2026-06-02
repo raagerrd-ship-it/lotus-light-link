@@ -634,7 +634,7 @@ export class PiLightEngine {
   private playbackTick(): void {
     const rawPos = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
     if (this._autoSync) this.autoSyncSample(rawPos);
-    const idx = this.indexForPos(rawPos + this._pbLeadMs);
+    const idx = this.indexForPos(rawPos + this._pbLeadMs + this._pbSyncMs);
     const pct = this._pbPct[idx];
     const result = sendToBLE(this._pbR[idx], this._pbG[idx], this._pbB[idx], pct);
     if (result === 'sent') bleStatsState.tickOkCount++;
