@@ -35,6 +35,7 @@ const FLOOR_PCT = 16;            // ljus-golv (lamporna slocknar aldrig helt)
 const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt)
 const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
 const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
+const BLE_FRAME_MS = 33;         // ~30 Hz — säker BLEDOM-nivå (sample-and-hold)
 
 // ── Referensvärden, tunade för 40 ms/frame (25 Hz) ──
 // Alla frame-/flux-beroende konstanter räknas om i configureFrameRate() utifrån

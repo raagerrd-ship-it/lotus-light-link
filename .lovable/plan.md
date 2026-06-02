@@ -1,36 +1,47 @@
 ## Mål
 
-Spela in den **oförvrängda musiksignalen** (FFT-band + flux @100 Hz) istället för den färdig-processade BLE-outputen @25 Hz. Rendera sedan ljuset offline från analysen med samma engine-mappning, polera och spela upp. Detta ger 4× upplösning och möjlighet till tyngre beat-/tempo-analys än Pi Zero 2W klarar i realtid — utan att duplicera DSP eller ladda upp rå-ljud.
+Två relaterade fixar i Pi-koden för inspelad ljus-uppspelning, så att uppspelningen blir stabil mot BLEDOM-lampans verkliga uppdateringstakt och att en omspelad/loopad låt inte korrumperar inspelningsbufferten.
 
-Bakgrund (verifierat via kodanalys): ALSA 48 kHz → FFT 100 Hz → engine-tick ≤50 Hz → recorder 25 Hz. Vi flyttar inspelningen uppströms till 100 Hz-analystappen som redan är tillagd i `piEngine.ts`.
+## FIX 1 — Decimera färdig sekvens till BLE-takt (`pi/src/seqPolish.ts`)
 
-## Steg
+Problem: vi finslipar @100 fps men BLEDOM (sample-and-hold) klarar bara ~20–40 uppdateringar/s. 100 fps-features (1-frame-attack, 10 ms white-punch) flimrar in/ut fas-beroende.
 
-### 1. `pi/src/piEngine.ts` — exportera band→ljus-mappning *(redan klart)*
-Klart i tidigare turn: `normalizeFixed`, `computeTickConstants`, `applyDynamics` exporterade; `setAnalysisTap` + 100 Hz-tapp på `onFluxReady` med `[bass, midHi, total, flux]`. Live-beteende oförändrat.
+Lösning — som sista steg i `polish()`:
 
-### 2. `pi/src/seqRender.ts` (ny) — offline-renderare
-`renderLightFromAnalysis(frames, settings)` som per analys-frame kör samma `band → pct + color` via de exporterade helpers. Använder egen offline-dynamik/onset-state (samma matte som live-ticken) så renderingen blir identisk med vad enginen hade gjort, fast deterministiskt och utan rate-limit/deadband.
-→ verifiera: en kort syntetisk analys-buffer ger en monotont rimlig pct-kurva; `tsc` passerar.
+1. Lägg konstanten nära övriga polish-konstanter (vid rad ~28–37):
+   ```ts
+   const BLE_FRAME_MS = 33; // ~30 Hz — säker BLEDOM-nivå
+   ```
+2. Lägg till `decimateToBle(frames, intervalMs)` (återanvänder `medianFrameMs`, `clampPct`, `clamp8`): box-medel per `intervalMs`-bin. Returnerar oförändrad sekvens om den redan är på/under måltakten (`medianFrameMs >= intervalMs * 0.9`).
+3. Ändra slutet på `polish()` (rad 436) från:
+   ```ts
+   return applyBeatEnvelope(softened, beats);
+   ```
+   till:
+   ```ts
+   const enveloped = applyBeatEnvelope(softened, beats);
+   return decimateToBle(enveloped, BLE_FRAME_MS);
+   ```
 
-### 3. `pi/src/lightRecorder.ts` — koppla 100 Hz-bufferten
-- Ny analys-buffer `[tMs, bass, midHi, flux, total]` matad via `engine.setAnalysisTap` istället för 25 Hz `onFrame`-tappen för inspelning (frame-tappen behålls för auto-synk-korrelation).
-- `MAX_FRAMES` → ~80 000 (≈13 min @100 Hz).
-- `finalizeRecording()`: skriv `<key>.analysis.json`, kör `renderLightFromAnalysis` → `polish` → skriv `<key>.json`. **Behåll** `.analysis.json` (≈120 KB) för ångra/om-trimning — ersätter `.raw.json`.
-- `revertSequence` blir "rendera om från analysen" istället för att tappa rå-ljus.
-→ verifiera: en inspelning skapar både `.analysis.json` och `.json`; uppspelning fungerar.
+## FIX 2 — Hantera loop/omspelning under inspelning (`pi/src/lightRecorder.ts`)
 
-### 4. `pi/src/seqPolish.ts` — ms-baserade konstanter för 100 Hz
-Skala frame-beroende konstanter från 40 ms → 10 ms-grid: `SAMPLE_INTERVAL_MS`, `CALM_WINDOW`, `BEAT_WINDOW`, `BEAT_REFRACTORY`, `PREDIP_FRAMES`, `BEAT_TAIL` m.fl. uttrycks i ms och räknas om till frames utifrån faktiskt intervall, så beat-känslan blir identisk men finare.
-→ verifiera: `analyze()` ger rimligt bpm/beats på 100 Hz-data.
+Problem: vid omstart av samma låt är `key` oförändrad → `finalizeRecording()` triggas aldrig, så `analysisBuf` fylls på med varv 2 ovanpå varv 1 → bakåt-hopp i tidsstämplar + spök-frames.
 
-### 5. Build + versionsbump
-`cd pi && npx tsc -p tsconfig.json --noEmit` + bygg, bumpa `pi/package.json`-version.
+Lösning — i `onSonosUpdate`, i positionsankrings-blocket (`if (state.positionMs != null) { ... }`): innan vanlig RESYNC-logik, detektera bakåt-hopp (`extrapolated - reported > 3000 ms`) under pågående inspelning (`recording && !pbActive && currentKey`) och starta en ny take:
+- `finalizeRecording()` (sparar bara om minst lika komplett → kort omstarts-take skriver aldrig över ett fullt varv)
+- om-ankra `posAnchorMs/posAnchorClock/lastAnchorPos` till `reported`
+- `return` (hoppa över resten av uppdateringen)
 
-## Tekniska detaljer
-- `.analysis.json`-format: `{ key, durationMs, frames: [[tMs,bass,midHi,flux,total],...] }`. Float-band rundas till heltal (×1000-skala vid behov) för kompakthet.
-- Bakåtkompatibilitet: gamla `.raw.json`/`.json` läses fortfarande; saknas `.analysis.json` faller `revert` tillbaka på befintlig `.json`.
-- Frame-tappen (50 Hz) lämnas orörd för auto-synk-korskorrelationen.
+`currentKey` behålls så den nya bufferten fortsätter på samma låt.
 
-## Avgränsning
-Rått PCM-ljud (WAV, MB/låt, offline-FFT) byggs **inte** nu — band/flux @100 Hz är musikinnehållet före ljus-estetik och räcker. PCM kvarstår som tyngre framtidsalternativ.
+## Build & release
+
+- Bumpa `pi/package.json` version (1.0.430 → 1.0.431).
+- `tsc -p tsconfig.json --noEmit` för att verifiera kompilering.
+- Påminn om att tagga/publicera ny release så ändringarna kommer med i tarballen (annars skrivs de över vid nästa `/api/update`).
+
+## Tekniska noter
+
+- Inga BLE-filer (`pi/src/ble/**`) berörs → ingen `BLE_BUILD_TAG`-bump krävs.
+- Live-beteendet (reaktiv engine) är oförändrat; båda fixarna rör endast inspelnings-/finslipnings-pipelinen.
+- `decimateToBle` är idempotent vid redan låg takt, så `revertSequence`/preview påverkas inte negativt.
