@@ -256,13 +256,13 @@ function applyBeatEnvelope(frames: Frame[], grid: number[]): Frame[] {
   const out = frames.map((f) => f.slice());
   for (const b of grid) {
     const base = out[b][1];
-    const peakBoost = clamp8(base * BEAT_BOOST) - base;
+    const peakBoost = clampPct(base * BEAT_BOOST) - base;
     if (peakBoost <= 0) continue;
     for (let k = 0; k <= BEAT_TAIL; k++) {
       const idx = b + k;
       if (idx >= out.length) break;
       const extra = peakBoost * Math.pow(BEAT_DECAY, k);
-      out[idx][1] = clamp8(out[idx][1] + extra);
+      out[idx][1] = clampPct(out[idx][1] + extra);
     }
   }
   return out;
