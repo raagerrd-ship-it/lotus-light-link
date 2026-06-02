@@ -180,7 +180,7 @@ function fillGaps(frames: Frame[]): Frame[] {
         const t = s / (steps + 1);
         out.push([
           Math.round(a[0] + dt * t),
-          clamp8(a[1] + (b[1] - a[1]) * t),
+          clampPct(a[1] + (b[1] - a[1]) * t),
           clamp8(a[2] + (b[2] - a[2]) * t),
           clamp8(a[3] + (b[3] - a[3]) * t),
           clamp8(a[4] + (b[4] - a[4]) * t),
