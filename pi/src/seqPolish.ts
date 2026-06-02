@@ -54,9 +54,15 @@ const PREDIP_DEPTH = 0.6;        // hur djupt under golvet dippen drar (relativt
 // Beat-grid (pro-teknik): lås slag till ett jämnt BPM-rutnät istället för att
 // reagera på ryckig per-frame-energi. Varje rutnäts-slag får en skarp attack
 // och en musikalisk decay-svans — den klassiska ljus-"bumpen".
-const BEAT_BOOST = 1.35;         // topp-boost på slaget
+const BEAT_BOOST = 1.7;          // topp-boost på slaget (tydlig taktkänsla)
 const BEAT_DECAY = 0.5;          // additiv boost halveras varje frame efteråt
 const BEAT_TAIL = 5;             // antal frames decay-svansen sträcker sig
+
+// Mellan slagen: allt som inte är ett (grid-)beat ska vara mycket mjukare och
+// dämpas mot golvet så takten verkligen sticker ut på lampan.
+const NONBEAT_DAMP = 0.45;       // hur mycket icke-beat-dynamik bevaras (0=platt golv, 1=oförändrat)
+const NONBEAT_FALLOFF = 4;       // frames runt ett beat som lämnas oförändrade (skydda attack/svans)
+
 
 
 /**
