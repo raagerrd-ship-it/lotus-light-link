@@ -1298,6 +1298,7 @@ export function startConfigServer(port = 3050): void {
         writeLatMaxMs,
         fftPerSec, tickPerSec,
         tickOkPerSec, tickAbortNoMicPerSec, tickAbortNoChangePerSec, tickAbortNoDevicePerSec,
+        tickAbortBleBusyPerSec, tickSkippedBleBusyPerSec,
       };
     } catch { /* protocol module not loaded yet */ }
     res.json({
