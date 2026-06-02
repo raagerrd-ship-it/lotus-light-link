@@ -1472,10 +1472,13 @@ export function startConfigServer(port = 3050): void {
   // Lead/fördröjning (ms) för inspelad uppspelning. Negativt = fördröj ljuset
   // för att kompensera Sonos högtalar-latens vid låtstart.
   app.get('/api/playback-lead', (_req, res) => {
+    const engine = getEngine();
     res.json({ leadMs: engine ? engine.getPlaybackLeadMs() : 0 });
   });
 
   app.put('/api/playback-lead', (req, res) => {
+    const engine = requireEngine(res);
+    if (!engine) return;
     const { leadMs } = req.body;
     if (typeof leadMs !== 'number' || !Number.isFinite(leadMs)) {
       return res.status(400).json({ error: 'Need leadMs: number' });
