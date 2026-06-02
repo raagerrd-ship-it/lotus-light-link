@@ -65,6 +65,40 @@ let lastIdentified: { artist: string; track: string; key: string; at: number } |
 // uppspelningen inte avbryts mitt i.
 let previewUntil = 0;
 
+// ── Manuell sync-offset (ms): positivt = ljuset ligger FÖRE ljudet ──
+const SYNC_MS_MAX = 1000;
+function clampSync(ms: number): number {
+  if (!Number.isFinite(ms)) return 0;
+  return ms < -SYNC_MS_MAX ? -SYNC_MS_MAX : ms > SYNC_MS_MAX ? SYNC_MS_MAX : Math.round(ms);
+}
+const DEFAULT_LEAD_MS = 50;
+const storedSync = getItem('pb-sync-ms');
+let syncMs = storedSync != null ? clampSync(parseInt(storedSync, 10)) : DEFAULT_LEAD_MS;
+
+// ── Auto-synk ──
+// Kör reaktiv ALSA-mic ~5s i början av en känd låt, korskorrelerar live-ljus-
+// enveloppen mot RÅ-inspelningen och låser en auto-offset ovanpå manuell lead.
+let autoSync = getItem('autosync-enabled') !== 'false'; // default på
+const SYNC_WINDOW_MS = 5000;
+const SYNC_SEARCH_MS = 150;
+const SYNC_STEP_MS = 20;
+const SYNC_CENTER_BIAS = 0.0006;  // favorisera lag nära 0 (undvik grann-beat)
+const SYNC_MIN_SAMPLES = 40;
+const SYNC_MAX_SAMPLES = 400;
+const SYNC_MIN_SCORE = 0.25;
+
+let syncing = false;
+let syncSamples: Array<[number, number]> = []; // [posMs, pct]
+let syncDeadline = 0;                            // 0 = ej startat
+let syncHardCap = 0;
+let syncCorrSeq: number[][] | null = null;       // RÅ-referens för korrelation
+let syncPlaySeq: number[][] | null = null;       // polerad sekvens som ska spelas
+let lastSyncOffsetMs = 0;
+let lastSyncScore = 0;
+
+let lastAnchorPos = -1;
+
+
 
 function ensureDir(): void {
   if (!existsSync(SEQ_DIR)) mkdirSync(SEQ_DIR, { recursive: true });
