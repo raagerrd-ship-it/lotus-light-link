@@ -445,10 +445,29 @@ export function setRecording(on: boolean): void {
 export function setAutoPlay(on: boolean): void {
   autoPlay = on;
   setItem('autoplay-enabled', String(on));
-  if (!on && pbActive) {
+  if (!on && (pbActive || syncing)) {
+    cancelSync();
     pbActive = false;
     engine?.setPlaybackSequence(null);
   }
+}
+
+export function setAutoSync(on: boolean): void {
+  autoSync = on;
+  setItem('autosync-enabled', String(on));
+  if (!on) cancelSync();
+}
+
+/** Sätt manuell sync-offset (ms). Returnerar applicerat (clampat) värde. */
+export function setSyncOffset(ms: number): number {
+  syncMs = clampSync(ms);
+  setItem('pb-sync-ms', String(syncMs));
+  engine?.setPlaybackSyncMs(syncMs + lastSyncOffsetMs);
+  return syncMs;
+}
+
+export function getSyncOffset(): number {
+  return syncMs;
 }
 
 export function setAcrMode(on: boolean): void {
