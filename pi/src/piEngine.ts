@@ -758,6 +758,62 @@ export class PiLightEngine {
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
   }
 
+  /**
+   * Drop-detektor @100Hz på bas-energi. Drops är en lång-horisont-struktur:
+   * breakdown/uppbyggnad (lugnt parti) → plötslig bas-explosion. Skiljer sig
+   * från onset (70ms-transient) genom att kräva ett föregående nedbrutet parti.
+   * Triggar en stor vit punch-blixt (dropFlashUntil) som overridas i tickInner.
+   */
+  private processDrop(bassRms: number): void {
+    if (!this.cal.dropEnabled) return;
+    this.dropFrameCounter++;
+
+    // Tidsbaserade EMA:er @100Hz (dt=10ms): fast ~150ms, slow ~2.5s.
+    const FAST_ALPHA = 0.064;
+    const SLOW_ALPHA = 0.004;
+    if (this.bassSlow <= 0) {
+      this.bassFast = bassRms;
+      this.bassSlow = bassRms;
+    } else {
+      this.bassFast += FAST_ALPHA * (bassRms - this.bassFast);
+      this.bassSlow += SLOW_ALPHA * (bassRms - this.bassSlow);
+    }
+
+    const sens = this.cal.dropSensitivity > 0 ? this.cal.dropSensitivity : 1.0;
+    const BREAKDOWN_RATIO = 0.6;          // bassFast < 60% av baslinjen = lugnt parti
+    const MIN_BREAKDOWN_FRAMES = 40;      // ≥400ms lugnt innan ett drop kan triggas
+    const JUMP_FACTOR = 1.8 * sens;       // bassFast måste överstiga baslinjen så mycket
+    const ABS_BASS_FLOOR = 0.06;          // absolut energi → ingen drop i tystnad
+    const REFRACTORY_FRAMES = 400;        // ~4s mellan drops
+
+    // Spåra/erodera breakdown-minnet.
+    if (this.bassFast < this.bassSlow * BREAKDOWN_RATIO) {
+      if (this.breakdownFrames < 1000) this.breakdownFrames++;
+    } else if (this.breakdownFrames > 0) {
+      this.breakdownFrames -= 2; // erodera över ~1s när det blir högt igen
+      if (this.breakdownFrames < 0) this.breakdownFrames = 0;
+    }
+
+    const isDrop =
+      this.breakdownFrames >= MIN_BREAKDOWN_FRAMES &&
+      this.bassFast >= ABS_BASS_FLOOR &&
+      this.bassFast >= this.bassSlow * JUMP_FACTOR &&
+      (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+
+    if (isDrop) {
+      this.dropLastFrameIdx = this.dropFrameCounter;
+      this.breakdownFrames = 0;
+      this.dropFlashUntil = performance.now() + (this.cal.dropFlashMs ?? 220);
+      bleStatsState.dropCount++;
+      // Express-write: skicka full vit punch direkt så blixten sitter i takt.
+      if (this._bleOwner === 'active' && canWriteNow()) {
+        const result = sendToBLE(255, 255, 255, 100);
+        if (result === 'sent') this.lastSentPct = 100;
+      }
+    }
+  }
+
+
   private forceIdleNow(): void {
     const idle = loadIdleColor();
     const r = idle[0] | 0, g = idle[1] | 0, b = idle[2] | 0;
