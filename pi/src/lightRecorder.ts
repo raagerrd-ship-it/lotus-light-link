@@ -540,7 +540,7 @@ export function listSequences(): Array<{ key: string; frames: number; durationMs
   try {
     ensureDir();
     return readdirSync(SEQ_DIR)
-      .filter((f) => f.endsWith('.json') && !f.endsWith('.raw.json'))
+      .filter((f) => f.endsWith('.json') && !f.endsWith('.raw.json') && !f.endsWith('.analysis.json'))
       .map((f) => {
         const key = f.slice(0, -5);
         try {
