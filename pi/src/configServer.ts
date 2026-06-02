@@ -1226,6 +1226,8 @@ export function startConfigServer(port = 3050): void {
   let _lastTickAbortNoMic = 0;
   let _lastTickAbortNoChange = 0;
   let _lastTickAbortNoDevice = 0;
+  let _lastTickAbortBleBusy = 0;
+  let _lastTickSkippedBleBusy = 0;
 
   app.get('/api/mic/level', async (_req, res) => {
     const mic = getMic();
