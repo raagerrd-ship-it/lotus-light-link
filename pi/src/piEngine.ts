@@ -796,7 +796,6 @@ export class PiLightEngine {
       this.smoothed = 0;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
-      this._pbActive = false;  // playback hör till en spelande låt
       this._lastTickAtForFade = 0;
       this._lastSmoothAt = 0;
       this.stopLoop();
@@ -1330,11 +1329,8 @@ export class PiLightEngine {
       // analysen kan separera tysta partier (rumsbrus) från musik-nivå.
       if (this.autoTuneActive) this.recordAutoTuneSample(bands.totalRms);
 
-      // Warm-up auto-sync: medan lamporna körs reaktivt mäter vi lag mot RÅ-
-      // referensen. autoSyncEval låser upp uppspelningen när korrelationen håller.
-      if (this._pbActive && this._pbWarmup && this._autoSync) {
-        this.autoSyncSample(this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock));
-      }
+
+
 
 
       // ── 7b. Anti-flicker perceptuell deadband (Weber-Fechner) ──
