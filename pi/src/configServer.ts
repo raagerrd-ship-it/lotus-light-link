@@ -9,7 +9,7 @@ import { getItem, setItem, getStorageDiagnostics } from './storage.js';
 import {
   bleStats, BLE_BUILD_TAG,
   setDimmingGamma, getDimmingGamma,
-  getMinWriteIntervalMs, setMinWriteIntervalMs,
+  getSlotLeaseMs, setSlotLeaseMs,
   getAllSubsystemStates, getSubsystemState, getSubsystemTransitions, type SubsystemId,
 } from './ble/index.js';
 import type { GainCalPoint } from './alsaMic.js';
@@ -898,7 +898,7 @@ export function startConfigServer(port = 3050): void {
   // Detta endpoint exponerar samma värde under det gamla namnet för
   // bakåtkompatibilitet. Engine skriver över vid nästa setTickMs.
   app.get('/api/ble/rate-limit', (_req, res) => {
-    const ms = getMinWriteIntervalMs();
+    const ms = getSlotLeaseMs();
     res.json({ minWriteIntervalMs: ms, slotLeaseMs: ms, maxHz: +(1000 / ms).toFixed(1) });
   });
 
@@ -908,9 +908,9 @@ export function startConfigServer(port = 3050): void {
     if (!Number.isFinite(v) || v < 5 || v > 100) {
       return res.status(400).json({ error: 'minWriteIntervalMs must be 5–100 (number) — overrides slot-lease tills nästa setTickMs' });
     }
-    setMinWriteIntervalMs(v);
+    setSlotLeaseMs(v);
     setItem('ble-min-write-interval-ms', String(v));
-    res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), slotLeaseMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
+    res.json({ ok: true, minWriteIntervalMs: getSlotLeaseMs(), slotLeaseMs: getSlotLeaseMs(), maxHz: +(1000 / v).toFixed(1) });
   });
 
   // ─── BLE bench: auto-ramp tickMs (HÖG → LÅG) ───
