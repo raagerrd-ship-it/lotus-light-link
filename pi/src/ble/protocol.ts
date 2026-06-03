@@ -81,7 +81,7 @@ export type WriteResult =
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
-const BLE_DELTA_SKIP_ENABLED = process.env.BLE_NO_DELTA_SKIP !== 'true';
+
 
 // ── ACL-outstanding gate ──
 // HCI på BCM43438 (Pi Zero 2W / Pi3) rapporterar acl_max_pkt=7. Om host
@@ -108,10 +108,7 @@ export function setSlotLeaseMs(ms: number): void {
   bleStats.slotLeaseMs = slotLeaseMs;
 }
 
-// Legacy aliases — vissa callsites och API:er använder fortfarande
-// minWriteIntervalMs-namnet. Mappa till lease-slot.
-export function getMinWriteIntervalMs(): number { return slotLeaseMs; }
-export function setMinWriteIntervalMs(ms: number): void { setSlotLeaseMs(ms); }
+
 
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
 let lastWriteTime = 0;
@@ -138,8 +135,7 @@ export function resetLastSent(): void {
   bleStats.intervalSource = 'unknown';
 }
 
-export function getLastWriteTime(): number { return lastWriteTime; }
-export function setLastWriteTime(t: number): void { lastWriteTime = t; }
+
 
 /** Senast skickade RGB + brightness-scale (0–255). För UI-display (Output-färg). */
 export function getLastSent(): { r: number; g: number; b: number; brightness: number } | null {
@@ -220,7 +216,7 @@ let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
 let keepAliveSentCount = 0;
 
-export function getKeepAliveSentCount(): number { return keepAliveSentCount; }
+
 
 export function startKeepAlive(): void {
   stopKeepAlive();
@@ -333,13 +329,10 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  // Delta-skip AVSTÄNGD (2026-04-30, user-request "skicka alla paket som
-  // inte är helt identiska" → tolkat maximalt: skicka ALLT som passerar
-  // lease/ACL-gaten, även identiska. ACL-outstanding-gaten + tickMs styr
-  // takten, inte färgdelta. BLE_NO_DELTA_SKIP-env behålls som no-op-flag
-  // för bakåtkompat. Hack-symptomen kom från frames som dog som 'busy'
-  // i lease-gaten, inte från delta-skip.
-  void BLE_DELTA_SKIP_ENABLED;
+  // Delta-skip borttaget (2026-06): varje write som passerar lease/ACL-gaten
+  // skickas, även identiska färger. ACL-outstanding-gaten + tickMs styr takten.
+
+
 
   // Bygg buffer + fire-and-forget write
   const mode = device.mode ?? 'rgb';

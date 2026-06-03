@@ -227,13 +227,8 @@ let samplesReceived = 0;
 // effektiv alpha (slött ljud). Sedan togs båda bort → flimmer pga FFT-rate-
 // hack (10ms) aliaserades mot tick-takten (20ms). Nu: rå RMS levereras hit,
 // smoothing körs på tick-takt så filtret är synkat mot output-raten.
-//
-// setMicSmoothing() bevaras som no-op för bakåtkompatibilitet (engine kallar
-// den fortfarande från reloadCalibration() — billigare än att riva ut alla
-// callsites).
-export function setMicSmoothing(_attackAlpha: number, _releaseAlpha: number): void {
-  /* no-op — smoothing sker numera i engine.tickInner */
-}
+
+
 
 // Noise gate borttagen 2026-04-21: brightnessFloor + dynamics + perceptualGamma
 // i engine sköter redan tystnadströskeln, och den gamla gaten kvävde första
@@ -485,12 +480,7 @@ let currentDevice = process.env.ALSA_DEVICE ?? 'hw:0,0';
 let currentFormat: 'S16_LE' | 'S32_LE' = (process.env.ALSA_FORMAT as any) ?? 'S32_LE';
 const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 
-/** No-op: HOP_SIZE är hårdkodat till 512 (~10.7ms) och frikopplat från tickMs.
- *  Engine.tickInner gatear själv på tickMs i onFFTFrame, så vi behöver inte
- *  ändra FFT-takten när användaren drar i tick-slidern. Behållen för API-kompat. */
-export function setTickHopMs(_tickMs: number): void {
-  // intentionally empty — FFT körs alltid var 10.7ms, engine gatear på tickMs
-}
+
 
 // Software mic gain — multiplier applied to raw PCM samples before processing.
 // ANTINGEN/ELLER-LOGIK:

@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, setTickHopMs, setMicSmoothing, stopMic } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, stopMic } from './alsaMic.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
 import type { WriteResult } from './ble/protocol.js';
 import { bleStats as bleStatsState } from './ble/state.js';
@@ -402,50 +402,7 @@ export class PiLightEngine {
   // Analys-tap: anropas per FFT-frame (~100Hz) med RÅ band/flux FÖRE ljus-estetik.
   // lightRecorder buffrar detta som oförvrängd käll-ström för offline-render.
   private _analysisTap: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null = null;
-  // Playback-state: när aktiv hoppar tickInner över den reaktiva pathen och
-  // spelar upp en inspelad sekvens synkad mot Sonos-position.
-  private _pbActive = false;
-  private _pbTimes: Float64Array = new Float64Array(0);
-  private _pbPct: Uint8Array = new Uint8Array(0);
-  private _pbR: Uint8Array = new Uint8Array(0);
-  private _pbG: Uint8Array = new Uint8Array(0);
-  private _pbB: Uint8Array = new Uint8Array(0);
-  private _pbCount = 0;
-  // Frame-stegnings-cursor: senast skickade index. Stegar framåt en frame i taget
-  // så VARJE lagrad frame skickas till BLE (ingen position-sampling som hoppar).
-  private _pbCursor = -1;
-  private _pbAnchorPosMs = 0;
-  private _pbAnchorClock = 0;
-  /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
-  private _pbSyncMs = 0;
-  /** Legacy lead-offset för äldre motor-auto-sync. Offline-playback använder i
-   *  praktiken lightRecorder:s _pbSyncMs så stale persisted lead inte dubblar
-   *  offseten. */
-  private _pbLeadMs = (() => {
-    const v = parseInt(getItem('playback-lead-ms') ?? '', 10);
-    return Number.isFinite(v) ? v : 0;
-  })();
-
-  // ── Auto-sync ──
-  // Mäter Sonos högtalar-latens automatiskt genom att korskorrelera live-mic-
-  // energin mot RÅ-inspelningens pct-kurva (samma mic-pipeline → bäst matchning)
-  // och glider _pbLeadMs mot bästa lag.
-  private _autoSync = (getItem('playback-autosync') ?? 'true') !== 'false';
-  private static readonly AS_N = 160;            // ~3.2 s historik @ 50 Hz
-  private _asPos = new Float64Array(PiLightEngine.AS_N);  // Sonos-pos (utan lead)
-  private _asEng = new Float64Array(PiLightEngine.AS_N);  // live mic-energi-proxy
-  private _asCount = 0;
-  private _asHead = 0;
-  private _asLastEvalClock = 0;
-  private _asPersistedLead = 0;
-  private _asConfidence = 0;
-  // RÅ-referens för korrelation (kan saknas → fall tillbaka till uppspelnings-pct).
-  private _pbRefTimes: Float64Array = new Float64Array(0);
-  private _pbRefPct: Uint8Array = new Uint8Array(0);
-  private _pbRefCount = 0;
-  // Warm-up: kör reaktivt (live mic) tills auto-sync låst, byt sen till uppspelning.
-  private _pbWarmup = false;
-  private _asLockStreak = 0;
+  // Offline-playback/auto-sync borttaget (2026-06): allt körs realtime.
 
   constructor(tickMs = 25) {
     this.tickMs = tickMs;
@@ -454,9 +411,7 @@ export class PiLightEngine {
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
-    setTickHopMs(tickMs);
     setSlotLeaseMs(5); // floor: släpp fram alla frames ACL-gaten tillåter (user: skicka allt som inte är identiskt → backpressure ska komma från controller, inte cadence-cap)
-    setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -467,7 +422,6 @@ export class PiLightEngine {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
-    setTickHopMs(ms);
     setSlotLeaseMs(5); // floor — se constructor
   }
 
@@ -502,160 +456,8 @@ export class PiLightEngine {
     this._analysisTap = cb;
   }
 
-  isPlaybackActive(): boolean { return this._pbActive; }
-
-  /** Läs/sätt lead-offset (ms) för inspelad uppspelning. Persistas. */
-  getPlaybackLeadMs(): number { return this._pbLeadMs; }
-  setPlaybackLeadMs(ms: number): void {
-    this._pbLeadMs = Math.round(ms);
-    this._asPersistedLead = this._pbLeadMs;
-    setItem('playback-lead-ms', String(this._pbLeadMs));
-  }
-
-  /** Auto-sync på/av + status (uppmätt lead och korrelations-styrka). */
-  isAutoSync(): boolean { return this._autoSync; }
-  setAutoSync(on: boolean): void {
-    this._autoSync = on;
-    setItem('playback-autosync', String(on));
-    if (on) { this._asCount = 0; this._asHead = 0; }
-  }
-  getAutoSyncStatus(): { enabled: boolean; leadMs: number; confidence: number; warmup: boolean } {
-    return {
-      enabled: this._autoSync,
-      leadMs: this._pbLeadMs,
-      confidence: Math.round(this._asConfidence * 100) / 100,
-      warmup: this._pbWarmup,
-    };
-  }
-
-  /** Aktivera playback av en inspelad sekvens.
-   *  frames = uppspelnings-sekvensen (polerad). rawRef = rå-inspelning som
-   *  korrelations-referens. warmup = kör reaktivt tills auto-sync låst.
-   *  null = reaktiv mode. */
-  setPlaybackSequence(_frames: number[][] | null, _rawRef: number[][] | null = null, _warmup = true): void {
-    // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
-    // Behålls som no-op så ev. äldre anropare inte kraschar.
-    this._pbActive = false;
-    this._pbWarmup = false;
-    this._pbCount = 0;
-    this._pbRefCount = 0;
-  }
-
-  /** Ankra playback-position mot Sonos positionMs (interpoleras lokalt). */
-  updatePlaybackPosition(positionMs: number): void {
-    this._pbAnchorPosMs = positionMs;
-    this._pbAnchorClock = performance.now();
-    this._pbCursor = -1; // seek/re-ankring → snappa cursorn till nya positionen
-  }
-
-  /** Sätt sync-offset (ms): positivt = ljuset ligger före ljudet. */
-  setPlaybackSyncMs(ms: number): void { this._pbSyncMs = Number.isFinite(ms) ? ms : 0; }
-
-  /** Hitta index i en sekvens vars tMs ≤ posMs (närmast föregående). */
-  private indexForPosIn(times: Float64Array, count: number, posMs: number): number {
-    const hiIdx = count - 1;
-    if (hiIdx < 0) return 0;
-    if (posMs <= times[0]) return 0;
-    if (posMs >= times[hiIdx]) return hiIdx;
-    let lo = 0, hi = hiIdx, idx = 0;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (times[mid] <= posMs) { idx = mid; lo = mid + 1; }
-      else hi = mid - 1;
-    }
-    return idx;
-  }
-
-  /** Index i uppspelnings-sekvensen (det som faktiskt skickas till BLE). */
-  private indexForPos(posMs: number): number {
-    return this.indexForPosIn(this._pbTimes, this._pbCount, posMs);
-  }
-
-  /** Live mic-energi-proxy [0..1] (samma mix som reaktiva pipen, pre-dynamics). */
-  private liveEnergyProxy(): number {
-    const bands = getLatestBands();
-    if (!bands || !Number.isFinite(bands.totalRms)) return -1;
-    const w = this.cal.bassWeight;
-    return normalizeFixed(bands.bassRms) * w + normalizeFixed(bands.midHiRms) * (1 - w);
-  }
-
-  /** Samla ett auto-sync-sampel och utvärdera periodvis. */
-  private autoSyncSample(rawPos: number): void {
-    const eng = this.liveEnergyProxy();
-    if (eng < 0) return;
-    const cap = PiLightEngine.AS_N;
-    this._asPos[this._asHead] = rawPos;
-    this._asEng[this._asHead] = eng;
-    this._asHead = (this._asHead + 1) % cap;
-    if (this._asCount < cap) this._asCount++;
-    const now = performance.now();
-    if (now - this._asLastEvalClock >= 750 && this._asCount >= cap * 0.8) {
-      this._asLastEvalClock = now;
-      this.autoSyncEval();
-    }
-  }
-
-  /** Korskorrelera live-energi mot RÅ-referensens pct över kandidat-latenser och
-   *  glid _pbLeadMs mot bästa lag. D = högtalar-latens (ms) → lead = -D.
-   *  Under warm-up: lås upp uppspelning först när korrelationen håller i sig. */
-  private autoSyncEval(): void {
-    const cap = PiLightEngine.AS_N, n = this._asCount;
-    const refT = this._pbRefCount ? this._pbRefTimes : this._pbTimes;
-    const refP = this._pbRefCount ? this._pbRefPct : this._pbPct;
-    const refN = this._pbRefCount || this._pbCount;
-    let bestD = 0, bestCorr = -2;
-    for (let D = -500; D <= 500; D += 25) {
-      let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
-      for (let k = 0; k < n; k++) {
-        const i = (this._asHead - 1 - k + cap * 2) % cap;
-        const e = this._asEng[i];
-        const p = refP[this.indexForPosIn(refT, refN, this._asPos[i] - D)] / 100;
-        sx += e; sy += p; sxx += e * e; syy += p * p; sxy += e * p;
-      }
-      const cov = sxy - (sx * sy) / n;
-      const vx = sxx - (sx * sx) / n;
-      const vy = syy - (sy * sy) / n;
-      const denom = Math.sqrt(vx * vy);
-      const corr = denom > 1e-9 ? cov / denom : 0;
-      if (corr > bestCorr) { bestCorr = corr; bestD = D; }
-    }
-    this._asConfidence = bestCorr;
-    if (bestCorr < 0.35) { this._asLockStreak = 0; return; } // svag korrelation → behåll
-    const targetLead = -bestD;
-    if (this._pbWarmup) {
-      // Hoppa direkt till uppmätt lag (ingen EMA-trög uppstart) och lås efter
-      // två stabila mätningar i rad, byt sen från reaktivt → uppspelning.
-      this._pbLeadMs = Math.max(-2000, Math.min(2000, targetLead));
-      if (++this._asLockStreak >= 2) this._pbWarmup = false;
-    } else {
-      this._pbLeadMs = Math.max(-2000, Math.min(2000, Math.round(this._pbLeadMs + 0.3 * (targetLead - this._pbLeadMs))));
-    }
-    // SD-skonsam persistering: spara bara vid märkbar drift.
-    if (Math.abs(this._pbLeadMs - this._asPersistedLead) >= 15) {
-      this._asPersistedLead = this._pbLeadMs;
-      setItem('playback-lead-ms', String(this._pbLeadMs));
-    }
-  }
-
-  /** Spela upp sekvensen positionslåst mot Sonos-klockan.
-   *  Viktigt: skicka aktuell frame direkt, inte "catch-up" genom gamla frames.
-   *  Annars hamnar offline-ljuset efter vid BLE-busy/missade ticks och känns
-   *  både ryckigt och ur synk. */
-  private playbackTick(): void {
-    const rawPos = this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock);
-    // Kontinuerlig engine-auto-sync är avsiktligt inte aktiv här. Offline-sync
-    // ägs av lightRecorder (kort mic↔råsekvens-mätning före playback) och
-    // appliceras via _pbSyncMs. Att samtidigt glida _pbLeadMs under playback kan
-    // låsa på grannbeats och skapa drift.
-    const target = this.indexForPos(rawPos + this._pbSyncMs);
-    const idx = target;
-    this._pbCursor = idx;
-
-    const pct = this._pbPct[idx];
-    const result = sendToBLE(this._pbR[idx], this._pbG[idx], this._pbB[idx], pct);
-    if (result === 'sent') bleStatsState.tickOkCount++;
-    this.lastSentPct = pct;
-  }
+  // Offline-playback + auto-sync (setPlaybackSequence/updatePlaybackPosition/
+  // playbackTick/autoSync*) borttaget 2026-06 — allt körs realtime.
 
   private initOnsetBuffer(tickMs: number): void {
     this.onsetSize = Math.max(3, ((175 / tickMs + 0.5) | 0));
@@ -994,7 +796,6 @@ export class PiLightEngine {
       this.smoothed = 0;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
-      this._pbActive = false;  // playback hör till en spelande låt
       this._lastTickAtForFade = 0;
       this._lastSmoothAt = 0;
       this.stopLoop();
@@ -1035,7 +836,6 @@ export class PiLightEngine {
       this.cal.perceptualGamma = 0;
     }
     this.tc = computeTickConstants(this.tickMs, this.cal);
-    setMicSmoothing(this.cal.attackAlpha, this.cal.releaseAlpha);
   }
 
   /**
@@ -1529,11 +1329,8 @@ export class PiLightEngine {
       // analysen kan separera tysta partier (rumsbrus) från musik-nivå.
       if (this.autoTuneActive) this.recordAutoTuneSample(bands.totalRms);
 
-      // Warm-up auto-sync: medan lamporna körs reaktivt mäter vi lag mot RÅ-
-      // referensen. autoSyncEval låser upp uppspelningen när korrelationen håller.
-      if (this._pbActive && this._pbWarmup && this._autoSync) {
-        this.autoSyncSample(this._pbAnchorPosMs + (performance.now() - this._pbAnchorClock));
-      }
+
+
 
 
       // ── 7b. Anti-flicker perceptuell deadband (Weber-Fechner) ──

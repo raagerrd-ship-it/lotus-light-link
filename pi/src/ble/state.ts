@@ -146,7 +146,7 @@ export function isDemandActive(): boolean { return false; }
 // ── Stats (used by protocol.ts + /api/ble/output + /api/mic/level) ──
 export const bleStats = {
   sentCount: 0,
-  skipDeltaCount: 0,
+  
   skipBusyCount: 0,           // total busy (lease ELLER controller-outstanding)
   skipInFlightCount: 0,       // legacy: writePending
   skipLeaseLockedCount: 0,    // busy pga tick-lease ej utgången

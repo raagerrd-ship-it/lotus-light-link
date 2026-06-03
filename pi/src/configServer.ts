@@ -9,7 +9,7 @@ import { getItem, setItem, getStorageDiagnostics } from './storage.js';
 import {
   bleStats, BLE_BUILD_TAG,
   setDimmingGamma, getDimmingGamma,
-  getMinWriteIntervalMs, setMinWriteIntervalMs,
+  getSlotLeaseMs, setSlotLeaseMs,
   getAllSubsystemStates, getSubsystemState, getSubsystemTransitions, type SubsystemId,
 } from './ble/index.js';
 import type { GainCalPoint } from './alsaMic.js';
@@ -898,7 +898,7 @@ export function startConfigServer(port = 3050): void {
   // Detta endpoint exponerar samma värde under det gamla namnet för
   // bakåtkompatibilitet. Engine skriver över vid nästa setTickMs.
   app.get('/api/ble/rate-limit', (_req, res) => {
-    const ms = getMinWriteIntervalMs();
+    const ms = getSlotLeaseMs();
     res.json({ minWriteIntervalMs: ms, slotLeaseMs: ms, maxHz: +(1000 / ms).toFixed(1) });
   });
 
@@ -908,9 +908,9 @@ export function startConfigServer(port = 3050): void {
     if (!Number.isFinite(v) || v < 5 || v > 100) {
       return res.status(400).json({ error: 'minWriteIntervalMs must be 5–100 (number) — overrides slot-lease tills nästa setTickMs' });
     }
-    setMinWriteIntervalMs(v);
+    setSlotLeaseMs(v);
     setItem('ble-min-write-interval-ms', String(v));
-    res.json({ ok: true, minWriteIntervalMs: getMinWriteIntervalMs(), slotLeaseMs: getMinWriteIntervalMs(), maxHz: +(1000 / v).toFixed(1) });
+    res.json({ ok: true, minWriteIntervalMs: getSlotLeaseMs(), slotLeaseMs: getSlotLeaseMs(), maxHz: +(1000 / v).toFixed(1) });
   });
 
   // ─── BLE bench: auto-ramp tickMs (HÖG → LÅG) ───
@@ -1213,7 +1213,7 @@ export function startConfigServer(port = 3050): void {
   // --- Live mic level ---
   let _lastSampleTs = 0;
   let _lastSent = 0;
-  let _lastSkipDelta = 0;
+  
   let _lastSkipBusy = 0;
   let _lastSkipInFlight = 0;
   let _lastSkipRateLimit = 0;
@@ -1251,7 +1251,7 @@ export function startConfigServer(port = 3050): void {
       const perSec = (cur: number, prev: number) => dt > 0 ? Math.round((cur - prev) / dt) : 0;
 
       const sentPerSec = perSec(bleStats.sentCount, _lastSent);
-      const skipDeltaPerSec = perSec(bleStats.skipDeltaCount, _lastSkipDelta);
+      
       const skipBusyPerSec = perSec(bleStats.skipBusyCount, _lastSkipBusy);
       const skipInFlightPerSec = perSec(bleStats.skipInFlightCount ?? 0, _lastSkipInFlight);
       const skipRateLimitPerSec = perSec(bleStats.skipRateLimitCount ?? 0, _lastSkipRateLimit);
@@ -1275,7 +1275,7 @@ export function startConfigServer(port = 3050): void {
 
       _lastSampleTs = now;
       _lastSent = bleStats.sentCount;
-      _lastSkipDelta = bleStats.skipDeltaCount;
+      
       _lastSkipBusy = bleStats.skipBusyCount;
       _lastSkipInFlight = bleStats.skipInFlightCount ?? 0;
       _lastSkipRateLimit = bleStats.skipRateLimitCount ?? 0;
@@ -1292,7 +1292,7 @@ export function startConfigServer(port = 3050): void {
       _lastTickSkippedBleBusy = bleStats.tickSkippedBleBusyCount ?? 0;
 
       ble = {
-        sentPerSec, skipDeltaPerSec, skipBusyPerSec, skipInFlightPerSec,
+        sentPerSec, skipBusyPerSec, skipInFlightPerSec,
         skipRateLimitPerSec, fftDroppedPerSec, writeFailPerSec, writeStuckPerSec,
         writeLatAvgMs: bleStats.writeLatAvgMs,
         writeLatMaxMs,
@@ -1340,7 +1340,7 @@ export function startConfigServer(port = 3050): void {
       b: d.finalB,
       brightness: d.brightnessPct,
       sentCount: bleStats.sentCount,
-      skipDeltaCount: bleStats.skipDeltaCount,
+      
       skipBusyCount: bleStats.skipBusyCount,
       skipLeaseLockedCount: bleStats.skipLeaseLockedCount ?? 0,
       skipControllerBusyCount: bleStats.skipControllerBusyCount ?? 0,
