@@ -45,9 +45,9 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 30;   // 33 Hz — matches BLEDOM01-class lamp's processing
-                      // ceiling. Higher tickMs causes ~25% busy aborts on
-                      // this hardware; 33 Hz gives clean uninterrupted flow.
+const TICK_MS = 25;   // 40 Hz — tätare, mjukare uppdatering. BLE-länken hinner
+                      // med utan kö (verifierat live: queued=0, skipBusy=0,
+                      // outstanding max 5 av tak 6).
 
 // --- Lazy module references (filled by starters) ---
 type AlsaMicModule = typeof import('./alsaMic.js');
