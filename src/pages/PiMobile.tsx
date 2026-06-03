@@ -1481,7 +1481,7 @@ function GlobalSettingsView({
         </label>
       </section>
 
-      <RecordPlaybackPanel piBase={piBase} />
+
 
     </div>
   );
