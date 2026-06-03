@@ -108,10 +108,7 @@ export function setSlotLeaseMs(ms: number): void {
   bleStats.slotLeaseMs = slotLeaseMs;
 }
 
-// Legacy aliases — vissa callsites och API:er använder fortfarande
-// minWriteIntervalMs-namnet. Mappa till lease-slot.
-export function getMinWriteIntervalMs(): number { return slotLeaseMs; }
-export function setMinWriteIntervalMs(ms: number): void { setSlotLeaseMs(ms); }
+
 
 let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
 let lastWriteTime = 0;
@@ -138,8 +135,7 @@ export function resetLastSent(): void {
   bleStats.intervalSource = 'unknown';
 }
 
-export function getLastWriteTime(): number { return lastWriteTime; }
-export function setLastWriteTime(t: number): void { lastWriteTime = t; }
+
 
 /** Senast skickade RGB + brightness-scale (0–255). För UI-display (Output-färg). */
 export function getLastSent(): { r: number; g: number; b: number; brightness: number } | null {
@@ -220,7 +216,7 @@ let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailCount = 0;
 let keepAliveSentCount = 0;
 
-export function getKeepAliveSentCount(): number { return keepAliveSentCount; }
+
 
 export function startKeepAlive(): void {
   stopKeepAlive();
