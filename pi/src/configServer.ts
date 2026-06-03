@@ -1213,7 +1213,7 @@ export function startConfigServer(port = 3050): void {
   // --- Live mic level ---
   let _lastSampleTs = 0;
   let _lastSent = 0;
-  let _lastSkipDelta = 0;
+  
   let _lastSkipBusy = 0;
   let _lastSkipInFlight = 0;
   let _lastSkipRateLimit = 0;
@@ -1251,7 +1251,7 @@ export function startConfigServer(port = 3050): void {
       const perSec = (cur: number, prev: number) => dt > 0 ? Math.round((cur - prev) / dt) : 0;
 
       const sentPerSec = perSec(bleStats.sentCount, _lastSent);
-      const skipDeltaPerSec = perSec(bleStats.skipDeltaCount, _lastSkipDelta);
+      
       const skipBusyPerSec = perSec(bleStats.skipBusyCount, _lastSkipBusy);
       const skipInFlightPerSec = perSec(bleStats.skipInFlightCount ?? 0, _lastSkipInFlight);
       const skipRateLimitPerSec = perSec(bleStats.skipRateLimitCount ?? 0, _lastSkipRateLimit);
@@ -1275,7 +1275,7 @@ export function startConfigServer(port = 3050): void {
 
       _lastSampleTs = now;
       _lastSent = bleStats.sentCount;
-      _lastSkipDelta = bleStats.skipDeltaCount;
+      
       _lastSkipBusy = bleStats.skipBusyCount;
       _lastSkipInFlight = bleStats.skipInFlightCount ?? 0;
       _lastSkipRateLimit = bleStats.skipRateLimitCount ?? 0;
@@ -1292,7 +1292,7 @@ export function startConfigServer(port = 3050): void {
       _lastTickSkippedBleBusy = bleStats.tickSkippedBleBusyCount ?? 0;
 
       ble = {
-        sentPerSec, skipDeltaPerSec, skipBusyPerSec, skipInFlightPerSec,
+        sentPerSec, skipBusyPerSec, skipInFlightPerSec,
         skipRateLimitPerSec, fftDroppedPerSec, writeFailPerSec, writeStuckPerSec,
         writeLatAvgMs: bleStats.writeLatAvgMs,
         writeLatMaxMs,
@@ -1340,7 +1340,7 @@ export function startConfigServer(port = 3050): void {
       b: d.finalB,
       brightness: d.brightnessPct,
       sentCount: bleStats.sentCount,
-      skipDeltaCount: bleStats.skipDeltaCount,
+      
       skipBusyCount: bleStats.skipBusyCount,
       skipLeaseLockedCount: bleStats.skipLeaseLockedCount ?? 0,
       skipControllerBusyCount: bleStats.skipControllerBusyCount ?? 0,
