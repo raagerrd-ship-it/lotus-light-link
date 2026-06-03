@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Settings, ArrowLeft, Bluetooth, Music, Save, Check, Mic, Lightbulb, Zap, Search, X, Loader2, Activity, Download, Timer } from "lucide-react";
-import { Link } from "react-router-dom";
+
 import { apiBase } from "@/lib/apiBase";
 import { SubsystemStartupPanel } from "@/components/SubsystemStartupPanel";
 import { BleControlPanel } from "@/components/BleControlPanel";
@@ -1332,134 +1332,7 @@ function GainCalibrationPanel({
   );
 }
 
-/* ── Record & Replay: lärda ljus-sekvenser per låt ── */
-function RecordPlaybackPanel({ piBase }: { piBase: string }) {
-  const [recording, setRecording] = useState(false);
-  const [autoPlay, setAutoPlay] = useState(false);
-  const [acrEnabled, setAcrEnabled] = useState(false);
-  const [lastId, setLastId] = useState<{ artist: string; track: string } | null>(null);
-  const [seqs, setSeqs] = useState<{ key: string; frames: number; durationMs: number }[]>([]);
 
-  const refresh = useCallback(() => {
-    fetch(`${piBase}/api/record`, { signal: AbortSignal.timeout(2000) })
-      .then(r => r.json())
-      .then(d => { setRecording(!!d.recording); setAutoPlay(!!d.autoPlay); })
-      .catch(() => {});
-    fetch(`${piBase}/api/acr`, { signal: AbortSignal.timeout(2000) })
-      .then(r => r.json())
-      .then(d => {
-        setAcrEnabled(!!d.acrEnabled);
-        setLastId(d.lastIdentified ? { artist: d.lastIdentified.artist, track: d.lastIdentified.track } : null);
-      })
-      .catch(() => {});
-    fetch(`${piBase}/api/light-seq/list`, { signal: AbortSignal.timeout(2000) })
-      .then(r => r.json())
-      .then(d => setSeqs(Array.isArray(d.sequences) ? d.sequences : []))
-      .catch(() => {});
-  }, [piBase]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  const toggleRecording = () => {
-    const next = !recording;
-    setRecording(next);
-    fetch(`${piBase}/api/record`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recording: next }),
-    }).then(() => refresh()).catch(() => {});
-  };
-
-  const toggleAutoPlay = () => {
-    const next = !autoPlay;
-    setAutoPlay(next);
-    fetch(`${piBase}/api/playback`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ autoPlay: next }),
-    }).then(() => refresh()).catch(() => {});
-  };
-
-  const toggleAcr = () => {
-    const next = !acrEnabled;
-    setAcrEnabled(next);
-    fetch(`${piBase}/api/acr`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: next }),
-    }).then(() => refresh()).catch(() => {});
-  };
-
-  const del = (key: string) => {
-    fetch(`${piBase}/api/light-seq/${encodeURIComponent(key)}`, { method: 'DELETE' })
-      .then(() => refresh()).catch(() => {});
-  };
-
-  const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
-    <button
-      onClick={onClick}
-      className={`w-12 h-7 rounded-full transition-colors relative shrink-0 ${on ? 'bg-green-500' : 'bg-secondary border border-border'}`}
-    >
-      <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${on ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
-    </button>
-  );
-
-  return (
-    <section className="mb-8">
-      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljus-sekvenser</h2>
-
-      <label className="flex items-center justify-between mb-3">
-        <div>
-          <div className="text-sm">● Spela in ljus-sekvenser</div>
-          <p className="text-[10px] text-muted-foreground">Lär in ljus-showen för låtar som spelas</p>
-        </div>
-        <Toggle on={recording} onClick={toggleRecording} />
-      </label>
-
-      <label className="flex items-center justify-between mb-3">
-        <div>
-          <div className="text-sm">▶ Auto-spela kända låtar</div>
-          <p className="text-[10px] text-muted-foreground">Spela upp lärd sekvens exakt-synkat när låten återkommer</p>
-        </div>
-        <Toggle on={autoPlay} onClick={toggleAutoPlay} />
-      </label>
-
-      <label className="flex items-center justify-between mb-3">
-        <div>
-          <div className="text-sm">♪ Känn igen låt (ACRCloud)</div>
-          <p className="text-[10px] text-muted-foreground">Identifiera låtar via mikrofonen när Sonos-metadata saknas (TV/extern källa)</p>
-          {lastId && (
-            <p className="text-[10px] text-primary mt-0.5">Senast: {lastId.artist ? `${lastId.artist} — ` : ''}{lastId.track}</p>
-          )}
-        </div>
-        <Toggle on={acrEnabled} onClick={toggleAcr} />
-      </label>
-
-
-      {seqs.length > 0 && (
-        <div className="space-y-1.5 mt-2">
-          {seqs.map(s => (
-            <div key={s.key} className="flex items-center justify-between gap-2 bg-secondary/50 rounded-lg px-3 py-2">
-              <div className="min-w-0">
-                <div className="text-xs truncate">{s.key.replace('__', ' — ')}</div>
-                <div className="text-[10px] text-muted-foreground">{Math.round(s.durationMs / 1000)}s · {s.frames} frames</div>
-              </div>
-              <button onClick={() => del(s.key)} className="text-[11px] text-destructive active:scale-95 shrink-0">Radera</button>
-            </div>
-          ))}
-        </div>
-      )}
-      {seqs.length === 0 && (
-        <p className="text-[10px] text-muted-foreground mt-1">Inga inspelade sekvenser än.</p>
-      )}
-
-      <Link to="/pi-mobile/song" className="inline-block mt-3 text-xs text-primary active:scale-95">
-        ✨ Öppna Låt-studio →
-      </Link>
-    </section>
-  );
-}
-
-
-
-/* ── Global Settings View (motor, mic, sonos, BLE test) ── */
 function GlobalSettingsView({
   tickMs, setTickMs,
   sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
@@ -1608,7 +1481,7 @@ function GlobalSettingsView({
         </label>
       </section>
 
-      <RecordPlaybackPanel piBase={piBase} />
+
 
     </div>
   );

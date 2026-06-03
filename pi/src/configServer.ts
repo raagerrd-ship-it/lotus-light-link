@@ -1451,27 +1451,8 @@ export function startConfigServer(port = 3050): void {
   });
 
   // --- Record / Playback BORTTAGET (2026-06-02) ---
-  // Inspelning/offline-playback är avvecklad; allt körs realtime. Endpoints
-  // behålls som inerta stubbar så äldre UI-klienter inte kraschar.
-  const recorderDisabled = {
-    recording: false, autoPlay: false, acr: false, autoSync: false,
-    syncing: false, lastSyncOffsetMs: 0, lastSyncScore: 0, disabled: true,
-  };
-  app.get('/api/record', (_req, res) => res.json(recorderDisabled));
-  app.put('/api/record', (_req, res) => res.json(recorderDisabled));
-  app.get('/api/playback', (_req, res) => res.json(recorderDisabled));
-  app.put('/api/playback', (_req, res) => res.json(recorderDisabled));
-  app.get('/api/playback-sync', (_req, res) => res.json({ enabled: false, leadMs: 0, confidence: 0, warmup: false, disabled: true }));
-  app.put('/api/playback-sync', (_req, res) => res.json({ enabled: false, leadMs: 0, confidence: 0, warmup: false, disabled: true }));
-  app.put('/api/playback/sync', (_req, res) => res.json({ syncMs: 0, disabled: true }));
-  app.put('/api/autosync', (_req, res) => res.json(recorderDisabled));
-  app.get('/api/light-seq/list', (_req, res) => res.json({ sequences: [] }));
-  app.delete('/api/light-seq/:key', (_req, res) => res.status(404).json({ ok: false, disabled: true }));
-  app.get('/api/light-seq/:key', (_req, res) => res.status(404).json({ disabled: true }));
-  app.post('/api/light-seq/:key/preview', (_req, res) => res.status(404).json({ ok: false, disabled: true }));
-  app.post('/api/light-seq/:key/revert', (_req, res) => res.status(404).json({ ok: false, disabled: true }));
-  app.get('/api/acr', (_req, res) => res.json({ enabled: false, disabled: true }));
-  app.put('/api/acr', (_req, res) => res.json({ enabled: false, disabled: true }));
+  // Inspelning/offline-playback och låt-studio är helt borttagna (2026-06-03).
+
 
 
 
