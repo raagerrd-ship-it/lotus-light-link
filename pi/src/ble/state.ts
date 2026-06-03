@@ -160,9 +160,6 @@ export const bleStats = {
   controllerOutstandingCount: 0, // aktuellt antal outstanding paket i noble/HCI
   outstandingMaxObserved: 0,  // high-water mark sedan engine-start (post-deploy signal: nådde gaten taket?)
   outstandingAgeMs: 0,        // hur länge senaste observerade outstanding-paket varit ute
-  // Sub-frame onset express path (2026-04-29):
-  onsetExpressCount: 0,        // antal sub-frame writes triggade av detected onset
-  onsetExpressBusyCount: 0,    // antal gånger express-write blockerades av lease/ACL-gate
   // adaptiveReleaseAlphaMax borttagen 2026-05-04 — adaptive release-boost slopad
   slotLeaseMs: 0,              // mirror av aktuell setSlotLeaseMs() — synlig effektiv lease
   lastStuckReason: null as string | null,
