@@ -81,7 +81,7 @@ export type WriteResult =
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
-const BLE_DELTA_SKIP_ENABLED = process.env.BLE_NO_DELTA_SKIP !== 'true';
+
 
 // ── ACL-outstanding gate ──
 // HCI på BCM43438 (Pi Zero 2W / Pi3) rapporterar acl_max_pkt=7. Om host
@@ -333,13 +333,10 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   const cb = (b * scale + 0.5) | 0;
   const cbr = (scale * 0xff + 0.5) | 0;
 
-  // Delta-skip AVSTÄNGD (2026-04-30, user-request "skicka alla paket som
-  // inte är helt identiska" → tolkat maximalt: skicka ALLT som passerar
-  // lease/ACL-gaten, även identiska. ACL-outstanding-gaten + tickMs styr
-  // takten, inte färgdelta. BLE_NO_DELTA_SKIP-env behålls som no-op-flag
-  // för bakåtkompat. Hack-symptomen kom från frames som dog som 'busy'
-  // i lease-gaten, inte från delta-skip.
-  void BLE_DELTA_SKIP_ENABLED;
+  // Delta-skip borttaget (2026-06): varje write som passerar lease/ACL-gaten
+  // skickas, även identiska färger. ACL-outstanding-gaten + tickMs styr takten.
+
+
 
   // Bygg buffer + fire-and-forget write
   const mode = device.mode ?? 'rgb';
