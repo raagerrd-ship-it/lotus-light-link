@@ -10,7 +10,7 @@
 import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
-import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
+import { brightMaxBuf, stopKeepAlive, resetLastSent, setReconnectTrigger } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
@@ -58,6 +58,13 @@ export function setEngineBleCallbacks(onConnected: () => void, onDisconnected: (
   _onConnected = onConnected;
   _onDisconnected = onDisconnected;
 }
+
+// Wire write-fail/keep-alive-fail teardown → auto-reconnect-loopen. Utan denna
+// är _triggerReconnect i protocol.ts null: en skrivfel-teardown river länken
+// (removeAllListeners('disconnect') + setDevice(null) + disconnectAsync) men
+// återansluter aldrig → lampan mörk tills omstart. scheduleAutoReconnect har
+// interna guards som respekterar manuell disconnect-policyn.
+setReconnectTrigger(() => scheduleAutoReconnect());
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
