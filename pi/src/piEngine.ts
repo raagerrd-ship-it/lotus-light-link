@@ -402,50 +402,7 @@ export class PiLightEngine {
   // Analys-tap: anropas per FFT-frame (~100Hz) med RÅ band/flux FÖRE ljus-estetik.
   // lightRecorder buffrar detta som oförvrängd käll-ström för offline-render.
   private _analysisTap: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null = null;
-  // Playback-state: när aktiv hoppar tickInner över den reaktiva pathen och
-  // spelar upp en inspelad sekvens synkad mot Sonos-position.
-  private _pbActive = false;
-  private _pbTimes: Float64Array = new Float64Array(0);
-  private _pbPct: Uint8Array = new Uint8Array(0);
-  private _pbR: Uint8Array = new Uint8Array(0);
-  private _pbG: Uint8Array = new Uint8Array(0);
-  private _pbB: Uint8Array = new Uint8Array(0);
-  private _pbCount = 0;
-  // Frame-stegnings-cursor: senast skickade index. Stegar framåt en frame i taget
-  // så VARJE lagrad frame skickas till BLE (ingen position-sampling som hoppar).
-  private _pbCursor = -1;
-  private _pbAnchorPosMs = 0;
-  private _pbAnchorClock = 0;
-  /** Manuell/auto sync-offset (ms): positivt = ljuset ligger FÖRE ljudet. */
-  private _pbSyncMs = 0;
-  /** Legacy lead-offset för äldre motor-auto-sync. Offline-playback använder i
-   *  praktiken lightRecorder:s _pbSyncMs så stale persisted lead inte dubblar
-   *  offseten. */
-  private _pbLeadMs = (() => {
-    const v = parseInt(getItem('playback-lead-ms') ?? '', 10);
-    return Number.isFinite(v) ? v : 0;
-  })();
-
-  // ── Auto-sync ──
-  // Mäter Sonos högtalar-latens automatiskt genom att korskorrelera live-mic-
-  // energin mot RÅ-inspelningens pct-kurva (samma mic-pipeline → bäst matchning)
-  // och glider _pbLeadMs mot bästa lag.
-  private _autoSync = (getItem('playback-autosync') ?? 'true') !== 'false';
-  private static readonly AS_N = 160;            // ~3.2 s historik @ 50 Hz
-  private _asPos = new Float64Array(PiLightEngine.AS_N);  // Sonos-pos (utan lead)
-  private _asEng = new Float64Array(PiLightEngine.AS_N);  // live mic-energi-proxy
-  private _asCount = 0;
-  private _asHead = 0;
-  private _asLastEvalClock = 0;
-  private _asPersistedLead = 0;
-  private _asConfidence = 0;
-  // RÅ-referens för korrelation (kan saknas → fall tillbaka till uppspelnings-pct).
-  private _pbRefTimes: Float64Array = new Float64Array(0);
-  private _pbRefPct: Uint8Array = new Uint8Array(0);
-  private _pbRefCount = 0;
-  // Warm-up: kör reaktivt (live mic) tills auto-sync låst, byt sen till uppspelning.
-  private _pbWarmup = false;
-  private _asLockStreak = 0;
+  // Offline-playback/auto-sync borttaget (2026-06): allt körs realtime.
 
   constructor(tickMs = 25) {
     this.tickMs = tickMs;
