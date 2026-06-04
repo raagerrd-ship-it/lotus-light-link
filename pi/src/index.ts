@@ -343,8 +343,11 @@ async function main() {
     try {
       const { bleStats } = await import('./ble/index.js');
       const lc = await import('./engineLifecycle.js');
+      const { scheduleAutoReconnect } = await import('./ble/connect-hardcoded.js');
+      const { recordRestart, markGracefulShutdown } = await import('./restartLog.js');
       let lastTickOk = 0;
       let stuckMs = 0;
+      let softTried = false;
       const INTERVAL_MS = 2000;
       const STUCK_THRESHOLD_MS = 8000;
 
@@ -352,6 +355,7 @@ async function main() {
         try {
           if (lc.getLifecycleState() !== 'MOTOR_ON') {
             stuckMs = 0;
+            softTried = false;
             lastTickOk = bleStats.tickOkCount;
             return;
           }
@@ -359,19 +363,37 @@ async function main() {
           if (cur === lastTickOk) {
             stuckMs += INTERVAL_MS;
             if (stuckMs >= STUCK_THRESHOLD_MS) {
-              console.error(
-                `[Playback-Watchdog] tickOk frozen ${stuckMs}ms while ` +
-                `MOTOR_ON (tickOk=${cur}). Exit(1) for systemd restart.`
-              );
-              process.exit(1);
+              if (!softTried) {
+                // Första frysning → mjuk recovery: försök reconnecta BLE och ge
+                // ett nytt fönster innan vi tar till hård restart.
+                console.warn(
+                  `[Playback-Watchdog] tickOk frozen ${stuckMs}ms while ` +
+                  `MOTOR_ON (tickOk=${cur}). Soft recovery: scheduleAutoReconnect().`
+                );
+                softTried = true;
+                stuckMs = 0;
+                try { scheduleAutoReconnect(); } catch {}
+              } else {
+                // Andra frysning trots soft recovery → hård restart via systemd.
+                console.error(
+                  `[Playback-Watchdog] tickOk still frozen ${stuckMs}ms after ` +
+                  `soft recovery (tickOk=${cur}). Exit(1) for systemd restart.`
+                );
+                try {
+                  recordRestart('playback-watchdog-stuck', `tickOk frozen ${stuckMs}ms after soft recovery`);
+                  markGracefulShutdown();
+                } catch {}
+                process.exit(1);
+              }
             }
           } else {
             stuckMs = 0;
+            softTried = false;
             lastTickOk = cur;
           }
         } catch { /* watchdog must never crash */ }
       }, INTERVAL_MS);
-      console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms)`);
+      console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms, soft-recovery first)`);
     } catch (e: any) {
       console.warn('[Boot] Playback-Watchdog failed to start:', e?.message ?? e);
     }
