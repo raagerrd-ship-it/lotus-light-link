@@ -10,6 +10,7 @@ Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnec
 BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process retry.
 
 ## Memories
+- [Attack/release smoothing](mem://pi/lighting/attack-release-smoothing) — log-release vs mjuk-attack (lowSoftFloor), golv som dynamisk lyft, inverterat flicker-deadband, soft-watchdog
 - [Hardware limitations](mem://constraints/hardware-limitations) — BLEDOM forces color change on mic mode, use mobile mic
 - [Database persistence](mem://technical/database-persistence) — Offline-first sync logic to Supabase
 - [Sonos metadata](mem://technical/sonos-metadata-resolution) — CORS and deep extraction of album art
