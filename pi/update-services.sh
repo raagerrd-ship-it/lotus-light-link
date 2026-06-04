@@ -217,6 +217,14 @@ else
     echo "$LOG_PREFIX node-binären saknar CAP_NET_RAW — sätter caps..."
     sudo setcap 'cap_net_raw,cap_net_admin+eip' "$NODE_BIN_VERIFY" 2>/dev/null || true
   fi
+  # hcitool behöver CAP_NET_ADMIN+CAP_NET_RAW för `hcitool lecup` (20ms BLE
+  # connection interval). Utan detta faller länken till ~50ms efter reconnect.
+  # Verifieras varje update så fixen överlever /api/update (men inte OS-ominstall).
+  HCITOOL_BIN_VERIFY="$(command -v hcitool 2>/dev/null || true)"
+  if [ -n "$HCITOOL_BIN_VERIFY" ] && ! getcap "$HCITOOL_BIN_VERIFY" 2>/dev/null | grep -q "cap_net_admin"; then
+    echo "$LOG_PREFIX hcitool saknar CAP_NET_ADMIN — sätter caps (för 20ms BLE-interval)..."
+    sudo setcap 'cap_net_admin,cap_net_raw+eip' "$HCITOOL_BIN_VERIFY" 2>/dev/null || true
+  fi
   for GRP in netdev bluetooth audio; do
     if getent group "$GRP" >/dev/null 2>&1 && ! id -nG "$TARGET_USER_VERIFY" 2>/dev/null | tr ' ' '\n' | grep -qx "$GRP"; then
       echo "$LOG_PREFIX $TARGET_USER_VERIFY saknas i $GRP — lägger till (kräver service-restart för att aktiveras)..."
