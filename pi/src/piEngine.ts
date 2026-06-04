@@ -148,8 +148,10 @@ export interface LightCalibration {
   onsetThreshold: number;
   /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
   onsetRefractoryMs: number;
-  /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
-  flickerDeadband: number;
+   /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
+   flickerDeadband: number;
+   /** Attack-mjukhet vid låg energi (0–1). Lågt brus snäpper inte → inget flimmer; full snap vid hög energi. Default 0.25. */
+   lowSoftFloor: number;
   /** Absolut energy-gate (totalRms) under vilken onset-detektorn inte processar.
    *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
    *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
@@ -183,6 +185,7 @@ const DEFAULT_CAL: LightCalibration = {
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
   flickerDeadband: 0.02,
+  lowSoftFloor: 0.25,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
   beatSource: 'bass',
@@ -1279,7 +1282,18 @@ export class PiLightEngine {
       } else {
         alpha = 1 - Math.pow(1 - this.cal.releaseAlpha, _eRatio);
       }
-      this.smoothed = this.smoothed + alpha * (energyNorm - this.smoothed);
+      if (energyNorm < this.smoothed) {
+        // Logaritmisk release: jämn, perceptuell fade (konstant ratio/tick). Ingen attack-mjukhet här.
+        const _lo = 1e-4;
+        const _c = this.smoothed < _lo ? _lo : this.smoothed;
+        const _t = energyNorm < _lo ? _lo : energyNorm;
+        this.smoothed = Math.exp(Math.log(_c) + alpha * (Math.log(_t) - Math.log(_c)));
+      } else {
+        // Attack: MJUK vid låg energi (lågt brus snäpper inte → inget flimmer), full SNAP vid hög energi.
+        const _softFloor = cal.lowSoftFloor ?? 0.25;
+        const _softK = _softFloor + (1 - _softFloor) * Math.min(1, energyNorm / 0.5);
+        this.smoothed = this.smoothed + alpha * _softK * (energyNorm - this.smoothed);
+      }
       energyNorm = this.smoothed;
 
       const preDynamics = energyNorm;
@@ -1310,15 +1324,12 @@ export class PiLightEngine {
 
       // ── 7. Floor + Perceptual curve ──
       const floor = tc.brightnessFloor;
-      let pct = energyNorm * 100;
-      if (pct < floor) pct = floor;
-
-      // perceptualGamma: 0 = av (hoppa över helt), ≥1.0 = kör kurvan med angivet exponent
+      // Golv som dynamisk LYFT (inte hård-klipp): energyNorm mappas in i [floor,100]
+      // → låga nivåer varierar precis ovanför golvet i stället för att plattas.
       const pGamma = tc.perceptualGamma;
-      if (pGamma > 0 && pct > floor && pct < 100) {
-        const norm = (pct - floor) / (100 - floor);
-        pct = floor + (norm > 0.0001 ? Math.exp(pGamma * Math.log(norm)) : 0) * (100 - floor);
-      }
+      let _e = energyNorm < 0 ? 0 : energyNorm > 1 ? 1 : energyNorm;
+      if (pGamma > 0 && _e > 0.0001) _e = Math.exp(pGamma * Math.log(_e));
+      let pct = floor + _e * (100 - floor);
 
       // Fast round + clamp
       pct = (pct + 0.5) | 0;
@@ -1339,7 +1350,7 @@ export class PiLightEngine {
       // Om |pct - lastSentPct| under tröskeln → behåll lastSentPct (eliminerar mikrojitter).
       // Stale-write-mekanismen i protocol.ts håller fortfarande BLE-länken vid liv.
       if (this.lastSentPct >= 0 && cal.flickerDeadband > 0) {
-        const deadbandPct = cal.flickerDeadband * 100 * (0.5 + (pct / 100));
+        const deadbandPct = cal.flickerDeadband * 100 * (1.6 - 1.4 * (pct / 100));
         if (Math.abs(pct - this.lastSentPct) < deadbandPct) {
           pct = this.lastSentPct;
           bleStatsState.deadbandBlockedCount++;
