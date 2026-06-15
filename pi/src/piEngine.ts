@@ -395,6 +395,11 @@ export class PiLightEngine {
   // Raw mode — disables all processors for gain calibration
   private _rawMode = false;
   private _savedCal: Partial<LightCalibration> | null = null;
+  // TV-soft mode — bright, gentle band profile for TV/SPDIF playback
+  private _tvSoft = false;
+  private _tvSoftFloor = 40;
+  private _tvSoftCeil = 100;
+  private _tvSoftSavedCal: Partial<LightCalibration> | null = null;
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
 
@@ -592,9 +597,11 @@ export class PiLightEngine {
     if (isDrop) {
       this.dropLastFrameIdx = this.dropFrameCounter;
       this.breakdownFrames = 0;
-      this.dropFlashUntil = performance.now() + (this.cal.dropFlashMs ?? 220);
+      const _now = performance.now();
+      // White INSTANTLY on drop — no black dip first (no dip branch exists).
+      this.dropFlashUntil = _now + (this.cal.dropFlashMs ?? 220);
       bleStatsState.dropCount++;
-      // Express-write: skicka full vit punch direkt så blixten sitter i takt.
+      // Express-write: full white punch immediately so the flash lands on the beat.
       if (this._bleOwner === 'active' && canWriteNow()) {
         const result = sendToBLE(255, 255, 255, 100);
         if (result === 'sent') this.lastSentPct = 100;
@@ -880,6 +887,44 @@ export class PiLightEngine {
   }
 
   isRawMode(): boolean { return this._rawMode; }
+
+  /** Enable TV-soft mode — bright, gentle band profile for TV/SPDIF playback */
+  setTvSoft(on: boolean): void {
+    if (on && !this._tvSoft) {
+      this._tvSoft = true;
+      this._tvSoftFloor = 40;   // brightness band floor %
+      this._tvSoftCeil = 100;   // brightness band ceil %
+      this._tvSoftSavedCal = {
+        releaseAlpha: this.cal.releaseAlpha,
+        bassWeight: this.cal.bassWeight,
+        transientGain: this.cal.transientGain,
+        perceptualGamma: this.cal.perceptualGamma,
+        flickerDeadband: this.cal.flickerDeadband,
+        dropEnabled: this.cal.dropEnabled,
+        punchWhiteThreshold: this.cal.punchWhiteThreshold,
+      };
+      // Tight-follow, voice-aware soft profile:
+      this.cal.releaseAlpha = 0.85;        // near-instant down-tracking (low latency)
+      this.cal.bassWeight = 0.5;           // TV is voice/mid-treble, not bass -> full spectrum
+      this.cal.transientGain = 1.0;
+      this.cal.perceptualGamma = 0;        // linear
+      this.cal.flickerDeadband = 0.004;
+      this.cal.dropEnabled = false;        // no drop-strobe in TV
+      this.cal.punchWhiteThreshold = 100;  // no white-punch (peaks stay inside the band)
+      this.tc = computeTickConstants(this.tickMs, this.cal);
+      dlog(`[Engine] TV-soft ON — band ${this._tvSoftFloor}-${this._tvSoftCeil}%`);
+    } else if (!on && this._tvSoft) {
+      this._tvSoft = false;
+      if (this._tvSoftSavedCal) {
+        Object.assign(this.cal, this._tvSoftSavedCal);
+        this._tvSoftSavedCal = null;
+      }
+      this.tc = computeTickConstants(this.tickMs, this.cal);
+      dlog('[Engine] TV-soft OFF — dynamics restored');
+    }
+  }
+
+  isTvSoft(): boolean { return this._tvSoft; }
 
   /** Initialize engine — call once at boot. Loop only starts when setPlaying(true). */
   start(): void {
@@ -1335,6 +1380,12 @@ export class PiLightEngine {
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
+
+      // TV-soft: remap brightness into a bright, gentle band (floor..ceil %).
+      if (this._tvSoft) {
+        const _lo = this._tvSoftFloor ?? 60, _hi = this._tvSoftCeil ?? 95;
+        pct = (_lo + (pct / 100) * (_hi - _lo) + 0.5) | 0;
+      }
 
       // Auto-tune sampler: registrera RÅ mic-RMS (innan smoothing/dynamics) så
       // analysen kan separera tysta partier (rumsbrus) från musik-nivå.

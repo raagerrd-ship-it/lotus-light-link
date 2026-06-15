@@ -54,6 +54,10 @@ let autoTvModeEnabled = false;
 export function setAutoTvMode(enabled: boolean): void {
   autoTvModeEnabled = enabled;
   dlog(`[Sonos] Auto TV-mode: ${enabled ? 'ON' : 'OFF'}`);
+  // Re-evaluate immediately so toggling the flag mid-playback flips isTvMode
+  // without waiting for a full status update.
+  const _tv = enabled && isPlaying(currentState.playbackState ?? '') && !currentState.trackName;
+  if (_tv !== currentState.isTvMode) apply({ ...currentState, isTvMode: _tv });
 }
 
 export function getAutoTvMode(): boolean {
@@ -177,12 +181,14 @@ function parseStatus(s: any): void {
 
   // ── Position-tick (high frequency, partial update) ──
   if (s.source === 'position-tick') {
+    const _pbs = reportedPlaybackState ?? currentState.playbackState;
     apply({
       ...currentState,
       positionMs: s.positionMillis ?? currentState.positionMs,
       durationMs: s.durationMillis ?? currentState.durationMs,
       volume: s.volume ?? currentState.volume,
-      playbackState: reportedPlaybackState ?? currentState.playbackState,
+      playbackState: _pbs,
+      isTvMode: autoTvModeEnabled && isPlaying(_pbs ?? '') && !currentState.trackName,
     });
     return;
   }
