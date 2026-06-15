@@ -598,8 +598,7 @@ export class PiLightEngine {
       this.dropLastFrameIdx = this.dropFrameCounter;
       this.breakdownFrames = 0;
       const _now = performance.now();
-      // White INSTANTLY on drop — no black dip first.
-      this.dropDipUntil = 0;
+      // White INSTANTLY on drop — no black dip first (no dip branch exists).
       this.dropFlashUntil = _now + (this.cal.dropFlashMs ?? 220);
       bleStatsState.dropCount++;
       // Express-write: full white punch immediately so the flash lands on the beat.
