@@ -81,11 +81,13 @@ function applySonosStateToEngine(state: {
   // Här uppdaterar vi enbart palette/volym/TV-mode-side-effects.
   if (state.isTvMode) {
     if (wasTvModeRef && !wasTvModeRef.current) {
-      console.log('[Engine] → TV-läge');
+      console.log('[Engine] → TV-läge (soft)');
+      engineInstance.setTvSoft?.(true);
       wasTvModeRef.current = true;
     }
   } else if (wasTvModeRef?.current) {
     console.log('[Engine] TV-läge → Normal');
+    engineInstance.setTvSoft?.(false);
     wasTvModeRef.current = false;
   }
 
