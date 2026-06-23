@@ -8,13 +8,13 @@
  */
 
 import { noble, getNoble } from './noble-singleton.js';
-import { HARDCODED_DEVICE, matchesHardcoded } from './hardcoded-device.js';
+import { HARDCODED_DEVICE, matchesHardcoded } from './device-config.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent, setReconnectTrigger } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { forceConnInterval } from './forceConnInterval.js';
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
-import { dlog } from "../debugLog.js";
+import { dlog } from "./log.js";
 
 // ─── SAME-PROCESS RETRY BAN — REGRESSION TARGET ──────────────────
 // Three separate attempts to add a "retry instead of process exit"

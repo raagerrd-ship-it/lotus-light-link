@@ -17,7 +17,7 @@
 
 import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
 import { getOutstandingPackets, isControllerDrainAttached } from './controllerDrain.js';
-import { dlog } from "../debugLog.js";
+import { dlog } from "./log.js";
 
 // Pre-allocated write buffers (zero alloc per tick)
 export const writeBuf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
@@ -256,7 +256,7 @@ export function startKeepAlive(): void {
         if (keepAliveFailCount >= KEEPALIVE_FAIL_THRESHOLD && getDevice()) {
           console.warn(`[BLE] keep-alive failed ${keepAliveFailCount}x — link lost, marking disconnected + scheduling auto-reconnect`);
           stopKeepAlive();
-          import('./connect-hardcoded.js').then(({ forceCleanupStalePeripheral, scheduleAutoReconnect }) => {
+          import('./connect.js').then(({ forceCleanupStalePeripheral, scheduleAutoReconnect }) => {
             forceCleanupStalePeripheral('keep-alive-fail')
               .catch(() => {})
               .finally(() => { scheduleAutoReconnect(); });
