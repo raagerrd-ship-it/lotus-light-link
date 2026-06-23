@@ -1405,10 +1405,8 @@ function ConnectionSettingsSection({
           </button>
         </label>
       </section>
+    </>
 
-
-
-    </div>
   );
 }
 
