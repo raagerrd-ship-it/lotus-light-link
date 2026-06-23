@@ -745,6 +745,8 @@ export default function PiMobile() {
         </button>
       </div>
 
+      <BleDeviceSection piBase={piBase} />
+
 
       {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
