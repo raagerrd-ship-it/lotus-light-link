@@ -605,3 +605,50 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
     _connectInFlight = null;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Passiv enhets-scan för UI:t — låter användaren upptäcka & välja BLE-lampa
+// istället för att hårdkoda MAC. Returnerar alla upptäckta peripheraler med
+// namn + adress. Påverkar inte HARDCODED_DEVICE; valet sparas separat.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function scanForDevices(
+  durationMs = 6000,
+): Promise<Array<{ name: string; mac: string; id: string; rssi: number }>> {
+  // Skanna inte mitt i en pågående connect — undvik att störa HCI-state.
+  if (_connectInFlight) {
+    throw new Error('connect pågår — vänta tills den är klar innan scan');
+  }
+  const n: any = getNoble();
+  try { n.setMaxListeners?.(0); } catch {}
+  await forceCleanupStalePeripheral('pre-scan');
+
+  try {
+    await n.waitForPoweredOnAsync(10_000);
+  } catch (e: any) {
+    throw new Error(`adapter ej redo: ${e?.message ?? e}`);
+  }
+
+  const found = new Map<string, { name: string; mac: string; id: string; rssi: number }>();
+  const onDiscover = (p: any) => {
+    const name: string = p.advertisement?.localName ?? '';
+    const mac: string = (p.address ?? '').toUpperCase();
+    const key = mac || p.id;
+    if (!key) return;
+    const existing = found.get(key);
+    // Behåll den variant som har ett namn / starkare RSSI.
+    if (!existing || (!existing.name && name)) {
+      found.set(key, { name, mac, id: p.id ?? '', rssi: p.rssi ?? -127 });
+    }
+  };
+  n.on('discover', onDiscover);
+
+  try {
+    await n.startScanningAsync([], true);
+    await new Promise((r) => setTimeout(r, durationMs));
+  } finally {
+    try { await n.stopScanningAsync(); } catch {}
+    try { n.removeListener('discover', onDiscover); } catch {}
+  }
+
+  return [...found.values()].sort((a, b) => b.rssi - a.rssi);
+}
