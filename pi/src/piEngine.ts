@@ -14,11 +14,11 @@
  */
 
 import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, stopMic } from './alsaMic.js';
-import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble/protocol.js';
-import type { WriteResult } from './ble/protocol.js';
-import { bleStats as bleStatsState } from './ble/state.js';
-import { triggerIdleDisconnect } from './ble/connect-hardcoded.js';
-import { isControllerDrainAttached, getOutstandingPackets } from './ble/controllerDrain.js';
+import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
+import type { WriteResult } from './ble-driver/protocol.js';
+import { bleStats as bleStatsState } from './ble-driver/state.js';
+import { triggerIdleDisconnect } from './ble-driver/connect.js';
+import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { getItem, setItem } from './storage.js';
 import { dlog } from "./debugLog.js";
 

@@ -20,7 +20,7 @@ import { getItem } from './storage.js';
 import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,
   getSubsystemState, type SubsystemId,
-} from './ble/state.js';
+} from './ble/subsystem-state.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad, allt körs realtime.
 
 // --- Config ---
@@ -141,7 +141,7 @@ async function ensureEngineInstance(): Promise<void> {
       () => engineInstance?.onBleDisconnected(),
     );
   } else {
-    const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
+    const { setEngineBleCallbacks } = await import('./ble-driver/connect.js');
     setEngineBleCallbacks(
       () => engineInstance?.onBleConnected(),
       () => engineInstance?.onBleDisconnected(),
@@ -345,7 +345,7 @@ async function main() {
     try {
       const { bleStats } = await import('./ble/index.js');
       const lc = await import('./engineLifecycle.js');
-      const { scheduleAutoReconnect } = await import('./ble/connect-hardcoded.js');
+      const { scheduleAutoReconnect } = await import('./ble-driver/connect.js');
       const { recordRestart, markGracefulShutdown } = await import('./restartLog.js');
       let lastTickOk = 0;
       let stuckMs = 0;
@@ -414,7 +414,7 @@ async function main() {
   // Wire ble-driverns restart-hook → restart-loggning (drivern är annars
   // fristående och loggar inget). Speglar tidigare inline-logik i connect.ts.
   try {
-    const { setRestartHook } = await import('./ble/connect-hardcoded.js');
+    const { setRestartHook } = await import('./ble-driver/connect.js');
     setRestartHook(({ count, error }) => {
       recordRestart('ble-consecutive-failures', `${count} consecutive failures, last error: ${error}`);
       markGracefulShutdown();
@@ -428,11 +428,11 @@ async function main() {
     consumeReconnectOnBootFlag,
     setReconnectOnBootFlag,
     clearReconnectOnBootFlag,
-  } = await import('./ble/reconnect-flag.js');
+  } = await import('./ble-driver/reconnect-flag.js');
 
   // Hook in BLE-callbacks så flaggan sätts när lampa ansluts.
   try {
-    const { setEngineBleCallbacks } = await import('./ble/connect-hardcoded.js');
+    const { setEngineBleCallbacks } = await import('./ble-driver/connect.js');
     let engineConnected: (() => void) | null = null;
     let engineDisconnected: (() => void) | null = null;
     setEngineBleCallbacks(
@@ -471,7 +471,7 @@ async function main() {
     try {
       const { ignite } = await import('./engineLifecycle.js');
       const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
-      const { connectHardcoded, getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
+      const { connectHardcoded, getHardcodedConnected } = await import('./ble-driver/connect.js');
       await ignite({
         startBleEngineMinimal,
         startSonosSubsystem,
@@ -524,7 +524,7 @@ async function main() {
     try { alsaMic?.stopMic(); } catch {}
     try { sonos?.stopSonosPoller(); } catch {}
     try {
-      const { disconnectHardcoded } = await import('./ble/connect-hardcoded.js');
+      const { disconnectHardcoded } = await import('./ble-driver/connect.js');
       await disconnectHardcoded();
     } catch {}
     process.exit(0);
