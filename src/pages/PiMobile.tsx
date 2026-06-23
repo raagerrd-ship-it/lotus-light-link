@@ -1844,34 +1844,6 @@ export default function PiMobile() {
   }, [piBase]);
 
 
-
-  if (view === "profile") {
-    return (
-      <ProfileSettingsView
-        cal={cal} setCal={setCal} activePreset={activePreset}
-        piBase={piBase}
-        onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
-      />
-    );
-  }
-
-  if (view === "global") {
-    return (
-      <GlobalSettingsView
-        tickMs={tickMs} setTickMs={setTickMs}
-        sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
-        alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
-        dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
-        micGain={micGain} setMicGain={setMicGain}
-        idleColor={idleColor} setIdleColor={setIdleColor}
-        autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
-        sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
-        piBase={piBase}
-        onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
       <div className="flex items-center justify-between mb-4">
@@ -1879,15 +1851,19 @@ export default function PiMobile() {
           <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
           <span className="text-sm font-semibold">BLE Light</span>
         </div>
-        <div className="flex gap-1">
-          <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Ljus-kalibrering" disabled={!piOnline}>
-            <Lightbulb size={20} className="text-muted-foreground" />
-          </button>
-          <button onClick={() => setView("global")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Sonos & mic-kalibrering" disabled={!piOnline}>
-            <Settings size={20} className="text-muted-foreground" />
-          </button>
-        </div>
+        <button
+          onClick={handleSave}
+          disabled={!piOnline}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
+            saved ? "text-green-500" : "text-primary"
+          }`}
+          title="Spara inställningar"
+        >
+          {saved ? <Check size={16} /> : <Save size={16} />}
+          {saved ? "Sparat" : "Spara"}
+        </button>
       </div>
+
 
       {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
