@@ -77,8 +77,8 @@ body = json.load(sys.stdin).get('body','') or ''
 m = re.search(r'BLE_BUILD_TAG:\\s*([^\\s]+)', body)
 print(m.group(1) if m else '')
 " 2>/dev/null || echo "")
-  if [ -n "$EXPECTED_TAG" ] && [ -f "$PI_DIR/dist/ble/state.js" ]; then
-    DEPLOYED_TAG=$(grep -oE "BLE_BUILD_TAG[^'\"]*['\"]([^'\"]+)['\"]" "$PI_DIR/dist/ble/state.js" 2>/dev/null | head -1 | sed -E "s/.*['\"]([^'\"]+)['\"].*/\\1/" || echo "")
+  if [ -n "$EXPECTED_TAG" ] && [ -f "$PI_DIR/dist/ble-driver/state.js" ]; then
+    DEPLOYED_TAG=$(grep -oE "BLE_BUILD_TAG[^'\"]*['\"]([^'\"]+)['\"]" "$PI_DIR/dist/ble-driver/state.js" 2>/dev/null | head -1 | sed -E "s/.*['\"]([^'\"]+)['\"].*/\\1/" || echo "")
     if [ -n "$DEPLOYED_TAG" ] && [ "$DEPLOYED_TAG" != "$EXPECTED_TAG" ]; then
       HEALTH_OK=0
       HEALTH_REASONS="$HEALTH_REASONS\n  - BLE_BUILD_TAG mismatch: deployed='$DEPLOYED_TAG' förväntat='$EXPECTED_TAG'"
