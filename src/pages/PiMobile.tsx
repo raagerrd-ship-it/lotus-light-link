@@ -915,7 +915,8 @@ function LightCalibrationSection({
 
         <AdvancedCalibrationSection cal={cal} setCal={setCal} />
       </section>
-    </div>
+    </>
+
   );
 }
 
