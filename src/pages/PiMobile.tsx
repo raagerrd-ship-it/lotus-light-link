@@ -1876,15 +1876,14 @@ export default function PiMobile() {
 
       {(() => {
         const ready = piOnline === true && engineStatus?.running === true;
-        if (!ready) {
-          return (
-            <div className="my-4 rounded-xl border border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
-              Väntar på motor och frontend…
-            </div>
-          );
-        }
         return (
-          <>
+          <div className={!ready ? "opacity-50 pointer-events-none select-none" : undefined} aria-disabled={!ready}>
+            {!ready && (
+              <div className="my-4 rounded-xl border border-border bg-card/40 p-4 text-center text-xs text-muted-foreground pointer-events-none">
+                Väntar på motor och frontend… (visas inaktiverat)
+              </div>
+            )}
+
             {saveError && (
               <div className="mb-4 mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
                 ⚠ Sparning misslyckades: {saveError}
@@ -1933,9 +1932,10 @@ export default function PiMobile() {
             <section className="mb-8">
               <LightCalibrationSection cal={cal} setCal={setCal} piBase={piBase} />
             </section>
-          </>
+          </div>
         );
       })()}
+
 
 
       {/* Minimal status: Sonos + Lampa */}
