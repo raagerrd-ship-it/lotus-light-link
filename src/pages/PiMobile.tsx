@@ -867,53 +867,8 @@ function LightCalibrationSection({
 
 
       <section className="space-y-5 mb-8">
-        
         <SignalPreview cal={cal} height={180} showLegend={true} />
-
         <SilenceAnalysisPanel piBase={piBase} cal={cal} setCal={setCal} />
-        
-        {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
-          const isDyn = key === 'dynamicDamping';
-          const isFloor = key === 'brightnessFloor';
-          const isTransient = key === 'transientGain';
-          const isOffAtZero = isDyn || isFloor || isTransient;
-          const displayValue = isOffAtZero && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
-          const zeroPct = ((0 - min) / (max - min)) * 100;
-          const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
-          return (
-            <div key={key}>
-              <div className="flex justify-between text-sm mb-0.5">
-                <span>{label}</span>
-                <span className={`font-mono text-xs ${isOffAtZero && cal[key] === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{displayValue}</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="range" min={min} max={max} step={step} value={cal[key]}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (isDyn) {
-                      setCal({ ...cal, dynamicDamping: v, dynamicsEnabled: v !== 0 });
-                    } else {
-                      setCal({ ...cal, [key]: v });
-                    }
-                  }}
-                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary relative z-10"
-                />
-                {showTick && (
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-muted-foreground/60 pointer-events-none z-0"
-                    style={{ left: `calc(${zeroPct}% - 1px)` }}
-                    aria-hidden
-                  />
-                )}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
-              {key === 'flickerDeadband' && <DeadbandActivityIndicator piBase={piBase} active={cal.flickerDeadband > 0} />}
-            </div>
-          );
-        })}
-
-        <AdvancedCalibrationSection cal={cal} setCal={setCal} />
       </section>
     </>
 
