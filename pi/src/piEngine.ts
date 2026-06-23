@@ -463,8 +463,7 @@ export class PiLightEngine {
     this._analysisTap = cb;
   }
 
-  // Offline-playback + auto-sync (setPlaybackSequence/updatePlaybackPosition/
-  // playbackTick/autoSync*) borttaget 2026-06 — allt körs realtime.
+
 
   private initOnsetBuffer(tickMs: number): void {
     this.onsetSize = Math.max(3, ((175 / tickMs + 0.5) | 0));
