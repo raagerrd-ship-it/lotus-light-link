@@ -1821,7 +1821,6 @@ export default function PiMobile() {
   // Poll status every 5s to get live track, BLE count, palette
   const lastTrackRef = useRef<string | null>(null);
   useEffect(() => {
-    if (view !== 'home') return;
     let cancelled = false;
     const poll = async () => {
       try {
