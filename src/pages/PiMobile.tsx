@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Save, Check, Mic } from "lucide-react";
+import { Save, Check, Mic, Bluetooth, Loader2 } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
