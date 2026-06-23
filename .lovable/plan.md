@@ -1,43 +1,73 @@
-# Två ändringar i Pi-koden
+# Bryt ut BLE-lampdriver + städa motorn
 
-Mål: ta bort den extra BLE-skrivningen vid varje bekräftad onset (hackigt ljus, ingen nytta) och göra ljusuppdateringen lite tätare/mjukare genom att höja default-takt från 30 ms till 25 ms.
+Mål: göra BLE-styrningen till en fristående, portabel driver som kan kopieras in i andra projekt, med den ljudreaktiva motorn som ett valfritt lager ovanpå. Samtidigt rensa kvarvarande dead-code-kommentarer.
 
-## 1. Ta bort onset-express-vägen
+## Arkitektur (två lager)
 
-**`pi/src/piEngine.ts` (rad ~730–755, i `processOnset`)**
-
-Behåll pulsen som matar den normala tick-vägen:
 ```text
-this.onsetTarget = 0.45;
-this.onsetLastFrameIdx = this.onsetFrameCounter;
+pi/src/ble-driver/        ← LAGER 1: portabel BLE-lampdriver (noll app-beroenden)
+   index.ts               createLampDriver(config) → publik API
+   protocol.ts            paket, write-gate, gamma, keep-alive
+   connect.ts             connect/disconnect/reconnect (var connect-hardcoded.ts)
+   reconnect-flag.ts
+   controllerDrain.ts
+   forceConnInterval.ts
+   adapter-hci-check.ts
+   noble-singleton.ts
+   state.ts               BARA BLE-core-state (device, noble, bleStats)
+   types.ts
+   README.md              minimal användning i annat projekt
+
+pi/src/ble/               ← LAGER 2-glue: app-specifikt, importerar drivern
+   subsystem-state.ts     mic/sonos/engine-tracking + transition-logg (DATA_DIR)
+   engine-start-minimal.ts
+   index.ts               re-exporterar drivern + subsystem-state (oförändrad yta mot appen)
+
+pi/src/piEngine.ts        ← motorn: konsumerar driverns publika API
 ```
 
-Ta bort:
-- Kommentarsblocket `// ── Express path (2026-04-29): sub-frame BLE write …` (rad 733–740).
-- Hela `if (this._bleOwner === 'active' && this.lastSentPct >= 0) { … }`-blocket (rad 741–754) som gör `sendToBLE(...)` direkt och räknar upp `onsetExpressCount` / `onsetExpressBusyCount`.
+## Vad blir konfigurerbart (gör drivern portabel)
 
-**`pi/src/ble/state.ts` (rad 163–165)**
+Idag är två saker hårdkodade/app-kopplade och måste injiceras:
 
-Ta bort kommentaren `// Sub-frame onset express path …` samt fälten `onsetExpressCount` och `onsetExpressBusyCount` ur `bleStatsState`.
+1. **Mål-enhet** — `HARDCODED_DEVICE` (`ELK-BLEDOM01` / MAC) blir ett `config`-objekt till `createLampDriver({ device: { name, mac } })`. Pi-appen skickar in nuvarande värden, andra projekt sina egna.
+2. **Logg/lagring** — `state.ts` importerar `DATA_DIR` enbart för subsystem-transition-loggen, som inte hör till BLE-styrning. Den flyttas ut till `pi/src/ble/subsystem-state.ts` (app-lagret). Drivern loggar via `console` med valfri injicerbar logger.
 
-**Ej rörda:** drop-express i `processDrop` (vita punch-blixten, skyddad av `canWriteNow()`) lämnas helt orörd. `processDrop` använder inga onsetExpress-fält.
+## Publik driver-API (`createLampDriver`)
 
-Efter ändringen ska `grep -rn onsetExpress pi/src src` ge noll träffar.
+Tunt skal runt befintlig logik — ingen ny funktionalitet:
 
-## 2. Höj default-tickMs till 25
+```text
+connect()/disconnect()         ← connect-hardcoded
+setColor(r,g,b, brightness)    ← sendToBLE
+setIdleColor(r,g,b)
+setPower(on)                   ← sendPower
+canWriteNow()
+setDimmingGamma()/getDimmingGamma()
+setSlotLeaseMs()
+startKeepAlive()/stopKeepAlive()
+getStats()                     ← bleStats
+isConnected()
+```
 
-**`pi/src/index.ts` (rad 48)**
+## Steg
 
-Ändra `const TICK_MS = 30;` → `const TICK_MS = 25;` (uppdatera kommentaren till 40 Hz). Logiken som läser sparat `tick-ms` från storage (rad 129) rörs inte — bara fallback-värdet.
+1. **Skapa `pi/src/ble-driver/`** och flytta de rena BLE-core-filerna dit (`protocol`, `connect-hardcoded`→`connect`, `reconnect-flag`, `controllerDrain`, `forceConnInterval`, `adapter-hci-check`, `noble-singleton`, `types`). Justera interna relativa imports.
+2. **Dela `state.ts`**: BLE-core-state (device, noble, bleStats, SERVICE/CHAR-UUID, build-tag) → `ble-driver/state.ts`. Subsystem-tracking + transition-logg (DATA_DIR) → `pi/src/ble/subsystem-state.ts`.
+3. **Konfig-injektion**: `hardcoded-device.ts` blir en `device`-param i driver-config; behåll nuvarande Pi-värden som default i appen.
+4. **`ble-driver/index.ts`**: exponera `createLampDriver(config)` + typer. Skriv `README.md` med ett minimalt exempel (connect → setColor → loop).
+5. **Glue-lager `pi/src/ble/index.ts`**: re-exportera från drivern + subsystem-state så att resten av appen (`piEngine`, `configServer`, `engineLifecycle`, `index.ts`) importerar precis som idag — minimerad blast radius.
+6. **Städning**: ta bort kvarvarande döda kommentarer som refererar avvecklad kod (`lightRecorder`, `playbackTick`) i `piEngine.ts`, `index.ts`, `configServer.ts`. (De faktiska identifierarna onsetExpress/DELTA_SKIP/_pb/hci-socket-probe finns redan inte kvar — verifieras med grep.)
+7. **Verifiera**: `cd pi && npx tsc` rent. `grep -rn "lightRecorder\|playbackTick\|onsetExpress\|DELTA_SKIP\|hci-socket-probe" pi/src` → 0 träffar. `grep -rn "from '\.\./" pi/src/ble-driver` → inga imports utanför driver-mappen (bekräftar portabilitet).
 
-**`pi/src/piEngine.ts` (rad 450)**
+## Viktigt / avgränsningar
 
-Ändra konstruktor-defaulten `constructor(tickMs = 20)` → `constructor(tickMs = 25)` för konsekvens.
+- Ingen beteendeförändring i runtime — det här är en omflyttning + tunt API-skal. Cal-värden, write-gate, reconnect-logik och tickMs är oförändrade.
+- Drivern blir Node-/noble-beroende (BLE på Pi/Linux). Den är portabel mellan **Node-projekt**, inte till webbläsare (matchar befintlig minnesregel: ingen Web-BLE i browser).
+- Permanent på enheten först efter release + `/api/update`, som tidigare.
 
-## Verifiering
+## Teknisk verifiering av framgång
 
-- `grep -rn onsetExpress pi/src src` → 0 träffar.
-- Bekräfta att Pi-koden kompilerar (inga kvarvarande referenser till de borttagna fälten).
-- Drop-express/`canWriteNow()`-vägen finns kvar oförändrad.
-
-Permanent först efter release + `/api/update` på enheten.
+- `npx tsc` exit 0.
+- Pi-appen importerar oförändrat via `pi/src/ble/index.ts`.
+- `pi/src/ble-driver/` har noll imports utanför sin egen mapp → kan kopieras rakt in i ett annat Node-projekt och drivas med bara `createLampDriver(config)`.
