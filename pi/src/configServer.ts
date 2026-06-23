@@ -726,6 +726,49 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // BLE-enhetsval — upptäck & välj lampa istället för hårdkodad MAC.
+  // GET  /api/ble/device   → { name, mac }   (aktuellt vald enhet)
+  // PUT  /api/ble/device   → { name, mac }   spara + applicera
+  // POST /api/ble/scan     → { devices: [{ name, mac, rssi }] }
+  // ─────────────────────────────────────────────────────────────────────
+  app.get('/api/ble/device', async (_req, res) => {
+    try {
+      const { HARDCODED_DEVICE } = await import('./ble-driver/device-config.js');
+      res.json({ name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? String(e) });
+    }
+  });
+
+  app.put('/api/ble/device', async (req, res) => {
+    try {
+      const { name, mac } = req.body ?? {};
+      if (typeof name !== 'string' || typeof mac !== 'string' || !/^[0-9a-fA-F:]{11,17}$/.test(mac)) {
+        return res.status(400).json({ ok: false, error: 'body needs { name: string, mac: "AA:BB:..." }' });
+      }
+      const { setDeviceConfig } = await import('./ble-driver/device-config.js');
+      setDeviceConfig({ name, mac });
+      setItem('lamp-device', JSON.stringify({ name, mac }));
+      res.json({ ok: true, device: { name, mac } });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
+
+  app.post('/api/ble/scan', async (req, res) => {
+    try {
+      const durationMs = Math.max(2000, Math.min(15000, Number(req.body?.durationMs) || 6000));
+      const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
+      await startBleEngineMinimal();
+      const { scanForDevices } = await import('./ble-driver/connect.js');
+      const devices = await scanForDevices(durationMs);
+      res.json({ devices });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? String(e) });
+    }
+  });
+
   app.get('/api/calibration', (_req, res) => {
     const raw = getItem('light-calibration');
     res.json(raw ? JSON.parse(raw) : {});
