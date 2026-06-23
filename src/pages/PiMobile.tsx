@@ -197,7 +197,7 @@ function GainCalibrationPanel({
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Sonos volym</span>
-              <span className="font-mono font-bold">{liveSonosVol ?? '—'}</span>
+              <span className="font-mono font-bold">{sonosVolume ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
               <span className="text-xs text-muted-foreground">Aktuell mic-gain</span>
