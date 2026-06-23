@@ -655,7 +655,7 @@ export default function PiMobile() {
                 idleColor={idleColor} setIdleColor={setIdleColor}
                 autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
                 sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
-                piBase={piBase}
+                piBase={piBase} sonosVolume={sonosVolume}
               />
             </section>
 
