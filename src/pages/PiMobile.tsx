@@ -257,7 +257,7 @@ function ConnectionSettingsSection({
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   sonosMode, setSonosMode, sonosLocalDetected,
-  piBase,
+  piBase, sonosVolume,
 }: {
   sonosUrl: string; setSonosUrl: (v: string) => void;
   micGain: number; setMicGain: (v: number) => void;
@@ -266,6 +266,7 @@ function ConnectionSettingsSection({
   sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
   sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
   piBase: string;
+  sonosVolume: number | null;
 }) {
   return (
     <>
