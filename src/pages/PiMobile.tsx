@@ -278,7 +278,7 @@ function ConnectionSettingsSection({
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
           <Mic size={14} /> Mic Gain
         </h2>
-        <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} />
+        <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} sonosVolume={sonosVolume} />
       </section>
 
       <section className="mb-8">
