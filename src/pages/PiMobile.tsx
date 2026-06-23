@@ -631,10 +631,7 @@ export default function PiMobile() {
       <PermissionsBanner piBase={piBase} />
 
       {/* En knapp kör Motor → Mic → Sonos → Lampa i sekvens */}
-      <StartAllPanel
-        piBase={piBase}
-        onEngineReadyChange={setBleEngineReady}
-      />
+      <StartAllPanel piBase={piBase} />
 
       {(() => {
         const ready = piOnline === true && engineStatus?.running === true;
