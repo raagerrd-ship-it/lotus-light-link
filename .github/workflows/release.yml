@@ -35,9 +35,9 @@ jobs:
       - name: Extract BLE_BUILD_TAG
         id: bletag
         run: |
-          TAG=$(grep -oE "BLE_BUILD_TAG\s*=\s*['\"]([^'\"]+)['\"]" pi/src/ble/state.ts | head -1 | sed -E "s/.*['\"]([^'\"]+)['\"].*/\1/")
+          TAG=$(grep -oE "BLE_BUILD_TAG\s*=\s*['\"]([^'\"]+)['\"]" pi/src/ble-driver/state.ts | head -1 | sed -E "s/.*['\"]([^'\"]+)['\"].*/\1/")
           if [ -z "$TAG" ]; then
-            echo "❌ Kunde inte extrahera BLE_BUILD_TAG från pi/src/ble/state.ts"
+            echo "❌ Kunde inte extrahera BLE_BUILD_TAG från pi/src/ble-driver/state.ts"
             exit 1
           fi
           echo "ble_build_tag=$TAG" >> "$GITHUB_OUTPUT"
