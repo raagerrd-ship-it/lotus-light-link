@@ -16,13 +16,13 @@ installLocalStorageShim();
 import { logDebugBanner } from './debugLog.js';
 logDebugBanner();
 
-import { getItem } from './storage.js';
+import { getItem, setItem } from './storage.js';
 import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,
   getSubsystemState, type SubsystemId,
 } from './ble/subsystem-state.js';
 
-// Applicera ev. tidigare vald BLE-lampa (annars körs default BLEDOM01-MAC).
+// Applicera ev. tidigare vald BLE-lampa (annars seed:a BLEDOM01 default).
 // Måste ske före första connect så connect.ts läser rätt target.
 void (async () => {
   try {
@@ -34,6 +34,12 @@ void (async () => {
         setDeviceConfig({ name: d.name, mac: d.mac });
         console.log(`[boot] BLE-lampa från sparat val: ${d.name} (${d.mac})`);
       }
+    } else {
+      const defaultDevice = { name: 'ELK-BLEDOM01', mac: 'BE:67:00:15:09:41' };
+      setItem('lamp-device', JSON.stringify(defaultDevice));
+      const { setDeviceConfig } = await import('./ble-driver/device-config.js');
+      setDeviceConfig(defaultDevice);
+      console.log(`[boot] BLE-lampa default seedad: ${defaultDevice.name} (${defaultDevice.mac})`);
     }
   } catch {}
 })();
