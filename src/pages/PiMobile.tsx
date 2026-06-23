@@ -43,48 +43,6 @@ function alphaToAttack(alpha: number) {
   return 100 - alphaToCurve(alpha);
 }
 
-type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'onsetThreshold' | 'onsetRefractoryMs' | 'onsetEnergyFloor' | 'flickerDeadband';
-// Slider-ranges = användbar zon (inte API-clamp). Power-users kan sätta extrema värden via PUT /api/calibration.
-// flickerDeadband exponeras inte här längre — sköts av SilenceAnalysisPanel (legacy BLE-bandbreddsfilter).
-// saturation/maxRisePerSec/maxFallPerSec/hiShelfGainDb borttagna 2026-04-25 / 2026-05-04 (ingen runtime-effekt).
-//
-// 2026-05-04: 5 essentiella sliders i primär-vy. transientGain, punchWhiteThreshold,
-// perceptualGamma, onset-finjustering + tystnadströskel flyttade till "Avancerat".
-const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
-  { key: "attack", label: "Punch", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar attack på beats" },
-  { key: "softness", label: "Softness", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjuk fade-out" },
-  { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast (expanderad), negativt = utjämning (komprimerad)" },
-  { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "Bas/Diskant-filter — 0 = endast diskant (högpass), 0.5 = 50/50 mix, 1.0 = endast bas (lågpass)" },
-  { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 100, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
-  { key: "flickerDeadband", label: "Stabilitet", min: 0, max: 0.05, step: 0.005, description: "Anti-flicker (Weber-Fechner) — 0 = av, 0.01 subtil, 0.02 balanserad, 0.04 aggressiv" },
-];
-
-// Avancerat: perceptualGamma + transientGain + punchWhiteThreshold + två sammanslagna meta-sliders.
-const ADVANCED_GAMMA_CONFIG = { key: 'perceptualGamma' as NumericCalKey, label: 'Perceptuell kurva', min: 0, max: 2.2, step: 0.1, description: '0 = av, 1.0 = linjär, 1.8 = mjuk, 2.2 = kraftigt komprimerad' };
-const ADVANCED_TRANSIENT_CONFIG = { key: 'transientGain' as NumericCalKey, label: 'Transient boost', min: 0, max: 1.5, step: 0.1, unit: '×', description: '0 = av, 1.0 = normal, 1.5 = överdrivna trumslag' };
-const ADVANCED_PUNCH_WHITE_CONFIG = { key: 'punchWhiteThreshold' as NumericCalKey, label: 'Vita peaks', min: 90, max: 100, step: 1, unit: '%', description: '100 = av. Över detta värde flashas vit (maximala intensitets-peaks)' };
-
-/** Onset-känslighet 0–1 (1 = mest känslig). Mappar linjärt till threshold (4.0→1.5) + refractory (300→80ms). */
-function onsetSensToFields(s: number): { onsetThreshold: number; onsetRefractoryMs: number } {
-  const t = Math.max(0, Math.min(1, s));
-  return {
-    onsetThreshold: Math.round((4.0 - t * 2.5) * 10) / 10,         // 4.0 → 1.5
-    onsetRefractoryMs: Math.round(300 - t * 220 / 10) * 10,        // approx 300 → 80
-  };
-}
-function fieldsToOnsetSens(threshold: number, refractoryMs: number): number {
-  const fromThr = (4.0 - threshold) / 2.5;
-  const fromRef = (300 - refractoryMs) / 220;
-  return Math.max(0, Math.min(1, (fromThr + fromRef) / 2));
-}
-/** Tystnadströskel 0–0.05 styr både tick- och onset-energy-floor symmetriskt. */
-function silenceFloorToFields(v: number): { tickEnergyFloor: number; onsetEnergyFloor: number } {
-  const f = Math.max(0, Math.min(0.05, v));
-  return { tickEnergyFloor: Math.round(f * 1000) / 1000, onsetEnergyFloor: Math.round(f * 1000) / 1000 };
-}
-function fieldsToSilenceFloor(tickFloor: number, onsetFloor: number): number {
-  return Math.round(((tickFloor + onsetFloor) / 2) * 1000) / 1000;
-}
 
 const CURVE_POINTS = 200; // points to draw
 
