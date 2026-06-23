@@ -855,37 +855,16 @@ function DeadbandActivityIndicator({ piBase, active }: { piBase: string; active:
 }
 
 
-function ProfileSettingsView({
-  cal, setCal, activePreset,
-  piBase,
-  onBack, onSave, saved, saveError,
+function LightCalibrationSection({
+  cal, setCal, piBase,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
-  activePreset: string;
   piBase: string;
-  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
-          <ArrowLeft size={20} />
-        </button>
-        <span className="text-sm font-semibold bg-accent text-accent-foreground px-3 py-1 rounded-full">{activePreset}</span>
-        <button
-          onClick={onSave}
-          className={`p-2 rounded-lg transition-all active:scale-95 ${
-            saved ? "text-green-500" : "text-primary"
-          }`}
-        >
-          {saved ? <Check size={20} /> : <Save size={20} />}
-        </button>
-      </div>
-      {saveError && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
-          ⚠ Sparning misslyckades: {saveError}
-        </div>
-      )}
+    <>
+      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljus-kalibrering</h2>
+
 
       <section className="space-y-5 mb-8">
         
