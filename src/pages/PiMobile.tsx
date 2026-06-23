@@ -1286,53 +1286,25 @@ function GainCalibrationPanel({
 }
 
 
-function GlobalSettingsView({
-  tickMs, setTickMs,
-  sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
-  dimmingGamma, setDimmingGamma,
+function ConnectionSettingsSection({
+  sonosUrl, setSonosUrl,
   micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   sonosMode, setSonosMode, sonosLocalDetected,
   piBase,
-  onBack, onSave, saved, saveError,
 }: {
-  tickMs: number; setTickMs: (v: number) => void;
   sonosUrl: string; setSonosUrl: (v: string) => void;
-  alsaDevice: string; setAlsaDevice: (v: string) => void;
-  dimmingGamma: number; setDimmingGamma: (v: number) => void;
   micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
   sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
   piBase: string;
-  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
-          <ArrowLeft size={20} />
-        </button>
-        <span className="text-sm font-semibold bg-accent text-accent-foreground px-3 py-1 rounded-full">Inställningar</span>
-        <button
-          onClick={onSave}
-          className={`p-2 rounded-lg transition-all active:scale-95 ${
-            saved ? "text-green-500" : "text-primary"
-          }`}
-        >
-          {saved ? <Check size={20} /> : <Save size={20} />}
-        </button>
-      </div>
-      {saveError && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
-          ⚠ Sparning misslyckades: {saveError}
-        </div>
-      )}
+    <>
 
-      {/* Motor-sektionen borttagen: tickMs hårdkodat till 25ms (40 pkt/s),
-          dimmingGamma flyttas till profilinställning, BLE Hastighetstest borttaget. */}
 
       {/* Mikrofon: device hårdkodat till hw:0,0 i state.
           Endast gain-kontrollen (Manual/Auto) exponeras. */}
