@@ -63,17 +63,17 @@ const DEFAULT_GAIN_LOW = 15;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
 
 function GainCalibrationPanel({
-  piBase, micGain, setMicGain,
+  piBase, micGain, setMicGain, sonosVolume,
 }: {
   piBase: string;
   micGain: number;
   setMicGain: (g: number) => void;
+  sonosVolume: number | null;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [multiplier, setMultiplier] = useState(1);
   const [gainLow, setGainLow] = useState(DEFAULT_GAIN_LOW);
   const [gainHigh, setGainHigh] = useState(DEFAULT_GAIN_HIGH);
-  const [liveSonosVol, setLiveSonosVol] = useState<number | null>(null);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
 
   // Initial load: hämta sparat läge + cal-punkter
@@ -89,21 +89,16 @@ function GainCalibrationPanel({
     }).catch(() => {});
   }, [piBase]);
 
-  // Live-poll: aktuell gain + Sonos-volym. Snabbpoll i 5s efter slider-aktivitet.
+  // Live-poll: endast auto-gain (multiplier/effective). Sonos-volym kommer
+  // via delad status-poll i förälder. Snabbpoll i 5s efter slider-aktivitet.
   const fastPollUntilRef = useRef(0);
   useEffect(() => {
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
       try {
-        const [statusRes, agRes] = await Promise.all([
-          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }),
-          fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }),
-        ]);
-        const status = await statusRes.json();
-        const ag = await agRes.json();
+        const ag = await fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json());
         if (!cancelled) {
-          if (status.sonos?.volume != null) setLiveSonosVol(status.sonos.volume);
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
           if (ag.effective != null) setEffectiveGain(ag.effective);
         }
@@ -202,7 +197,7 @@ function GainCalibrationPanel({
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Sonos volym</span>
-              <span className="font-mono font-bold">{liveSonosVol ?? '—'}</span>
+              <span className="font-mono font-bold">{sonosVolume ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
               <span className="text-xs text-muted-foreground">Aktuell mic-gain</span>
@@ -262,7 +257,7 @@ function ConnectionSettingsSection({
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   sonosMode, setSonosMode, sonosLocalDetected,
-  piBase,
+  piBase, sonosVolume,
 }: {
   sonosUrl: string; setSonosUrl: (v: string) => void;
   micGain: number; setMicGain: (v: number) => void;
@@ -271,6 +266,7 @@ function ConnectionSettingsSection({
   sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
   sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
   piBase: string;
+  sonosVolume: number | null;
 }) {
   return (
     <>
@@ -282,7 +278,7 @@ function ConnectionSettingsSection({
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
           <Mic size={14} /> Mic Gain
         </h2>
-        <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} />
+        <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} sonosVolume={sonosVolume} />
       </section>
 
       <section className="mb-8">
@@ -418,6 +414,7 @@ export default function PiMobile() {
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const [sonosState, setSonosState] = useState<string | null>(null);
   const [bleConnected, setBleConnected] = useState(false);
+  const [sonosVolume, setSonosVolume] = useState<number | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Direct to engine port (no proxy needed)
@@ -595,6 +592,7 @@ export default function PiMobile() {
         setSonosPlaying(typeof data.sonos?.playbackState === 'string' && data.sonos.playbackState.includes('PLAYING'));
         setSonosState(typeof data.sonos?.playbackState === 'string' ? data.sonos.playbackState : null);
         setBleConnected(!!data.ble?.connected);
+        setSonosVolume(data.sonos?.volume ?? null);
 
       } catch {
         if (!cancelled) setPiOnline(false);
@@ -657,7 +655,7 @@ export default function PiMobile() {
                 idleColor={idleColor} setIdleColor={setIdleColor}
                 autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
                 sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
-                piBase={piBase}
+                piBase={piBase} sonosVolume={sonosVolume}
               />
             </section>
 
