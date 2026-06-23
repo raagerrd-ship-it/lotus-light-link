@@ -389,6 +389,10 @@ function ConnectionSettingsSection({
   return (
     <>
 
+      <BleDeviceSection piBase={piBase} />
+
+
+
 
       {/* Mikrofon: device hårdkodat till hw:0,0 i state.
           Endast gain-kontrollen (Manual/Auto) exponeras. */}
