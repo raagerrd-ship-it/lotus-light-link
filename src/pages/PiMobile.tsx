@@ -592,6 +592,7 @@ export default function PiMobile() {
         setSonosPlaying(typeof data.sonos?.playbackState === 'string' && data.sonos.playbackState.includes('PLAYING'));
         setSonosState(typeof data.sonos?.playbackState === 'string' ? data.sonos.playbackState : null);
         setBleConnected(!!data.ble?.connected);
+        setSonosVolume(data.sonos?.volume ?? null);
 
       } catch {
         if (!cancelled) setPiOnline(false);
