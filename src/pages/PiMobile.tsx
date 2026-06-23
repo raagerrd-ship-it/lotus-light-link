@@ -1955,95 +1955,24 @@ export default function PiMobile() {
           <span className="text-sm font-semibold">BLE Light</span>
         </div>
         <div className="flex gap-1">
-          <button
-            onTouchStart={() => {
-              longPressTriggered.current = false;
-              longPressTimer.current = setTimeout(() => {
-                longPressTriggered.current = true;
-                if (updateStatus === 'running') return;
-                if (!confirm('Tvinga ominstallation? (Hoppar över versionskontroll)')) return;
-                setUpdateStatus('running');
-                fetch(`${piBase}/api/update/force`, { method: 'POST' }).then(() => {
-                  const poll = setInterval(async () => {
-                    try {
-                      const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
-                      const sd = await s.json();
-                      if (!sd.running) {
-                        clearInterval(poll);
-                        setUpdateStatus('done');
-                        setTimeout(() => setUpdateStatus(null), 5000);
-                      }
-                    } catch { clearInterval(poll); setUpdateStatus('error'); }
-                  }, 2000);
-                }).catch(() => { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); });
-              }, 800);
-            }}
-            onTouchEnd={() => { clearTimeout(longPressTimer.current); }}
-            onTouchCancel={() => { clearTimeout(longPressTimer.current); }}
-            onClick={async () => {
-              if (longPressTriggered.current) return;
-              if (updateStatus === 'running') return;
-              setUpdateStatus('checking');
-              try {
-                const r = await fetch(`${piBase}/api/update/check`, { signal: AbortSignal.timeout(8000) });
-                const data = await r.json();
-                if (data.error) { setUpdateStatus('error'); return; }
-                if (data.upToDate) { setUpdateStatus('uptodate'); setTimeout(() => setUpdateStatus(null), 3000); return; }
-                setUpdateStatus('running');
-                await fetch(`${piBase}/api/update/run`, { method: 'POST' });
-                const poll = setInterval(async () => {
-                  try {
-                    const s = await fetch(`${piBase}/api/update/status`, { signal: AbortSignal.timeout(3000) });
-                    const sd = await s.json();
-                    if (!sd.running) {
-                      clearInterval(poll);
-                      setUpdateStatus('done');
-                      setTimeout(() => setUpdateStatus(null), 5000);
-                    }
-                  } catch { clearInterval(poll); setUpdateStatus('error'); }
-                }, 2000);
-              } catch { setUpdateStatus('error'); setTimeout(() => setUpdateStatus(null), 3000); }
-            }}
-            onContextMenu={(e) => e.preventDefault()}
-            className="p-2 rounded-lg active:bg-accent"
-            title={updateStatus === 'running' ? 'Uppdaterar…' : 'Tryck = uppdatera | Håll = tvinga ominstallation'}
-          >
-            {updateStatus === 'checking' || updateStatus === 'running' ? (
-              <Loader2 size={20} className="text-primary animate-spin" />
-            ) : updateStatus === 'uptodate' ? (
-              <Check size={20} className="text-green-500" />
-            ) : updateStatus === 'done' ? (
-              <Check size={20} className="text-primary" />
-            ) : updateStatus === 'error' ? (
-              <X size={20} className="text-destructive" />
-            ) : (
-              <Download size={20} className="text-muted-foreground" />
-            )}
-          </button>
-          <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Profilinställningar" disabled={!piOnline}>
+          <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Ljus-kalibrering" disabled={!piOnline}>
             <Lightbulb size={20} className="text-muted-foreground" />
           </button>
-          <button onClick={() => setView("global")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Globala inställningar" disabled={!piOnline}>
+          <button onClick={() => setView("global")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Sonos & mic-kalibrering" disabled={!piOnline}>
             <Settings size={20} className="text-muted-foreground" />
           </button>
         </div>
       </div>
 
-      {/* (LiveStrip flyttad — visas precis ovanför profilknapparna nedan) */}
-
-      {/* 0. Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
+      {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
 
-      {/* Förenklad start: en knapp kör Motor → Mic → Sonos → Lampa i sekvens */}
+      {/* En knapp kör Motor → Mic → Sonos → Lampa i sekvens */}
       <StartAllPanel
         piBase={piBase}
         onEngineReadyChange={setBleEngineReady}
-        onAllOkChange={setStartAllOk}
       />
 
-      {/* Allt nedanför kräver att frontend når Pi:n OCH att motorn faktiskt
-          körs — annars är slidrar/profiler/livestrip meningslösa.
-          Dolt (inte bara disabled) för att undvika visuell brus innan ready. */}
       {(() => {
         const ready = piOnline === true && engineStatus?.running === true;
         if (!ready) {
@@ -2055,45 +1984,13 @@ export default function PiMobile() {
         }
         return (
           <>
-            {/* Avancerat: per-steg-kontroll — visas BARA om Starta-allt inte är klart
-                (dvs. när användaren behöver felsöka eller starta delsystem manuellt) */}
-            {!startAllOk && (
-              <details className="rounded-xl border border-border bg-card/40">
-                <summary className="cursor-pointer select-none px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
-                  Avancerat — starta delsystem individuellt
-                </summary>
-                <div className="space-y-3 p-3 pt-0">
-                  <BleControlPanel
-                    piBase={piBase}
-                    section="engine"
-                    onEngineReadyChange={setBleEngineReady}
-                  />
-                  <SubsystemStartupPanel piBase={piBase} enabled={bleEngineReady} />
-                  <BleControlPanel
-                    piBase={piBase}
-                    section="lamp"
-                    onConnectedChange={setBleHardcodedConnected}
-                    onEngineReadyChange={setBleEngineReady}
-                  />
-                </div>
-              </details>
-            )}
-
-            {/* Restart-historik — alltid synlig så vi ser om motorn dör ofta */}
-            <RestartHistoryPanel piBase={piBase} />
-
             {saveError && (
               <div className="mb-4 mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
                 ⚠ Sparning misslyckades: {saveError}
               </div>
             )}
 
-            {/* Realtidsstatus precis ovanför profilknapparna */}
-            <div className="mb-4 mt-4">
-              <LiveStrip />
-            </div>
-
-            <section className="mb-8">
+            <section className="mb-8 mt-4">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
               <div className="grid grid-cols-2 gap-3">
                 {PRESETS.map((name) => (
@@ -2121,22 +2018,9 @@ export default function PiMobile() {
         );
       })()}
 
-      {/* Motor / Version — flyttad längst ner.
-          "Tvinga uppdatering"-knappen är borttagen; force-update finns kvar
-          via versionssymbolen i toppraden (lång-tryck) ifall den behövs. */}
+      {/* Minimal status: Sonos + Lampa */}
       <div className="mt-6 mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${piOnline === true ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
-            <span>Frontend</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-green-500' : piOnline === false ? 'bg-destructive' : 'bg-muted-foreground animate-pulse'}`} />
-            <span>Motor {engineStatus ? (engineStatus.running ? `${engineStatus.hz} Hz` : 'Stoppad') : '…'}</span>
-            {engineUptime != null && (
-              <span className="opacity-60 font-mono">· {formatUptime(engineUptime)}</span>
-            )}
-          </div>
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${
               sonosPlaying ? 'bg-green-500'
@@ -2146,44 +2030,16 @@ export default function PiMobile() {
             }`} />
             <span>Sonos {sonosPlaying ? 'Spelar' : sonosState ? 'Pausad' : 'Av'}</span>
           </div>
-          {lifecycleState && (() => {
-            // Bil-tändning: IGNITION = IGN (gul), MOTOR_ON = ON (grön),
-            // IGNITION_OFF = OFF (röd, manuell override).
-            const label =
-              lifecycleState === 'MOTOR_ON' ? 'ON' :
-              lifecycleState === 'IGNITION_OFF' ? 'OFF' : 'IGN';
-            const dot =
-              lifecycleState === 'MOTOR_ON' ? 'bg-green-500' :
-              lifecycleState === 'IGNITION_OFF' ? 'bg-destructive' :
-              'bg-amber-500';
-            return (
-              <div className="flex items-center gap-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-                <span>Tändning {label}</span>
-                {pendingShutdownInMs != null && pendingShutdownInMs > 0 && (
-                  <span className="opacity-60 font-mono">· shutdown {Math.ceil(pendingShutdownInMs / 100) / 10}s</span>
-                )}
-                {lifecycleOverride && lifecycleState !== 'IGNITION_OFF' && (
-                  <span className="opacity-60 font-mono">· override</span>
-                )}
-              </div>
-            );
-          })()}
-          {(engineVersionLabel || engineBuildLabel) && (
-            <div className="flex flex-col items-end font-mono leading-tight text-right">
-              {engineVersionLabel && <span>v{engineVersionLabel}</span>}
-              {engineBuildLabel && <span>{engineBuildLabel}</span>}
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              bleConnected ? 'bg-green-500'
+                : piOnline === false ? 'bg-destructive'
+                : 'bg-muted-foreground animate-pulse'
+            }`} />
+            <span>Lampa {bleConnected ? 'Ansluten' : 'Ej ansluten'}</span>
+          </div>
         </div>
       </div>
-
-      {/* BLE-enhet hanteras nu helt av BleControlPanel ovan (hårdkodad ELK-BLEDOM01).
-          Sök/manuell-MAC/spara/glöm är medvetet borttaget i denna iteration. */}
-
-      {/* Diagnostik medvetet borttaget — UI är minimalt fokuserat på Starta motor + Anslut.
-          Engine-loggen är borttagen — felsök via SSH/journalctl istället. */}
-
     </div>
   );
 }
