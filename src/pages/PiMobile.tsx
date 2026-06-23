@@ -21,30 +21,7 @@ const PRESET_CALS: Record<string, Cal> = {
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
 
-/** Format uptime-sekunder till "2h 15m" / "45m" / "12s" */
-function formatUptime(s: number): string {
-  if (s < 60) return `${Math.floor(s)}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
 
-function cleanVersionLabel(version?: string | null): string | null {
-  const v = version?.trim();
-  if (!v || v === '?' || v.toLowerCase() === 'unknown') return null;
-  return v.replace(/^v+/i, '');
-}
-
-function cleanBuildLabel(commit?: string | null, branch?: string | null): string | null {
-  const c = commit?.trim();
-  const b = branch?.trim();
-  const hasCommit = !!c && c !== '?' && c.toLowerCase() !== 'unknown';
-  const hasBranch = !!b && b !== '?' && b.toLowerCase() !== 'unknown';
-  if (hasCommit && hasBranch) return `${c}@${b}`;
-  if (hasCommit) return c;
-  return null;
-}
 
 /** Shared exponential mapping 0-100 → alpha 0.005-1.0 (lägre värde = mjukare) */
 function curveToAlpha(v: number) {
