@@ -414,6 +414,7 @@ export default function PiMobile() {
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const [sonosState, setSonosState] = useState<string | null>(null);
   const [bleConnected, setBleConnected] = useState(false);
+  const [sonosVolume, setSonosVolume] = useState<number | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Direct to engine port (no proxy needed)
