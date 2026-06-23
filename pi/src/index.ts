@@ -20,7 +20,7 @@ import { getItem } from './storage.js';
 import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,
   getSubsystemState, type SubsystemId,
-} from './ble/state.js';
+} from './ble/subsystem-state.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad, allt körs realtime.
 
 // --- Config ---
