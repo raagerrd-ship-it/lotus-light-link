@@ -1,19 +1,38 @@
 /**
- * Hårdkodad mål-enhet — vi fokuserar på att få EN lampa att fungera.
- * Sök-UI och manuella MAC-fält är bortrensade i denna iteration; allt
- * scan/connect-flöde matchar enbart denna enhet.
+ * Mål-enhet för lampdrivern. Default är projektets BLEDOM-lampa men kan
+ * sättas om via setDeviceConfig() när drivern återanvänds i andra projekt.
  *
  * Adressformat:
  *   - mac           "BE:67:00:15:09:41"  (människo-läsbart)
  *   - addressLower  "be:67:00:15:09:41"  (jämförelse mot peripheral.address)
- *   - idNoColon     "be67001509 41" → "be6700150941" (jämförelse mot peripheral.id)
+ *   - idNoColon     "be6700150941"       (jämförelse mot peripheral.id)
  */
-export const HARDCODED_DEVICE = {
+export interface LampDevice {
+  name: string;
+  mac: string;
+}
+
+function derive(mac: string): { addressLower: string; idNoColon: string } {
+  const addressLower = mac.toLowerCase();
+  return { addressLower, idNoColon: addressLower.replace(/[^0-9a-f]/g, '') };
+}
+
+const DEFAULT_MAC = 'BE:67:00:15:09:41';
+
+// Muteras in-place av setDeviceConfig() — connect.ts läser fälten vid call-time.
+export const HARDCODED_DEVICE: { name: string; mac: string; addressLower: string; idNoColon: string } = {
   name: 'ELK-BLEDOM01',
-  mac: 'BE:67:00:15:09:41',
-  addressLower: 'be:67:00:15:09:41',
-  idNoColon: 'be6700150941',
-} as const;
+  mac: DEFAULT_MAC,
+  ...derive(DEFAULT_MAC),
+};
+
+export function setDeviceConfig(device: LampDevice): void {
+  HARDCODED_DEVICE.name = device.name;
+  HARDCODED_DEVICE.mac = device.mac;
+  const d = derive(device.mac);
+  HARDCODED_DEVICE.addressLower = d.addressLower;
+  HARDCODED_DEVICE.idNoColon = d.idNoColon;
+}
 
 export function matchesHardcoded(peripheral: { id?: string; address?: string }): boolean {
   const addr = (peripheral.address ?? '').toLowerCase();
