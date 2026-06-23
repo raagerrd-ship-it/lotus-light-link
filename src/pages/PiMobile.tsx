@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Save, Check, Mic } from "lucide-react";
+import { Save, Check, Mic, Bluetooth, Loader2 } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
@@ -251,6 +251,124 @@ function GainCalibrationPanel({
 }
 
 
+type BleDevice = { name: string; mac: string; rssi?: number };
+
+/* ── BLE-enhetsval: upptäck & välj lampa, slipp hårdkoda MAC ── */
+function BleDeviceSection({ piBase }: { piBase: string }) {
+  const [current, setCurrent] = useState<{ name: string; mac: string } | null>(null);
+  const [devices, setDevices] = useState<BleDevice[] | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [savingMac, setSavingMac] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${piBase}/api/ble/device`, { signal: AbortSignal.timeout(3000) })
+      .then(r => r.json())
+      .then(d => { if (d?.mac) setCurrent({ name: d.name, mac: d.mac }); })
+      .catch(() => {});
+  }, [piBase]);
+
+  const scan = async () => {
+    setScanning(true);
+    setError(null);
+    setDevices(null);
+    try {
+      const r = await fetch(`${piBase}/api/ble/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durationMs: 6000 }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error ?? 'scan misslyckades');
+      setDevices((d.devices ?? []) as BleDevice[]);
+    } catch (e: any) {
+      setError(e?.message ?? 'Kunde inte söka');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const select = async (dev: BleDevice) => {
+    setSavingMac(dev.mac);
+    setError(null);
+    try {
+      const r = await fetch(`${piBase}/api/ble/device`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: dev.name || 'BLE-lampa', mac: dev.mac }),
+        signal: AbortSignal.timeout(5000),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error ?? 'kunde inte spara');
+      setCurrent(d.device);
+    } catch (e: any) {
+      setError(e?.message ?? 'Kunde inte spara');
+    } finally {
+      setSavingMac(null);
+    }
+  };
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+        <Bluetooth size={14} /> BLE-lampa
+      </h2>
+
+      <div className="mb-3 p-2.5 rounded-lg bg-secondary/50 border border-border text-[11px]">
+        <div className="text-muted-foreground">Sparad enhet</div>
+        <div className="font-medium">
+          {current ? current.name : '—'}
+          {current && <span className="text-muted-foreground font-mono ml-1.5">{current.mac}</span>}
+        </div>
+      </div>
+
+      <button
+        onClick={scan}
+        disabled={scanning}
+        className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-1.5"
+      >
+        {scanning ? <><Loader2 size={14} className="animate-spin" /> Söker…</> : <><Bluetooth size={14} /> Sök enheter</>}
+      </button>
+
+      {error && <p className="text-[11px] text-destructive mt-2">⚠ {error}</p>}
+
+      {devices && (
+        <div className="mt-3 space-y-1.5">
+          {devices.length === 0 && (
+            <p className="text-[11px] text-muted-foreground">Inga enheter hittades. Kontrollera att lampan är på och nära.</p>
+          )}
+          {devices.map(dev => {
+            const isCurrent = current?.mac?.toUpperCase() === dev.mac.toUpperCase();
+            return (
+              <button
+                key={dev.mac}
+                onClick={() => select(dev)}
+                disabled={savingMac != null}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left transition-colors disabled:opacity-50 ${
+                  isCurrent ? 'bg-primary/15 border border-primary/40' : 'bg-secondary border border-border'
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="text-sm truncate">{dev.name || '(namnlös)'}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">{dev.mac}</div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {dev.rssi != null && <span className="text-[10px] text-muted-foreground font-mono">{dev.rssi} dBm</span>}
+                  {savingMac === dev.mac
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : isCurrent && <Check size={14} className="text-primary" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+
 function ConnectionSettingsSection({
   sonosUrl, setSonosUrl,
   micGain, setMicGain,
@@ -270,6 +388,10 @@ function ConnectionSettingsSection({
 }) {
   return (
     <>
+
+      <BleDeviceSection piBase={piBase} />
+
+
 
 
       {/* Mikrofon: device hårdkodat till hw:0,0 i state.
