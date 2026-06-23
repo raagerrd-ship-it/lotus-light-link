@@ -389,7 +389,6 @@ function ConnectionSettingsSection({
   return (
     <>
 
-      <BleDeviceSection piBase={piBase} />
 
 
 
