@@ -1841,7 +1841,7 @@ export default function PiMobile() {
     poll();
     const id = setInterval(poll, 5000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [view, piBase]);
+  }, [piBase]);
 
 
 
