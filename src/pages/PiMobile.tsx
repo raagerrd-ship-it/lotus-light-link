@@ -1626,7 +1626,6 @@ function BleIntervalDiag({ piBase }: { piBase: string }) {
 
 
 export default function PiMobile() {
-  const [view, setView] = useState<"home" | "profile" | "global">("home");
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   // 4 oberoende profiler — varje knapp kommer ihåg sina egna värden.
