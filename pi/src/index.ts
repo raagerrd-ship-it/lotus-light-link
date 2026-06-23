@@ -24,17 +24,19 @@ import {
 
 // Applicera ev. tidigare vald BLE-lampa (annars körs default BLEDOM01-MAC).
 // Måste ske före första connect så connect.ts läser rätt target.
-try {
-  const savedDevice = getItem('lamp-device');
-  if (savedDevice) {
-    const d = JSON.parse(savedDevice);
-    if (d?.name && d?.mac) {
-      const { setDeviceConfig } = await import('./ble-driver/device-config.js');
-      setDeviceConfig({ name: d.name, mac: d.mac });
-      console.log(`[boot] BLE-lampa från sparat val: ${d.name} (${d.mac})`);
+void (async () => {
+  try {
+    const savedDevice = getItem('lamp-device');
+    if (savedDevice) {
+      const d = JSON.parse(savedDevice);
+      if (d?.name && d?.mac) {
+        const { setDeviceConfig } = await import('./ble-driver/device-config.js');
+        setDeviceConfig({ name: d.name, mac: d.mac });
+        console.log(`[boot] BLE-lampa från sparat val: ${d.name} (${d.mac})`);
+      }
     }
-  }
-} catch {}
+  } catch {}
+})();
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad, allt körs realtime.
 
 // --- Config ---
