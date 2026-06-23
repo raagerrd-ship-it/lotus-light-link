@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bluetooth, Save, Check, Mic, Zap, X } from "lucide-react";
+import { Bluetooth, Save, Check, Mic, Zap } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
@@ -43,48 +43,6 @@ function alphaToAttack(alpha: number) {
   return 100 - alphaToCurve(alpha);
 }
 
-type NumericCalKey = 'bassWeight' | 'attack' | 'softness' | 'dynamicDamping' | 'brightnessFloor' | 'punchWhiteThreshold' | 'perceptualGamma' | 'transientGain' | 'onsetThreshold' | 'onsetRefractoryMs' | 'onsetEnergyFloor' | 'flickerDeadband';
-// Slider-ranges = användbar zon (inte API-clamp). Power-users kan sätta extrema värden via PUT /api/calibration.
-// flickerDeadband exponeras inte här längre — sköts av SilenceAnalysisPanel (legacy BLE-bandbreddsfilter).
-// saturation/maxRisePerSec/maxFallPerSec/hiShelfGainDb borttagna 2026-04-25 / 2026-05-04 (ingen runtime-effekt).
-//
-// 2026-05-04: 5 essentiella sliders i primär-vy. transientGain, punchWhiteThreshold,
-// perceptualGamma, onset-finjustering + tystnadströskel flyttade till "Avancerat".
-const SLIDER_CONFIG: { key: NumericCalKey; label: string; min: number; max: number; step: number; unit?: string; description: string }[] = [
-  { key: "attack", label: "Punch", min: 0, max: 100, step: 1, description: "0 = mjuk rise, 100 = omedelbar attack på beats" },
-  { key: "softness", label: "Softness", min: 0, max: 100, step: 1, description: "0 = rått fall, 100 = mycket mjuk fade-out" },
-  { key: "dynamicDamping", label: "Dynamik", min: -2, max: 2, step: 0.1, unit: "×", description: "0 = av, positivt = kontrast (expanderad), negativt = utjämning (komprimerad)" },
-  { key: "bassWeight", label: "Bas ↔ Diskant", min: 0, max: 1, step: 0.05, description: "Bas/Diskant-filter — 0 = endast diskant (högpass), 0.5 = 50/50 mix, 1.0 = endast bas (lågpass)" },
-  { key: "brightnessFloor", label: "Min ljusstyrka", min: 0, max: 100, step: 1, unit: "%", description: "Lägsta ljusstyrka (0 = av — släck helt i tystnad)" },
-  { key: "flickerDeadband", label: "Stabilitet", min: 0, max: 0.05, step: 0.005, description: "Anti-flicker (Weber-Fechner) — 0 = av, 0.01 subtil, 0.02 balanserad, 0.04 aggressiv" },
-];
-
-// Avancerat: perceptualGamma + transientGain + punchWhiteThreshold + två sammanslagna meta-sliders.
-const ADVANCED_GAMMA_CONFIG = { key: 'perceptualGamma' as NumericCalKey, label: 'Perceptuell kurva', min: 0, max: 2.2, step: 0.1, description: '0 = av, 1.0 = linjär, 1.8 = mjuk, 2.2 = kraftigt komprimerad' };
-const ADVANCED_TRANSIENT_CONFIG = { key: 'transientGain' as NumericCalKey, label: 'Transient boost', min: 0, max: 1.5, step: 0.1, unit: '×', description: '0 = av, 1.0 = normal, 1.5 = överdrivna trumslag' };
-const ADVANCED_PUNCH_WHITE_CONFIG = { key: 'punchWhiteThreshold' as NumericCalKey, label: 'Vita peaks', min: 90, max: 100, step: 1, unit: '%', description: '100 = av. Över detta värde flashas vit (maximala intensitets-peaks)' };
-
-/** Onset-känslighet 0–1 (1 = mest känslig). Mappar linjärt till threshold (4.0→1.5) + refractory (300→80ms). */
-function onsetSensToFields(s: number): { onsetThreshold: number; onsetRefractoryMs: number } {
-  const t = Math.max(0, Math.min(1, s));
-  return {
-    onsetThreshold: Math.round((4.0 - t * 2.5) * 10) / 10,         // 4.0 → 1.5
-    onsetRefractoryMs: Math.round(300 - t * 220 / 10) * 10,        // approx 300 → 80
-  };
-}
-function fieldsToOnsetSens(threshold: number, refractoryMs: number): number {
-  const fromThr = (4.0 - threshold) / 2.5;
-  const fromRef = (300 - refractoryMs) / 220;
-  return Math.max(0, Math.min(1, (fromThr + fromRef) / 2));
-}
-/** Tystnadströskel 0–0.05 styr både tick- och onset-energy-floor symmetriskt. */
-function silenceFloorToFields(v: number): { tickEnergyFloor: number; onsetEnergyFloor: number } {
-  const f = Math.max(0, Math.min(0.05, v));
-  return { tickEnergyFloor: Math.round(f * 1000) / 1000, onsetEnergyFloor: Math.round(f * 1000) / 1000 };
-}
-function fieldsToSilenceFloor(tickFloor: number, onsetFloor: number): number {
-  return Math.round(((tickFloor + onsetFloor) / 2) * 1000) / 1000;
-}
 
 const CURVE_POINTS = 200; // points to draw
 
@@ -817,42 +775,6 @@ function SilenceAnalysisPanel({
   );
 }
 
-/** Live-indikator: % av frames där anti-flicker deadband blockerade en write. Pollar /api/status @ 1s. */
-function DeadbandActivityIndicator({ piBase, active }: { piBase: string; active: boolean }) {
-  const [pct, setPct] = useState<number | null>(null);
-  const prev = useRef<{ ok: number; blocked: number } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2500) });
-        if (!r.ok || cancelled) return;
-        const json = await r.json();
-        const s = json?.ble?.stats;
-        if (!s || cancelled) return;
-        const ok = Number(s.tickOkCount ?? 0);
-        const blocked = Number(s.deadbandBlockedCount ?? 0);
-        if (prev.current) {
-          const dOk = ok - prev.current.ok;
-          const dBlocked = blocked - prev.current.blocked;
-          const total = dOk + dBlocked;
-          if (total > 0) setPct((dBlocked / total) * 100);
-        }
-        prev.current = { ok, blocked };
-      } catch {}
-    };
-    poll();
-    const iv = setInterval(poll, 1000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [piBase]);
-
-  if (!active) return <p className="text-[10px] text-muted-foreground/60 mt-0.5 italic">Av — varje mikro-ändring skickas</p>;
-  if (pct === null) return <p className="text-[10px] text-muted-foreground/60 mt-0.5">Mäter aktivitet…</p>;
-  const rounded = Math.round(pct);
-  const tone = pct < 5 ? 'text-muted-foreground/60' : pct > 60 ? 'text-orange-400' : 'text-muted-foreground';
-  const note = pct < 5 ? ' (knappt aktiv)' : pct > 60 ? ' (mycket stel — överväg sänka)' : '';
-  return <p className={`text-[10px] mt-0.5 ${tone}`}>Aktiv på {rounded}% av frames{note}</p>;
-}
 
 
 function LightCalibrationSection({
@@ -867,222 +789,14 @@ function LightCalibrationSection({
 
 
       <section className="space-y-5 mb-8">
-        
         <SignalPreview cal={cal} height={180} showLegend={true} />
-
         <SilenceAnalysisPanel piBase={piBase} cal={cal} setCal={setCal} />
-        
-        {SLIDER_CONFIG.map(({ key, label, min, max, step, unit, description }) => {
-          const isDyn = key === 'dynamicDamping';
-          const isFloor = key === 'brightnessFloor';
-          const isTransient = key === 'transientGain';
-          const isOffAtZero = isDyn || isFloor || isTransient;
-          const displayValue = isOffAtZero && cal[key] === 0 ? 'av' : `${cal[key]}${unit ?? ''}`;
-          const zeroPct = ((0 - min) / (max - min)) * 100;
-          const showTick = isOffAtZero && zeroPct > 0 && zeroPct < 100;
-          return (
-            <div key={key}>
-              <div className="flex justify-between text-sm mb-0.5">
-                <span>{label}</span>
-                <span className={`font-mono text-xs ${isOffAtZero && cal[key] === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{displayValue}</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="range" min={min} max={max} step={step} value={cal[key]}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (isDyn) {
-                      setCal({ ...cal, dynamicDamping: v, dynamicsEnabled: v !== 0 });
-                    } else {
-                      setCal({ ...cal, [key]: v });
-                    }
-                  }}
-                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary relative z-10"
-                />
-                {showTick && (
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-muted-foreground/60 pointer-events-none z-0"
-                    style={{ left: `calc(${zeroPct}% - 1px)` }}
-                    aria-hidden
-                  />
-                )}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
-              {key === 'flickerDeadband' && <DeadbandActivityIndicator piBase={piBase} active={cal.flickerDeadband > 0} />}
-            </div>
-          );
-        })}
-
-        <AdvancedCalibrationSection cal={cal} setCal={setCal} />
       </section>
     </>
 
   );
 }
 
-/** Avancerat-sektion: perceptuell kurva + 2 sammanslagna meta-sliders. Default-collapsed. */
-function AdvancedCalibrationSection({ cal, setCal }: { cal: Cal; setCal: (c: Cal) => void }) {
-  const [open, setOpen] = useState(false);
-  const onsetSens = fieldsToOnsetSens(cal.onsetThreshold, cal.onsetRefractoryMs);
-  const silenceFloor = fieldsToSilenceFloor(cal.tickEnergyFloor, cal.onsetEnergyFloor);
-  return (
-    <div className="pt-3 mt-2 border-t border-border/40">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground py-1"
-      >
-        <span>Avancerat</span>
-        <span className="font-mono">{open ? '−' : '+'}</span>
-      </button>
-      {open && (
-        <div className="space-y-5 mt-3">
-          <div>
-            <div className="flex justify-between text-sm mb-0.5">
-              <span>Onset-känslighet</span>
-              <span className="font-mono text-xs text-muted-foreground">{onsetSens.toFixed(2)}</span>
-            </div>
-            <input
-              type="range" min={0} max={1} step={0.05} value={onsetSens}
-              onChange={(e) => {
-                const f = onsetSensToFields(parseFloat(e.target.value));
-                setCal({ ...cal, onsetThreshold: f.onsetThreshold, onsetRefractoryMs: f.onsetRefractoryMs });
-              }}
-              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-            />
-            <p className="text-[10px] text-muted-foreground mt-0.5">0 = bara tydliga slag (lugnt), 1 = mycket känslig (hög puls). Styr threshold + refractory ihop.</p>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-sm mb-0.5">
-              <span>Tystnadströskel</span>
-              <span className="font-mono text-xs text-muted-foreground">{silenceFloor.toFixed(3)}</span>
-            </div>
-            <input
-              type="range" min={0} max={0.05} step={0.005} value={silenceFloor}
-              onChange={(e) => {
-                const f = silenceFloorToFields(parseFloat(e.target.value));
-                setCal({ ...cal, tickEnergyFloor: f.tickEnergyFloor, onsetEnergyFloor: f.onsetEnergyFloor });
-              }}
-              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-            />
-            <p className="text-[10px] text-muted-foreground mt-0.5">Höj om bakgrundsbrus triggar pulser i tysta partier (0 = av, 0.02 = default). Styr tick + onset energy-floor symmetriskt.</p>
-          </div>
-
-          {/* Transient boost */}
-          {(() => {
-            const c = ADVANCED_TRANSIENT_CONFIG;
-            const v = cal.transientGain;
-            const display = v === 0 ? 'av' : `${v}${c.unit}`;
-            return (
-              <div>
-                <div className="flex justify-between text-sm mb-0.5">
-                  <span>{c.label}</span>
-                  <span className={`font-mono text-xs ${v === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{display}</span>
-                </div>
-                <input
-                  type="range" min={c.min} max={c.max} step={c.step} value={v}
-                  onChange={(e) => setCal({ ...cal, transientGain: parseFloat(e.target.value) })}
-                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-                />
-                <p className="text-[10px] text-muted-foreground mt-0.5">{c.description}</p>
-              </div>
-            );
-          })()}
-
-          {/* Vita peaks */}
-          {(() => {
-            const c = ADVANCED_PUNCH_WHITE_CONFIG;
-            const v = cal.punchWhiteThreshold;
-            const display = v >= 100 ? 'av' : `${v}${c.unit}`;
-            return (
-              <div>
-                <div className="flex justify-between text-sm mb-0.5">
-                  <span>{c.label}</span>
-                  <span className={`font-mono text-xs ${v >= 100 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{display}</span>
-                </div>
-                <input
-                  type="range" min={c.min} max={c.max} step={c.step} value={v}
-                  onChange={(e) => setCal({ ...cal, punchWhiteThreshold: parseFloat(e.target.value) })}
-                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-                />
-                <p className="text-[10px] text-muted-foreground mt-0.5">{c.description}</p>
-              </div>
-            );
-          })()}
-
-          {/* Beat-källa: kick/bas vs hela spektrumet */}
-          <div>
-            <div className="flex justify-between items-center text-sm mb-1">
-              <span>Beat-källa</span>
-              <div className="flex gap-1">
-                {(['bass', 'full'] as const).map((src) => (
-                  <button
-                    key={src}
-                    onClick={() => setCal({ ...cal, beatSource: src })}
-                    className={`px-2 py-0.5 rounded text-xs ${cal.beatSource === src ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
-                  >
-                    {src === 'bass' ? 'Bara kick/bas' : 'Hela spektrumet'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="text-[10px] text-muted-foreground">Bara kick/bas = pulsen sitter på bastrumman, hi-hats/snare ignoreras.</p>
-          </div>
-
-          {/* Drop-detektor */}
-          <div>
-            <div className="flex justify-between items-center text-sm mb-1">
-              <span>Drop-flash</span>
-              <button
-                onClick={() => setCal({ ...cal, dropEnabled: !cal.dropEnabled })}
-                className={`px-2 py-0.5 rounded text-xs ${cal.dropEnabled ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
-              >
-                {cal.dropEnabled ? 'På' : 'Av'}
-              </button>
-            </div>
-            {cal.dropEnabled && (
-              <>
-                <div className="flex justify-between text-sm mb-0.5">
-                  <span>Drop-känslighet</span>
-                  <span className="font-mono text-xs text-muted-foreground">{cal.dropSensitivity.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range" min={0.5} max={2.0} step={0.05} value={cal.dropSensitivity}
-                  onChange={(e) => setCal({ ...cal, dropSensitivity: parseFloat(e.target.value) })}
-                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-                />
-                <p className="text-[10px] text-muted-foreground mt-0.5">Lägre = lättare att trigga (mer drops). Triggar stor vit blixt efter ett nedbrutet parti.</p>
-              </>
-            )}
-          </div>
-
-
-          {/* Perceptuell kurva */}
-          {(() => {
-            const c = ADVANCED_GAMMA_CONFIG;
-            const v = cal.perceptualGamma;
-            const display = v === 0 ? 'av' : `${v}`;
-            return (
-              <div>
-                <div className="flex justify-between text-sm mb-0.5">
-                  <span>{c.label}</span>
-                  <span className={`font-mono text-xs ${v === 0 ? 'text-muted-foreground italic' : 'text-muted-foreground'}`}>{display}</span>
-                </div>
-                <input
-                  type="range" min={c.min} max={c.max} step={c.step} value={v}
-                  onChange={(e) => setCal({ ...cal, perceptualGamma: parseFloat(e.target.value) })}
-                  className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-                />
-                <p className="text-[10px] text-muted-foreground mt-0.5">{c.description}</p>
-              </div>
-            );
-          })()}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ── Mode-aware gain control: Manual XOR Auto (Sonos vol)
  *  Auto-läget använder två fasta referenspunkter (vol 15 & vol 50) som
