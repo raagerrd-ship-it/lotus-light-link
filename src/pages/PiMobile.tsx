@@ -1891,7 +1891,20 @@ export default function PiMobile() {
               </div>
             )}
 
+            {/* Anslut: Sonos + mic-kalibrering + idle-färg + auto-TV */}
             <section className="mb-8 mt-4">
+              <ConnectionSettingsSection
+                sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
+                micGain={micGain} setMicGain={setMicGain}
+                idleColor={idleColor} setIdleColor={setIdleColor}
+                autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
+                sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
+                piBase={piBase}
+              />
+            </section>
+
+            {/* Profil-val */}
+            <section className="mb-8">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
               <div className="grid grid-cols-2 gap-3">
                 {PRESETS.map((name) => (
@@ -1915,9 +1928,15 @@ export default function PiMobile() {
                 ))}
               </div>
             </section>
+
+            {/* Ljus-kalibrering för aktiv profil */}
+            <section className="mb-8">
+              <LightCalibrationSection cal={cal} setCal={setCal} piBase={piBase} />
+            </section>
           </>
         );
       })()}
+
 
       {/* Minimal status: Sonos + Lampa */}
       <div className="mt-6 mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
