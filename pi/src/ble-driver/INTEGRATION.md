@@ -110,15 +110,30 @@ async function bootBle(): Promise<void> {
 
 ---
 
-## 5. Minimal användning
+## 5. Steg-för-steg-exempel
 
 ```ts
-import { createLampDriver } from './ble-driver/index.js';
+import { createLampDriver, getNobleAsync, isHci0Up } from './ble-driver/index.js';
 
-await bootBle();   // se steg 4
+// ── 1. Bootstrap BLE (gör EN gång vid uppstart) ──
+async function bootBle(): Promise<void> {
+  const start = Date.now();
+  while (!isHci0Up() && Date.now() - start < 8000) {
+    await new Promise(r => setTimeout(r, 250));
+  }
+  if (!isHci0Up()) throw new Error('hci0 inte UP — kör: sudo systemctl restart bluetooth');
 
+  const noble = await getNobleAsync();
+  if (noble.state !== 'poweredOn') {
+    await noble.waitForPoweredOnAsync(5000);
+  }
+}
+
+await bootBle();
+
+// ── 2. Skapa drivern ──
 const lamp = createLampDriver({
-  device: { name: 'ELK-BLEDOM01', mac: 'BE:67:00:15:09:41' }, // DIN lampas namn/MAC
+  device: { name: 'ELK-BLEDOM01', mac: 'BE:67:00:15:09:41' }, // ← DIN lampa
   // logger: console.log,   // valfritt; annars tyst om inte LOTUS_DEBUG=1
   // slotLeaseMs: 25,        // write-cadence (default 25ms ≈ 40Hz)
   // dimmingGamma: 1.8,      // perceptuell dimring
@@ -129,22 +144,41 @@ const lamp = createLampDriver({
   },
 });
 
-const r = await lamp.connect();        // scan → connect → anchor write
+// ── 3. Anslut ──
+const r = await lamp.connect();   // scan → connect → anchor write
 if (!lamp.isConnected()) throw new Error('kunde inte ansluta');
 
-lamp.startKeepAlive();                  // håll länken vid liv mellan färgwrites
+// ── 4. Starta keep-alive (krävs för att hålla länken vid liv) ──
+lamp.startKeepAlive();
 
-// Skicka färger i en loop. Respektera ALLTID backpressure via canWriteNow().
-setInterval(() => {
+// ── 5. Tänd lampan ──
+await lamp.powerOn();
+
+// ── 6. Skicka färger (respektera ALLTID backpressure) ──
+if (lamp.canWriteNow()) {
+  lamp.setColor(255, 80, 0, 100);    // r, g, b, brightness(0–100)
+}
+
+// Exempel: loop med färgbyte var 25 ms
+let hue = 0;
+const colorInterval = setInterval(() => {
   if (lamp.canWriteNow()) {
-    lamp.setColor(255, 80, 0, 100);    // r, g, b, brightness(0–100)
+    hue = (hue + 15) % 360;
+    const [r, g, b] = hsvToRgb(hue, 1, 1);   // din egen hsvToRgb()
+    lamp.setColor(r, g, b, 80);
   }
 }, 25);
-```
 
-Avsluta snyggt:
+// Efter några sekunder:
+clearInterval(colorInterval);
 
-```ts
+// ── 7. Sätt idle-färg (visas när inget annat skickas) ──
+lamp.setIdleColor(10, 10, 30);
+
+// ── 8. Släck lampan ──
+await lamp.powerOff();
+
+// ── 9. Avsluta snyggt ──
 lamp.stopKeepAlive();
 await lamp.disconnect();
 ```
