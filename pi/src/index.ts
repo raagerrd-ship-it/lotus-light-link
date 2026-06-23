@@ -411,6 +411,18 @@ async function main() {
     await import('./restartLog.js');
   noteBootStart();
 
+  // Wire ble-driverns restart-hook → restart-loggning (drivern är annars
+  // fristående och loggar inget). Speglar tidigare inline-logik i connect.ts.
+  try {
+    const { setRestartHook } = await import('./ble/connect-hardcoded.js');
+    setRestartHook(({ count, error }) => {
+      recordRestart('ble-consecutive-failures', `${count} consecutive failures, last error: ${error}`);
+      markGracefulShutdown();
+    });
+  } catch (e: any) {
+    console.warn('[Boot] kunde inte koppla BLE restart-hook:', e?.message ?? e);
+  }
+
   // ── Auto-restart efter ofrivillig död ────────────────────────────────────
   const {
     consumeReconnectOnBootFlag,
