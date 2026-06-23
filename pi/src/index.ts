@@ -428,7 +428,7 @@ async function main() {
     consumeReconnectOnBootFlag,
     setReconnectOnBootFlag,
     clearReconnectOnBootFlag,
-  } = await import('./ble/reconnect-flag.js');
+  } = await import('./ble-driver/reconnect-flag.js');
 
   // Hook in BLE-callbacks så flaggan sätts när lampa ansluts.
   try {

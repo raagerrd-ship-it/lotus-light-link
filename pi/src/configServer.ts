@@ -308,7 +308,7 @@ export function startConfigServer(port = 3050): void {
 
     // 5. noble adapter state
     try {
-      const mod = await import('./ble/noble-singleton.js');
+      const mod = await import('./ble-driver/noble-singleton.js');
       const noble: any = (mod as any).getNoble?.() ?? (mod as any).noble ?? null;
       if (noble) {
         result.nobleState = noble.state ?? noble._state ?? 'unknown';
@@ -360,7 +360,7 @@ export function startConfigServer(port = 3050): void {
     // Step 1: load noble singleton (via async loader — synkron getNoble() kastar om ej laddad)
     const s1 = Date.now();
     try {
-      const mod = await import('./ble/noble-singleton.js');
+      const mod = await import('./ble-driver/noble-singleton.js');
       const loader = (mod as any).getNobleAsync ?? (mod as any).getNoble;
       if (typeof loader !== 'function') throw new Error('noble-singleton saknar getNobleAsync/getNoble');
       noble = await loader();
@@ -643,7 +643,7 @@ export function startConfigServer(port = 3050): void {
       // UI "Starta allt" → lifecycle tar över hela start-sekvensen
       // (BLE-minimal → mic ∥ connect). Rensar override först.
       const { userStartAll } = await import('./engineLifecycle.js');
-      const { HARDCODED_DEVICE } = await import('./ble/hardcoded-device.js');
+      const { HARDCODED_DEVICE } = await import('./ble-driver/device-config.js');
       const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
       await userStartAll();
       const c = getHardcodedConnected();
@@ -705,11 +705,11 @@ export function startConfigServer(port = 3050): void {
     try {
       const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
       const { hasNobleLoaded } = await import('./ble/state.js');
-      const { HARDCODED_DEVICE } = await import('./ble/hardcoded-device.js');
+      const { HARDCODED_DEVICE } = await import('./ble-driver/device-config.js');
       let rawState: string | null = null;
       let engineReady = false;
       if (hasNobleLoaded()) {
-        const { getNoble } = await import('./ble/noble-singleton.js');
+        const { getNoble } = await import('./ble-driver/noble-singleton.js');
         const n = getNoble() as any;
         rawState = n?.state ?? n?._state ?? null;
         engineReady = rawState === 'poweredOn';
@@ -926,7 +926,7 @@ export function startConfigServer(port = 3050): void {
     const engine = requireEngine(res);
     if (!engine) return;
     const { getDevice } = await import('./ble/state.js');
-    const { getNoble } = await import('./ble/noble-singleton.js');
+    const { getNoble } = await import('./ble-driver/noble-singleton.js');
     const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
     const dev = getDevice();
     if (!dev) return res.status(503).json({ error: 'no BLE device connected' });
@@ -1087,7 +1087,7 @@ export function startConfigServer(port = 3050): void {
   // är långsam oavsett vad vi skickar i HCI-tweaks.
   app.get('/api/ble/conn-params', async (_req, res) => {
     try {
-      const { getNoble } = await import('./ble/noble-singleton.js');
+      const { getNoble } = await import('./ble-driver/noble-singleton.js');
       const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
       const handle = getAttachedHandle();
       const noble: any = getNoble();

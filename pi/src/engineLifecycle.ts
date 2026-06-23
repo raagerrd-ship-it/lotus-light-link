@@ -18,7 +18,7 @@
  */
 
 import { getItem, setItem, removeItem } from './storage.js';
-import { getSubsystemState } from './ble/state.js';
+import { getSubsystemState } from './ble/subsystem-state.js';
 
 export type LifecycleState = 'IGNITION' | 'MOTOR_ON' | 'IGNITION_OFF';
 
