@@ -162,20 +162,6 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 
 
 
-function LightCalibrationSection({
-  cal,
-}: {
-  cal: typeof DEFAULT_CAL;
-}) {
-  return (
-    <>
-      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljus-kalibrering</h2>
-      <section className="space-y-5 mb-8">
-        <SignalPreview cal={cal} height={180} showLegend={true} />
-      </section>
-    </>
-  );
-}
 
 
 /* ── Mode-aware gain control: Manual XOR Auto (Sonos vol)
@@ -999,10 +985,6 @@ export default function PiMobile() {
 
 
 
-            {/* Ljus-kalibrering för aktiv profil */}
-            <section className="mb-8">
-              <LightCalibrationSection cal={cal} />
-            </section>
           </div>
         );
       })()}
