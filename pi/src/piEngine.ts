@@ -403,12 +403,11 @@ export class PiLightEngine {
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
 
-  // ── Record / Playback (lärda ljus-sekvenser) ──
+  // ── Frame/analys-taps (valfria observatörer) ──
   // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som FAKTISKT
-  // skickades till BLE. lightRecorder prenumererar och buffrar nedsamplat.
+  // skickades till BLE.
   private _frameTap: ((pct: number, r: number, g: number, b: number) => void) | null = null;
   // Analys-tap: anropas per FFT-frame (~100Hz) med RÅ band/flux FÖRE ljus-estetik.
-  // lightRecorder buffrar detta som oförvrängd käll-ström för offline-render.
   private _analysisTap: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null = null;
   // Offline-playback/auto-sync borttaget (2026-06): allt körs realtime.
 
