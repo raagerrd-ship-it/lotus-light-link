@@ -15,8 +15,8 @@
  * ett efterföljande steg om motorn blev redo.
  */
 
-import { getNobleAsync } from './noble-singleton.js';
-import { isHci0Up } from './adapter-hci-check.js';
+import { getNobleAsync } from '../ble-driver/noble-singleton.js';
+import { isHci0Up } from '../ble-driver/adapter-hci-check.js';
 import { dlog } from "../debugLog.js";
 
 let _started = false;
