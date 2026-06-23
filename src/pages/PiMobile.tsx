@@ -43,61 +43,6 @@ function alphaToAttack(alpha: number) {
   return 100 - alphaToCurve(alpha);
 }
 
-
-const CURVE_POINTS = 200; // points to draw
-
-/** Time-domain testsignal: tystnad → bas-svall → mellanband → diskant → tystnad.
- *  Värdena representerar peakBand (max(bassRms, midHiRms)) i samma skala
- *  som engine ser, så silence-gate + alphor jämförs på rätt enheter.
- *
- *  2026-05-04: Skalat ner amplituder (max ~0.35 i stället för 0.64) så att
- *  presets med attackAlpha=1.0 + transient boost inte pegar 100% genom
- *  hela passagen — annars syns ingen modulation i grafen. Realistiska
- *  peakBand-värden för "normal-loud music" ligger typiskt 0.1-0.3. */
-function buildRawCurve(): number[] {
-  const pts: number[] = [];
-  for (let i = 0; i < CURVE_POINTS; i++) {
-    const t = i / (CURVE_POINTS - 1); // 0..1
-    let amp = 0;
-    if (t < 0.10) {
-      amp = 0.005; // tyst (rumsbrus, under tickEnergyFloor=0.01)
-    } else if (t < 0.40) {
-      // Bas-tung passage — låg frekvens, måttlig nivå
-      const u = (t - 0.10) / 0.30;
-      const env = Math.sin(u * Math.PI); // mjuk in/ut
-      amp = 0.025 + env * 0.10 * (0.7 + 0.3 * Math.sin(u * 18));
-    } else if (t < 0.70) {
-      // Mellanband — högre, mer puls
-      const u = (t - 0.40) / 0.30;
-      const env = Math.sin(u * Math.PI);
-      amp = 0.025 + env * 0.15 * (0.6 + 0.4 * Math.sin(u * 30));
-    } else if (t < 0.90) {
-      // Diskant — kort men intensivt med transienter
-      const u = (t - 0.70) / 0.20;
-      const env = Math.sin(u * Math.PI);
-      const transient = Math.pow(Math.max(0, Math.sin(u * 50)), 6);
-      amp = 0.025 + env * (0.13 + 0.12 * transient);
-    } else {
-      amp = 0.005; // tyst igen
-    }
-    pts.push(Math.max(0, Math.min(1, amp)));
-  }
-  return pts;
-}
-
-const RAW_CURVE = buildRawCurve();
-const PREVIEW_RAW_SCALE = 5; // matchar piEngine normalizeFixed(): RMS ~0–0.2 → 0–1-domän
-
-function normalizePreviewRms(value: number): number {
-  const n = value * PREVIEW_RAW_SCALE;
-  return n < 0 ? 0 : n > 1 ? 1 : n;
-}
-
-function normalizeMacInput(value: string): string {
-  const hex = value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 12);
-  return hex.match(/.{1,2}/g)?.join(':') ?? '';
-}
-
 /** Apply calibration to a raw curve and return processed curve */
 /** Real applyDynamics — mirrors src/lib/engine/brightnessEngine.ts */
 function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
