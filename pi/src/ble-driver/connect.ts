@@ -59,6 +59,14 @@ export function setEngineBleCallbacks(onConnected: () => void, onDisconnected: (
   _onDisconnected = onDisconnected;
 }
 
+// Valfri hook som körs precis innan process.exit(0) vid N consecutive
+// connect-failures. App:en wirar in restart-loggning här; standalone är den
+// noop (drivern förblir fristående utan import utanför ble-driver/).
+let _restartHook: ((info: { count: number; error: string }) => void) | null = null;
+export function setRestartHook(fn: ((info: { count: number; error: string }) => void) | null): void {
+  _restartHook = fn;
+}
+
 // Wire write-fail/keep-alive-fail teardown → auto-reconnect-loopen. Utan denna
 // är _triggerReconnect i protocol.ts null: en skrivfel-teardown river länken
 // (removeAllListeners('disconnect') + setDevice(null) + disconnectAsync) men
