@@ -555,245 +555,21 @@ function BleFadeTest({ piBase, onResult }: { piBase: string; onResult: (wps: num
 /* ── Settings View ── */
 /* ── Profile Settings View (calibration per preset) ── */
 
-/* ── Tystnads-analys panel ──
- * Mäter rå mic-RMS i 60s, hittar brusgolv (tysta partier) och musik-nivå,
- * föreslår tickEnergyFloor + onsetEnergyFloor så lampan inte triggar på rumsbrus.
- * Kräver att en låt med tyst parti spelas (eller paus mellan låtar). */
-function SilenceAnalysisPanel({
-  piBase, cal, setCal,
-}: {
-  piBase: string;
-  cal: typeof DEFAULT_CAL;
-  setCal: (c: typeof DEFAULT_CAL) => void;
-}) {
-  const [status, setStatus] = useState<{
-    active: boolean; elapsedMs: number; durationMs: number; sampleCount: number;
-    progress: number; done: boolean;
-    suggestion?: {
-      tickEnergyFloor: number; onsetEnergyFloor: number;
-      silenceRms: number; musicRms: number;
-      silenceRatio: number; separation: number;
-      samplesUsed: number; sampleRateHz: number;
-      isPlaying: boolean; hasSilentSection: boolean;
-    };
-    current?: { tickEnergyFloor: number; onsetEnergyFloor: number };
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [duration, setDuration] = useState(60);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPoll = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-  };
-
-  const fetchStatus = async () => {
-    try {
-      const r = await fetch(`${piBase}/api/autotune/status`, { signal: AbortSignal.timeout(2000) });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
-      setStatus(j);
-      if (!j.active) stopPoll();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    }
-  };
-
-  const start = async () => {
-    setError(null);
-    try {
-      const r = await fetch(`${piBase}/api/autotune/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durationMs: duration * 1000 }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      stopPoll();
-      pollRef.current = setInterval(fetchStatus, 500);
-      fetchStatus();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    }
-  };
-
-  const cancel = async () => {
-    stopPoll();
-    try { await fetch(`${piBase}/api/autotune/cancel`, { method: 'POST' }); } catch {}
-    setStatus(null);
-  };
-
-  const apply = async () => {
-    if (!status?.suggestion) return;
-    const body = {
-      tickEnergyFloor: status.suggestion.tickEnergyFloor,
-      onsetEnergyFloor: status.suggestion.onsetEnergyFloor,
-    };
-    try {
-      const r = await fetch(`${piBase}/api/autotune/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setCal({ ...cal, ...body } as typeof DEFAULT_CAL);
-      setStatus(null);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    }
-  };
-
-  useEffect(() => () => stopPoll(), []);
-
-  const running = !!status?.active;
-  const done = !!status?.done && !!status?.suggestion;
-  const progress = status?.progress ?? 0;
-  const elapsed = status ? Math.round(status.elapsedMs / 1000) : 0;
-  const total = status ? Math.round(status.durationMs / 1000) : duration;
-  const sug = status?.suggestion;
-
-  return (
-    <div className="rounded-lg border border-border/40 bg-card/50 p-3 space-y-2">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Tystnads-analys
-        </h3>
-        {!running && !done && (
-          <select
-            value={duration}
-            onChange={(e) => setDuration(parseInt(e.target.value, 10))}
-            className="text-[11px] bg-secondary text-foreground rounded px-1.5 py-0.5"
-          >
-            <option value={30}>30s</option>
-            <option value={60}>60s</option>
-            <option value={90}>90s</option>
-          </select>
-        )}
-      </div>
-
-      <p className="text-[10px] text-muted-foreground leading-snug">
-        Spela en passage som innehåller <strong>både tysta partier och musik</strong>
-        {' '}(t.ex. en intro/breakdown, eller låt en låt sluta och nästa börja).
-        Mätningen jämför brusgolv med musiknivå och föreslår tystnads-trösklar.
-      </p>
-
-      {error && (
-        <div className="text-[10px] text-destructive">⚠ {error}</div>
-      )}
-
-      {!running && !done && (
-        <button
-          onClick={start}
-          className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium active:scale-95 transition-transform"
-        >
-          🎚 Starta {duration}s analys
-        </button>
-      )}
-
-      {running && (
-        <>
-          <div className="text-[11px] font-mono text-muted-foreground flex justify-between">
-            <span>{elapsed}s / {total}s</span>
-            <span>{status?.sampleCount ?? 0} samples</span>
-          </div>
-          <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
-            <div className="h-full bg-primary transition-all" style={{ width: `${progress * 100}%` }} />
-          </div>
-          <button
-            onClick={cancel}
-            className="w-full py-1.5 rounded-lg bg-secondary text-secondary-foreground text-[11px] font-medium active:scale-95 transition-transform"
-          >
-            Avbryt
-          </button>
-        </>
-      )}
-
-      {done && sug && (
-        <div className="space-y-2">
-          {!sug.isPlaying && (
-            <div className="text-[10px] text-amber-500">
-              ⚠ Mätningen kördes utan playback — förslagen kan vara missvisande.
-            </div>
-          )}
-          {!sug.hasSilentSection && (
-            <div className="text-[10px] text-amber-500">
-              ⚠ Inget tyst parti registrerat. För bästa resultat: kör om under en
-              breakdown eller mellan två låtar.
-            </div>
-          )}
-          <div className="rounded-md bg-background/60 p-2 space-y-1.5">
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Brusgolv (tystnad)</span>
-              <span className="font-mono">{sug.silenceRms.toFixed(3)}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Musiknivå (p70)</span>
-              <span className="font-mono">{sug.musicRms.toFixed(3)}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Separation</span>
-              <span className="font-mono font-semibold">
-                {sug.separation}×
-                <span className="text-muted-foreground ml-1">
-                  ({sug.separation < 2 ? 'svag' : sug.separation < 5 ? 'okej' : 'bra'})
-                </span>
-              </span>
-            </div>
-            <div className="border-t border-border/40 pt-1.5 mt-1.5 space-y-1">
-              <div className="flex justify-between text-[11px]">
-                <span className="text-muted-foreground">Tystnads­tröskel (tick)</span>
-                <span className="font-mono">
-                  {(cal.tickEnergyFloor ?? 0).toFixed(3)} →{' '}
-                  <span className="text-primary font-semibold">{sug.tickEnergyFloor.toFixed(3)}</span>
-                </span>
-              </div>
-              <div className="flex justify-between text-[11px]">
-                <span className="text-muted-foreground">Beat energi-golv</span>
-                <span className="font-mono">
-                  {(cal.onsetEnergyFloor ?? 0).toFixed(3)} →{' '}
-                  <span className="text-primary font-semibold">{sug.onsetEnergyFloor.toFixed(3)}</span>
-                </span>
-              </div>
-            </div>
-            <div className="text-[10px] text-muted-foreground pt-1">
-              {sug.samplesUsed} samples @ {sug.sampleRateHz.toFixed(1)} Hz · {Math.round(sug.silenceRatio * 100)}% tyst
-            </div>
-          </div>
-          <button
-            onClick={apply}
-            className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold active:scale-95 transition-transform"
-          >
-            ✓ Tillämpa förslag
-          </button>
-          <button
-            onClick={() => setStatus(null)}
-            className="w-full py-1 text-[10px] text-muted-foreground active:text-foreground"
-          >
-            Stäng utan att tillämpa
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 
 
 function LightCalibrationSection({
-  cal, setCal, piBase,
+  cal,
 }: {
-  cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
-  piBase: string;
+  cal: typeof DEFAULT_CAL;
 }) {
   return (
     <>
       <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljus-kalibrering</h2>
-
-
       <section className="space-y-5 mb-8">
         <SignalPreview cal={cal} height={180} showLegend={true} />
-        <SilenceAnalysisPanel piBase={piBase} cal={cal} setCal={setCal} />
       </section>
     </>
-
   );
 }
 
@@ -1621,7 +1397,7 @@ export default function PiMobile() {
 
             {/* Ljus-kalibrering för aktiv profil */}
             <section className="mb-8">
-              <LightCalibrationSection cal={cal} setCal={setCal} piBase={piBase} />
+              <LightCalibrationSection cal={cal} />
             </section>
           </div>
         );
