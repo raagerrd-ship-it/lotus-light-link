@@ -8,7 +8,7 @@ import { StartAllPanel } from "@/components/StartAllPanel";
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
-const PRESETS = ["Lugn", "Normal", "Party", "Custom"] as const;
+
 
 type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number };
 const PRESET_CALS: Record<string, Cal> = {
@@ -1902,31 +1902,8 @@ export default function PiMobile() {
               />
             </section>
 
-            {/* Profil-val */}
-            <section className="mb-8">
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {PRESETS.map((name) => (
-                  <button
-                    key={name}
-                    onClick={() => {
-                      setActivePreset(name);
-                      fetch(`${piBase}/api/active-preset`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name }),
-                        signal: AbortSignal.timeout(3000),
-                      }).catch(() => {});
-                    }}
-                    className={`py-4 rounded-xl text-sm font-medium transition-all active:scale-95 ${
-                      activePreset === name
-                        ? "bg-primary text-primary-foreground ring-2 ring-ring"
-                        : "bg-secondary text-secondary-foreground"
-                    }`}
-                  >{name}</button>
-                ))}
-              </div>
-            </section>
+
+
 
             {/* Ljus-kalibrering för aktiv profil */}
             <section className="mb-8">
