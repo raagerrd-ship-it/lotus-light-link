@@ -412,7 +412,7 @@ export default function PiMobile() {
   const [micGain, setMicGain] = useState(1.0);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [bleEngineReady, setBleEngineReady] = useState(false);
+  
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
   const [sonosPlaying, setSonosPlaying] = useState(false);
