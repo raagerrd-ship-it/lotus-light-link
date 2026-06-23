@@ -55,6 +55,8 @@ export function createLampDriver(config: LampDriverConfig = {}) {
     setColor: (r: number, g: number, b: number, brightness = 100) => sendToBLE(r, g, b, brightness),
     setIdleColor,
     setPower: sendPower,
+    powerOn: () => sendPower(true),
+    powerOff: () => sendPower(false),
     canWriteNow,
     setDimmingGamma,
     getDimmingGamma,
