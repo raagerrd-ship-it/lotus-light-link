@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Settings, ArrowLeft, Bluetooth, Save, Check, Mic, Lightbulb, Zap, X } from "lucide-react";
+import { Bluetooth, Save, Check, Mic, Zap, X } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
@@ -855,37 +855,16 @@ function DeadbandActivityIndicator({ piBase, active }: { piBase: string; active:
 }
 
 
-function ProfileSettingsView({
-  cal, setCal, activePreset,
-  piBase,
-  onBack, onSave, saved, saveError,
+function LightCalibrationSection({
+  cal, setCal, piBase,
 }: {
   cal: typeof DEFAULT_CAL; setCal: (c: typeof DEFAULT_CAL) => void;
-  activePreset: string;
   piBase: string;
-  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
-          <ArrowLeft size={20} />
-        </button>
-        <span className="text-sm font-semibold bg-accent text-accent-foreground px-3 py-1 rounded-full">{activePreset}</span>
-        <button
-          onClick={onSave}
-          className={`p-2 rounded-lg transition-all active:scale-95 ${
-            saved ? "text-green-500" : "text-primary"
-          }`}
-        >
-          {saved ? <Check size={20} /> : <Save size={20} />}
-        </button>
-      </div>
-      {saveError && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
-          ⚠ Sparning misslyckades: {saveError}
-        </div>
-      )}
+    <>
+      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljus-kalibrering</h2>
+
 
       <section className="space-y-5 mb-8">
         
@@ -936,7 +915,8 @@ function ProfileSettingsView({
 
         <AdvancedCalibrationSection cal={cal} setCal={setCal} />
       </section>
-    </div>
+    </>
+
   );
 }
 
@@ -1306,53 +1286,25 @@ function GainCalibrationPanel({
 }
 
 
-function GlobalSettingsView({
-  tickMs, setTickMs,
-  sonosUrl, setSonosUrl, alsaDevice, setAlsaDevice,
-  dimmingGamma, setDimmingGamma,
+function ConnectionSettingsSection({
+  sonosUrl, setSonosUrl,
   micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
   sonosMode, setSonosMode, sonosLocalDetected,
   piBase,
-  onBack, onSave, saved, saveError,
 }: {
-  tickMs: number; setTickMs: (v: number) => void;
   sonosUrl: string; setSonosUrl: (v: string) => void;
-  alsaDevice: string; setAlsaDevice: (v: string) => void;
-  dimmingGamma: number; setDimmingGamma: (v: number) => void;
   micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
   sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
   piBase: string;
-  onBack: () => void; onSave: () => void; saved: boolean; saveError?: string | null;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground active:text-foreground">
-          <ArrowLeft size={20} />
-        </button>
-        <span className="text-sm font-semibold bg-accent text-accent-foreground px-3 py-1 rounded-full">Inställningar</span>
-        <button
-          onClick={onSave}
-          className={`p-2 rounded-lg transition-all active:scale-95 ${
-            saved ? "text-green-500" : "text-primary"
-          }`}
-        >
-          {saved ? <Check size={20} /> : <Save size={20} />}
-        </button>
-      </div>
-      {saveError && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
-          ⚠ Sparning misslyckades: {saveError}
-        </div>
-      )}
+    <>
 
-      {/* Motor-sektionen borttagen: tickMs hårdkodat till 25ms (40 pkt/s),
-          dimmingGamma flyttas till profilinställning, BLE Hastighetstest borttaget. */}
 
       {/* Mikrofon: device hårdkodat till hw:0,0 i state.
           Endast gain-kontrollen (Manual/Auto) exponeras. */}
@@ -1453,10 +1405,8 @@ function GlobalSettingsView({
           </button>
         </label>
       </section>
+    </>
 
-
-
-    </div>
   );
 }
 
@@ -1676,7 +1626,6 @@ function BleIntervalDiag({ piBase }: { piBase: string }) {
 
 
 export default function PiMobile() {
-  const [view, setView] = useState<"home" | "profile" | "global">("home");
   const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
   // 4 oberoende profiler — varje knapp kommer ihåg sina egna värden.
@@ -1872,7 +1821,6 @@ export default function PiMobile() {
   // Poll status every 5s to get live track, BLE count, palette
   const lastTrackRef = useRef<string | null>(null);
   useEffect(() => {
-    if (view !== 'home') return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -1893,36 +1841,8 @@ export default function PiMobile() {
     poll();
     const id = setInterval(poll, 5000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [view, piBase]);
+  }, [piBase]);
 
-
-
-  if (view === "profile") {
-    return (
-      <ProfileSettingsView
-        cal={cal} setCal={setCal} activePreset={activePreset}
-        piBase={piBase}
-        onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
-      />
-    );
-  }
-
-  if (view === "global") {
-    return (
-      <GlobalSettingsView
-        tickMs={tickMs} setTickMs={setTickMs}
-        sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
-        alsaDevice={alsaDevice} setAlsaDevice={setAlsaDevice}
-        dimmingGamma={dimmingGamma} setDimmingGamma={setDimmingGamma}
-        micGain={micGain} setMicGain={setMicGain}
-        idleColor={idleColor} setIdleColor={setIdleColor}
-        autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
-        sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
-        piBase={piBase}
-        onBack={() => setView("home")} onSave={handleSave} saved={saved} saveError={saveError}
-      />
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
@@ -1931,15 +1851,19 @@ export default function PiMobile() {
           <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
           <span className="text-sm font-semibold">BLE Light</span>
         </div>
-        <div className="flex gap-1">
-          <button onClick={() => setView("profile")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Ljus-kalibrering" disabled={!piOnline}>
-            <Lightbulb size={20} className="text-muted-foreground" />
-          </button>
-          <button onClick={() => setView("global")} className="p-2 rounded-lg active:bg-accent disabled:opacity-30 disabled:pointer-events-none" title="Sonos & mic-kalibrering" disabled={!piOnline}>
-            <Settings size={20} className="text-muted-foreground" />
-          </button>
-        </div>
+        <button
+          onClick={handleSave}
+          disabled={!piOnline}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
+            saved ? "text-green-500" : "text-primary"
+          }`}
+          title="Spara inställningar"
+        >
+          {saved ? <Check size={16} /> : <Save size={16} />}
+          {saved ? "Sparat" : "Spara"}
+        </button>
       </div>
+
 
       {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
@@ -1967,7 +1891,20 @@ export default function PiMobile() {
               </div>
             )}
 
+            {/* Anslut: Sonos + mic-kalibrering + idle-färg + auto-TV */}
             <section className="mb-8 mt-4">
+              <ConnectionSettingsSection
+                sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
+                micGain={micGain} setMicGain={setMicGain}
+                idleColor={idleColor} setIdleColor={setIdleColor}
+                autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
+                sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
+                piBase={piBase}
+              />
+            </section>
+
+            {/* Profil-val */}
+            <section className="mb-8">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profil</h2>
               <div className="grid grid-cols-2 gap-3">
                 {PRESETS.map((name) => (
@@ -1991,9 +1928,15 @@ export default function PiMobile() {
                 ))}
               </div>
             </section>
+
+            {/* Ljus-kalibrering för aktiv profil */}
+            <section className="mb-8">
+              <LightCalibrationSection cal={cal} setCal={setCal} piBase={piBase} />
+            </section>
           </>
         );
       })()}
+
 
       {/* Minimal status: Sonos + Lampa */}
       <div className="mt-6 mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
