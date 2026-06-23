@@ -460,7 +460,7 @@ export function startConfigServer(port = 3050): void {
   app.get('/api/health', async (_req, res) => {
     refreshVersionInfo();
     const mem = process.memoryUsage();
-    const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
+    const { getHardcodedConnected } = await import('./ble-driver/connect.js');
     const c = getHardcodedConnected();
     const rss = Math.round(mem.rss / 1024 / 1024);
 
@@ -489,7 +489,7 @@ export function startConfigServer(port = 3050): void {
     refreshVersionInfo();
     const sonos = getSonosState();
     const engine = getEngine();
-    const { getHardcodedConnected, getLastDisconnectReason } = await import('./ble/connect-hardcoded.js');
+    const { getHardcodedConnected, getLastDisconnectReason } = await import('./ble-driver/connect.js');
     const { getRestartHistory } = await import('./restartLog.js');
     const c = getHardcodedConnected();
     // Live UI-strip: input/output/queue/palette/låt
@@ -509,14 +509,14 @@ export function startConfigServer(port = 3050): void {
     } catch {}
     const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi) * 4));
     const outputBrightness = diag ? Math.max(0, Math.min(1, (diag.brightnessPct ?? 0) / 100)) : 0;
-    const { getLastSent } = await import('./ble/protocol.js');
+    const { getLastSent } = await import('./ble-driver/protocol.js');
     const sent = getLastSent();
     // Kö = bara noble's _aclQueue (mjukvarukö för vår handle), INTE pending.
     // pending=1 är normalt (paketet just nu i flygning till controllern) och
     // hör inte hemma i ett "kö"-mått — då skulle värdet alltid vara ≥1.
     let queueLen = 0;
     try {
-      const cd = await import('./ble/controllerDrain.js');
+      const cd = await import('./ble-driver/controllerDrain.js');
       if (cd.isControllerDrainAttached?.()) queueLen = cd.getQueuedPackets?.() ?? 0;
     } catch {}
     let lifecycleState: string | null = null;
@@ -644,7 +644,7 @@ export function startConfigServer(port = 3050): void {
       // (BLE-minimal → mic ∥ connect). Rensar override först.
       const { userStartAll } = await import('./engineLifecycle.js');
       const { HARDCODED_DEVICE } = await import('./ble-driver/device-config.js');
-      const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
+      const { getHardcodedConnected } = await import('./ble-driver/connect.js');
       await userStartAll();
       const c = getHardcodedConnected();
       if (c.connected) {
@@ -693,7 +693,7 @@ export function startConfigServer(port = 3050): void {
       if (typeof on !== 'boolean') {
         return res.status(400).json({ ok: false, error: 'body needs { on: true|false }' });
       }
-      const { sendPower } = await import('./ble/protocol.js');
+      const { sendPower } = await import('./ble-driver/protocol.js');
       const result = await sendPower(on);
       res.json({ ok: result === 'sent', result, on });
     } catch (e: any) {
@@ -703,8 +703,8 @@ export function startConfigServer(port = 3050): void {
 
   app.get('/api/ble/state', async (_req, res) => {
     try {
-      const { getHardcodedConnected } = await import('./ble/connect-hardcoded.js');
-      const { hasNobleLoaded } = await import('./ble/state.js');
+      const { getHardcodedConnected } = await import('./ble-driver/connect.js');
+      const { hasNobleLoaded } = await import('./ble-driver/state.js');
       const { HARDCODED_DEVICE } = await import('./ble-driver/device-config.js');
       let rawState: string | null = null;
       let engineReady = false;
@@ -925,9 +925,9 @@ export function startConfigServer(port = 3050): void {
     if (_benchRunning) return res.status(409).json({ error: 'bench already running' });
     const engine = requireEngine(res);
     if (!engine) return;
-    const { getDevice } = await import('./ble/state.js');
+    const { getDevice } = await import('./ble-driver/state.js');
     const { getNoble } = await import('./ble-driver/noble-singleton.js');
-    const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
+    const { getAttachedHandle, isControllerDrainAttached } = await import('./ble-driver/controllerDrain.js');
     const dev = getDevice();
     if (!dev) return res.status(503).json({ error: 'no BLE device connected' });
 
@@ -1088,7 +1088,7 @@ export function startConfigServer(port = 3050): void {
   app.get('/api/ble/conn-params', async (_req, res) => {
     try {
       const { getNoble } = await import('./ble-driver/noble-singleton.js');
-      const { getAttachedHandle, isControllerDrainAttached } = await import('./ble/controllerDrain.js');
+      const { getAttachedHandle, isControllerDrainAttached } = await import('./ble-driver/controllerDrain.js');
       const handle = getAttachedHandle();
       const noble: any = getNoble();
       if (handle == null) {
@@ -1244,7 +1244,7 @@ export function startConfigServer(port = 3050): void {
     const b = mic.getLatestBands();
     let ble: any = null;
     try {
-      const { bleStats } = await import('./ble/state.js');
+      const { bleStats } = await import('./ble-driver/state.js');
 
       const now = performance.now();
       const dt = _lastSampleTs > 0 ? (now - _lastSampleTs) / 1000 : 0;
@@ -1327,7 +1327,7 @@ export function startConfigServer(port = 3050): void {
     let liveOutstanding = 0;
     let liveQueued = 0;
     try {
-      const cd = await import('./ble/controllerDrain.js');
+      const cd = await import('./ble-driver/controllerDrain.js');
       if (cd.isControllerDrainAttached()) {
         liveOutstanding = cd.getOutstandingPackets();
         liveQueued = cd.getQueuedPackets();
