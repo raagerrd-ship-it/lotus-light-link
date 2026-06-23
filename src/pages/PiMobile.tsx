@@ -1722,30 +1722,15 @@ export default function PiMobile() {
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
   const [micGain, setMicGain] = useState(1.0);
-  const [updateStatus, setUpdateStatus] = useState<'checking' | 'running' | 'uptodate' | 'done' | 'error' | null>(null);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [bleHardcodedConnected, setBleHardcodedConnected] = useState(false);
   const [bleEngineReady, setBleEngineReady] = useState(false);
-  const [startAllOk, setStartAllOk] = useState(false);
-  const [piVersion, setPiVersion] = useState<{ version: string; commitShort: string; branch: string } | null>(null);
-  const [engineUptime, setEngineUptime] = useState<number | null>(null);
-  const [latestVersion, setLatestVersion] = useState<string | null>(null);
-  const [updatePhase, setUpdatePhase] = useState<'idle' | 'stopping' | 'downloading' | 'starting'>('idle');
   const [piOnline, setPiOnline] = useState<boolean | null>(null);
   const [engineStatus, setEngineStatus] = useState<{ running: boolean; hz: number; tickMs: number } | null>(null);
-  const engineVersionLabel = cleanVersionLabel(piVersion?.version);
-  const engineBuildLabel = cleanBuildLabel(piVersion?.commitShort, piVersion?.branch);
   const [sonosPlaying, setSonosPlaying] = useState(false);
   const [sonosState, setSonosState] = useState<string | null>(null);
-  const [lifecycleState, setLifecycleState] = useState<string | null>(null);
-  const [lifecycleOverride, setLifecycleOverride] = useState(false);
-  const [pendingShutdownInMs, setPendingShutdownInMs] = useState<number | null>(null);
-  const [subsystems, setSubsystems] = useState<Record<string, { status: string }> | null>(null);
   const [bleConnected, setBleConnected] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>();
-  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
-  const longPressTriggered = useRef(false);
 
   // Direct to engine port (no proxy needed)
   const piBase = apiBase;
