@@ -63,17 +63,17 @@ const DEFAULT_GAIN_LOW = 15;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
 
 function GainCalibrationPanel({
-  piBase, micGain, setMicGain,
+  piBase, micGain, setMicGain, sonosVolume,
 }: {
   piBase: string;
   micGain: number;
   setMicGain: (g: number) => void;
+  sonosVolume: number | null;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [multiplier, setMultiplier] = useState(1);
   const [gainLow, setGainLow] = useState(DEFAULT_GAIN_LOW);
   const [gainHigh, setGainHigh] = useState(DEFAULT_GAIN_HIGH);
-  const [liveSonosVol, setLiveSonosVol] = useState<number | null>(null);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
 
   // Initial load: hämta sparat läge + cal-punkter
