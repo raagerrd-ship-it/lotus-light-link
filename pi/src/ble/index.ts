@@ -12,9 +12,9 @@ export { noble, hasNobleLoaded } from '../ble-driver/state.js';
 
 export { sendToBLE, canWriteNow, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma, getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower } from '../ble-driver/protocol.js';
 
-export { connectHardcoded, disconnectHardcoded, getHardcodedConnected, getHardcodedPeripheral } from '../ble-driver/connect.js';
+export { connectHardcoded, disconnectHardcoded, getHardcodedConnected, getHardcodedPeripheral, scanForDevices } from '../ble-driver/connect.js';
 export { startBleEngineMinimal, isMinimalEngineStarted } from './engine-start-minimal.js';
-export { HARDCODED_DEVICE, matchesHardcoded } from '../ble-driver/device-config.js';
+export { HARDCODED_DEVICE, matchesHardcoded, setDeviceConfig } from '../ble-driver/device-config.js';
 export { isHci0Up } from '../ble-driver/adapter-hci-check.js';
 export { getOutstandingPackets, isControllerDrainAttached, getAttachedHandle } from '../ble-driver/controllerDrain.js';
 
