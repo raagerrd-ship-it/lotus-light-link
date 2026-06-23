@@ -585,14 +585,9 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         );
         setReconnectOnBootFlag();
         try {
-          const { recordRestart, markGracefulShutdown } = await import('../restartLog.js');
-          recordRestart(
-            'ble-consecutive-failures',
-            `${_consecutiveFailures} consecutive failures, last error: ${errStr}`,
-          );
-          markGracefulShutdown();
+          _restartHook?.({ count: _consecutiveFailures, error: errStr });
         } catch (e: any) {
-          console.warn(`[connect-hardcoded] kunde inte logga restart: ${e?.message ?? e}`);
+          console.warn(`[connect-hardcoded] restart-hook fel: ${e?.message ?? e}`);
         }
         setTimeout(() => process.exit(0), 500);
       }
