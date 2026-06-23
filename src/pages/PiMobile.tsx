@@ -389,7 +389,6 @@ function ConnectionSettingsSection({
   return (
     <>
 
-      <BleDeviceSection piBase={piBase} />
 
 
 
@@ -745,6 +744,8 @@ export default function PiMobile() {
           {saved ? "Sparat" : "Spara"}
         </button>
       </div>
+
+      <BleDeviceSection piBase={piBase} />
 
 
       {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
