@@ -89,21 +89,16 @@ function GainCalibrationPanel({
     }).catch(() => {});
   }, [piBase]);
 
-  // Live-poll: aktuell gain + Sonos-volym. Snabbpoll i 5s efter slider-aktivitet.
+  // Live-poll: endast auto-gain (multiplier/effective). Sonos-volym kommer
+  // via delad status-poll i förälder. Snabbpoll i 5s efter slider-aktivitet.
   const fastPollUntilRef = useRef(0);
   useEffect(() => {
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
       try {
-        const [statusRes, agRes] = await Promise.all([
-          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }),
-          fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }),
-        ]);
-        const status = await statusRes.json();
-        const ag = await agRes.json();
+        const ag = await fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json());
         if (!cancelled) {
-          if (status.sonos?.volume != null) setLiveSonosVol(status.sonos.volume);
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
           if (ag.effective != null) setEffectiveGain(ag.effective);
         }
