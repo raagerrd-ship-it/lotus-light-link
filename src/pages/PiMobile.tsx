@@ -574,6 +574,7 @@ export default function PiMobile() {
           tickEnergyFloor: p.tickEnergyFloor,
           flickerDeadband: p.flickerDeadband,
           beatSource: p.beatSource,
+          beatCutoffHz: p.beatCutoffHz,
           dropEnabled: p.dropEnabled,
           dropSensitivity: p.dropSensitivity,
           dropFlashMs: p.dropFlashMs,
