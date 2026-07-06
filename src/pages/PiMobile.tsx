@@ -653,6 +653,7 @@ export default function PiMobile() {
           tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
           flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
           beatSource: c?.beatSource ?? DEFAULT_CAL.beatSource,
+          beatCutoffHz: c?.beatCutoffHz ?? DEFAULT_CAL.beatCutoffHz,
           dropEnabled: c?.dropEnabled ?? DEFAULT_CAL.dropEnabled,
           dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
           dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
