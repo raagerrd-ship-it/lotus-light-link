@@ -161,8 +161,10 @@ export interface LightCalibration {
    *  blockeras, onsetBoost bleed:as. brightnessFloor håller lampan dim solid.
    *  0 = av, 0.05 = default. */
   tickEnergyFloor: number;
-  /** Beat-källa för onset: 'bass' = endast kick/bas (<150Hz), 'full' = hela spektrumet. Default 'bass'. */
+  /** Beat-källa för onset: 'bass' = endast kick/bas (<150Hz), 'full' = hela spektrumet. Legacy — ersatt av beatCutoffHz. */
   beatSource: 'bass' | 'full';
+  /** Lågpass-brytfrekvens (Hz) för beat-detektionen: onset lyssnar på flux UNDER denna frekvens. Default 150 Hz. */
+  beatCutoffHz: number;
   /** Drop-detektor på/av. Default true. */
   dropEnabled: boolean;
   /** Drop-känslighet 0.5–3.0 (lägre = lättare att trigga). Default 1.0. */
