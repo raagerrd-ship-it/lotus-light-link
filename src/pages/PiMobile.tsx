@@ -807,9 +807,17 @@ export default function PiMobile() {
 
 
 
-      {/* Minimal status: Sonos + Lampa */}
+      {/* Minimal status: Motor + Sonos + Lampa — grönt = allt igång */}
       <div className="mt-6 mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              engineStatus?.running ? 'bg-green-500'
+                : piOnline === false ? 'bg-destructive'
+                : 'bg-muted-foreground animate-pulse'
+            }`} />
+            <span>Motor {engineStatus?.running ? 'Igång' : 'Av'}</span>
+          </div>
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${
               sonosPlaying ? 'bg-green-500'
@@ -829,6 +837,7 @@ export default function PiMobile() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }
