@@ -3,7 +3,7 @@ import { Save, Check, Mic, Bluetooth, Loader2 } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
-import { StartAllPanel } from "@/components/StartAllPanel";
+
 
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
@@ -753,9 +753,6 @@ export default function PiMobile() {
       {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
 
-      {/* En knapp kör Motor → Mic → Sonos → Lampa i sekvens */}
-      <StartAllPanel piBase={piBase} />
-
       {(() => {
         const ready = piOnline === true && engineStatus?.running === true;
         return (
@@ -810,9 +807,17 @@ export default function PiMobile() {
 
 
 
-      {/* Minimal status: Sonos + Lampa */}
+      {/* Minimal status: Motor + Sonos + Lampa — grönt = allt igång */}
       <div className="mt-6 mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
         <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              engineStatus?.running ? 'bg-green-500'
+                : piOnline === false ? 'bg-destructive'
+                : 'bg-muted-foreground animate-pulse'
+            }`} />
+            <span>Motor {engineStatus?.running ? 'Igång' : 'Av'}</span>
+          </div>
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${
               sonosPlaying ? 'bg-green-500'
@@ -832,6 +837,7 @@ export default function PiMobile() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }
