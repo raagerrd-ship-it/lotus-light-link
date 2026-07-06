@@ -14,7 +14,7 @@ type Cal = { bassWeight: number; attack: number; softness: number; dynamicDampin
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
   Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220 },
-  Normal: { bassWeight: 0.9, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220 },
+  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 220 },
   Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260 },
   Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220 },
 };
@@ -781,11 +781,49 @@ export default function PiMobile() {
               />
             </section>
 
-            {/* Beat-källa: lågpass-brytfrekvens för takt-detektionen */}
+            {/* Ljusinställningar: fyra reglage — resten är låst till intrimmade värden */}
             <section className="mb-8">
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Beat-källa (lågpass)</h2>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljusinställningar</h2>
+
+              {/* Softness */}
               <div className="flex justify-between text-sm mb-1">
-                <span>Lyssnar under</span>
+                <span>Softness</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.softness}</span>
+              </div>
+              <input
+                type="range" min={0} max={100} step={1} value={cal.softness}
+                onChange={(e) => setCal({ ...cal, softness: parseInt(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">0 = rått fall, 100 = mycket mjuk fade-out.</p>
+
+              {/* Min ljusstyrka */}
+              <div className="flex justify-between text-sm mb-1">
+                <span>Min ljusstyrka</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.brightnessFloor}%</span>
+              </div>
+              <input
+                type="range" min={0} max={100} step={1} value={cal.brightnessFloor}
+                onChange={(e) => setCal({ ...cal, brightnessFloor: parseInt(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">Lägsta ljusstyrka (0 = släck helt i tystnad).</p>
+
+              {/* Dynamik */}
+              <div className="flex justify-between text-sm mb-1">
+                <span>Dynamik</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.dynamicDamping.toFixed(1)}×</span>
+              </div>
+              <input
+                type="range" min={-2} max={2} step={0.1} value={cal.dynamicDamping}
+                onChange={(e) => setCal({ ...cal, dynamicDamping: parseFloat(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">0 = av, positivt = kontrast, negativt = utjämning.</p>
+
+              {/* Beat-källa (lågpass) */}
+              <div className="flex justify-between text-sm mb-1">
+                <span>Beat-källa (lyssnar under)</span>
                 <span className="text-muted-foreground font-mono text-xs">{cal.beatCutoffHz} Hz</span>
               </div>
               <input
@@ -794,9 +832,10 @@ export default function PiMobile() {
                 className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
               />
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Takt-detektorn reagerar bara på ljud under denna frekvens. Lågt (~120 Hz) = enbart kick/bas, högre = mer av trummor och melodi. Spara för att tillämpa.
+                Takt-detektorn reagerar bara på ljud under denna frekvens. Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa.
               </p>
             </section>
+
 
 
 
