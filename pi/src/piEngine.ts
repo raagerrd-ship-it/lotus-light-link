@@ -421,6 +421,7 @@ export class PiLightEngine {
   constructor(tickMs = 25) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
+    setBeatCutoffHz(this.cal.beatCutoffHz);
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
