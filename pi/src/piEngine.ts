@@ -952,11 +952,9 @@ export class PiLightEngine {
           energyFloor <= 0 ||
           (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
         if (passesEnergyGate) {
-          // Kick/bas-only onset: använd bassFlux om beatSource='bass' (default),
-          // annars full-spektrum-flux. Hi-hats/snare triggar då inte pulsen.
-          const beatFlux = (this.cal.beatSource !== 'full' && bands)
-            ? bands.bassFlux
-            : flux;
+          // Lågpass-onset: bassFlux summerar flux under cal.beatCutoffHz (setBeatCutoffHz).
+          // Full spektrum ≈ hög cutoff. Faller tillbaka på full flux om bands saknas.
+          const beatFlux = bands ? bands.bassFlux : flux;
           this.processOnset(beatFlux);
         }
         // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
