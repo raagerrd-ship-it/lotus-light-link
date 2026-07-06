@@ -844,6 +844,7 @@ export class PiLightEngine {
 
   reloadCalibration(): void {
     this.cal = loadCalibration();
+    setBeatCutoffHz(this.cal.beatCutoffHz);
     this._calDirty = true; // mark for next save cycle
     // Re-apply raw mode overrides if active
     if (this._rawMode) {
