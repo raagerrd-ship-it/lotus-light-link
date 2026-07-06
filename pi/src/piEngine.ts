@@ -211,6 +211,10 @@ function migrateLegacyCalibration(cal: any): any {
     out.perceptualGamma = out.perceptualCurve ? 1.8 : 0;
   }
   delete out.perceptualCurve;
+  // beatSource: 'full' → hög cutoff (hela spektrumet), 'bass' → 150 Hz. Bara om beatCutoffHz saknas.
+  if (out.beatCutoffHz == null && typeof out.beatSource === 'string') {
+    out.beatCutoffHz = out.beatSource === 'full' ? 15000 : 150;
+  }
   // Inga värde-migreringar — slider-inställningar respekteras alltid.
   // (Tidigare clampades flickerDeadband>0 → 0, brightnessFloor≥15 → 5,
   //  onsetEnergyFloor≥0.04 → 0.01, tickEnergyFloor≥0.04 → 0.01 vid varje
