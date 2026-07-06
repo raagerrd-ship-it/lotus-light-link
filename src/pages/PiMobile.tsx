@@ -784,6 +784,23 @@ export default function PiMobile() {
               />
             </section>
 
+            {/* Beat-källa: lågpass-brytfrekvens för takt-detektionen */}
+            <section className="mb-8">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Beat-källa (lågpass)</h2>
+              <div className="flex justify-between text-sm mb-1">
+                <span>Lyssnar under</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.beatCutoffHz} Hz</span>
+              </div>
+              <input
+                type="range" min={60} max={2000} step={10} value={cal.beatCutoffHz}
+                onChange={(e) => setCal({ ...cal, beatCutoffHz: parseInt(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Takt-detektorn reagerar bara på ljud under denna frekvens. Lågt (~120 Hz) = enbart kick/bas, högre = mer av trummor och melodi. Spara för att tillämpa.
+              </p>
+            </section>
+
 
 
 
