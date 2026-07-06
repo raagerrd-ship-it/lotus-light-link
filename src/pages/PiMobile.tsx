@@ -753,9 +753,6 @@ export default function PiMobile() {
       {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
       <PermissionsBanner piBase={piBase} />
 
-      {/* En knapp kör Motor → Mic → Sonos → Lampa i sekvens */}
-      <StartAllPanel piBase={piBase} />
-
       {(() => {
         const ready = piOnline === true && engineStatus?.running === true;
         return (
