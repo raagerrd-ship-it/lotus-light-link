@@ -10,13 +10,13 @@ const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-
 
 
 
-type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number };
+type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220 },
-  Normal: { bassWeight: 0.9, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220 },
-  Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220 },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220 },
+  Normal: { bassWeight: 0.9, attack: 100, softness: 20, dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220 },
+  Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -574,6 +574,7 @@ export default function PiMobile() {
           tickEnergyFloor: p.tickEnergyFloor,
           flickerDeadband: p.flickerDeadband,
           beatSource: p.beatSource,
+          beatCutoffHz: p.beatCutoffHz,
           dropEnabled: p.dropEnabled,
           dropSensitivity: p.dropSensitivity,
           dropFlashMs: p.dropFlashMs,
@@ -652,6 +653,7 @@ export default function PiMobile() {
           tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
           flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
           beatSource: c?.beatSource ?? DEFAULT_CAL.beatSource,
+          beatCutoffHz: c?.beatCutoffHz ?? DEFAULT_CAL.beatCutoffHz,
           dropEnabled: c?.dropEnabled ?? DEFAULT_CAL.dropEnabled,
           dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
           dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
@@ -780,6 +782,23 @@ export default function PiMobile() {
                 sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
                 piBase={piBase} sonosVolume={sonosVolume}
               />
+            </section>
+
+            {/* Beat-källa: lågpass-brytfrekvens för takt-detektionen */}
+            <section className="mb-8">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Beat-källa (lågpass)</h2>
+              <div className="flex justify-between text-sm mb-1">
+                <span>Lyssnar under</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.beatCutoffHz} Hz</span>
+              </div>
+              <input
+                type="range" min={60} max={2000} step={10} value={cal.beatCutoffHz}
+                onChange={(e) => setCal({ ...cal, beatCutoffHz: parseInt(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Takt-detektorn reagerar bara på ljud under denna frekvens. Lågt (~120 Hz) = enbart kick/bas, högre = mer av trummor och melodi. Spara för att tillämpa.
+              </p>
             </section>
 
 

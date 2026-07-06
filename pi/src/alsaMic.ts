@@ -196,6 +196,18 @@ const HI_OCTAVES = Math.log2(HI_HZ_HIGH / HI_HZ_LOW);
 const INV_LO_OCT = 1 / LO_OCTAVES;
 const INV_HI_OCT = 1 / HI_OCTAVES;
 
+// ── Beat-detektionens lågpass-brytfrekvens ──
+// bassFlux summeras över alla bins UNDER denna bin (kick/bas-onset). Default 150 Hz
+// (samma som tidigare fasta split). Runtime-tunbar via setBeatCutoffHz() från engine.
+let beatCutoffBin = LO_BIN_HIGH;
+export function setBeatCutoffHz(hz: number): void {
+  if (!Number.isFinite(hz)) return;
+  const bin = Math.floor(hz / BIN_WIDTH);
+  beatCutoffBin = Math.max(2, Math.min(BIN_COUNT, bin));
+}
+
+
+
 // Precomputed constants (avoid recomputing every FFT frame)
 const INV_N2 = 1 / (FFT_SIZE * FFT_SIZE);
 
@@ -357,7 +369,7 @@ function processFFT(): void {
   let loSum = 0, hiSum = 0;
   let totalSum = 0;
   let flux = 0;
-  let bassFlux = 0; // flux endast < 150 Hz (segment 1+2) — kick/bas
+  let bassFlux = 0; // flux under beatCutoffBin (lågpass) — kick/bas-onset
 
   // Segment 1: 0 .. LO_BIN_LOW (only total + flux; ingår i bassFlux = sub)
   for (let i = 0; i < LO_BIN_LOW; i++) {
@@ -365,7 +377,7 @@ function processFFT(): void {
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; bassFlux += diff; }
+    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
     prevPower[i] = power;
   }
   // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum; ingår i bassFlux = bas)
@@ -375,7 +387,7 @@ function processFFT(): void {
     totalSum += power;
     loSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; bassFlux += diff; }
+    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
     prevPower[i] = power;
   }
   // Segment 3: HI_BIN_LOW .. HI_BIN_HIGH (hiSum)
@@ -385,7 +397,7 @@ function processFFT(): void {
     totalSum += power;
     hiSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) flux += diff;
+    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
     prevPower[i] = power;
   }
   // Segment 4: HI_BIN_HIGH .. BIN_COUNT (only total + flux)
@@ -394,8 +406,9 @@ function processFFT(): void {
     const power = (r * r + m * m) * INV_N2;
     totalSum += power;
     const diff = power - prevPower[i];
-    if (diff > 0) flux += diff;
+    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
     prevPower[i] = power;
+
   }
 
   // ── Energy-per-octave: matchar mänsklig perception av frekvensbalans ──

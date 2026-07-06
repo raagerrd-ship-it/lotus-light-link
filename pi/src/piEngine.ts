@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, stopMic } from './alsaMic.js';
+import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz } from './alsaMic.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
@@ -161,8 +161,10 @@ export interface LightCalibration {
    *  blockeras, onsetBoost bleed:as. brightnessFloor håller lampan dim solid.
    *  0 = av, 0.05 = default. */
   tickEnergyFloor: number;
-  /** Beat-källa för onset: 'bass' = endast kick/bas (<150Hz), 'full' = hela spektrumet. Default 'bass'. */
+  /** Beat-källa för onset: 'bass' = endast kick/bas (<150Hz), 'full' = hela spektrumet. Legacy — ersatt av beatCutoffHz. */
   beatSource: 'bass' | 'full';
+  /** Lågpass-brytfrekvens (Hz) för beat-detektionen: onset lyssnar på flux UNDER denna frekvens. Default 150 Hz. */
+  beatCutoffHz: number;
   /** Drop-detektor på/av. Default true. */
   dropEnabled: boolean;
   /** Drop-känslighet 0.5–3.0 (lägre = lättare att trigga). Default 1.0. */
@@ -189,6 +191,7 @@ const DEFAULT_CAL: LightCalibration = {
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
   beatSource: 'bass',
+  beatCutoffHz: 150,
   dropEnabled: true,
   dropSensitivity: 1.0,
   dropFlashMs: 220,
@@ -208,6 +211,10 @@ function migrateLegacyCalibration(cal: any): any {
     out.perceptualGamma = out.perceptualCurve ? 1.8 : 0;
   }
   delete out.perceptualCurve;
+  // beatSource: 'full' → hög cutoff (hela spektrumet), 'bass' → 150 Hz. Bara om beatCutoffHz saknas.
+  if (out.beatCutoffHz == null && typeof out.beatSource === 'string') {
+    out.beatCutoffHz = out.beatSource === 'full' ? 15000 : 150;
+  }
   // Inga värde-migreringar — slider-inställningar respekteras alltid.
   // (Tidigare clampades flickerDeadband>0 → 0, brightnessFloor≥15 → 5,
   //  onsetEnergyFloor≥0.04 → 0.01, tickEnergyFloor≥0.04 → 0.01 vid varje
@@ -414,6 +421,7 @@ export class PiLightEngine {
   constructor(tickMs = 25) {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
+    setBeatCutoffHz(this.cal.beatCutoffHz);
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
@@ -836,6 +844,7 @@ export class PiLightEngine {
 
   reloadCalibration(): void {
     this.cal = loadCalibration();
+    setBeatCutoffHz(this.cal.beatCutoffHz);
     this._calDirty = true; // mark for next save cycle
     // Re-apply raw mode overrides if active
     if (this._rawMode) {
@@ -943,11 +952,9 @@ export class PiLightEngine {
           energyFloor <= 0 ||
           (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
         if (passesEnergyGate) {
-          // Kick/bas-only onset: använd bassFlux om beatSource='bass' (default),
-          // annars full-spektrum-flux. Hi-hats/snare triggar då inte pulsen.
-          const beatFlux = (this.cal.beatSource !== 'full' && bands)
-            ? bands.bassFlux
-            : flux;
+          // Lågpass-onset: bassFlux summerar flux under cal.beatCutoffHz (setBeatCutoffHz).
+          // Full spektrum ≈ hög cutoff. Faller tillbaka på full flux om bands saknas.
+          const beatFlux = bands ? bands.bassFlux : flux;
           this.processOnset(beatFlux);
         }
         // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
