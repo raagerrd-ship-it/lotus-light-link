@@ -191,6 +191,7 @@ const DEFAULT_CAL: LightCalibration = {
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
   beatSource: 'bass',
+  beatCutoffHz: 150,
   dropEnabled: true,
   dropSensitivity: 1.0,
   dropFlashMs: 220,
