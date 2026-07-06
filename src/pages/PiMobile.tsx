@@ -781,11 +781,49 @@ export default function PiMobile() {
               />
             </section>
 
-            {/* Beat-källa: lågpass-brytfrekvens för takt-detektionen */}
+            {/* Ljusinställningar: fyra reglage — resten är låst till intrimmade värden */}
             <section className="mb-8">
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Beat-källa (lågpass)</h2>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljusinställningar</h2>
+
+              {/* Softness */}
               <div className="flex justify-between text-sm mb-1">
-                <span>Lyssnar under</span>
+                <span>Softness</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.softness}</span>
+              </div>
+              <input
+                type="range" min={0} max={100} step={1} value={cal.softness}
+                onChange={(e) => setCal({ ...cal, softness: parseInt(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">0 = rått fall, 100 = mycket mjuk fade-out.</p>
+
+              {/* Min ljusstyrka */}
+              <div className="flex justify-between text-sm mb-1">
+                <span>Min ljusstyrka</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.brightnessFloor}%</span>
+              </div>
+              <input
+                type="range" min={0} max={100} step={1} value={cal.brightnessFloor}
+                onChange={(e) => setCal({ ...cal, brightnessFloor: parseInt(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">Lägsta ljusstyrka (0 = släck helt i tystnad).</p>
+
+              {/* Dynamik */}
+              <div className="flex justify-between text-sm mb-1">
+                <span>Dynamik</span>
+                <span className="text-muted-foreground font-mono text-xs">{cal.dynamicDamping.toFixed(1)}×</span>
+              </div>
+              <input
+                type="range" min={-2} max={2} step={0.1} value={cal.dynamicDamping}
+                onChange={(e) => setCal({ ...cal, dynamicDamping: parseFloat(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">0 = av, positivt = kontrast, negativt = utjämning.</p>
+
+              {/* Beat-källa (lågpass) */}
+              <div className="flex justify-between text-sm mb-1">
+                <span>Beat-källa (lyssnar under)</span>
                 <span className="text-muted-foreground font-mono text-xs">{cal.beatCutoffHz} Hz</span>
               </div>
               <input
@@ -794,9 +832,10 @@ export default function PiMobile() {
                 className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
               />
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Takt-detektorn reagerar bara på ljud under denna frekvens. Lågt (~120 Hz) = enbart kick/bas, högre = mer av trummor och melodi. Spara för att tillämpa.
+                Takt-detektorn reagerar bara på ljud under denna frekvens. Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa.
               </p>
             </section>
+
 
 
 
