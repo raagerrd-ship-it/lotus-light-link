@@ -3,7 +3,7 @@ import { Save, Check, Mic, Bluetooth, Loader2 } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
-import { StartAllPanel } from "@/components/StartAllPanel";
+
 
 
 const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
