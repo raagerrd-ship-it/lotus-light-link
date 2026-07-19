@@ -1,10 +1,12 @@
 /**
  * Audio analyser — portable, framework-agnostic.
  *
- * ⚠️  MIRROR — DO NOT EDIT DIRECTLY.
+ * ⚠️  MIRROR — DO NOT EDIT DIRECTLY. Read-only i Lotus.
  * Master: DMX Control / pi-dmx/engine/src/analyser.ts.
- * Ändra där, re-synka hit. Se README.md ("Source of truth").
- * Senast synkad: 2026-07-19.
+ * Synk från commit: ad0e741
+ *   git log ad0e741..HEAD -- pi-dmx/engine/src/analyser.ts
+ * För att uppdatera: ändra i DMX-projektet, commit:a där, kopiera hit,
+ * uppdatera hashen ovan. Se README.md ("Source of truth").
  *
  * Feed hop-sized mono Float32 samples via process(samples). Returns a Frame
  * with level, kick, per-band spectrum/onset, BPM, drop/riser, intensity,
