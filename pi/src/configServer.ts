@@ -503,12 +503,11 @@ export function startConfigServer(port = 3050): void {
     const diag = engine?.getDiagnostics?.() ?? null;
     let micBass = 0, micMidHi = 0;
     let analyserFrame: any = null;
+    let analyserCost: any = null;
     try {
       const m = getMic();
       const b = m?.getLatestBands?.();
       if (b) { micBass = b.bassRms ?? 0; micMidHi = b.midHiRms ?? 0; }
-      // Portable analyser (parallell pipe): BPM, drop, intensity, buildUp, profile.
-      // Slimmad snapshot — det UI:t / framtida orkestrering behöver, utan spec/onset-arrays.
       const f = (m as any)?.getLatestFrame?.();
       if (f) {
         analyserFrame = {
@@ -519,6 +518,9 @@ export function startConfigServer(port = 3050): void {
           profile: f.profile,
         };
       }
+      // Kostnadsbudget: ms/hop @ 375 Hz. Överskrids 2.67 ms tappar ALSA samples
+      // TYST — mät detta, inte CPU-%. Konsumeras (max/overBudget nollställs).
+      analyserCost = (m as any)?.getAnalyserCost?.() ?? null;
     } catch {}
     const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi) * 4));
     const outputBrightness = diag ? Math.max(0, Math.min(1, (diag.brightnessPct ?? 0) / 100)) : 0;
