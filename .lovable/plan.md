@@ -1,34 +1,51 @@
+# Portabel audio-analyser: dela mellan DMX och Lotus
+
+Analysatorn i DMX Control är den mest välarbetade delen av båda projekten (dubbel-FFT, per-band onsets, BPM-lock, drop/riser, karaktärsprofil, noll-alloc/hop). Vi gör den till ett fristående paket — precis som `ble-driver/` — och drar in den i Lotus.
+
 ## Mål
-Ha så få reglage som möjligt i UI:t. Behåll bara **4 justerbara sliders**; lås allt annat till dina nuvarande, intrimmade värden.
 
-## Reglage som blir kvar (justerbara)
-Alla i den befintliga sektionen ovanför status-rutan (ingen profilväxlare, ingen "Avancerat"):
+1. En mapp, `pi/src/audio-analyser/`, som är helt fristående (bara `fft.js` som extern dep). Kopieras rakt in i andra projekt.
+2. Lotus ersätter sin egna FFT/bass-flux/onset-logik i `alsaMic.ts` + `piEngine.ts` med analysatorns `Frame`.
+3. Ingen förändring i UI-beteende med dagens `cal` — de fem nya signalerna (`bpm`, `intensity`, `dropCount`, `buildUp`, `profile`) blir tillgängliga men driver inget nytt än.
 
-1. **Softness (mjukhet)** — `softness`, 0–100, default 71
-2. **Beat-källa (lågpass)** — `beatCutoffHz`, 60–2000 Hz, default 150 *(finns redan)*
-3. **Min ljusstyrka** — `brightnessFloor`, 0–100 %, default 25
-4. **Dynamik** — `dynamicDamping`, −2…2×, default 0.4
+## Steg
 
-## Låsta värden (från dina skärmbilder — inga reglage)
-Bakas in som fasta defaults i `Normal`-profilen:
-- Punch (`attack`) = 100
-- Bas↔Diskant (`bassWeight`) = 0.95
-- Stabilitet (`flickerDeadband`) = 0.01
-- Onset-känslighet = 0 → `onsetThreshold` 4.0, `onsetRefractoryMs` 300
-- Tystnadströskel = 0.025 → `tickEnergyFloor` & `onsetEnergyFloor` 0.025
-- Transient boost (`transientGain`) = 1.1
-- Vita peaks (`punchWhiteThreshold`) = 100 (av)
-- Perceptuell kurva (`perceptualGamma`) = 1.2
-- Drop-flash på, `dropSensitivity` 0.64, `dropFlashMs` 220
+**1. Extrahera modulen (från DMX → hit)**
+- Kopiera in `analyser.ts` som `pi/src/audio-analyser/analyser.ts`.
+- Bryt beroendet till `EngineConfig`: byt konstruktor till `new Analyser({ sampleRate, hopSize })`. Bort med `cfg.audio.rate` / `cfg.fft.hop`-look-ups.
+- Behåll `Frame`, `Spectrum` som publika typer.
+- Skapa `pi/src/audio-analyser/index.ts` med `createAnalyser({ sampleRate, hopSize })` (samma mönster som `createLampDriver`).
+- Lägg till `README.md` + `INTEGRATION.md` med API-yta och exempel.
 
-## Ändringar (endast `src/pages/PiMobile.tsx`)
-1. Uppdatera `PRESET_CALS.Normal` med värdena ovan (så en ny/tom Pi startar rätt).
-2. I den befintliga "Beat-källa"-sektionen: lägg till tre enkla range-sliders (samma stil som lågpass-slidern) för Softness, Min ljusstyrka och Dynamik, kopplade till `setCal({ ...cal, ... })`.
-3. Byt sektionsrubriken till t.ex. **"Ljusinställningar"** så den täcker alla fyra.
+**2. Wire in i Lotus mic-pipen**
+- `alsaMic.ts` matar redan hops via `onFFTReady`. Byt så att den istället matar `analyser.process(hopSamples, hopMs)` och exponerar `getLatestFrame(): Frame`.
+- Ta bort Lotus egna `bassFlux`/onset-räkning + `setBeatCutoffHz` (analysatorns 8-bands per-band onset ersätter beat-cutoff-slidern med något bättre).
+- `resetFluxState()` blir `analyser.resetGain()`.
 
-Ingen ändring i motorn/API behövs — alla fält sparas/laddas redan via `/api/profiles`.
+**3. Wire in i piEngine**
+- `tickInner` konsumerar `Frame` istället för `latestBands`.
+- Mappning som håller nuvarande beteende oförändrat:
+  - Nuvarande `bass` → `frame.spec.kick + frame.spec.bass` (viktat).
+  - Nuvarande onset-boost → `frame.onset.kick`.
+  - Nuvarande drop → `frame.dropCount` (monoton edge-jämförelse).
+  - Nuvarande punch-white → tröskel på `frame.onset.kick` som förut.
+- Nya signaler exponeras via `/api/status` för framtida bruk: `bpm`, `bpmConfidence`, `intensity`, `buildUp`, `profile`.
 
-## Att notera
-Profil-panelen du ser i den **publicerade** appen finns inte i senaste koden (togs bort tidigare). Detta bygger en avskalad ersättning. När du publicerar ersätts den gamla stora panelen med dessa fyra reglage. Övriga låsta värden gäller den aktiva profilen `Normal`; profilväxlaren återkommer inte.
+**4. Städa**
+- Ta bort `pi/src/fftRadix2.ts` om inget annat använder den (analysatorn har egen `fft.js`).
+- Ta bort `beatCutoffHz` från `LightCalibration` + UI-slider (analysatorns per-band onset gör den obsolet). Migrations-kod: ignorera fältet vid load.
 
-Vill du att jag kör detta?
+**5. Verifiera**
+- `npx tsc` i `pi/` grön.
+- Manuell körning: motorn ska bete sig exakt som idag för normal reaktion. `bpm > 0` inom ~3s efter musik startar.
+
+## Vad detta INTE gör
+
+- Ingen ny UI. `bpm`/`intensity`/`buildUp`/`profile` är bara tillgängliga — vi bygger inte pulse-on-beat, drop-orkestrering eller mood-auto-select nu.
+- Rör inte DMX-projektet. Vi kopierar hit och håller den som "canonical copy" i Lotus tills du bestämmer var master ska ligga. Om du vill kan vi senare ändra DMX att importera från Lotus istället (eller lägga modulen i ett tredje repo).
+
+## Teknisk not
+
+Analysatorns dubbel-FFT (512 timing + 2048 spektrum, sistnämnda decimerad till var 3:e hop) är designad för 48kHz @ 480 hop = 100Hz. Lotus alsaMic kör redan 48kHz @ 480 hop → drop-in-passform, ingen omkonfiguration.
+
+`Frame` är ett återanvänt objekt (muteras per hop). Trådsäkert eftersom Node är single-threaded och `piEngine` läser synkront i samma tick.
