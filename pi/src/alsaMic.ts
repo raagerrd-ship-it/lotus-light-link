@@ -799,12 +799,9 @@ function onAudioData(buf: Buffer): void {
   }
 
   // Portable analyser: egen 128-hop-tap (375 Hz), decoupled från 480-hop-FFT:n.
-  // Kan trigga flera sub-hops per ALSA-callback (periodSize=256 → oftast 2 hops).
-  analyserSamplesReceived += (pos - (ringPos - (pos - ringPos & mask)) & mask); // no-op safety
-  // Enklare: räkna nya samples i denna callback via received-delta.
-  // (received-variabeln ovan är lokal; vi använder samplesReceived-inkrementet
-  //  istället — men den nollställs vid HOP_SIZE. Så räkna direkt från pos-delta:
-  //  vi lade till (frameCount) samples denna callback → använd en sub-räknare.)
+  // ringPos har just avancerats med "frameCount" samples. Räkna in dem här och
+  // dränera i 128-block. Kan bli 2 sub-hops per ALSA-callback (periodSize=256).
+  analyserSamplesReceived += received - (received > 0 ? 0 : 0); // placeholder
 }
 
 export function stopMic(): void {
