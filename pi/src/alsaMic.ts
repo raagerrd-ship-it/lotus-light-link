@@ -307,6 +307,23 @@ let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
 export function getLatestFrame(): Frame | null { return latestFrame; }
 
+// ── Analyser cost budget (ms per 128-hop @ 375 Hz) ──────────────────────────
+// Budget = 1000/375 ≈ 2.67 ms per hop. Överskrids den kappar ALSA bufferten
+// och samples försvinner tyst → "ljuset känns segt" utan hög CPU. Mät ms/hop,
+// INTE CPU-% (referens: DMX Zero 2W 1.03–1.26 ms/hop, spak = BIG_EVERY).
+// EMA + max över senaste ~1s (~375 hops) exponeras via getAnalyserCost().
+const ANALYSER_BUDGET_MS = 1000 / 375; // ≈2.667
+let analyserMsEMA = 0;                 // α=0.02 → ~50-hop tidskonstant
+let analyserMsMax = 0;                 // sedan senaste getAnalyserCost()-läsning
+let analyserHopCount = 0;
+let analyserOverBudgetCount = 0;       // hops > budget sedan senaste läsning
+export function getAnalyserCost(): { msEMA: number; msMax: number; hops: number; overBudget: number; budgetMs: number } {
+  const out = { msEMA: analyserMsEMA, msMax: analyserMsMax, hops: analyserHopCount, overBudget: analyserOverBudgetCount, budgetMs: ANALYSER_BUDGET_MS };
+  analyserMsMax = 0;
+  analyserOverBudgetCount = 0;
+  return out;
+}
+
 // ── FFT frame counter (for diagnostics: faktisk frames/s från ALSA → FFT) ──
 let _fftFrameCount = 0;
 export function getFFTFrameCount(): number { return _fftFrameCount; }
@@ -498,6 +515,7 @@ export function resetFluxState(): void {
   analyser.resetGain();
   latestFrame = null;
   analyserSamplesReceived = 0;
+  analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
 }
 
 /** Return timestamp (performance.now) of last FFT completion */
@@ -806,10 +824,17 @@ function onAudioData(buf: Buffer): void {
   // 2 hops per callback; jitter kan ge 1 eller 3. Läser bakåt från ringPos.
   analyserSamplesReceived += newSamples;
   while (analyserSamplesReceived >= ANALYSER_HOP) {
-    const off = analyserSamplesReceived; // samples tillbaka från ringPos där blocket börjar
+    const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
     for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+    const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
+    const dt = performance.now() - t0;
+    // EMA (α=0.02 ≈ 50-hop tidskonstant) + max sedan senaste läsning
+    analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
+    if (dt > analyserMsMax) analyserMsMax = dt;
+    if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
+    analyserHopCount++;
     analyserSamplesReceived -= ANALYSER_HOP;
   }
 }
