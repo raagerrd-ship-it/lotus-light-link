@@ -497,6 +497,7 @@ export function resetFluxState(): void {
   // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
   analyser.resetGain();
   latestFrame = null;
+  analyserSamplesReceived = 0;
 }
 
 /** Return timestamp (performance.now) of last FFT completion */
