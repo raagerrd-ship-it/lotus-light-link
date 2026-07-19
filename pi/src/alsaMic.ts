@@ -470,6 +470,13 @@ function processFFT(): void {
   lastFFTTimestamp = performance.now();
   _fftFrameCount++;
 
+  // Mata portable analyser med den just-mottagna hop:en (rå, ohönstrade samples
+  // från ringen). Analysatorn har egen glidande buffert + Hann-fönster.
+  // Läser HOP_SIZE senaste samples: [ringPos-HOP_SIZE .. ringPos-1] & mask.
+  const startPos = (ringPos - HOP_SIZE) & FFT_MASK;
+  for (let i = 0; i < HOP_SIZE; i++) hopScratch[i] = ringBuf[(startPos + i) & FFT_MASK];
+  latestFrame = analyser.process(hopScratch);
+
   // Fire event immediately — engine can process with zero latency
   if (_onFluxReady) _onFluxReady(flux);
   if (_onFFTReady) _onFFTReady(latestBands);
@@ -487,6 +494,9 @@ export function resetFluxState(): void {
   fftTotalHistory.fill(0);
   fftHistoryPos = 0;
   fftHistoryFilled = 0;
+  // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
+  analyser.resetGain();
+  latestFrame = null;
 }
 
 /** Return timestamp (performance.now) of last FFT completion */
