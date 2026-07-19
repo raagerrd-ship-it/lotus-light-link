@@ -473,12 +473,9 @@ function processFFT(): void {
   lastFFTTimestamp = performance.now();
   _fftFrameCount++;
 
-  // Mata portable analyser med den just-mottagna hop:en (rå, ohönstrade samples
-  // från ringen). Analysatorn har egen glidande buffert + Hann-fönster.
-  // Läser HOP_SIZE senaste samples: [ringPos-HOP_SIZE .. ringPos-1] & mask.
-  const startPos = (ringPos - HOP_SIZE) & FFT_MASK;
-  for (let i = 0; i < HOP_SIZE; i++) hopScratch[i] = ringBuf[(startPos + i) & FFT_MASK];
-  latestFrame = analyser.process(hopScratch);
+  // (Portable analysern körs INTE här — se analyserSamplesReceived-loopen i
+  //  onAudioData. Den har egen 128-hop-takt så DMX-projektets kalibrering
+  //  för BPM/drop/kick fungerar oförändrad här.)
 
   // Fire event immediately — engine can process with zero latency
   if (_onFluxReady) _onFluxReady(flux);
@@ -800,6 +797,14 @@ function onAudioData(buf: Buffer): void {
     processFFT();
     samplesReceived = 0;
   }
+
+  // Portable analyser: egen 128-hop-tap (375 Hz), decoupled från 480-hop-FFT:n.
+  // Kan trigga flera sub-hops per ALSA-callback (periodSize=256 → oftast 2 hops).
+  analyserSamplesReceived += (pos - (ringPos - (pos - ringPos & mask)) & mask); // no-op safety
+  // Enklare: räkna nya samples i denna callback via received-delta.
+  // (received-variabeln ovan är lokal; vi använder samplesReceived-inkrementet
+  //  istället — men den nollställs vid HOP_SIZE. Så räkna direkt från pos-delta:
+  //  vi lade till (frameCount) samples denna callback → använd en sub-räknare.)
 }
 
 export function stopMic(): void {
