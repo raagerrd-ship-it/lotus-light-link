@@ -600,6 +600,7 @@ export function startConfigServer(port = 3050): void {
       // Portable analyser-snapshot (parallell pipe, driver inget än — exponerad
       // för UI/framtida BPM-pulse, drop-orkestrering, mood-auto-select).
       analyser: analyserFrame,
+      analyserCost, // { msEMA, msMax, hops, overBudget, budgetMs } — larma om msMax>budgetMs
       // Restart-historik (senaste 20, nyaste sist) — UI visar reason + tid
       // så användaren ser om motorn dör ofta och varför.
       restarts: (() => {
