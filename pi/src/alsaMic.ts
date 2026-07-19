@@ -294,13 +294,16 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 }
 
 // ── Portable analyser (dubbel-FFT: BPM, drop, per-band spec/onset, profile) ──
-// Kör parallellt med den befintliga 1024-FFT-pipen (som fortfarande driver
-// piEngine via BandResult). Analysatorn matas samma hop-sized slice av rå
-// (ohönstrade) samples direkt efter varje FFT. Resultatet exponeras via
-// getLatestFrame() så framtida konsumenter (BPM-pulse, drop-orkestrering,
-// mood-auto-select) kan läsa Frame utan att röra tick-hetpaths.
-const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: HOP_SIZE });
-const hopScratch = new Float32Array(HOP_SIZE);
+// Körs parallellt med den befintliga 1024-FFT-pipen och matas på SIN EGEN
+// hop-takt (128 samples @ 48 kHz = 375 Hz), inte huvud-FFT:ns 100 Hz.
+// Skälet: analysatorns interna konstanter (BIG_EVERY=3 → 2048-FFT vid 125 Hz,
+// kickSeed<400 ≈ 1s uppvärmning, per-band-onset-median-fönster) är intrimmade
+// mot 375 Hz i DMX-projektet. Att köra den på 100 Hz skulle ge 3.75× för glesa
+// onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
+const ANALYSER_HOP = 128;
+const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP });
+const analyserScratch = new Float32Array(ANALYSER_HOP);
+let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
 export function getLatestFrame(): Frame | null { return latestFrame; }
 
