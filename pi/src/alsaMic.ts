@@ -515,6 +515,7 @@ export function resetFluxState(): void {
   analyser.resetGain();
   latestFrame = null;
   analyserSamplesReceived = 0;
+  analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
 }
 
 /** Return timestamp (performance.now) of last FFT completion */
