@@ -12,6 +12,7 @@
 import { fft1024, FFT_N } from './fftRadix2.js';
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
+import { createAnalyser, type Frame } from './audio-analyser/index.js';
 
 // Persistens av mic-state över restart. Tappades tidigare vid varje crash/restart →
 // användaren upplevde "den glömde autogain mitt i låten" som en buggig auto-update.
@@ -291,6 +292,17 @@ export function onFFTReady(cb: FFTReadyCallback | null): void {
 export function onFluxReady(cb: ((flux: number) => void) | null): void {
   _onFluxReady = cb;
 }
+
+// ── Portable analyser (dubbel-FFT: BPM, drop, per-band spec/onset, profile) ──
+// Kör parallellt med den befintliga 1024-FFT-pipen (som fortfarande driver
+// piEngine via BandResult). Analysatorn matas samma hop-sized slice av rå
+// (ohönstrade) samples direkt efter varje FFT. Resultatet exponeras via
+// getLatestFrame() så framtida konsumenter (BPM-pulse, drop-orkestrering,
+// mood-auto-select) kan läsa Frame utan att röra tick-hetpaths.
+const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: HOP_SIZE });
+const hopScratch = new Float32Array(HOP_SIZE);
+let latestFrame: Frame | null = null;
+export function getLatestFrame(): Frame | null { return latestFrame; }
 
 // ── FFT frame counter (for diagnostics: faktisk frames/s från ALSA → FFT) ──
 let _fftFrameCount = 0;
