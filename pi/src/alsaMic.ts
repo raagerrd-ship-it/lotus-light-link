@@ -823,10 +823,17 @@ function onAudioData(buf: Buffer): void {
   // 2 hops per callback; jitter kan ge 1 eller 3. Läser bakåt från ringPos.
   analyserSamplesReceived += newSamples;
   while (analyserSamplesReceived >= ANALYSER_HOP) {
-    const off = analyserSamplesReceived; // samples tillbaka från ringPos där blocket börjar
+    const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
     for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+    const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
+    const dt = performance.now() - t0;
+    // EMA (α=0.02 ≈ 50-hop tidskonstant) + max sedan senaste läsning
+    analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
+    if (dt > analyserMsMax) analyserMsMax = dt;
+    if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
+    analyserHopCount++;
     analyserSamplesReceived -= ANALYSER_HOP;
   }
 }
