@@ -12,6 +12,7 @@
 import { fft1024, FFT_N } from './fftRadix2.js';
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
+import { createAnalyser, type Frame } from './audio-analyser/index.js';
 
 // Persistens av mic-state över restart. Tappades tidigare vid varje crash/restart →
 // användaren upplevde "den glömde autogain mitt i låten" som en buggig auto-update.
@@ -292,6 +293,17 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
   _onFluxReady = cb;
 }
 
+// ── Portable analyser (dubbel-FFT: BPM, drop, per-band spec/onset, profile) ──
+// Kör parallellt med den befintliga 1024-FFT-pipen (som fortfarande driver
+// piEngine via BandResult). Analysatorn matas samma hop-sized slice av rå
+// (ohönstrade) samples direkt efter varje FFT. Resultatet exponeras via
+// getLatestFrame() så framtida konsumenter (BPM-pulse, drop-orkestrering,
+// mood-auto-select) kan läsa Frame utan att röra tick-hetpaths.
+const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: HOP_SIZE });
+const hopScratch = new Float32Array(HOP_SIZE);
+let latestFrame: Frame | null = null;
+export function getLatestFrame(): Frame | null { return latestFrame; }
+
 // ── FFT frame counter (for diagnostics: faktisk frames/s från ALSA → FFT) ──
 let _fftFrameCount = 0;
 export function getFFTFrameCount(): number { return _fftFrameCount; }
@@ -458,6 +470,13 @@ function processFFT(): void {
   lastFFTTimestamp = performance.now();
   _fftFrameCount++;
 
+  // Mata portable analyser med den just-mottagna hop:en (rå, ohönstrade samples
+  // från ringen). Analysatorn har egen glidande buffert + Hann-fönster.
+  // Läser HOP_SIZE senaste samples: [ringPos-HOP_SIZE .. ringPos-1] & mask.
+  const startPos = (ringPos - HOP_SIZE) & FFT_MASK;
+  for (let i = 0; i < HOP_SIZE; i++) hopScratch[i] = ringBuf[(startPos + i) & FFT_MASK];
+  latestFrame = analyser.process(hopScratch);
+
   // Fire event immediately — engine can process with zero latency
   if (_onFluxReady) _onFluxReady(flux);
   if (_onFFTReady) _onFFTReady(latestBands);
@@ -475,6 +494,9 @@ export function resetFluxState(): void {
   fftTotalHistory.fill(0);
   fftHistoryPos = 0;
   fftHistoryFilled = 0;
+  // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
+  analyser.resetGain();
+  latestFrame = null;
 }
 
 /** Return timestamp (performance.now) of last FFT completion */

@@ -502,10 +502,23 @@ export function startConfigServer(port = 3050): void {
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
     let micBass = 0, micMidHi = 0;
+    let analyserFrame: any = null;
     try {
       const m = getMic();
       const b = m?.getLatestBands?.();
       if (b) { micBass = b.bassRms ?? 0; micMidHi = b.midHiRms ?? 0; }
+      // Portable analyser (parallell pipe): BPM, drop, intensity, buildUp, profile.
+      // Slimmad snapshot — det UI:t / framtida orkestrering behöver, utan spec/onset-arrays.
+      const f = (m as any)?.getLatestFrame?.();
+      if (f) {
+        analyserFrame = {
+          bpm: f.bpm, bpmConfidence: f.bpmConfidence,
+          intensity: f.intensity, buildUp: f.buildUp, inRiser: f.inRiser,
+          dropCount: f.dropCount, inZone: f.inZone, breaking: f.breaking,
+          level: f.level, kick: f.kick,
+          profile: f.profile,
+        };
+      }
     } catch {}
     const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi) * 4));
     const outputBrightness = diag ? Math.max(0, Math.min(1, (diag.brightnessPct ?? 0) / 100)) : 0;
@@ -582,6 +595,9 @@ export function startConfigServer(port = 3050): void {
             lastDisconnectReason: getLastDisconnectReason(),
           }
         : null,
+      // Portable analyser-snapshot (parallell pipe, driver inget än — exponerad
+      // för UI/framtida BPM-pulse, drop-orkestrering, mood-auto-select).
+      analyser: analyserFrame,
       // Restart-historik (senaste 20, nyaste sist) — UI visar reason + tid
       // så användaren ser om motorn dör ofta och varför.
       restarts: (() => {

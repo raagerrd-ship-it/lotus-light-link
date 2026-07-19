@@ -13,6 +13,7 @@
     "@stoprocent/noble": "^2.1.0",
     "eventsource": "^2.0.2",
     "express": "^4.21.0",
+    "fft.js": "^4.0.4",
     "node-record-lpcm16": "^1.0.1"
   },
   "devDependencies": {
