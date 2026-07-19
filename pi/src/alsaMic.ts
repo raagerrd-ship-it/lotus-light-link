@@ -789,7 +789,9 @@ function onAudioData(buf: Buffer): void {
   }
 
   hsState = hs;
+  const prevRingPos = ringPos;
   ringPos = pos;
+  const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
   samplesReceived = received;
   if (DEBUG_ENABLED) debugPeakRaw = peak;
 
@@ -799,9 +801,16 @@ function onAudioData(buf: Buffer): void {
   }
 
   // Portable analyser: egen 128-hop-tap (375 Hz), decoupled från 480-hop-FFT:n.
-  // ringPos har just avancerats med "frameCount" samples. Räkna in dem här och
-  // dränera i 128-block. Kan bli 2 sub-hops per ALSA-callback (periodSize=256).
-  analyserSamplesReceived += received - (received > 0 ? 0 : 0); // placeholder
+  // Dränera alla kompletta 128-block som ackumulerats. periodSize=256 → oftast
+  // 2 hops per callback; jitter kan ge 1 eller 3. Läser bakåt från ringPos.
+  analyserSamplesReceived += newSamples;
+  while (analyserSamplesReceived >= ANALYSER_HOP) {
+    const off = analyserSamplesReceived; // samples tillbaka från ringPos där blocket börjar
+    const start = (ringPos - off) & mask;
+    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+    latestFrame = analyser.process(analyserScratch);
+    analyserSamplesReceived -= ANALYSER_HOP;
+  }
 }
 
 export function stopMic(): void {
