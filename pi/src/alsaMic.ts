@@ -294,13 +294,16 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 }
 
 // ── Portable analyser (dubbel-FFT: BPM, drop, per-band spec/onset, profile) ──
-// Kör parallellt med den befintliga 1024-FFT-pipen (som fortfarande driver
-// piEngine via BandResult). Analysatorn matas samma hop-sized slice av rå
-// (ohönstrade) samples direkt efter varje FFT. Resultatet exponeras via
-// getLatestFrame() så framtida konsumenter (BPM-pulse, drop-orkestrering,
-// mood-auto-select) kan läsa Frame utan att röra tick-hetpaths.
-const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: HOP_SIZE });
-const hopScratch = new Float32Array(HOP_SIZE);
+// Körs parallellt med den befintliga 1024-FFT-pipen och matas på SIN EGEN
+// hop-takt (128 samples @ 48 kHz = 375 Hz), inte huvud-FFT:ns 100 Hz.
+// Skälet: analysatorns interna konstanter (BIG_EVERY=3 → 2048-FFT vid 125 Hz,
+// kickSeed<400 ≈ 1s uppvärmning, per-band-onset-median-fönster) är intrimmade
+// mot 375 Hz i DMX-projektet. Att köra den på 100 Hz skulle ge 3.75× för glesa
+// onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
+const ANALYSER_HOP = 128;
+const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP });
+const analyserScratch = new Float32Array(ANALYSER_HOP);
+let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
 export function getLatestFrame(): Frame | null { return latestFrame; }
 
@@ -470,12 +473,9 @@ function processFFT(): void {
   lastFFTTimestamp = performance.now();
   _fftFrameCount++;
 
-  // Mata portable analyser med den just-mottagna hop:en (rå, ohönstrade samples
-  // från ringen). Analysatorn har egen glidande buffert + Hann-fönster.
-  // Läser HOP_SIZE senaste samples: [ringPos-HOP_SIZE .. ringPos-1] & mask.
-  const startPos = (ringPos - HOP_SIZE) & FFT_MASK;
-  for (let i = 0; i < HOP_SIZE; i++) hopScratch[i] = ringBuf[(startPos + i) & FFT_MASK];
-  latestFrame = analyser.process(hopScratch);
+  // (Portable analysern körs INTE här — se analyserSamplesReceived-loopen i
+  //  onAudioData. Den har egen 128-hop-takt så DMX-projektets kalibrering
+  //  för BPM/drop/kick fungerar oförändrad här.)
 
   // Fire event immediately — engine can process with zero latency
   if (_onFluxReady) _onFluxReady(flux);
@@ -497,6 +497,7 @@ export function resetFluxState(): void {
   // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
   analyser.resetGain();
   latestFrame = null;
+  analyserSamplesReceived = 0;
 }
 
 /** Return timestamp (performance.now) of last FFT completion */
@@ -789,13 +790,27 @@ function onAudioData(buf: Buffer): void {
   }
 
   hsState = hs;
+  const prevRingPos = ringPos;
   ringPos = pos;
+  const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
   samplesReceived = received;
   if (DEBUG_ENABLED) debugPeakRaw = peak;
 
   if (samplesReceived >= HOP_SIZE) {
     processFFT();
     samplesReceived = 0;
+  }
+
+  // Portable analyser: egen 128-hop-tap (375 Hz), decoupled från 480-hop-FFT:n.
+  // Dränera alla kompletta 128-block som ackumulerats. periodSize=256 → oftast
+  // 2 hops per callback; jitter kan ge 1 eller 3. Läser bakåt från ringPos.
+  analyserSamplesReceived += newSamples;
+  while (analyserSamplesReceived >= ANALYSER_HOP) {
+    const off = analyserSamplesReceived; // samples tillbaka från ringPos där blocket börjar
+    const start = (ringPos - off) & mask;
+    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+    latestFrame = analyser.process(analyserScratch);
+    analyserSamplesReceived -= ANALYSER_HOP;
   }
 }
 

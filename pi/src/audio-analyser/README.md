@@ -5,6 +5,26 @@ Feed hop-sized mono Float32 PCM, get back a `Frame` with musical features.
 
 Zero project coupling — only external dependency is [`fft.js`](https://www.npmjs.com/package/fft.js).
 
+## Source of truth
+
+**Master lives in the `DMX Control` project (`pi-dmx/engine/src/analyser.ts`).**
+This copy is a mirror. When DMX-analysern får uppdateringar (BPM-intervall,
+drop-grindar, kick-detektor, trum-envelopes) måste denna fil re-synkas manuellt
+tills vi lyfter ut den till ett delat repo. Ändra INTE här utan att först ändra
+i DMX Control — annars divergerar de och vi får två analysatorer med olika buggar.
+
+Senast synkad från DMX Control: 2026-07-19.
+
+## Kalibrering — hop-takt
+
+Analysatorns interna konstanter (BIG_EVERY=3, kickSeed<400, per-band-onset-
+medianfönster) är intrimmade för **~375 Hz hop-takt** (128 samples @ 48 kHz).
+Kör du en annan hop-storlek måste du antingen (a) tappa audio i egen 128-hop
+och driva analysatorn separat, eller (b) omkalibrera de tidskonstanter som inte
+skalar via `dtHop` (se `INTEGRATION.md`).
+
+
+
 ## Install into another project
 
 Copy the whole `audio-analyser/` folder in, then:

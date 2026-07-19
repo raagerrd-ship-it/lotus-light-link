@@ -1,6 +1,11 @@
 /**
  * Audio analyser — portable, framework-agnostic.
  *
+ * ⚠️  MIRROR — DO NOT EDIT DIRECTLY.
+ * Master: DMX Control / pi-dmx/engine/src/analyser.ts.
+ * Ändra där, re-synka hit. Se README.md ("Source of truth").
+ * Senast synkad: 2026-07-19.
+ *
  * Feed hop-sized mono Float32 samples via process(samples). Returns a Frame
  * with level, kick, per-band spectrum/onset, BPM, drop/riser, intensity,
  * character profile.
