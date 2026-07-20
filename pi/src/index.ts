@@ -357,6 +357,42 @@ async function main() {
     startSonos: startSonosSubsystem,
   });
 
+  // Playback-watchdog: om tickOkCount inte ökar under 8s medan lifecycle är
+  // MOTOR_ON → engine har fastnat (ALSA-death, BLE-stuck, stale state).
+  // process.exit(1) → systemd restart → boot → ignite → återhämtning.
+  (async () => {
+    try {
+      const { bleStats } = await import('./ble/index.js');
+      const lc = await import('./engineLifecycle.js');
+      const { recordRestart } = await import('./restartLog.js');
+      let lastTickOk = 0;
+      let stuckMs = 0;
+      setInterval(() => {
+        try {
+          if (lc.getLifecycleState() !== 'MOTOR_ON') {
+            stuckMs = 0;
+            lastTickOk = bleStats.tickOkCount;
+            return;
+          }
+          const cur = bleStats.tickOkCount;
+          if (cur === lastTickOk) {
+            stuckMs += 2000;
+            if (stuckMs >= 8000) {
+              console.error('[Playback-Watchdog] tickOkCount frozen 8s while MOTOR_ON — exit(1)');
+              try { recordRestart('playback-watchdog-stuck', `tickOk=${cur}`); } catch {}
+              process.exit(1);
+            }
+          } else {
+            stuckMs = 0;
+            lastTickOk = cur;
+          }
+        } catch {}
+      }, 2000);
+    } catch (e: any) {
+      console.warn('[Boot] Playback-Watchdog init failed:', e?.message ?? e);
+    }
+  })();
+
   console.log('[Boot] ✓ configServer up — ignite() startar BLE-stack + sonos-poller');
 
   // ── FIX 24: Playback-Watchdog — auto-recover från stuck engine.playing ──
@@ -506,7 +542,8 @@ async function main() {
           await sonos.onSonosChange(async (state) => {
             const playing = typeof state.playbackState === 'string'
               && state.playbackState.includes('PLAYING');
-            await fn(playing || state.isTvMode);
+            // TV-mode = "ignore TV audio" → engine should NOT run when SPDIF plays.
+            await fn(playing && !state.isTvMode);
           });
         },
       });
