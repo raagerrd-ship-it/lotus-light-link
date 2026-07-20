@@ -364,6 +364,7 @@ async function main() {
     try {
       const { bleStats } = await import('./ble/index.js');
       const lc = await import('./engineLifecycle.js');
+      const { recordRestart } = await import('./restartLog.js');
       let lastTickOk = 0;
       let stuckMs = 0;
       setInterval(() => {
