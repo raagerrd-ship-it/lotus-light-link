@@ -506,7 +506,8 @@ async function main() {
           await sonos.onSonosChange(async (state) => {
             const playing = typeof state.playbackState === 'string'
               && state.playbackState.includes('PLAYING');
-            await fn(playing || state.isTvMode);
+            // TV-mode = "ignore TV audio" → engine should NOT run when SPDIF plays.
+            await fn(playing && !state.isTvMode);
           });
         },
       });
