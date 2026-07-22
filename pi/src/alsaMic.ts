@@ -886,6 +886,14 @@ function onAudioData(buf: Buffer): void {
   samplesReceived = received;
   if (DEBUG_ENABLED) debugPeakRaw = peak;
 
+  if (calOn && micCalActive) {
+    micCalSumSq += calSumLocal;
+    micCalCount += calCntLocal;
+    if (performance.now() - micCalStartAt >= micCalDurationMs) finishMicCalibration();
+  }
+
+
+
   if (samplesReceived >= HOP_SIZE) {
     processFFT();
     samplesReceived = 0;
