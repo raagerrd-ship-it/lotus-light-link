@@ -855,12 +855,14 @@ function onAudioData(buf: Buffer): void {
     const INV_S16 = 1 / 32768;
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
+      if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
         if (s > 32767) s = 32767; else if (s < -32768) s = -32768;
         acrBuf[acrLen++] = s;
       }
+
       let raw = rawPre * gain;
       if (raw > 0.5 || raw < -0.5) {
         const a = raw < 0 ? -raw : raw;
