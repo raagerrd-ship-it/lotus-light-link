@@ -607,9 +607,11 @@ export class PiLightEngine {
       // White INSTANTLY on drop — no black dip first (no dip branch exists).
       this.dropFlashUntil = _now + (this.cal.dropFlashMs ?? 220);
       bleStatsState.dropCount++;
-      // Express-write: full white punch immediately so the flash lands on the beat.
+      // Express-write: max brightness omedelbart, behåll palette-färgen
+      // (2026-07-22: ingen vit tvingning — drop förstärker aktuell färg).
       if (this._bleOwner === 'active' && canWriteNow()) {
-        const result = sendToBLE(255, 255, 255, 100);
+        const r = this.color[0] | 0, g = this.color[1] | 0, b = this.color[2] | 0;
+        const result = sendToBLE(r, g, b, 100);
         if (result === 'sent') this.lastSentPct = 100;
       }
     }
@@ -1451,7 +1453,9 @@ export class PiLightEngine {
         pct = 100;
         this.lastSentPct = 100; // bypassa deadband så blixten alltid skickas
       }
-      const isPunch = dropFlash || (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
+      // Drop längre ger max brightness men behåller palette-färg — bara
+      // punchWhiteThreshold (peak-detektorn) tvingar vit.
+      const isPunch = (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], tc);
 
       // ── BLE output (synkron hard-fail) ──

@@ -115,6 +115,12 @@ function applySonosStateToEngine(state: {
 
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
+    // 2026-07-22: aktivera auto-gain automatiskt första gången vi ser
+    // en Sonos-volym — annars måste user gå in i UI:t på fresh install.
+    if (alsaMic && !alsaMic.isAutoGainEnabled()) {
+      alsaMic.enableAutoGain();
+      console.log(`[Boot] Auto-gain aktiverad (Sonos-vol=${state.volume})`);
+    }
     alsaMic?.setAutoGainFromVolume(state.volume);
   }
 
@@ -458,6 +464,65 @@ async function main() {
       console.warn('[Boot] Playback-Watchdog failed to start:', e?.message ?? e);
     }
   })();
+
+  // ─── Spotify-features poller (Fix #5, 2026-07-22) ─────────────────────
+  // Fetchar audio-features från fristående service på port 3054 (om den
+  // körs) och mappar till engine-profil vid trackbyte. Om service saknas
+  // är detta en no-op — statiska cal-profiler gäller.
+  (function startSpotifyFeaturesPoller() {
+    const URL = 'http://127.0.0.1:3054/current';
+    let lastTrackKey: string | null = null;
+    let warnedUnreachable = false;
+
+    type Features = {
+      tempo?: number; energy?: number; danceability?: number;
+      acousticness?: number; valence?: number; error?: string;
+    };
+
+    function profileFromFeatures(f: Features) {
+      const bpm = f.tempo ?? 100;
+      const en = f.energy ?? 0.5;
+      const ac = f.acousticness ?? 0.5;
+      const dance = f.danceability ?? 0.5;
+      let attackAlpha: number;
+      if (bpm >= 130 && en > 0.7) attackAlpha = 1.0;
+      else if (bpm >= 110) attackAlpha = 0.75;
+      else if (bpm >= 85 && ac < 0.3) attackAlpha = 0.55;
+      else if (ac > 0.5) attackAlpha = 0.25;
+      else attackAlpha = 0.45;
+      const transientGain = Math.max(0.4, Math.min(1.4, 0.4 + en * 0.9));
+      const dropSensitivity = Math.max(0.5, Math.min(2.0, 0.5 + dance * 1.5));
+      const perceptualGamma = ac > 0.5 ? 1.3 : 0.9;
+      const bassWeight = ac > 0.6 ? 0.5 : (en > 0.75 ? 0.85 : 0.75);
+      return { attackAlpha, transientGain, dropSensitivity, perceptualGamma, bassWeight };
+    }
+
+    setInterval(async () => {
+      if (!engineInstance?.setActiveProfile) return;
+      try {
+        const res = await fetch(URL, { signal: AbortSignal.timeout(1500) });
+        if (!res.ok) return;
+        const cur: any = await res.json();
+        if (!cur?.features || cur.features.error) return;
+        const key = `${cur.artist ?? ''}::${cur.track ?? ''}`;
+        if (!key || key === '::' || key === lastTrackKey) return;
+        lastTrackKey = key;
+        const profile = profileFromFeatures(cur.features);
+        console.log(
+          `[spotify-features] "${cur.track}" bpm=${cur.features.tempo?.toFixed?.(0)} ` +
+          `en=${cur.features.energy?.toFixed?.(2)} ac=${cur.features.acousticness?.toFixed?.(2)} ` +
+          `→ attack=${profile.attackAlpha} transient=${profile.transientGain.toFixed(2)}`
+        );
+        engineInstance.setActiveProfile(profile);
+      } catch (e: any) {
+        if (!warnedUnreachable) {
+          warnedUnreachable = true;
+          console.log('[spotify-features] service unreachable on :3054 — auto-profile disabled');
+        }
+      }
+    }, 5000);
+  })();
+
 
   // ── Restart-log: detektera om förra processen dog ofrivilligt ──
   // noteBootStart() kollar om SESSION_MARKER finns kvar (graceful shutdown
