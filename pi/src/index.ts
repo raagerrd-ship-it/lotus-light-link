@@ -466,11 +466,11 @@ async function main() {
   })();
 
   // ─── Spotify-features poller (Fix #5, 2026-07-22) ─────────────────────
-  // Fetchar audio-features från fristående service på port 3054 (om den
-  // körs) och mappar till engine-profil vid trackbyte. Om service saknas
-  // är detta en no-op — statiska cal-profiler gäller.
+  // Fetchar audio-features från sonos-buddy på port 3053 (/api/spotify/current)
+  // och mappar till engine-profil vid trackbyte. Om endpoint saknas är detta
+  // en no-op — statiska cal-profiler gäller.
   (function startSpotifyFeaturesPoller() {
-    const URL = 'http://127.0.0.1:3054/current';
+    const URL = 'http://127.0.0.1:3053/api/spotify/current';
     let lastTrackKey: string | null = null;
     let warnedUnreachable = false;
 
@@ -517,7 +517,7 @@ async function main() {
       } catch (e: any) {
         if (!warnedUnreachable) {
           warnedUnreachable = true;
-          console.log('[spotify-features] service unreachable on :3054 — auto-profile disabled');
+          console.log('[spotify-features] service unreachable on :3053/api/spotify/current — auto-profile disabled');
         }
       }
     }, 5000);
