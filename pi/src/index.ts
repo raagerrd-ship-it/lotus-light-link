@@ -115,6 +115,12 @@ function applySonosStateToEngine(state: {
 
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
+    // 2026-07-22: aktivera auto-gain automatiskt första gången vi ser
+    // en Sonos-volym — annars måste user gå in i UI:t på fresh install.
+    if (alsaMic && !alsaMic.isAutoGainEnabled()) {
+      alsaMic.enableAutoGain();
+      console.log(`[Boot] Auto-gain aktiverad (Sonos-vol=${state.volume})`);
+    }
     alsaMic?.setAutoGainFromVolume(state.volume);
   }
 
