@@ -187,8 +187,10 @@ function GainCalibrationPanel({
           <p className="text-[10px] text-muted-foreground mt-0.5">
             Mjukvaruförstärkning. 1× = rå signal, högre = känsligare.
           </p>
+          <MicGainCalibrateButton piBase={piBase} onDone={(g) => setMicGain(g)} />
         </div>
       )}
+
 
       {/* AUTO MODE: två slidrar (vol 15 & vol 50), motorn interpolerar */}
       {enabled && (
