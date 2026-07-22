@@ -815,6 +815,11 @@ function onAudioData(buf: Buffer): void {
   // DEBUG-branch: peak-tracking inlinad bakom konstant flagga så V8 JIT
   // kan eliminera grenarna helt i prod (DEBUG_ENABLED=false vid boot).
   let peak = DEBUG_ENABLED ? debugPeakRaw : 0;
+  // Kalibrering: ackumulera rawPre² lokalt (block-summa) → commit efter loop.
+  const calOn = micCalActive;
+  let calSumLocal = 0;
+  let calCntLocal = 0;
+
 
   if (currentFormat === 'S32_LE') {
     const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
