@@ -571,6 +571,69 @@ let lastSonosVol: number | null = null;  // cachat för live-omräkning vid slid
 const AUTO_GAIN_MAX = 50.0;
 const AUTO_GAIN_MIN = 0.1;
 
+// ── Mic-gain kalibrering (15s mätning, target RMS 0.35) ──
+// Samlar rawPre² (pre-gain, post-format-normalisering) → beräknar refGain så att
+// vid nuvarande ljudnivå ger den effektiva signalen target-RMS. Låter användaren
+// trycka en knapp när musiken spelar på en normal-nivå.
+const MIC_CAL_TARGET_RMS = 0.35;
+const MIC_CAL_DURATION_MS_DEFAULT = 15000;
+let micCalActive = false;
+let micCalSumSq = 0;
+let micCalCount = 0;
+let micCalStartAt = 0;
+let micCalDurationMs = MIC_CAL_DURATION_MS_DEFAULT;
+let micCalTargetRms = MIC_CAL_TARGET_RMS;
+let micCalLastResult: { ok: boolean; measuredRms: number; newGain: number; oldGain: number; targetRms: number; samples: number; at: number } | null = null;
+
+export function startMicGainCalibration(opts?: { durationMs?: number; targetRms?: number }): { started: boolean; durationMs: number; targetRms: number } {
+  micCalDurationMs = Math.max(2000, Math.min(60000, opts?.durationMs ?? MIC_CAL_DURATION_MS_DEFAULT));
+  micCalTargetRms = Math.max(0.05, Math.min(0.9, opts?.targetRms ?? MIC_CAL_TARGET_RMS));
+  micCalSumSq = 0;
+  micCalCount = 0;
+  micCalStartAt = performance.now();
+  micCalActive = true;
+  dlog(`[ALSA] Mic-gain calibration started (${micCalDurationMs}ms, target RMS ${micCalTargetRms.toFixed(2)})`);
+  return { started: true, durationMs: micCalDurationMs, targetRms: micCalTargetRms };
+}
+
+export function getMicGainCalibrationStatus() {
+  if (micCalActive) {
+    const elapsed = performance.now() - micCalStartAt;
+    return {
+      active: true,
+      elapsedMs: Math.round(elapsed),
+      durationMs: micCalDurationMs,
+      targetRms: micCalTargetRms,
+      samples: micCalCount,
+      lastResult: micCalLastResult,
+    };
+  }
+  return { active: false, lastResult: micCalLastResult };
+}
+
+function finishMicCalibration(): void {
+  micCalActive = false;
+  if (micCalCount < 100) {
+    dlog(`[ALSA] Mic-gain calibration: too few samples (${micCalCount}), aborting`);
+    micCalLastResult = { ok: false, measuredRms: 0, newGain: micGainBase, oldGain: micGainBase, targetRms: micCalTargetRms, samples: micCalCount, at: Date.now() };
+    return;
+  }
+  const measuredRms = Math.sqrt(micCalSumSq / micCalCount);
+  if (measuredRms < 1e-6) {
+    dlog(`[ALSA] Mic-gain calibration: silence (rms=${measuredRms.toExponential(2)}), aborting`);
+    micCalLastResult = { ok: false, measuredRms, newGain: micGainBase, oldGain: micGainBase, targetRms: micCalTargetRms, samples: micCalCount, at: Date.now() };
+    return;
+  }
+  const oldGain = micGainBase;
+  const newGain = Math.max(0.1, Math.min(50, micCalTargetRms / measuredRms));
+  micGainBase = newGain;
+  updateEffectiveGain();
+  saveMicState();
+  micCalLastResult = { ok: true, measuredRms, newGain, oldGain, targetRms: micCalTargetRms, samples: micCalCount, at: Date.now() };
+  dlog(`[ALSA] Mic-gain calibration DONE: measuredRms=${measuredRms.toFixed(4)} → base gain ${oldGain.toFixed(2)}x → ${newGain.toFixed(2)}x (target ${micCalTargetRms.toFixed(2)})`);
+}
+
+
 export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
 export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainCalPoint | null } {
   return { point1: calPoint1, point2: calPoint2 };
@@ -752,6 +815,11 @@ function onAudioData(buf: Buffer): void {
   // DEBUG-branch: peak-tracking inlinad bakom konstant flagga så V8 JIT
   // kan eliminera grenarna helt i prod (DEBUG_ENABLED=false vid boot).
   let peak = DEBUG_ENABLED ? debugPeakRaw : 0;
+  // Kalibrering: ackumulera rawPre² lokalt (block-summa) → commit efter loop.
+  const calOn = micCalActive;
+  let calSumLocal = 0;
+  let calCntLocal = 0;
+
 
   if (currentFormat === 'S32_LE') {
     const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
@@ -759,12 +827,14 @@ function onAudioData(buf: Buffer): void {
     const INV_S32 = 1 / 2147483648;
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
+      if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
         if (s > 32767) s = 32767; else if (s < -32768) s = -32768;
         acrBuf[acrLen++] = s;
       }
+
       let raw = rawPre * gain;
       if (raw > 0.5 || raw < -0.5) {
         const a = raw < 0 ? -raw : raw;
@@ -785,12 +855,14 @@ function onAudioData(buf: Buffer): void {
     const INV_S16 = 1 / 32768;
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
+      if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
         if (s > 32767) s = 32767; else if (s < -32768) s = -32768;
         acrBuf[acrLen++] = s;
       }
+
       let raw = rawPre * gain;
       if (raw > 0.5 || raw < -0.5) {
         const a = raw < 0 ? -raw : raw;
@@ -813,6 +885,14 @@ function onAudioData(buf: Buffer): void {
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
   samplesReceived = received;
   if (DEBUG_ENABLED) debugPeakRaw = peak;
+
+  if (calOn && micCalActive) {
+    micCalSumSq += calSumLocal;
+    micCalCount += calCntLocal;
+    if (performance.now() - micCalStartAt >= micCalDurationMs) finishMicCalibration();
+  }
+
+
 
   if (samplesReceived >= HOP_SIZE) {
     processFFT();

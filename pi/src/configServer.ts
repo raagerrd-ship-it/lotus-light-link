@@ -1473,12 +1473,29 @@ export function startConfigServer(port = 3050): void {
      res.json({ ok: true, ...mic.getGainCalPoints() });
    });
 
-   app.delete('/api/gain-calibration', (_req, res) => {
-     const mic = getMic();
-     mic?.setGainCalPoints(null, null);
-     setItem('gain-cal-points', JSON.stringify({ point1: null, point2: null }));
-     res.json({ ok: true });
-   });
+    app.delete('/api/gain-calibration', (_req, res) => {
+      const mic = getMic();
+      mic?.setGainCalPoints(null, null);
+      setItem('gain-cal-points', JSON.stringify({ point1: null, point2: null }));
+      res.json({ ok: true });
+    });
+
+    // --- Mic-gain kalibrering (15s auto-mät → sätter base gain så RMS ≈ target) ---
+    app.get('/api/mic-gain-calibration', (_req, res) => {
+      const mic = getMic() as any;
+      if (!mic?.getMicGainCalibrationStatus) return res.json({ available: false });
+      res.json({ available: true, ...mic.getMicGainCalibrationStatus() });
+    });
+    app.post('/api/mic-gain-calibration/start', (req, res) => {
+      const mic = requireMic(res) as any;
+      if (!mic) return;
+      if (!mic.startMicGainCalibration) return res.status(501).json({ error: 'not supported' });
+      const { durationMs, targetRms } = req.body || {};
+      const started = mic.startMicGainCalibration({ durationMs, targetRms });
+      res.json({ ok: true, ...started });
+    });
+
+
 
    // --- Dimming gamma ---
   app.get('/api/dimming-gamma', (_req, res) => {
