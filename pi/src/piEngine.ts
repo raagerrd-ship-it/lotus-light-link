@@ -1453,7 +1453,9 @@ export class PiLightEngine {
         pct = 100;
         this.lastSentPct = 100; // bypassa deadband så blixten alltid skickas
       }
-      const isPunch = dropFlash || (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
+      // Drop längre ger max brightness men behåller palette-färg — bara
+      // punchWhiteThreshold (peak-detektorn) tvingar vit.
+      const isPunch = (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
       applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], tc);
 
       // ── BLE output (synkron hard-fail) ──
