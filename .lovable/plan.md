@@ -1,51 +1,38 @@
-# Portabel audio-analyser: dela mellan DMX och Lotus
+Plan: Skapa implementeringsbar svensk prompt för Song Studio
 
-Analysatorn i DMX Control är den mest välarbetade delen av båda projekten (dubbel-FFT, per-band onsets, BPM-lock, drop/riser, karaktärsprofil, noll-alloc/hop). Vi gör den till ett fristående paket — precis som `ble-driver/` — och drar in den i Lotus.
+Mål
+----
+Skriva en fristående, svensk, teknisk prompt som beskriver hur den gamla Song Studio-funktionen i lotus-light-link fungerade, från inspelning till energivisning. Prompten ska vara tillräckligt detaljerad för att Claude (eller en annan utvecklare) ska kunna återskapa funktionen i ett nytt projekt.
 
-## Mål
+Bakgrund
+--------
+Funktionen fanns i lotus-light-link fram till 2026-06-02. Den spelade in ljussekvenser per låt, polerade dem med DSP, spelade upp dem synkat mot Sonos och visade låtenergi samt aktuell position i UI. Källkoden har sedan tagits bort ur projektet enligt projektminnet, men historiken och eventuella kvarvarande fragment i kodbasen kan användas för att rekonstruera beteendet.
 
-1. En mapp, `pi/src/audio-analyser/`, som är helt fristående (bara `fft.js` som extern dep). Kopieras rakt in i andra projekt.
-2. Lotus ersätter sin egna FFT/bass-flux/onset-logik i `alsaMic.ts` + `piEngine.ts` med analysatorns `Frame`.
-3. Ingen förändring i UI-beteende med dagens `cal` — de fem nya signalerna (`bpm`, `intensity`, `dropCount`, `buildUp`, `profile`) blir tillgängliga men driver inget nytt än.
+Steg
+----
+1. Rekonstruera arkitekturen
+   - Läs relevanta kvarvarande filer (t.ex. pi/src/piEngine.ts, src/pages/PiMobile.tsx, minnesfiler om inspelning) för att hitta referenser och gränssnitt.
+   - Läs chatthistoriken kring #7558–#7596 för att återfinna specifikationen för lightRecorder.ts, seqPolish.ts, seqRender.ts, songIdentity.ts, acrIdentify.ts, configServer-endpoints och SongStudio.tsx.
+   - Identifiera vilka datastrukturer, API-endpoints och UI-komponenter som behövdes.
 
-## Steg
+2. Definiera omfattningen i prompten
+   - Inspelning: vad triggade inspelning (Sonos playbackState, isTvMode, låtnyckel), hur frames sparades, formatet på en frame (tid, färg, brightness pct).
+   - Låtidentifiering: nyckel från Sonos-metadata vs ACRCloud-fallback.
+   - Polering: fillGaps, smooth, expand, normalize, beat detection, beat emphasis, flicker-mått, före/efter-analys.
+   - Uppspelning: synk mot Sonos positionMs, lead-offset, fallback till realtid om ingen sekvens finns.
+   - UI: SongStudio-vy med lista, detaljvy, före/efter-diagram, energi-kurva, låtposition, återställning från råfil.
+   - Borttaget skäl: varför funktionen togs bort (realtime-only, WiFi/BLE-koexistens, minnesproblem) och varningar om att återinförande kräver omsorg.
 
-**1. Extrahera modulen (från DMX → hit)**
-- Kopiera in `analyser.ts` som `pi/src/audio-analyser/analyser.ts`.
-- Bryt beroendet till `EngineConfig`: byt konstruktor till `new Analyser({ sampleRate, hopSize })`. Bort med `cfg.audio.rate` / `cfg.fft.hop`-look-ups.
-- Behåll `Frame`, `Spectrum` som publika typer.
-- Skapa `pi/src/audio-analyser/index.ts` med `createAnalyser({ sampleRate, hopSize })` (samma mönster som `createLampDriver`).
-- Lägg till `README.md` + `INTEGRATION.md` med API-yta och exempel.
+3. Skriva prompten på svenska
+   - Format: markdown med avsnitt som "Översikt", "Datastrukturer", "Komponenter", "API", "Algoritmer", "UI", "Begränsningar", "Kända fallgropar".
+   - Ton: teknisk, koncis, implementeringsbar.
+   - Exempel på kodsnuttar där det hjälper läsaren.
 
-**2. Wire in i Lotus mic-pipen**
-- `alsaMic.ts` matar redan hops via `onFFTReady`. Byt så att den istället matar `analyser.process(hopSamples, hopMs)` och exponerar `getLatestFrame(): Frame`.
-- Ta bort Lotus egna `bassFlux`/onset-räkning + `setBeatCutoffHz` (analysatorns 8-bands per-band onset ersätter beat-cutoff-slidern med något bättre).
-- `resetFluxState()` blir `analyser.resetGain()`.
+4. Leverera som fil
+   - Spara prompten som `/mnt/documents/song-studio-prompt.md` så att den kan kopieras och klistras in i Claude.
 
-**3. Wire in i piEngine**
-- `tickInner` konsumerar `Frame` istället för `latestBands`.
-- Mappning som håller nuvarande beteende oförändrat:
-  - Nuvarande `bass` → `frame.spec.kick + frame.spec.bass` (viktat).
-  - Nuvarande onset-boost → `frame.onset.kick`.
-  - Nuvarande drop → `frame.dropCount` (monoton edge-jämförelse).
-  - Nuvarande punch-white → tröskel på `frame.onset.kick` som förut.
-- Nya signaler exponeras via `/api/status` för framtida bruk: `bpm`, `bpmConfidence`, `intensity`, `buildUp`, `profile`.
-
-**4. Städa**
-- Ta bort `pi/src/fftRadix2.ts` om inget annat använder den (analysatorn har egen `fft.js`).
-- Ta bort `beatCutoffHz` från `LightCalibration` + UI-slider (analysatorns per-band onset gör den obsolet). Migrations-kod: ignorera fältet vid load.
-
-**5. Verifiera**
-- `npx tsc` i `pi/` grön.
-- Manuell körning: motorn ska bete sig exakt som idag för normal reaktion. `bpm > 0` inom ~3s efter musik startar.
-
-## Vad detta INTE gör
-
-- Ingen ny UI. `bpm`/`intensity`/`buildUp`/`profile` är bara tillgängliga — vi bygger inte pulse-on-beat, drop-orkestrering eller mood-auto-select nu.
-- Rör inte DMX-projektet. Vi kopierar hit och håller den som "canonical copy" i Lotus tills du bestämmer var master ska ligga. Om du vill kan vi senare ändra DMX att importera från Lotus istället (eller lägga modulen i ett tredje repo).
-
-## Teknisk not
-
-Analysatorns dubbel-FFT (512 timing + 2048 spektrum, sistnämnda decimerad till var 3:e hop) är designad för 48kHz @ 480 hop = 100Hz. Lotus alsaMic kör redan 48kHz @ 480 hop → drop-in-passform, ingen omkonfiguration.
-
-`Frame` är ett återanvänt objekt (muteras per hop). Trådsäkert eftersom Node är single-threaded och `piEngine` läser synkront i samma tick.
+Verifiering
+-----------
+- Prompten innehåller alla delar: inspelning, låt-ID, polering, uppspelning, energi/position, UI.
+- Prompten är på svenska och kan kopieras rakt av.
+- Ingen källkod i lotus-light-link ändras; detta är enbart en dokumentations-artefakt.
