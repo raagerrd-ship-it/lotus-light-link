@@ -501,7 +501,7 @@ export class PiLightEngine {
   /** Zero-alloc onset detection using precomputed constants.
    *  Triggers a strong, short pulse on each detected transient (kick/snare),
    *  with refractory period to avoid flutter on sustained loud passages. */
-  private processOnset(flux: number): void {
+  private processOnset(flux: number, allowTrigger = true): boolean {
     const tc = this.tc;
     this.onsetBuffer[this.onsetPos] = flux;
     this.onsetPos = (this.onsetPos + 1) % this.onsetSize;
