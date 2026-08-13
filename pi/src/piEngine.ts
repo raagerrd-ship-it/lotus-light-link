@@ -954,11 +954,29 @@ export class PiLightEngine {
         const passesEnergyGate =
           energyFloor <= 0 ||
           (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
+        // Grid-driven puls (taktklockan) tar över pulsen när takten är låst OCH
+        // pålitlig; annars driver den verkliga onseten pulsen som förut.
+        const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat);
+        let kickFired = false;
         if (passesEnergyGate) {
           // Lågpass-onset: bassFlux summerar flux under cal.beatCutoffHz (setBeatCutoffHz).
           // Full spektrum ≈ hög cutoff. Faller tillbaka på full flux om bands saknas.
           const beatFlux = bands ? bands.bassFlux : flux;
-          this.processOnset(beatFlux);
+          // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) — men den får
+          // bara sätta pulsen när gridet inte driver den.
+          kickFired = this.processOnset(beatFlux, !gridDrives);
+        }
+        // Taktklocka: tempo från analysatorn, fas låst mot verkliga kicks (PLL).
+        this.updateBeatClock(kickFired);
+        // Pulsen fyras av rutnätet med leadMs försprång → toppen landar PÅ slaget
+        // trots BLE-skrivlatensen, i stället för strax efter det.
+        if (gridDrives && passesEnergyGate) {
+          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 60));
+          if (idx !== this._lastGridIdx) {
+            this._lastGridIdx = idx;
+            this.onsetTarget = 0.45;
+            this._gridPulseCount++;
+          }
         }
         // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
         if (bands) this.processDrop(bands.bassRms);
