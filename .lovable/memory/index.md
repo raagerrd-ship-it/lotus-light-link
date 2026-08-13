@@ -10,6 +10,7 @@ Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnec
 BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process retry.
 
 ## Memories
+- [Taktklocka + grid-puls](mem://pi/audio/beat-clock-grid-pulse) — beatClock.ts, PLL mot kicks, puls med beatLeadMs försprång
 - [Portable BLE driver](mem://pi/ble/portable-driver-layering) — pi/src/ble-driver/ fristående (noll outside-imports); ble/ är app-glue shims + subsystem-state; motor via createLampDriver
 - [Attack/release smoothing](mem://pi/lighting/attack-release-smoothing) — log-release vs mjuk-attack (lowSoftFloor), golv som dynamisk lyft, inverterat flicker-deadband, soft-watchdog
 - [Hardware limitations](mem://constraints/hardware-limitations) — BLEDOM forces color change on mic mode, use mobile mic
