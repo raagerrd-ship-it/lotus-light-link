@@ -543,9 +543,12 @@ export class PiLightEngine {
     // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 100Hz (10ms/frame)
     const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
     this.onsetFrameCounter++;
+    let fired = false;
     if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
-      this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
+      fired = true;
       this.onsetLastFrameIdx = this.onsetFrameCounter;
+      // strong pulse — clearly visible "in the beat". Hoppas över när gridet driver.
+      if (allowTrigger) this.onsetTarget = 0.45;
     }
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
@@ -557,6 +560,77 @@ export class PiLightEngine {
     this.onsetTarget *= tc.onsetDecayFft;
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
+    return fired;
+  }
+
+  /**
+   * TAKTKLOCKAN — tempo från analysatorn, fas låst mot verkliga trumslag (PLL).
+   *
+   * Tempot om-ankras bara när det avviker >2 BPM (annars ankrar varje litet
+   * BPM-hopp om klockan och pulsen läses som stroboskop). Vid om-ankring bevaras
+   * fasen. PLL:en knuffar sedan ankaret cal.beatSyncStrength (18 %) av fasfelet
+   * per kick, adaptivt skalat med bpmConfidence, och en PI-frekvensterm nollar
+   * det permanenta laget när BPM-siffran ligger ett snäpp fel (bunden ±4 BPM).
+   */
+  private updateBeatClock(kick: boolean): void {
+    const frame = getLatestFrame();
+    const bpm = frame?.bpm ?? 0;
+    const conf = frame?.bpmConfidence ?? 0;
+
+    if (bpm > 40) {
+      if (!this._beat || Math.abs(bpm - this._beatDetBpm) > 2) {
+        this._beatDetBpm = bpm;
+        let anchor = frame?.beatAnchorMs || Date.now();
+        if (this._beat) {
+          // Bevara nuvarande fas vid tempoändring så pulsen inte hoppar.
+          const oldMs = 60000 / this._beat.bpm, newMs = 60000 / bpm;
+          const ph = ((((Date.now() - this._beat.anchorMs) % oldMs) + oldMs) % oldMs) / oldMs;
+          anchor = Date.now() - ph * newMs;
+        }
+        this._beat = { anchorMs: anchor, bpm, confidence: conf };
+      } else {
+        this._beat.confidence = conf;
+      }
+    }
+
+    if (!kick || !this._beat) return;
+
+    const k0 = this.cal.beatSyncStrength ?? 0.18;
+    const beatMsNow = 60000 / this._beat.bpm;
+    const ph = ((((Date.now() - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+    const err = ph < 0.5 ? ph : ph - 1;    // -0.5..0.5 av ett taktslag
+    if (Math.abs(err) >= 0.25) return;     // off-beat/synkoperade slag räknas ej
+    this._beatErr = this._beatErr * 0.85 + err * 0.15;   // ihållande lag för UI
+    if (k0 <= 0) return;
+
+    let k = k0 * (0.3 + 1.4 * conf);       // tydlig takt → snabbare inlåsning
+    if (k > 0.4) k = 0.4; else if (k < 0.03) k = 0.03;
+    this._beat.anchorMs += err * beatMsNow * k;
+    if (conf > 0.4) {
+      this._beat.bpm += err * 0.35 * conf;
+      const lo = this._beatDetBpm - 4, hi = this._beatDetBpm + 4;
+      if (this._beat.bpm < lo) this._beat.bpm = lo;
+      else if (this._beat.bpm > hi) this._beat.bpm = hi;
+    }
+  }
+
+  /** Taktklockans tillstånd — för /api/status och UI. */
+  getBeatInfo(): {
+    locked: boolean; bpm: number; confidence: number; phase: number;
+    nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
+  } {
+    const now = Date.now();
+    const lead = this.cal.beatLeadMs ?? 60;
+    return {
+      locked: hasBeat(this._beat),
+      bpm: this._beat?.bpm ?? 0,
+      confidence: this._beat?.confidence ?? 0,
+      phase: beatPhase(this._beat, now, lead),
+      nextBeatMs: hasBeat(this._beat) ? nextBeatIn(this._beat, now, lead) : 0,
+      beatErr: this._beatErr,
+      gridPulses: this._gridPulseCount,
+      leadMs: lead,
+    };
   }
 
   /**
