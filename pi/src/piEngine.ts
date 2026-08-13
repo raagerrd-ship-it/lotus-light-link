@@ -172,31 +172,16 @@ export interface LightCalibration {
   dropSensitivity: number;
   /** Varaktighet (ms) för den vita drop-blixten. Default 220. */
   dropFlashMs: number;
+  /** Grid-driven puls: när takten är låst fyras pulsen av taktklockan i stället
+   *  för av onseten. Default true. */
+  beatGridPulse: boolean;
+  /** Försprång (ms) på grid-pulsen — kompenserar BLE-skrivlatens (~40–60 ms).
+   *  Default 60. */
+  beatLeadMs: number;
+  /** PLL: andel av fasfelet som korrigeras per kick (0 = av). Default 0.18. */
+  beatSyncStrength: number;
   [key: string]: any;
 }
-
-const DEFAULT_CAL: LightCalibration = {
-  gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
-  offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
-  bassWeight: 0.9,
-  punchWhiteThreshold: 100,
-  brightnessFloor: 5,
-  transientGain: 0.8,
-  perceptualGamma: 0,
-  dynamicsEnabled: true,
-  onsetThreshold: 1.8,
-  onsetRefractoryMs: 200,
-  flickerDeadband: 0.02,
-  lowSoftFloor: 0.25,
-  onsetEnergyFloor: 0.01,
-  tickEnergyFloor: 0.01,
-  beatSource: 'bass',
-  beatCutoffHz: 150,
-  dropEnabled: true,
-  dropSensitivity: 1.0,
-  dropFlashMs: 220,
-};
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
 function migrateLegacyCalibration(cal: any): any {
