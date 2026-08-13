@@ -386,6 +386,13 @@ export class PiLightEngine {
   private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
   private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
 
+  // ── Taktklocka (beatClock) + PLL ──
+  private _beat: Beat | null = null;   // fas + tempo, knuffad av verkliga kicks
+  private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
+  private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
+  private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
+  private _gridPulseCount = 0;
+
   private cal: LightCalibration;
 
   // Precomputed tick constants — refreshed only when tickMs or cal changes
