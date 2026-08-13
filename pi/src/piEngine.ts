@@ -13,7 +13,8 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz } from './alsaMic.js';
+import { hasBeat, beatIndex, beatPhase, nextBeatIn, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
@@ -171,6 +172,14 @@ export interface LightCalibration {
   dropSensitivity: number;
   /** Varaktighet (ms) för den vita drop-blixten. Default 220. */
   dropFlashMs: number;
+  /** Grid-driven puls: när takten är låst fyras pulsen av taktklockan i stället
+   *  för av onseten. Default true. */
+  beatGridPulse: boolean;
+  /** Försprång (ms) på grid-pulsen — kompenserar BLE-skrivlatens (~40–60 ms).
+   *  Default 60. */
+  beatLeadMs: number;
+  /** PLL: andel av fasfelet som korrigeras per kick (0 = av). Default 0.18. */
+  beatSyncStrength: number;
   [key: string]: any;
 }
 
@@ -195,7 +204,11 @@ const DEFAULT_CAL: LightCalibration = {
   dropEnabled: true,
   dropSensitivity: 1.0,
   dropFlashMs: 220,
+  beatGridPulse: true,
+  beatLeadMs: 60,
+  beatSyncStrength: 0.18,
 };
+
 
 /** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
 function migrateLegacyCalibration(cal: any): any {
@@ -385,6 +398,13 @@ export class PiLightEngine {
   private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
   private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
 
+  // ── Taktklocka (beatClock) + PLL ──
+  private _beat: Beat | null = null;   // fas + tempo, knuffad av verkliga kicks
+  private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
+  private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
+  private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
+  private _gridPulseCount = 0;
+
   private cal: LightCalibration;
 
   // Precomputed tick constants — refreshed only when tickMs or cal changes
@@ -500,7 +520,7 @@ export class PiLightEngine {
   /** Zero-alloc onset detection using precomputed constants.
    *  Triggers a strong, short pulse on each detected transient (kick/snare),
    *  with refractory period to avoid flutter on sustained loud passages. */
-  private processOnset(flux: number): void {
+  private processOnset(flux: number, allowTrigger = true): boolean {
     const tc = this.tc;
     this.onsetBuffer[this.onsetPos] = flux;
     this.onsetPos = (this.onsetPos + 1) % this.onsetSize;
@@ -542,9 +562,12 @@ export class PiLightEngine {
     // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 100Hz (10ms/frame)
     const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
     this.onsetFrameCounter++;
+    let fired = false;
     if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
-      this.onsetTarget = 0.45; // strong pulse — clearly visible "in the beat"
+      fired = true;
       this.onsetLastFrameIdx = this.onsetFrameCounter;
+      // strong pulse — clearly visible "in the beat". Hoppas över när gridet driver.
+      if (allowTrigger) this.onsetTarget = 0.45;
     }
 
     // Fast rise using precomputed alpha, smooth decay using precomputed decay
@@ -556,6 +579,77 @@ export class PiLightEngine {
     this.onsetTarget *= tc.onsetDecayFft;
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
+    return fired;
+  }
+
+  /**
+   * TAKTKLOCKAN — tempo från analysatorn, fas låst mot verkliga trumslag (PLL).
+   *
+   * Tempot om-ankras bara när det avviker >2 BPM (annars ankrar varje litet
+   * BPM-hopp om klockan och pulsen läses som stroboskop). Vid om-ankring bevaras
+   * fasen. PLL:en knuffar sedan ankaret cal.beatSyncStrength (18 %) av fasfelet
+   * per kick, adaptivt skalat med bpmConfidence, och en PI-frekvensterm nollar
+   * det permanenta laget när BPM-siffran ligger ett snäpp fel (bunden ±4 BPM).
+   */
+  private updateBeatClock(kick: boolean): void {
+    const frame = getLatestFrame();
+    const bpm = frame?.bpm ?? 0;
+    const conf = frame?.bpmConfidence ?? 0;
+
+    if (bpm > 40) {
+      if (!this._beat || Math.abs(bpm - this._beatDetBpm) > 2) {
+        this._beatDetBpm = bpm;
+        let anchor = frame?.beatAnchorMs || Date.now();
+        if (this._beat) {
+          // Bevara nuvarande fas vid tempoändring så pulsen inte hoppar.
+          const oldMs = 60000 / this._beat.bpm, newMs = 60000 / bpm;
+          const ph = ((((Date.now() - this._beat.anchorMs) % oldMs) + oldMs) % oldMs) / oldMs;
+          anchor = Date.now() - ph * newMs;
+        }
+        this._beat = { anchorMs: anchor, bpm, confidence: conf };
+      } else {
+        this._beat.confidence = conf;
+      }
+    }
+
+    if (!kick || !this._beat) return;
+
+    const k0 = this.cal.beatSyncStrength ?? 0.18;
+    const beatMsNow = 60000 / this._beat.bpm;
+    const ph = ((((Date.now() - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+    const err = ph < 0.5 ? ph : ph - 1;    // -0.5..0.5 av ett taktslag
+    if (Math.abs(err) >= 0.25) return;     // off-beat/synkoperade slag räknas ej
+    this._beatErr = this._beatErr * 0.85 + err * 0.15;   // ihållande lag för UI
+    if (k0 <= 0) return;
+
+    let k = k0 * (0.3 + 1.4 * conf);       // tydlig takt → snabbare inlåsning
+    if (k > 0.4) k = 0.4; else if (k < 0.03) k = 0.03;
+    this._beat.anchorMs += err * beatMsNow * k;
+    if (conf > 0.4) {
+      this._beat.bpm += err * 0.35 * conf;
+      const lo = this._beatDetBpm - 4, hi = this._beatDetBpm + 4;
+      if (this._beat.bpm < lo) this._beat.bpm = lo;
+      else if (this._beat.bpm > hi) this._beat.bpm = hi;
+    }
+  }
+
+  /** Taktklockans tillstånd — för /api/status och UI. */
+  getBeatInfo(): {
+    locked: boolean; bpm: number; confidence: number; phase: number;
+    nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
+  } {
+    const now = Date.now();
+    const lead = this.cal.beatLeadMs ?? 60;
+    return {
+      locked: hasBeat(this._beat),
+      bpm: this._beat?.bpm ?? 0,
+      confidence: this._beat?.confidence ?? 0,
+      phase: beatPhase(this._beat, now, lead),
+      nextBeatMs: hasBeat(this._beat) ? nextBeatIn(this._beat, now, lead) : 0,
+      beatErr: this._beatErr,
+      gridPulses: this._gridPulseCount,
+      leadMs: lead,
+    };
   }
 
   /**
@@ -953,11 +1047,29 @@ export class PiLightEngine {
         const passesEnergyGate =
           energyFloor <= 0 ||
           (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
+        // Grid-driven puls (taktklockan) tar över pulsen när takten är låst OCH
+        // pålitlig; annars driver den verkliga onseten pulsen som förut.
+        const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat);
+        let kickFired = false;
         if (passesEnergyGate) {
           // Lågpass-onset: bassFlux summerar flux under cal.beatCutoffHz (setBeatCutoffHz).
           // Full spektrum ≈ hög cutoff. Faller tillbaka på full flux om bands saknas.
           const beatFlux = bands ? bands.bassFlux : flux;
-          this.processOnset(beatFlux);
+          // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) — men den får
+          // bara sätta pulsen när gridet inte driver den.
+          kickFired = this.processOnset(beatFlux, !gridDrives);
+        }
+        // Taktklocka: tempo från analysatorn, fas låst mot verkliga kicks (PLL).
+        this.updateBeatClock(kickFired);
+        // Pulsen fyras av rutnätet med leadMs försprång → toppen landar PÅ slaget
+        // trots BLE-skrivlatensen, i stället för strax efter det.
+        if (gridDrives && passesEnergyGate) {
+          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 60));
+          if (idx !== this._lastGridIdx) {
+            this._lastGridIdx = idx;
+            this.onsetTarget = 0.45;
+            this._gridPulseCount++;
+          }
         }
         // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
         if (bands) this.processDrop(bands.bassRms);
