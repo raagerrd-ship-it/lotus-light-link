@@ -89,6 +89,43 @@ function saveProfilesFile(p: ProfilesFile): void {
   setItem('profiles', JSON.stringify(p));
 }
 
+// ── Per-profil globaler ──────────────────────────────────────────────────────
+// dimmingGamma (transport) och gainCalibration (Sonos-vol→gain-punkter) låg
+// tidigare globalt och delades av alla profiler. De bor nu i profilen. Saknas
+// fältet → vi rör inte det globala värdet (mjuk migrering).
+function applyProfileGlobals(profile: ProfileCal | undefined): void {
+  if (!profile) return;
+  const g = profile.dimmingGamma;
+  if (typeof g === 'number' && g >= 1.0 && g <= 3.0) setDimmingGamma(g);
+  const gc = profile.gainCalibration;
+  if (gc && attachedMic) {
+    attachedMic.setGainCalPoints(gc.point1 ?? null, gc.point2 ?? null);
+  }
+}
+
+/** Byt aktiv profil programmatiskt (används av TV-mode-växlingen i index.ts). */
+export function setActivePresetByName(name: string): boolean {
+  if (!PROFILE_NAMES.includes(name as ProfileName)) return false;
+  const pf = loadProfilesFile();
+  if (pf.activePreset === name) return true;
+  pf.activePreset = name as ProfileName;
+  saveProfilesFile(pf);
+  attachedEngine?.setActiveProfile(pf.profiles[name]);
+  applyProfileGlobals(pf.profiles[name]);
+  console.log(`[Config] Active profile → ${name} (auto)`);
+  return true;
+}
+
+export function getActivePresetName(): string {
+  return loadProfilesFile().activePreset;
+}
+
+/** TV-profil: vilken profil som aktiveras när Sonos går i TV-läge. */
+export function getTvProfileName(): string {
+  const raw = getItem('tv-profile');
+  return raw && PROFILE_NAMES.includes(raw as ProfileName) ? raw : 'Custom';
+}
+
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
   mic: AlsaMicModule;
@@ -111,6 +148,7 @@ export function attachConfigRuntime(runtime: {
     const pf = loadProfilesFile();
     if (!getItem('profiles')) saveProfilesFile(pf);
     runtime.engine.setActiveProfile(pf.profiles[pf.activePreset]);
+    applyProfileGlobals(pf.profiles[pf.activePreset]);
     console.log(`[Config] Active profile: ${pf.activePreset}`);
   } catch (e: any) {
     console.warn('[Config] Profile seed failed:', e?.message ?? e);
@@ -833,6 +871,7 @@ export function startConfigServer(port = 3050): void {
     const next: ProfilesFile = { profiles: mergedProfiles, activePreset: active };
     saveProfilesFile(next);
     engine.setActiveProfile(next.profiles[active]);
+    applyProfileGlobals(next.profiles[active]);
     res.json({ ok: true, ...next });
   });
 
@@ -847,6 +886,7 @@ export function startConfigServer(port = 3050): void {
     pf.activePreset = name;
     saveProfilesFile(pf);
     engine.setActiveProfile(pf.profiles[name]);
+    applyProfileGlobals(pf.profiles[name]);
     console.log(`[Config] Active profile → ${name}`);
     res.json({ ok: true, activePreset: name, profile: pf.profiles[name] });
   });
@@ -1471,6 +1511,14 @@ export function startConfigServer(port = 3050): void {
      const { point1, point2 } = req.body;
      mic.setGainCalPoints(point1 ?? null, point2 ?? null);
      setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
+     try {
+       const pf = loadProfilesFile();
+       pf.profiles[pf.activePreset] = {
+         ...pf.profiles[pf.activePreset],
+         gainCalibration: { point1: point1 ?? null, point2: point2 ?? null },
+       };
+       saveProfilesFile(pf);
+     } catch {}
      if (point1 && point2) mic.enableAutoGain();
      res.json({ ok: true, ...mic.getGainCalPoints() });
    });
@@ -1509,6 +1557,11 @@ export function startConfigServer(port = 3050): void {
     if (typeof gamma === 'number' && gamma >= 1.0 && gamma <= 3.0) {
       setDimmingGamma(gamma);
       setItem('dimming-gamma', String(gamma));
+      try {
+        const pf = loadProfilesFile();
+        pf.profiles[pf.activePreset] = { ...pf.profiles[pf.activePreset], dimmingGamma: gamma };
+        saveProfilesFile(pf);
+      } catch {}
       res.json({ ok: true, gamma });
     } else {
       res.status(400).json({ error: 'gamma must be 1.0-3.0' });
@@ -1529,6 +1582,21 @@ export function startConfigServer(port = 3050): void {
     } else {
       res.status(400).json({ error: 'Need enabled: boolean' });
     }
+  });
+
+  // --- TV-profil (vilken profil som aktiveras i TV-läge) ---
+  app.get('/api/tv-profile', (_req, res) => {
+    res.json({ name: getTvProfileName(), available: PROFILE_NAMES });
+  });
+
+  app.put('/api/tv-profile', (req, res) => {
+    const { name } = req.body ?? {};
+    if (!name || !PROFILE_NAMES.includes(name)) {
+      return res.status(400).json({ error: `name must be one of ${PROFILE_NAMES.join(', ')}` });
+    }
+    setItem('tv-profile', name);
+    console.log(`[Config] TV-profil → ${name}`);
+    res.json({ ok: true, name });
   });
 
   // --- Record / Playback BORTTAGET (2026-06-02) ---
