@@ -20,6 +20,7 @@ import { createAnalyser, type Frame } from './audio-analyser/index.js';
 const MIC_STATE_KEY = 'mic-state';
 interface PersistedMicState {
   autoGainEnabled?: boolean;
+  autoGainUserDisabled?: boolean;
   micGainBase?: number;
   calPoint1?: { vol: number; gain: number } | null;
   calPoint2?: { vol: number; gain: number } | null;
@@ -28,6 +29,7 @@ function saveMicState(): void {
   try {
     const s: PersistedMicState = {
       autoGainEnabled,
+      autoGainUserDisabled,
       micGainBase,
       calPoint1,
       calPoint2,
