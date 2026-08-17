@@ -546,6 +546,9 @@ const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
 let micGainAuto = 15.0;  // Absolute gain interpolated from Sonos volume
 let autoGainEnabled = false;
+// Explicit user-override: satt av disableAutoGain(), blockerar auto-reaktivering
+// från Sonos-volym-pathen tills användaren själv slår på auto-gain igen.
+let autoGainUserDisabled = false;
 let micGain = 15.0;      // Effective — used in hot path
 
 function updateEffectiveGain(): void {
@@ -637,6 +640,15 @@ function finishMicCalibration(): void {
 
 
 export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
+export function isAutoGainUserDisabled(): boolean { return autoGainUserDisabled; }
+
+/** Auto-aktivera auto-gain (första Sonos-volymen). Respekterar user-override:
+ *  har användaren stängt av auto-gain via API:t händer inget. */
+export function maybeAutoEnableAutoGain(): boolean {
+  if (autoGainEnabled || autoGainUserDisabled) return false;
+  enableAutoGain();
+  return true;
+}
 export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainCalPoint | null } {
   return { point1: calPoint1, point2: calPoint2 };
 }
@@ -680,6 +692,7 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
 
 export function disableAutoGain(): void {
   autoGainEnabled = false;
+  autoGainUserDisabled = true;
   updateEffectiveGain();
   saveMicState();
   dlog(`[ALSA] Auto-gain disabled → manual base gain ${micGainBase.toFixed(1)}x active`);
@@ -687,6 +700,7 @@ export function disableAutoGain(): void {
 
 export function enableAutoGain(): void {
   autoGainEnabled = true;
+  autoGainUserDisabled = false;
   // Räkna om direkt från senast kända Sonos-volym så vi inte fastnar på default 15x
   // tills användaren råkar dra i en slider eller volymen råkar ändras.
   if (calPoint1 && calPoint2 && lastSonosVol != null) {
@@ -708,6 +722,7 @@ export function enableAutoGain(): void {
   if (s.calPoint1 && typeof s.calPoint1.vol === 'number' && typeof s.calPoint1.gain === 'number') calPoint1 = s.calPoint1;
   if (s.calPoint2 && typeof s.calPoint2.vol === 'number' && typeof s.calPoint2.gain === 'number') calPoint2 = s.calPoint2;
   if (typeof s.autoGainEnabled === 'boolean') autoGainEnabled = s.autoGainEnabled;
+  if (typeof s.autoGainUserDisabled === 'boolean') autoGainUserDisabled = s.autoGainUserDisabled;
   updateEffectiveGain();
   dlog(`[ALSA] Restored mic-state: base=${micGainBase.toFixed(1)}x auto=${autoGainEnabled} cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
 })();
