@@ -90,6 +90,32 @@ function normalizeSonosBaseUrl(raw: string | null | undefined): string {
   return LEGACY_LOCAL_SONOS_URLS.has(base) ? SONOS_BUDDY_API_URL : base;
 }
 
+// TV-läge byter aktiv profil till TV-profilen (konfigurerbar via
+// GET/PUT /api/tv-profile, default "Custom") och tillbaka till musikprofilen
+// när TV-läget upphör.
+let _presetBeforeTv: string | null = null;
+
+async function switchToTvProfile(on: boolean): Promise<void> {
+  try {
+    const cfg = await import('./configServer.js');
+    if (on) {
+      const tvName = cfg.getTvProfileName();
+      const current = cfg.getActivePresetName();
+      if (current === tvName) return;
+      _presetBeforeTv = current;
+      cfg.setActivePresetByName(tvName);
+      console.log(`[Profile] TV-läge → profil "${tvName}" (var "${current}")`);
+    } else if (_presetBeforeTv) {
+      const back = _presetBeforeTv;
+      _presetBeforeTv = null;
+      cfg.setActivePresetByName(back);
+      console.log(`[Profile] TV-läge slut → profil "${back}"`);
+    }
+  } catch (e: any) {
+    console.warn('[Profile] TV-profilväxling fel:', e?.message ?? e);
+  }
+}
+
 function applySonosStateToEngine(state: {
   playbackState: string;
   isTvMode: boolean;
@@ -106,19 +132,22 @@ function applySonosStateToEngine(state: {
       console.log('[Engine] → TV-läge (soft)');
       engineInstance.setTvSoft?.(true);
       wasTvModeRef.current = true;
+      void switchToTvProfile(true);
     }
   } else if (wasTvModeRef?.current) {
     console.log('[Engine] TV-läge → Normal');
     engineInstance.setTvSoft?.(false);
     wasTvModeRef.current = false;
+    void switchToTvProfile(false);
   }
 
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
     // 2026-07-22: aktivera auto-gain automatiskt första gången vi ser
     // en Sonos-volym — annars måste user gå in i UI:t på fresh install.
-    if (alsaMic && !alsaMic.isAutoGainEnabled()) {
-      alsaMic.enableAutoGain();
+    // Respekterar explicit user-override: har användaren stängt av auto-gain
+    // via PUT /api/auto-gain {enabled:false} slår den aldrig på sig själv igen.
+    if (alsaMic?.maybeAutoEnableAutoGain()) {
       console.log(`[Boot] Auto-gain aktiverad (Sonos-vol=${state.volume})`);
     }
     alsaMic?.setAutoGainFromVolume(state.volume);
@@ -607,8 +636,9 @@ async function main() {
           await sonos.onSonosChange(async (state) => {
             const playing = typeof state.playbackState === 'string'
               && state.playbackState.includes('PLAYING');
-            // TV-mode = "ignore TV audio" → engine should NOT run when SPDIF plays.
-            await fn(playing && !state.isTvMode);
+            // TV-läge håller motorn IGÅNG så den reaktiva TV-profilen tickar.
+            // Idle gäller enbart äkta "spelar inte".
+            await fn(playing);
           });
         },
       });
