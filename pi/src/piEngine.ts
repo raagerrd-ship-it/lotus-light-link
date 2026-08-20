@@ -22,6 +22,8 @@ import { triggerIdleDisconnect } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { getItem, setItem } from './storage.js';
 import { dlog } from "./debugLog.js";
+import { noteTick } from './runtimeHealth.js';
+
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
