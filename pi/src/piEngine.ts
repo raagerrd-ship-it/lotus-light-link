@@ -1123,6 +1123,8 @@ export class PiLightEngine {
 
     const now = performance.now();
     if (now >= this._nextTickDeadline) {
+      noteTick(now, this.tickMs);
+
       // Grid-align: nästa deadline är tickMs efter den förra, inte efter now.
       this._nextTickDeadline += this.tickMs;
       if (now - this._nextTickDeadline > this.tickMs) {
