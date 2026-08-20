@@ -508,7 +508,14 @@ DeviceAllow=char-alsa rw
 DeviceAllow=/dev/snd rw
 LimitRTPRIO=99
 LimitNICE=-20
+# Dedikerad Pi: motorn ska aldrig vänta på systembrus (loggrotation, apt, PCC).
+# Nice=-10 ger CPU-förtur, best-effort prio 0 ger I/O-förtur (LimitRTPRIO/NICE
+# ovan tillåter det, CAP_SYS_NICE finns i AmbientCapabilities).
+Nice=-10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=0
 Restart=always
+
 RestartSec=5
 
 [Install]
