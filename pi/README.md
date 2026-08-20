@@ -258,7 +258,40 @@ systemctl status lotus-light-engine
 | `setup-lotus.sh` | Full install script (deps, I²S, systemd) |
 | `update-services.sh` | Auto-update script (GitHub → build → restart) |
 
+## Dedikerad Pi Zero 2W — OS-checklista
+
+Motorn kör bäst på en Pi som inte gör något annat. Kör en gång per färsk install:
+
+```bash
+# 1. Wifi power-save AV (ger 100–200ms latensspikar på BLE + Sonos-poll)
+sudo iw dev wlan0 set power_save off
+echo -e '[connection]\nwifi.powersave = 2' | sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf
+
+# 2. Minimera GPU-minne (headless → mer RAM till motorn)
+grep -q '^gpu_mem=' /boot/firmware/config.txt || echo 'gpu_mem=16' | sudo tee -a /boot/firmware/config.txt
+
+# 3. Stäng av det som inte används
+sudo systemctl disable --now triggerhappy avahi-daemon modemmanager cups 2>/dev/null
+
+# 4. Mindre logg-I/O (journal i RAM, tak 32M)
+sudo sed -i 's/^#\?Storage=.*/Storage=volatile/; s/^#\?RuntimeMaxUse=.*/RuntimeMaxUse=32M/' /etc/systemd/journald.conf
+sudo systemctl restart systemd-journald
+
+# 5. hcitool utan root (krävs för forceConnInterval)
+sudo setcap 'cap_net_admin,cap_net_raw+eip' /usr/bin/hcitool
+```
+
+Efter omstart: verifiera i `/api/status` → `runtime`:
+
+| Fält | Bra värde | Vad det betyder |
+|---|---|---|
+| `fftFps` | ~80 | Verklig FFT-takt (HOP=600 @ 48kHz). Lägre = ALSA tappar samples |
+| `loopLagMsMax` | < 30 | Event-loop blockerad. > 100 = något tungt kör på samma kärna |
+| `tickJitterMsMax` | < 10 | Avvikelse från tickMs=25. Höga toppar syns som ryckigt ljus |
+| `analyserCost.msMax` | < 2.67 | Analysatorns budget per hop. Över = tysta sample-drops |
+
 ## Latency Budget
+
 
 End-to-end latency from sound hitting the microphone to LED color change:
 
