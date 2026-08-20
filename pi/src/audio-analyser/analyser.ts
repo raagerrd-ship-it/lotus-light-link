@@ -587,16 +587,15 @@ export class Analyser {
     const now = this.perfNow();
     const dt = Math.min(0.1, (now - this.lastT) / 1000);
     this.lastT = now;
-    const d = this.detection;
     // AGC körs BARA för mic (aux låser gain på 1× — line-level är hett & stabilt).
     // Beprövad envelope→autoGainTarget. (Percentil-AGC:n vore bättre men rör bara
     // denna oanvända mic-väg → behåller det testade.)
-    if (!this.gainLocked && rms > d.noiseFloor) {
-      const tau = rms * this.gain > this.envelope ? d.tauDown : d.tauUp;
+    if (!this.gainLocked && rms > this.noiseFloor) {
+      const tau = rms * this.gain > this.envelope ? this.tauDown : this.tauUp;
       const a = 1 - Math.exp(-dt / tau);
       this.envelope += (rms * this.gain - this.envelope) * a;
-      const desired = (d.autoGainTarget / Math.max(1e-4, this.envelope)) * this.gain;
-      const gTau = desired > this.gain ? d.tauUp : d.tauDown;
+      const desired = (this.autoGainTarget / Math.max(1e-4, this.envelope)) * this.gain;
+      const gTau = desired > this.gain ? this.tauUp : this.tauDown;
       const ga = 1 - Math.exp(-dt / gTau);
       this.gain += (desired - this.gain) * ga;
       if (this.gain < 0.5) this.gain = 0.5;
