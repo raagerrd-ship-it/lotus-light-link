@@ -14,6 +14,8 @@ import {
 } from './ble/index.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
+import { getRuntimeHealth } from './runtimeHealth.js';
+
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
 
