@@ -392,41 +392,10 @@ async function main() {
     startSonos: startSonosSubsystem,
   });
 
-  // Playback-watchdog: om tickOkCount inte ökar under 8s medan lifecycle är
-  // MOTOR_ON → engine har fastnat (ALSA-death, BLE-stuck, stale state).
-  // process.exit(1) → systemd restart → boot → ignite → återhämtning.
-  (async () => {
-    try {
-      const { bleStats } = await import('./ble/index.js');
-      const lc = await import('./engineLifecycle.js');
-      const { recordRestart } = await import('./restartLog.js');
-      let lastTickOk = 0;
-      let stuckMs = 0;
-      setInterval(() => {
-        try {
-          if (lc.getLifecycleState() !== 'MOTOR_ON') {
-            stuckMs = 0;
-            lastTickOk = bleStats.tickOkCount;
-            return;
-          }
-          const cur = bleStats.tickOkCount;
-          if (cur === lastTickOk) {
-            stuckMs += 2000;
-            if (stuckMs >= 8000) {
-              console.error('[Playback-Watchdog] tickOkCount frozen 8s while MOTOR_ON — exit(1)');
-              try { recordRestart('playback-watchdog-stuck', `tickOk=${cur}`); } catch {}
-              process.exit(1);
-            }
-          } else {
-            stuckMs = 0;
-            lastTickOk = cur;
-          }
-        } catch {}
-      }, 2000);
-    } catch (e: any) {
-      console.warn('[Boot] Playback-Watchdog init failed:', e?.message ?? e);
-    }
-  })();
+  // (Playback-watchdog registreras EN gång längre ner — se FIX 24. Den tidigare
+  //  duplicerade kopian här togs bort 2026-08-20: två 2s-timers med samma
+  //  ansvar gav dubbla wakeups och risk för dubbel exit(1).)
+
 
   console.log('[Boot] ✓ configServer up — ignite() startar BLE-stack + sonos-poller');
 
