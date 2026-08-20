@@ -392,43 +392,39 @@ async function main() {
     startSonos: startSonosSubsystem,
   });
 
-  // Playback-watchdog: om tickOkCount inte ökar under 8s medan lifecycle är
-  // MOTOR_ON → engine har fastnat (ALSA-death, BLE-stuck, stale state).
-  // process.exit(1) → systemd restart → boot → ignite → återhämtning.
-  (async () => {
-    try {
-      const { bleStats } = await import('./ble/index.js');
-      const lc = await import('./engineLifecycle.js');
-      const { recordRestart } = await import('./restartLog.js');
-      let lastTickOk = 0;
-      let stuckMs = 0;
-      setInterval(() => {
-        try {
-          if (lc.getLifecycleState() !== 'MOTOR_ON') {
-            stuckMs = 0;
-            lastTickOk = bleStats.tickOkCount;
-            return;
-          }
-          const cur = bleStats.tickOkCount;
-          if (cur === lastTickOk) {
-            stuckMs += 2000;
-            if (stuckMs >= 8000) {
-              console.error('[Playback-Watchdog] tickOkCount frozen 8s while MOTOR_ON — exit(1)');
-              try { recordRestart('playback-watchdog-stuck', `tickOk=${cur}`); } catch {}
-              process.exit(1);
-            }
-          } else {
-            stuckMs = 0;
-            lastTickOk = cur;
-          }
-        } catch {}
-      }, 2000);
-    } catch (e: any) {
-      console.warn('[Boot] Playback-Watchdog init failed:', e?.message ?? e);
-    }
-  })();
+  // (Playback-watchdog registreras EN gång längre ner — se FIX 24. Den tidigare
+  //  duplicerade kopian här togs bort 2026-08-20: två 2s-timers med samma
+  //  ansvar gav dubbla wakeups och risk för dubbel exit(1).)
+
 
   console.log('[Boot] ✓ configServer up — ignite() startar BLE-stack + sonos-poller');
+
+  // ── Gemensam 1 Hz-scheduler (2026-08-20) ────────────────────────────────
+  // Varje fristående setInterval är en egen timer-wakeup som konkurrerar med
+  // tick-loopen på Zero 2W:s svaga kärnor. Watchdog (2s) och spotify-poll (5s)
+  // körs nu från EN 1 Hz-timer med räknare istället för två egna timers.
+  const secTasks: Array<{ everySec: number; fn: () => void; n: number }> = [];
+  function everySeconds(everySec: number, fn: () => void): void {
+    secTasks.push({ everySec, fn, n: 0 });
+  }
+  setInterval(() => {
+    for (const t of secTasks) {
+      if (++t.n < t.everySec) continue;
+      t.n = 0;
+      try { t.fn(); } catch { /* en task får aldrig döda schedulern */ }
+    }
+  }, 1000);
+
+  // Runtime-hälsa (event-loop-lag, tick-jitter, FFT-fps) — samplas av samma timer.
+  {
+    const { sample } = await import('./runtimeHealth.js');
+    everySeconds(1, () => {
+      let fftCount = 0;
+      try { fftCount = alsaMic?.getFFTFrameCount?.() ?? 0; } catch {}
+      sample(fftCount);
+    });
+  }
+
 
   // ── FIX 24: Playback-Watchdog — auto-recover från stuck engine.playing ──
   // Om lifecycle är MOTOR_ON men bleStats.tickOkCount inte växer på 8s →
@@ -446,7 +442,7 @@ async function main() {
       const INTERVAL_MS = 2000;
       const STUCK_THRESHOLD_MS = 8000;
 
-      setInterval(() => {
+      everySeconds(INTERVAL_MS / 1000, () => {
         try {
           if (lc.getLifecycleState() !== 'MOTOR_ON') {
             stuckMs = 0;
@@ -487,7 +483,7 @@ async function main() {
             lastTickOk = cur;
           }
         } catch { /* watchdog must never crash */ }
-      }, INTERVAL_MS);
+      });
       console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms, soft-recovery first)`);
     } catch (e: any) {
       console.warn('[Boot] Playback-Watchdog failed to start:', e?.message ?? e);
@@ -526,31 +522,34 @@ async function main() {
       return { attackAlpha, transientGain, dropSensitivity, perceptualGamma, bassWeight };
     }
 
-    setInterval(async () => {
-      if (!engineInstance?.setActiveProfile) return;
-      try {
-        const res = await fetch(URL, { signal: AbortSignal.timeout(1500) });
-        if (!res.ok) return;
-        const cur: any = await res.json();
-        if (!cur?.features || cur.features.error) return;
-        const key = `${cur.artist ?? ''}::${cur.track ?? ''}`;
-        if (!key || key === '::' || key === lastTrackKey) return;
-        lastTrackKey = key;
-        const profile = profileFromFeatures(cur.features);
-        console.log(
-          `[spotify-features] "${cur.track}" bpm=${cur.features.tempo?.toFixed?.(0)} ` +
-          `en=${cur.features.energy?.toFixed?.(2)} ac=${cur.features.acousticness?.toFixed?.(2)} ` +
-          `→ attack=${profile.attackAlpha} transient=${profile.transientGain.toFixed(2)}`
-        );
-        engineInstance.setActiveProfile(profile);
-      } catch (e: any) {
-        if (!warnedUnreachable) {
-          warnedUnreachable = true;
-          console.log('[spotify-features] service unreachable on :3053/api/spotify/current — auto-profile disabled');
+    everySeconds(5, () => {
+      void (async () => {
+        if (!engineInstance?.setActiveProfile) return;
+        try {
+          const res = await fetch(URL, { signal: AbortSignal.timeout(1500) });
+          if (!res.ok) return;
+          const cur: any = await res.json();
+          if (!cur?.features || cur.features.error) return;
+          const key = `${cur.artist ?? ''}::${cur.track ?? ''}`;
+          if (!key || key === '::' || key === lastTrackKey) return;
+          lastTrackKey = key;
+          const profile = profileFromFeatures(cur.features);
+          console.log(
+            `[spotify-features] "${cur.track}" bpm=${cur.features.tempo?.toFixed?.(0)} ` +
+            `en=${cur.features.energy?.toFixed?.(2)} ac=${cur.features.acousticness?.toFixed?.(2)} ` +
+            `→ attack=${profile.attackAlpha} transient=${profile.transientGain.toFixed(2)}`
+          );
+          engineInstance.setActiveProfile(profile);
+        } catch {
+          if (!warnedUnreachable) {
+            warnedUnreachable = true;
+            console.log('[spotify-features] service unreachable on :3053/api/spotify/current — auto-profile disabled');
+          }
         }
-      }
-    }, 5000);
+      })();
+    });
   })();
+
 
 
   // ── Restart-log: detektera om förra processen dog ofrivilligt ──

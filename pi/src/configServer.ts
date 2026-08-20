@@ -14,6 +14,8 @@ import {
 } from './ble/index.js';
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
+import { getRuntimeHealth } from './runtimeHealth.js';
+
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
 
@@ -641,6 +643,9 @@ export function startConfigServer(port = 3050): void {
       // Taktklockan: locked/bpm/phase/nextBeatMs/beatErr/gridPulses/leadMs
       beat: engine?.getBeatInfo?.() ?? null,
       analyserCost, // { msEMA, msMax, hops, overBudget, budgetMs } — larma om msMax>budgetMs
+      // Runtime-hälsa: event-loop-lag, tick-jitter och verklig FFT-takt (80 Hz @ HOP=600).
+      runtime: getRuntimeHealth(),
+
       // Restart-historik (senaste 20, nyaste sist) — UI visar reason + tid
       // så användaren ser om motorn dör ofta och varför.
       restarts: (() => {

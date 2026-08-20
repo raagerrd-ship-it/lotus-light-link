@@ -153,19 +153,20 @@ export interface BandResult {
 
 const SAMPLE_RATE = 48000;
 const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = 480 frames (10.0ms @ 48kHz) — exakt 100 Hz FFT-takt.
-// Synkar deterministiskt mot tickMs=20ms (50 pps): exakt 2 FFT-frames per
-// engine-tick → senaste FFT är max 10ms gammal när tickInner läser → jämn
-// transient-respons utan jitter mellan 1 och 2 frames per tick.
-// (Tidigare HOP=512 gav ~93Hz → 1.87 frames/tick → ojämn färskhet.)
+// HOP_SIZE = 600 frames (12.5ms @ 48kHz) — exakt 80 Hz FFT-takt.
+// Låst mot tickMs=25 (40 pps): exakt 2 FFT-frames per engine-tick → senaste
+// FFT är max 12.5ms gammal när tickInner läser → jämn transient-respons utan
+// jitter mellan 1 och 2 frames per tick.
+// (Var 480 = 100 Hz, avstämt mot gamla tickMs=20. Med tickMs=25 gav det 2.5
+//  frames/tick → ojämn färskhet OCH 20% onödiga FFT:er på Zero 2W.)
 //
-// Engine.tickInner triggas dock bara på tickMs-takt (gate i piEngine.onFFTFrame
-// kollar `elapsed >= tickMs`) → BLE-trafik oförändrad, men engine ser senaste
-// FFT-frame när den väl kör → snabbare attack-respons.
+// Engine.tickInner triggas bara på tickMs-takt (gate i piEngine.onFFTFrame
+// kollar `elapsed >= tickMs`) → BLE-trafik oförändrad.
 //
-// CPU-konsekvens: ~100 FFT/s × ~1ms ≈ 10% CPU på Pi Zero 2W (var ~9% @ HOP=512).
+// CPU-konsekvens: ~80 FFT/s × ~1ms ≈ 8% CPU på Pi Zero 2W (var ~10% @ HOP=480).
 // Vendor-bufferten är 8× period = 46ms vilket täcker värsta GC-pausen.
-const HOP_SIZE = 480;
+const HOP_SIZE = 600;
+
 const BIN_COUNT = FFT_SIZE / 2;
 const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
 const FFT_MASK = FFT_SIZE - 1;

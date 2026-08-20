@@ -22,6 +22,8 @@ import { triggerIdleDisconnect } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { getItem, setItem } from './storage.js';
 import { dlog } from "./debugLog.js";
+import { noteTick } from './runtimeHealth.js';
+
 
 // ── Inline engine math (avoid complex path aliasing to browser engine) ──
 
@@ -1123,6 +1125,8 @@ export class PiLightEngine {
 
     const now = performance.now();
     if (now >= this._nextTickDeadline) {
+      noteTick(now, this.tickMs);
+
       // Grid-align: nästa deadline är tickMs efter den förra, inte efter now.
       this._nextTickDeadline += this.tickMs;
       if (now - this._nextTickDeadline > this.tickMs) {
