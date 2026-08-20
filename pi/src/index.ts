@@ -420,7 +420,7 @@ async function main() {
     const { sample } = await import('./runtimeHealth.js');
     everySeconds(1, () => {
       let fftCount = 0;
-      try { fftCount = micModule?.getFFTFrameCount?.() ?? 0; } catch {}
+      try { fftCount = alsaMic?.getFFTFrameCount?.() ?? 0; } catch {}
       sample(fftCount);
     });
   }
