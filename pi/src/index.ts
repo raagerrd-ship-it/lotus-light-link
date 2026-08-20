@@ -415,6 +415,17 @@ async function main() {
     }
   }, 1000);
 
+  // Runtime-hälsa (event-loop-lag, tick-jitter, FFT-fps) — samplas av samma timer.
+  {
+    const { sample } = await import('./runtimeHealth.js');
+    everySeconds(1, () => {
+      let fftCount = 0;
+      try { fftCount = micModule?.getFFTFrameCount?.() ?? 0; } catch {}
+      sample(fftCount);
+    });
+  }
+
+
   // ── FIX 24: Playback-Watchdog — auto-recover från stuck engine.playing ──
   // Om lifecycle är MOTOR_ON men bleStats.tickOkCount inte växer på 8s →
   // engine sitter i stale state (playing=false eller _bleOwner='idle' trots
