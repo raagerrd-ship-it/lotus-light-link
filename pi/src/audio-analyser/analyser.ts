@@ -769,10 +769,15 @@ export class Analyser {
     for (let i = 0; i < this.bufferBig.length; i++) this.windowedBig[i] = this.bufferBig[i] * this.windowBig[i];
     this.fftBig.realTransform(this.specBig, this.windowedBig);
     const halfBig = this.bufferBig.length / 2;
-    for (let i = 0; i < halfBig; i++) {
+    // Banden läser bara upp till bin 683 (16 kHz, BAND_HZ[8]). Räkna sqrt bara så
+    // långt — MEN full bredd när en spectrum-sink (låtminnets fingerprint/novelty)
+    // är kopplad, den kan läsa hela spektrumet.
+    const magLimit = this.specSink ? halfBig : this.magBigMax;
+    for (let i = 0; i < magLimit; i++) {
       const re = this.specBig[2 * i], im = this.specBig[2 * i + 1];
       this.magBig[i] = Math.sqrt(re * re + im * im);
     }
+
     // LÅTMINNET får samma magnitud (ingen extra FFT). Anropas före swap:en nedan,
     // så bufferten faktiskt innehåller DENNA frames spektrum.
     this.specSink?.(this.magBig, this.sampleRate / this.bufferBig.length);
