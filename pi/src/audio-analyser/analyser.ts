@@ -173,7 +173,17 @@ export class Analyser {
   private bpmStable = 0;    // antal stabila (finjusterings-)estimat i rad → committa oktaven
   private newSongVote = 0;  // ihållande oenighet trots låst oktav → låtbyte utan tystnadslucka
 
-  private bpmHist: number[] = [];   // senaste råestimat (~3s) för median-stabilisering
+  private bpmHist = new Float64Array(20);   // ringbuffert: senaste råestimat (~3s) för median
+  private bpmHistLen = 0;
+  private bpmHistPos = 0;
+  private bpmSortScratch = new Float64Array(20);
+  // Per-hop EMA-alfor: dtHop och tidskonstanterna ar fixa efter konstruktion, sa
+  // exp() rakans EN gang i stallet for ~9 anrop per hop (375 Hz) → sparad CPU.
+  private aAtt = 0; private aRel = 0; private aVU = 0;
+  private aIUp = 0; private aIDown = 0; private aBandLvl = 0;
+  private dHat = 0; private dSnare = 0; private dKick = 0;
+  private aNovR = 0; private aNovSlow = 0; private aPr = 0;
+
   // Pre-allokerade scratchpads för computeBpm (GC-skydd; annars 4× Float32Array/anrop).
   private envScratch = new Float32Array(Analyser.ENV_LEN);
   private envPosScratch = new Float32Array(Analyser.ENV_LEN);
@@ -410,10 +420,14 @@ export class Analyser {
     // Median över RÅestimaten (utan oktav-tvång) → dämpar brus men låser inte
     // fast oktaven, så en fel initial låsning kan rättas. Långt fönster (~5s) för
     // att inte studsa på brusiga/tvetydiga låtar.
-    this.bpmHist.push(bpm);
-    if (this.bpmHist.length > 20) this.bpmHist.shift();
-    const sorted = [...this.bpmHist].sort((a, b) => a - b);
-    const med = sorted[sorted.length >> 1];
+    this.bpmHist[this.bpmHistPos] = bpm;
+    this.bpmHistPos = (this.bpmHistPos + 1) % 20;
+    if (this.bpmHistLen < 20) this.bpmHistLen++;
+    const n = this.bpmHistLen;
+    const sorted = this.bpmSortScratch.subarray(0, n);
+    sorted.set(this.bpmHist.subarray(0, n));
+    sorted.sort();
+    const med = sorted[n >> 1];
     if (this.localBpm === 0) {
       this.localBpm = Math.round(med);
       this.octaveVote = 0;
@@ -494,6 +508,22 @@ export class Analyser {
     this.tauUp = cfg.tauUp ?? 3;
     this.tauDown = cfg.tauDown ?? 8;
     this.noiseFloor = cfg.noiseFloor ?? 0.002;
+
+    const dtH = this.hopSize / this.sampleRate;
+    const bigDtH = dtH * Analyser.BIG_EVERY;
+    this.aAtt = 1 - Math.exp(-dtH / 0.015);
+    this.aRel = 1 - Math.exp(-dtH / 0.4);
+    this.aVU = 1 - Math.exp(-dtH / 0.20);
+    this.aIUp = 1 - Math.exp(-dtH / 1.5);
+    this.aIDown = 1 - Math.exp(-dtH / 3.0);
+    this.aBandLvl = 1 - Math.exp(-bigDtH / 0.09);
+    this.dHat = Math.exp(-dtH / 0.06);
+    this.dSnare = Math.exp(-dtH / 0.11);
+    this.dKick = Math.exp(-dtH / 0.15);
+    this.aNovR = 1 - Math.exp(-dtH / 2.0);
+    this.aNovSlow = 1 - Math.exp(-dtH / 1.5);
+    this.aPr = 1 - Math.exp(-dtH / 8.0);
+
 
     this.fft = new FFT(this.fftSize);
     this.window = hannWindow(this.fftSize);
@@ -665,7 +695,7 @@ export class Analyser {
     // Tystnad → nollställ BPM-klockan så beat-effekter inte fortsätter i fantom-takt.
     if (rms < this.noiseFloor * 1.5) {
       this.silentMs += frameMs0;
-      if (this.silentMs > 350) { this.localBpm = 0; this.localBpmConfidence = 0; this.octaveVote = 0; this.bpmStable = 0; this.newSongVote = 0; this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0; this.bpmHist.length = 0; }
+      if (this.silentMs > 350) { this.localBpm = 0; this.localBpmConfidence = 0; this.octaveVote = 0; this.bpmStable = 0; this.newSongVote = 0; this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0; this.bpmHistLen = 0; this.bpmHistPos = 0; }
     } else {
       this.silentMs = 0;
     }
@@ -703,14 +733,13 @@ export class Analyser {
     this.kfPrev = kickFlux;
 
     const dtHop = this.hopSize / this.sampleRate;
-    const aAtt = 1 - Math.exp(-dtHop / 0.015);
-    const aRel = 1 - Math.exp(-dtHop / 0.4);
+    const aAtt = this.aAtt, aRel = this.aRel;
     const smooth = (prev: number, x: number) => prev + (x - prev) * (x > prev ? aAtt : aRel);
     this.lvlSmooth = smooth(this.lvlSmooth, level);
     // VU-nivå: symmetrisk ~200ms lågpass PÅ HOP-TAKT (integrerar alla 375 hops/s
     // → långt mindre brus än att smootha rå-nivån efter 50Hz-decimering). ≤200 BPM
     // = ett slag var ≥300ms, så 200ms suddar aldrig ut en äkta beat — bara brus.
-    this.lvlVU += (level - this.lvlVU) * (1 - Math.exp(-dtHop / 0.20));
+    this.lvlVU += (level - this.lvlVU) * this.aVU;
     this.engSmooth = smooth(this.engSmooth, energy);
     this.midSmooth = smooth(this.midSmooth, mid);
     this.trbSmooth = smooth(this.trbSmooth, treble);
@@ -726,8 +755,8 @@ export class Analyser {
     // Nollställs vid tystnad → snabb omkalibrering vid låtbyte.
     if (rms >= this.noiseFloor * 1.5) this.activeMs += dtHop * 1000;
     else this.activeMs = 0;
-    const iUp = 1 - Math.exp(-dtHop / 1.5);
-    const iDown = 1 - Math.exp(-dtHop / 3.0);
+    const iUp = this.aIUp;
+    const iDown = this.aIDown;
     this.intensityEma += (this.lvlSmooth - this.intensityEma) * (this.lvlSmooth > this.intensityEma ? iUp : iDown);
     const iWarm = this.activeMs < 8000;
     // REFERENSEN MASTE VARA MYCKET LANGSAMMARE AN DET DEN MATER. Golvet gick
@@ -805,7 +834,7 @@ export class Analyser {
       // spec via ctx.band) flimrar inte av det råa per-hop-AGC-bruset. onset lämnas
       // skarp (nedan) så transient-drivna effekter behåller sin punch.
       const lvlRawB = gated ? Math.min(1, avg / (this.bandPeak[b] + 1e-6)) : 0;
-      this.bandLvlSm[b] += (lvlRawB - this.bandLvlSm[b]) * (1 - Math.exp(-bigDt / 0.09));
+      this.bandLvlSm[b] += (lvlRawB - this.bandLvlSm[b]) * this.aBandLvl;
       this.bandLvl[b] = this.bandLvlSm[b];
       // Per-band onset: halvvågs-flux mot adaptiv baslinje (som kick-detektorn) →
       // rena anslag oberoende av bandets absoluta energi.
@@ -833,15 +862,15 @@ export class Analyser {
     // aldrig missat mellan två render-frames (100Hz). tau bevarade från effects.ts:
     // hat 60ms (treble-onset O[6]) / snare 110ms (highMid-onset O[5]) / kick 150ms
     // (diskret kick + kick-onset O[1]). bass = spec.bass-NIVÅ (L[2], ingen envelope).
-    this.hatHit = Math.max(this.hatHit * Math.exp(-dtHop / 0.06), this.bandOn[6]);
-    this.snareHit = Math.max(this.snareHit * Math.exp(-dtHop / 0.11), this.bandOn[5]);
+    this.hatHit = Math.max(this.hatHit * this.dHat, this.bandOn[6]);
+    this.snareHit = Math.max(this.snareHit * this.dSnare, this.bandOn[5]);
     // Drivs ENBART av den riktiga kick-detektorn (median + 4.5*MAD). Tidigare
     // fylldes den ocksa pa av bandOn[1], men det bandet (60-120 Hz) domineras av
     // sustained bas: MATT 816-1377 anslag/min dar ~110 fanns, dvs 8x for manga.
     // Den svammade over den korrekta detektorn sa envelopen aldrig slocknade och
     // kicken forlorade sin accent.
     if (kick) this.kickHit = 1;
-    else this.kickHit = this.kickHit * Math.exp(-dtHop / 0.15);
+    else this.kickHit = this.kickHit * this.dKick;
     // ── DROP-DETEKTION (flyttad hit: att AVGÖRA om det är en drop är analys) ──
     // En "riktig" drop = nivån surgar upp mot låtens tak EFTER en break (svacka).
     // Topp-zonen har hysteres (in vid 85% av taket, ut först vid 70%) så nivån inte
@@ -990,9 +1019,9 @@ export class Analyser {
     // ~8s baslinje → RISER = novelty STIGER över den (filter-sweep/snare-roll),
     // skilt från bara-busy (ihållande → baslinjen kommer ikapp). Gammal väg
     // (klang+nivå stiger) ligger kvar som OR. Inte direkt efter en drop.
-    let nov = 0; const sr = 1 - Math.exp(-dtHop / 2.0);
+    let nov = 0; const sr = this.aNovR;
     for (let b = 0; b < 8; b++) { this.specSlow[b] += (this.bandLvl[b] - this.specSlow[b]) * sr; nov += Math.max(0, this.bandLvl[b] - this.specSlow[b]); }
-    this.novSlow += (nov - this.novSlow) * (1 - Math.exp(-dtHop / 1.5));
+    this.novSlow += (nov - this.novSlow) * this.aNovSlow;
     this.novBaseline += (this.novSlow - this.novBaseline) * (dtHop / 8);
     const novRiser = this.novSlow > this.novBaseline + 0.15 && this.novSlow > 0.45;
     this.centSlow += (this.centSmooth - this.centSlow) * (dtHop / 2.5);
@@ -1017,7 +1046,7 @@ export class Analyser {
     const bassW = (this.bandLvl[0] + this.bandLvl[1] + this.bandLvl[2]) / bSum;   // sub+kick+bas
     const brightW = (this.bandLvl[6] + this.bandLvl[7]) / bSum;                    // diskant+luft
     const punchNow = Math.min(1, (this.bandOn[1] + this.bandOn[5] + this.bandOn[6]) * 0.8);  // kick+snare+hat-anslag
-    const pr = 1 - Math.exp(-dtHop / 8.0);
+    const pr = this.aPr;
     this.profPunch += (punchNow - this.profPunch) * pr;
     this.profBass += (bassW - this.profBass) * pr;
     this.profBright += (brightW - this.profBright) * pr;
