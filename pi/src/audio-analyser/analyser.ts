@@ -132,6 +132,8 @@ export class Analyser {
   private bufferBig!: Float32Array;     // egen glidande buffert (matas samma hops)
   private prevMagBig!: Float32Array;    // för per-band flux
   private magBig!: Float32Array;        // scratch magnitud
+  private magBigMax = 0;                // högsta bin banden läser (= bandHi[7], 16 kHz)
+
   private specBig!: number[];           // scratch complex (fft.js createComplexArray)
   private static readonly BAND_HZ = [20, 60, 120, 250, 500, 2000, 5000, 10000, 16000];
   private bandLo: number[] = [];        // bin-start per band (förberäknat)
@@ -516,6 +518,8 @@ export class Analyser {
       this.bandHi[b] = Math.min(BIG / 2, Math.round(Analyser.BAND_HZ[b + 1] / binHzBig));
       this.bandPeak[b] = 1e-4;   // seed → själv-kalibrerar inom ~1s
     }
+    this.magBigMax = this.bandHi[7];
+
     // Ett återanvänt Frame (spec/onset pekar på de pre-allokerade objekten).
     this.outFrame = {
       level: 0, levelRaw: 0, levelVU: 0, energy: 0, mid: 0, treble: 0, centroid: 0, flux: 0,
@@ -765,10 +769,15 @@ export class Analyser {
     for (let i = 0; i < this.bufferBig.length; i++) this.windowedBig[i] = this.bufferBig[i] * this.windowBig[i];
     this.fftBig.realTransform(this.specBig, this.windowedBig);
     const halfBig = this.bufferBig.length / 2;
-    for (let i = 0; i < halfBig; i++) {
+    // Banden läser bara upp till bin 683 (16 kHz, BAND_HZ[8]). Räkna sqrt bara så
+    // långt — MEN full bredd när en spectrum-sink (låtminnets fingerprint/novelty)
+    // är kopplad, den kan läsa hela spektrumet.
+    const magLimit = this.specSink ? halfBig : this.magBigMax;
+    for (let i = 0; i < magLimit; i++) {
       const re = this.specBig[2 * i], im = this.specBig[2 * i + 1];
       this.magBig[i] = Math.sqrt(re * re + im * im);
     }
+
     // LÅTMINNET får samma magnitud (ingen extra FFT). Anropas före swap:en nedan,
     // så bufferten faktiskt innehåller DENNA frames spektrum.
     this.specSink?.(this.magBig, this.sampleRate / this.bufferBig.length);
