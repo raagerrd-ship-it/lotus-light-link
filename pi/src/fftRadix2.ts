@@ -110,7 +110,9 @@ export function fft1024(input: Float32Array | Float64Array): [Float64Array, Floa
     const oRe = 0.5 * (aRe - bRe);
     const oIm = 0.5 * (aIm - bIm);
 
-    const c = splitRe[kk], s2 = splitIm[kk];
+    // k === H → W1024^512 = -1 (splitRe[0] gäller bara för k=0)
+    const c = k === H ? -1 : splitRe[kk];
+    const s2 = k === H ? 0 : splitIm[kk];
     const tRe = c * oRe - s2 * oIm;
     const tIm = c * oIm + s2 * oRe;
 
