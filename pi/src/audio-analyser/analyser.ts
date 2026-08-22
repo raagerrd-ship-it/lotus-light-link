@@ -518,6 +518,8 @@ export class Analyser {
       this.bandHi[b] = Math.min(BIG / 2, Math.round(Analyser.BAND_HZ[b + 1] / binHzBig));
       this.bandPeak[b] = 1e-4;   // seed → själv-kalibrerar inom ~1s
     }
+    this.magBigMax = this.bandHi[7];
+
     // Ett återanvänt Frame (spec/onset pekar på de pre-allokerade objekten).
     this.outFrame = {
       level: 0, levelRaw: 0, levelVU: 0, energy: 0, mid: 0, treble: 0, centroid: 0, flux: 0,
