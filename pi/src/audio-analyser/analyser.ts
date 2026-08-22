@@ -729,14 +729,13 @@ export class Analyser {
     this.kfPrev = kickFlux;
 
     const dtHop = this.hopSize / this.sampleRate;
-    const aAtt = 1 - Math.exp(-dtHop / 0.015);
-    const aRel = 1 - Math.exp(-dtHop / 0.4);
+    const aAtt = this.aAtt, aRel = this.aRel;
     const smooth = (prev: number, x: number) => prev + (x - prev) * (x > prev ? aAtt : aRel);
     this.lvlSmooth = smooth(this.lvlSmooth, level);
     // VU-nivå: symmetrisk ~200ms lågpass PÅ HOP-TAKT (integrerar alla 375 hops/s
     // → långt mindre brus än att smootha rå-nivån efter 50Hz-decimering). ≤200 BPM
     // = ett slag var ≥300ms, så 200ms suddar aldrig ut en äkta beat — bara brus.
-    this.lvlVU += (level - this.lvlVU) * (1 - Math.exp(-dtHop / 0.20));
+    this.lvlVU += (level - this.lvlVU) * this.aVU;
     this.engSmooth = smooth(this.engSmooth, energy);
     this.midSmooth = smooth(this.midSmooth, mid);
     this.trbSmooth = smooth(this.trbSmooth, treble);
@@ -752,8 +751,8 @@ export class Analyser {
     // Nollställs vid tystnad → snabb omkalibrering vid låtbyte.
     if (rms >= this.noiseFloor * 1.5) this.activeMs += dtHop * 1000;
     else this.activeMs = 0;
-    const iUp = 1 - Math.exp(-dtHop / 1.5);
-    const iDown = 1 - Math.exp(-dtHop / 3.0);
+    const iUp = this.aIUp;
+    const iDown = this.aIDown;
     this.intensityEma += (this.lvlSmooth - this.intensityEma) * (this.lvlSmooth > this.intensityEma ? iUp : iDown);
     const iWarm = this.activeMs < 8000;
     // REFERENSEN MASTE VARA MYCKET LANGSAMMARE AN DET DEN MATER. Golvet gick
@@ -831,7 +830,7 @@ export class Analyser {
       // spec via ctx.band) flimrar inte av det råa per-hop-AGC-bruset. onset lämnas
       // skarp (nedan) så transient-drivna effekter behåller sin punch.
       const lvlRawB = gated ? Math.min(1, avg / (this.bandPeak[b] + 1e-6)) : 0;
-      this.bandLvlSm[b] += (lvlRawB - this.bandLvlSm[b]) * (1 - Math.exp(-bigDt / 0.09));
+      this.bandLvlSm[b] += (lvlRawB - this.bandLvlSm[b]) * this.aBandLvl;
       this.bandLvl[b] = this.bandLvlSm[b];
       // Per-band onset: halvvågs-flux mot adaptiv baslinje (som kick-detektorn) →
       // rena anslag oberoende av bandets absoluta energi.
@@ -859,15 +858,15 @@ export class Analyser {
     // aldrig missat mellan två render-frames (100Hz). tau bevarade från effects.ts:
     // hat 60ms (treble-onset O[6]) / snare 110ms (highMid-onset O[5]) / kick 150ms
     // (diskret kick + kick-onset O[1]). bass = spec.bass-NIVÅ (L[2], ingen envelope).
-    this.hatHit = Math.max(this.hatHit * Math.exp(-dtHop / 0.06), this.bandOn[6]);
-    this.snareHit = Math.max(this.snareHit * Math.exp(-dtHop / 0.11), this.bandOn[5]);
+    this.hatHit = Math.max(this.hatHit * this.dHat, this.bandOn[6]);
+    this.snareHit = Math.max(this.snareHit * this.dSnare, this.bandOn[5]);
     // Drivs ENBART av den riktiga kick-detektorn (median + 4.5*MAD). Tidigare
     // fylldes den ocksa pa av bandOn[1], men det bandet (60-120 Hz) domineras av
     // sustained bas: MATT 816-1377 anslag/min dar ~110 fanns, dvs 8x for manga.
     // Den svammade over den korrekta detektorn sa envelopen aldrig slocknade och
     // kicken forlorade sin accent.
     if (kick) this.kickHit = 1;
-    else this.kickHit = this.kickHit * Math.exp(-dtHop / 0.15);
+    else this.kickHit = this.kickHit * this.dKick;
     // ── DROP-DETEKTION (flyttad hit: att AVGÖRA om det är en drop är analys) ──
     // En "riktig" drop = nivån surgar upp mot låtens tak EFTER en break (svacka).
     // Topp-zonen har hysteres (in vid 85% av taket, ut först vid 70%) så nivån inte
@@ -1016,9 +1015,9 @@ export class Analyser {
     // ~8s baslinje → RISER = novelty STIGER över den (filter-sweep/snare-roll),
     // skilt från bara-busy (ihållande → baslinjen kommer ikapp). Gammal väg
     // (klang+nivå stiger) ligger kvar som OR. Inte direkt efter en drop.
-    let nov = 0; const sr = 1 - Math.exp(-dtHop / 2.0);
+    let nov = 0; const sr = this.aNovR;
     for (let b = 0; b < 8; b++) { this.specSlow[b] += (this.bandLvl[b] - this.specSlow[b]) * sr; nov += Math.max(0, this.bandLvl[b] - this.specSlow[b]); }
-    this.novSlow += (nov - this.novSlow) * (1 - Math.exp(-dtHop / 1.5));
+    this.novSlow += (nov - this.novSlow) * this.aNovSlow;
     this.novBaseline += (this.novSlow - this.novBaseline) * (dtHop / 8);
     const novRiser = this.novSlow > this.novBaseline + 0.15 && this.novSlow > 0.45;
     this.centSlow += (this.centSmooth - this.centSlow) * (dtHop / 2.5);
@@ -1043,7 +1042,7 @@ export class Analyser {
     const bassW = (this.bandLvl[0] + this.bandLvl[1] + this.bandLvl[2]) / bSum;   // sub+kick+bas
     const brightW = (this.bandLvl[6] + this.bandLvl[7]) / bSum;                    // diskant+luft
     const punchNow = Math.min(1, (this.bandOn[1] + this.bandOn[5] + this.bandOn[6]) * 0.8);  // kick+snare+hat-anslag
-    const pr = 1 - Math.exp(-dtHop / 8.0);
+    const pr = this.aPr;
     this.profPunch += (punchNow - this.profPunch) * pr;
     this.profBass += (bassW - this.profBass) * pr;
     this.profBright += (brightW - this.profBright) * pr;
