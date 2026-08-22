@@ -132,6 +132,8 @@ export class Analyser {
   private bufferBig!: Float32Array;     // egen glidande buffert (matas samma hops)
   private prevMagBig!: Float32Array;    // för per-band flux
   private magBig!: Float32Array;        // scratch magnitud
+  private magBigMax = 0;                // högsta bin banden läser (= bandHi[7], 16 kHz)
+
   private specBig!: number[];           // scratch complex (fft.js createComplexArray)
   private static readonly BAND_HZ = [20, 60, 120, 250, 500, 2000, 5000, 10000, 16000];
   private bandLo: number[] = [];        // bin-start per band (förberäknat)
