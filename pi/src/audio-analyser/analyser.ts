@@ -505,6 +505,22 @@ export class Analyser {
     this.tauDown = cfg.tauDown ?? 8;
     this.noiseFloor = cfg.noiseFloor ?? 0.002;
 
+    const dtH = this.hopSize / this.sampleRate;
+    const bigDtH = dtH * Analyser.BIG_EVERY;
+    this.aAtt = 1 - Math.exp(-dtH / 0.015);
+    this.aRel = 1 - Math.exp(-dtH / 0.4);
+    this.aVU = 1 - Math.exp(-dtH / 0.20);
+    this.aIUp = 1 - Math.exp(-dtH / 1.5);
+    this.aIDown = 1 - Math.exp(-dtH / 3.0);
+    this.aBandLvl = 1 - Math.exp(-bigDtH / 0.09);
+    this.dHat = Math.exp(-dtH / 0.06);
+    this.dSnare = Math.exp(-dtH / 0.11);
+    this.dKick = Math.exp(-dtH / 0.15);
+    this.aNovR = 1 - Math.exp(-dtH / 2.0);
+    this.aNovSlow = 1 - Math.exp(-dtH / 1.5);
+    this.aPr = 1 - Math.exp(-dtH / 8.0);
+
+
     this.fft = new FFT(this.fftSize);
     this.window = hannWindow(this.fftSize);
     this.buffer = new Float32Array(this.fftSize);
