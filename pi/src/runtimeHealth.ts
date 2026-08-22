@@ -21,14 +21,28 @@ let lastTickAt = 0;
 let fftFps = 0;
 let lastFftCount = 0;
 
+let overrunTotal = 0;
+let lastOverrunTotal = 0;
+let overrunPerMin = 0;
+
+let lateTickTotal = 0;
+
 /** Anropas en gång per engine-tick med aktuell tickMs. */
 export function noteTick(nowMs: number, tickMs: number): void {
   if (lastTickAt > 0) {
-    const jitter = Math.abs(nowMs - lastTickAt - tickMs);
+    const dt = nowMs - lastTickAt;
+    const jitter = Math.abs(dt - tickMs);
     tickJitterEMA += (jitter - tickJitterEMA) * 0.05;
     if (jitter > tickJitterMax) tickJitterMax = jitter;
+    // Tick som kom mer än en halv tick sent = ljuset hann inte uppdateras i tid.
+    if (dt > tickMs * 1.5) lateTickTotal++;
   }
   lastTickAt = nowMs;
+}
+
+/** Anropas vid varje ALSA buffer overrun (tappade samples). */
+export function noteOverrun(): void {
+  overrunTotal++;
 }
 
 /** Anropas ~1 Hz. fftCount = monoton FFT-frame-räknare från alsaMic. */
@@ -40,9 +54,11 @@ export function sample(fftCount: number): void {
     loopLagEMA += (lag - loopLagEMA) * 0.2;
     if (lag > loopLagMax) loopLagMax = lag;
     fftFps = ((fftCount - lastFftCount) * 1000) / dt;
+    overrunPerMin = ((overrunTotal - lastOverrunTotal) * 60000) / dt;
   }
   lastSampleAt = now;
   lastFftCount = fftCount;
+  lastOverrunTotal = overrunTotal;
 }
 
 /** Läsning nollställer max-värdena (peak sedan förra läsningen). */
@@ -50,6 +66,8 @@ export function getRuntimeHealth(): {
   loopLagMsEMA: number; loopLagMsMax: number;
   tickJitterMsEMA: number; tickJitterMsMax: number;
   fftFps: number;
+  overrunTotal: number; overrunPerMin: number;
+  lateTickTotal: number;
 } {
   const out = {
     loopLagMsEMA: loopLagEMA,
@@ -57,8 +75,12 @@ export function getRuntimeHealth(): {
     tickJitterMsEMA: tickJitterEMA,
     tickJitterMsMax: tickJitterMax,
     fftFps,
+    overrunTotal,
+    overrunPerMin,
+    lateTickTotal,
   };
   loopLagMax = 0;
   tickJitterMax = 0;
   return out;
 }
+
