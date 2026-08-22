@@ -166,7 +166,9 @@ const FFT_SIZE = FFT_N; // 1024
 // Engine.tickInner triggas bara på tickMs-takt (gate i piEngine.onFFTFrame
 // kollar `elapsed >= tickMs`) → BLE-trafik oförändrad.
 //
-// CPU-konsekvens: ~80 FFT/s × ~1ms ≈ 8% CPU på Pi Zero 2W (var ~10% @ HOP=480).
+// CPU-konsekvens: ~80 FFT/s. Sedan fftRadix2 kör reell-FFT (512-punkts komplex
+// + split) kostar en frame ~0.45ms på Zero 2W → ~3.5% CPU (var ~8% med full
+// 1024-punkts komplex FFT).
 // Vendor-bufferten är 8× period = 46ms vilket täcker värsta GC-pausen.
 const HOP_SIZE = 600;
 
