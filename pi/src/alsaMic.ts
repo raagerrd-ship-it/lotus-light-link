@@ -13,6 +13,9 @@ import { fft1024, FFT_N } from './fftRadix2.js';
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame } from './audio-analyser/index.js';
+import { noteOverrun } from './runtimeHealth.js';
+
+let _overrunLogAt = 0;
 
 // Persistens av mic-state över restart. Tappades tidigare vid varje crash/restart →
 // användaren upplevde "den glömde autogain mitt i låten" som en buggig auto-update.
@@ -774,7 +777,14 @@ export function startMic(): void {
     });
 
     capture.on('audio', onAudioData);
-    capture.on('overrun', () => console.warn('[ALSA] Buffer overrun detected'));
+    capture.on('overrun', () => {
+      noteOverrun();
+      // Loggen är throttlad — räknaren i /api/status.runtime är sanningen.
+      if (_overrunLogAt + 10000 < Date.now()) {
+        _overrunLogAt = Date.now();
+        console.warn('[ALSA] Buffer overrun detected');
+      }
+    });
     capture.on('readError', (message: string) => handleStartFailure(`[ALSA] readError: ${message}`));
     capture.on('error', (err: Error | string) => {
       const msg = typeof err === 'string' ? err : err?.message ?? String(err);
