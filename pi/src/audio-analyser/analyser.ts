@@ -420,10 +420,14 @@ export class Analyser {
     // Median över RÅestimaten (utan oktav-tvång) → dämpar brus men låser inte
     // fast oktaven, så en fel initial låsning kan rättas. Långt fönster (~5s) för
     // att inte studsa på brusiga/tvetydiga låtar.
-    this.bpmHist.push(bpm);
-    if (this.bpmHist.length > 20) this.bpmHist.shift();
-    const sorted = [...this.bpmHist].sort((a, b) => a - b);
-    const med = sorted[sorted.length >> 1];
+    this.bpmHist[this.bpmHistPos] = bpm;
+    this.bpmHistPos = (this.bpmHistPos + 1) % 20;
+    if (this.bpmHistLen < 20) this.bpmHistLen++;
+    const n = this.bpmHistLen;
+    const sorted = this.bpmSortScratch.subarray(0, n);
+    sorted.set(this.bpmHist.subarray(0, n));
+    sorted.sort();
+    const med = sorted[n >> 1];
     if (this.localBpm === 0) {
       this.localBpm = Math.round(med);
       this.octaveVote = 0;
@@ -691,7 +695,7 @@ export class Analyser {
     // Tystnad → nollställ BPM-klockan så beat-effekter inte fortsätter i fantom-takt.
     if (rms < this.noiseFloor * 1.5) {
       this.silentMs += frameMs0;
-      if (this.silentMs > 350) { this.localBpm = 0; this.localBpmConfidence = 0; this.octaveVote = 0; this.bpmStable = 0; this.newSongVote = 0; this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0; this.bpmHist.length = 0; }
+      if (this.silentMs > 350) { this.localBpm = 0; this.localBpmConfidence = 0; this.octaveVote = 0; this.bpmStable = 0; this.newSongVote = 0; this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0; this.bpmHistLen = 0; this.bpmHistPos = 0; }
     } else {
       this.silentMs = 0;
     }
