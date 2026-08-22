@@ -288,6 +288,8 @@ Efter omstart: verifiera i `/api/status` → `runtime`:
 | `fftFps` | ~80 | Verklig FFT-takt (HOP=600 @ 48kHz). Lägre = ALSA tappar samples |
 | `loopLagMsMax` | < 30 | Event-loop blockerad. > 100 = något tungt kör på samma kärna |
 | `tickJitterMsMax` | < 10 | Avvikelse från tickMs=25. Höga toppar syns som ryckigt ljus |
+| `overrunPerMin` | 0 | ALSA-overruns per minut (tappade samples). > 0 = motorn hinner inte tömma bufferten |
+| `lateTickTotal` | ökar inte | Antal ticks som kom >1.5× tickMs sent sedan start |
 | `analyserCost.msMax` | < 2.67 | Analysatorns budget per hop. Över = tysta sample-drops |
 
 ## Latency Budget
