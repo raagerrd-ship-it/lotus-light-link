@@ -666,7 +666,7 @@ export function startMic(): void {
     capture.on('close', () => {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
-    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
+    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, band-hop=${BAND_EVERY_HOPS}×${ANALYSER_HOP}, device: ${currentDevice})`);
     
 
   } else {
@@ -699,7 +699,7 @@ function onAudioData(buf: Buffer): void {
     resolveMicReadyWaiters();
   }
   if (_audioCbCount === 50 || _audioCbCount === 200 || (DEBUG_ENABLED && _audioCbCount % 1000 === 0)) {
-    dlog(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
+    dlog(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, analyserHops=${analyserHopCount}`);
   }
   // Stereo interleaved → ta bara vänster kanal.
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
@@ -711,8 +711,7 @@ function onAudioData(buf: Buffer): void {
   let hs = hsState;
   let pos = ringPos;
   const ring = ringBuf;
-  const mask = FFT_MASK;
-  let received = samplesReceived;
+  const mask = RING_MASK;
   // DEBUG-branch: peak-tracking inlinad bakom konstant flagga så V8 JIT
   // kan eliminera grenarna helt i prod (DEBUG_ENABLED=false vid boot).
   let peak = DEBUG_ENABLED ? debugPeakRaw : 0;
@@ -748,7 +747,6 @@ function onAudioData(buf: Buffer): void {
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
-      received++;
     }
   } else {
     const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
@@ -776,7 +774,6 @@ function onAudioData(buf: Buffer): void {
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
-      received++;
     }
   }
 
@@ -784,7 +781,6 @@ function onAudioData(buf: Buffer): void {
   const prevRingPos = ringPos;
   ringPos = pos;
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
-  samplesReceived = received;
   if (DEBUG_ENABLED) debugPeakRaw = peak;
 
   if (calOn && micCalActive) {
@@ -794,11 +790,6 @@ function onAudioData(buf: Buffer): void {
   }
 
 
-
-  if (samplesReceived >= HOP_SIZE) {
-    processFFT();
-    samplesReceived = 0;
-  }
 
   // Portable analyser: egen 128-hop-tap (375 Hz), decoupled från 480-hop-FFT:n.
   // Dränera alla kompletta 128-block som ackumulerats. periodSize=256 → oftast
@@ -818,6 +809,11 @@ function onAudioData(buf: Buffer): void {
     if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
     analyserHopCount++;
     analyserSamplesReceived -= ANALYSER_HOP;
+    // Band-event mot motorn var BAND_EVERY_HOPS:e analysator-hop (~75 Hz).
+    if (++bandHopCounter >= BAND_EVERY_HOPS) {
+      bandHopCounter = 0;
+      if (latestFrame) emitBands(latestFrame);
+    }
   }
 }
 
@@ -835,10 +831,8 @@ export function stopMic(): void {
   capture.close();
   capture = null;
   hsState = 0;
-  samplesReceived = 0;
   ringPos = 0;
   ringBuf.fill(0);
-  prevPower.fill(0);
   // (smoothing-state finns inte längre i alsaMic — körs i engine.tickInner)
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
