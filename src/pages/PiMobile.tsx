@@ -144,11 +144,7 @@ function GuidedGainWizard({
   const [progress, setProgress] = useState(0);
   const [measured, setMeasured] = useState<null | { ok: boolean; measuredRms: number }>(null);
 
-  const start = async () => {
-    await fetch(`${piBase}/api/auto-gain`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: false }),
-    }).catch(() => {});
+  const start = () => {
     setLow(null);
     setMeasured(null);
     setStep(1);
@@ -216,10 +212,6 @@ function GuidedGainWizard({
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ point1: p1, point2: p2 }),
     }).catch(() => {});
-    await fetch(`${piBase}/api/auto-gain`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: true }),
-    }).catch(() => {});
     onDone(p1, p2);
     close();
   };
@@ -279,7 +271,7 @@ function GuidedGainWizard({
         label="Finjustera"
         value={micGain}
         display={`${micGain.toFixed(1)}×`}
-        min={1} max={50} step={0.5}
+        min={GAIN_MIN} max={GAIN_MAX} step={1}
         onChange={onSlide}
       />
 
@@ -294,7 +286,7 @@ function GuidedGainWizard({
         variant="primary"
         disabled={sonosVolume == null || sameVol || measuring}
       >
-        {step === 1 ? 'Spara lågpunkt' : 'Spara & aktivera auto-gain'}
+        {step === 1 ? 'Spara lågpunkt' : 'Spara kurvan'}
       </Button>
     </div>
   );
