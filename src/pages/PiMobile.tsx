@@ -257,6 +257,22 @@ function GainCalibrationPanel({
       {/* Nivåmätare: visar om gainen ligger rätt (brusgolv ↔ clipping) */}
       <LevelMeter health={health} />
 
+      {/* Guidad tvåstegskalibrering mot Sonos-volym */}
+      <GuidedGainWizard
+        piBase={piBase}
+        sonosVolume={sonosVolume}
+        health={health}
+        micGain={micGain}
+        setMicGain={setMicGain}
+        onDone={(low, high) => {
+          setGainLow(low.gain);
+          setGainHigh(high.gain);
+          setEnabled(true);
+          fastPollUntilRef.current = Date.now() + 5000;
+        }}
+      />
+
+
       {/* Mode selector: Manual ↔ Auto */}
       <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-secondary/40 border border-border">
         <button
