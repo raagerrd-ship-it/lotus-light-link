@@ -55,6 +55,7 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
 - [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — hcitool for lescan, noble for GATT
+- [Heap-tak & swappiness](mem://pi/runtime/heap-cap-and-swappiness) — heap 96MB + vm.swappiness=10 mot watchdog-frysningar vid RSS ~110MB
 - [Hop/tick-låsning](mem://pi/audio/hop-size-decoupled) — HOP=600 (80Hz FFT) låst 2:1 mot tickMs=25; ändra båda ihop
 - [Runtime-hälsa](mem://pi/runtime/health-telemetry) — /api/status.runtime: fftFps, loopLag, tickJitter + OS-checklista
 
