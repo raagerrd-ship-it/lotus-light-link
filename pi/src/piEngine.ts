@@ -1143,14 +1143,23 @@ export class PiLightEngine {
             this._gridPulseCount++;
           }
         }
-        // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
-        if (bands) this.processDrop(bands.bassRms);
+        // Drop-detektor @100Hz (analysatorns dropCount med bas-svackan som fallback).
+        if (bands) this.processDrop(bands.bassRms, frame);
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
         // (50Hz) — center följer då 100% av musiken, inte varannan frame.
         if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
           const bN = normalizeFixed(bands.bassRms);
           const mN = normalizeFixed(bands.midHiRms);
-          const raw = bN * 0.5 + mN * 0.5;
+          let raw = bN * 0.5 + mN * 0.5;
+          // SEKTIONSMEDVETEN DYNAMIK (steg 2): frame.intensity är nivån relativt
+          // LÅTENS EGET snitt (0.5 = snittet). Mic-energin vet bara hur högt det
+          // är just nu — den kan inte skilja en tyst låt från en breakdown i en
+          // hög låt. Att blanda in intensity flyttar centret nedåt i breakdowns
+          // (mer expansion i det tysta) och uppåt i topp-zonen (mindre pumpande).
+          const infl = this.cal.intensityInfluence ?? 0;
+          if (infl > 0 && frame && frame.bpm > 40) {
+            raw = raw * (1 - infl) + frame.intensity * infl;
+          }
           this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
           if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
           else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
