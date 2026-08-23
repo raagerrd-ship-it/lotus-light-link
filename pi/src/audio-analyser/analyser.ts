@@ -3,8 +3,8 @@
  *
  * ⚠️  MIRROR — DO NOT EDIT DIRECTLY. Read-only i Lotus.
  * Master: DMX Control / pi-dmx/engine/src/analyser.ts.
- * Synk från commit: a5ccabe0
- *   git log a5ccabe0..HEAD -- pi-dmx/engine/src/analyser.ts
+ * Synk från commit: e5a72e88
+ *   git log e5a72e88..HEAD -- pi-dmx/engine/src/analyser.ts
  * För att uppdatera: ändra i DMX-projektet, commit:a där, kopiera hit,
  * uppdatera hashen ovan. Se README.md ("Source of truth").
  *
@@ -35,6 +35,7 @@ export interface AnalyserConfig {
   tauDown?: number;
   noiseFloor?: number;
 }
+
 
 /** Rikt log-spektrum (8 band) från den parallella 2048-FFT:n. Varje band är
  *  per-band AGC-normaliserat (0..1) så alla band nyttjar full range oavsett mix. */
@@ -104,16 +105,6 @@ export interface Frame {
 
 
 export class Analyser {
-  // Lotus-adapter: samma cfg-form som mastern, men matad ur AnalyserConfig.
-  private cfg: {
-    audio: { rate: number };
-    fft: { size: number; hop: number };
-    detection: { autoGainTarget: number; tauUp: number; tauDown: number; noiseFloor: number };
-    beat: BeatGrid | null;
-  };
-  /** Optional external beat grid (from a PLL). Null = no grid gate on kicks. */
-  setBeatGrid(grid: BeatGrid | null) { this.cfg.beat = grid; }
-  private magBigMax = 0;                // högsta bin banden läser (= bandHi[7], 16 kHz)
   private fft: FFT;
   private window: Float32Array;
   private buffer: Float32Array;      // sliding FFT window
@@ -143,6 +134,13 @@ export class Analyser {
   private bufferBig!: Float32Array;     // egen glidande buffert (matas samma hops)
   private prevMagBig!: Float32Array;    // för per-band flux
   private magBig!: Float32Array;        // scratch magnitud
+  private magBigMax = 0;                // högsta bin någon läser (band 8-taket)
+  /** Cachade vyer (0..magBigMax) till specSink — subarray() per stor-FFT vore 125
+   *  alloc/s. Vyerna växlas tillsammans med buffertarna, annars pekar de fel
+   *  varannan frame. */
+  private magBigView!: Float32Array;
+  private prevMagBigView!: Float32Array;
+
   private specBig!: number[];           // scratch complex (fft.js createComplexArray)
   private static readonly BAND_HZ = [20, 60, 120, 250, 500, 2000, 5000, 10000, 16000];
   private bandLo: number[] = [];        // bin-start per band (förberäknat)
@@ -157,6 +155,8 @@ export class Analyser {
   private bandOn = new Float32Array(8);    // scratch: per-band onset denna frame
   private bigCounter = 0;                  // decimering av 2048-FFT:n (se BIG_EVERY)
   private static readonly BIG_EVERY = 3;   // kor stor-FFT var N:e hop → analysen ryms i realtid
+  /** bandPeak-decay per stor-FFT (τ ≈ 3.8 s oavsett BIG_EVERY). */
+  private static readonly PEAK_DECAY = Math.pow(0.9993, Analyser.BIG_EVERY);
   /** Valfri avlyssnare på den stora magnituden (låtminnets fingeravtryck). */
   private specSink: ((mag: Float32Array, binHz: number) => void) | null = null;
   setSpectrumSink(fn: ((mag: Float32Array, binHz: number) => void) | null): void { this.specSink = fn; }
@@ -179,6 +179,8 @@ export class Analyser {
   private static readonly BPM_MIN = 80;    // festintervall; MAX maste vara exakt 2x MIN
   private static readonly BPM_MAX = 160;
   private octaveVote = 0;   // ackumulerat bevis för att byta oktav (självrättande lås)
+  private nearVote = 0;     // bevis för GRANN-fel (t.ex. 122 låst mot 136): bara före commit
+  private nearChallenger = 0;  // tempot grann-rösterna pekar på (måste hålla ihop, som challengerBpm)
   private bpmStable = 0;    // antal stabila (finjusterings-)estimat i rad → committa oktaven
   private challengerBpm = 0;   // tempot rösterna faktiskt pekar på (måste hålla ihop)
   private lockPeak = 0;        // tempogram-toppens styrka när takten är frisk (referens)
@@ -246,7 +248,7 @@ export class Analyser {
   private lvlSmooth = 0;
   private intensityEma = 0.5;    // sektionsenergi: utjämnad nivå
   private intensityFloor = 0.5;  // dess robusta P50-baslinje (låtens snitt)
-  private intensitySpread = 0.05;  // uppmatt dynamik (MAD) → sjalvkalibrerande skala
+  private intensitySpread = 0.05;  // glidande medelabsolutavvikelse (EJ median-MAD) → sjalvkalibrerande skala
   private activeMs = 0;          // hur länge musik spelat (warmup för baslinjen)
   // DROP-DETEKTION (flyttad från effects: analys hör hemma här; show-reaktionen stannar där)
   private levelCeil = 0.5;       // långsamt nivå-tak (låtens loud-topp)
@@ -306,13 +308,16 @@ export class Analyser {
   resetGain(startGain = 1) {
     // Seed per input: line (aux) arrives hot -> 1x; the room mic is weak -> ~20x.
     this.gain = Math.max(0.5, Math.min(20, startGain));
-    this.envelope = 0;
+    // NEUTRALT ÄR autoGainTarget, INTE 0: AGC:n räknar desired = target/max(1e-4, env),
+    // så env = 0 ger ett enormt tal som slår gainen i 20x-taket innan envelopen
+    // konvergerat — en hörbar ljuspump vid varje ingångsbyte.
+    this.envelope = this.cfg.detection.autoGainTarget;
   }
 
   /** Lock the AGC (aux: fixed 1x, level tracks the mixer directly) or let it run. */
   setGainLock(locked: boolean, fixed = 1) {
     this.gainLocked = locked;
-    if (locked) { this.gain = fixed; this.envelope = 0; }
+    if (locked) { this.gain = fixed; this.envelope = this.cfg.detection.autoGainTarget; }
   }
 
   /**
@@ -339,10 +344,18 @@ export class Analyser {
     const start = (this.envPos - N + L) % L;
     let energy = 0;
     pre[0] = 0;
-    for (let i = 0; i < N; i++) {
-      const v = ring[(start + i) % L];
+    // Ringen läses i TVÅ RAKA BLOCK. `% L` i den inre loopen kostade en modulo per
+    // sampel (N upp till 500, två anrop per computeBpm) helt i onödan.
+    const n1 = Math.min(N, L - start);
+    for (let i = 0; i < n1; i++) {
+      const v = ring[start + i];
       env[i] = v; energy += v; pre[i + 1] = pre[i] + v;
     }
+    for (let i = n1; i < N; i++) {
+      const v = ring[i - n1];
+      env[i] = v; energy += v; pre[i + 1] = pre[i] + v;
+    }
+
     // WHITENING: subtrahera ett LOKALT medel (1 s glidande) i stället för det
     // globala. En långsam nivådrift inom fönstret (uppbyggnad, breakdown, AGC som
     // andas) läcker annars rakt in i autokorrelationen och lyfter de långa laggen.
@@ -427,8 +440,8 @@ export class Analyser {
       scoreSum += v; scoreCount++;
       if (v > bestVal) { bestVal = v; bestLag = lag; }
     }
-    const env = this.envScratch;     // helbandets whitenade envelope (scoreEnv körde sist)
-    const envPos = this.envPosScratch;
+    const envPos = this.envPosScratch;   // helbandets rektifierade envelope (scoreEnv körde sist)
+
 
     if (bestLag === 0 || bestVal <= 0) return;
     // Peak-to-mean confidence: en tydlig takttopp sticker ut från medelnivån,
@@ -471,15 +484,21 @@ export class Analyser {
     }
 
     // Parabolisk interpolation kring toppen → sub-lag-precision (t.ex. 125 ist. 122).
-    // Tar värdena UR ac[] i stället för att räkna om tre autokorrelationer per anrop
-    // (tre O(N)-loopar, ~1200 mult). ac[] är dessutom LENGTH-NORMALISERAD, så
-    // parabelns vertex mäts på samma skala som toppvalet gjordes på.
+    // Läser acScratch (råa autokorrelationen), INTE tempoGram: PROVAT (2026-08-23)
+    // att interpolera på samma yta toppen valdes ur, men tempogrammets prior-vikt är
+    // en lutning över lag och drog vertexen mot 120 BPM (128→127, 150→149, taktfas
+    // 128→129). Råkurvan är symmetrisk kring toppen och landar exakt.
+    // ÄVEN PROVAT (2026-08-23): (wFull·scoreFull + wBass·scoreBass) / priorLut, dvs
+    // bandviktad yta med priorn dividerad bort. Samma bias kvar (128→127.0,
+    // 140→139.0, 150→149.0) — comb/pulse-normaliseringen i scoreEnv är inte heller
+    // symmetrisk kring toppen. acScratch ger 128.0/140.0/150.0 exakt. Behålls.
     let lagF = bestLag;
-    if (bestLag > lagMin && bestLag + 1 <= lagMax) {
+    if (bestLag - 1 >= lagMin && bestLag + 1 <= lagMax) {
       const yl = this.acScratch[bestLag - 1], y0 = this.acScratch[bestLag], yr = this.acScratch[bestLag + 1];
       const den = yl - 2 * y0 + yr;
       if (den < 0) { const d = 0.5 * (yl - yr) / den; if (Math.abs(d) < 1) lagF = bestLag + d; }
     }
+
 
     let bpm = (HZ * 60) / lagF;
     // BPM-FILTER: vik in i 80..160 — festmusik ligger dar, och allt utanfor ar
@@ -527,6 +546,7 @@ export class Analyser {
       const committed = this.bpmStable >= 60;
       const ratio = med / this.localBpm;
       if (ratio >= 0.9 && ratio <= 1.11) {
+        this.nearVote = 0; this.nearChallenger = 0;                                 // samma takt → inget grann-fel
         this.localBpm = Math.round(this.localBpm + (med - this.localBpm) * 0.35);   // samma takt → glid
         this.octaveVote *= 0.5;
         // Referens för hur STARK takten är när allt är gott — låtbytesgrinden nedan
@@ -539,8 +559,34 @@ export class Analyser {
       } else if (!committed && ratio < 0.7) {
         this.octaveVote = Math.min(0, this.octaveVote) - 1;                          // estimaten LÄGRE oktav
         if (this.octaveVote <= -8) { this.localBpm = Math.round(med); this.octaveVote = 0; this.bpmStable = 0; }
+      } else if (!committed) {
+        // GRANNRÄTTNING: ett tidigt lås från 0.5 s fönster kan hamna 10-20 % fel
+        // (MÄTT: brusigt rum 136 låste 122 på en av åtta brus-seeder och satt kvar
+        // hela låten — glid-bandet slutar vid 1.11 och oktav-grenen börjar vid 1.4,
+        // så felet låg i ett dödområde). Räknas bara före commit.
+        // SAMMA TRE SKYDD som låtbytesvägen, av samma mätta skäl:
+        //   1. SAMMANHÅLLEN UTMANARE — brus är oense men pekar ingenstans; utan detta
+        //      kunde estimat som studsar 0.75×↔1.3× rösta fram ett byte och låsa på
+        //      vad `med` råkade vara.
+        //   2. KVALITETSGRIND — conf-golv, annars kan ett intro/en tidig break (där
+        //      råestimatet vandrar) yanka låset under de första 15 s.
+        //   3. HISTORIKEN TÖMS vid omlåsning — annars drar medianfönstret, halvfullt
+        //      av det felaktiga tempot, tillbaka och låset glider i stället för att landa.
+        if (conf < 0.75) {
+          this.nearVote = 0; this.nearChallenger = 0;
+        } else if (this.nearChallenger > 0 && Math.abs(bpm / this.nearChallenger - 1) <= 0.04) {
+          this.nearChallenger += (bpm - this.nearChallenger) * 0.3;
+          this.nearVote++;
+          if (this.nearVote >= 8) {
+            this.localBpm = Math.round(med);
+            this.bpmHistLen = 0; this.bpmHistPos = 0;
+            this.nearVote = 0; this.nearChallenger = 0; this.octaveVote = 0; this.bpmStable = 0;
+          }
+        } else {
+          this.nearChallenger = bpm; this.nearVote = 1;
+        }
       } else {
-        this.octaveVote *= 0.7;                                                      // mellanting (3/2) / committad off-oktav → brus
+        this.octaveVote *= 0.7;                                                      // committad off-oktav → brus
       }
 
       // ── LÅTBYTE UTAN TYSTNADSLUCKA ────────────────────────────────────────────
@@ -607,7 +653,7 @@ export class Analyser {
       }
     }
     // Smooth confidence (undvik hoppig UI); attack snabbt, release långsamt.
-    // TIDSBASERAD alpha: computeBpm() körs 100 Hz olåst men 20 Hz låst (adaptiv
+    // TIDSBASERAD alpha: computeBpm() körs 100 Hz olåst men 4 Hz låst (adaptiv
     // stride). Med fasta 0.35/0.08 rörde konfidensen sig 5× olika snabbt beroende
     // på läge — och den grindar kick-gridet (>0.5), PLL-frekvenstermen (>0.4) och
     // hjärtslagets djup. Tidskonstanterna (25 ms upp, 120 ms ner) är valda så att
@@ -626,7 +672,7 @@ export class Analyser {
   resetTempo(): void {
     this.localBpm = 0; this.localBpmConfidence = 0;
     this.bpmHistLen = 0; this.bpmHistPos = 0;
-    this.octaveVote = 0; this.bpmStable = 0; this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0; this.lockPeak = 0;
+    this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0; this.bpmStable = 0; this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0; this.lockPeak = 0;
     this.tempoGram.fill(0);
     this.barAcc.fill(0); this.barCount = 0;
   }
@@ -636,7 +682,14 @@ export class Analyser {
 
   private envelope: number;
   private lastKick = 0;
-  private lastT = performance.now();
+  // 0 = "ej satt". Får INTE seedas med performance.now(): vid virtuell klocka
+  // (perfNow → virtualMs, startar nära 0) blir första dt negativ → exp(+stort)
+  // → NaN i envelope/gain, och NaN passerar båda clamparna nedan.
+  private lastT = 0;
+  /** Löpande kvadratsumma över `buffer` (glidande RMS) + räknare för full omräkning. */
+  private sumSq = 0;
+  private rmsRecalc = 0;
+
   /** VIRTUELL KLOCKA. Analysatorns dtHop är sampelbaserad, men fyra beslut läser
    *  väggklockan — drop-spärren ("8 takter sedan förra"), svackans ålder, riserns
    *  ålder. Spelar man upp en inspelning snabbare än realtid hinner åtta takter
@@ -653,6 +706,16 @@ export class Analyser {
   private perfNow(): number { return this.virtualMs ?? performance.now(); }
   private wallNow(): number { return this.virtualMs === null ? Date.now() : this.virtualEpoch + this.virtualMs; }
   private virtualEpoch = 1700000000000;
+
+  // Lotus-adapter: samma cfg-form som mastern, men matad ur AnalyserConfig.
+  private cfg: {
+    audio: { rate: number };
+    fft: { size: number; hop: number };
+    detection: { autoGainTarget: number; tauUp: number; tauDown: number; noiseFloor: number };
+    beat: BeatGrid | null;
+  };
+  /** Optional external beat grid (from a PLL). Null = no grid gate on kicks. */
+  setBeatGrid(grid: BeatGrid | null) { this.cfg.beat = grid; }
 
   constructor(cfgIn: AnalyserConfig) {
     const cfg = this.cfg = {
@@ -689,7 +752,10 @@ export class Analyser {
       this.bandHi[b] = Math.min(BIG / 2, Math.round(Analyser.BAND_HZ[b + 1] / binHzBig));
       this.bandPeak[b] = 1e-4;   // seed → själv-kalibrerar inom ~1s
     }
-    this.magBigMax = this.bandHi[7];   // banden läser aldrig över 16 kHz
+    this.magBigMax = Math.min(BIG / 2, this.bandHi[7] + 1);
+    this.magBigView = this.magBig.subarray(0, this.magBigMax);
+    this.prevMagBigView = this.prevMagBig.subarray(0, this.magBigMax);
+
     // FÖRBERÄKNADE EMA-ALFOR. dtHop och alla tidskonstanter är fasta, så de 11
     // Math.exp()-anropen per hop (~4000/s vid 375 Hz) hörde inte hemma i tick-vägen.
     const dtHop = cfg.fft.hop / cfg.audio.rate;
@@ -723,8 +789,30 @@ export class Analyser {
   process(samples: Float32Array): Frame {
     // Slide buffer left by hop, append new samples at end.
     const hop = samples.length;
+    // RMS på rå (o-fönstrad) buffert — LÖPANDE SUMMA. Bufferten glider en hop i
+    // taget, så det räcker att dra av utgående hop och lägga till den inkommande
+    // (128 ops i stället för 512 kvadrater, 375 gånger i sekunden). Full omräkning
+    // ~1×/s mot flyttalsdrift.
+    let ss = this.sumSq;
+    for (let i = 0; i < hop; i++) { const v = this.buffer[i]; ss -= v * v; }
     this.buffer.copyWithin(0, hop);
     this.buffer.set(samples, this.buffer.length - hop);
+    // Läs den INKOMMANDE hopen ur this.buffer (efter set), inte ur `samples`: annars
+    // adderas float64-tal och subtraheras float32-tal → systematisk drift, inte brus.
+    for (let i = this.buffer.length - hop; i < this.buffer.length; i++) { const v = this.buffer[i]; ss += v * v; }
+    if (++this.rmsRecalc >= 400 || ss < 0) {
+      this.rmsRecalc = 0; ss = 0;
+      for (let i = 0; i < this.buffer.length; i++) { const v = this.buffer[i]; ss += v * v; }
+    }
+    this.sumSq = ss;
+    // DC-HANTERING: PROVAT OCH FÖRKASTAT (2026-08-23), båda vägarna kostade lås:
+    //  • utesluta bin 0 ur bass/kick-banden — binbredden är 93.75 Hz, så bin 0 är
+    //    0–94 Hz och BÄR bastrumman ("brusigt rum 136" gick 100 % → 0 %);
+    //  • dra bort fönstrets medelvärde före FFT:n — vid 512 sampel (10.7 ms) är det
+    //    ett högpass kring 100 Hz som dämpade 58 Hz-kicken (92/100 BPM låste på 113);
+    //  • RMS som standardavvikelse (ss/N − mean²) — sänkte nivån just under
+    //    energi-grinden i brusiga rum (100 % → 0 %).
+    const rms = Math.sqrt(ss / this.buffer.length);
 
     // Windowed FFT (pre-allokerade scratchpads → ingen alloc/hop)
     const windowed = this.windowed512;
@@ -732,45 +820,62 @@ export class Analyser {
     const spectrum = this.spectrum512;
     this.fft.realTransform(spectrum, windowed);
 
-    // RMS on raw (un-windowed) buffer — cheaper and more stable for auto-gain
-    let sumSq = 0;
-    for (let i = 0; i < this.buffer.length; i++) sumSq += this.buffer[i] * this.buffer[i];
-    const rms = Math.sqrt(sumSq / this.buffer.length);
-
     // Magnitude spectrum + bass band (mag återanvänds; swap:as med prevMag nedan)
     const half = this.cfg.fft.size / 2;
     const mag = this.mag512;
     let bassEnergy = 0;
     let flux = 0;
     let kickFlux = 0;                               // onset ENBART i kick-bandet (sub-bas)
-    let magSum = 0, magW = 0;                       // för spektralt centroid
-    const binHz = this.cfg.audio.rate / this.cfg.fft.size;          // ~93.75 Hz @ 48k/512
+    let powSum = 0, powW = 0;                       // för spektralt centroid (EFFEKT-viktat)
     const bassBins = Math.min(16, half);                            // ~0–1.5 kHz
     const kickBins = Math.min(3, half);                            // bins 0–2 ≈ 0–280 Hz (kick-trumman)
 
+    // MAGNITUD (sqrt) räknas bara i basbanden — det är de enda bin som läses. Övriga
+    // 240 sqrt/hop (~90 000/s) fanns bara för centroiden, som nu viktar på EFFEKT
+    // (re²+im²) i stället: samma spektrala tyngdpunkt, ingen rot.
     for (let i = 0; i < half; i++) {
       const re = spectrum[2 * i];
       const im = spectrum[2 * i + 1];
-      mag[i] = Math.sqrt(re * re + im * im);
+      const p = re * re + im * im;
       if (i < bassBins) {
-        bassEnergy += mag[i];
-        const d = mag[i] - this.prevMag[i];
-        if (d > 0) { flux += d; if (i < kickBins) kickFlux += d; }    // half-wave rectified
+        const m = Math.sqrt(p);
+        mag[i] = m;
+        bassEnergy += m;
+        const dd = m - this.prevMag[i];
+        if (dd > 0) { flux += dd; if (i < kickBins) kickFlux += dd; }   // half-wave rectified
       }
-      magSum += mag[i]; magW += i * mag[i];          // centroid = viktad medelfrekvens
+      powSum += p; powW += i * p;
     }
+
 
     // Swap: denna hops magnitud blir nästa hops prevMag (zero-copy, ingen alloc).
     { const t = this.prevMag; this.prevMag = this.mag512; this.mag512 = t; }
     // Gain-compensated like `level` — otherwise the band-driven fixtures and
     // the kick energy gate die at low volume while the AGC keeps level alive.
     const energy = Math.min(1, (bassEnergy / bassBins) * 0.02 * this.gain);
-    const centroid = magSum > 1e-6 ? Math.min(1, (magW / magSum) / half) : 0;
+    // CENTROID-KALIBRERING (mätt 2026-08-23, 60 s syntetisk låt 128 BPM, statistik
+    // på `frame.centroid` = det EMA-utjämnade värdet, inte råvärdet per hop):
+    //   magnitudviktad (gamla) p10/p50/p90 = 0.194 / 0.254 / 0.343
+    //   effektviktad rå                    = 0.025 / 0.044 / 0.115
+    // Effektvikten kvadrerar ungefär tyngdpunkten, så sqrt återställer skalan.
+    // KONSTANTEN 1.47 ÄR PASSAD MOT MEDIANEN, inget annat: sqrt är monoton, så en
+    // enda faktor kan bara träffa en percentil. Efter ändringen mätte utjämnade
+    // p10/p50/p90 = 0.176 / 0.223 / 0.353 — p50 landar där den låg, svansarna
+    // ungefär (den övre något bredare). Kostar 1 sqrt/hop i stället för 240, och
+    // `centSmooth > centSlow + 0.06` samt effektlagrets färgtemperatur läser rätt
+    // storleksordning igen.
+    // FOTNOT: sqrt(effektviktad tyngdpunkt) är INTE samma mått som magnitudviktad —
+    // effektvikten ger de starkaste binen mer att säga till om, så glesa/ljusa
+    // arrangemang (sparsam techno, akustiskt) kan landa annorlunda. Riser-grinden är
+    // relativ och tål det; färgtemperaturen är absolut och märks först. Ser lamporna
+    // ovanligt varma ut på ett spår utanför sviten är det här konstanten sitter.
+    const centroid = powSum > 1e-12 ? Math.min(1, Math.sqrt(1.47 * (powW / powSum) / half)) : 0;
     const fluxNorm = Math.min(1, flux * 0.005);
+
 
     // Auto-gain (slow: seconds-to-minute timescales)
     const now = this.perfNow();
-    const dt = Math.min(0.1, (now - this.lastT) / 1000);
+    const dt = this.lastT === 0 ? 0 : Math.max(0, Math.min(0.1, (now - this.lastT) / 1000));
     this.lastT = now;
     const d = this.cfg.detection;
     // AGC körs BARA för mic (aux låser gain på 1× — line-level är hett & stabilt).
@@ -823,11 +928,17 @@ export class Analyser {
     // VIKTIGT: referensen ar cfg.beat.anchorMs (PLL:ens stabila fas), INTE
     // this.beatAnchorMs - den senare sätts av varje detekterad kick och vore
     // cirkulär: en falsk kick skulle flytta gridet den doms mot.
+    //
+    // TIDSBAS: anchorMs är VÄGGKLOCKA (PLL:en mäter mot frame.kickAtMs = wallNow()).
+    // Här användes `now` = perfNow() (ms sedan processtart) — 1,7·10¹² ms fel, vilket
+    // efter `% gridMs` blev en konstant men helt godtycklig fasförskjutning: grinden
+    // släppte igenom transienter i fel fas och kastade äkta kickar.
     const grid = this.cfg.beat;
     if (above && grid && grid.bpm > 40 && this.localBpmConfidence > 0.5) {
       const beatMs = 60000 / grid.bpm;
       const gridMs = beatMs / 2;                    // attondelar: four-on-the-floor + upptakter
-      let offset = ((now - grid.anchorMs) % gridMs + gridMs) % gridMs;
+      const offset = ((this.wallNow() - grid.anchorMs) % gridMs + gridMs) % gridMs;
+
       const distToGrid = Math.min(offset, gridMs - offset);
       const tolerance = Math.max(30, beatMs * 0.15);   // ~+-40 ms vid 150 BPM
       if (distToGrid > tolerance) above = false;    // skarp transient, men felplacerad
@@ -849,7 +960,7 @@ export class Analyser {
     // Tystnad → nollställ BPM-klockan så beat-effekter inte fortsätter i fantom-takt.
     if (rms < this.cfg.detection.noiseFloor * 1.5) {
       this.silentMs += hopMs;
-      if (this.silentMs > 350) { this.localBpm = 0; this.localBpmConfidence = 0; this.octaveVote = 0; this.bpmStable = 0; this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0; this.lockPeak = 0; this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0; this.bpmHistLen = 0; this.bpmHistPos = 0; this.tempoGram.fill(0); this.envBassAccum = 0; this.barAcc.fill(0); this.barCount = 0; }
+      if (this.silentMs > 350) { this.localBpm = 0; this.localBpmConfidence = 0; this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0; this.bpmStable = 0; this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0; this.lockPeak = 0; this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0; this.bpmHistLen = 0; this.bpmHistPos = 0; this.tempoGram.fill(0); this.envBassAccum = 0; this.barAcc.fill(0); this.barCount = 0; }
     } else {
       this.silentMs = 0;
     }
@@ -933,14 +1044,16 @@ export class Analyser {
     const dtHop = this.dtHop;
     const aAtt = this.aAtt;
     const aRel = this.aRel;
-    const smooth = (prev: number, x: number) => prev + (x - prev) * (x > prev ? aAtt : aRel);
-    this.lvlSmooth = smooth(this.lvlSmooth, level);
+    // Modulnivå-funktion, inte closure: två closures per hop (~750/s) allokerades
+    // rakt emot filens 0-alloc-ambition.
+    this.lvlSmooth = ema(this.lvlSmooth, level, aAtt, aRel);
     // VU-nivå: symmetrisk ~200ms lågpass PÅ HOP-TAKT (integrerar alla 375 hops/s
     // → långt mindre brus än att smootha rå-nivån efter 50Hz-decimering). ≤200 BPM
     // = ett slag var ≥300ms, så 200ms suddar aldrig ut en äkta beat — bara brus.
     this.lvlVU += (level - this.lvlVU) * this.aVU;
-    this.engSmooth = smooth(this.engSmooth, energy);
-    this.centSmooth = smooth(this.centSmooth, centroid);
+    this.engSmooth = ema(this.engSmooth, energy, aAtt, aRel);
+    this.centSmooth = ema(this.centSmooth, centroid, aAtt, aRel);
+
 
     // SEKTIONSENERGI (0..1) — hur energiskt partiet är RELATIVT låtens eget snitt.
     // Ren analys av nivån över tid → hör hemma här, inte i show-orkestreringen.
@@ -994,18 +1107,18 @@ export class Analyser {
     const bigDt = dtHop * Analyser.BIG_EVERY;
     for (let i = 0; i < this.bufferBig.length; i++) this.windowedBig[i] = this.bufferBig[i] * this.windowBig[i];
     this.fftBig.realTransform(this.specBig, this.windowedBig);
-    const halfBig = this.bufferBig.length / 2;
-    // Banden läser bara upp till bin 683 (16 kHz, BAND_HZ[8]). Räkna sqrt bara så
-    // långt — MEN full bredd när en spectrum-sink (låtminnets fingerprint/novelty)
-    // är kopplad, den kan läsa hela spektrumet.
-    const magLimit = this.specSink ? halfBig : this.magBigMax;
-    for (let i = 0; i < magLimit; i++) {
+    // Bara upp till högsta bin som någon läser (band 8 slutar vid 16 kHz ≈ bin 683,
+    // låtminnet slutar vid 5 kHz ≈ bin 218). Resterande ~340 sqrt per stor-FFT hade
+    // ingen läsare.
+    for (let i = 0; i < this.magBigMax; i++) {
       const re = this.specBig[2 * i], im = this.specBig[2 * i + 1];
       this.magBig[i] = Math.sqrt(re * re + im * im);
     }
+
     // LÅTMINNET får samma magnitud (ingen extra FFT). Anropas före swap:en nedan,
-    // så bufferten faktiskt innehåller DENNA frames spektrum.
-    this.specSink?.(this.magBig, this.cfg.audio.rate / this.bufferBig.length);
+    // så bufferten faktiskt innehåller DENNA frames spektrum. Skickas som cachad vy
+    // (0..magBigMax) — svansen räknas inte, så ingen läsare kan tyst få nollor.
+    this.specSink?.(this.magBigView, this.cfg.audio.rate / this.bufferBig.length);
     const gated = rms > this.cfg.detection.noiseFloor * 1.5;
 
     for (let b = 0; b < 8; b++) {
@@ -1024,8 +1137,11 @@ export class Analyser {
       // tyst band (t.ex. diskant i ett intro) smäller till blir det en balanserad
       // respons, inte en överstyrd ljus-chock/pump. (Gemini.)
       const minPeak = this.lvlSmooth * 0.15;
+      // DECAYEN SKALAS MED BIG_EVERY: blocket körs 125/s, inte 375/s. Rå 0.9993 gav
+      // τ ≈ 11 s i stället för kalibrerade ~3.8 s (ett hett band höll sin peak in i
+      // nästa parti → konstlat låg diskant efter en drop). PEAK_DECAY = 0.9993^BIG_EVERY.
       if (gated && avg > this.bandPeak[b]) this.bandPeak[b] = Math.max(avg, minPeak);
-      else this.bandPeak[b] = Math.max(this.bandPeak[b] * 0.9993, minPeak);
+      else this.bandPeak[b] = Math.max(this.bandPeak[b] * Analyser.PEAK_DECAY, minPeak);
       // Nivån smoothas ~90ms PÅ HOP-TAKT → nivå-drivna/lugna effekter (som läser
       // spec via ctx.band) flimrar inte av det råa per-hop-AGC-bruset. onset lämnas
       // skarp (nedan) så transient-drivna effekter behåller sin punch.
@@ -1052,7 +1168,8 @@ export class Analyser {
       // Skala mot MAD i stallet for en fast faktor -> sjalvskalande per band.
       this.bandOn[b] = gated ? Math.max(0, Math.min(1, (fluxN - oThr) / Math.max(1e-6, this.onsetMad[b] * 3))) : 0;
     }
-    { const t = this.prevMagBig; this.prevMagBig = this.magBig; this.magBig = t; }
+    { const t = this.prevMagBig; this.prevMagBig = this.magBig; this.magBig = t;
+      const v = this.prevMagBigView; this.prevMagBigView = this.magBigView; this.magBigView = v; }
     }   // slut på decimerad stor-FFT
     // TRUM-KIT peak-hold-envelopes PÅ HOP-TAKT (var 2.7ms) → fångar varje anslag,
     // aldrig missat mellan två render-frames (100Hz). tau bevarade från effects.ts:
@@ -1091,7 +1208,7 @@ export class Analyser {
     this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / 0.12);
     this.bodyCeil = Math.max(this.bodyEnv, this.bodyCeil - dtHop * 0.015 * this.bodyCeil);
 
-    // BAS-FRÅNVARO med VARAKTIGHETSKRAV: under 30 % av taket i ≥3 s i sträck.
+    // BAS-FRÅNVARO med VARAKTIGHETSKRAV: under 40 % av taket i ≥2 s i sträck.
     if (this.bodyEnv < this.bodyCeil * 0.40) {
       this.bodyGoneMs += dtHop * 1000;
       if (this.bodyGoneMs >= 2000) this.lastBodyGoneMs = nowWallA;
@@ -1148,12 +1265,18 @@ export class Analyser {
     // ~21s vid 90 BPM.
     const minGapMs = this.localBpm > 40 ? (32 * 60000 / this.localBpm) : 13000;
     const dropSpacingOk = nowWallA - this.lastDropMs > minGapMs;
-    // RISER-KRAVET AR AVSTANGT. Tanken var ratt - en drop ar kulmen pa en
-    // uppbyggnad - men det grindade pa en DOD signal och slog darmed av drop-
-    // detektionen helt i stallet for att rensa den.
-    //   MATT: buildUp p50=0.00 p90=0.00 p99=0.31 (kravet ar >0.35) och inRiser
-    //   0% av tiden -> 0 drops pa 70s. Riser-detektorn fyrar i princip aldrig.
-    // Innan kravet kan aterinforas maste inRiser/buildUp lagas och matas om.
+    // RISER-KRAVET AR AVSTANGT — men INTE for att signalen ar dod. Den gamla
+    // motiveringen ("inRiser 0% av tiden, buildUp p99=0.31") mattes mot en
+    // aldre riser-detektor och ar RADERAD som falsk.
+    //   OMMATT mot novelty-baserad novRiser (tools/testDrops.mjs, 8 seeder):
+    //   inRiser 8.8% av tiden, buildUp p50=0.00 p90=0.00 p99=0.42 max=0.85.
+    //   p50/p90=0 ar forvantat — en riser SKA vara sallsynt. I ett brusigt rum
+    //   fyrar den nastan aldrig (0.6%, max 0.04), sa ett hart riser-krav skulle
+    //   sla av drop-detektionen just dar mikrofonen sitter.
+    // Kravet ar fortfarande avstangt tills det matts om mot bodyOnset pa akta
+    // material (se nedan) — men grunden ar nu grindens kalibrering, inte en dod
+    // signal.
+
 
     // FLANKEN TAS PÅ BASKROPPEN, inte på nivån. Nivå-zonen var sann 80 % av tiden
     // i ägarens musik → dess flanker låg godtyckligt, och 8-takters-spärren blev
@@ -1203,13 +1326,13 @@ export class Analyser {
     this.profBright += (brightW - this.profBright) * pr;
     this.profBeat += (this.localBpmConfidence - this.profBeat) * pr;
     // Skala råvärdena till användbara 0..1-spann (typiska musikvärden → full range).
-    const cl = (x: number) => x < 0 ? 0 : x > 1 ? 1 : x;
     // Skalningen är KALIBRERAD mot uppmätta råvärden på riktig musik (annars
     // mättar punch på 1.00 och bright ligger konstant högt → ingen diskriminering).
-    this.outProfile.punch = cl((this.profPunch - 0.05) / 0.40);
-    this.outProfile.bass = cl((this.profBass - 0.28) / 0.30);
-    this.outProfile.bright = cl((this.profBright - 0.14) / 0.19);
-    this.outProfile.beat = cl(this.profBeat);
+    this.outProfile.punch = cl01((this.profPunch - 0.05) / 0.40);
+    this.outProfile.bass = cl01((this.profBass - 0.28) / 0.30);
+    this.outProfile.bright = cl01((this.profBright - 0.14) / 0.19);
+    this.outProfile.beat = cl01(this.profBeat);
+
 
     const L = this.bandLvl, O = this.bandOn;
     const spec = this.outSpec, onset = this.outOnset;
@@ -1229,6 +1352,14 @@ export class Analyser {
     return f;
   }
 }
+
+/** Asymmetrisk EMA (snabb attack, långsam release) — modulnivå så tick-vägen
+ *  inte allokerar en closure per hop. */
+function ema(prev: number, x: number, aUp: number, aDown: number): number {
+  return prev + (x - prev) * (x > prev ? aUp : aDown);
+}
+
+function cl01(x: number): number { return x < 0 ? 0 : x > 1 ? 1 : x; }
 
 function hannWindow(n: number): Float32Array {
   const w = new Float32Array(n);
