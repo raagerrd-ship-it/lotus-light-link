@@ -14,3 +14,10 @@ type: feature
 **UI (PiMobile):** ingen Manuell/Auto-toggle. Två cal-slidrar 5–300× med debounce:ad PUT (150 ms) + snabbpoll 400 ms i 5 s, nivåbar med klipp-zon 90–100 % och peak-hold 0.8 s. Wizarden är ett ENGÅNGS-verktyg som aldrig kör av sig själv.
 
 Efter uppgraderingen måste kurvan sättas om (gamla punkter är ~5× för låga).
+
+**Uppdatering 2026-08-23 — soft-clip borta (helt linjär kedja):**
+- `alsaMic` mic-soft-clip `x/(1+|x|)` BORTTAGEN. Lotus spelar aldrig upp ljud, så knät skyddade inget — det komprimerade topparna så gain 8/31/57 alla gav ~50 % ljus.
+- `analyser.setGainLock(true, 1)`: analysatorns interna AGC låst på 1×, annars normaliserar den bort mic-gainen.
+- `BAND_SCALE = 1.0` (var 0.45) — enda taket är `energyNorm > 1 → 1`.
+- `getMicHealth()` mäter nu peak/clip på LJUS-DRIVANDE bandenergin (max av bassRms/midHiRms) i emitBands, inte på PCM-samples. Kalibrering och NIVÅ-bar speglar därmed exakt det ljuset gör.
+- Aldrig återinföra soft-clip, AGC eller extra skalkonstanter i mic-pathen.
