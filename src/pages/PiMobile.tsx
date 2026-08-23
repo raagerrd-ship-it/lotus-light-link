@@ -929,6 +929,31 @@ export default function PiMobile() {
   const bleState: 'ok' | 'warn' | 'error' | 'idle' =
     bleConnected ? 'ok' : piOnline === false ? 'error' : 'idle';
 
+  const statusPill = (state: 'ok' | 'warn' | 'error' | 'idle') => {
+    switch (state) {
+      case 'ok':
+        return {
+          wrap: 'bg-ok/15 text-ok ring-1 ring-inset ring-ok/30',
+          dot: 'bg-ok shadow-[0_0_6px_hsl(var(--ok)/0.6)]',
+        };
+      case 'warn':
+        return {
+          wrap: 'bg-warn/15 text-warn ring-1 ring-inset ring-warn/30',
+          dot: 'bg-warn',
+        };
+      case 'error':
+        return {
+          wrap: 'bg-destructive/15 text-destructive ring-1 ring-inset ring-destructive/30',
+          dot: 'bg-destructive shadow-[0_0_6px_hsl(var(--destructive)/0.5)]',
+        };
+      default:
+        return {
+          wrap: 'bg-foreground/[0.05] text-muted-foreground/70 ring-1 ring-inset ring-border/60',
+          dot: 'bg-muted-foreground/30',
+        };
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Sticky header — identitet, live-status och spara */}
@@ -945,21 +970,23 @@ export default function PiMobile() {
           </div>
 
           {/* Live status pills */}
-          <div className="flex items-center gap-2 bg-secondary/50 px-2.5 py-1.5 rounded-full border border-border/60">
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-primary animate-pulse shadow-[0_0_6px_hsl(var(--primary))]' : 'bg-muted-foreground/30'}`} />
-              <span className={`text-[10px] font-semibold uppercase tracking-widest ${engineStatus?.running ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>Motor</span>
-            </div>
-            <div className="w-px h-3 bg-border" />
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 rounded-full ${sonosPlaying ? 'bg-ok shadow-[0_0_6px_hsl(var(--ok)/0.6)]' : sonosState ? 'bg-warn' : 'bg-muted-foreground/30'}`} />
-              <span className={`text-[10px] font-semibold uppercase tracking-widest ${sonosState ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>Sonos</span>
-            </div>
-            <div className="w-px h-3 bg-border" />
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 rounded-full ${bleConnected ? 'bg-ok shadow-[0_0_6px_hsl(var(--ok)/0.6)]' : 'bg-muted-foreground/30'}`} />
-              <span className={`text-[10px] font-semibold uppercase tracking-widest ${bleConnected ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>Lamp</span>
-            </div>
+          <div className="flex items-center gap-1.5">
+            {[
+              { label: 'Motor', state: engineState },
+              { label: 'Sonos', state: sonosState2 },
+              { label: 'Lamp', state: bleState },
+            ].map(({ label, state }) => {
+              const s = statusPill(state);
+              return (
+                <div
+                  key={label}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-full transition-colors ${s.wrap}`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                  <span className="text-[10px] font-semibold uppercase tracking-widest">{label}</span>
+                </div>
+              );
+            })}
           </div>
 
           <button
