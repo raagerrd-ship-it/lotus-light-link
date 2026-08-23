@@ -392,8 +392,18 @@ function GainCalibrationPanel({
             value={micGain}
             display={`${micGain.toFixed(1)}×`}
             min={1} max={50}
-            onChange={setMicGain}
+            onChange={(g) => {
+              setMicGain(g);
+              // Skicka direkt så nivåmätaren speglar den gain man just satte.
+              fetch(`${piBase}/api/mic-gain`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gain: g }),
+              }).catch(() => {});
+              fastPollUntilRef.current = Date.now() + 5000;
+            }}
             hint="1× = rå signal. Högre = känsligare."
+
           />
           {effectiveGain != null && (
             <div className="pt-2 border-t border-border/60">
