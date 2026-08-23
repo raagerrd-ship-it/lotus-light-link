@@ -690,6 +690,38 @@ export function getAudioCbStats() {
 export function isMicActive(): boolean {
   return capture !== null;
 }
+// ── Nivå-hälsa (gain mot Sonos) ──
+// Fönster om ~1 s: peak (post-gain, före soft-clip) + andel samples över knät.
+const CLIP_LEVEL = 0.9;
+let healthPeakWin = 0;
+let healthClipWin = 0;
+let healthSampWin = 0;
+let healthWinAt = 0;
+let healthPeak = 0;
+let healthClipPct = 0;
+
+export interface MicHealth {
+  /** Post-gain peak 0..1+ i senaste fönstret. */
+  peak: number;
+  /** Andel samples (0..1) som nådde soft-clip-knät. */
+  clipPct: number;
+  /** 'low' = för lite gain (peak < 0.15), 'hot' = clipping, annars 'ok'. */
+  status: 'low' | 'ok' | 'hot';
+}
+
+export function getMicHealth(): MicHealth {
+  const now = performance.now();
+  if (now - healthWinAt >= 1000 && healthSampWin > 0) {
+    healthPeak = healthPeakWin;
+    healthClipPct = healthClipWin / healthSampWin;
+    healthPeakWin = 0; healthClipWin = 0; healthSampWin = 0;
+    healthWinAt = now;
+  }
+  const status: MicHealth['status'] =
+    healthClipPct > 0.001 ? 'hot' : healthPeak < 0.15 ? 'low' : 'ok';
+  return { peak: healthPeak, clipPct: healthClipPct, status };
+}
+
 function onAudioData(buf: Buffer): void {
   _audioCbCount++;
   _audioCbBytes += buf.byteLength;
@@ -712,9 +744,12 @@ function onAudioData(buf: Buffer): void {
   let pos = ringPos;
   const ring = ringBuf;
   const mask = RING_MASK;
-  // DEBUG-branch: peak-tracking inlinad bakom konstant flagga så V8 JIT
-  // kan eliminera grenarna helt i prod (DEBUG_ENABLED=false vid boot).
-  let peak = DEBUG_ENABLED ? debugPeakRaw : 0;
+  // Nivå-hälsa: peak + clip-räknare på post-gain-signalen (före soft-clip-knät).
+  // Två jämförelser per sample @48 kHz ≈ försumbart, och ger UI:t ett svar på
+  // om gainen ligger rätt mot Sonos-volymen.
+  let peak = debugPeakRaw;
+  let clipLocal = 0;
+  let sampLocal = 0;
   // Kalibrering: ackumulera rawPre² lokalt (block-summa) → commit efter loop.
   const calOn = micCalActive;
   let calSumLocal = 0;
@@ -740,10 +775,10 @@ function onAudioData(buf: Buffer): void {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
       }
-      if (DEBUG_ENABLED) {
-        const abs = raw < 0 ? -raw : raw;
-        if (abs > peak) peak = abs;
-      }
+      const absRaw = raw < 0 ? -raw : raw;
+      if (absRaw > peak) peak = absRaw;
+      if (absRaw > CLIP_LEVEL) clipLocal++;
+      sampLocal++;
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
@@ -767,10 +802,10 @@ function onAudioData(buf: Buffer): void {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
       }
-      if (DEBUG_ENABLED) {
-        const abs = raw < 0 ? -raw : raw;
-        if (abs > peak) peak = abs;
-      }
+      const absRaw = raw < 0 ? -raw : raw;
+      if (absRaw > peak) peak = absRaw;
+      if (absRaw > CLIP_LEVEL) clipLocal++;
+      sampLocal++;
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
@@ -781,7 +816,10 @@ function onAudioData(buf: Buffer): void {
   const prevRingPos = ringPos;
   ringPos = pos;
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
-  if (DEBUG_ENABLED) debugPeakRaw = peak;
+  debugPeakRaw = peak;
+  healthPeakWin = peak > healthPeakWin ? peak : healthPeakWin;
+  healthClipWin += clipLocal;
+  healthSampWin += sampLocal;
 
   if (calOn && micCalActive) {
     micCalSumSq += calSumLocal;
