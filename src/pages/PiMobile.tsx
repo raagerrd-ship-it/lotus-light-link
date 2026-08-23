@@ -989,12 +989,13 @@ export default function PiMobile() {
         <BleDeviceSection piBase={piBase} />
 
         {(() => {
-          const ready = piOnline === true && engineStatus?.running === true;
+          const ready = piOnline === true;
+          const engineRunning = engineStatus?.running === true;
           return (
             <div className={`space-y-3.5 ${!ready ? 'opacity-50 pointer-events-none select-none' : ''}`} aria-disabled={!ready}>
-              {!ready && (
+              {ready && !engineRunning && (
                 <div className="rounded-2xl border border-border bg-card/50 p-4 text-center text-[11px] text-muted-foreground">
-                  Väntar på motorn…
+                  Motorn är pausad — ändringar sparas och tillämpas när uppspelningen startar.
                 </div>
               )}
 
