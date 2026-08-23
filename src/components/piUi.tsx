@@ -11,9 +11,9 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-border bg-card/70 p-4 ${className}`}>
+    <section className={`rounded-2xl border border-border bg-card/70 px-4 py-[18px] ${className}`}>
       {(title || action) && (
-        <div className="flex items-center justify-between gap-3 mb-3.5">
+        <div className="flex items-center justify-between gap-3 mb-4">
           <h2 className="label-eyebrow flex items-center gap-1.5">
             {icon}
             {title}
@@ -72,10 +72,10 @@ export function Slider({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="lotus-range mt-1"
+        className="lotus-range -my-1.5"
         style={{ ["--fill" as string]: fill }}
       />
-      {hint && <p className="text-[10px] leading-snug text-muted-foreground/80 -mt-0.5">{hint}</p>}
+      {hint && <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground/80">{hint}</p>}
     </div>
   );
 }
@@ -99,7 +99,7 @@ export function Segmented<T extends string>({
           <button
             key={o.value}
             onClick={() => onChange(o.value)}
-            className={`py-2 rounded-full text-[11px] font-semibold tracking-wide transition-colors ${
+            className={`min-h-[40px] rounded-full text-[11px] font-semibold tracking-wide transition-colors ${
               active
                 ? "bg-primary text-primary-foreground shadow-[0_0_18px_hsl(var(--primary)/0.35)]"
                 : "text-muted-foreground hover:text-foreground/80"
@@ -132,7 +132,7 @@ export function Button({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-semibold transition-all active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none ${styles} ${className}`}
+      className={`w-full flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-xl text-[12px] font-semibold transition-all active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none ${styles} ${className}`}
     >
       {children}
     </button>

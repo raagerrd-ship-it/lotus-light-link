@@ -927,7 +927,7 @@ export default function PiMobile() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Sticky header — identitet, live-status och spara */}
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
-        <div className="mx-auto max-w-md px-4 py-3 flex items-center justify-between gap-3">
+        <div className="mx-auto w-full max-w-[430px] px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${piOnline ? 'bg-ok shadow-[0_0_8px_hsl(var(--ok)/0.8)]' : 'bg-destructive'}`} />
@@ -942,7 +942,7 @@ export default function PiMobile() {
           <button
             onClick={handleSave}
             disabled={!piOnline}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold transition-all active:scale-[0.97] disabled:opacity-30 disabled:pointer-events-none ${
+            className={`shrink-0 flex items-center gap-1.5 px-4 min-h-[44px] rounded-xl text-[11px] font-semibold transition-all active:scale-[0.97] disabled:opacity-30 disabled:pointer-events-none ${
               saved
                 ? 'bg-ok/15 text-ok ring-1 ring-inset ring-ok/40'
                 : 'bg-primary text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)]'
@@ -954,7 +954,7 @@ export default function PiMobile() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-md px-4 pt-4 pb-10 safe-bottom space-y-4">
+      <main className="mx-auto w-full max-w-[430px] px-4 pt-4 safe-bottom space-y-3.5">
         <PermissionsBanner piBase={piBase} />
 
         {saveError && (
@@ -968,7 +968,7 @@ export default function PiMobile() {
         {(() => {
           const ready = piOnline === true && engineStatus?.running === true;
           return (
-            <div className={`space-y-4 ${!ready ? 'opacity-50 pointer-events-none select-none' : ''}`} aria-disabled={!ready}>
+            <div className={`space-y-3.5 ${!ready ? 'opacity-50 pointer-events-none select-none' : ''}`} aria-disabled={!ready}>
               {!ready && (
                 <div className="rounded-2xl border border-border bg-card/50 p-4 text-center text-[11px] text-muted-foreground">
                   Väntar på motorn…
@@ -976,7 +976,7 @@ export default function PiMobile() {
               )}
 
               {/* Ljusinställningar — appens huvudkontroller */}
-              <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-4">
+              <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-5">
                 <Slider
                   label="Softness"
                   value={cal.softness}
