@@ -50,6 +50,7 @@ export function LightPreview({
     const hist = new Float32Array(N);
     const raw = new Float32Array(N);
     let level = 0;
+    let center = 0.35;
     let raf = 0;
     const t0 = performance.now();
     const BEAT_MS = 500;
@@ -69,9 +70,12 @@ export function LightPreview({
       const release = 0.6 * Math.pow(0.04, p.softness / 100);
       level = x > level ? x : level + (x - level) * release;
 
-      // Dynamik: expansion/utjämning kring rörligt center.
-      let out = 0.45 + (level - 0.45) * (1 + p.dynamicDamping * 0.5);
-      out = Math.min(1, Math.max(0, out));
+      // Dynamik: expansion/utjämning kring rörligt center (som motorns dynamicCenter).
+      center += (level - center) * 0.02;
+      const gain = Math.pow(1.6, p.dynamicDamping);
+      let out = center + (level - center) * gain;
+      // Mjuk knä istället för hård klippning, så slidern syns i hela sitt spann.
+      out = out <= 0 ? 0 : out >= 1 ? 1 : out < 0.85 ? out : 0.85 + (1 - Math.exp(-(out - 0.85) / 0.15)) * 0.15;
 
       // Ljusgolv.
       const floor = p.brightnessFloor / 100;
