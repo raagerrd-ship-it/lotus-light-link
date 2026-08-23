@@ -13,7 +13,7 @@ drop-grindar, kick-detektor, trum-envelopes) måste denna fil re-synkas manuellt
 tills vi lyfter ut den till ett delat repo. Ändra INTE här utan att först ändra
 i DMX Control — annars divergerar de och vi får två analysatorer med olika buggar.
 
-Synkad från DMX Control commit: **`39eb98fd`**
+Synkad från DMX Control commit: **`a5ccabe0`**
 
 Diff mot master vid nästa re-synk:
 
