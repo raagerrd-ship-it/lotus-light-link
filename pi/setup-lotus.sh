@@ -494,7 +494,7 @@ Environment=PORT=$ENGINE_PORT
 Environment=ENGINE_PORT=$ENGINE_PORT
 Environment=UI_PORT=$PORT
 Environment=DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
-Environment=NODE_OPTIONS=--max-old-space-size=224
+Environment=NODE_OPTIONS=--max-old-space-size=96 --max-semi-space-size=4
 CPUAffinity=$CORE
 AllowedCPUs=$CORE
 MemoryMax=320M
