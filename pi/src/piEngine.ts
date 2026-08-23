@@ -186,12 +186,6 @@ export interface LightCalibration {
   /** Drop-källa: 'analyser' = analysatorns novelty/kropp-baserade dropCount (faller
    *  tillbaka på bas-svackan när takten inte är låst), 'bass' = bara egen svacka. */
   dropSource: 'analyser' | 'bass';
-  /** Transient-källa för pulsen: 'flux' = egen bas-flux, 'drum' = analysatorns
-   *  trumenvelope (kick skild från basgång). Default 'flux'. */
-  transientSource: 'flux' | 'drum';
-  /** Bandmix: 'legacy' = egen 2-bands-FFT, 'octave' = analysatorns oktavband med
-   *  per-band-AGC (jämnare ljusbild mellan låtar). Default 'legacy'. */
-  bandMixMode: 'legacy' | 'octave';
   /** Hur mycket analysatorns sektionsenergi (intensity) får dra dynamicCenter.
    *  0 = av (bara mic-energi), 1 = bara intensity. Default 0.3. */
   intensityInfluence: number;
@@ -225,8 +219,6 @@ const DEFAULT_CAL: LightCalibration = {
   beatLeadMs: 60,
   beatSyncStrength: 0.18,
   dropSource: 'analyser',
-  transientSource: 'flux',
-  bandMixMode: 'legacy',
   intensityInfluence: 0.3,
   barAccent: 1.0,
 };
@@ -1110,18 +1102,11 @@ export class PiLightEngine {
         const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat);
         let kickFired = false;
         if (passesEnergyGate) {
-          // Lågpass-onset: bassFlux summerar flux under cal.beatCutoffHz (setBeatCutoffHz).
-          // Full spektrum ≈ hög cutoff. Faller tillbaka på full flux om bands saknas.
-          let beatFlux = bands ? bands.bassFlux : flux;
-          // TRUMKÄLLA (steg 3): analysatorns kick-envelope är skild från basgången
-          // (spec.kick ≠ spec.bass), så pulsen hittar kicken även när basen maskerar
-          // den. Envelopen är 0..1 peak-hold medan flux typiskt ligger 0.05–0.5 —
-          // DRUM_TO_FLUX skalar in den i samma storleksordning så processOnsets
-          // absoluta golv (0.045) och median-prominens gäller oförändrat.
-          if (this.cal.transientSource === 'drum' && frame) {
-            const DRUM_TO_FLUX = 0.12;
-            beatFlux = (frame.drum.kick + 0.35 * frame.drum.snare) * DRUM_TO_FLUX;
-          }
+          // Lågpass-onset: bassFlux är analysatorns per-band-onsets under
+          // cal.beatCutoffHz (setBeatCutoffHz) — kick skild från basgång redan
+          // vid källan. Faller tillbaka på bredbands-flux om bands saknas.
+          const beatFlux = bands ? bands.bassFlux : flux;
+
           // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) — men den får
           // bara sätta pulsen när gridet inte driver den.
           kickFired = this.processOnset(beatFlux, !gridDrives);
@@ -1486,19 +1471,11 @@ export class PiLightEngine {
       }
 
       // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
-      let bassNorm = normalizeFixed(bands.bassRms);
-      let midHiNorm = normalizeFixed(bands.midHiRms);
-      // OKTAVBAND (steg 4): analysatorns 8 band är redan AGC:ade per band (0..1),
-      // så mixen blir jämn mellan låtar med olika mastering utan normalizeFixed.
-      // Kräver färsk frame + taktlås; annars kör 2-bands-vägen ovan vidare.
-      if (this.cal.bandMixMode === 'octave') {
-        const f = Date.now() - getLatestFrameAt() < 60 ? getLatestFrame() : null;
-        if (f && f.bpm > 40) {
-          const s = f.spec;
-          bassNorm = (s.sub + s.kick + s.bass) / 3;
-          midHiNorm = (s.mid + s.highMid + s.treble) / 3;
-        }
-      }
+      // bands kommer nu ur analysatorns oktavband (en källa) — normalizeFixed
+      // behålls så befintliga kalibreringar/gain-kurvor gäller oförändrat.
+      const bassNorm = normalizeFixed(bands.bassRms);
+      const midHiNorm = normalizeFixed(bands.midHiRms);
+
       // (dynamicCenter spåras nu i onFluxReady @ 100Hz — inte här)
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──

@@ -1,19 +1,23 @@
 /**
- * ALSA microphone input → FFT → BandResult.
+ * ALSA microphone input → analysator → BandResult.
  * Uses native alsa-capture (direct snd_pcm_readi, no subprocess) — HARD REQUIRED.
  * Engine refuses to start mic if vendored binding can't be loaded (no arecord
  * fallback, since arecord adds ~30-50ms latency we deliberately avoid).
- * Custom zero-alloc radix-2 FFT (no fft-js dependency).
  *
- * Event-driven: fires onFFTReady callback immediately after each FFT frame,
- * enabling the engine to process with zero additional latency.
+ * EN KÄLLA (2026-08-23): den egna 1024-FFT-pipen är BORTA. Allt spektrum
+ * beräknas nu EN gång, i audio-analyser (512 @375 Hz + 2048 @125 Hz), och
+ * motorns BandResult härleds ur analysatorns oktavband/onsets. Ingen signal
+ * beräknas längre två gånger → en plats att felsöka, en kalibrering.
+ *
+ * Event-driven: onFFTReady/onFluxReady fyras på BAND_HOP-takt (~75 Hz) direkt
+ * efter en analysator-hop, så motorn får noll extra latens.
  */
 
-import { fft1024, FFT_N } from './fftRadix2.js';
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame } from './audio-analyser/index.js';
 import { noteOverrun } from './runtimeHealth.js';
+
 
 let _overrunLogAt = 0;
 
@@ -155,124 +159,51 @@ export interface BandResult {
 }
 
 const SAMPLE_RATE = 48000;
-const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = 600 frames (12.5ms @ 48kHz) — exakt 80 Hz FFT-takt.
-// Låst mot tickMs=25 (40 pps): exakt 2 FFT-frames per engine-tick → senaste
-// FFT är max 12.5ms gammal när tickInner läser → jämn transient-respons utan
-// jitter mellan 1 och 2 frames per tick.
-// (Var 480 = 100 Hz, avstämt mot gamla tickMs=20. Med tickMs=25 gav det 2.5
-//  frames/tick → ojämn färskhet OCH 20% onödiga FFT:er på Zero 2W.)
-//
-// Engine.tickInner triggas bara på tickMs-takt (gate i piEngine.onFFTFrame
-// kollar `elapsed >= tickMs`) → BLE-trafik oförändrad.
-//
-// CPU-konsekvens: ~80 FFT/s. Sedan fftRadix2 kör reell-FFT (512-punkts komplex
-// + split) kostar en frame ~0.45ms på Zero 2W → ~3.5% CPU (var ~8% med full
-// 1024-punkts komplex FFT).
-// Vendor-bufferten är 8× period = 46ms vilket täcker värsta GC-pausen.
-const HOP_SIZE = 600;
 
-const BIN_COUNT = FFT_SIZE / 2;
-const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
-const FFT_MASK = FFT_SIZE - 1;
+// Ringbuffert-storlek. Behöver bara rymma några analysator-hops (jitter kan ge
+// 3 hops i en callback) — 1024 ger gott om marginal.
+const RING_SIZE = 1024;
+const RING_MASK = RING_SIZE - 1;
 
-// Pre-computed Hann window (~6% more energy than Blackman, minimal spectral leakage)
-const hannWindow = new Float64Array(FFT_SIZE);
-{
-  for (let i = 0; i < FFT_SIZE; i++) {
-    hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
-  }
-}
+// ── Band-takt mot motorn ──
+// Motorn tickar på 25 ms (40 pps). Analysatorn producerar en frame var 128:e
+// sample (2.67 ms). Vi fyrar band-eventet var 5:e hop ≈ 640 samples ≈ 13.3 ms
+// (~75 Hz) → ungefär 2 band-events per tick, precis som den gamla 600-hoppen,
+// men UTAN en andra FFT.
+const BAND_EVERY_HOPS = 5;
+let bandHopCounter = 0;
 
-// Frequency band cuts (Hz)
-// Bas: 60–150 Hz (~1.32 oktaver) — sub + kick fundamentals
-// Mid+Hi: 150–15000 Hz (~6.64 oktaver) — vocals, snare, hats, cymbals
-// Diskanten dränks tidigare av att vi delade per-bin: hi-bandet hade 466 bins
-// vs basens 3, så samma energi per Hz gav 100x lägre RMS i diskant.
-// Lösning: dela per oktav istället → matchar mänsklig perception.
-const LO_HZ_LOW = 60;
-const LO_HZ_HIGH = 150;
-const HI_HZ_LOW = 150;
-const HI_HZ_HIGH = 15000;
-const LO_BIN_LOW = Math.max(1, Math.floor(LO_HZ_LOW / BIN_WIDTH));
-const LO_BIN_HIGH = Math.floor(LO_HZ_HIGH / BIN_WIDTH);
-const HI_BIN_LOW = LO_BIN_HIGH;
-const HI_BIN_HIGH = Math.min(BIN_COUNT, Math.floor(HI_HZ_HIGH / BIN_WIDTH));
-// Oktav-bredd per band: log2(highHz/lowHz)
-const LO_OCTAVES = Math.log2(LO_HZ_HIGH / LO_HZ_LOW);
-const HI_OCTAVES = Math.log2(HI_HZ_HIGH / HI_HZ_LOW);
-// Normalisera så att RMS = sqrt(totalPower / oktaver) — energi-per-oktav
-const INV_LO_OCT = 1 / LO_OCTAVES;
-const INV_HI_OCT = 1 / HI_OCTAVES;
+// ── BandResult ur analysatorns oktavband ──
+// spec/onset är per-band AGC:ade 0..1. Motorn förväntar sig RMS-liknande värden
+// i ~0–0.2-domänen (RAW_SCALE=5 i piEngine) → BAND_SCALE flyttar dit.
+// frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
+// tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
+const BAND_SCALE = 0.45;
+// Bandvikter: låg = sub/kick/bas, hög = lowMid..air (summerar till 1 var).
+const W_SUB = 0.35, W_KICK = 0.45, W_BASS = 0.20;
+const W_LOWMID = 0.20, W_MID = 0.30, W_HIGHMID = 0.25, W_TREBLE = 0.15, W_AIR = 0.10;
 
-// ── Beat-detektionens lågpass-brytfrekvens ──
-// bassFlux summeras över alla bins UNDER denna bin (kick/bas-onset). Default 150 Hz
-// (samma som tidigare fasta split). Runtime-tunbar via setBeatCutoffHz() från engine.
-let beatCutoffBin = LO_BIN_HIGH;
+// Övre kant (Hz) per analysator-band, i ordning sub..air.
+const BAND_TOP_HZ = [60, 120, 250, 500, 2000, 5000, 10000, 16000];
+// beatCutoffHz väljer vilka band som ingår i bassFlux (kick/bas-onset).
+let beatCutoffBands = 3;   // default 250 Hz → sub+kick+bas
 export function setBeatCutoffHz(hz: number): void {
   if (!Number.isFinite(hz)) return;
-  const bin = Math.floor(hz / BIN_WIDTH);
-  beatCutoffBin = Math.max(2, Math.min(BIN_COUNT, bin));
+  let n = 1;
+  for (let i = 0; i < BAND_TOP_HZ.length; i++) if (BAND_TOP_HZ[i] <= hz) n = i + 1;
+  beatCutoffBands = Math.max(1, Math.min(BAND_TOP_HZ.length, n));
 }
 
-
-
-// Precomputed constants (avoid recomputing every FFT frame)
-const INV_N2 = 1 / (FFT_SIZE * FFT_SIZE);
-
-// Backward-compat alias för engine-kod som läser LO_CUT/MID_CUT
-const LO_CUT = LO_BIN_HIGH;
-const MID_CUT = HI_BIN_HIGH;
-const LO_COUNT = LO_BIN_HIGH - LO_BIN_LOW;
-const MID_COUNT = HI_BIN_HIGH - HI_BIN_LOW;
-const HI_COUNT = BIN_COUNT - HI_BIN_HIGH;
-const MID_HI_COUNT = MID_COUNT + HI_COUNT;
-
-
-// Spectral flux state
-let prevPower: Float64Array = new Float64Array(BIN_COUNT);
+// Ring buffer for incoming PCM samples
+const ringBuf = new Float32Array(RING_SIZE);
+let ringPos = 0;
 
 // High-shelf filter state
 let hsState = 0;
 
-// Ring buffer for incoming PCM samples
-const ringBuf = new Float32Array(FFT_SIZE);
-let ringPos = 0;
-
-// Windowed sample buffer (input to FFT)
-const windowedBuf = new Float64Array(FFT_SIZE);
-let samplesReceived = 0;
-
-// ── Smoothing flyttad till engine.tickInner @ 50Hz ──
-// Tidigare körde vi en EMA här @ 100Hz OCH en till i tickInner → kvadrerad
-// effektiv alpha (slött ljud). Sedan togs båda bort → flimmer pga FFT-rate-
-// hack (10ms) aliaserades mot tick-takten (20ms). Nu: rå RMS levereras hit,
-// smoothing körs på tick-takt så filtret är synkat mot output-raten.
-
-
-
-// Noise gate borttagen 2026-04-21: brightnessFloor + dynamics + perceptualGamma
-// i engine sköter redan tystnadströskeln, och den gamla gaten kvävde första
-// kicken efter en tyst passage (3× knee-ramp). bassRms etc. flödar nu rakt
-// från rå RMS — ingen attenuation, ingen recovery.
-
-// ── Anti-alias smoothing över FFT-frames ──
-// Tick:en (50 Hz) samplar bara hälften av FFT-frames (100 Hz), vilket gör att
-// frame-to-frame-brus ser ut som synliga hopp i ljuset. En kort rolling average
-// över ~3 FFT-frames glättar bruset utan att gömma transienter:
-//   - Window 3 frames ≈ 30ms total averaging
-//   - Kick-trummor (attack ~15ms) når full styrka inom 1-2 fönster (10-20ms latens)
-//   - Långt under perceptuell tröskel för "samtidig" ljud+ljus (~50ms)
-// Pre-allokerade typed arrays — noll allokering i hot path.
-const FFT_SMOOTH_WINDOW = 3;
-const fftBassHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-const fftMidHiHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-const fftTotalHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-let fftHistoryPos = 0;
-let fftHistoryFilled = 0;
-
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0 };
+
 
 // Timestamp of last FFT completion (performance.now())
 let lastFFTTimestamp = 0;
@@ -402,116 +333,47 @@ export function getAcrCaptureWav(): Buffer | null {
 // NOTE: applyHighShelfSample inlined directly into onAudioData hot loop
 // (function call overhead per sample × 1920/cb = measurable on Pi Zero 2W).
 
-function processFFT(): void {
-  // Copy ring buffer in order, apply Hann window — bitmask instead of modulo
-  for (let i = 0; i < FFT_SIZE; i++) {
-    windowedBuf[i] = ringBuf[(ringPos + i) & FFT_MASK] * hannWindow[i];
-  }
+/**
+ * Härled motorns BandResult ur analysatorns senaste frame. INGEN egen FFT —
+ * spektrumet är redan beräknat en gång i audio-analyser.
+ *   bassRms/midHiRms : viktad oktavbands-nivå (AGC 0..1) × levelVU × BAND_SCALE
+ *   totalRms         : levelVU × BAND_SCALE (auto-gainad RMS, tystnad → 0)
+ *   flux             : analysatorns bredbands-flux (skarp, för onset)
+ *   bassFlux         : summerad per-band-onset under beatCutoffHz (kick/bas)
+ */
+function emitBands(frame: Frame): void {
+  const s = frame.spec;
+  const o = frame.onset;
+  const amp = frame.levelVU * BAND_SCALE;
 
-  const [fftRe, fftIm] = fft1024(windowedBuf);
+  latestBands.bassRms = (W_SUB * s.sub + W_KICK * s.kick + W_BASS * s.bass) * amp;
+  latestBands.midHiRms =
+    (W_LOWMID * s.lowMid + W_MID * s.mid + W_HIGHMID * s.highMid +
+     W_TREBLE * s.treble + W_AIR * s.air) * amp;
+  latestBands.totalRms = amp;
+  latestBands.flux = frame.flux;
 
-  // Power spectrum + band sums — branchless, split into 4 segments instead of
-  // per-bin if/else (saves ~1024 conditional branches per frame).
-  // Segments: [0..LO_BIN_LOW)  [LO_BIN_LOW..LO_BIN_HIGH)  [HI_BIN_LOW..HI_BIN_HIGH)  [HI_BIN_HIGH..BIN_COUNT)
-  // (LO_BIN_HIGH === HI_BIN_LOW so segments are contiguous.)
-  let loSum = 0, hiSum = 0;
-  let totalSum = 0;
-  let flux = 0;
-  let bassFlux = 0; // flux under beatCutoffBin (lågpass) — kick/bas-onset
+  // bassFlux: onset-energi i banden under cutoffen. Onsets är 0..1 per band;
+  // medelvärdet håller samma storleksordning som gamla flux (0.05–0.5) så
+  // processOnsets absoluta golv (0.045) och median-prominens gäller oförändrat.
+  const onsets = [o.sub, o.kick, o.bass, o.lowMid, o.mid, o.highMid, o.treble, o.air];
+  let bf = 0;
+  for (let i = 0; i < beatCutoffBands; i++) bf += onsets[i];
+  latestBands.bassFlux = bf / beatCutoffBands;
 
-  // Segment 1: 0 .. LO_BIN_LOW (only total + flux; ingår i bassFlux = sub)
-  for (let i = 0; i < LO_BIN_LOW; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-  }
-  // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum; ingår i bassFlux = bas)
-  for (let i = LO_BIN_LOW; i < LO_BIN_HIGH; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    loSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-  }
-  // Segment 3: HI_BIN_LOW .. HI_BIN_HIGH (hiSum)
-  for (let i = HI_BIN_LOW; i < HI_BIN_HIGH; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    hiSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-  }
-  // Segment 4: HI_BIN_HIGH .. BIN_COUNT (only total + flux)
-  for (let i = HI_BIN_HIGH; i < BIN_COUNT; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-
-  }
-
-  // ── Energy-per-octave: matchar mänsklig perception av frekvensbalans ──
-  // Tidigare delades med antal bins → diskant (466 bins) dränktes vs bas (3 bins).
-  // Nu: total power i bandet / antal oktaver bandet täcker → båda jämförbara.
-  const rawBass = Math.sqrt(loSum * INV_LO_OCT);
-  const rawMidHi = Math.sqrt(hiSum * INV_HI_OCT);
-  const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
-
-
-  // ── Anti-alias smoothing: rolling average över senaste FFT-frames ──
-  // Eliminerar frame-to-frame-brus (alias mellan ~100Hz FFT och 50Hz tick) utan
-  // att gömma transient-respons. EMA-smoothingen i engine.tickInner körs ovanpå
-  // detta för musikalisk mjukhet. flux smoothas EJ — onset-detektion behöver
-  // skarpa transienter för att fånga kick-trummor.
-  fftBassHistory[fftHistoryPos] = rawBass;
-  fftMidHiHistory[fftHistoryPos] = rawMidHi;
-  fftTotalHistory[fftHistoryPos] = rawTotal;
-  fftHistoryPos = (fftHistoryPos + 1) % FFT_SMOOTH_WINDOW;
-  if (fftHistoryFilled < FFT_SMOOTH_WINDOW) fftHistoryFilled++;
-
-  let bassSum = 0, midHiSum = 0, totalSum_smooth = 0;
-  for (let i = 0; i < fftHistoryFilled; i++) {
-    bassSum += fftBassHistory[i];
-    midHiSum += fftMidHiHistory[i];
-    totalSum_smooth += fftTotalHistory[i];
-  }
-  const invFilled = 1 / fftHistoryFilled;
-
-  latestBands.bassRms = bassSum * invFilled;
-  latestBands.midHiRms = midHiSum * invFilled;
-  latestBands.totalRms = totalSum_smooth * invFilled;
-  latestBands.flux = flux;  // skarp — onset-detektion behöver detta
-  latestBands.bassFlux = bassFlux;  // kick/bas-only flux
-
-  // Debug logging every ~2 seconds (only when DEBUG=true)
   if (DEBUG_ENABLED) {
     debugTickCount++;
     if (debugTickCount >= DEBUG_INTERVAL) {
-      dlog(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
+      dlog(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${latestBands.flux.toFixed(6)} bassFlux=${latestBands.bassFlux.toFixed(6)}`);
       debugTickCount = 0;
       debugPeakRaw = 0;
     }
   }
 
-  // Stamp FFT completion time
   lastFFTTimestamp = performance.now();
   _fftFrameCount++;
 
-  // (Portable analysern körs INTE här — se analyserSamplesReceived-loopen i
-  //  onAudioData. Den har egen 128-hop-takt så DMX-projektets kalibrering
-  //  för BPM/drop/kick fungerar oförändrad här.)
-
-  // Fire event immediately — engine can process with zero latency
-  if (_onFluxReady) _onFluxReady(flux);
+  if (_onFluxReady) _onFluxReady(latestBands.flux);
   if (_onFFTReady) _onFFTReady(latestBands);
 }
 
@@ -520,13 +382,12 @@ export function getLatestBands(): BandResult {
 }
 
 export function resetFluxState(): void {
-  prevPower.fill(0);
-  // Nollställ anti-alias-historik så pre/post-paus-data inte blandas
-  fftBassHistory.fill(0);
-  fftMidHiHistory.fill(0);
-  fftTotalHistory.fill(0);
-  fftHistoryPos = 0;
-  fftHistoryFilled = 0;
+  latestBands.bassRms = 0;
+  latestBands.midHiRms = 0;
+  latestBands.totalRms = 0;
+  latestBands.flux = 0;
+  latestBands.bassFlux = 0;
+  bandHopCounter = 0;
   // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
   analyser.resetGain();
   latestFrame = null;
@@ -534,6 +395,7 @@ export function resetFluxState(): void {
   analyserSamplesReceived = 0;
   analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
 }
+
 
 /** Return timestamp (performance.now) of last FFT completion */
 export function getLastFFTTimestamp(): number {
@@ -804,7 +666,7 @@ export function startMic(): void {
     capture.on('close', () => {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
-    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, fft-hop=${HOP_SIZE}, device: ${currentDevice})`);
+    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, band-hop=${BAND_EVERY_HOPS}×${ANALYSER_HOP}, device: ${currentDevice})`);
     
 
   } else {
@@ -837,7 +699,7 @@ function onAudioData(buf: Buffer): void {
     resolveMicReadyWaiters();
   }
   if (_audioCbCount === 50 || _audioCbCount === 200 || (DEBUG_ENABLED && _audioCbCount % 1000 === 0)) {
-    dlog(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, samplesReceived=${samplesReceived}, HOP_SIZE=${HOP_SIZE}`);
+    dlog(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, analyserHops=${analyserHopCount}`);
   }
   // Stereo interleaved → ta bara vänster kanal.
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
@@ -849,8 +711,7 @@ function onAudioData(buf: Buffer): void {
   let hs = hsState;
   let pos = ringPos;
   const ring = ringBuf;
-  const mask = FFT_MASK;
-  let received = samplesReceived;
+  const mask = RING_MASK;
   // DEBUG-branch: peak-tracking inlinad bakom konstant flagga så V8 JIT
   // kan eliminera grenarna helt i prod (DEBUG_ENABLED=false vid boot).
   let peak = DEBUG_ENABLED ? debugPeakRaw : 0;
@@ -886,7 +747,6 @@ function onAudioData(buf: Buffer): void {
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
-      received++;
     }
   } else {
     const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
@@ -914,7 +774,6 @@ function onAudioData(buf: Buffer): void {
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
-      received++;
     }
   }
 
@@ -922,7 +781,6 @@ function onAudioData(buf: Buffer): void {
   const prevRingPos = ringPos;
   ringPos = pos;
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
-  samplesReceived = received;
   if (DEBUG_ENABLED) debugPeakRaw = peak;
 
   if (calOn && micCalActive) {
@@ -932,11 +790,6 @@ function onAudioData(buf: Buffer): void {
   }
 
 
-
-  if (samplesReceived >= HOP_SIZE) {
-    processFFT();
-    samplesReceived = 0;
-  }
 
   // Portable analyser: egen 128-hop-tap (375 Hz), decoupled från 480-hop-FFT:n.
   // Dränera alla kompletta 128-block som ackumulerats. periodSize=256 → oftast
@@ -956,6 +809,11 @@ function onAudioData(buf: Buffer): void {
     if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
     analyserHopCount++;
     analyserSamplesReceived -= ANALYSER_HOP;
+    // Band-event mot motorn var BAND_EVERY_HOPS:e analysator-hop (~75 Hz).
+    if (++bandHopCounter >= BAND_EVERY_HOPS) {
+      bandHopCounter = 0;
+      if (latestFrame) emitBands(latestFrame);
+    }
   }
 }
 
@@ -973,10 +831,8 @@ export function stopMic(): void {
   capture.close();
   capture = null;
   hsState = 0;
-  samplesReceived = 0;
   ringPos = 0;
   ringBuf.fill(0);
-  prevPower.fill(0);
   // (smoothing-state finns inte längre i alsaMic — körs i engine.tickInner)
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
