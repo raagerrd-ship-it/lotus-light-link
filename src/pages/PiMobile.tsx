@@ -67,7 +67,9 @@ const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
 
 /** Post-gain nivåmätare. Kompakt, alltid synlig. */
 function LevelMeter({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
-  const peak = health ? Math.min(1, health.peak) : 0;
+  const rawPeak = health ? health.peak : 0;
+  const peak = Math.min(1, rawPeak);
+
   const status = health?.status ?? 'low';
   const statusText =
     status === 'hot' ? 'Clipping' : status === 'low' ? 'Svag signal' : 'Bra nivå';
