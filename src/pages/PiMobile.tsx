@@ -98,7 +98,7 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
         />
       </div>
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground/70 mt-1.5">
-        <span>peak {(peak * 100).toFixed(0)}%</span>
+        <span>peak {(rawPeak * 100).toFixed(0)}%</span>
         <span>clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}%</span>
       </div>
     </div>
