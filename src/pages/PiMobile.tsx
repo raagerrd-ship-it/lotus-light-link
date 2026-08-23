@@ -63,32 +63,35 @@ const DEFAULT_GAIN_LOW = 15;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
 
 
-/** Post-gain nivåmätare. Grön zon = lagom, gul = för svagt, röd = clipping.
- *  Peak kommer från motorn (post-gain, före soft-clip-knät). */
+/** Post-gain nivåmätare. Kompakt, alltid synlig. */
 function LevelMeter({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
   const peak = health ? Math.min(1, health.peak) : 0;
   const status = health?.status ?? 'low';
-  const barClass =
-    status === 'hot' ? 'bg-destructive' : status === 'low' ? 'bg-muted-foreground' : 'bg-primary';
-  const label =
-    status === 'hot' ? 'Clipping — sänk gain' : status === 'low' ? 'Svag signal — höj gain' : 'Bra nivå';
+  const statusText =
+    status === 'hot' ? 'Clipping' : status === 'low' ? 'Svag signal' : 'Bra nivå';
+  const statusClass =
+    status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-primary' : 'text-muted-foreground';
 
   return (
-    <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Insignal</span>
-        <span className={`font-mono ${status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-primary' : 'text-muted-foreground'}`}>
-          {label}
-        </span>
+    <div className="rounded-xl border border-border bg-secondary/30 p-3">
+      <div className="flex items-center justify-between text-xs mb-2">
+        <span className="text-muted-foreground">Nivå</span>
+        <span className={`font-mono text-[10px] ${statusClass}`}>{statusText}</span>
       </div>
       <div className="relative h-2 rounded-full bg-secondary overflow-hidden">
-        {/* Målzon 0.15–0.9 */}
-        <div className="absolute inset-y-0 border-x border-primary/40" style={{ left: '15%', right: '10%' }} />
-        <div className={`h-full rounded-full transition-[width] duration-200 ${barClass}`} style={{ width: `${peak * 100}%` }} />
+        <div className="absolute inset-y-0 border-r border-primary/40" style={{ left: '15%' }} />
+        <div className="absolute inset-y-0 border-r border-primary/40" style={{ left: '90%' }} />
+        <div
+          className={`h-full rounded-full transition-[width] duration-200 ${
+            status === 'hot' ? 'bg-destructive' : status === 'ok' ? 'bg-primary' : 'bg-muted-foreground'
+          }`}
+          style={{ width: `${peak * 100}%` }}
+        />
       </div>
-      <p className="text-[10px] text-muted-foreground">
-        Peak {(peak * 100).toFixed(0)}% · clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}% — sikta mellan strecken när musiken spelar.
-      </p>
+      <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
+        <span>peak {(peak * 100).toFixed(0)}%</span>
+        <span>clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}%</span>
+      </div>
     </div>
   );
 }
