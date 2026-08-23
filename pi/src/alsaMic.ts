@@ -26,8 +26,6 @@ let _overrunLogAt = 0;
 // Sparas i DATA_DIR/mic-state.json via samma storage-shim som resten av engine.
 const MIC_STATE_KEY = 'mic-state';
 interface PersistedMicState {
-  autoGainEnabled?: boolean;
-  autoGainUserDisabled?: boolean;
   micGainBase?: number;
   calPoint1?: { vol: number; gain: number } | null;
   calPoint2?: { vol: number; gain: number } | null;
@@ -35,8 +33,6 @@ interface PersistedMicState {
 function saveMicState(): void {
   try {
     const s: PersistedMicState = {
-      autoGainEnabled,
-      autoGainUserDisabled,
       micGainBase,
       calPoint1,
       calPoint2,
@@ -174,8 +170,8 @@ const BAND_EVERY_HOPS = 5;
 let bandHopCounter = 0;
 
 // ── BandResult ur analysatorns oktavband ──
-// spec/onset är per-band AGC:ade 0..1. Motorn förväntar sig RMS-liknande värden
-// i ~0–0.2-domänen (RAW_SCALE=5 i piEngine) → BAND_SCALE flyttar dit.
+// spec/onset är per-band AGC:ade 0..1. Motorn använder banden linjärt (RAW_SCALE
+// borttagen 2026-08-23) → gain-kurvan är enda känslighets-kontrollen.
 // frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
 // tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
 const BAND_SCALE = 0.45;
@@ -443,14 +439,14 @@ export function setMicGain(gain: number): void {
 }
 
 
-/** Two-point gain calibration.
- *  Cal-punkterna är absoluta gain-värden. När auto är på bypass:as manuell slider. */
+/** Two-point gain calibration — ENDA gain-källan (manuell, deterministisk kurva).
+ *  Cal-punkterna är absoluta gain-värden, interpolerade på Sonos-volym. */
 export interface GainCalPoint { vol: number; gain: number; }
 
 let calPoint1: GainCalPoint | null = null;
 let calPoint2: GainCalPoint | null = null;
 let lastSonosVol: number | null = null;  // cachat för live-omräkning vid slider-change
-const AUTO_GAIN_MAX = 50.0;
+const AUTO_GAIN_MAX = 300.0;
 const AUTO_GAIN_MIN = 0.1;
 
 // ── Mic-gain kalibrering (15s mätning, target RMS 0.35) ──
@@ -507,8 +503,9 @@ function finishMicCalibration(): void {
     return;
   }
   const oldGain = micGainBase;
-  const newGain = Math.max(0.1, Math.min(50, micCalTargetRms / measuredRms));
+  const newGain = Math.max(0.1, Math.min(AUTO_GAIN_MAX, micCalTargetRms / measuredRms));
   micGainBase = newGain;
+  micGainAuto = newGain;
   updateEffectiveGain();
   saveMicState();
   micCalLastResult = { ok: true, measuredRms, newGain, oldGain, targetRms: micCalTargetRms, samples: micCalCount, at: Date.now() };

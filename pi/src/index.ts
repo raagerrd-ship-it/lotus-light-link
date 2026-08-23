@@ -143,13 +143,11 @@ function applySonosStateToEngine(state: {
 
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
+    // Gain-kurvan är alltid aktiv (2026-08-23) — inget auto-läge att slå på.
     // 2026-07-22: aktivera auto-gain automatiskt första gången vi ser
     // en Sonos-volym — annars måste user gå in i UI:t på fresh install.
     // Respekterar explicit user-override: har användaren stängt av auto-gain
     // via PUT /api/auto-gain {enabled:false} slår den aldrig på sig själv igen.
-    if (alsaMic?.maybeAutoEnableAutoGain()) {
-      console.log(`[Boot] Auto-gain aktiverad (Sonos-vol=${state.volume})`);
-    }
     alsaMic?.setAutoGainFromVolume(state.volume);
   }
 
@@ -236,7 +234,7 @@ async function startMicSubsystem(): Promise<void> {
       if (savedAlsaDevice) alsaMic.setAlsaDevice(savedAlsaDevice);
       if (savedMicGain) {
         const g = parseFloat(savedMicGain);
-        if (g >= 0.1 && g <= 50) alsaMic.setMicGain(g);
+        if (g >= 0.1 && g <= 300) alsaMic.setMicGain(g);
       }
 
       await ensureEngineInstance();
