@@ -314,6 +314,11 @@ const analyserScratch = new Float32Array(ANALYSER_HOP);
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
 export function getLatestFrame(): Frame | null { return latestFrame; }
+/** Mata analysatorn med motorns PLL-grid → kick-grindning + taktfas (barShift). */
+export function setAnalyserBeatGrid(grid: { bpm: number; anchorMs: number } | null): void {
+  analyser.setBeatGrid(grid);
+}
+
 
 // ── Analyser cost budget (ms per 128-hop @ 375 Hz) ──────────────────────────
 // Budget = 1000/375 ≈ 2.67 ms per hop. Överskrids den kappar ALSA bufferten
