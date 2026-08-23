@@ -224,8 +224,8 @@ function GainCalibrationPanel({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        point1: { vol: AUTO_VOL_LOW, gain: lowGain },
-        point2: { vol: AUTO_VOL_HIGH, gain: highGain },
+        point1: { vol: volLow, gain: lowGain },
+        point2: { vol: volHigh, gain: highGain },
       }),
     }).catch(() => {});
     // Trigga snabbpoll (500ms) i 5s så användaren ser effekten direkt
