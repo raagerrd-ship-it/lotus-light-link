@@ -1479,19 +1479,11 @@ export class PiLightEngine {
       }
 
       // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
-      let bassNorm = normalizeFixed(bands.bassRms);
-      let midHiNorm = normalizeFixed(bands.midHiRms);
-      // OKTAVBAND (steg 4): analysatorns 8 band är redan AGC:ade per band (0..1),
-      // så mixen blir jämn mellan låtar med olika mastering utan normalizeFixed.
-      // Kräver färsk frame + taktlås; annars kör 2-bands-vägen ovan vidare.
-      if (this.cal.bandMixMode === 'octave') {
-        const f = Date.now() - getLatestFrameAt() < 60 ? getLatestFrame() : null;
-        if (f && f.bpm > 40) {
-          const s = f.spec;
-          bassNorm = (s.sub + s.kick + s.bass) / 3;
-          midHiNorm = (s.mid + s.highMid + s.treble) / 3;
-        }
-      }
+      // bands kommer nu ur analysatorns oktavband (en källa) — normalizeFixed
+      // behålls så befintliga kalibreringar/gain-kurvor gäller oförändrat.
+      const bassNorm = normalizeFixed(bands.bassRms);
+      const midHiNorm = normalizeFixed(bands.midHiRms);
+
       // (dynamicCenter spåras nu i onFluxReady @ 100Hz — inte här)
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
