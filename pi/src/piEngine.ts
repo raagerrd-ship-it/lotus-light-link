@@ -539,6 +539,7 @@ export class PiLightEngine {
     this.dropFrameCounter = 0;
     this.dropLastFrameIdx = -100000;
     this.dropFlashUntil = 0;
+    this._analyserDropCount = -1;   // ny flankreferens mot analysatorns dropCount
   }
 
   /** Zero-alloc onset detection using precomputed constants.
