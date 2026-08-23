@@ -161,6 +161,134 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
   );
 }
 
+type CalPoint = { vol: number; gain: number };
+
+/** Guidad tvåstegskalibrering: spela på låg Sonos-volym, dra slidern till
+ *  "Bra nivå", spara punkten — höj sedan volymen och gör om. Slidern skriver
+ *  gain live till motorn (manuellt läge) så mätaren speglar exakt vad du hör. */
+function GuidedGainWizard({
+  piBase, sonosVolume, health, micGain, setMicGain, onDone,
+}: {
+  piBase: string;
+  sonosVolume: number | null;
+  health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null;
+  micGain: number;
+  setMicGain: (g: number) => void;
+  onDone: (low: CalPoint, high: CalPoint) => void;
+}) {
+  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [low, setLow] = useState<CalPoint | null>(null);
+
+  const start = async () => {
+    // Guiden kör i manuellt läge så slidern = motorns gain
+    await fetch(`${piBase}/api/auto-gain`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    }).catch(() => {});
+    setLow(null);
+    setStep(1);
+  };
+
+  const onSlide = (g: number) => {
+    setMicGain(g);
+    fetch(`${piBase}/api/mic-gain`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gain: g }),
+    }).catch(() => {});
+  };
+
+  const savePoint = async () => {
+    const vol = sonosVolume ?? 0;
+    if (step === 1) {
+      setLow({ vol, gain: micGain });
+      setStep(2);
+      return;
+    }
+    if (!low) return;
+    const high: CalPoint = { vol, gain: micGain };
+    const [p1, p2] = low.vol <= high.vol ? [low, high] : [high, low];
+    await fetch(`${piBase}/api/gain-calibration`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ point1: p1, point2: p2 }),
+    }).catch(() => {});
+    await fetch(`${piBase}/api/auto-gain`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    }).catch(() => {});
+    onDone(p1, p2);
+    setStep(0);
+  };
+
+  if (step === 0) {
+    return (
+      <button
+        onClick={start}
+        className="w-full py-2 rounded-lg text-xs font-medium bg-secondary hover:bg-secondary/80 transition-colors"
+      >
+        Guidad gain-kalibrering (2 volymer)
+      </button>
+    );
+  }
+
+  const status = health?.status ?? 'low';
+  const hint =
+    status === 'hot' ? 'Sänk slidern tills det slutar clippa'
+      : status === 'low' ? 'Höj slidern tills mätaren blir grön'
+      : 'Perfekt — spara punkten';
+  const sameVol = step === 2 && low != null && sonosVolume != null && Math.abs(sonosVolume - low.vol) < 3;
+
+  return (
+    <div className="rounded-xl border border-primary/40 bg-primary/5 p-3 space-y-3">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium">Steg {step} av 2 — {step === 1 ? 'låg volym' : 'hög volym'}</span>
+        <button onClick={() => setStep(0)} className="text-muted-foreground underline">Avbryt</button>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        {step === 1
+          ? 'Spela musik på Sonos på låg volym (t.ex. 10 %) och justera slidern.'
+          : `Höj Sonos-volymen (t.ex. 40–50 %) och justera slidern igen. Låg punkt sparad: vol ${low?.vol} → ${low?.gain.toFixed(1)}×.`}
+      </p>
+
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Sonos volym</span>
+        <span className="font-mono font-bold">{sonosVolume ?? '—'}</span>
+      </div>
+
+      <LevelMeter health={health} />
+
+      <div>
+        <div className="flex justify-between text-sm mb-1">
+          <span>Mic Gain</span>
+          <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
+        </div>
+        <input
+          type="range" min={1} max={50} step={0.5} value={micGain}
+          onChange={(e) => onSlide(parseFloat(e.target.value))}
+          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+        />
+        <p className={`text-[10px] mt-1 ${status === 'ok' ? 'text-primary' : status === 'hot' ? 'text-destructive' : 'text-muted-foreground'}`}>
+          {hint}
+        </p>
+      </div>
+
+      {sameVol && (
+        <p className="text-[10px] text-destructive">
+          Sonos-volymen är för nära den låga punkten — höj volymen först.
+        </p>
+      )}
+
+      <button
+        onClick={savePoint}
+        disabled={sonosVolume == null || sameVol}
+        className="w-full py-2 rounded-lg text-xs font-medium bg-primary text-primary-foreground disabled:opacity-50 transition-colors"
+      >
+        {step === 1 ? `Spara låg punkt (vol ${sonosVolume ?? '—'})` : `Spara & aktivera auto (vol ${sonosVolume ?? '—'})`}
+      </button>
+    </div>
+  );
+}
+
 function GainCalibrationPanel({
 
   piBase, micGain, setMicGain, sonosVolume,
@@ -174,6 +302,8 @@ function GainCalibrationPanel({
   const [multiplier, setMultiplier] = useState(1);
   const [gainLow, setGainLow] = useState(DEFAULT_GAIN_LOW);
   const [gainHigh, setGainHigh] = useState(DEFAULT_GAIN_HIGH);
+  const [volLow, setVolLow] = useState(AUTO_VOL_LOW);
+  const [volHigh, setVolHigh] = useState(AUTO_VOL_HIGH);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
 
@@ -187,6 +317,9 @@ function GainCalibrationPanel({
       if (ag.multiplier != null) setMultiplier(ag.multiplier);
       if (cal?.point1?.gain != null) setGainLow(cal.point1.gain);
       if (cal?.point2?.gain != null) setGainHigh(cal.point2.gain);
+      if (cal?.point1?.vol != null) setVolLow(cal.point1.vol);
+      if (cal?.point2?.vol != null) setVolHigh(cal.point2.vol);
+
     }).catch(() => {});
   }, [piBase]);
 
@@ -219,8 +352,8 @@ function GainCalibrationPanel({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        point1: { vol: AUTO_VOL_LOW, gain: lowGain },
-        point2: { vol: AUTO_VOL_HIGH, gain: highGain },
+        point1: { vol: volLow, gain: lowGain },
+        point2: { vol: volHigh, gain: highGain },
       }),
     }).catch(() => {});
     // Trigga snabbpoll (500ms) i 5s så användaren ser effekten direkt
@@ -256,6 +389,24 @@ function GainCalibrationPanel({
     <div className="space-y-4">
       {/* Nivåmätare: visar om gainen ligger rätt (brusgolv ↔ clipping) */}
       <LevelMeter health={health} />
+
+      {/* Guidad tvåstegskalibrering mot Sonos-volym */}
+      <GuidedGainWizard
+        piBase={piBase}
+        sonosVolume={sonosVolume}
+        health={health}
+        micGain={micGain}
+        setMicGain={setMicGain}
+        onDone={(low, high) => {
+          setGainLow(low.gain);
+          setGainHigh(high.gain);
+          setVolLow(low.vol);
+          setVolHigh(high.vol);
+          setEnabled(true);
+          fastPollUntilRef.current = Date.now() + 5000;
+        }}
+      />
+
 
       {/* Mode selector: Manual ↔ Auto */}
       <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-secondary/40 border border-border">
@@ -317,7 +468,7 @@ function GainCalibrationPanel({
           {/* P1: vid låg volym */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span>Gain @ vol {AUTO_VOL_LOW}</span>
+              <span>Gain @ vol {volLow}</span>
               <span className="text-muted-foreground font-mono text-xs">{gainLow.toFixed(1)}×</span>
             </div>
             <input
@@ -330,7 +481,7 @@ function GainCalibrationPanel({
           {/* P2: vid hög volym */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span>Gain @ vol {AUTO_VOL_HIGH}</span>
+              <span>Gain @ vol {volHigh}</span>
               <span className="text-muted-foreground font-mono text-xs">{gainHigh.toFixed(1)}×</span>
             </div>
             <input
