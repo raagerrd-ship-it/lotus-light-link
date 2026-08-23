@@ -26,8 +26,6 @@ let _overrunLogAt = 0;
 // Sparas i DATA_DIR/mic-state.json via samma storage-shim som resten av engine.
 const MIC_STATE_KEY = 'mic-state';
 interface PersistedMicState {
-  autoGainEnabled?: boolean;
-  autoGainUserDisabled?: boolean;
   micGainBase?: number;
   calPoint1?: { vol: number; gain: number } | null;
   calPoint2?: { vol: number; gain: number } | null;
@@ -35,8 +33,6 @@ interface PersistedMicState {
 function saveMicState(): void {
   try {
     const s: PersistedMicState = {
-      autoGainEnabled,
-      autoGainUserDisabled,
       micGainBase,
       calPoint1,
       calPoint2,
@@ -174,8 +170,8 @@ const BAND_EVERY_HOPS = 5;
 let bandHopCounter = 0;
 
 // ── BandResult ur analysatorns oktavband ──
-// spec/onset är per-band AGC:ade 0..1. Motorn förväntar sig RMS-liknande värden
-// i ~0–0.2-domänen (RAW_SCALE=5 i piEngine) → BAND_SCALE flyttar dit.
+// spec/onset är per-band AGC:ade 0..1. Motorn använder banden linjärt (RAW_SCALE
+// borttagen 2026-08-23) → gain-kurvan är enda känslighets-kontrollen.
 // frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
 // tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
 const BAND_SCALE = 0.45;
@@ -416,41 +412,41 @@ const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 
 
 // Software mic gain — multiplier applied to raw PCM samples before processing.
-// ANTINGEN/ELLER-LOGIK:
-//   autoGainEnabled === false → micGain = micGainBase   (manuell slider)
-//   autoGainEnabled === true  → micGain = micGainAuto   (interpolerad från Sonos-vol)
-// Cal-punkterna är absoluta gain-värden, inte multiplikatorer ovanpå base.
-let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
-let micGainAuto = 15.0;  // Absolute gain interpolated from Sonos volume
-let autoGainEnabled = false;
-// Explicit user-override: satt av disableAutoGain(), blockerar auto-reaktivering
-// från Sonos-volym-pathen tills användaren själv slår på auto-gain igen.
-let autoGainUserDisabled = false;
-let micGain = 15.0;      // Effective — used in hot path
+// EN GAIN-KÄLLA (2026-08-23): tvåpunkts-kurvan mot Sonos-volym är ALLTID gainen.
+// Inget "manuellt läge", ingen adaptiv AGC, ingen auto-omkalibrering. Saknas
+// cal-punkter används micGainBase som ren fallback (och som mål för engångs-
+// verktyget "kalibrera automatiskt").
+let micGainBase = 75.0;  // fallback innan kurvan är satt (RAW_SCALE=5 borta → ~5× högre tal)
+let micGainAuto = 75.0;  // gain interpolerad från Sonos-volym (kurvan)
+let micGain = 75.0;      // Effective — used in hot path
 
 function updateEffectiveGain(): void {
-  micGain = autoGainEnabled ? micGainAuto : micGainBase;
+  micGain = micGainAuto;
 }
 
 export function getMicGain(): number { return micGainBase; }
 export function getEffectiveGain(): number { return micGain; }
 export function getAutoGainMultiplier(): number { return micGainAuto; }
 
+/** Sätt gain direkt (engångs-kalibreringsverktyget). Kurvan skriver över den
+ *  vid nästa volym-recompute — punkterna är auktoritativa. */
 export function setMicGain(gain: number): void {
-  micGainBase = Math.max(0.1, Math.min(50, gain));
+  micGainBase = Math.max(0.1, Math.min(AUTO_GAIN_MAX, gain));
+  micGainAuto = micGainBase;
   updateEffectiveGain();
   saveMicState();
-  dlog(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x, auto=${autoGainEnabled})`);
+  dlog(`[ALSA] Mic gain set directly to ${micGainBase.toFixed(1)}x`);
 }
 
-/** Two-point gain calibration.
- *  Cal-punkterna är absoluta gain-värden. När auto är på bypass:as manuell slider. */
+
+/** Two-point gain calibration — ENDA gain-källan (manuell, deterministisk kurva).
+ *  Cal-punkterna är absoluta gain-värden, interpolerade på Sonos-volym. */
 export interface GainCalPoint { vol: number; gain: number; }
 
 let calPoint1: GainCalPoint | null = null;
 let calPoint2: GainCalPoint | null = null;
 let lastSonosVol: number | null = null;  // cachat för live-omräkning vid slider-change
-const AUTO_GAIN_MAX = 50.0;
+const AUTO_GAIN_MAX = 300.0;
 const AUTO_GAIN_MIN = 0.1;
 
 // ── Mic-gain kalibrering (15s mätning, target RMS 0.35) ──
@@ -507,8 +503,9 @@ function finishMicCalibration(): void {
     return;
   }
   const oldGain = micGainBase;
-  const newGain = Math.max(0.1, Math.min(50, micCalTargetRms / measuredRms));
+  const newGain = Math.max(0.1, Math.min(AUTO_GAIN_MAX, micCalTargetRms / measuredRms));
   micGainBase = newGain;
+  micGainAuto = newGain;
   updateEffectiveGain();
   saveMicState();
   micCalLastResult = { ok: true, measuredRms, newGain, oldGain, targetRms: micCalTargetRms, samples: micCalCount, at: Date.now() };
@@ -516,16 +513,9 @@ function finishMicCalibration(): void {
 }
 
 
-export function isAutoGainEnabled(): boolean { return autoGainEnabled; }
-export function isAutoGainUserDisabled(): boolean { return autoGainUserDisabled; }
+/** Kurvan är alltid gain-källan — behålls för API-kompatibilitet. */
+export function isAutoGainEnabled(): boolean { return true; }
 
-/** Auto-aktivera auto-gain (första Sonos-volymen). Respekterar user-override:
- *  har användaren stängt av auto-gain via API:t händer inget. */
-export function maybeAutoEnableAutoGain(): boolean {
-  if (autoGainEnabled || autoGainUserDisabled) return false;
-  enableAutoGain();
-  return true;
-}
 export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainCalPoint | null } {
   return { point1: calPoint1, point2: calPoint2 };
 }
@@ -537,9 +527,8 @@ export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | nul
   if (p1 && p2) {
     dlog(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
     // Räkna om direkt från senast kända volym så slider-ändringar syns omedelbart
-    if (autoGainEnabled && lastSonosVol != null) {
-      recomputeAutoGain(lastSonosVol);
-    }
+    if (lastSonosVol != null) recomputeAutoGain(lastSonosVol);
+    else { micGainAuto = interpolateGain(p1.vol); updateEffectiveGain(); }
   }
 }
 
@@ -562,47 +551,24 @@ function recomputeAutoGain(sonosVolume: number): void {
 
 export function setAutoGainFromVolume(sonosVolume: number): void {
   lastSonosVol = sonosVolume;
-  if (!autoGainEnabled || !calPoint1 || !calPoint2) return;
+  if (!calPoint1 || !calPoint2) return;
   recomputeAutoGain(sonosVolume);
-  dlog(`[ALSA] Auto-gain: vol=${sonosVolume} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
-}
-
-export function disableAutoGain(): void {
-  autoGainEnabled = false;
-  autoGainUserDisabled = true;
-  updateEffectiveGain();
-  saveMicState();
-  dlog(`[ALSA] Auto-gain disabled → manual base gain ${micGainBase.toFixed(1)}x active`);
-}
-
-export function enableAutoGain(): void {
-  autoGainEnabled = true;
-  autoGainUserDisabled = false;
-  // Räkna om direkt från senast kända Sonos-volym så vi inte fastnar på default 15x
-  // tills användaren råkar dra i en slider eller volymen råkar ändras.
-  if (calPoint1 && calPoint2 && lastSonosVol != null) {
-    recomputeAutoGain(lastSonosVol);
-    dlog(`[ALSA] Auto-gain enabled → recomputed from cached vol=${lastSonosVol} → gain=${micGainAuto.toFixed(2)}x (effective: ${micGain.toFixed(1)}x)`);
-  } else {
-    updateEffectiveGain();
-    dlog(`[ALSA] Auto-gain enabled → effective ${micGain.toFixed(1)}x (no cached vol yet, awaiting Sonos poll)`);
-  }
-  saveMicState();
+  dlog(`[ALSA] Gain-kurva: vol=${sonosVolume} → gain=${micGainAuto.toFixed(2)}x`);
 }
 
 // Restore persisted state vid modulinit. Körs efter att alla let:s deklarerats.
-// Krasch/restart mitt i låt → samma autogain/gain/cal som innan.
+// Krasch/restart mitt i låt → samma gain/cal som innan.
 (function restoreMicState() {
   const s = loadMicState();
   if (!s) { dlog('[ALSA] No persisted mic-state found, using defaults'); return; }
-  if (typeof s.micGainBase === 'number') micGainBase = Math.max(0.1, Math.min(50, s.micGainBase));
+  if (typeof s.micGainBase === 'number') micGainBase = Math.max(0.1, Math.min(AUTO_GAIN_MAX, s.micGainBase));
   if (s.calPoint1 && typeof s.calPoint1.vol === 'number' && typeof s.calPoint1.gain === 'number') calPoint1 = s.calPoint1;
   if (s.calPoint2 && typeof s.calPoint2.vol === 'number' && typeof s.calPoint2.gain === 'number') calPoint2 = s.calPoint2;
-  if (typeof s.autoGainEnabled === 'boolean') autoGainEnabled = s.autoGainEnabled;
-  if (typeof s.autoGainUserDisabled === 'boolean') autoGainUserDisabled = s.autoGainUserDisabled;
+  micGainAuto = calPoint1 && calPoint2 ? interpolateGain(calPoint1.vol) : micGainBase;
   updateEffectiveGain();
-  dlog(`[ALSA] Restored mic-state: base=${micGainBase.toFixed(1)}x auto=${autoGainEnabled} cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
+  dlog(`[ALSA] Restored mic-state: gain=${micGain.toFixed(1)}x cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
 })();
+
 
 export function getAlsaDevice(): string {
   return currentDevice;

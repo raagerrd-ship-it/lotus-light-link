@@ -1473,12 +1473,12 @@ export function startConfigServer(port = 3050): void {
     const mic = requireMic(res);
     if (!mic) return;
     const { gain } = req.body;
-    if (typeof gain === 'number' && gain >= 0.1 && gain <= 50) {
+    if (typeof gain === 'number' && gain >= 0.1 && gain <= 300) {
       mic.setMicGain(gain);
       setItem('mic-gain', String(gain));
       res.json({ ok: true, gain });
     } else {
-      res.status(400).json({ error: 'gain must be 0.1-50' });
+      res.status(400).json({ error: 'gain must be 0.1-300' });
     }
    });
 
@@ -1493,16 +1493,12 @@ export function startConfigServer(port = 3050): void {
 
      });
    });
-   app.put('/api/auto-gain', (req, res) => {
+   // Kurvan är alltid aktiv (inget manuellt läge kvar) — PUT är en no-op som
+   // behålls för bakåtkompatibilitet med äldre klienter.
+   app.put('/api/auto-gain', (_req, res) => {
      const mic = requireMic(res);
      if (!mic) return;
-     const { enabled } = req.body;
-     if (typeof enabled === 'boolean') {
-       if (enabled) mic.enableAutoGain(); else mic.disableAutoGain();
-       res.json({ ok: true, enabled: mic.isAutoGainEnabled(), multiplier: mic.getAutoGainMultiplier(), effective: mic.getEffectiveGain() });
-     } else {
-       res.status(400).json({ error: 'enabled must be boolean' });
-     }
+     res.json({ ok: true, enabled: true, multiplier: mic.getAutoGainMultiplier(), effective: mic.getEffectiveGain() });
    });
 
    // --- Gain calibration (two-point) ---
@@ -1526,7 +1522,6 @@ export function startConfigServer(port = 3050): void {
        };
        saveProfilesFile(pf);
      } catch {}
-     if (point1 && point2) mic.enableAutoGain();
      res.json({ ok: true, ...mic.getGainCalPoints() });
    });
 
@@ -1813,7 +1808,7 @@ export function startConfigServer(port = 3050): void {
       },
       micGain: {
         base: mic ? mic.getMicGain() : Number(getItem('mic-gain') || '15'),
-        autoGainEnabled: mic ? mic.isAutoGainEnabled() : false,
+        autoGainEnabled: true,
         autoMultiplier: mic ? mic.getAutoGainMultiplier() : 1,
         effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
         health: mic ? mic.getMicHealth() : null,

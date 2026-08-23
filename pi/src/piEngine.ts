@@ -32,11 +32,15 @@ import { noteTick } from './runtimeHealth.js';
 // hanterar nu nivåskalningen. Ingen behov av en till normaliseringsloop.
 // Bands från ALSA är redan rätt-skalade när de når engine.
 
-const RAW_SCALE = 5; // Fast skalning från RMS (~0–0.2 normalt) till 0–1-domän
+// EN ÄRLIG GAIN (2026-08-23): den dolda RAW_SCALE=5 är borta. Den mättade
+// signalen redan vid RMS 0.2 → drop/breakdown-detektorn såg ingen äkta tystnad.
+// Ljusstyrka är nu en LINJÄR funktion av den gain:ade rå-inputen; enda
+// känslighets-kontrollen är tvåpunkts-gain-kurvan mot Sonos-volym (~5× högre tal).
+// OBS: tickEnergyFloor/onsetEnergyFloor jämförs mot RÅ bands-RMS → orörda.
 export function normalizeFixed(value: number): number {
-  const n = value * RAW_SCALE;
-  return n < 0 ? 0 : n > 1 ? 1 : n;
+  return value < 0 ? 0 : value > 1 ? 1 : value;
 }
+
 
 
 // --- Precomputed tick constants ---
