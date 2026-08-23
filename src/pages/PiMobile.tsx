@@ -12,13 +12,13 @@ import { BeatMonitor } from "@/components/BeatMonitor";
 
 
 
-type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number; beatLeadMs: number };
+type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number; beatLeadMs: number; lightScale: number };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220, beatLeadMs: 60 },
-  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 220, beatLeadMs: 60 },
-  Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260, beatLeadMs: 60 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220, beatLeadMs: 60 },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.75 },
+  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8 },
+  Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260, beatLeadMs: 60, lightScale: 0.85 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -67,61 +67,79 @@ const GAIN_MIN = 5;
 const GAIN_MAX = 300;
 
 
-/** Post-gain nivåmätare med peak-hold (~0.8 s) och klipp-zon 90–100 %. */
-function LevelMeter({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
-  const rawPeak = health ? health.peak : 0;
-  const peak = Math.min(1, rawPeak);
+/** LAMPA: visar vad lampan faktiskt får (BLE brightness, post-gamma) med
+ *  peak-hold (~0.8 s) och 100 %-tak. UI = lampa. */
+function LampMeter({ brightness }: { brightness: number | null }) {
+  const pct = Math.max(0, Math.min(100, brightness ?? 0));
 
-  // Peak-hold: håller kvar högsta värdet ~0.8 s så snabba toppar syns.
   const holdRef = useRef({ value: 0, at: 0 });
   const now = Date.now();
-  if (peak >= holdRef.current.value || now - holdRef.current.at > 800) {
-    holdRef.current = { value: peak, at: now };
+  if (pct >= holdRef.current.value || now - holdRef.current.at > 800) {
+    holdRef.current = { value: pct, at: now };
   }
   const hold = holdRef.current.value;
 
-  const status = health?.status ?? 'low';
-  const statusText =
-    status === 'hot' ? 'Clipping' : status === 'low' ? 'Svag signal' : 'Bra nivå';
-  const statusClass =
-    status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-ok' : 'text-muted-foreground';
-
+  const statusText = brightness == null ? 'Ingen lampa' : pct >= 100 ? 'Vid taket' : pct <= 5 ? 'Dimt' : 'Aktiv';
+  const statusClass = brightness == null
+    ? 'text-muted-foreground'
+    : pct >= 100 ? 'text-destructive' : 'text-ok';
 
   return (
     <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="label-eyebrow">Nivå</span>
+        <span className="label-eyebrow">Lampa (BLE)</span>
         <span className={`font-mono text-[10px] font-semibold ${statusClass}`}>{statusText}</span>
       </div>
       <div className="relative h-2 rounded-full bg-muted overflow-hidden">
-        {/* Klipp-zon 90–100 % */}
+        {/* 100 %-taket: headroom-zonen som drops ska nå */}
         <div className="absolute inset-y-0 right-0 w-[10%] bg-destructive/25" />
-        <div className="absolute inset-y-0 w-px bg-foreground/20" style={{ left: '15%' }} />
-        <div className="absolute inset-y-0 w-px bg-destructive/70" style={{ left: '90%' }} />
+        <div className="absolute inset-y-0 w-px bg-foreground/20" style={{ left: '80%' }} />
         <div
           className={`h-full rounded-full transition-[width] duration-150 ${
-            status === 'hot'
-              ? 'bg-destructive'
-              : status === 'ok'
-              ? 'bg-ok shadow-[0_0_12px_hsl(var(--ok)/0.6)]'
-              : 'bg-muted-foreground'
+            pct >= 100 ? 'bg-destructive' : 'bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.6)]'
           }`}
-          style={{ width: `${peak * 100}%` }}
+          style={{ width: `${pct}%` }}
         />
-        {/* Peak-hold-markör */}
         <div
           className="absolute inset-y-0 w-[2px] bg-foreground/70"
-          style={{ left: `calc(${hold * 100}% - 1px)` }}
+          style={{ left: `calc(${hold}% - 1px)` }}
         />
       </div>
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground/70 mt-1.5">
-        <span>peak {(rawPeak * 100).toFixed(0)}%</span>
-        <span>clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}%</span>
+        <span>ljus {pct.toFixed(0)}%</span>
+        <span>headroom {(100 - pct).toFixed(0)}%</span>
       </div>
     </div>
   );
 }
 
+
+/** Kompakt input-health för ANALYSATOR-gainen (rå, pre-ljus). */
+function InputHealth({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
+  const peak = health ? Math.min(1, health.peak) : 0;
+  const status = health?.status ?? 'low';
+  const text = status === 'hot' ? 'Klipper' : status === 'low' ? 'Svag' : 'Bra';
+  const cls = status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-ok' : 'text-muted-foreground';
+  return (
+    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border px-3 py-2">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="label-eyebrow">Analysator-input</span>
+        <span className={`font-mono text-[10px] font-semibold ${cls}`}>
+          {text} · {(health ? health.peak * 100 : 0).toFixed(0)}%
+        </span>
+      </div>
+      <div className="relative h-1 rounded-full bg-muted overflow-hidden">
+        <div className="absolute inset-y-0 right-0 w-[10%] bg-destructive/25" />
+        <div
+          className={`h-full rounded-full transition-[width] duration-150 ${
+            status === 'hot' ? 'bg-destructive' : status === 'ok' ? 'bg-ok' : 'bg-muted-foreground'
+          }`}
+          style={{ width: `${peak * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 
 type CalPoint = { vol: number; gain: number };
@@ -308,6 +326,7 @@ function GainCalibrationPanel({
   const [volHigh, setVolHigh] = useState(AUTO_VOL_HIGH);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
+  const [lampBrightness, setLampBrightness] = useState<number | null>(null);
 
   // Initial load: cal-punkter (kurvan är alltid aktiv)
   useEffect(() => {
@@ -330,11 +349,15 @@ function GainCalibrationPanel({
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
       try {
-        const ag = await fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json());
+        const [ag, st] = await Promise.all([
+          fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
+          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null),
+        ]);
         if (!cancelled) {
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
           if (ag.effective != null) setEffectiveGain(ag.effective);
           setHealth(ag.health ?? null);
+          setLampBrightness(st?.ble?.lastSent?.brightness ?? null);
         }
       } catch {}
       if (cancelled) return;
@@ -374,7 +397,8 @@ function GainCalibrationPanel({
 
   return (
     <div className="space-y-3">
-      <LevelMeter health={health} />
+      <LampMeter brightness={lampBrightness} />
+      <InputHealth health={health} />
 
       <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/25 p-3 space-y-2">
         <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
@@ -747,6 +771,7 @@ export default function PiMobile() {
           dropSensitivity: p.dropSensitivity,
           dropFlashMs: p.dropFlashMs,
           beatLeadMs: p.beatLeadMs,
+          lightScale: p.lightScale,
         };
       }
       const results = await Promise.allSettled([
@@ -827,6 +852,7 @@ export default function PiMobile() {
           dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
           dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
           beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
+          lightScale: c?.lightScale ?? DEFAULT_CAL.lightScale,
         };
       };
 
@@ -1043,6 +1069,14 @@ export default function PiMobile() {
                   min={60} max={2000} step={10}
                   onChange={(v) => setCal({ ...cal, beatCutoffHz: Math.round(v) })}
                   hint="Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa."
+                />
+                <Slider
+                  label="Ljus-skala (headroom)"
+                  value={cal.lightScale}
+                  display={`${Math.round(cal.lightScale * 100)} %`}
+                  min={0.3} max={1} step={0.01}
+                  onChange={(v) => setCal({ ...cal, lightScale: v })}
+                  hint="Var musiken toppar. 80 % = drops har 20 % kvar att sticka ut med."
                 />
                 <Slider
                   label="Beat-lead (försprång)"
