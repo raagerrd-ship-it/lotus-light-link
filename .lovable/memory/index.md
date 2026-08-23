@@ -4,7 +4,7 @@
 Headless Pi engine + PiMobile UI. No Web Audio/BLE in browser. Redirect to /pi-mobile.
 Audio capture requires OS routing. Uses native alsa-capture binding.
 Offline-first: localStorage syncs to Supabase user_settings on login.
-Gain = EN linjär tvåpunkts-kurva mot Sonos-volym. Ingen dold RAW_SCALE, inget manuellt gain-läge, ingen auto-AGC.
+Gain = EN linjär tvåpunkts-kurva mot Sonos-volym. Ingen dold RAW_SCALE, ingen mic-soft-clip, analysator-AGC låst 1×, inget manuellt gain-läge.
 Engine decoupled from UI. API URLs use port + 50.
 Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnect sätter override som blockerar auto-start.
