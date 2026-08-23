@@ -691,17 +691,19 @@ export function isMicActive(): boolean {
   return capture !== null;
 }
 // ── Nivå-hälsa (gain mot Sonos) ──
-// Fönster om ~1 s: peak (post-gain, före soft-clip) + andel samples över knät.
+// Fönster om ~1 s. Peaken mäts PRE-gain och multipliceras med aktuell gain vid
+// läsning — annars döljer soft-clip-knät (x/(1+|x|)) gain-ändringar helt: 10x och
+// 40x hamnar båda kring 0.7 och mätaren ser frusen ut.
 const CLIP_LEVEL = 0.9;
-let healthPeakWin = 0;
+let healthPrePeakWin = 0;
 let healthClipWin = 0;
 let healthSampWin = 0;
 let healthWinAt = 0;
-let healthPeak = 0;
+let healthPrePeak = 0;
 let healthClipPct = 0;
 
 export interface MicHealth {
-  /** Post-gain peak 0..1+ i senaste fönstret. */
+  /** Post-gain peak 0..1+ (utan soft-clip) i senaste fönstret. */
   peak: number;
   /** Andel samples (0..1) som nådde soft-clip-knät. */
   clipPct: number;
@@ -712,15 +714,17 @@ export interface MicHealth {
 export function getMicHealth(): MicHealth {
   const now = performance.now();
   if (now - healthWinAt >= 1000 && healthSampWin > 0) {
-    healthPeak = healthPeakWin;
+    healthPrePeak = healthPrePeakWin;
     healthClipPct = healthClipWin / healthSampWin;
-    healthPeakWin = 0; healthClipWin = 0; healthSampWin = 0;
+    healthPrePeakWin = 0; healthClipWin = 0; healthSampWin = 0;
     healthWinAt = now;
   }
+  const peak = healthPrePeak * micGain;
   const status: MicHealth['status'] =
-    healthClipPct > 0.001 ? 'hot' : healthPeak < 0.15 ? 'low' : 'ok';
-  return { peak: healthPeak, clipPct: healthClipPct, status };
+    healthClipPct > 0.001 || peak >= 1 ? 'hot' : peak < 0.15 ? 'low' : 'ok';
+  return { peak, clipPct: healthClipPct, status };
 }
+
 
 function onAudioData(buf: Buffer): void {
   _audioCbCount++;
