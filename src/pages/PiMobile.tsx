@@ -68,7 +68,8 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
   const statusText =
     status === 'hot' ? 'Clipping' : status === 'low' ? 'Svag signal' : 'Bra nivå';
   const statusClass =
-    status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-primary' : 'text-muted-foreground';
+    status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-ok' : 'text-muted-foreground';
+
 
   return (
     <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3">
