@@ -671,6 +671,7 @@ export class PiLightEngine {
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
+    dropSrc: 'analyser' | 'bass';
   } {
     const now = Date.now();
     const lead = this.cal.beatLeadMs ?? 60;
@@ -683,6 +684,7 @@ export class PiLightEngine {
       beatErr: this._beatErr,
       gridPulses: this._gridPulseCount,
       leadMs: lead,
+      dropSrc: this._dropSourceActive,
     };
   }
 
