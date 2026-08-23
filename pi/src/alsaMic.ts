@@ -751,7 +751,7 @@ function onAudioData(buf: Buffer): void {
   // Nivå-hälsa: peak + clip-räknare på post-gain-signalen (före soft-clip-knät).
   // Två jämförelser per sample @48 kHz ≈ försumbart, och ger UI:t ett svar på
   // om gainen ligger rätt mot Sonos-volymen.
-  let peak = 0;
+  let prePeak = 0;
   let clipLocal = 0;
   let sampLocal = 0;
   // Kalibrering: ackumulera rawPre² lokalt (block-summa) → commit efter loop.
@@ -779,8 +779,9 @@ function onAudioData(buf: Buffer): void {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
       }
+      const absPre = rawPre < 0 ? -rawPre : rawPre;
+      if (absPre > prePeak) prePeak = absPre;
       const absRaw = raw < 0 ? -raw : raw;
-      if (absRaw > peak) peak = absRaw;
       if (absRaw > CLIP_LEVEL) clipLocal++;
       sampLocal++;
       hs += hsAlpha * (raw - hs);
@@ -806,8 +807,9 @@ function onAudioData(buf: Buffer): void {
         const a = raw < 0 ? -raw : raw;
         raw = raw / (1 + a);
       }
+      const absPre = rawPre < 0 ? -rawPre : rawPre;
+      if (absPre > prePeak) prePeak = absPre;
       const absRaw = raw < 0 ? -raw : raw;
-      if (absRaw > peak) peak = absRaw;
       if (absRaw > CLIP_LEVEL) clipLocal++;
       sampLocal++;
       hs += hsAlpha * (raw - hs);
@@ -820,8 +822,9 @@ function onAudioData(buf: Buffer): void {
   const prevRingPos = ringPos;
   ringPos = pos;
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
+  const peak = prePeak * gain;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
-  healthPeakWin = peak > healthPeakWin ? peak : healthPeakWin;
+  healthPrePeakWin = prePeak > healthPrePeakWin ? prePeak : healthPrePeakWin;
   healthClipWin += clipLocal;
   healthSampWin += sampLocal;
 
