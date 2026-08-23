@@ -939,34 +939,34 @@ export default function PiMobile() {
           </div>
 
           {/* Live status pills */}
-          <div className="flex items-center gap-3 bg-secondary/50 px-3 py-1.5 rounded-full border border-border/60">
+          <div className="flex items-center gap-2 bg-secondary/50 px-2.5 py-1.5 rounded-full border border-border/60">
             <div className="flex items-center gap-1">
               <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-primary animate-pulse shadow-[0_0_6px_hsl(var(--primary))]' : 'bg-muted-foreground/30'}`} />
-              <span className={`text-[10px] font-semibold uppercase tracking-widest ${engineStatus?.running ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>M</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-widest ${engineStatus?.running ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>Motor</span>
             </div>
             <div className="w-px h-3 bg-border" />
             <div className="flex items-center gap-1">
               <div className={`w-1.5 h-1.5 rounded-full ${sonosPlaying ? 'bg-ok shadow-[0_0_6px_hsl(var(--ok)/0.6)]' : sonosState ? 'bg-warn' : 'bg-muted-foreground/30'}`} />
-              <span className={`text-[10px] font-semibold uppercase tracking-widest ${sonosState ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>S</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-widest ${sonosState ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>Sonos</span>
             </div>
             <div className="w-px h-3 bg-border" />
             <div className="flex items-center gap-1">
               <div className={`w-1.5 h-1.5 rounded-full ${bleConnected ? 'bg-ok shadow-[0_0_6px_hsl(var(--ok)/0.6)]' : 'bg-muted-foreground/30'}`} />
-              <span className={`text-[10px] font-semibold uppercase tracking-widest ${bleConnected ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>L</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-widest ${bleConnected ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>Lamp</span>
             </div>
           </div>
 
           <button
             onClick={handleSave}
             disabled={!piOnline}
-            className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
+            aria-label={saved ? 'Sparat' : 'Spara'}
+            className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
               saved
                 ? 'bg-ok/15 text-ok ring-1 ring-inset ring-ok/40'
                 : 'bg-primary text-primary-foreground shadow-[0_0_16px_hsl(var(--primary)/0.35)]'
             }`}
           >
-            {saved ? <Check size={14} /> : <Save size={14} />}
-            <span className="ml-1.5">{saved ? 'Sparat' : 'Spara'}</span>
+            {saved ? <Check size={16} /> : <Save size={16} />}
           </button>
         </div>
       </header>
