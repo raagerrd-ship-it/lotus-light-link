@@ -131,6 +131,36 @@ function MicGainCalibrateButton({ piBase, onDone }: { piBase: string; onDone: (g
   );
 }
 
+/** Post-gain nivåmätare. Grön zon = lagom, gul = för svagt, röd = clipping.
+ *  Peak kommer från motorn (post-gain, före soft-clip-knät). */
+function LevelMeter({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
+  const peak = health ? Math.min(1, health.peak) : 0;
+  const status = health?.status ?? 'low';
+  const barClass =
+    status === 'hot' ? 'bg-destructive' : status === 'low' ? 'bg-muted-foreground' : 'bg-primary';
+  const label =
+    status === 'hot' ? 'Clipping — sänk gain' : status === 'low' ? 'Svag signal — höj gain' : 'Bra nivå';
+
+  return (
+    <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Insignal</span>
+        <span className={`font-mono ${status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-primary' : 'text-muted-foreground'}`}>
+          {label}
+        </span>
+      </div>
+      <div className="relative h-2 rounded-full bg-secondary overflow-hidden">
+        {/* Målzon 0.15–0.9 */}
+        <div className="absolute inset-y-0 border-x border-primary/40" style={{ left: '15%', right: '10%' }} />
+        <div className={`h-full rounded-full transition-[width] duration-200 ${barClass}`} style={{ width: `${peak * 100}%` }} />
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        Peak {(peak * 100).toFixed(0)}% · clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}% — sikta mellan strecken när musiken spelar.
+      </p>
+    </div>
+  );
+}
+
 function GainCalibrationPanel({
 
   piBase, micGain, setMicGain, sonosVolume,
@@ -145,6 +175,7 @@ function GainCalibrationPanel({
   const [gainLow, setGainLow] = useState(DEFAULT_GAIN_LOW);
   const [gainHigh, setGainHigh] = useState(DEFAULT_GAIN_HIGH);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
+  const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
 
   // Initial load: hämta sparat läge + cal-punkter
   useEffect(() => {
@@ -171,6 +202,7 @@ function GainCalibrationPanel({
         if (!cancelled) {
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
           if (ag.effective != null) setEffectiveGain(ag.effective);
+          setHealth(ag.health ?? null);
         }
       } catch {}
       if (cancelled) return;
@@ -222,6 +254,9 @@ function GainCalibrationPanel({
 
   return (
     <div className="space-y-4">
+      {/* Nivåmätare: visar om gainen ligger rätt (brusgolv ↔ clipping) */}
+      <LevelMeter health={health} />
+
       {/* Mode selector: Manual ↔ Auto */}
       <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-secondary/40 border border-border">
         <button
