@@ -159,124 +159,51 @@ export interface BandResult {
 }
 
 const SAMPLE_RATE = 48000;
-const FFT_SIZE = FFT_N; // 1024
-// HOP_SIZE = 600 frames (12.5ms @ 48kHz) — exakt 80 Hz FFT-takt.
-// Låst mot tickMs=25 (40 pps): exakt 2 FFT-frames per engine-tick → senaste
-// FFT är max 12.5ms gammal när tickInner läser → jämn transient-respons utan
-// jitter mellan 1 och 2 frames per tick.
-// (Var 480 = 100 Hz, avstämt mot gamla tickMs=20. Med tickMs=25 gav det 2.5
-//  frames/tick → ojämn färskhet OCH 20% onödiga FFT:er på Zero 2W.)
-//
-// Engine.tickInner triggas bara på tickMs-takt (gate i piEngine.onFFTFrame
-// kollar `elapsed >= tickMs`) → BLE-trafik oförändrad.
-//
-// CPU-konsekvens: ~80 FFT/s. Sedan fftRadix2 kör reell-FFT (512-punkts komplex
-// + split) kostar en frame ~0.45ms på Zero 2W → ~3.5% CPU (var ~8% med full
-// 1024-punkts komplex FFT).
-// Vendor-bufferten är 8× period = 46ms vilket täcker värsta GC-pausen.
-const HOP_SIZE = 600;
 
-const BIN_COUNT = FFT_SIZE / 2;
-const BIN_WIDTH = SAMPLE_RATE / FFT_SIZE;
-const FFT_MASK = FFT_SIZE - 1;
+// Ringbuffert-storlek. Behöver bara rymma några analysator-hops (jitter kan ge
+// 3 hops i en callback) — 1024 ger gott om marginal.
+const RING_SIZE = 1024;
+const RING_MASK = RING_SIZE - 1;
 
-// Pre-computed Hann window (~6% more energy than Blackman, minimal spectral leakage)
-const hannWindow = new Float64Array(FFT_SIZE);
-{
-  for (let i = 0; i < FFT_SIZE; i++) {
-    hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
-  }
-}
+// ── Band-takt mot motorn ──
+// Motorn tickar på 25 ms (40 pps). Analysatorn producerar en frame var 128:e
+// sample (2.67 ms). Vi fyrar band-eventet var 5:e hop ≈ 640 samples ≈ 13.3 ms
+// (~75 Hz) → ungefär 2 band-events per tick, precis som den gamla 600-hoppen,
+// men UTAN en andra FFT.
+const BAND_EVERY_HOPS = 5;
+let bandHopCounter = 0;
 
-// Frequency band cuts (Hz)
-// Bas: 60–150 Hz (~1.32 oktaver) — sub + kick fundamentals
-// Mid+Hi: 150–15000 Hz (~6.64 oktaver) — vocals, snare, hats, cymbals
-// Diskanten dränks tidigare av att vi delade per-bin: hi-bandet hade 466 bins
-// vs basens 3, så samma energi per Hz gav 100x lägre RMS i diskant.
-// Lösning: dela per oktav istället → matchar mänsklig perception.
-const LO_HZ_LOW = 60;
-const LO_HZ_HIGH = 150;
-const HI_HZ_LOW = 150;
-const HI_HZ_HIGH = 15000;
-const LO_BIN_LOW = Math.max(1, Math.floor(LO_HZ_LOW / BIN_WIDTH));
-const LO_BIN_HIGH = Math.floor(LO_HZ_HIGH / BIN_WIDTH);
-const HI_BIN_LOW = LO_BIN_HIGH;
-const HI_BIN_HIGH = Math.min(BIN_COUNT, Math.floor(HI_HZ_HIGH / BIN_WIDTH));
-// Oktav-bredd per band: log2(highHz/lowHz)
-const LO_OCTAVES = Math.log2(LO_HZ_HIGH / LO_HZ_LOW);
-const HI_OCTAVES = Math.log2(HI_HZ_HIGH / HI_HZ_LOW);
-// Normalisera så att RMS = sqrt(totalPower / oktaver) — energi-per-oktav
-const INV_LO_OCT = 1 / LO_OCTAVES;
-const INV_HI_OCT = 1 / HI_OCTAVES;
+// ── BandResult ur analysatorns oktavband ──
+// spec/onset är per-band AGC:ade 0..1. Motorn förväntar sig RMS-liknande värden
+// i ~0–0.2-domänen (RAW_SCALE=5 i piEngine) → BAND_SCALE flyttar dit.
+// frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
+// tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
+const BAND_SCALE = 0.45;
+// Bandvikter: låg = sub/kick/bas, hög = lowMid..air (summerar till 1 var).
+const W_SUB = 0.35, W_KICK = 0.45, W_BASS = 0.20;
+const W_LOWMID = 0.20, W_MID = 0.30, W_HIGHMID = 0.25, W_TREBLE = 0.15, W_AIR = 0.10;
 
-// ── Beat-detektionens lågpass-brytfrekvens ──
-// bassFlux summeras över alla bins UNDER denna bin (kick/bas-onset). Default 150 Hz
-// (samma som tidigare fasta split). Runtime-tunbar via setBeatCutoffHz() från engine.
-let beatCutoffBin = LO_BIN_HIGH;
+// Övre kant (Hz) per analysator-band, i ordning sub..air.
+const BAND_TOP_HZ = [60, 120, 250, 500, 2000, 5000, 10000, 16000];
+// beatCutoffHz väljer vilka band som ingår i bassFlux (kick/bas-onset).
+let beatCutoffBands = 3;   // default 250 Hz → sub+kick+bas
 export function setBeatCutoffHz(hz: number): void {
   if (!Number.isFinite(hz)) return;
-  const bin = Math.floor(hz / BIN_WIDTH);
-  beatCutoffBin = Math.max(2, Math.min(BIN_COUNT, bin));
+  let n = 1;
+  for (let i = 0; i < BAND_TOP_HZ.length; i++) if (BAND_TOP_HZ[i] <= hz) n = i + 1;
+  beatCutoffBands = Math.max(1, Math.min(BAND_TOP_HZ.length, n));
 }
 
-
-
-// Precomputed constants (avoid recomputing every FFT frame)
-const INV_N2 = 1 / (FFT_SIZE * FFT_SIZE);
-
-// Backward-compat alias för engine-kod som läser LO_CUT/MID_CUT
-const LO_CUT = LO_BIN_HIGH;
-const MID_CUT = HI_BIN_HIGH;
-const LO_COUNT = LO_BIN_HIGH - LO_BIN_LOW;
-const MID_COUNT = HI_BIN_HIGH - HI_BIN_LOW;
-const HI_COUNT = BIN_COUNT - HI_BIN_HIGH;
-const MID_HI_COUNT = MID_COUNT + HI_COUNT;
-
-
-// Spectral flux state
-let prevPower: Float64Array = new Float64Array(BIN_COUNT);
+// Ring buffer for incoming PCM samples
+const ringBuf = new Float32Array(RING_SIZE);
+let ringPos = 0;
 
 // High-shelf filter state
 let hsState = 0;
 
-// Ring buffer for incoming PCM samples
-const ringBuf = new Float32Array(FFT_SIZE);
-let ringPos = 0;
-
-// Windowed sample buffer (input to FFT)
-const windowedBuf = new Float64Array(FFT_SIZE);
-let samplesReceived = 0;
-
-// ── Smoothing flyttad till engine.tickInner @ 50Hz ──
-// Tidigare körde vi en EMA här @ 100Hz OCH en till i tickInner → kvadrerad
-// effektiv alpha (slött ljud). Sedan togs båda bort → flimmer pga FFT-rate-
-// hack (10ms) aliaserades mot tick-takten (20ms). Nu: rå RMS levereras hit,
-// smoothing körs på tick-takt så filtret är synkat mot output-raten.
-
-
-
-// Noise gate borttagen 2026-04-21: brightnessFloor + dynamics + perceptualGamma
-// i engine sköter redan tystnadströskeln, och den gamla gaten kvävde första
-// kicken efter en tyst passage (3× knee-ramp). bassRms etc. flödar nu rakt
-// från rå RMS — ingen attenuation, ingen recovery.
-
-// ── Anti-alias smoothing över FFT-frames ──
-// Tick:en (50 Hz) samplar bara hälften av FFT-frames (100 Hz), vilket gör att
-// frame-to-frame-brus ser ut som synliga hopp i ljuset. En kort rolling average
-// över ~3 FFT-frames glättar bruset utan att gömma transienter:
-//   - Window 3 frames ≈ 30ms total averaging
-//   - Kick-trummor (attack ~15ms) når full styrka inom 1-2 fönster (10-20ms latens)
-//   - Långt under perceptuell tröskel för "samtidig" ljud+ljus (~50ms)
-// Pre-allokerade typed arrays — noll allokering i hot path.
-const FFT_SMOOTH_WINDOW = 3;
-const fftBassHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-const fftMidHiHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-const fftTotalHistory = new Float32Array(FFT_SMOOTH_WINDOW);
-let fftHistoryPos = 0;
-let fftHistoryFilled = 0;
-
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0 };
+
 
 // Timestamp of last FFT completion (performance.now())
 let lastFFTTimestamp = 0;
