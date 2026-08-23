@@ -24,10 +24,27 @@ export function LightPreview({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Canvas 2D förstår inte CSS-variabler — läs ut tokens som konkreta hsl-värden.
+    const root = getComputedStyle(document.documentElement);
+    const primary = root.getPropertyValue("--primary").trim() || "342 100% 61%";
+    const muted = root.getPropertyValue("--muted-foreground").trim() || "0 0% 60%";
+    const col = (tok: string, a = 1) => {
+      const [hue, sat, light] = tok.split(/\s+/);
+      return `hsla(${hue}, ${sat}, ${light}, ${a})`;
+    };
+
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    canvas.width = w * dpr; canvas.height = h * dpr;
-    ctx.scale(dpr, dpr);
+    let w = 0, h = 0;
+    const resize = () => {
+      w = canvas.clientWidth || 240;
+      h = canvas.clientHeight || 56;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
 
     const N = 140;
     const hist = new Float32Array(N);
@@ -67,14 +84,14 @@ export function LightPreview({
 
       // Golvlinje
       const floorY = h - 2 - (h - 6) * floor;
-      ctx.strokeStyle = "hsl(var(--muted-foreground) / 0.35)";
+      ctx.strokeStyle = col(muted, 0.35);
       ctx.setLineDash([3, 4]);
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, floorY); ctx.lineTo(w, floorY); ctx.stroke();
       ctx.setLineDash([]);
 
       // Insignal (svag)
-      ctx.strokeStyle = "hsl(var(--muted-foreground) / 0.4)";
+      ctx.strokeStyle = col(muted, 0.5);
       ctx.beginPath();
       for (let i = 0; i < N; i++) {
         const px = (i / (N - 1)) * w, py = h - 2 - (h - 6) * raw[i];
@@ -84,8 +101,8 @@ export function LightPreview({
 
       // Utsignal (fylld)
       const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, "hsl(var(--primary) / 0.45)");
-      grad.addColorStop(1, "hsl(var(--primary) / 0.02)");
+      grad.addColorStop(0, col(primary, 0.45));
+      grad.addColorStop(1, col(primary, 0.02));
       ctx.beginPath();
       ctx.moveTo(0, h);
       for (let i = 0; i < N; i++) {
@@ -94,7 +111,7 @@ export function LightPreview({
       ctx.lineTo(w, h); ctx.closePath();
       ctx.fillStyle = grad; ctx.fill();
 
-      ctx.strokeStyle = "hsl(var(--primary))";
+      ctx.strokeStyle = col(primary);
       ctx.lineWidth = 1.6;
       ctx.beginPath();
       for (let i = 0; i < N; i++) {
@@ -111,7 +128,7 @@ export function LightPreview({
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, []);
 
   return (
