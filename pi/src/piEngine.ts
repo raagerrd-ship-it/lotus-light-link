@@ -223,6 +223,11 @@ const DEFAULT_CAL: LightCalibration = {
   beatGridPulse: true,
   beatLeadMs: 60,
   beatSyncStrength: 0.18,
+  dropSource: 'analyser',
+  transientSource: 'flux',
+  bandMixMode: 'legacy',
+  intensityInfluence: 0.3,
+  barAccent: 1.0,
 };
 
 
