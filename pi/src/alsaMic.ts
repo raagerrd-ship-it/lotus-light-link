@@ -530,6 +530,7 @@ export function resetFluxState(): void {
   // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
   analyser.resetGain();
   latestFrame = null;
+  latestFrameAt = 0;
   analyserSamplesReceived = 0;
   analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
 }
