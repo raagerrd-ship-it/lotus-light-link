@@ -926,30 +926,47 @@ export default function PiMobile() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Sticky header — identitet, live-status och spara */}
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
-        <div className="mx-auto w-full max-w-[430px] px-4 py-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${piOnline ? 'bg-ok shadow-[0_0_8px_hsl(var(--ok)/0.8)]' : 'bg-destructive'}`} />
-              <span className="text-[13px] font-semibold tracking-tight">Lotus Light</span>
+      <header className="sticky top-0 z-50 h-14 border-b border-border/70 bg-background/80 backdrop-blur-lg">
+        <div className="mx-auto w-full max-w-[430px] h-full px-4 flex items-center justify-between gap-3">
+          {/* Brand */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-[0_0_12px_hsl(var(--primary)/0.35)]">
+              <svg className="w-4 h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
             </div>
-            <div className="mt-1 flex items-center gap-3">
-              <StatusDot label={engineStatus?.running ? 'Motor' : 'Motor av'} state={engineState} />
-              <StatusDot label={sonosPlaying ? 'Spelar' : sonosState ? 'Pausad' : 'Sonos av'} state={sonosState2} />
-              <StatusDot label={bleConnected ? 'Lampa' : 'Ej ansluten'} state={bleState} />
+            <span className="text-sm font-bold tracking-tight text-foreground">LOTUS</span>
+          </div>
+
+          {/* Live status pills */}
+          <div className="flex items-center gap-3 bg-secondary/50 px-3 py-1.5 rounded-full border border-border/60">
+            <div className="flex items-center gap-1">
+              <div className={`w-1.5 h-1.5 rounded-full ${engineStatus?.running ? 'bg-primary animate-pulse shadow-[0_0_6px_hsl(var(--primary))]' : 'bg-muted-foreground/30'}`} />
+              <span className={`text-[10px] font-semibold uppercase tracking-widest ${engineStatus?.running ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>M</span>
+            </div>
+            <div className="w-px h-3 bg-border" />
+            <div className="flex items-center gap-1">
+              <div className={`w-1.5 h-1.5 rounded-full ${sonosPlaying ? 'bg-ok shadow-[0_0_6px_hsl(var(--ok)/0.6)]' : sonosState ? 'bg-warn' : 'bg-muted-foreground/30'}`} />
+              <span className={`text-[10px] font-semibold uppercase tracking-widest ${sonosState ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>S</span>
+            </div>
+            <div className="w-px h-3 bg-border" />
+            <div className="flex items-center gap-1">
+              <div className={`w-1.5 h-1.5 rounded-full ${bleConnected ? 'bg-ok shadow-[0_0_6px_hsl(var(--ok)/0.6)]' : 'bg-muted-foreground/30'}`} />
+              <span className={`text-[10px] font-semibold uppercase tracking-widest ${bleConnected ? 'text-foreground/70' : 'text-muted-foreground/50'}`}>L</span>
             </div>
           </div>
+
           <button
             onClick={handleSave}
             disabled={!piOnline}
-            className={`shrink-0 flex items-center gap-1.5 px-4 min-h-[44px] rounded-xl text-[11px] font-semibold transition-all active:scale-[0.97] disabled:opacity-30 disabled:pointer-events-none ${
+            className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
               saved
                 ? 'bg-ok/15 text-ok ring-1 ring-inset ring-ok/40'
-                : 'bg-primary text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)]'
+                : 'bg-primary text-primary-foreground shadow-[0_0_16px_hsl(var(--primary)/0.35)]'
             }`}
           >
             {saved ? <Check size={14} /> : <Save size={14} />}
-            {saved ? 'Sparat' : 'Spara'}
+            <span className="ml-1.5">{saved ? 'Sparat' : 'Spara'}</span>
           </button>
         </div>
       </header>
