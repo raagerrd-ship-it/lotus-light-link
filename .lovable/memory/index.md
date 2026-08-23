@@ -10,6 +10,7 @@ Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnec
 BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process retry.
 
 ## Memories
+- [Analysator-synk](mem://pi/audio/analyser-sync) — mirror av DMX Control (commit a5ccabe0): tempogram-BPM, kickAtMs, barShift, Lotus-adapter
 - [TV-läge & profil-globaler](mem://pi/runtime/tv-mode-profiles) — TV idlar ej motorn, auto-gain-override, dimmingGamma/gainCalibration per profil, /api/tv-profile
 - [Taktklocka + grid-puls](mem://pi/audio/beat-clock-grid-pulse) — beatClock.ts, PLL mot kicks, puls med beatLeadMs försprång
 - [Portable BLE driver](mem://pi/ble/portable-driver-layering) — pi/src/ble-driver/ fristående (noll outside-imports); ble/ är app-glue shims + subsystem-state; motor via createLampDriver
