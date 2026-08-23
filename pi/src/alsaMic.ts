@@ -333,116 +333,47 @@ export function getAcrCaptureWav(): Buffer | null {
 // NOTE: applyHighShelfSample inlined directly into onAudioData hot loop
 // (function call overhead per sample × 1920/cb = measurable on Pi Zero 2W).
 
-function processFFT(): void {
-  // Copy ring buffer in order, apply Hann window — bitmask instead of modulo
-  for (let i = 0; i < FFT_SIZE; i++) {
-    windowedBuf[i] = ringBuf[(ringPos + i) & FFT_MASK] * hannWindow[i];
-  }
+/**
+ * Härled motorns BandResult ur analysatorns senaste frame. INGEN egen FFT —
+ * spektrumet är redan beräknat en gång i audio-analyser.
+ *   bassRms/midHiRms : viktad oktavbands-nivå (AGC 0..1) × levelVU × BAND_SCALE
+ *   totalRms         : levelVU × BAND_SCALE (auto-gainad RMS, tystnad → 0)
+ *   flux             : analysatorns bredbands-flux (skarp, för onset)
+ *   bassFlux         : summerad per-band-onset under beatCutoffHz (kick/bas)
+ */
+function emitBands(frame: Frame): void {
+  const s = frame.spec;
+  const o = frame.onset;
+  const amp = frame.levelVU * BAND_SCALE;
 
-  const [fftRe, fftIm] = fft1024(windowedBuf);
+  latestBands.bassRms = (W_SUB * s.sub + W_KICK * s.kick + W_BASS * s.bass) * amp;
+  latestBands.midHiRms =
+    (W_LOWMID * s.lowMid + W_MID * s.mid + W_HIGHMID * s.highMid +
+     W_TREBLE * s.treble + W_AIR * s.air) * amp;
+  latestBands.totalRms = amp;
+  latestBands.flux = frame.flux;
 
-  // Power spectrum + band sums — branchless, split into 4 segments instead of
-  // per-bin if/else (saves ~1024 conditional branches per frame).
-  // Segments: [0..LO_BIN_LOW)  [LO_BIN_LOW..LO_BIN_HIGH)  [HI_BIN_LOW..HI_BIN_HIGH)  [HI_BIN_HIGH..BIN_COUNT)
-  // (LO_BIN_HIGH === HI_BIN_LOW so segments are contiguous.)
-  let loSum = 0, hiSum = 0;
-  let totalSum = 0;
-  let flux = 0;
-  let bassFlux = 0; // flux under beatCutoffBin (lågpass) — kick/bas-onset
+  // bassFlux: onset-energi i banden under cutoffen. Onsets är 0..1 per band;
+  // medelvärdet håller samma storleksordning som gamla flux (0.05–0.5) så
+  // processOnsets absoluta golv (0.045) och median-prominens gäller oförändrat.
+  const onsets = [o.sub, o.kick, o.bass, o.lowMid, o.mid, o.highMid, o.treble, o.air];
+  let bf = 0;
+  for (let i = 0; i < beatCutoffBands; i++) bf += onsets[i];
+  latestBands.bassFlux = bf / beatCutoffBands;
 
-  // Segment 1: 0 .. LO_BIN_LOW (only total + flux; ingår i bassFlux = sub)
-  for (let i = 0; i < LO_BIN_LOW; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-  }
-  // Segment 2: LO_BIN_LOW .. LO_BIN_HIGH (loSum; ingår i bassFlux = bas)
-  for (let i = LO_BIN_LOW; i < LO_BIN_HIGH; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    loSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-  }
-  // Segment 3: HI_BIN_LOW .. HI_BIN_HIGH (hiSum)
-  for (let i = HI_BIN_LOW; i < HI_BIN_HIGH; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    hiSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-  }
-  // Segment 4: HI_BIN_HIGH .. BIN_COUNT (only total + flux)
-  for (let i = HI_BIN_HIGH; i < BIN_COUNT; i++) {
-    const r = fftRe[i], m = fftIm[i];
-    const power = (r * r + m * m) * INV_N2;
-    totalSum += power;
-    const diff = power - prevPower[i];
-    if (diff > 0) { flux += diff; if (i < beatCutoffBin) bassFlux += diff; }
-    prevPower[i] = power;
-
-  }
-
-  // ── Energy-per-octave: matchar mänsklig perception av frekvensbalans ──
-  // Tidigare delades med antal bins → diskant (466 bins) dränktes vs bas (3 bins).
-  // Nu: total power i bandet / antal oktaver bandet täcker → båda jämförbara.
-  const rawBass = Math.sqrt(loSum * INV_LO_OCT);
-  const rawMidHi = Math.sqrt(hiSum * INV_HI_OCT);
-  const rawTotal = Math.sqrt(totalSum / BIN_COUNT);
-
-
-  // ── Anti-alias smoothing: rolling average över senaste FFT-frames ──
-  // Eliminerar frame-to-frame-brus (alias mellan ~100Hz FFT och 50Hz tick) utan
-  // att gömma transient-respons. EMA-smoothingen i engine.tickInner körs ovanpå
-  // detta för musikalisk mjukhet. flux smoothas EJ — onset-detektion behöver
-  // skarpa transienter för att fånga kick-trummor.
-  fftBassHistory[fftHistoryPos] = rawBass;
-  fftMidHiHistory[fftHistoryPos] = rawMidHi;
-  fftTotalHistory[fftHistoryPos] = rawTotal;
-  fftHistoryPos = (fftHistoryPos + 1) % FFT_SMOOTH_WINDOW;
-  if (fftHistoryFilled < FFT_SMOOTH_WINDOW) fftHistoryFilled++;
-
-  let bassSum = 0, midHiSum = 0, totalSum_smooth = 0;
-  for (let i = 0; i < fftHistoryFilled; i++) {
-    bassSum += fftBassHistory[i];
-    midHiSum += fftMidHiHistory[i];
-    totalSum_smooth += fftTotalHistory[i];
-  }
-  const invFilled = 1 / fftHistoryFilled;
-
-  latestBands.bassRms = bassSum * invFilled;
-  latestBands.midHiRms = midHiSum * invFilled;
-  latestBands.totalRms = totalSum_smooth * invFilled;
-  latestBands.flux = flux;  // skarp — onset-detektion behöver detta
-  latestBands.bassFlux = bassFlux;  // kick/bas-only flux
-
-  // Debug logging every ~2 seconds (only when DEBUG=true)
   if (DEBUG_ENABLED) {
     debugTickCount++;
     if (debugTickCount >= DEBUG_INTERVAL) {
-      dlog(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${flux.toFixed(6)}`);
+      dlog(`[ALSA-DBG] peak=${debugPeakRaw.toFixed(5)} bass=${latestBands.bassRms.toFixed(6)} midHi=${latestBands.midHiRms.toFixed(6)} total=${latestBands.totalRms.toFixed(6)} flux=${latestBands.flux.toFixed(6)} bassFlux=${latestBands.bassFlux.toFixed(6)}`);
       debugTickCount = 0;
       debugPeakRaw = 0;
     }
   }
 
-  // Stamp FFT completion time
   lastFFTTimestamp = performance.now();
   _fftFrameCount++;
 
-  // (Portable analysern körs INTE här — se analyserSamplesReceived-loopen i
-  //  onAudioData. Den har egen 128-hop-takt så DMX-projektets kalibrering
-  //  för BPM/drop/kick fungerar oförändrad här.)
-
-  // Fire event immediately — engine can process with zero latency
-  if (_onFluxReady) _onFluxReady(flux);
+  if (_onFluxReady) _onFluxReady(latestBands.flux);
   if (_onFFTReady) _onFFTReady(latestBands);
 }
 
@@ -451,13 +382,12 @@ export function getLatestBands(): BandResult {
 }
 
 export function resetFluxState(): void {
-  prevPower.fill(0);
-  // Nollställ anti-alias-historik så pre/post-paus-data inte blandas
-  fftBassHistory.fill(0);
-  fftMidHiHistory.fill(0);
-  fftTotalHistory.fill(0);
-  fftHistoryPos = 0;
-  fftHistoryFilled = 0;
+  latestBands.bassRms = 0;
+  latestBands.midHiRms = 0;
+  latestBands.totalRms = 0;
+  latestBands.flux = 0;
+  latestBands.bassFlux = 0;
+  bandHopCounter = 0;
   // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
   analyser.resetGain();
   latestFrame = null;
@@ -465,6 +395,7 @@ export function resetFluxState(): void {
   analyserSamplesReceived = 0;
   analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
 }
+
 
 /** Return timestamp (performance.now) of last FFT completion */
 export function getLastFFTTimestamp(): number {
