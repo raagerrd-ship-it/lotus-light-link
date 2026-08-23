@@ -1488,7 +1488,9 @@ export function startConfigServer(port = 3050): void {
      res.json({
        enabled: mic ? mic.isAutoGainEnabled() : false,
        multiplier: mic ? mic.getAutoGainMultiplier() : 1,
-       effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
+      effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
+      health: mic ? mic.getMicHealth() : null,
+
      });
    });
    app.put('/api/auto-gain', (req, res) => {
