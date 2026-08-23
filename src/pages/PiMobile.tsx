@@ -5,6 +5,8 @@ import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { Panel, Row, Stat, Slider, Segmented, Button, Toggle } from "@/components/piUi";
 import { LightPreview } from "@/components/LightPreview";
+import { BeatMonitor } from "@/components/BeatMonitor";
+
 
 
 
