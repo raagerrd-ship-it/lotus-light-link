@@ -163,9 +163,9 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
 
 type CalPoint = { vol: number; gain: number };
 
-/** Guidad tvåstegskalibrering: spela på låg Sonos-volym, dra slidern till
- *  "Bra nivå", spara punkten — höj sedan volymen och gör om. Slidern skriver
- *  gain live till motorn (manuellt läge) så mätaren speglar exakt vad du hör. */
+/** Enda gain-kalibreringen: två steg (låg → hög Sonos-volym). Varje steg mäter
+ *  15 s och sätter gain automatiskt (target RMS 0.35); slidern finjusterar och
+ *  nivåmätaren visar om det ligger rätt. Sista steget aktiverar auto-gain. */
 function GuidedGainWizard({
   piBase, sonosVolume, health, micGain, setMicGain, onDone,
 }: {
@@ -178,6 +178,9 @@ function GuidedGainWizard({
 }) {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [low, setLow] = useState<CalPoint | null>(null);
+  const [measuring, setMeasuring] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [measured, setMeasured] = useState<null | { ok: boolean; measuredRms: number }>(null);
 
   const start = async () => {
     // Guiden kör i manuellt läge så slidern = motorns gain
@@ -186,8 +189,41 @@ function GuidedGainWizard({
       body: JSON.stringify({ enabled: false }),
     }).catch(() => {});
     setLow(null);
+    setMeasured(null);
     setStep(1);
   };
+
+  const measure = async () => {
+    setMeasured(null);
+    setProgress(0);
+    try {
+      await fetch(`${piBase}/api/mic-gain-calibration/start`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durationMs: 15000, targetRms: 0.35 }),
+        signal: AbortSignal.timeout(2000),
+      });
+      setMeasuring(true);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (!measuring) return;
+    const id = setInterval(async () => {
+      try {
+        const r = await fetch(`${piBase}/api/mic-gain-calibration`, { signal: AbortSignal.timeout(2000) }).then(r => r.json());
+        if (r.active) {
+          setProgress(Math.min(100, Math.round(((r.elapsedMs || 0) / (r.durationMs || 15000)) * 100)));
+        } else {
+          setMeasuring(false);
+          if (r.lastResult) {
+            setMeasured({ ok: !!r.lastResult.ok, measuredRms: r.lastResult.measuredRms });
+            if (r.lastResult.ok) setMicGain(r.lastResult.newGain);
+          }
+        }
+      } catch { /* keep polling */ }
+    }, 500);
+    return () => clearInterval(id);
+  }, [measuring, piBase, setMicGain]);
 
   const onSlide = (g: number) => {
     setMicGain(g);
@@ -201,6 +237,7 @@ function GuidedGainWizard({
     const vol = sonosVolume ?? 0;
     if (step === 1) {
       setLow({ vol, gain: micGain });
+      setMeasured(null);
       setStep(2);
       return;
     }
@@ -225,7 +262,7 @@ function GuidedGainWizard({
         onClick={start}
         className="w-full py-2 rounded-lg text-xs font-medium bg-secondary hover:bg-secondary/80 transition-colors"
       >
-        Guidad gain-kalibrering (2 volymer)
+        Kalibrera gain (2 volymer)
       </button>
     );
   }
@@ -234,7 +271,7 @@ function GuidedGainWizard({
   const hint =
     status === 'hot' ? 'Sänk slidern tills det slutar clippa'
       : status === 'low' ? 'Höj slidern tills mätaren blir grön'
-      : 'Perfekt — spara punkten';
+      : 'Bra nivå — spara punkten';
   const sameVol = step === 2 && low != null && sonosVolume != null && Math.abs(sonosVolume - low.vol) < 3;
 
   return (
@@ -246,8 +283,8 @@ function GuidedGainWizard({
 
       <p className="text-[11px] text-muted-foreground">
         {step === 1
-          ? 'Spela musik på Sonos på låg volym (t.ex. 10 %) och justera slidern.'
-          : `Höj Sonos-volymen (t.ex. 40–50 %) och justera slidern igen. Låg punkt sparad: vol ${low?.vol} → ${low?.gain.toFixed(1)}×.`}
+          ? 'Spela musik på Sonos på låg volym (t.ex. 10 %) och tryck Mät — motorn sätter gain automatiskt.'
+          : `Höj Sonos-volymen (t.ex. 40–50 %) och tryck Mät igen. Låg punkt: vol ${low?.vol} → ${low?.gain.toFixed(1)}×.`}
       </p>
 
       <div className="flex items-center justify-between text-xs">
@@ -255,11 +292,31 @@ function GuidedGainWizard({
         <span className="font-mono font-bold">{sonosVolume ?? '—'}</span>
       </div>
 
+      <button
+        onClick={measure}
+        disabled={measuring}
+        className="w-full py-2 rounded-lg text-xs font-medium bg-secondary hover:bg-secondary/80 disabled:opacity-50 transition-colors"
+      >
+        {measuring ? `Mäter… ${progress}%` : 'Mät automatiskt (15 s)'}
+      </button>
+      {measuring && (
+        <div className="h-1 rounded-full bg-secondary overflow-hidden">
+          <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      )}
+      {measured && !measuring && (
+        <p className="text-[10px] text-muted-foreground">
+          {measured.ok
+            ? `Mätt RMS ${measured.measuredRms.toFixed(3)} → gain satt till ${micGain.toFixed(1)}×.`
+            : 'För tyst för att mäta — höj Sonos-volymen eller justera manuellt nedan.'}
+        </p>
+      )}
+
       <LevelMeter health={health} />
 
       <div>
         <div className="flex justify-between text-sm mb-1">
-          <span>Mic Gain</span>
+          <span>Finjustera gain</span>
           <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
         </div>
         <input
@@ -280,10 +337,10 @@ function GuidedGainWizard({
 
       <button
         onClick={savePoint}
-        disabled={sonosVolume == null || sameVol}
+        disabled={sonosVolume == null || sameVol || measuring}
         className="w-full py-2 rounded-lg text-xs font-medium bg-primary text-primary-foreground disabled:opacity-50 transition-colors"
       >
-        {step === 1 ? `Spara låg punkt (vol ${sonosVolume ?? '—'})` : `Spara & aktivera auto (vol ${sonosVolume ?? '—'})`}
+        {step === 1 ? 'Spara & öka volymen →' : 'Spara & aktivera auto-gain'}
       </button>
     </div>
   );
