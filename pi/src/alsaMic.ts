@@ -816,7 +816,7 @@ function onAudioData(buf: Buffer): void {
   const prevRingPos = ringPos;
   ringPos = pos;
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
-  debugPeakRaw = peak;
+  if (peak > debugPeakRaw) debugPeakRaw = peak;
   healthPeakWin = peak > healthPeakWin ? peak : healthPeakWin;
   healthClipWin += clipLocal;
   healthSampWin += sampLocal;
