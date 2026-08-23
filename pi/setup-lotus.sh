@@ -488,7 +488,7 @@ Group=$TARGET_GROUP
 SupplementaryGroups=netdev bluetooth audio
 WorkingDirectory=$PI_DIR
 ExecStartPre=/bin/sleep 2
-ExecStart=/usr/bin/node --max-old-space-size=224 $PI_DIR/dist/index.js
+ExecStart=/usr/bin/node --max-old-space-size=96 --max-semi-space-size=4 $PI_DIR/dist/index.js
 Environment=NPM_CONFIG_CACHE=$APP_DIR/.npm-cache
 Environment=PORT=$ENGINE_PORT
 Environment=ENGINE_PORT=$ENGINE_PORT
