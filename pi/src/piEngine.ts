@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, getLatestFrame, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid } from './alsaMic.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
