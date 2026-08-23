@@ -944,6 +944,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
     const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
+    latestFrameAt = Date.now();
     const dt = performance.now() - t0;
     // EMA (α=0.02 ≈ 50-hop tidskonstant) + max sedan senaste läsning
     analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
