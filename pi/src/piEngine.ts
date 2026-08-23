@@ -1093,6 +1093,10 @@ export class PiLightEngine {
         // till brusgolvet och flasha i tysta partier. Hämtar bands EN gång
         // och delar med dynamicCenter-uppdateringen nedan.
         const bands = getLatestBands();
+        // Analysatorns frame används bara när den är FÄRSK (<60 ms, samma guard
+        // som PLL:en). Är den gammal faller varje steg nedan tillbaka på den
+        // egna FFT-vägen i stället för att styra ljuset på inaktuell struktur.
+        const frame = Date.now() - getLatestFrameAt() < 60 ? getLatestFrame() : null;
         const energyFloor = this.cal.onsetEnergyFloor ?? 0;
         const peakBand = bands ? Math.max(bands.bassRms, bands.midHiRms) : 0;
         const passesEnergyGate =
@@ -1105,7 +1109,16 @@ export class PiLightEngine {
         if (passesEnergyGate) {
           // Lågpass-onset: bassFlux summerar flux under cal.beatCutoffHz (setBeatCutoffHz).
           // Full spektrum ≈ hög cutoff. Faller tillbaka på full flux om bands saknas.
-          const beatFlux = bands ? bands.bassFlux : flux;
+          let beatFlux = bands ? bands.bassFlux : flux;
+          // TRUMKÄLLA (steg 3): analysatorns kick-envelope är skild från basgången
+          // (spec.kick ≠ spec.bass), så pulsen hittar kicken även när basen maskerar
+          // den. Envelopen är 0..1 peak-hold medan flux typiskt ligger 0.05–0.5 —
+          // DRUM_TO_FLUX skalar in den i samma storleksordning så processOnsets
+          // absoluta golv (0.045) och median-prominens gäller oförändrat.
+          if (this.cal.transientSource === 'drum' && frame) {
+            const DRUM_TO_FLUX = 0.12;
+            beatFlux = (frame.drum.kick + 0.35 * frame.drum.snare) * DRUM_TO_FLUX;
+          }
           // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) — men den får
           // bara sätta pulsen när gridet inte driver den.
           kickFired = this.processOnset(beatFlux, !gridDrives);
@@ -1118,7 +1131,15 @@ export class PiLightEngine {
           const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 60));
           if (idx !== this._lastGridIdx) {
             this._lastGridIdx = idx;
-            this.onsetTarget = 0.45;
+            // ETTANS ACCENT (steg 5): barShift säger hur många slag ankaret ska
+            // flyttas för att landa på ettan (-1 = osäkert), så ettan är de idx där
+            // (idx + barShift) delas av 4. Kräver god konfidens — på ett gissat
+            // rutnät hade accenten hamnat på fel slag och känts som en missad takt.
+            const accent = this.cal.barAccent ?? 1;
+            const shift = frame?.barShift ?? -1;
+            const onOne = accent > 1 && shift >= 0 && (this._beat?.confidence ?? 0) > 0.4 &&
+              ((((idx + shift) % 4) + 4) % 4) === 0;
+            this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
             this._gridPulseCount++;
           }
         }
