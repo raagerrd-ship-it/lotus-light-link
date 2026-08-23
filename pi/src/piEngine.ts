@@ -688,7 +688,7 @@ export class PiLightEngine {
    * från onset (70ms-transient) genom att kräva ett föregående nedbrutet parti.
    * Triggar en stor vit punch-blixt (dropFlashUntil) som overridas i tickInner.
    */
-  private processDrop(bassRms: number): void {
+  private processDrop(bassRms: number, frame: Frame | null): void {
     if (!this.cal.dropEnabled) return;
     this.dropFrameCounter++;
 
@@ -710,7 +710,8 @@ export class PiLightEngine {
     const ABS_BASS_FLOOR = 0.06;          // absolut energi → ingen drop i tystnad
     const REFRACTORY_FRAMES = 400;        // ~4s mellan drops
 
-    // Spåra/erodera breakdown-minnet.
+    // Spåra/erodera breakdown-minnet (också när analysatorn driver dropen — den
+    // egna detektorn måste vara varm den sekund taktlåset tappas).
     if (this.bassFast < this.bassSlow * BREAKDOWN_RATIO) {
       if (this.breakdownFrames < 1000) this.breakdownFrames++;
     } else if (this.breakdownFrames > 0) {
@@ -718,11 +719,28 @@ export class PiLightEngine {
       if (this.breakdownFrames < 0) this.breakdownFrames = 0;
     }
 
-    const isDrop =
-      this.breakdownFrames >= MIN_BREAKDOWN_FRAMES &&
-      this.bassFast >= ABS_BASS_FLOOR &&
-      this.bassFast >= this.bassSlow * JUMP_FACTOR &&
-      (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+    // ANALYSATORNS DROP (steg 1): dropCount är MONOTON, så en flankjämförelse mot
+    // vårt eget senaste värde kan aldrig missa ett drop även om vi läser glesare.
+    // Den detektorn är novelty/kropp-baserad och ser drops utan bastapp, vilket
+    // bas-svackan nedan per definition inte gör. Kräver taktlås — utan bpm är
+    // analysatorns strukturlogik inte varm, och då är bas-svackan bättre än inget.
+    const analyserOwns = this.cal.dropSource !== 'bass' && frame != null && frame.bpm > 40;
+    let isDrop: boolean;
+    if (analyserOwns) {
+      const dc = frame!.dropCount;
+      if (this._analyserDropCount < 0) { this._analyserDropCount = dc; }
+      isDrop = dc > this._analyserDropCount &&
+        (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+      this._analyserDropCount = dc;
+    } else {
+      this._analyserDropCount = -1;   // ny flankreferens när/om analysatorn tar över igen
+      isDrop =
+        this.breakdownFrames >= MIN_BREAKDOWN_FRAMES &&
+        this.bassFast >= ABS_BASS_FLOOR &&
+        this.bassFast >= this.bassSlow * JUMP_FACTOR &&
+        (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+    }
+    this._dropSourceActive = analyserOwns ? 'analyser' : 'bass';
 
     if (isDrop) {
       this.dropLastFrameIdx = this.dropFrameCounter;
