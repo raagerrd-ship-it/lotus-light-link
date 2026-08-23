@@ -416,32 +416,32 @@ const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 
 
 // Software mic gain — multiplier applied to raw PCM samples before processing.
-// ANTINGEN/ELLER-LOGIK:
-//   autoGainEnabled === false → micGain = micGainBase   (manuell slider)
-//   autoGainEnabled === true  → micGain = micGainAuto   (interpolerad från Sonos-vol)
-// Cal-punkterna är absoluta gain-värden, inte multiplikatorer ovanpå base.
-let micGainBase = 15.0;  // INMP441 needs ~15x to match laptop mic sensitivity
-let micGainAuto = 15.0;  // Absolute gain interpolated from Sonos volume
-let autoGainEnabled = false;
-// Explicit user-override: satt av disableAutoGain(), blockerar auto-reaktivering
-// från Sonos-volym-pathen tills användaren själv slår på auto-gain igen.
-let autoGainUserDisabled = false;
-let micGain = 15.0;      // Effective — used in hot path
+// EN GAIN-KÄLLA (2026-08-23): tvåpunkts-kurvan mot Sonos-volym är ALLTID gainen.
+// Inget "manuellt läge", ingen adaptiv AGC, ingen auto-omkalibrering. Saknas
+// cal-punkter används micGainBase som ren fallback (och som mål för engångs-
+// verktyget "kalibrera automatiskt").
+let micGainBase = 75.0;  // fallback innan kurvan är satt (RAW_SCALE=5 borta → ~5× högre tal)
+let micGainAuto = 75.0;  // gain interpolerad från Sonos-volym (kurvan)
+let micGain = 75.0;      // Effective — used in hot path
 
 function updateEffectiveGain(): void {
-  micGain = autoGainEnabled ? micGainAuto : micGainBase;
+  micGain = micGainAuto;
 }
 
 export function getMicGain(): number { return micGainBase; }
 export function getEffectiveGain(): number { return micGain; }
 export function getAutoGainMultiplier(): number { return micGainAuto; }
 
+/** Sätt gain direkt (engångs-kalibreringsverktyget). Kurvan skriver över den
+ *  vid nästa volym-recompute — punkterna är auktoritativa. */
 export function setMicGain(gain: number): void {
-  micGainBase = Math.max(0.1, Math.min(50, gain));
+  micGainBase = Math.max(0.1, Math.min(AUTO_GAIN_MAX, gain));
+  micGainAuto = micGainBase;
   updateEffectiveGain();
   saveMicState();
-  dlog(`[ALSA] Mic base gain set to ${micGainBase.toFixed(1)}x (effective: ${micGain.toFixed(1)}x, auto=${autoGainEnabled})`);
+  dlog(`[ALSA] Mic gain set directly to ${micGainBase.toFixed(1)}x`);
 }
+
 
 /** Two-point gain calibration.
  *  Cal-punkterna är absoluta gain-värden. När auto är på bypass:as manuell slider. */
