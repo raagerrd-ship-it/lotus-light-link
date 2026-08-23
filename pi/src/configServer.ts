@@ -1508,22 +1508,28 @@ export function startConfigServer(port = 3050): void {
      res.json(points);
    });
 
-   app.put('/api/gain-calibration', (req, res) => {
-     const mic = requireMic(res);
-     if (!mic) return;
-     const { point1, point2 } = req.body;
-     mic.setGainCalPoints(point1 ?? null, point2 ?? null);
-     setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
-     try {
-       const pf = loadProfilesFile();
-       pf.profiles[pf.activePreset] = {
-         ...pf.profiles[pf.activePreset],
-         gainCalibration: { point1: point1 ?? null, point2: point2 ?? null },
-       };
-       saveProfilesFile(pf);
-     } catch {}
-     res.json({ ok: true, ...mic.getGainCalPoints() });
-   });
+    app.put('/api/gain-calibration', (req, res) => {
+      const mic = requireMic(res);
+      if (!mic) return;
+      // Partiell PUT: saknade/null-punkter nollar INTE kurvan (Spara-buggen som
+      // gav gain=1). Endast punkter med giltig gain skriver över.
+      const valid = (p: any) => p && typeof p.vol === 'number' && typeof p.gain === 'number' && p.gain > 0;
+      const cur = mic.getGainCalPoints();
+      const point1 = valid(req.body?.point1) ? req.body.point1 : cur.point1;
+      const point2 = valid(req.body?.point2) ? req.body.point2 : cur.point2;
+      mic.setGainCalPoints(point1 ?? null, point2 ?? null);
+      setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
+      try {
+        const pf = loadProfilesFile();
+        pf.profiles[pf.activePreset] = {
+          ...pf.profiles[pf.activePreset],
+          gainCalibration: { point1: point1 ?? null, point2: point2 ?? null },
+        };
+        saveProfilesFile(pf);
+      } catch {}
+      res.json({ ok: true, ...mic.getGainCalPoints() });
+    });
+
 
     app.delete('/api/gain-calibration', (_req, res) => {
       const mic = getMic();
