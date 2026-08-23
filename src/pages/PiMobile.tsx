@@ -3,7 +3,7 @@ import { Save, Check, Mic, Bluetooth, Loader2, Sliders } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
-import { Panel, Row, Stat, Slider, Segmented, Button, Toggle, StatusDot } from "@/components/piUi";
+import { Panel, Row, Stat, Slider, Segmented, Button, Toggle } from "@/components/piUi";
 
 
 
