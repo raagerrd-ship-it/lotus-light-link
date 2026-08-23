@@ -182,6 +182,20 @@ export interface LightCalibration {
   beatLeadMs: number;
   /** PLL: andel av fasfelet som korrigeras per kick (0 = av). Default 0.18. */
   beatSyncStrength: number;
+  /** Drop-källa: 'analyser' = analysatorns novelty/kropp-baserade dropCount (faller
+   *  tillbaka på bas-svackan när takten inte är låst), 'bass' = bara egen svacka. */
+  dropSource: 'analyser' | 'bass';
+  /** Transient-källa för pulsen: 'flux' = egen bas-flux, 'drum' = analysatorns
+   *  trumenvelope (kick skild från basgång). Default 'flux'. */
+  transientSource: 'flux' | 'drum';
+  /** Bandmix: 'legacy' = egen 2-bands-FFT, 'octave' = analysatorns oktavband med
+   *  per-band-AGC (jämnare ljusbild mellan låtar). Default 'legacy'. */
+  bandMixMode: 'legacy' | 'octave';
+  /** Hur mycket analysatorns sektionsenergi (intensity) får dra dynamicCenter.
+   *  0 = av (bara mic-energi), 1 = bara intensity. Default 0.3. */
+  intensityInfluence: number;
+  /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
+  barAccent: number;
   [key: string]: any;
 }
 
