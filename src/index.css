@@ -1,36 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Design-tokens delade med DMX Control så de två apparna känns som en familj.
+   Font-stacken är systemfonter — Pi:n kör offline utan webbfonter. */
 @layer base {
   :root {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 92%;
+    --background: 240 22% 5%;
+    --foreground: 240 25% 93%;
 
+    --card: 240 18% 10%;
+    --card-foreground: 240 25% 93%;
 
-    --primary: 0 0% 92%;
-    --primary-foreground: 0 0% 7%;
+    --secondary: 240 14% 15%;
+    --secondary-foreground: 240 25% 93%;
 
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 92%;
+    --muted: 240 14% 15%;
+    --muted-foreground: 240 12% 53%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 45%;
+    --border: 240 14% 17%;
+    --input: 240 14% 17%;
 
-    --accent: 0 0% 20%;
-    --accent-foreground: 0 0% 92%;
+    --accent: 342 100% 61%;
+    --accent-foreground: 0 0% 100%;
+    --primary: 342 100% 61%;
+    --primary-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 92%;
+    --ok: 157 68% 56%;
+    --warn: 36 100% 56%;
 
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-    --ring: 0 0% 92%;
+    --destructive: 0 84% 62%;
+    --destructive-foreground: 0 0% 100%;
 
-    --radius: 0.75rem;
-
+    --ring: 342 100% 61%;
+    --radius: 0.875rem;
   }
 }
 
@@ -39,11 +42,95 @@
     @apply border-border;
   }
 
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
-    font-family: 'Space Mono', monospace;
+    font: 15px -apple-system, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
     -webkit-user-select: none;
     user-select: none;
     overscroll-behavior: none;
   }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Sektionsetikett — genomgående typografi för rubriker */
+  .label-eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground;
+  }
+}
+
+/* ────────── Reglage ──────────
+   Platt track med accent-fill upp till thumb-läget, oversized thumb med halo.
+   Fyllnadsgraden sätts via --fill (inline style från React). */
+.lotus-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 30px;
+  background: transparent;
+  cursor: pointer;
+  --fill: 50%;
+}
+.lotus-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--primary) / 0.55) 0%,
+    hsl(var(--primary)) var(--fill),
+    hsl(var(--muted)) var(--fill),
+    hsl(var(--muted)) 100%
+  );
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.05);
+}
+.lotus-range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--primary) / 0.55) 0%,
+    hsl(var(--primary)) var(--fill),
+    hsl(var(--muted)) var(--fill),
+    hsl(var(--muted)) 100%
+  );
+}
+.lotus-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  background: hsl(var(--foreground));
+  border: 4px solid hsl(var(--background));
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.4), 0 0 14px 1px hsl(var(--primary) / 0.45);
+  transition: transform 120ms ease;
+}
+.lotus-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: hsl(var(--foreground));
+  border: 4px solid hsl(var(--background));
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.4), 0 0 14px 1px hsl(var(--primary) / 0.45);
+}
+.lotus-range:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+.lotus-range:active::-moz-range-thumb {
+  transform: scale(1.1);
+}
+.lotus-range:focus {
+  outline: none;
 }

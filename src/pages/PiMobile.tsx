@@ -1,12 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Save, Check, Mic, Bluetooth, Loader2 } from "lucide-react";
+import { Save, Check, Mic, Bluetooth, Loader2, Sliders } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
+import { Panel, Row, Stat, Slider, Segmented, Button, Toggle, StatusDot } from "@/components/piUi";
 
-
-
-const PI_FONT = '"Noto Sans", "DejaVu Sans", "Liberation Sans", system-ui, sans-serif';
 
 
 
@@ -70,31 +68,37 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
   const statusText =
     status === 'hot' ? 'Clipping' : status === 'low' ? 'Svag signal' : 'Bra nivå';
   const statusClass =
-    status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-primary' : 'text-muted-foreground';
+    status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-ok' : 'text-muted-foreground';
+
 
   return (
-    <div className="rounded-xl border border-border bg-secondary/30 p-3">
-      <div className="flex items-center justify-between text-xs mb-2">
-        <span className="text-muted-foreground">Nivå</span>
-        <span className={`font-mono text-[10px] ${statusClass}`}>{statusText}</span>
+    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="label-eyebrow">Nivå</span>
+        <span className={`font-mono text-[10px] font-semibold ${statusClass}`}>{statusText}</span>
       </div>
-      <div className="relative h-2 rounded-full bg-secondary overflow-hidden">
-        <div className="absolute inset-y-0 border-r border-primary/40" style={{ left: '15%' }} />
-        <div className="absolute inset-y-0 border-r border-primary/40" style={{ left: '90%' }} />
+      <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+        <div className="absolute inset-y-0 w-px bg-foreground/20" style={{ left: '15%' }} />
+        <div className="absolute inset-y-0 w-px bg-foreground/20" style={{ left: '90%' }} />
         <div
           className={`h-full rounded-full transition-[width] duration-200 ${
-            status === 'hot' ? 'bg-destructive' : status === 'ok' ? 'bg-primary' : 'bg-muted-foreground'
+            status === 'hot'
+              ? 'bg-destructive'
+              : status === 'ok'
+              ? 'bg-ok shadow-[0_0_12px_hsl(var(--ok)/0.6)]'
+              : 'bg-muted-foreground'
           }`}
           style={{ width: `${peak * 100}%` }}
         />
       </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
+      <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground/70 mt-1.5">
         <span>peak {(peak * 100).toFixed(0)}%</span>
         <span>clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}%</span>
       </div>
     </div>
   );
 }
+
 
 type CalPoint = { vol: number; gain: number };
 
@@ -198,91 +202,80 @@ function GuidedGainWizard({
 
   if (!open) {
     return (
-      <button
-        onClick={start}
-        className="w-full py-2 rounded-lg text-xs font-medium border border-border bg-secondary/40 hover:bg-secondary/70 transition-colors flex items-center justify-center gap-1.5"
-      >
+      <Button onClick={start} variant="secondary">
         <Mic size={12} /> Kalibrera automatiskt
-      </button>
+      </Button>
     );
   }
 
   const sameVol = step === 2 && low != null && sonosVolume != null && Math.abs(sonosVolume - low.vol) < 3;
 
   return (
-    <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-medium">Kalibrering · steg {step}/2</div>
+    <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/30 p-3 space-y-3">
+      <Row>
+        <span className="label-eyebrow">Kalibrering · steg {step}/2</span>
         <button onClick={close} className="text-[10px] text-muted-foreground hover:text-foreground">Stäng</button>
-      </div>
+      </Row>
 
       <div className="flex gap-1">
-        <div className={`h-1 flex-1 rounded-full ${step >= 1 ? 'bg-primary' : 'bg-secondary'}`} />
-        <div className={`h-1 flex-1 rounded-full ${step >= 2 ? 'bg-primary' : 'bg-secondary'}`} />
+        <div className={`h-[3px] flex-1 rounded-full ${step >= 1 ? 'bg-primary' : 'bg-muted'}`} />
+        <div className={`h-[3px] flex-1 rounded-full ${step >= 2 ? 'bg-primary' : 'bg-muted'}`} />
       </div>
 
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
         {step === 1
           ? <>Spela musik på <span className="text-foreground font-medium">låg volym</span> och mät — justera sedan slidern om det behövs.</>
           : <><span className="text-foreground font-medium">Höj volymen</span> och mät igen. Sparad lågpunkt: {low?.vol} → {low?.gain.toFixed(1)}×.</>}
       </p>
 
-      <div className="flex items-center justify-between text-xs bg-secondary/40 rounded-lg px-3 py-2">
-        <span className="text-muted-foreground">Sonos volym</span>
-        <span className="font-mono font-bold">{sonosVolume ?? '—'}</span>
+      <div className="rounded-xl bg-foreground/[0.04] px-3 py-2">
+        <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
       </div>
 
-      <button
-        onClick={measure}
-        disabled={measuring}
-        className="w-full py-2.5 rounded-lg text-xs font-semibold bg-secondary hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
-      >
+      <Button onClick={measure} disabled={measuring} variant="secondary">
         {measuring ? <><Loader2 size={12} className="animate-spin" /> Mäter… {progress}%</>
           : <><Mic size={12} /> Mät automatiskt (15 s)</>}
-      </button>
+      </Button>
 
       {measuring && (
-        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className="h-[3px] rounded-full bg-muted overflow-hidden">
           <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
         </div>
       )}
 
       {measured && !measuring && (
-        <p className={`text-[10px] ${measured.ok ? 'text-primary' : 'text-destructive'}`}>
+        <p className={`text-[10px] ${measured.ok ? 'text-ok' : 'text-destructive'}`}>
           {measured.ok
             ? `Mätt RMS ${measured.measuredRms.toFixed(3)} → gain ${micGain.toFixed(1)}×`
             : 'För tyst — höj Sonos-volymen eller justera manuellt.'}
         </p>
       )}
 
-      <div className="space-y-1">
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">Finjustera</span>
-          <span className="font-mono text-foreground">{micGain.toFixed(1)}×</span>
-        </div>
-        <input
-          type="range" min={1} max={50} step={0.5} value={micGain}
-          onChange={(e) => onSlide(parseFloat(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-        />
-      </div>
+      <Slider
+        label="Finjustera"
+        value={micGain}
+        display={`${micGain.toFixed(1)}×`}
+        min={1} max={50} step={0.5}
+        onChange={onSlide}
+      />
 
       {sameVol && (
-        <p className="text-[10px] text-destructive">
+        <p className="text-[10px] text-warn">
           Volymen är för nära lågpunkten — höj den innan du sparar.
         </p>
       )}
 
-      <button
+      <Button
         onClick={savePoint}
+        variant="primary"
         disabled={sonosVolume == null || sameVol || measuring}
-        className="w-full py-2.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground disabled:opacity-50 transition-colors"
       >
-        {step === 1 ? 'Spara lågpunkt →' : 'Spara & aktivera auto-gain'}
-      </button>
+        {step === 1 ? 'Spara lågpunkt' : 'Spara & aktivera auto-gain'}
+      </Button>
     </div>
   );
 }
+
 
 function GainCalibrationPanel({
   piBase, micGain, setMicGain, sonosVolume,
@@ -375,46 +368,30 @@ function GainCalibrationPanel({
 
   return (
     <div className="space-y-3">
-      {/* Mode toggle — primär kontroll högst upp */}
-      <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-secondary/40 border border-border">
-        <button
-          onClick={() => setMode(false)}
-          className={`py-2 rounded-lg text-xs font-medium transition-colors ${
-            !enabled ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground'
-          }`}
-        >
-          Manuell
-        </button>
-        <button
-          onClick={() => setMode(true)}
-          className={`py-2 rounded-lg text-xs font-medium transition-colors ${
-            enabled ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground'
-          }`}
-        >
-          Auto (Sonos vol)
-        </button>
-      </div>
+      <Segmented
+        value={enabled ? 'auto' : 'manual'}
+        onChange={(v) => setMode(v === 'auto')}
+        options={[
+          { value: 'manual', label: 'Manuell' },
+          { value: 'auto', label: 'Auto (Sonos)' },
+        ]}
+      />
 
       <LevelMeter health={health} />
 
       {!enabled && (
-        <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-foreground">Mic gain</span>
-            <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
-          </div>
-          <input
-            type="range" min={1} max={50} step={1} value={micGain}
-            onChange={(e) => setMicGain(parseFloat(e.target.value))}
-            className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+        <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3 space-y-2">
+          <Slider
+            label="Mic gain"
+            value={micGain}
+            display={`${micGain.toFixed(1)}×`}
+            min={1} max={50}
+            onChange={setMicGain}
+            hint="1× = rå signal. Högre = känsligare."
           />
-          <p className="text-[10px] text-muted-foreground">
-            1× = rå signal. Högre = känsligare.
-          </p>
           {effectiveGain != null && (
-            <div className="flex items-center justify-between text-[11px] pt-2 border-t border-border/40">
-              <span className="text-muted-foreground">Aktiv i motor</span>
-              <span className="font-mono font-bold text-foreground">{effectiveGain.toFixed(1)}×</span>
+            <div className="pt-2 border-t border-border/60">
+              <Stat label="Aktiv i motor" value={`${effectiveGain.toFixed(1)}×`} tone="accent" />
             </div>
           )}
         </div>
@@ -422,42 +399,33 @@ function GainCalibrationPanel({
 
       {enabled && (
         <div className="space-y-3">
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Sonos volym</span>
-              <span className="font-mono font-bold">{sonosVolume ?? "—"}</span>
-            </div>
-            <div className="flex items-center justify-between pt-2 border-t border-border/40">
-              <span className="text-xs text-muted-foreground">Aktuell mic-gain</span>
-              <span className="text-base font-mono font-bold text-primary">
-                {effectiveGain != null ? `${effectiveGain.toFixed(1)}×` : `${multiplier.toFixed(1)}×`}
-              </span>
+          <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/25 p-3 space-y-2">
+            <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
+            <div className="pt-2 border-t border-border/60">
+              <Stat
+                label="Aktuell mic-gain"
+                value={`${(effectiveGain ?? multiplier).toFixed(1)}×`}
+                tone="accent"
+              />
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-3">
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Gain vid vol {volLow}</span>
-                <span className="font-mono text-foreground">{gainLow.toFixed(1)}×</span>
-              </div>
-              <input
-                type="range" min={1} max={50} step={0.5} value={gainLow}
-                onChange={(e) => onGainLowChange(parseFloat(e.target.value))}
-                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Gain vid vol {volHigh}</span>
-                <span className="font-mono text-foreground">{gainHigh.toFixed(1)}×</span>
-              </div>
-              <input
-                type="range" min={1} max={50} step={0.5} value={gainHigh}
-                onChange={(e) => onGainHighChange(parseFloat(e.target.value))}
-                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-              />
-            </div>
+          <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3 space-y-3">
+            <Slider
+              label={`Gain vid vol ${volLow}`}
+              value={gainLow}
+              display={`${gainLow.toFixed(1)}×`}
+              min={1} max={50} step={0.5}
+              onChange={onGainLowChange}
+            />
+            <Slider
+              label={`Gain vid vol ${volHigh}`}
+              value={gainHigh}
+              display={`${gainHigh.toFixed(1)}×`}
+              min={1} max={50} step={0.5}
+              onChange={onGainHighChange}
+              hint="Motorn interpolerar mellan punkterna utifrån Sonos-volymen."
+            />
           </div>
 
           <GuidedGainWizard
@@ -474,14 +442,11 @@ function GainCalibrationPanel({
               fastPollUntilRef.current = Date.now() + 5000;
             }}
           />
-
-          <p className="text-[10px] text-muted-foreground px-0.5">
-            Motorn interpolerar mellan de två punkterna baserat på Sonos-volymen.
-          </p>
         </div>
       )}
     </div>
   );
+
 }
 
 
@@ -544,28 +509,25 @@ function BleDeviceSection({ piBase }: { piBase: string }) {
   };
 
   return (
-    <section className="mb-8">
-      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-        <Bluetooth size={14} /> BLE-lampa
-      </h2>
+    <Panel
+      title="BLE-lampa"
+      icon={<Bluetooth size={12} />}
+      action={
+        <button
+          onClick={scan}
+          disabled={scanning}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-foreground/[0.05] ring-1 ring-inset ring-border text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/80 disabled:opacity-50"
+        >
+          {scanning ? <><Loader2 size={11} className="animate-spin" /> Söker</> : 'Sök'}
+        </button>
+      }
+    >
+      <Row>
+        <span className="text-[13px] truncate">{current ? current.name : 'Ingen enhet vald'}</span>
+        {current && <span className="font-mono text-[10px] text-muted-foreground shrink-0">{current.mac}</span>}
+      </Row>
 
-      <div className="mb-3 p-2.5 rounded-lg bg-secondary/50 border border-border text-[11px]">
-        <div className="text-muted-foreground">Sparad enhet</div>
-        <div className="font-medium">
-          {current ? current.name : '—'}
-          {current && <span className="text-muted-foreground font-mono ml-1.5">{current.mac}</span>}
-        </div>
-      </div>
-
-      <button
-        onClick={scan}
-        disabled={scanning}
-        className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-1.5"
-      >
-        {scanning ? <><Loader2 size={14} className="animate-spin" /> Söker…</> : <><Bluetooth size={14} /> Sök enheter</>}
-      </button>
-
-      {error && <p className="text-[11px] text-destructive mt-2">⚠ {error}</p>}
+      {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
 
       {devices && (
         <div className="mt-3 space-y-1.5">
@@ -579,16 +541,18 @@ function BleDeviceSection({ piBase }: { piBase: string }) {
                 key={dev.mac}
                 onClick={() => select(dev)}
                 disabled={savingMac != null}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left transition-colors disabled:opacity-50 ${
-                  isCurrent ? 'bg-primary/15 border border-primary/40' : 'bg-secondary border border-border'
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-left transition-colors disabled:opacity-50 ${
+                  isCurrent
+                    ? 'bg-primary/10 ring-1 ring-inset ring-primary/40'
+                    : 'bg-foreground/[0.03] ring-1 ring-inset ring-border hover:bg-foreground/[0.06]'
                 }`}
               >
                 <div className="min-w-0">
-                  <div className="text-sm truncate">{dev.name || '(namnlös)'}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">{dev.mac}</div>
+                  <div className="text-[13px] truncate">{dev.name || '(namnlös)'}</div>
+                  <div className="font-mono text-[10px] text-muted-foreground">{dev.mac}</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {dev.rssi != null && <span className="text-[10px] text-muted-foreground font-mono">{dev.rssi} dBm</span>}
+                  {dev.rssi != null && <span className="font-mono text-[10px] text-muted-foreground">{dev.rssi} dBm</span>}
                   {savingMac === dev.mac
                     ? <Loader2 size={14} className="animate-spin" />
                     : isCurrent && <Check size={14} className="text-primary" />}
@@ -598,8 +562,9 @@ function BleDeviceSection({ piBase }: { piBase: string }) {
           })}
         </div>
       )}
-    </section>
+    </Panel>
   );
+
 }
 
 
@@ -622,113 +587,99 @@ function ConnectionSettingsSection({
 }) {
   return (
     <>
-
-
-
-
-
-      {/* Mikrofon: device hårdkodat till hw:0,0 i state.
-          Endast gain-kontrollen (Manual/Auto) exponeras. */}
-      <section className="mb-8">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <Mic size={14} /> Mic Gain
-        </h2>
+      {/* Mikrofon: device hårdkodat till hw:0,0 i state. Endast gain exponeras. */}
+      <Panel title="Mic gain" icon={<Mic size={12} />}>
         <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} sonosVolume={sonosVolume} />
-      </section>
+      </Panel>
 
-      <section className="mb-8">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Sonos Gateway</h2>
-        
-        {/* Local detected info */}
-        {sonosLocalDetected?.found && (
-          <div className="mb-3 p-2.5 rounded-lg bg-green-500/10 border border-green-500/20 text-[11px]">
-            <div className="flex items-center gap-1.5 text-green-400 font-medium">
-              <Check size={12} /> Lokal tjänst hittad: {sonosLocalDetected.name}
-              {sonosLocalDetected.version && <span className="text-muted-foreground">v{sonosLocalDetected.version}</span>}
+      <Panel
+        title="Sonos gateway"
+        action={
+          sonosLocalDetected?.found ? (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-ok">
+              <Check size={11} /> Lokal
+            </span>
+          ) : undefined
+        }
+      >
+        <div className="space-y-3">
+          {sonosLocalDetected?.found && (
+            <p className="text-[11px] text-muted-foreground">
+              {sonosLocalDetected.name}
+              {sonosLocalDetected.version && <span className="font-mono"> v{sonosLocalDetected.version}</span>}
+            </p>
+          )}
+
+          {sonosLocalDetected?.found && (
+            <Segmented
+              value={sonosMode === 'extern' ? 'extern' : 'local'}
+              onChange={(mode) => {
+                setSonosMode(mode);
+                if (mode === 'local' && sonosLocalDetected?.url) setSonosUrl(sonosLocalDetected.url);
+              }}
+              options={[
+                { value: 'local', label: 'Lokal' },
+                { value: 'extern', label: 'Extern' },
+              ]}
+            />
+          )}
+
+          {(sonosMode === 'extern' || !sonosLocalDetected?.found) && (
+            <input
+              type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
+              placeholder="http://192.168.1.x:3053/api/sonos"
+              className="w-full rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-[12px] font-mono ring-1 ring-inset ring-border focus:outline-none focus:ring-primary/60"
+            />
+          )}
+
+          {sonosMode === 'local' && sonosLocalDetected?.found && (
+            <div className="rounded-xl bg-foreground/[0.03] px-3 py-2 text-[10px] font-mono text-muted-foreground truncate">
+              {sonosUrl}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      </Panel>
 
-        {/* Mode toggle: Local vs Extern */}
-        {sonosLocalDetected?.found && (
-          <div className="flex gap-1.5 mb-3">
-            {(['local', 'extern'] as const).map(mode => (
-              <button
-                key={mode}
-                onClick={() => {
-                  setSonosMode(mode);
-                  if (mode === 'local' && sonosLocalDetected?.url) setSonosUrl(sonosLocalDetected.url);
-                }}
-                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  sonosMode === mode
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground'
-                }`}
-              >
-                {mode === 'local' ? '🏠 Lokal' : '🌐 Extern'}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* URL input — shown for extern mode or when no local detected */}
-        {(sonosMode === 'extern' || !sonosLocalDetected?.found) && (
-          <input
-            type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
-            placeholder="http://192.168.1.x:3053/api/sonos"
-            className="w-full bg-secondary text-foreground rounded-lg px-3 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        )}
-
-        {/* Show active URL for local mode */}
-        {sonosMode === 'local' && sonosLocalDetected?.found && (
-          <div className="text-[10px] text-muted-foreground font-mono bg-secondary/50 rounded-lg px-3 py-2">
-            {sonosUrl}
-          </div>
-        )}
-      </section>
-
-      <section className="mb-8">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Idle-färg</h2>
+      <Panel title="Idle-färg">
         <div className="flex items-center gap-4">
           <div
-            className="w-12 h-12 rounded-xl border border-border shrink-0"
-            style={{ backgroundColor: `rgb(${idleColor[0]},${idleColor[1]},${idleColor[2]})` }}
+            className="w-14 h-14 rounded-xl ring-1 ring-inset ring-border shrink-0"
+            style={{
+              backgroundColor: `rgb(${idleColor[0]},${idleColor[1]},${idleColor[2]})`,
+              boxShadow: `0 0 26px rgb(${idleColor[0]} ${idleColor[1]} ${idleColor[2]} / 0.35)`,
+            }}
           />
-          <div className="flex-1 space-y-2">
+          <div className="flex-1 space-y-1">
             {["R", "G", "B"].map((ch, i) => (
               <div key={ch} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-3">{ch}</span>
+                <span className="label-eyebrow w-3">{ch}</span>
                 <input
                   type="range" min={0} max={255} value={idleColor[i]}
                   onChange={(e) => { const next = [...idleColor]; next[i] = parseInt(e.target.value); setIdleColor(next); }}
-                  className="flex-1 h-1.5 rounded-full appearance-none bg-secondary accent-primary"
+                  className="lotus-range flex-1"
+                  style={{ ["--fill" as string]: `${(idleColor[i] / 255) * 100}%` }}
                 />
-                <span className="text-xs text-muted-foreground font-mono w-7 text-right">{idleColor[i]}</span>
+                <span className="w-8 text-right font-mono text-[11px] tabular-nums text-muted-foreground">{idleColor[i]}</span>
               </div>
             ))}
           </div>
         </div>
-      </section>
+      </Panel>
 
-      {/* Auto TV-mode */}
-      <section className="mb-8">
-        <label className="flex items-center justify-between">
-          <div>
-            <div className="text-sm">📺 Auto TV-läge</div>
-            <p className="text-[10px] text-muted-foreground">Mikrofon-reaktivt ljus när Sonos spelar från TV/SPDIF</p>
+      <Panel title="Automatik">
+        <Row>
+          <div className="min-w-0">
+            <div className="text-[13px]">Auto TV-läge</div>
+            <p className="text-[10px] leading-snug text-muted-foreground">
+              Mikrofon-reaktivt ljus när Sonos spelar från TV/SPDIF.
+            </p>
           </div>
-          <button
-            onClick={() => setAutoTvMode(!autoTvMode)}
-            className={`w-12 h-7 rounded-full transition-colors relative ${autoTvMode ? 'bg-green-500' : 'bg-secondary border border-border'}`}
-          >
-            <span className={`absolute top-0.5 w-6 h-6 rounded-full shadow transition-transform ${autoTvMode ? 'left-[22px] bg-foreground' : 'left-0.5 bg-muted-foreground'}`} />
-          </button>
-        </label>
-      </section>
+          <Toggle checked={autoTvMode} onChange={setAutoTvMode} />
+        </Row>
+      </Panel>
     </>
-
   );
+
 }
 
 /* BleDiagnosticsPanel borttagen — diagnostik-pipeline + scan/save är inte längre del av flödet. */
@@ -965,50 +916,101 @@ export default function PiMobile() {
   }, [piBase]);
 
 
+  const engineState: 'ok' | 'warn' | 'error' | 'idle' =
+    engineStatus?.running ? 'ok' : piOnline === false ? 'error' : 'idle';
+  const sonosState2: 'ok' | 'warn' | 'error' | 'idle' =
+    sonosPlaying ? 'ok' : sonosState ? 'warn' : piOnline === false ? 'error' : 'idle';
+  const bleState: 'ok' | 'warn' | 'error' | 'idle' =
+    bleConnected ? 'ok' : piOnline === false ? 'error' : 'idle';
+
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 max-w-md mx-auto" style={{ fontFamily: PI_FONT }}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-          <span className="text-sm font-semibold">BLE Light</span>
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Sticky header — identitet, live-status och spara */}
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
+        <div className="mx-auto max-w-md px-4 py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${piOnline ? 'bg-ok shadow-[0_0_8px_hsl(var(--ok)/0.8)]' : 'bg-destructive'}`} />
+              <span className="text-[13px] font-semibold tracking-tight">Lotus Light</span>
+            </div>
+            <div className="mt-1 flex items-center gap-3">
+              <StatusDot label={engineStatus?.running ? 'Motor' : 'Motor av'} state={engineState} />
+              <StatusDot label={sonosPlaying ? 'Spelar' : sonosState ? 'Pausad' : 'Sonos av'} state={sonosState2} />
+              <StatusDot label={bleConnected ? 'Lampa' : 'Ej ansluten'} state={bleState} />
+            </div>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={!piOnline}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold transition-all active:scale-[0.97] disabled:opacity-30 disabled:pointer-events-none ${
+              saved
+                ? 'bg-ok/15 text-ok ring-1 ring-inset ring-ok/40'
+                : 'bg-primary text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)]'
+            }`}
+          >
+            {saved ? <Check size={14} /> : <Save size={14} />}
+            {saved ? 'Sparat' : 'Spara'}
+          </button>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={!piOnline}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
-            saved ? "text-green-500" : "text-primary"
-          }`}
-          title="Spara inställningar"
-        >
-          {saved ? <Check size={16} /> : <Save size={16} />}
-          {saved ? "Sparat" : "Spara"}
-        </button>
-      </div>
+      </header>
 
-      <BleDeviceSection piBase={piBase} />
+      <main className="mx-auto max-w-md px-4 pt-4 pb-10 safe-bottom space-y-4">
+        <PermissionsBanner piBase={piBase} />
 
+        {saveError && (
+          <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-3 text-[11px] text-destructive">
+            Sparning misslyckades: {saveError}
+          </div>
+        )}
 
-      {/* Permissions self-check — varnar om PCC hoppade över setup-lotus.sh */}
-      <PermissionsBanner piBase={piBase} />
+        <BleDeviceSection piBase={piBase} />
 
-      {(() => {
-        const ready = piOnline === true && engineStatus?.running === true;
-        return (
-          <div className={!ready ? "opacity-50 pointer-events-none select-none" : undefined} aria-disabled={!ready}>
-            {!ready && (
-              <div className="my-4 rounded-xl border border-border bg-card/40 p-4 text-center text-xs text-muted-foreground pointer-events-none">
-                Väntar på motor och frontend… (visas inaktiverat)
-              </div>
-            )}
+        {(() => {
+          const ready = piOnline === true && engineStatus?.running === true;
+          return (
+            <div className={`space-y-4 ${!ready ? 'opacity-50 pointer-events-none select-none' : ''}`} aria-disabled={!ready}>
+              {!ready && (
+                <div className="rounded-2xl border border-border bg-card/50 p-4 text-center text-[11px] text-muted-foreground">
+                  Väntar på motorn…
+                </div>
+              )}
 
-            {saveError && (
-              <div className="mb-4 mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive text-xs">
-                ⚠ Sparning misslyckades: {saveError}
-              </div>
-            )}
+              {/* Ljusinställningar — appens huvudkontroller */}
+              <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-4">
+                <Slider
+                  label="Softness"
+                  value={cal.softness}
+                  display={`${cal.softness}`}
+                  min={0} max={100}
+                  onChange={(v) => setCal({ ...cal, softness: Math.round(v) })}
+                  hint="0 = rått fall, 100 = mycket mjuk fade-out."
+                />
+                <Slider
+                  label="Min ljusstyrka"
+                  value={cal.brightnessFloor}
+                  display={`${cal.brightnessFloor} %`}
+                  min={0} max={100}
+                  onChange={(v) => setCal({ ...cal, brightnessFloor: Math.round(v) })}
+                  hint="0 = släck helt i tystnad."
+                />
+                <Slider
+                  label="Dynamik"
+                  value={cal.dynamicDamping}
+                  display={`${cal.dynamicDamping.toFixed(1)}×`}
+                  min={-2} max={2} step={0.1}
+                  onChange={(v) => setCal({ ...cal, dynamicDamping: v })}
+                  hint="0 = av, positivt = kontrast, negativt = utjämning."
+                />
+                <Slider
+                  label="Beat-källa (lyssnar under)"
+                  value={cal.beatCutoffHz}
+                  display={`${cal.beatCutoffHz} Hz`}
+                  min={60} max={2000} step={10}
+                  onChange={(v) => setCal({ ...cal, beatCutoffHz: Math.round(v) })}
+                  hint="Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa."
+                />
+              </Panel>
 
-            {/* Anslut: Sonos + mic-kalibrering + idle-färg + auto-TV */}
-            <section className="mb-8 mt-4">
               <ConnectionSettingsSection
                 sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
                 micGain={micGain} setMicGain={setMicGain}
@@ -1017,104 +1019,15 @@ export default function PiMobile() {
                 sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
                 piBase={piBase} sonosVolume={sonosVolume}
               />
-            </section>
 
-            {/* Ljusinställningar: fyra reglage — resten är låst till intrimmade värden */}
-            <section className="mb-8">
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ljusinställningar</h2>
-
-              {/* Softness */}
-              <div className="flex justify-between text-sm mb-1">
-                <span>Softness</span>
-                <span className="text-muted-foreground font-mono text-xs">{cal.softness}</span>
-              </div>
-              <input
-                type="range" min={0} max={100} step={1} value={cal.softness}
-                onChange={(e) => setCal({ ...cal, softness: parseInt(e.target.value) })}
-                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-              />
-              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">0 = rått fall, 100 = mycket mjuk fade-out.</p>
-
-              {/* Min ljusstyrka */}
-              <div className="flex justify-between text-sm mb-1">
-                <span>Min ljusstyrka</span>
-                <span className="text-muted-foreground font-mono text-xs">{cal.brightnessFloor}%</span>
-              </div>
-              <input
-                type="range" min={0} max={100} step={1} value={cal.brightnessFloor}
-                onChange={(e) => setCal({ ...cal, brightnessFloor: parseInt(e.target.value) })}
-                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-              />
-              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">Lägsta ljusstyrka (0 = släck helt i tystnad).</p>
-
-              {/* Dynamik */}
-              <div className="flex justify-between text-sm mb-1">
-                <span>Dynamik</span>
-                <span className="text-muted-foreground font-mono text-xs">{cal.dynamicDamping.toFixed(1)}×</span>
-              </div>
-              <input
-                type="range" min={-2} max={2} step={0.1} value={cal.dynamicDamping}
-                onChange={(e) => setCal({ ...cal, dynamicDamping: parseFloat(e.target.value) })}
-                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-              />
-              <p className="text-[10px] text-muted-foreground mt-0.5 mb-4">0 = av, positivt = kontrast, negativt = utjämning.</p>
-
-              {/* Beat-källa (lågpass) */}
-              <div className="flex justify-between text-sm mb-1">
-                <span>Beat-källa (lyssnar under)</span>
-                <span className="text-muted-foreground font-mono text-xs">{cal.beatCutoffHz} Hz</span>
-              </div>
-              <input
-                type="range" min={60} max={2000} step={10} value={cal.beatCutoffHz}
-                onChange={(e) => setCal({ ...cal, beatCutoffHz: parseInt(e.target.value) })}
-                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-              />
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                Takt-detektorn reagerar bara på ljud under denna frekvens. Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa.
+              <p className="pt-2 text-center text-[9px] uppercase tracking-[0.24em] text-muted-foreground/40">
+                {engineStatus ? `${engineStatus.hz ?? 0} Hz · ${engineStatus.tickMs ?? tickMs} ms tick` : 'offline'}
               </p>
-            </section>
-
-
-
-
-
-          </div>
-        );
-      })()}
-
-
-
-      {/* Minimal status: Motor + Sonos + Lampa — grönt = allt igång */}
-      <div className="mt-6 mb-4 text-[10px] text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${
-              engineStatus?.running ? 'bg-green-500'
-                : piOnline === false ? 'bg-destructive'
-                : 'bg-muted-foreground animate-pulse'
-            }`} />
-            <span>Motor {engineStatus?.running ? 'Igång' : 'Av'}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${
-              sonosPlaying ? 'bg-green-500'
-                : sonosState ? 'bg-amber-500'
-                : piOnline === false ? 'bg-destructive'
-                : 'bg-muted-foreground animate-pulse'
-            }`} />
-            <span>Sonos {sonosPlaying ? 'Spelar' : sonosState ? 'Pausad' : 'Av'}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${
-              bleConnected ? 'bg-green-500'
-                : piOnline === false ? 'bg-destructive'
-                : 'bg-muted-foreground animate-pulse'
-            }`} />
-            <span>Lampa {bleConnected ? 'Ansluten' : 'Ej ansluten'}</span>
-          </div>
-        </div>
-      </div>
-
+            </div>
+          );
+        })()}
+      </main>
     </div>
   );
+
 }
