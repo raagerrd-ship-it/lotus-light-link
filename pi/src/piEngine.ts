@@ -1578,7 +1578,15 @@ export class PiLightEngine {
       // LJUS-SKALA: headroom mellan analyserad energi och lampans tak, så drops
       // (som skriver 100 % direkt) har kvar utrymme att sticka ut.
       let _e = energyNorm * tc.lightScale;
-      _e = _e < 0 ? 0 : _e > 1 ? 1 : _e;
+      if (_e < 0) _e = 0;
+      // MJUKT KNÄ mot taket i stället för hård klamp: över knäet komprimeras
+      // signalen asymptotiskt mot 1 så topp-nyansen bevaras (drop-blixten
+      // skriver 100 % direkt och poppar fortfarande).
+      const KNEE = 0.8;
+      if (_e > KNEE) {
+        const x = (_e - KNEE) / (1 - KNEE);
+        _e = KNEE + (1 - KNEE) * (x / (1 + x));
+      }
       if (pGamma > 0 && _e > 0.0001) _e = Math.exp(pGamma * Math.log(_e));
       let pct = floor + _e * (100 - floor);
 
