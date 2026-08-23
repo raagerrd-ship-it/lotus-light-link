@@ -56,19 +56,29 @@ function alphaToAttack(alpha: number) {
 
 
 
-/* ── Mode-aware gain control: Manual XOR Auto (Sonos vol)
- *  Auto-läget använder två fasta referenspunkter (vol 15 & vol 50) som
- *  användaren själv kan dra i — motorn interpolerar mellan dem live. */
+/* ── Gain: EN källa — tvåpunkts-kurva mot Sonos-volym (manuell, deterministisk).
+ *  Inget "manuellt läge", ingen adaptiv AGC. Motorn interpolerar mellan punkterna
+ *  live utifrån Sonos-volymen. RAW_SCALE=5 borttagen i motorn → ~5× högre tal. */
 const AUTO_VOL_LOW = 15;
 const AUTO_VOL_HIGH = 50;
-const DEFAULT_GAIN_LOW = 15;   // hög gain vid låg volym
-const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
+const DEFAULT_GAIN_LOW = 75;   // hög gain vid låg volym
+const DEFAULT_GAIN_HIGH = 32;  // låg gain vid hög volym
+const GAIN_MIN = 5;
+const GAIN_MAX = 300;
 
 
-/** Post-gain nivåmätare. Kompakt, alltid synlig. */
+/** Post-gain nivåmätare med peak-hold (~0.8 s) och klipp-zon 90–100 %. */
 function LevelMeter({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
   const rawPeak = health ? health.peak : 0;
   const peak = Math.min(1, rawPeak);
+
+  // Peak-hold: håller kvar högsta värdet ~0.8 s så snabba toppar syns.
+  const holdRef = useRef({ value: 0, at: 0 });
+  const now = Date.now();
+  if (peak >= holdRef.current.value || now - holdRef.current.at > 800) {
+    holdRef.current = { value: peak, at: now };
+  }
+  const hold = holdRef.current.value;
 
   const status = health?.status ?? 'low';
   const statusText =
@@ -84,10 +94,12 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
         <span className={`font-mono text-[10px] font-semibold ${statusClass}`}>{statusText}</span>
       </div>
       <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+        {/* Klipp-zon 90–100 % */}
+        <div className="absolute inset-y-0 right-0 w-[10%] bg-destructive/25" />
         <div className="absolute inset-y-0 w-px bg-foreground/20" style={{ left: '15%' }} />
-        <div className="absolute inset-y-0 w-px bg-foreground/20" style={{ left: '90%' }} />
+        <div className="absolute inset-y-0 w-px bg-destructive/70" style={{ left: '90%' }} />
         <div
-          className={`h-full rounded-full transition-[width] duration-200 ${
+          className={`h-full rounded-full transition-[width] duration-150 ${
             status === 'hot'
               ? 'bg-destructive'
               : status === 'ok'
@@ -95,6 +107,11 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
               : 'bg-muted-foreground'
           }`}
           style={{ width: `${peak * 100}%` }}
+        />
+        {/* Peak-hold-markör */}
+        <div
+          className="absolute inset-y-0 w-[2px] bg-foreground/70"
+          style={{ left: `calc(${hold * 100}% - 1px)` }}
         />
       </div>
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground/70 mt-1.5">
@@ -104,6 +121,7 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
     </div>
   );
 }
+
 
 
 type CalPoint = { vol: number; gain: number };
