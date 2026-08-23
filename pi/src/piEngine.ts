@@ -13,7 +13,8 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, getLatestFrame, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid } from './alsaMic.js';
+import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
@@ -182,6 +183,20 @@ export interface LightCalibration {
   beatLeadMs: number;
   /** PLL: andel av fasfelet som korrigeras per kick (0 = av). Default 0.18. */
   beatSyncStrength: number;
+  /** Drop-källa: 'analyser' = analysatorns novelty/kropp-baserade dropCount (faller
+   *  tillbaka på bas-svackan när takten inte är låst), 'bass' = bara egen svacka. */
+  dropSource: 'analyser' | 'bass';
+  /** Transient-källa för pulsen: 'flux' = egen bas-flux, 'drum' = analysatorns
+   *  trumenvelope (kick skild från basgång). Default 'flux'. */
+  transientSource: 'flux' | 'drum';
+  /** Bandmix: 'legacy' = egen 2-bands-FFT, 'octave' = analysatorns oktavband med
+   *  per-band-AGC (jämnare ljusbild mellan låtar). Default 'legacy'. */
+  bandMixMode: 'legacy' | 'octave';
+  /** Hur mycket analysatorns sektionsenergi (intensity) får dra dynamicCenter.
+   *  0 = av (bara mic-energi), 1 = bara intensity. Default 0.3. */
+  intensityInfluence: number;
+  /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
+  barAccent: number;
   [key: string]: any;
 }
 
@@ -209,6 +224,11 @@ const DEFAULT_CAL: LightCalibration = {
   beatGridPulse: true,
   beatLeadMs: 60,
   beatSyncStrength: 0.18,
+  dropSource: 'analyser',
+  transientSource: 'flux',
+  bandMixMode: 'legacy',
+  intensityInfluence: 0.3,
+  barAccent: 1.0,
 };
 
 
@@ -399,6 +419,8 @@ export class PiLightEngine {
   private dropFrameCounter = 0;   // räknar varje processDrop-anrop (@100Hz)
   private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
   private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
+  private _analyserDropCount = -1;         // flankreferens mot frame.dropCount (-1 = ej seedad)
+  private _dropSourceActive: 'analyser' | 'bass' = 'bass';   // telemetri: vem triggade senast
 
   // ── Taktklocka (beatClock) + PLL ──
   private _beat: Beat | null = null;   // fas + tempo, knuffad av verkliga kicks
@@ -517,6 +539,7 @@ export class PiLightEngine {
     this.dropFrameCounter = 0;
     this.dropLastFrameIdx = -100000;
     this.dropFlashUntil = 0;
+    this._analyserDropCount = -1;   // ny flankreferens mot analysatorns dropCount
   }
 
   /** Zero-alloc onset detection using precomputed constants.
@@ -648,6 +671,7 @@ export class PiLightEngine {
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
+    dropSrc: 'analyser' | 'bass';
   } {
     const now = Date.now();
     const lead = this.cal.beatLeadMs ?? 60;
@@ -660,6 +684,7 @@ export class PiLightEngine {
       beatErr: this._beatErr,
       gridPulses: this._gridPulseCount,
       leadMs: lead,
+      dropSrc: this._dropSourceActive,
     };
   }
 
@@ -669,7 +694,7 @@ export class PiLightEngine {
    * från onset (70ms-transient) genom att kräva ett föregående nedbrutet parti.
    * Triggar en stor vit punch-blixt (dropFlashUntil) som overridas i tickInner.
    */
-  private processDrop(bassRms: number): void {
+  private processDrop(bassRms: number, frame: Frame | null): void {
     if (!this.cal.dropEnabled) return;
     this.dropFrameCounter++;
 
@@ -691,7 +716,8 @@ export class PiLightEngine {
     const ABS_BASS_FLOOR = 0.06;          // absolut energi → ingen drop i tystnad
     const REFRACTORY_FRAMES = 400;        // ~4s mellan drops
 
-    // Spåra/erodera breakdown-minnet.
+    // Spåra/erodera breakdown-minnet (också när analysatorn driver dropen — den
+    // egna detektorn måste vara varm den sekund taktlåset tappas).
     if (this.bassFast < this.bassSlow * BREAKDOWN_RATIO) {
       if (this.breakdownFrames < 1000) this.breakdownFrames++;
     } else if (this.breakdownFrames > 0) {
@@ -699,11 +725,28 @@ export class PiLightEngine {
       if (this.breakdownFrames < 0) this.breakdownFrames = 0;
     }
 
-    const isDrop =
-      this.breakdownFrames >= MIN_BREAKDOWN_FRAMES &&
-      this.bassFast >= ABS_BASS_FLOOR &&
-      this.bassFast >= this.bassSlow * JUMP_FACTOR &&
-      (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+    // ANALYSATORNS DROP (steg 1): dropCount är MONOTON, så en flankjämförelse mot
+    // vårt eget senaste värde kan aldrig missa ett drop även om vi läser glesare.
+    // Den detektorn är novelty/kropp-baserad och ser drops utan bastapp, vilket
+    // bas-svackan nedan per definition inte gör. Kräver taktlås — utan bpm är
+    // analysatorns strukturlogik inte varm, och då är bas-svackan bättre än inget.
+    const analyserOwns = this.cal.dropSource !== 'bass' && frame != null && frame.bpm > 40;
+    let isDrop: boolean;
+    if (analyserOwns) {
+      const dc = frame!.dropCount;
+      if (this._analyserDropCount < 0) { this._analyserDropCount = dc; }
+      isDrop = dc > this._analyserDropCount &&
+        (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+      this._analyserDropCount = dc;
+    } else {
+      this._analyserDropCount = -1;   // ny flankreferens när/om analysatorn tar över igen
+      isDrop =
+        this.breakdownFrames >= MIN_BREAKDOWN_FRAMES &&
+        this.bassFast >= ABS_BASS_FLOOR &&
+        this.bassFast >= this.bassSlow * JUMP_FACTOR &&
+        (this.dropFrameCounter - this.dropLastFrameIdx) >= REFRACTORY_FRAMES;
+    }
+    this._dropSourceActive = analyserOwns ? 'analyser' : 'bass';
 
     if (isDrop) {
       this.dropLastFrameIdx = this.dropFrameCounter;
@@ -1053,6 +1096,10 @@ export class PiLightEngine {
         // till brusgolvet och flasha i tysta partier. Hämtar bands EN gång
         // och delar med dynamicCenter-uppdateringen nedan.
         const bands = getLatestBands();
+        // Analysatorns frame används bara när den är FÄRSK (<60 ms, samma guard
+        // som PLL:en). Är den gammal faller varje steg nedan tillbaka på den
+        // egna FFT-vägen i stället för att styra ljuset på inaktuell struktur.
+        const frame = Date.now() - getLatestFrameAt() < 60 ? getLatestFrame() : null;
         const energyFloor = this.cal.onsetEnergyFloor ?? 0;
         const peakBand = bands ? Math.max(bands.bassRms, bands.midHiRms) : 0;
         const passesEnergyGate =
@@ -1065,7 +1112,16 @@ export class PiLightEngine {
         if (passesEnergyGate) {
           // Lågpass-onset: bassFlux summerar flux under cal.beatCutoffHz (setBeatCutoffHz).
           // Full spektrum ≈ hög cutoff. Faller tillbaka på full flux om bands saknas.
-          const beatFlux = bands ? bands.bassFlux : flux;
+          let beatFlux = bands ? bands.bassFlux : flux;
+          // TRUMKÄLLA (steg 3): analysatorns kick-envelope är skild från basgången
+          // (spec.kick ≠ spec.bass), så pulsen hittar kicken även när basen maskerar
+          // den. Envelopen är 0..1 peak-hold medan flux typiskt ligger 0.05–0.5 —
+          // DRUM_TO_FLUX skalar in den i samma storleksordning så processOnsets
+          // absoluta golv (0.045) och median-prominens gäller oförändrat.
+          if (this.cal.transientSource === 'drum' && frame) {
+            const DRUM_TO_FLUX = 0.12;
+            beatFlux = (frame.drum.kick + 0.35 * frame.drum.snare) * DRUM_TO_FLUX;
+          }
           // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) — men den får
           // bara sätta pulsen när gridet inte driver den.
           kickFired = this.processOnset(beatFlux, !gridDrives);
@@ -1078,18 +1134,35 @@ export class PiLightEngine {
           const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 60));
           if (idx !== this._lastGridIdx) {
             this._lastGridIdx = idx;
-            this.onsetTarget = 0.45;
+            // ETTANS ACCENT (steg 5): barShift säger hur många slag ankaret ska
+            // flyttas för att landa på ettan (-1 = osäkert), så ettan är de idx där
+            // (idx + barShift) delas av 4. Kräver god konfidens — på ett gissat
+            // rutnät hade accenten hamnat på fel slag och känts som en missad takt.
+            const accent = this.cal.barAccent ?? 1;
+            const shift = frame?.barShift ?? -1;
+            const onOne = accent > 1 && shift >= 0 && (this._beat?.confidence ?? 0) > 0.4 &&
+              ((((idx + shift) % 4) + 4) % 4) === 0;
+            this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
             this._gridPulseCount++;
           }
         }
-        // Drop-detektor @100Hz på bas-energi (oberoende av onset/energy-gate).
-        if (bands) this.processDrop(bands.bassRms);
+        // Drop-detektor @100Hz (analysatorns dropCount med bas-svackan som fallback).
+        if (bands) this.processDrop(bands.bassRms, frame);
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
         // (50Hz) — center följer då 100% av musiken, inte varannan frame.
         if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
           const bN = normalizeFixed(bands.bassRms);
           const mN = normalizeFixed(bands.midHiRms);
-          const raw = bN * 0.5 + mN * 0.5;
+          let raw = bN * 0.5 + mN * 0.5;
+          // SEKTIONSMEDVETEN DYNAMIK (steg 2): frame.intensity är nivån relativt
+          // LÅTENS EGET snitt (0.5 = snittet). Mic-energin vet bara hur högt det
+          // är just nu — den kan inte skilja en tyst låt från en breakdown i en
+          // hög låt. Att blanda in intensity flyttar centret nedåt i breakdowns
+          // (mer expansion i det tysta) och uppåt i topp-zonen (mindre pumpande).
+          const infl = this.cal.intensityInfluence ?? 0;
+          if (infl > 0 && frame && frame.bpm > 40) {
+            raw = raw * (1 - infl) + frame.intensity * infl;
+          }
           this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
           if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
           else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
@@ -1413,8 +1486,19 @@ export class PiLightEngine {
       }
 
       // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
-      const bassNorm = normalizeFixed(bands.bassRms);
-      const midHiNorm = normalizeFixed(bands.midHiRms);
+      let bassNorm = normalizeFixed(bands.bassRms);
+      let midHiNorm = normalizeFixed(bands.midHiRms);
+      // OKTAVBAND (steg 4): analysatorns 8 band är redan AGC:ade per band (0..1),
+      // så mixen blir jämn mellan låtar med olika mastering utan normalizeFixed.
+      // Kräver färsk frame + taktlås; annars kör 2-bands-vägen ovan vidare.
+      if (this.cal.bandMixMode === 'octave') {
+        const f = Date.now() - getLatestFrameAt() < 60 ? getLatestFrame() : null;
+        if (f && f.bpm > 40) {
+          const s = f.spec;
+          bassNorm = (s.sub + s.kick + s.bass) / 3;
+          midHiNorm = (s.mid + s.highMid + s.treble) / 3;
+        }
+      }
       // (dynamicCenter spåras nu i onFluxReady @ 100Hz — inte här)
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──

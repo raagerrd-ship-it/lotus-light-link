@@ -313,7 +313,10 @@ const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP
 const analyserScratch = new Float32Array(ANALYSER_HOP);
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
+let latestFrameAt = 0;
 export function getLatestFrame(): Frame | null { return latestFrame; }
+/** Väggklocka (ms) då senaste framen producerades — färskhetsguard hos motorn. */
+export function getLatestFrameAt(): number { return latestFrameAt; }
 /** Mata analysatorn med motorns PLL-grid → kick-grindning + taktfas (barShift). */
 export function setAnalyserBeatGrid(grid: { bpm: number; anchorMs: number } | null): void {
   analyser.setBeatGrid(grid);
@@ -527,6 +530,7 @@ export function resetFluxState(): void {
   // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
   analyser.resetGain();
   latestFrame = null;
+  latestFrameAt = 0;
   analyserSamplesReceived = 0;
   analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
 }
@@ -944,6 +948,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
     const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
+    latestFrameAt = Date.now();
     const dt = performance.now() - t0;
     // EMA (α=0.02 ≈ 50-hop tidskonstant) + max sedan senaste läsning
     analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
