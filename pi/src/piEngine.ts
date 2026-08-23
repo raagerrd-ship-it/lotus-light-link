@@ -59,6 +59,7 @@ export interface TickConstants {
   transientGain: number;
   perceptualGamma: number;
   dynamicsEnabled: boolean;
+  lightScale: number;
   lutR: Uint8Array;
   lutG: Uint8Array;
   lutB: Uint8Array;
@@ -107,6 +108,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     transientGain: cal.transientGain ?? 1.0,
     perceptualGamma: cal.perceptualGamma ?? 0,
     dynamicsEnabled: cal.dynamicsEnabled !== false,
+    lightScale: cal.lightScale ?? 1,
     lutR,
     lutG,
     lutB,
@@ -195,6 +197,9 @@ export interface LightCalibration {
   intensityInfluence: number;
   /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
   barAccent: number;
+  /** LJUS-SKALA (Modul 3): mappar analyserad energi → lampans ljus med headroom.
+   *  0.8 = musik toppar ~80 %, drops får de sista 20 %. Fast, aldrig adaptiv. */
+  lightScale: number;
   [key: string]: any;
 }
 
@@ -225,6 +230,7 @@ const DEFAULT_CAL: LightCalibration = {
   dropSource: 'analyser',
   intensityInfluence: 0.3,
   barAccent: 1.0,
+  lightScale: 0.8,
 };
 
 
@@ -1569,7 +1575,10 @@ export class PiLightEngine {
       // Golv som dynamisk LYFT (inte hård-klipp): energyNorm mappas in i [floor,100]
       // → låga nivåer varierar precis ovanför golvet i stället för att plattas.
       const pGamma = tc.perceptualGamma;
-      let _e = energyNorm < 0 ? 0 : energyNorm > 1 ? 1 : energyNorm;
+      // LJUS-SKALA: headroom mellan analyserad energi och lampans tak, så drops
+      // (som skriver 100 % direkt) har kvar utrymme att sticka ut.
+      let _e = energyNorm * tc.lightScale;
+      _e = _e < 0 ? 0 : _e > 1 ? 1 : _e;
       if (pGamma > 0 && _e > 0.0001) _e = Math.exp(pGamma * Math.log(_e));
       let pct = floor + _e * (100 - floor);
 
