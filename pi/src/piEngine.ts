@@ -419,6 +419,8 @@ export class PiLightEngine {
   private dropFrameCounter = 0;   // räknar varje processDrop-anrop (@100Hz)
   private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
   private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
+  private _analyserDropCount = -1;         // flankreferens mot frame.dropCount (-1 = ej seedad)
+  private _dropSourceActive: 'analyser' | 'bass' = 'bass';   // telemetri: vem triggade senast
 
   // ── Taktklocka (beatClock) + PLL ──
   private _beat: Beat | null = null;   // fas + tempo, knuffad av verkliga kicks
