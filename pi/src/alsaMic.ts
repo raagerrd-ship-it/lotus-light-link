@@ -174,7 +174,7 @@ let bandHopCounter = 0;
 // borttagen 2026-08-23) → gain-kurvan är enda känslighets-kontrollen.
 // frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
 // tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
-const BAND_SCALE = 0.45;
+const BAND_SCALE = 1.0; // ingen extra konstant: enda taket är energyNorm > 1 → 1
 // Bandvikter: låg = sub/kick/bas, hög = lowMid..air (summerar till 1 var).
 const W_SUB = 0.35, W_KICK = 0.45, W_BASS = 0.20;
 const W_LOWMID = 0.20, W_MID = 0.30, W_HIGHMID = 0.25, W_TREBLE = 0.15, W_AIR = 0.10;
@@ -237,6 +237,10 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 // onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
 const ANALYSER_HOP = 128;
 const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP });
+// LINJÄR KEDJA (2026-08-23): Lotus spelar aldrig upp ljud — bara analys. Därför
+// låses analysatorns interna AGC på 1×: annars normaliserar den bort mic-gainen
+// och kurvan mot Sonos-volym slutar betyda något. levelVU = min(1, rms) → linjärt.
+analyser.setGainLock(true, 1);
 const analyserScratch = new Float32Array(ANALYSER_HOP);
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
@@ -740,11 +744,10 @@ function onAudioData(buf: Buffer): void {
         acrBuf[acrLen++] = s;
       }
 
-      let raw = rawPre * gain;
-      if (raw > 0.5 || raw < -0.5) {
-        const a = raw < 0 ? -raw : raw;
-        raw = raw / (1 + a);
-      }
+      // Ingen soft-clip: FFT är linjär (FFT(g·x)=g·FFT(x)) så bandenergin följer
+      // gainen exakt. Knät x/(1+|x|) komprimerade topparna → mer gain gav kapning
+      // i stället för mer ljus (gain 8/31/57 gav alla ~50 %).
+      const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
       const absRaw = raw < 0 ? -raw : raw;
@@ -768,11 +771,10 @@ function onAudioData(buf: Buffer): void {
         acrBuf[acrLen++] = s;
       }
 
-      let raw = rawPre * gain;
-      if (raw > 0.5 || raw < -0.5) {
-        const a = raw < 0 ? -raw : raw;
-        raw = raw / (1 + a);
-      }
+      // Ingen soft-clip: FFT är linjär (FFT(g·x)=g·FFT(x)) så bandenergin följer
+      // gainen exakt. Knät x/(1+|x|) komprimerade topparna → mer gain gav kapning
+      // i stället för mer ljus (gain 8/31/57 gav alla ~50 %).
+      const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
       const absRaw = raw < 0 ? -raw : raw;
