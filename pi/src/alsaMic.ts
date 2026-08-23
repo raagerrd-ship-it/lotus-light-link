@@ -747,7 +747,7 @@ function onAudioData(buf: Buffer): void {
   // Nivå-hälsa: peak + clip-räknare på post-gain-signalen (före soft-clip-knät).
   // Två jämförelser per sample @48 kHz ≈ försumbart, och ger UI:t ett svar på
   // om gainen ligger rätt mot Sonos-volymen.
-  let peak = debugPeakRaw;
+  let peak = 0;
   let clipLocal = 0;
   let sampLocal = 0;
   // Kalibrering: ackumulera rawPre² lokalt (block-summa) → commit efter loop.
