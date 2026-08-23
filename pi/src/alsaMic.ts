@@ -353,6 +353,12 @@ function emitBands(frame: Frame): void {
   latestBands.totalRms = amp;
   latestBands.flux = frame.flux;
 
+  // Nivå-hälsa på den ljus-drivande bandenergin (samma tal motorn normaliserar).
+  const be = latestBands.bassRms > latestBands.midHiRms ? latestBands.bassRms : latestBands.midHiRms;
+  if (be > healthBandPeakWin) healthBandPeakWin = be;
+  if (be >= 1) healthClipFrames++;
+  healthFrames++;
+
   // bassFlux: onset-energi i banden under cutoffen. Onsets är 0..1 per band;
   // medelvärdet håller samma storleksordning som gamla flux (0.05–0.5) så
   // processOnsets absoluta golv (0.045) och median-prominens gäller oförändrat.
@@ -661,38 +667,36 @@ export function isMicActive(): boolean {
   return capture !== null;
 }
 // ── Nivå-hälsa (gain mot Sonos) ──
-// Fönster om ~1 s. Peaken mäts PRE-gain och multipliceras med aktuell gain vid
-// läsning — annars döljer soft-clip-knät (x/(1+|x|)) gain-ändringar helt: 10x och
-// 40x hamnar båda kring 0.7 och mätaren ser frusen ut.
-const CLIP_LEVEL = 0.9;
-let healthPrePeakWin = 0;
-let healthClipWin = 0;
-let healthSampWin = 0;
+// Mäter den LJUS-DRIVANDE signalen: bandenergin som motorn normaliserar (max av
+// bass/midHi), inte hela ljudet. Då gäller modellen "max använd input → gain →
+// 100 %" exakt, och baren visar när topparna slår i taket (energyNorm > 1 → 1).
+let healthBandPeakWin = 0;
+let healthClipFrames = 0;
+let healthFrames = 0;
 let healthWinAt = 0;
-let healthPrePeak = 0;
+let healthBandPeak = 0;
 let healthClipPct = 0;
 
 export interface MicHealth {
-  /** Post-gain peak 0..1+ (utan soft-clip) i senaste fönstret. */
+  /** Peak bandenergi 0..1+ i senaste fönstret (1.0 = 100 % ljus). */
   peak: number;
-  /** Andel samples (0..1) som nådde soft-clip-knät. */
+  /** Andel band-frames (0..1) som slog i 100 %-taket. */
   clipPct: number;
-  /** 'low' = för lite gain (peak < 0.15), 'hot' = clipping, annars 'ok'. */
+  /** 'low' = för lite gain (peak < 0.15), 'hot' = i taket, annars 'ok'. */
   status: 'low' | 'ok' | 'hot';
 }
 
 export function getMicHealth(): MicHealth {
   const now = performance.now();
-  if (now - healthWinAt >= 1000 && healthSampWin > 0) {
-    healthPrePeak = healthPrePeakWin;
-    healthClipPct = healthClipWin / healthSampWin;
-    healthPrePeakWin = 0; healthClipWin = 0; healthSampWin = 0;
+  if (now - healthWinAt >= 1000 && healthFrames > 0) {
+    healthBandPeak = healthBandPeakWin;
+    healthClipPct = healthClipFrames / healthFrames;
+    healthBandPeakWin = 0; healthClipFrames = 0; healthFrames = 0;
     healthWinAt = now;
   }
-  const peak = healthPrePeak * micGain;
   const status: MicHealth['status'] =
-    healthClipPct > 0.001 || peak >= 1 ? 'hot' : peak < 0.15 ? 'low' : 'ok';
-  return { peak, clipPct: healthClipPct, status };
+    healthClipPct > 0.01 || healthBandPeak >= 1 ? 'hot' : healthBandPeak < 0.15 ? 'low' : 'ok';
+  return { peak: healthBandPeak, clipPct: healthClipPct, status };
 }
 
 
@@ -718,12 +722,8 @@ function onAudioData(buf: Buffer): void {
   let pos = ringPos;
   const ring = ringBuf;
   const mask = RING_MASK;
-  // Nivå-hälsa: peak + clip-räknare på post-gain-signalen (före soft-clip-knät).
-  // Två jämförelser per sample @48 kHz ≈ försumbart, och ger UI:t ett svar på
-  // om gainen ligger rätt mot Sonos-volymen.
+  // Debug-peak (pre-gain) — nivå-hälsan mäts på bandenergin i emitBands().
   let prePeak = 0;
-  let clipLocal = 0;
-  let sampLocal = 0;
   // Kalibrering: ackumulera rawPre² lokalt (block-summa) → commit efter loop.
   const calOn = micCalActive;
   let calSumLocal = 0;
@@ -750,9 +750,6 @@ function onAudioData(buf: Buffer): void {
       const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      const absRaw = raw < 0 ? -raw : raw;
-      if (absRaw > CLIP_LEVEL) clipLocal++;
-      sampLocal++;
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
@@ -777,9 +774,6 @@ function onAudioData(buf: Buffer): void {
       const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      const absRaw = raw < 0 ? -raw : raw;
-      if (absRaw > CLIP_LEVEL) clipLocal++;
-      sampLocal++;
       hs += hsAlpha * (raw - hs);
       ring[pos] = hs + (raw - hs) * hsG;
       pos = (pos + 1) & mask;
@@ -792,9 +786,6 @@ function onAudioData(buf: Buffer): void {
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
   const peak = prePeak * gain;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
-  healthPrePeakWin = prePeak > healthPrePeakWin ? prePeak : healthPrePeakWin;
-  healthClipWin += clipLocal;
-  healthSampWin += sampLocal;
 
   if (calOn && micCalActive) {
     micCalSumSq += calSumLocal;
