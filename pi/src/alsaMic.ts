@@ -1,19 +1,23 @@
 /**
- * ALSA microphone input → FFT → BandResult.
+ * ALSA microphone input → analysator → BandResult.
  * Uses native alsa-capture (direct snd_pcm_readi, no subprocess) — HARD REQUIRED.
  * Engine refuses to start mic if vendored binding can't be loaded (no arecord
  * fallback, since arecord adds ~30-50ms latency we deliberately avoid).
- * Custom zero-alloc radix-2 FFT (no fft-js dependency).
  *
- * Event-driven: fires onFFTReady callback immediately after each FFT frame,
- * enabling the engine to process with zero additional latency.
+ * EN KÄLLA (2026-08-23): den egna 1024-FFT-pipen är BORTA. Allt spektrum
+ * beräknas nu EN gång, i audio-analyser (512 @375 Hz + 2048 @125 Hz), och
+ * motorns BandResult härleds ur analysatorns oktavband/onsets. Ingen signal
+ * beräknas längre två gånger → en plats att felsöka, en kalibrering.
+ *
+ * Event-driven: onFFTReady/onFluxReady fyras på BAND_HOP-takt (~75 Hz) direkt
+ * efter en analysator-hop, så motorn får noll extra latens.
  */
 
-import { fft1024, FFT_N } from './fftRadix2.js';
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame } from './audio-analyser/index.js';
 import { noteOverrun } from './runtimeHealth.js';
+
 
 let _overrunLogAt = 0;
 
