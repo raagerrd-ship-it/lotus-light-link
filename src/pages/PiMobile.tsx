@@ -63,59 +63,60 @@ const DEFAULT_GAIN_LOW = 15;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
 
 
-/** Post-gain nivåmätare. Grön zon = lagom, gul = för svagt, röd = clipping.
- *  Peak kommer från motorn (post-gain, före soft-clip-knät). */
+/** Post-gain nivåmätare. Kompakt, alltid synlig. */
 function LevelMeter({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
   const peak = health ? Math.min(1, health.peak) : 0;
   const status = health?.status ?? 'low';
-  const barClass =
-    status === 'hot' ? 'bg-destructive' : status === 'low' ? 'bg-muted-foreground' : 'bg-primary';
-  const label =
-    status === 'hot' ? 'Clipping — sänk gain' : status === 'low' ? 'Svag signal — höj gain' : 'Bra nivå';
+  const statusText =
+    status === 'hot' ? 'Clipping' : status === 'low' ? 'Svag signal' : 'Bra nivå';
+  const statusClass =
+    status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-primary' : 'text-muted-foreground';
 
   return (
-    <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Insignal</span>
-        <span className={`font-mono ${status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-primary' : 'text-muted-foreground'}`}>
-          {label}
-        </span>
+    <div className="rounded-xl border border-border bg-secondary/30 p-3">
+      <div className="flex items-center justify-between text-xs mb-2">
+        <span className="text-muted-foreground">Nivå</span>
+        <span className={`font-mono text-[10px] ${statusClass}`}>{statusText}</span>
       </div>
       <div className="relative h-2 rounded-full bg-secondary overflow-hidden">
-        {/* Målzon 0.15–0.9 */}
-        <div className="absolute inset-y-0 border-x border-primary/40" style={{ left: '15%', right: '10%' }} />
-        <div className={`h-full rounded-full transition-[width] duration-200 ${barClass}`} style={{ width: `${peak * 100}%` }} />
+        <div className="absolute inset-y-0 border-r border-primary/40" style={{ left: '15%' }} />
+        <div className="absolute inset-y-0 border-r border-primary/40" style={{ left: '90%' }} />
+        <div
+          className={`h-full rounded-full transition-[width] duration-200 ${
+            status === 'hot' ? 'bg-destructive' : status === 'ok' ? 'bg-primary' : 'bg-muted-foreground'
+          }`}
+          style={{ width: `${peak * 100}%` }}
+        />
       </div>
-      <p className="text-[10px] text-muted-foreground">
-        Peak {(peak * 100).toFixed(0)}% · clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}% — sikta mellan strecken när musiken spelar.
-      </p>
+      <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
+        <span>peak {(peak * 100).toFixed(0)}%</span>
+        <span>clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}%</span>
+      </div>
     </div>
   );
 }
 
 type CalPoint = { vol: number; gain: number };
 
-/** Enda gain-kalibreringen: två steg (låg → hög Sonos-volym). Varje steg mäter
- *  15 s och sätter gain automatiskt (target RMS 0.35); slidern finjusterar och
- *  nivåmätaren visar om det ligger rätt. Sista steget aktiverar auto-gain. */
+/** Guidad tvåstegskalibrering. Nivåmätaren visas utanför, så wizardn fokuserar
+ *  på instruktion + mätning + finjustering. */
 function GuidedGainWizard({
-  piBase, sonosVolume, health, micGain, setMicGain, onDone,
+  piBase, sonosVolume, micGain, setMicGain, onDone,
 }: {
   piBase: string;
   sonosVolume: number | null;
-  health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null;
   micGain: number;
   setMicGain: (g: number) => void;
   onDone: (low: CalPoint, high: CalPoint) => void;
 }) {
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
   const [low, setLow] = useState<CalPoint | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const [progress, setProgress] = useState(0);
   const [measured, setMeasured] = useState<null | { ok: boolean; measuredRms: number }>(null);
 
   const start = async () => {
-    // Guiden kör i manuellt läge så slidern = motorns gain
     await fetch(`${piBase}/api/auto-gain`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: false }),
@@ -123,6 +124,13 @@ function GuidedGainWizard({
     setLow(null);
     setMeasured(null);
     setStep(1);
+    setOpen(true);
+  };
+
+  const close = () => {
+    setOpen(false);
+    setMeasuring(false);
+    setMeasured(null);
   };
 
   const measure = async () => {
@@ -185,41 +193,41 @@ function GuidedGainWizard({
       body: JSON.stringify({ enabled: true }),
     }).catch(() => {});
     onDone(p1, p2);
-    setStep(0);
+    close();
   };
 
-  if (step === 0) {
+  if (!open) {
     return (
       <button
         onClick={start}
-        className="w-full py-2 rounded-lg text-xs font-medium bg-secondary hover:bg-secondary/80 transition-colors"
+        className="w-full py-2 rounded-lg text-xs font-medium border border-border bg-secondary/40 hover:bg-secondary/70 transition-colors flex items-center justify-center gap-1.5"
       >
-        Kalibrera gain (2 volymer)
+        <Mic size={12} /> Kalibrera automatiskt
       </button>
     );
   }
 
-  const status = health?.status ?? 'low';
-  const hint =
-    status === 'hot' ? 'Sänk slidern tills det slutar clippa'
-      : status === 'low' ? 'Höj slidern tills mätaren blir grön'
-      : 'Bra nivå — spara punkten';
   const sameVol = step === 2 && low != null && sonosVolume != null && Math.abs(sonosVolume - low.vol) < 3;
 
   return (
-    <div className="rounded-xl border border-primary/40 bg-primary/5 p-3 space-y-3">
-      <div className="flex items-center justify-between text-xs">
-        <span className="font-medium">Steg {step} av 2 — {step === 1 ? 'låg volym' : 'hög volym'}</span>
-        <button onClick={() => setStep(0)} className="text-muted-foreground underline">Avbryt</button>
+    <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium">Kalibrering · steg {step}/2</div>
+        <button onClick={close} className="text-[10px] text-muted-foreground hover:text-foreground">Stäng</button>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <div className="flex gap-1">
+        <div className={`h-1 flex-1 rounded-full ${step >= 1 ? 'bg-primary' : 'bg-secondary'}`} />
+        <div className={`h-1 flex-1 rounded-full ${step >= 2 ? 'bg-primary' : 'bg-secondary'}`} />
+      </div>
+
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
         {step === 1
-          ? 'Spela musik på Sonos på låg volym (t.ex. 10 %) och tryck Mät — motorn sätter gain automatiskt.'
-          : `Höj Sonos-volymen (t.ex. 40–50 %) och tryck Mät igen. Låg punkt: vol ${low?.vol} → ${low?.gain.toFixed(1)}×.`}
+          ? <>Spela musik på <span className="text-foreground font-medium">låg volym</span> och mät — justera sedan slidern om det behövs.</>
+          : <><span className="text-foreground font-medium">Höj volymen</span> och mät igen. Sparad lågpunkt: {low?.vol} → {low?.gain.toFixed(1)}×.</>}
       </p>
 
-      <div className="flex items-center justify-between text-xs">
+      <div className="flex items-center justify-between text-xs bg-secondary/40 rounded-lg px-3 py-2">
         <span className="text-muted-foreground">Sonos volym</span>
         <span className="font-mono font-bold">{sonosVolume ?? '—'}</span>
       </div>
@@ -227,59 +235,56 @@ function GuidedGainWizard({
       <button
         onClick={measure}
         disabled={measuring}
-        className="w-full py-2 rounded-lg text-xs font-medium bg-secondary hover:bg-secondary/80 disabled:opacity-50 transition-colors"
+        className="w-full py-2.5 rounded-lg text-xs font-semibold bg-secondary hover:bg-secondary/80 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
       >
-        {measuring ? `Mäter… ${progress}%` : 'Mät automatiskt (15 s)'}
+        {measuring ? <><Loader2 size={12} className="animate-spin" /> Mäter… {progress}%</>
+          : <><Mic size={12} /> Mät automatiskt (15 s)</>}
       </button>
+
       {measuring && (
-        <div className="h-1 rounded-full bg-secondary overflow-hidden">
+        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
           <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
         </div>
       )}
+
       {measured && !measuring && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className={`text-[10px] ${measured.ok ? 'text-primary' : 'text-destructive'}`}>
           {measured.ok
-            ? `Mätt RMS ${measured.measuredRms.toFixed(3)} → gain satt till ${micGain.toFixed(1)}×.`
-            : 'För tyst för att mäta — höj Sonos-volymen eller justera manuellt nedan.'}
+            ? `Mätt RMS ${measured.measuredRms.toFixed(3)} → gain ${micGain.toFixed(1)}×`
+            : 'För tyst — höj Sonos-volymen eller justera manuellt.'}
         </p>
       )}
 
-      <LevelMeter health={health} />
-
-      <div>
-        <div className="flex justify-between text-sm mb-1">
-          <span>Finjustera gain</span>
-          <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className="text-muted-foreground">Finjustera</span>
+          <span className="font-mono text-foreground">{micGain.toFixed(1)}×</span>
         </div>
         <input
           type="range" min={1} max={50} step={0.5} value={micGain}
           onChange={(e) => onSlide(parseFloat(e.target.value))}
           className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
         />
-        <p className={`text-[10px] mt-1 ${status === 'ok' ? 'text-primary' : status === 'hot' ? 'text-destructive' : 'text-muted-foreground'}`}>
-          {hint}
-        </p>
       </div>
 
       {sameVol && (
         <p className="text-[10px] text-destructive">
-          Sonos-volymen är för nära den låga punkten — höj volymen först.
+          Volymen är för nära lågpunkten — höj den innan du sparar.
         </p>
       )}
 
       <button
         onClick={savePoint}
         disabled={sonosVolume == null || sameVol || measuring}
-        className="w-full py-2 rounded-lg text-xs font-medium bg-primary text-primary-foreground disabled:opacity-50 transition-colors"
+        className="w-full py-2.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground disabled:opacity-50 transition-colors"
       >
-        {step === 1 ? 'Spara & öka volymen →' : 'Spara & aktivera auto-gain'}
+        {step === 1 ? 'Spara lågpunkt →' : 'Spara & aktivera auto-gain'}
       </button>
     </div>
   );
 }
 
 function GainCalibrationPanel({
-
   piBase, micGain, setMicGain, sonosVolume,
 }: {
   piBase: string;
@@ -308,12 +313,10 @@ function GainCalibrationPanel({
       if (cal?.point2?.gain != null) setGainHigh(cal.point2.gain);
       if (cal?.point1?.vol != null) setVolLow(cal.point1.vol);
       if (cal?.point2?.vol != null) setVolHigh(cal.point2.vol);
-
     }).catch(() => {});
   }, [piBase]);
 
-  // Live-poll: endast auto-gain (multiplier/effective). Sonos-volym kommer
-  // via delad status-poll i förälder. Snabbpoll i 5s efter slider-aktivitet.
+  // Live-poll: endast auto-gain (multiplier/effective). Snabbpoll i 5s efter slider-aktivitet.
   const fastPollUntilRef = useRef(0);
   useEffect(() => {
     let cancelled = false;
@@ -335,7 +338,6 @@ function GainCalibrationPanel({
     return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
   }, [piBase]);
 
-  /** PUT båda kalibreringspunkterna live till motorn när en slider ändras. */
   const pushCalibration = (lowGain: number, highGain: number) => {
     fetch(`${piBase}/api/gain-calibration`, {
       method: 'PUT',
@@ -345,15 +347,12 @@ function GainCalibrationPanel({
         point2: { vol: volHigh, gain: highGain },
       }),
     }).catch(() => {});
-    // Trigga snabbpoll (500ms) i 5s så användaren ser effekten direkt
     fastPollUntilRef.current = Date.now() + 5000;
   };
 
   const setMode = (auto: boolean) => {
     if (auto === enabled) return;
     setEnabled(auto);
-    // Säkerställ kalibreringspunkter finns innan Auto aktiveras
-    // (motorn returnerar 1.0× utan punkter).
     if (auto) pushCalibration(gainLow, gainHigh);
     fetch(`${piBase}/api/auto-gain`, {
       method: 'PUT',
@@ -375,29 +374,8 @@ function GainCalibrationPanel({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Nivåmätare: visar om gainen ligger rätt (brusgolv ↔ clipping) */}
-      <LevelMeter health={health} />
-
-      {/* Guidad tvåstegskalibrering mot Sonos-volym */}
-      <GuidedGainWizard
-        piBase={piBase}
-        sonosVolume={sonosVolume}
-        health={health}
-        micGain={micGain}
-        setMicGain={setMicGain}
-        onDone={(low, high) => {
-          setGainLow(low.gain);
-          setGainHigh(high.gain);
-          setVolLow(low.vol);
-          setVolHigh(high.vol);
-          setEnabled(true);
-          fastPollUntilRef.current = Date.now() + 5000;
-        }}
-      />
-
-
-      {/* Mode selector: Manual ↔ Auto */}
+    <div className="space-y-3">
+      {/* Mode toggle — primär kontroll högst upp */}
       <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-secondary/40 border border-border">
         <button
           onClick={() => setMode(false)}
@@ -417,11 +395,12 @@ function GainCalibrationPanel({
         </button>
       </div>
 
-      {/* MANUAL MODE: en slider som direkt styr motor-gain */}
+      <LevelMeter health={health} />
+
       {!enabled && (
-        <div>
-          <div className="flex justify-between text-sm mb-1">
-            <span>Mic Gain</span>
+        <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-foreground">Mic gain</span>
             <span className="text-muted-foreground font-mono text-xs">{micGain.toFixed(1)}×</span>
           </div>
           <input
@@ -429,24 +408,26 @@ function GainCalibrationPanel({
             onChange={(e) => setMicGain(parseFloat(e.target.value))}
             className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
           />
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            Mjukvaruförstärkning. 1× = rå signal, högre = känsligare.
+          <p className="text-[10px] text-muted-foreground">
+            1× = rå signal. Högre = känsligare.
           </p>
-          
+          {effectiveGain != null && (
+            <div className="flex items-center justify-between text-[11px] pt-2 border-t border-border/40">
+              <span className="text-muted-foreground">Aktiv i motor</span>
+              <span className="font-mono font-bold text-foreground">{effectiveGain.toFixed(1)}×</span>
+            </div>
+          )}
         </div>
       )}
 
-
-      {/* AUTO MODE: två slidrar (vol 15 & vol 50), motorn interpolerar */}
       {enabled && (
-        <div className="space-y-4">
-          {/* Live status */}
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-1.5">
+        <div className="space-y-3">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Sonos volym</span>
               <span className="font-mono font-bold">{sonosVolume ?? "—"}</span>
             </div>
-            <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
+            <div className="flex items-center justify-between pt-2 border-t border-border/40">
               <span className="text-xs text-muted-foreground">Aktuell mic-gain</span>
               <span className="text-base font-mono font-bold text-primary">
                 {effectiveGain != null ? `${effectiveGain.toFixed(1)}×` : `${multiplier.toFixed(1)}×`}
@@ -454,43 +435,49 @@ function GainCalibrationPanel({
             </div>
           </div>
 
-          {/* P1: vid låg volym */}
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span>Gain @ vol {volLow}</span>
-              <span className="text-muted-foreground font-mono text-xs">{gainLow.toFixed(1)}×</span>
+          <div className="rounded-xl border border-border bg-secondary/30 p-3 space-y-3">
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Gain vid vol {volLow}</span>
+                <span className="font-mono text-foreground">{gainLow.toFixed(1)}×</span>
+              </div>
+              <input
+                type="range" min={1} max={50} step={0.5} value={gainLow}
+                onChange={(e) => onGainLowChange(parseFloat(e.target.value))}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
             </div>
-            <input
-              type="range" min={1} max={50} step={0.5} value={gainLow}
-              onChange={(e) => onGainLowChange(parseFloat(e.target.value))}
-              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-            />
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Gain vid vol {volHigh}</span>
+                <span className="font-mono text-foreground">{gainHigh.toFixed(1)}×</span>
+              </div>
+              <input
+                type="range" min={1} max={50} step={0.5} value={gainHigh}
+                onChange={(e) => onGainHighChange(parseFloat(e.target.value))}
+                className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
+              />
+            </div>
           </div>
 
-          {/* P2: vid hög volym */}
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span>Gain @ vol {volHigh}</span>
-              <span className="text-muted-foreground font-mono text-xs">{gainHigh.toFixed(1)}×</span>
-            </div>
-            <input
-              type="range" min={1} max={50} step={0.5} value={gainHigh}
-              onChange={(e) => onGainHighChange(parseFloat(e.target.value))}
-              className="w-full h-2 rounded-full appearance-none bg-secondary accent-primary"
-            />
-          </div>
+          <GuidedGainWizard
+            piBase={piBase}
+            sonosVolume={sonosVolume}
+            micGain={micGain}
+            setMicGain={setMicGain}
+            onDone={(low, high) => {
+              setGainLow(low.gain);
+              setGainHigh(high.gain);
+              setVolLow(low.vol);
+              setVolHigh(high.vol);
+              setEnabled(true);
+              fastPollUntilRef.current = Date.now() + 5000;
+            }}
+          />
 
-          <p className="text-[10px] text-muted-foreground">
-            Motorn interpolerar mellan dessa två punkter baserat på Sonos-volymen.
+          <p className="text-[10px] text-muted-foreground px-0.5">
+            Motorn interpolerar mellan de två punkterna baserat på Sonos-volymen.
           </p>
-        </div>
-      )}
-
-      {/* MANUAL MODE: visa vad motorn faktiskt kör */}
-      {!enabled && effectiveGain != null && (
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-secondary/30 rounded-lg px-3 py-1.5">
-          <span>Aktiv i motor:</span>
-          <span className="font-mono font-bold text-foreground">{effectiveGain.toFixed(1)}×</span>
         </div>
       )}
     </div>
