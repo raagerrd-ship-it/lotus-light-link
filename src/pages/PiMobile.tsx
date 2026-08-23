@@ -174,6 +174,8 @@ function GainCalibrationPanel({
   const [multiplier, setMultiplier] = useState(1);
   const [gainLow, setGainLow] = useState(DEFAULT_GAIN_LOW);
   const [gainHigh, setGainHigh] = useState(DEFAULT_GAIN_HIGH);
+  const [volLow, setVolLow] = useState(AUTO_VOL_LOW);
+  const [volHigh, setVolHigh] = useState(AUTO_VOL_HIGH);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
 
@@ -187,6 +189,9 @@ function GainCalibrationPanel({
       if (ag.multiplier != null) setMultiplier(ag.multiplier);
       if (cal?.point1?.gain != null) setGainLow(cal.point1.gain);
       if (cal?.point2?.gain != null) setGainHigh(cal.point2.gain);
+      if (cal?.point1?.vol != null) setVolLow(cal.point1.vol);
+      if (cal?.point2?.vol != null) setVolHigh(cal.point2.vol);
+
     }).catch(() => {});
   }, [piBase]);
 
