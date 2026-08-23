@@ -4,6 +4,8 @@ import { Save, Check, Mic, Bluetooth, Loader2, Sliders } from "lucide-react";
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { Panel, Row, Stat, Slider, Segmented, Button, Toggle } from "@/components/piUi";
+import { LightPreview } from "@/components/LightPreview";
+
 
 
 
@@ -994,7 +996,14 @@ export default function PiMobile() {
 
               {/* Ljusinställningar — appens huvudkontroller */}
               <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-5">
+                <LightPreview
+                  softness={cal.softness}
+                  brightnessFloor={cal.brightnessFloor}
+                  dynamicDamping={cal.dynamicDamping}
+                  beatCutoffHz={cal.beatCutoffHz}
+                />
                 <Slider
+
                   label="Softness"
                   value={cal.softness}
                   display={`${cal.softness}`}
