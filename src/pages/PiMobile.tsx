@@ -272,6 +272,8 @@ function GainCalibrationPanel({
         onDone={(low, high) => {
           setGainLow(low.gain);
           setGainHigh(high.gain);
+          setVolLow(low.vol);
+          setVolHigh(high.vol);
           setEnabled(true);
           fastPollUntilRef.current = Date.now() + 5000;
         }}
