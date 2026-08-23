@@ -72,10 +72,10 @@ export function Slider({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="lotus-range -my-1.5"
+        className="lotus-range -my-3"
         style={{ ["--fill" as string]: fill }}
       />
-      {hint && <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground/80">{hint}</p>}
+      {hint && <p className="text-[10px] leading-snug text-muted-foreground/80">{hint}</p>}
     </div>
   );
 }
