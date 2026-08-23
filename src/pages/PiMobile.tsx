@@ -340,36 +340,28 @@ function GainCalibrationPanel({
         }
       } catch {}
       if (cancelled) return;
-      const interval = Date.now() < fastPollUntilRef.current ? 500 : 1500;
+      const interval = Date.now() < fastPollUntilRef.current ? 400 : 1000;
       timeoutId = setTimeout(poll, interval);
     };
     poll();
     return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
   }, [piBase]);
 
+  // Debounce:ad PUT medan man drar → motorn hinner tillämpa och nivå-baren
+  // följer med i realtid (snabbpoll 400 ms i 5 s efter senaste dragning).
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pushCalibration = (lowGain: number, highGain: number) => {
-    fetch(`${piBase}/api/gain-calibration`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        point1: { vol: volLow, gain: lowGain },
-        point2: { vol: volHigh, gain: highGain },
-      }),
-    }).catch(() => {});
-    fastPollUntilRef.current = Date.now() + 5000;
-  };
-
-  const setMode = (auto: boolean) => {
-    if (auto === enabled) return;
-    setEnabled(auto);
-    if (auto) pushCalibration(gainLow, gainHigh);
-    fetch(`${piBase}/api/auto-gain`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: auto }),
-    }).then(r => r.json()).then(d => {
-      if (d.multiplier != null) setMultiplier(d.multiplier);
-    }).catch(() => {});
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = setTimeout(() => {
+      fetch(`${piBase}/api/gain-calibration`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          point1: { vol: volLow, gain: lowGain },
+          point2: { vol: volHigh, gain: highGain },
+        }),
+      }).catch(() => {});
+    }, 150);
     fastPollUntilRef.current = Date.now() + 5000;
   };
 
@@ -384,96 +376,59 @@ function GainCalibrationPanel({
 
   return (
     <div className="space-y-3">
-      <Segmented
-        value={enabled ? 'auto' : 'manual'}
-        onChange={(v) => setMode(v === 'auto')}
-        options={[
-          { value: 'manual', label: 'Manuell' },
-          { value: 'auto', label: 'Auto (Sonos)' },
-        ]}
-      />
-
       <LevelMeter health={health} />
 
-      {!enabled && (
-        <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3 space-y-2">
-          <Slider
-            label="Mic gain"
-            value={micGain}
-            display={`${micGain.toFixed(1)}×`}
-            min={1} max={50}
-            onChange={(g) => {
-              setMicGain(g);
-              // Skicka direkt så nivåmätaren speglar den gain man just satte.
-              fetch(`${piBase}/api/mic-gain`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gain: g }),
-              }).catch(() => {});
-              fastPollUntilRef.current = Date.now() + 5000;
-            }}
-            hint="1× = rå signal. Högre = känsligare."
-
-          />
-          {effectiveGain != null && (
-            <div className="pt-2 border-t border-border/60">
-              <Stat label="Aktiv i motor" value={`${effectiveGain.toFixed(1)}×`} tone="accent" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {enabled && (
-        <div className="space-y-3">
-          <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/25 p-3 space-y-2">
-            <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
-            <div className="pt-2 border-t border-border/60">
-              <Stat
-                label="Aktuell mic-gain"
-                value={`${(effectiveGain ?? multiplier).toFixed(1)}×`}
-                tone="accent"
-              />
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3 space-y-3">
-            <Slider
-              label={`Gain vid vol ${volLow}`}
-              value={gainLow}
-              display={`${gainLow.toFixed(1)}×`}
-              min={1} max={50} step={0.5}
-              onChange={onGainLowChange}
-            />
-            <Slider
-              label={`Gain vid vol ${volHigh}`}
-              value={gainHigh}
-              display={`${gainHigh.toFixed(1)}×`}
-              min={1} max={50} step={0.5}
-              onChange={onGainHighChange}
-              hint="Motorn interpolerar mellan punkterna utifrån Sonos-volymen."
-            />
-          </div>
-
-          <GuidedGainWizard
-            piBase={piBase}
-            sonosVolume={sonosVolume}
-            micGain={micGain}
-            setMicGain={setMicGain}
-            onDone={(low, high) => {
-              setGainLow(low.gain);
-              setGainHigh(high.gain);
-              setVolLow(low.vol);
-              setVolHigh(high.vol);
-              setEnabled(true);
-              fastPollUntilRef.current = Date.now() + 5000;
-            }}
+      <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/25 p-3 space-y-2">
+        <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
+        <div className="pt-2 border-t border-border/60">
+          <Stat
+            label="Aktiv gain i motor"
+            value={`${(effectiveGain ?? multiplier).toFixed(1)}×`}
+            tone="accent"
           />
         </div>
-      )}
+      </div>
+
+      <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-3 space-y-3">
+        <p className="text-[10px] leading-snug text-muted-foreground/80">
+          Tvåpunkts-kalibrering: dra tills topparna ligger precis under den röda
+          klipp-zonen — då är hela 0–100 % tillgängligt för beat och drops.
+        </p>
+        <Slider
+          label={`Gain vid vol ${volLow}`}
+          value={gainLow}
+          display={`${gainLow.toFixed(0)}×`}
+          min={GAIN_MIN} max={GAIN_MAX} step={1}
+          onChange={onGainLowChange}
+        />
+        <Slider
+          label={`Gain vid vol ${volHigh}`}
+          value={gainHigh}
+          display={`${gainHigh.toFixed(0)}×`}
+          min={GAIN_MIN} max={GAIN_MAX} step={1}
+          onChange={onGainHighChange}
+          hint="Motorn interpolerar mellan punkterna utifrån Sonos-volymen."
+        />
+      </div>
+
+      <GuidedGainWizard
+        piBase={piBase}
+        sonosVolume={sonosVolume}
+        micGain={micGain}
+        setMicGain={setMicGain}
+        onDone={(low, high) => {
+          setGainLow(low.gain);
+          setGainHigh(high.gain);
+          setVolLow(low.vol);
+          setVolHigh(high.vol);
+          fastPollUntilRef.current = Date.now() + 5000;
+        }}
+      />
     </div>
   );
 
 }
+
 
 
 type BleDevice = { name: string; mac: string; rssi?: number };
