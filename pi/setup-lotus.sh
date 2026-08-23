@@ -449,6 +449,16 @@ sudo chgrp netdev /dev/rfkill 2>/dev/null || true
 sudo chmod 0660 /dev/rfkill 2>/dev/null || true
 echo "  /dev/rfkill → netdev:rw via udev ✓"
 
+# vm.swappiness=10: på 416 MB RAM orsakar default (60) att motorns sidor swappas
+# ut → full GC måste swap:a in dem igen → 8s event-loop-frys → watchdog-restart.
+sudo tee /etc/sysctl.d/90-lotus-swappiness.conf >/dev/null <<'EOF'
+vm.swappiness=10
+EOF
+sudo sysctl -q -w vm.swappiness=10 2>/dev/null || true
+echo "  vm.swappiness=10 ✓"
+
+
+
 # ─── Standalone systemd-service (skippas under PCC) ──────────────────────
 if [ "${PCC_MANAGED:-0}" != "1" ]; then
   # Rensa GAMMAL user-service från tidigare versioner
