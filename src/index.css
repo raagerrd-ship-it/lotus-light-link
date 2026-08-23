@@ -61,7 +61,7 @@
 
 @layer utilities {
   .safe-bottom {
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-bottom: calc(2.5rem + env(safe-area-inset-bottom));
   }
 
   /* Sektionsetikett — genomgående typografi för rubriker */
@@ -77,9 +77,10 @@
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 30px;
+  height: 44px;
   background: transparent;
   cursor: pointer;
+  touch-action: pan-y;
   --fill: 50%;
 }
 .lotus-range::-webkit-slider-runnable-track {
