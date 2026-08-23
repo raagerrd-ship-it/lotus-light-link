@@ -1041,6 +1041,15 @@ export default function PiMobile() {
                   onChange={(v) => setCal({ ...cal, beatCutoffHz: Math.round(v) })}
                   hint="Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa."
                 />
+                <Slider
+                  label="Beat-lead (försprång)"
+                  value={cal.beatLeadMs}
+                  display={`${cal.beatLeadMs} ms`}
+                  min={0} max={150} step={5}
+                  onChange={(v) => setCal({ ...cal, beatLeadMs: Math.round(v) })}
+                  hint="Hur långt före slaget pulsen skickas för att äta upp BLE-latensen. 0 = ingen kompensation."
+                />
+
               </Panel>
 
               <ConnectionSettingsSection
