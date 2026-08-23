@@ -67,7 +67,9 @@ const DEFAULT_GAIN_HIGH = 6.5; // låg gain vid hög volym
 
 /** Post-gain nivåmätare. Kompakt, alltid synlig. */
 function LevelMeter({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
-  const peak = health ? Math.min(1, health.peak) : 0;
+  const rawPeak = health ? health.peak : 0;
+  const peak = Math.min(1, rawPeak);
+
   const status = health?.status ?? 'low';
   const statusText =
     status === 'hot' ? 'Clipping' : status === 'low' ? 'Svag signal' : 'Bra nivå';
@@ -96,7 +98,7 @@ function LevelMeter({ health }: { health: { peak: number; clipPct: number; statu
         />
       </div>
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground/70 mt-1.5">
-        <span>peak {(peak * 100).toFixed(0)}%</span>
+        <span>peak {(rawPeak * 100).toFixed(0)}%</span>
         <span>clip {health ? (health.clipPct * 100).toFixed(2) : '0.00'}%</span>
       </div>
     </div>
@@ -390,8 +392,18 @@ function GainCalibrationPanel({
             value={micGain}
             display={`${micGain.toFixed(1)}×`}
             min={1} max={50}
-            onChange={setMicGain}
+            onChange={(g) => {
+              setMicGain(g);
+              // Skicka direkt så nivåmätaren speglar den gain man just satte.
+              fetch(`${piBase}/api/mic-gain`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gain: g }),
+              }).catch(() => {});
+              fastPollUntilRef.current = Date.now() + 5000;
+            }}
             hint="1× = rå signal. Högre = känsligare."
+
           />
           {effectiveGain != null && (
             <div className="pt-2 border-t border-border/60">
