@@ -649,7 +649,7 @@ function ConnectionSettingsSection({
               boxShadow: `0 0 26px rgb(${idleColor[0]} ${idleColor[1]} ${idleColor[2]} / 0.35)`,
             }}
           />
-          <div className="flex-1 space-y-1">
+          <div className="flex-1 -my-1">
             {["R", "G", "B"].map((ch, i) => (
               <div key={ch} className="flex items-center gap-2">
                 <span className="label-eyebrow w-3">{ch}</span>
