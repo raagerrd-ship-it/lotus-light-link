@@ -5,6 +5,8 @@ import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { Panel, Row, Stat, Slider, Segmented, Button, Toggle } from "@/components/piUi";
 import { LightPreview } from "@/components/LightPreview";
+import { BeatMonitor } from "@/components/BeatMonitor";
+
 
 
 
@@ -996,12 +998,14 @@ export default function PiMobile() {
 
               {/* Ljusinställningar — appens huvudkontroller */}
               <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-5">
+                <BeatMonitor piBase={piBase} />
                 <LightPreview
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
                   dynamicDamping={cal.dynamicDamping}
                   beatCutoffHz={cal.beatCutoffHz}
                 />
+
                 <Slider
 
                   label="Softness"
