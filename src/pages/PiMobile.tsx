@@ -996,12 +996,14 @@ export default function PiMobile() {
 
               {/* Ljusinställningar — appens huvudkontroller */}
               <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-5">
+                <BeatMonitor piBase={piBase} />
                 <LightPreview
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
                   dynamicDamping={cal.dynamicDamping}
                   beatCutoffHz={cal.beatCutoffHz}
                 />
+
                 <Slider
 
                   label="Softness"
