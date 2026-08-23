@@ -100,9 +100,10 @@ function applyProfileGlobals(profile: ProfileCal | undefined): void {
   const g = profile.dimmingGamma;
   if (typeof g === 'number' && g >= 1.0 && g <= 3.0) setDimmingGamma(g);
   const gc = profile.gainCalibration;
-  if (gc && attachedMic) {
-    attachedMic.setGainCalPoints(gc.point1 ?? null, gc.point2 ?? null);
+  if (gc && attachedMic && gc.point1 && gc.point2) {
+    attachedMic.setGainCalPoints(gc.point1, gc.point2);
   }
+
 }
 
 /** Byt aktiv profil programmatiskt (används av TV-mode-växlingen i index.ts). */
