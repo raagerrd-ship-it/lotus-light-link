@@ -132,7 +132,7 @@ export function LightPreview({
   }, []);
 
   return (
-    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-2.5">
+    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border p-2.5 overflow-hidden">
       <div className="flex items-center gap-3">
         <div className="relative w-10 h-10 shrink-0 flex items-center justify-center">
           <div
@@ -140,7 +140,7 @@ export function LightPreview({
             className="w-8 h-8 rounded-full bg-primary shadow-[0_0_22px_hsl(var(--primary)/0.7)]"
           />
         </div>
-        <canvas ref={canvasRef} className="h-14 flex-1 w-full" />
+        <canvas ref={canvasRef} className="h-14 flex-1 min-w-0 block" />
       </div>
       <p className="mt-1.5 text-[9px] uppercase tracking-[0.18em] text-muted-foreground/50">
         Simulerat beat · grå = insignal, rosa = lampan
