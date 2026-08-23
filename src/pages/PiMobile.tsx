@@ -338,7 +338,7 @@ function GainCalibrationPanel({
           {/* P1: vid låg volym */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span>Gain @ vol {AUTO_VOL_LOW}</span>
+              <span>Gain @ vol {volLow}</span>
               <span className="text-muted-foreground font-mono text-xs">{gainLow.toFixed(1)}×</span>
             </div>
             <input
