@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, getLatestFrame, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid } from './alsaMic.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
@@ -614,11 +614,20 @@ export class PiLightEngine {
       }
     }
 
+    // Ge analysatorn vårt grid: den grindar kick-kandidater mot takten och kan
+    // räkna taktfas (barShift). Utan grid faller den tillbaka på ogrindad flux.
+    setAnalyserBeatGrid(this._beat ? { bpm: this._beat.bpm, anchorMs: this._beat.anchorMs } : null);
+
     if (!kick || !this._beat) return;
 
     const k0 = this.cal.beatSyncStrength ?? 0.18;
     const beatMsNow = 60000 / this._beat.bpm;
-    const ph = ((((Date.now() - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+    // Fasen mäts helst mot analysatorns FÄRDIGMÄTTA slagtid (sub-hop, ±1.3 ms).
+    // Date.now() här bär ALSA-leveransens jitter. Bara färska värden duger.
+    const kickAt = frame?.kickAtMs ?? 0;
+    const nowRef = kickAt > 0 && Date.now() - kickAt < 60 ? kickAt : Date.now();
+    const ph = ((((nowRef - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+
     const err = ph < 0.5 ? ph : ph - 1;    // -0.5..0.5 av ett taktslag
     if (Math.abs(err) >= 0.25) return;     // off-beat/synkoperade slag räknas ej
     this._beatErr = this._beatErr * 0.85 + err * 0.15;   // ihållande lag för UI
