@@ -313,7 +313,10 @@ const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP
 const analyserScratch = new Float32Array(ANALYSER_HOP);
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
+let latestFrameAt = 0;
 export function getLatestFrame(): Frame | null { return latestFrame; }
+/** Väggklocka (ms) då senaste framen producerades — färskhetsguard hos motorn. */
+export function getLatestFrameAt(): number { return latestFrameAt; }
 /** Mata analysatorn med motorns PLL-grid → kick-grindning + taktfas (barShift). */
 export function setAnalyserBeatGrid(grid: { bpm: number; anchorMs: number } | null): void {
   analyser.setBeatGrid(grid);
