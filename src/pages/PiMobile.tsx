@@ -301,7 +301,6 @@ function GainCalibrationPanel({
   setMicGain: (g: number) => void;
   sonosVolume: number | null;
 }) {
-  const [enabled, setEnabled] = useState(false);
   const [multiplier, setMultiplier] = useState(1);
   const [gainLow, setGainLow] = useState(DEFAULT_GAIN_LOW);
   const [gainHigh, setGainHigh] = useState(DEFAULT_GAIN_HIGH);
@@ -310,13 +309,12 @@ function GainCalibrationPanel({
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
 
-  // Initial load: hämta sparat läge + cal-punkter
+  // Initial load: cal-punkter (kurvan är alltid aktiv)
   useEffect(() => {
     Promise.all([
       fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
       fetch(`${piBase}/api/gain-calibration`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
     ]).then(([ag, cal]) => {
-      setEnabled(!!ag.enabled);
       if (ag.multiplier != null) setMultiplier(ag.multiplier);
       if (cal?.point1?.gain != null) setGainLow(cal.point1.gain);
       if (cal?.point2?.gain != null) setGainHigh(cal.point2.gain);
