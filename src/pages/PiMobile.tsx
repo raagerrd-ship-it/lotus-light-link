@@ -65,7 +65,7 @@ const DEFAULT_GAIN_LOW = 75;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 32;  // låg gain vid hög volym
 const GAIN_MIN = 0.5;
 // Gainen driver ENBART ljuset (analysatorn har egen AGC), så det praktiska
-// spannet är litet — 120× räcker med marginal även på låg Sonos-volym.
+// spannet är litet (~2–8) — max 12× med 0.1-steg ger finjustering.
 const GAIN_MAX = 12;
 const HOLD_MS = 20_000;
 
