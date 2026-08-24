@@ -343,13 +343,24 @@ export function getAcrCaptureWav(): Buffer | null {
  */
 function emitBands(frame: Frame): void {
   const s = frame.spec;
+  const a = frame.specAbs;
   const o = frame.onset;
   const amp = frame.levelVU * BAND_SCALE;
 
-  latestBands.bassRms = (W_SUB * s.sub + W_KICK * s.kick + W_BASS * s.bass) * amp;
-  latestBands.midHiRms =
-    (W_LOWMID * s.lowMid + W_MID * s.mid + W_HIGHMID * s.highMid +
-     W_TREBLE * s.treble + W_AIR * s.air) * amp;
+  // EN SIGNAL (2026-08-24): ljusets bandnivå får INTE komma ur den per-band
+  // AGC:ade spec:en — den mättar på 1 och gör ljuset nivå-oberoende. I stället
+  // används den ABSOLUTA bandmagnituden bara som SPEKTRAL ANDEL (bas kontra
+  // resten), och amplituden kommer linjärt ur levelVU (tvåpunkts Sonos-gain).
+  // Full input → bassRms/midHiRms ≈ levelVU → kedjan är coherent hela vägen.
+  const lowAbs = a.sub + a.kick + a.bass;
+  const hiAbs = a.lowMid + a.mid + a.highMid + a.treble + a.air;
+  const totAbs = lowAbs + hiAbs + 1e-9;
+  // share/0.5 → en jämnt fördelad mix ger 1.0 i båda tapparna (inget tapp vid w=0.5).
+  const lowShare = Math.min(1, (lowAbs / totAbs) / 0.5);
+  const hiShare = Math.min(1, (hiAbs / totAbs) / 0.5);
+
+  latestBands.bassRms = amp * lowShare;
+  latestBands.midHiRms = amp * hiShare;
   latestBands.totalRms = amp;
   latestBands.flux = frame.flux;
 
