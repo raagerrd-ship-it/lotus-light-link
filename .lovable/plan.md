@@ -1,30 +1,15 @@
-# "Synka gain"-knapp + verifiering
+# Ny default-gain (v1.0.749): 1.1 / 0.8
 
-## Varför finns det två ställen?
+Percentil-AGC:n (mål 0.75) gjorde ljus-vägen hetare, så de gamla fallback-punkterna 2.2/1.6 pinnar lampan i taket vid en fresh install eller när inget sparat gain finns.
 
-Gain-punkterna lever i två lager, med olika syfte:
+## Ändring
 
-- **Live-lagret** (`gain-cal-points` i storage, läses av mic-modulen): det som motorn faktiskt använder just nu, och det som återläses vid omstart innan profilerna hunnit appliceras.
-- **Profil-lagret** (`profiles.json` → `profiles[aktiv].gainCalibration`): per-profil-värde, så att t.ex. TV-profilen kan ha annan gain än Normal. Vid profilbyte skrivs profilens punkter ner i live-lagret.
+- `pi/src/alsaMic.ts`: fallback-punkterna blir `point1 {vol: 15, gain: 1.1}` och `point2 {vol: 50, gain: 0.8}` (rad 508–509).
+- Version i `pi/package.json` bumpas till `1.0.749`.
+- Memory `pi/audio/percentile-agc.md`: uppdatera de dokumenterade gain-punkterna till 1.1/0.8 med den uppmätta motiveringen (full 0–100 % span, 7 % pinnat, 0 % klipp, analysator 0.47 snitt).
 
-Båda skrivs redan i samma anrop (`PUT /api/gain-calibration` skriver live + aktiv profil, och profilbyte skriver profil → live). De kan dock glida isär i praktiken: om profiler byts/redigeras utanför gain-flödet, om en gammal `profiles.json` saknar `gainCalibration`, eller om en av skrivningarna felar tyst (`catch {}`). Därför en explicit synk- och verifieringsknapp.
+Inget annat rörs: `lightScale 0.95`, `dropFlashMs 320`, `brightnessFloor 25`, AGC, tapp-isolering, knä, drop och BLE står kvar oförändrade.
 
-## Vad som byggs
+## Notering
 
-### Backend (`pi/src/configServer.ts`)
-Ny endpoint `POST /api/gain-calibration/sync`:
-1. Läs de auktoritativa punkterna från live-mic (`mic.getGainCalPoints()`).
-2. Skriv dem till live-storage (`gain-cal-points`) och till aktiv profils `gainCalibration` i `profiles.json`.
-3. Läs tillbaka båda lagren och jämför punkt för punkt (vol + gain).
-4. Svara med `{ ok, match, live, profile, activePreset }` så UI kan visa resultatet.
-
-Ny endpoint `GET /api/gain-calibration/sync` (samma jämförelse utan att skriva) så UI kan visa om lagren är i synk redan innan man trycker.
-
-### UI (`src/pages/PiMobile.tsx`)
-- Liten knapp "Synka gain" i gain-/kalibreringssektionen.
-- Vid klick: anropa sync-endpointen, visa kort status: "I synk" (grön) med punktvärdena, eller "Fel" (röd) om lagren fortfarande skiljer sig eller anropet misslyckas.
-- Efter lyckad synk: läs om punkterna så slidrarna visar samma värden som backend.
-- Passiv indikator: om `GET`-kontrollen (körs vid initial load) rapporterar mismatch, markera knappen som "Osynkad".
-
-## Teknisk detalj
-Jämförelsen görs med exakt likhet på `vol` och `gain` (avrundat till 2 decimaler) och behandlar `null`-punkter som matchande bara om båda sidor är `null`. Live-mic är source-of-truth i sync-riktningen, eftersom det är den kurva motorn faktiskt kör. Ingen ändring av gain-matten, AGC:n eller ljus-kedjan.
+Redan sparade punkter i `gain-cal-points` / aktiv profil laddas fortfarande före fallbacken vid uppstart, så en Pi som redan är kalibrerad behåller sina värden. Vill du att uppdateringen ska skriva över befintligt sparat gain också, säg till — då lägger jag till en engångsmigrering.
