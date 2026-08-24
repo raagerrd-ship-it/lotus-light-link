@@ -430,6 +430,7 @@ function GainCalibrationPanel({
       }).catch(() => {});
     }, 150);
     fastPollUntilRef.current = Date.now() + 5000;
+    setHoldReset((n) => n + 1);
   };
 
   const onGainLowChange = (g: number) => {
@@ -443,8 +444,9 @@ function GainCalibrationPanel({
 
   return (
     <div className="space-y-3">
-      <LampMeter brightness={lampBrightness} />
-      <InputHealth health={health} level={inputLevel} />
+      <LampMeter brightness={lampBrightness} resetKey={holdReset} />
+      <InputHealth health={health} level={inputLevel} resetKey={holdReset} />
+
 
       <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/25 p-3 space-y-2">
         <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
