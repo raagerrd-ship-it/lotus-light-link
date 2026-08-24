@@ -315,12 +315,15 @@ export class Analyser {
 
   resetGain(startGain = 1) {
     // Seed per input: line (aux) arrives hot -> 1x; the room mic is weak -> ~20x.
-    this.gain = Math.max(0.5, Math.min(20, startGain));
+    // Klampas mot cfg.maxGain (inte hårdkodat 20) — mic-tappen körs o-gainad och
+    // behöver 100-tals × , så en 20×-klamp skulle göra seedningen meningslös.
+    this.gain = Math.max(0.5, Math.min(this.cfg.detection.maxGain, startGain));
     // NEUTRALT ÄR autoGainTarget, INTE 0: AGC:n räknar desired = target/max(1e-4, env),
     // så env = 0 ger ett enormt tal som slår gainen i 20x-taket innan envelopen
     // konvergerat — en hörbar ljuspump vid varje ingångsbyte.
     this.envelope = this.cfg.detection.autoGainTarget;
   }
+
 
   /** Lock the AGC (aux: fixed 1x, level tracks the mixer directly) or let it run. */
   setGainLock(locked: boolean, fixed = 1) {
