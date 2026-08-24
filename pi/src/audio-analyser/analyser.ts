@@ -34,6 +34,8 @@ export interface AnalyserConfig {
   tauUp?: number;
   tauDown?: number;
   noiseFloor?: number;
+  /** Övre klamp för AGC-gainen (default 20). Höj när insignalen är rå mic utan pre-gain. */
+  maxGain?: number;
 }
 
 
