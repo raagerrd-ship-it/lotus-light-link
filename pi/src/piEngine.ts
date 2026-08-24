@@ -214,7 +214,7 @@ const DEFAULT_CAL: LightCalibration = {
   attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
   bassWeight: 0.9,
   punchWhiteThreshold: 100,
-  brightnessFloor: 5,
+  brightnessFloor: 25,
   transientGain: 0.8,
   perceptualGamma: 0,
   dynamicsEnabled: true,

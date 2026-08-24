@@ -45,7 +45,7 @@ type ProfileName = typeof PROFILE_NAMES[number];
 // uppdatera även här. Båda måste vara i sync vid första boot/seed.
 const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
   Lugn:   { bassWeight: 0.7, attackAlpha: 0.061, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 3, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true, onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.025, beatCutoffHz: 150 },
-  Normal: { bassWeight: 0.8, attackAlpha: 1.0,   releaseAlpha: 0.15,  dynamicDamping: 0,    brightnessFloor: 5, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.02, beatCutoffHz: 150 },
+  Normal: { bassWeight: 0.8, attackAlpha: 1.0,   releaseAlpha: 0.15,  dynamicDamping: 0,    brightnessFloor: 25, lightScale: 0.95, dropFlashMs: 320, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.02, beatCutoffHz: 150 },
   Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.5,   dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, onsetThreshold: 1.6, onsetRefractoryMs: 90, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatCutoffHz: 150 },
   Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true, onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.02, beatCutoffHz: 150 },
   // bassWeight semantik: 0=bara disk, 0.5=neutral (båda 100%), 1.0=bara bas. Asymmetrisk dämpning av "andra" sidan.
@@ -102,9 +102,13 @@ function applyProfileGlobals(profile: ProfileCal | undefined): void {
   const gc = profile.gainCalibration;
   if (gc && attachedMic && gc.point1 && gc.point2) {
     attachedMic.setGainCalPoints(gc.point1, gc.point2);
+    // Håll de två lagren i synk: profilen är source-of-truth, men live-lagret
+    // ('gain-cal-points') måste följa med annars laddar en omstart ett annat gain.
+    setItem('gain-cal-points', JSON.stringify({ point1: gc.point1, point2: gc.point2 }));
   }
 
 }
+
 
 /** Byt aktiv profil programmatiskt (används av TV-mode-växlingen i index.ts). */
 export function setActivePresetByName(name: string): boolean {
@@ -856,9 +860,11 @@ export function startConfigServer(port = 3050): void {
       const pf = loadProfilesFile();
       pf.profiles[pf.activePreset] = { ...pf.profiles[pf.activePreset], ...req.body };
       saveProfilesFile(pf);
+      applyProfileGlobals(pf.profiles[pf.activePreset]);
     } catch {}
     res.json({ ok: true });
   });
+
 
   // ── Profiles (4 oberoende kalibreringsprofiler) ──
   app.get('/api/profiles', (_req, res) => {
