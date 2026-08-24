@@ -464,10 +464,27 @@ let micGainAuto = 75.0;  // gain interpolerad från Sonos-volym (kurvan)
 let micGain = 75.0;      // Effective — used in hot path
 
 function updateEffectiveGain(): void {
+  const prev = micGain;
   micGain = micGainAuto;
+  // Din kalibrering är en MÄTNING av rummets nivå vid en given Sonos-volym —
+  // alltså exakt den information AGC:n annars måste jobba upp sig till. Vi
+  // SEEDAR därför analysatorns AGC-startvärde när kurvan flyttar sig markant
+  // (>1.5× upp/ner). Det är bara ett startvärde: AGC:n fortsätter fritt och
+  // ingen användar-gain rör rå-PCM:en eller ringen.
+  if (prev > 0 && (micGain / prev > 1.5 || prev / micGain > 1.5)) seedAnalyserGain('gain-change');
+}
+
+/** Seedar analysatorns AGC från ljus-kalibreringen (storleksordning, inte exakt).
+ *  Ljus-tappen är kalibrerad så att rms × micGain ≈ 1 vid topparna; AGC:n siktar
+ *  på 0.8 av snitt-envelopen, så micGain är rätt storleksordning att börja på. */
+function seedAnalyserGain(reason: string): void {
+  const seed = Math.max(0.5, Math.min(AUTO_GAIN_MAX, micGain));
+  analyser.resetGain(seed);
+  dlog(`[ALSA] AGC seedad till ${seed.toFixed(1)}x från kalibreringen (${reason})`);
 }
 
 export function getMicGain(): number { return micGainBase; }
+
 export function getEffectiveGain(): number { return micGain; }
 export function getAutoGainMultiplier(): number { return micGainAuto; }
 
