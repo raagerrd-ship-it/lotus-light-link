@@ -175,9 +175,6 @@ let bandHopCounter = 0;
 // frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
 // tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
 const BAND_SCALE = 1.0; // ingen extra konstant: enda taket är energyNorm > 1 → 1
-// Bandvikter: låg = sub/kick/bas, hög = lowMid..air (summerar till 1 var).
-const W_SUB = 0.35, W_KICK = 0.45, W_BASS = 0.20;
-const W_LOWMID = 0.20, W_MID = 0.30, W_HIGHMID = 0.25, W_TREBLE = 0.15, W_AIR = 0.10;
 
 // Övre kant (Hz) per analysator-band, i ordning sub..air.
 const BAND_TOP_HZ = [60, 120, 250, 500, 2000, 5000, 10000, 16000];
@@ -342,7 +339,6 @@ export function getAcrCaptureWav(): Buffer | null {
  *   bassFlux         : summerad per-band-onset under beatCutoffHz (kick/bas)
  */
 function emitBands(frame: Frame): void {
-  const s = frame.spec;
   const a = frame.specAbs;
   const o = frame.onset;
   const amp = frame.levelVU * BAND_SCALE;
