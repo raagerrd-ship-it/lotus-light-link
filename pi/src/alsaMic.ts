@@ -360,8 +360,9 @@ function emitBands(frame: Frame): void {
   latestBands.totalRms = amp;
   latestBands.flux = frame.flux;
 
-  // Nivå-hälsa på den ljus-drivande bandenergin (samma tal motorn normaliserar).
-  const be = latestBands.bassRms > latestBands.midHiRms ? latestBands.bassRms : latestBands.midHiRms;
+  // Nivå-hälsa på den LINJÄRA totalnivån (samma tal som input-baren visar).
+  // Inte max(bass, midHi) — de är andelar mot 0.5 och pinnas nära 1.0.
+  const be = latestBands.totalRms;
   if (be > healthBandPeakWin) healthBandPeakWin = be;
   if (be >= 1) healthClipFrames++;
   healthFrames++;

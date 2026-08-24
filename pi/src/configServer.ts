@@ -542,13 +542,13 @@ export function startConfigServer(port = 3050): void {
     //   Detta är engine-resultatet efter floor/gamma/punch — INTE sista
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
-    let micBass = 0, micMidHi = 0;
+    let micTotal = 0;
     let analyserFrame: any = null;
     let analyserCost: any = null;
     try {
       const m = getMic();
       const b = m?.getLatestBands?.();
-      if (b) { micBass = b.bassRms ?? 0; micMidHi = b.midHiRms ?? 0; }
+      if (b) { micTotal = b.totalRms ?? 0; }
       const f = (m as any)?.getLatestFrame?.();
       if (f) {
         analyserFrame = {
@@ -563,10 +563,11 @@ export function startConfigServer(port = 3050): void {
       // TYST — mät detta, inte CPU-%. Konsumeras (max/overBudget nollställs).
       analyserCost = (m as any)?.getAnalyserCost?.() ?? null;
     } catch {}
-    // EN COHERENT KEDJA (2026-08-24): input-baren visar samma linjära bandenergi
-    // som driver ljuset (ingen ×4-inflation), och outputBrightness är EXAKT det
-    // som skickades till lampan (lastSent.pct) — bar = lampa.
-    const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi)));
+    // EN COHERENT KEDJA (2026-08-24): input-baren visar den LINJÄRA totalnivån
+    // (levelVU efter Sonos-gain) — INTE max(bass, midHi), som är band-ANDELAR
+    // normaliserade mot 0.5 och därför alltid pinnas nära 1.0 för det
+    // dominerande bandet. outputBrightness är EXAKT lastSent.pct → bar = lampa.
+    const inputLevel = Math.max(0, Math.min(1, micTotal));
     const { getLastSent } = await import('./ble-driver/protocol.js');
     const sent = getLastSent();
     const lampPct = sent?.pct ?? (diag?.brightnessPct ?? 0);

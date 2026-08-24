@@ -119,7 +119,9 @@ function InputHealth({ health, level }: { health: { peak: number; clipPct: numbe
   // TIDS-SYNKAD med lampan: nivån kommer ur samma /api/status-sample som
   // LampMeter (live.inputLevel), inte ur en separat health-poll.
   const peak = Math.min(1, level ?? health?.peak ?? 0);
-  const status = health?.status ?? 'low';
+  // Status ska följa den VISADE nivån, annars kan baren stå på 100 % och ändå
+  // säga "Bra".
+  const status: 'low' | 'ok' | 'hot' = peak >= 0.98 ? 'hot' : peak < 0.15 ? 'low' : (health?.status ?? 'ok');
   const text = status === 'hot' ? 'Klipper' : status === 'low' ? 'Svag' : 'Bra';
   const cls = status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-ok' : 'text-muted-foreground';
   return (
