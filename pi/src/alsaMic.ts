@@ -194,6 +194,11 @@ let ringPos = 0;
 // High-shelf filter state
 let hsState = 0;
 
+// LJUS-TAPP: ~130 ms EMA av RÅ (o-gainad) block-RMS. micGain appliceras i
+// emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
+let lightRawRms = 0;
+
+
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0 };
 
