@@ -729,7 +729,10 @@ function onAudioData(buf: Buffer): void {
   // Stereo interleaved → ta bara vänster kanal.
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
   // Hi-shelf (single-pole) inlinad i loop:en — sparar en function call per sample.
-  // Soft-clip: algebraisk x/(1+|x|) istället för Math.tanh — ~5x snabbare.
+  // RINGEN ÄR O-GAINAD (2026-08-24): användarens gain appliceras inte här längre.
+  // Analys-tappen skalar med ANALYSER_PREGAIN + AGC; ljus-tappen med micGain på
+  // den linjära RMS:en nedan. En delad gain på rå-PCM:en fick analysatorn att
+  // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
   const gain = micGain;
   const hsAlpha = HS_ALPHA;
   const hsG = hsGain;
@@ -743,6 +746,9 @@ function onAudioData(buf: Buffer): void {
   const calOn = micCalActive;
   let calSumLocal = 0;
   let calCntLocal = 0;
+  // LJUS-TAPP: block-RMS på rå signal (gain appliceras efteråt → linjärt).
+  let lightSumLocal = 0;
+  let lightCntLocal = 0;
 
 
   if (currentFormat === 'S32_LE') {
@@ -752,6 +758,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
       if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
+      lightSumLocal += rawPre * rawPre; lightCntLocal++;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -759,14 +766,10 @@ function onAudioData(buf: Buffer): void {
         acrBuf[acrLen++] = s;
       }
 
-      // Ingen soft-clip: FFT är linjär (FFT(g·x)=g·FFT(x)) så bandenergin följer
-      // gainen exakt. Knät x/(1+|x|) komprimerade topparna → mer gain gav kapning
-      // i stället för mer ljus (gain 8/31/57 gav alla ~50 %).
-      const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      hs += hsAlpha * (raw - hs);
-      ring[pos] = hs + (raw - hs) * hsG;
+      hs += hsAlpha * (rawPre - hs);
+      ring[pos] = hs + (rawPre - hs) * hsG;
       pos = (pos + 1) & mask;
     }
   } else {
@@ -776,6 +779,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
       if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
+      lightSumLocal += rawPre * rawPre; lightCntLocal++;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -783,14 +787,10 @@ function onAudioData(buf: Buffer): void {
         acrBuf[acrLen++] = s;
       }
 
-      // Ingen soft-clip: FFT är linjär (FFT(g·x)=g·FFT(x)) så bandenergin följer
-      // gainen exakt. Knät x/(1+|x|) komprimerade topparna → mer gain gav kapning
-      // i stället för mer ljus (gain 8/31/57 gav alla ~50 %).
-      const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      hs += hsAlpha * (raw - hs);
-      ring[pos] = hs + (raw - hs) * hsG;
+      hs += hsAlpha * (rawPre - hs);
+      ring[pos] = hs + (rawPre - hs) * hsG;
       pos = (pos + 1) & mask;
     }
   }
@@ -801,6 +801,16 @@ function onAudioData(buf: Buffer): void {
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
   const peak = prePeak * gain;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
+
+  // LJUS-NIVÅ: ~130 ms EMA av block-RMS (samma tidskonstant som analysatorns
+  // levelVU hade) — men helt utan AGC. Gain appliceras i emitBands.
+  if (lightCntLocal > 0) {
+    const blockRms = Math.sqrt(lightSumLocal / lightCntLocal);
+    const dt = lightCntLocal / SAMPLE_RATE;
+    const a = 1 - Math.exp(-dt / 0.13);
+    lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
+  }
+
 
   if (calOn && micCalActive) {
     micCalSumSq += calSumLocal;
