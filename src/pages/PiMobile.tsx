@@ -379,8 +379,9 @@ function GainCalibrationPanel({
       fetch(`${piBase}/api/gain-calibration`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
     ]).then(([ag, cal]) => {
       if (ag.multiplier != null) setMultiplier(ag.multiplier);
-      if (cal?.point1?.gain != null) setGainLow(cal.point1.gain);
-      if (cal?.point2?.gain != null) setGainHigh(cal.point2.gain);
+      if (cal?.point1?.gain != null) setGainLow(Math.min(GAIN_MAX, cal.point1.gain));
+      if (cal?.point2?.gain != null) setGainHigh(Math.min(GAIN_MAX, cal.point2.gain));
+
       if (cal?.point1?.vol != null) setVolLow(cal.point1.vol);
       if (cal?.point2?.vol != null) setVolHigh(cal.point2.vol);
     }).catch(() => {});
