@@ -563,10 +563,14 @@ export function startConfigServer(port = 3050): void {
       // TYST — mät detta, inte CPU-%. Konsumeras (max/overBudget nollställs).
       analyserCost = (m as any)?.getAnalyserCost?.() ?? null;
     } catch {}
-    const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi) * 4));
-    const outputBrightness = diag ? Math.max(0, Math.min(1, (diag.brightnessPct ?? 0) / 100)) : 0;
+    // EN COHERENT KEDJA (2026-08-24): input-baren visar samma linjära bandenergi
+    // som driver ljuset (ingen ×4-inflation), och outputBrightness är EXAKT det
+    // som skickades till lampan (lastSent.pct) — bar = lampa.
+    const inputLevel = Math.max(0, Math.min(1, Math.max(micBass, micMidHi)));
     const { getLastSent } = await import('./ble-driver/protocol.js');
     const sent = getLastSent();
+    const lampPct = sent?.pct ?? (diag?.brightnessPct ?? 0);
+    const outputBrightness = Math.max(0, Math.min(1, lampPct / 100));
     // Kö = bara noble's _aclQueue (mjukvarukö för vår handle), INTE pending.
     // pending=1 är normalt (paketet just nu i flygning till controllern) och
     // hör inte hemma i ett "kö"-mått — då skulle värdet alltid vara ≥1.
