@@ -749,7 +749,7 @@ function onAudioData(buf: Buffer): void {
   // Analys-tappen skalas ENBART av analysatorns AGC; ljus-tappen med micGain på
   // den linjära RMS:en nedan. En delad gain på rå-PCM:en fick analysatorn att
   // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
-  const gain = micGain;
+  
   const hsAlpha = HS_ALPHA;
   const hsG = hsGain;
   let hs = hsState;
