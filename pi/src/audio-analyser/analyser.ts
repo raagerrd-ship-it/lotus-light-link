@@ -34,6 +34,8 @@ export interface AnalyserConfig {
   tauUp?: number;
   tauDown?: number;
   noiseFloor?: number;
+  /** Övre klamp för AGC-gainen (default 20). Höj när insignalen är rå mic utan pre-gain. */
+  maxGain?: number;
 }
 
 
@@ -717,7 +719,7 @@ export class Analyser {
   private cfg: {
     audio: { rate: number };
     fft: { size: number; hop: number };
-    detection: { autoGainTarget: number; tauUp: number; tauDown: number; noiseFloor: number };
+    detection: { autoGainTarget: number; tauUp: number; tauDown: number; noiseFloor: number; maxGain: number };
     beat: BeatGrid | null;
   };
   /** Optional external beat grid (from a PLL). Null = no grid gate on kicks. */
@@ -732,6 +734,7 @@ export class Analyser {
         tauUp: cfgIn.tauUp ?? 3,
         tauDown: cfgIn.tauDown ?? 8,
         noiseFloor: cfgIn.noiseFloor ?? 0.002,
+        maxGain: cfgIn.maxGain ?? 20,
       },
       beat: null,
     };
@@ -896,7 +899,7 @@ export class Analyser {
       const ga = 1 - Math.exp(-dt / gTau);
       this.gain += (desired - this.gain) * ga;
       if (this.gain < 0.5) this.gain = 0.5;
-      else if (this.gain > 20) this.gain = 20;
+      else if (this.gain > d.maxGain) this.gain = d.maxGain;
     }
     const level = Math.min(1, rms * this.gain);
 

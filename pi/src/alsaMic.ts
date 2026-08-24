@@ -239,15 +239,22 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 // onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
 const ANALYSER_HOP = 128;
 // TVÅ TAPPAR (2026-08-24): ring-bufferten innehåller RÅ (o-gainad) mic-signal.
-//  • ANALYS-tappen: fast förstärkning ANALYSER_PREGAIN → analysatorns AGC
-//    (mål 0.8 = 80 % med headroom, aldrig pinnad 100 %). Användarens gain rör
-//    ALDRIG denna väg → en klippt analys-signal kan inte degradera beat/drop.
+//  • ANALYS-tappen: RÅ signal → analysatorns AGC gör HELA gainen dynamiskt
+//    (mål 0.8 = 80 % med headroom). INGEN fast pre-gain: en fast faktor före
+//    AGC:n kan bränna in klippning som AGC:n inte kan ta bort (uppmätt v1.0.743:
+//    level pinnad 100 → ostabilt beat-lås). Klampen höjs istället till 600× så
+//    AGC:n själv når målet från rå mic-nivå. Tystnad hanteras av noiseFloor-
+//    gaten i analysatorn (AGC:n fryser då och förstärker inte mic-brus).
+//    Användarens gain rör ALDRIG denna väg.
 //  • LJUS-tappen: egen linjär RMS × micGain (tvåpunkts Sonos-kurva) → brightness.
 //    Ingen AGC, ingen normalisering → gainen är effektiv hela vägen till lampan.
-const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP, autoGainTarget: 0.8 });
-// AGC:n får jobba HÄR (och bara här). Dess interna gain är klampad 0.5–20×, så
-// mic-signalen lyfts först med en FAST pre-gain så att AGC:n hamnar i sitt span.
-const ANALYSER_PREGAIN = 30;
+const analyser = createAnalyser({
+  sampleRate: SAMPLE_RATE,
+  hopSize: ANALYSER_HOP,
+  autoGainTarget: 0.8,
+  maxGain: 600,
+  noiseFloor: 0.0015,
+});
 analyser.setGainLock(false);
 const analyserScratch = new Float32Array(ANALYSER_HOP);
 
@@ -739,7 +746,7 @@ function onAudioData(buf: Buffer): void {
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
   // Hi-shelf (single-pole) inlinad i loop:en — sparar en function call per sample.
   // RINGEN ÄR O-GAINAD (2026-08-24): användarens gain appliceras inte här längre.
-  // Analys-tappen skalar med ANALYSER_PREGAIN + AGC; ljus-tappen med micGain på
+  // Analys-tappen skalas ENBART av analysatorns AGC; ljus-tappen med micGain på
   // den linjära RMS:en nedan. En delad gain på rå-PCM:en fick analysatorn att
   // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
   const gain = micGain;
@@ -837,7 +844,7 @@ function onAudioData(buf: Buffer): void {
     const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
     // Fast pre-gain (inte användarens gain) så AGC:n hamnar i sitt 0.5–20×-span.
-    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask] * ANALYSER_PREGAIN;
+    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
     const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
     latestFrameAt = Date.now();
