@@ -228,14 +228,14 @@ const DEFAULT_CAL: LightCalibration = {
   beatCutoffHz: 150,
   dropEnabled: true,
   dropSensitivity: 1.0,
-  dropFlashMs: 220,
+  dropFlashMs: 320,
   beatGridPulse: true,
   beatLeadMs: 60,
   beatSyncStrength: 0.18,
   dropSource: 'analyser',
   intensityInfluence: 0.3,
   barAccent: 1.0,
-  lightScale: 0.8,
+  lightScale: 0.95,
   lightBassWeight: 0.5,
 };
 
@@ -761,7 +761,7 @@ export class PiLightEngine {
       this.breakdownFrames = 0;
       const _now = performance.now();
       // White INSTANTLY on drop — no black dip first (no dip branch exists).
-      this.dropFlashUntil = _now + (this.cal.dropFlashMs ?? 220);
+      this.dropFlashUntil = _now + (this.cal.dropFlashMs ?? 320);
       bleStatsState.dropCount++;
       // Express-write: max brightness omedelbart, behåll palette-färgen
       // (2026-07-22: ingen vit tvingning — drop förstärker aktuell färg).
@@ -1595,7 +1595,7 @@ export class PiLightEngine {
       // får därmed fortfarande sticka ut över taket.
       if (pGamma > 0 && _e > 0.0001) _e = Math.exp(pGamma * Math.log(_e));
       const ceilN = tc.lightScale;
-      const kneeN = 0.7;
+      const kneeN = 0.45;
       let out: number;
       if (ceilN <= kneeN) {
         out = _e * ceilN;
@@ -1603,7 +1603,7 @@ export class PiLightEngine {
         out = _e;
       } else {
         const t = (_e - kneeN) / (1 - kneeN);
-        const shaped = (1 - Math.exp(-2 * t)) / (1 - Math.exp(-2));
+        const shaped = (1 - Math.exp(-1.2 * t)) / (1 - Math.exp(-1.2));
         out = kneeN + (ceilN - kneeN) * shaped;
       }
       let pct = floor + out * (100 - floor);

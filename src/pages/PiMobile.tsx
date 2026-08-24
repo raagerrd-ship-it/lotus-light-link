@@ -16,9 +16,9 @@ type Cal = { bassWeight: number; attack: number; softness: number; dynamicDampin
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
   Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.75, lightBassWeight: 0.4 },
-  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8, lightBassWeight: 0.5 },
+  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 320, beatLeadMs: 60, lightScale: 0.95, lightBassWeight: 0.5 },
   Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260, beatLeadMs: 60, lightScale: 0.85, lightBassWeight: 0.55 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8, lightBassWeight: 0.5 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 320, beatLeadMs: 60, lightScale: 0.95, lightBassWeight: 0.5 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -63,10 +63,10 @@ const AUTO_VOL_LOW = 15;
 const AUTO_VOL_HIGH = 50;
 const DEFAULT_GAIN_LOW = 75;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 32;  // låg gain vid hög volym
-const GAIN_MIN = 1;
+const GAIN_MIN = 0.5;
 // Gainen driver ENBART ljuset (analysatorn har egen AGC), så det praktiska
-// spannet är litet — 120× räcker med marginal även på låg Sonos-volym.
-const GAIN_MAX = 120;
+// spannet är litet (~2–8) — max 12× med 0.1-steg ger finjustering.
+const GAIN_MAX = 12;
 const HOLD_MS = 20_000;
 
 
@@ -329,7 +329,7 @@ function GuidedGainWizard({
         label="Finjustera"
         value={micGain}
         display={`${micGain.toFixed(1)}×`}
-        min={GAIN_MIN} max={GAIN_MAX} step={1}
+        min={GAIN_MIN} max={GAIN_MAX} step={0.1}
         onChange={onSlide}
       />
 
@@ -468,15 +468,15 @@ function GainCalibrationPanel({
         <Slider
           label={`Gain vid vol ${volLow}`}
           value={gainLow}
-          display={`${gainLow.toFixed(0)}×`}
-          min={GAIN_MIN} max={GAIN_MAX} step={1}
+          display={`${gainLow.toFixed(1)}×`}
+          min={GAIN_MIN} max={GAIN_MAX} step={0.1}
           onChange={onGainLowChange}
         />
         <Slider
           label={`Gain vid vol ${volHigh}`}
           value={gainHigh}
-          display={`${gainHigh.toFixed(0)}×`}
-          min={GAIN_MIN} max={GAIN_MAX} step={1}
+          display={`${gainHigh.toFixed(1)}×`}
+          min={GAIN_MIN} max={GAIN_MAX} step={0.1}
           onChange={onGainHighChange}
           hint="Motorn interpolerar mellan punkterna utifrån Sonos-volymen."
         />
