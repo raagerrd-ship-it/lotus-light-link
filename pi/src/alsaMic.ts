@@ -233,12 +233,19 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 // mot 375 Hz i DMX-projektet. Att köra den på 100 Hz skulle ge 3.75× för glesa
 // onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
 const ANALYSER_HOP = 128;
-const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP });
-// LINJÄR KEDJA (2026-08-23): Lotus spelar aldrig upp ljud — bara analys. Därför
-// låses analysatorns interna AGC på 1×: annars normaliserar den bort mic-gainen
-// och kurvan mot Sonos-volym slutar betyda något. levelVU = min(1, rms) → linjärt.
-analyser.setGainLock(true, 1);
+// TVÅ TAPPAR (2026-08-24): ring-bufferten innehåller RÅ (o-gainad) mic-signal.
+//  • ANALYS-tappen: fast förstärkning ANALYSER_PREGAIN → analysatorns AGC
+//    (mål 0.8 = 80 % med headroom, aldrig pinnad 100 %). Användarens gain rör
+//    ALDRIG denna väg → en klippt analys-signal kan inte degradera beat/drop.
+//  • LJUS-tappen: egen linjär RMS × micGain (tvåpunkts Sonos-kurva) → brightness.
+//    Ingen AGC, ingen normalisering → gainen är effektiv hela vägen till lampan.
+const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP, autoGainTarget: 0.8 });
+// AGC:n får jobba HÄR (och bara här). Dess interna gain är klampad 0.5–20×, så
+// mic-signalen lyfts först med en FAST pre-gain så att AGC:n hamnar i sitt span.
+const ANALYSER_PREGAIN = 30;
+analyser.setGainLock(false);
 const analyserScratch = new Float32Array(ANALYSER_HOP);
+
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
 let latestFrameAt = 0;
