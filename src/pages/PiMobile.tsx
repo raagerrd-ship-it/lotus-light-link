@@ -368,6 +368,9 @@ function GainCalibrationPanel({
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
   const [lampBrightness, setLampBrightness] = useState<number | null>(null);
   const [inputLevel, setInputLevel] = useState<number | null>(null);
+  // Bumpas vid varje gain-ändring → 20 s-topparna i mätarna nollställs.
+  const [holdReset, setHoldReset] = useState(0);
+
 
   // Initial load: cal-punkter (kurvan är alltid aktiv)
   useEffect(() => {
