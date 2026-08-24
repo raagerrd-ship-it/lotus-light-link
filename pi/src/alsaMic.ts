@@ -746,7 +746,7 @@ function onAudioData(buf: Buffer): void {
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
   // Hi-shelf (single-pole) inlinad i loop:en — sparar en function call per sample.
   // RINGEN ÄR O-GAINAD (2026-08-24): användarens gain appliceras inte här längre.
-  // Analys-tappen skalar med ANALYSER_PREGAIN + AGC; ljus-tappen med micGain på
+  // Analys-tappen skalas ENBART av analysatorns AGC; ljus-tappen med micGain på
   // den linjära RMS:en nedan. En delad gain på rå-PCM:en fick analysatorn att
   // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
   const gain = micGain;
