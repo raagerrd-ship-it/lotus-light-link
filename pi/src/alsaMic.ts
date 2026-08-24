@@ -425,8 +425,10 @@ export function resetFluxState(): void {
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   bandHopCounter = 0;
-  // Analysatorns AGC återinförs från neutral så första låtens gain inte hänger kvar
-  analyser.resetGain();
+  // Analysatorns AGC startas om — men SEEDAD från kalibreringen (se
+  // seedAnalyserGain) istället för 1×, så den är i rätt storleksordning direkt.
+  seedAnalyserGain('reset');
+
   latestFrame = null;
   latestFrameAt = 0;
   analyserSamplesReceived = 0;
