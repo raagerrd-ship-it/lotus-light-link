@@ -860,9 +860,11 @@ export function startConfigServer(port = 3050): void {
       const pf = loadProfilesFile();
       pf.profiles[pf.activePreset] = { ...pf.profiles[pf.activePreset], ...req.body };
       saveProfilesFile(pf);
+      applyProfileGlobals(pf.profiles[pf.activePreset]);
     } catch {}
     res.json({ ok: true });
   });
+
 
   // ── Profiles (4 oberoende kalibreringsprofiler) ──
   app.get('/api/profiles', (_req, res) => {
