@@ -891,20 +891,41 @@ export class Analyser {
     this.lastT = now;
     const d = this.cfg.detection;
     // AGC körs BARA för mic (aux låser gain på 1× — line-level är hett & stabilt).
-    // Beprövad envelope→autoGainTarget. (Percentil-AGC:n vore bättre men rör bara
-    // denna oanvända mic-väg → behåller det testade.)
+    // PERCENTIL-AGC: målet är ett TAK för TOPPARNA, inte ett medel. Momentan-nivå
+    // som mål pressade level till 1.0 (uppmätt: ≥0.95 i ~55 % av tiden, clip 21 %)
+    // → inbränd klippning som AGC:n inte kan ta bort, och energi-uppgångar blev
+    // osynliga. Nu mäts en hög percentil av senaste ~2 s (16 block-maxima à 128 ms,
+    // näst-största ≈ 95:e percentilen) → en enstaka transient drar inte upp gainen.
     if (!this.gainLocked && rms > d.noiseFloor) {
-      const tau = rms * this.gain > this.envelope ? d.tauDown : d.tauUp;
-      const a = 1 - Math.exp(-dt / tau);
-      this.envelope += (rms * this.gain - this.envelope) * a;
-      const desired = (d.autoGainTarget / Math.max(1e-4, this.envelope)) * this.gain;
-      const gTau = desired > this.gain ? d.tauUp : d.tauDown;
-      const ga = 1 - Math.exp(-dt / gTau);
-      this.gain += (desired - this.gain) * ga;
-      if (this.gain < 0.5) this.gain = 0.5;
-      else if (this.gain > d.maxGain) this.gain = d.maxGain;
+      // block-max → ringbuffert (billigt: en scan per 128 ms, inga sorteringar)
+      if (rms > this.agcBlockMax) this.agcBlockMax = rms;
+      this.agcBlockMs += dt * 1000;
+      if (this.agcBlockMs >= 128) {
+        this.agcBlockMs = 0;
+        this.agcBlocks[this.agcBlockIdx] = this.agcBlockMax;
+        this.agcBlockIdx = (this.agcBlockIdx + 1) % this.agcBlocks.length;
+        this.agcBlockMax = 0;
+        // näst-största av 16 block ≈ 95:e percentilen av ~2 s
+        let m1 = 0, m2 = 0;
+        for (let i = 0; i < this.agcBlocks.length; i++) {
+          const v = this.agcBlocks[i];
+          if (v > m1) { m2 = m1; m1 = v; } else if (v > m2) { m2 = v; }
+        }
+        this.envelope = m2 > 0 ? m2 : m1;
+      }
+      if (this.envelope > 1e-4) {
+        const desired = d.autoGainTarget / this.envelope;
+        // Långsam attack (bränner ingen klippning), snabb retreat när topparna
+        // närmar sig taket.
+        const tau = desired > this.gain ? d.tauUp * 2 : d.tauDown * 0.25;
+        const ga = 1 - Math.exp(-dt / tau);
+        this.gain += (desired - this.gain) * ga;
+        if (this.gain < 0.5) this.gain = 0.5;
+        else if (this.gain > d.maxGain) this.gain = d.maxGain;
+      }
     }
     const level = Math.min(1, rms * this.gain);
+
 
     // KICK-DETEKTION v2: onset i kick-bandet (sub-bas ~0–280 Hz) mot en ADAPTIV
     // baslinje (långsam EMA av kick-fluxen). En kick = flux tydligt över
