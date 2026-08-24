@@ -194,6 +194,11 @@ let ringPos = 0;
 // High-shelf filter state
 let hsState = 0;
 
+// LJUS-TAPP: ~130 ms EMA av RÅ (o-gainad) block-RMS. micGain appliceras i
+// emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
+let lightRawRms = 0;
+
+
 // Latest computed bands (static object — mutated in place)
 let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0 };
 
@@ -233,12 +238,19 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 // mot 375 Hz i DMX-projektet. Att köra den på 100 Hz skulle ge 3.75× för glesa
 // onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
 const ANALYSER_HOP = 128;
-const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP });
-// LINJÄR KEDJA (2026-08-23): Lotus spelar aldrig upp ljud — bara analys. Därför
-// låses analysatorns interna AGC på 1×: annars normaliserar den bort mic-gainen
-// och kurvan mot Sonos-volym slutar betyda något. levelVU = min(1, rms) → linjärt.
-analyser.setGainLock(true, 1);
+// TVÅ TAPPAR (2026-08-24): ring-bufferten innehåller RÅ (o-gainad) mic-signal.
+//  • ANALYS-tappen: fast förstärkning ANALYSER_PREGAIN → analysatorns AGC
+//    (mål 0.8 = 80 % med headroom, aldrig pinnad 100 %). Användarens gain rör
+//    ALDRIG denna väg → en klippt analys-signal kan inte degradera beat/drop.
+//  • LJUS-tappen: egen linjär RMS × micGain (tvåpunkts Sonos-kurva) → brightness.
+//    Ingen AGC, ingen normalisering → gainen är effektiv hela vägen till lampan.
+const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP, autoGainTarget: 0.8 });
+// AGC:n får jobba HÄR (och bara här). Dess interna gain är klampad 0.5–20×, så
+// mic-signalen lyfts först med en FAST pre-gain så att AGC:n hamnar i sitt span.
+const ANALYSER_PREGAIN = 30;
+analyser.setGainLock(false);
 const analyserScratch = new Float32Array(ANALYSER_HOP);
+
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
 let latestFrameAt = 0;
@@ -333,27 +345,30 @@ export function getAcrCaptureWav(): Buffer | null {
 /**
  * Härled motorns BandResult ur analysatorns senaste frame. INGEN egen FFT —
  * spektrumet är redan beräknat en gång i audio-analyser.
- *   bassRms/midHiRms : viktad oktavbands-nivå (AGC 0..1) × levelVU × BAND_SCALE
- *   totalRms         : levelVU × BAND_SCALE (auto-gainad RMS, tystnad → 0)
+ *   bassRms/midHiRms : spektral ANDEL (ur specAbs) × ljus-amplituden
+ *   totalRms         : ljus-amplituden = rå RMS × micGain (ingen AGC)
  *   flux             : analysatorns bredbands-flux (skarp, för onset)
  *   bassFlux         : summerad per-band-onset under beatCutoffHz (kick/bas)
  */
 function emitBands(frame: Frame): void {
   const a = frame.specAbs;
   const o = frame.onset;
-  const amp = frame.levelVU * BAND_SCALE;
+  // TVÅ TAPPAR (2026-08-24): amplituden kommer INTE från frame.levelVU längre —
+  // den är AGC:ad och normaliserar bort användarens gain (ljuset blev gain-
+  // okänsligt och pinnade ~50 %). Ljuset drivs av den egna linjära RMS:en ×
+  // micGain (tvåpunkts Sonos-kurva). Analysatorns AGC rör bara detektionen.
+  let amp = lightRawRms * micGain * BAND_SCALE;
+  if (amp > 1) amp = 1;
 
-  // EN SIGNAL (2026-08-24): ljusets bandnivå får INTE komma ur den per-band
-  // AGC:ade spec:en — den mättar på 1 och gör ljuset nivå-oberoende. I stället
-  // används den ABSOLUTA bandmagnituden bara som SPEKTRAL ANDEL (bas kontra
-  // resten), och amplituden kommer linjärt ur levelVU (tvåpunkts Sonos-gain).
-  // Full input → bassRms/midHiRms ≈ levelVU → kedjan är coherent hela vägen.
+  // Den ABSOLUTA bandmagnituden används bara som SPEKTRAL ANDEL (bas kontra
+  // resten) — aldrig som nivå, eftersom den är AGC:ad.
   const lowAbs = a.sub + a.kick + a.bass;
   const hiAbs = a.lowMid + a.mid + a.highMid + a.treble + a.air;
   const totAbs = lowAbs + hiAbs + 1e-9;
   // share/0.5 → en jämnt fördelad mix ger 1.0 i båda tapparna (inget tapp vid w=0.5).
   const lowShare = Math.min(1, (lowAbs / totAbs) / 0.5);
   const hiShare = Math.min(1, (hiAbs / totAbs) / 0.5);
+
 
   latestBands.bassRms = amp * lowShare;
   latestBands.midHiRms = amp * hiShare;
@@ -399,6 +414,7 @@ export function resetFluxState(): void {
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
+  lightRawRms = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   bandHopCounter = 0;
@@ -722,7 +738,10 @@ function onAudioData(buf: Buffer): void {
   // Stereo interleaved → ta bara vänster kanal.
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
   // Hi-shelf (single-pole) inlinad i loop:en — sparar en function call per sample.
-  // Soft-clip: algebraisk x/(1+|x|) istället för Math.tanh — ~5x snabbare.
+  // RINGEN ÄR O-GAINAD (2026-08-24): användarens gain appliceras inte här längre.
+  // Analys-tappen skalar med ANALYSER_PREGAIN + AGC; ljus-tappen med micGain på
+  // den linjära RMS:en nedan. En delad gain på rå-PCM:en fick analysatorn att
+  // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
   const gain = micGain;
   const hsAlpha = HS_ALPHA;
   const hsG = hsGain;
@@ -736,6 +755,9 @@ function onAudioData(buf: Buffer): void {
   const calOn = micCalActive;
   let calSumLocal = 0;
   let calCntLocal = 0;
+  // LJUS-TAPP: block-RMS på rå signal (gain appliceras efteråt → linjärt).
+  let lightSumLocal = 0;
+  let lightCntLocal = 0;
 
 
   if (currentFormat === 'S32_LE') {
@@ -745,6 +767,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
       if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
+      lightSumLocal += rawPre * rawPre; lightCntLocal++;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -752,14 +775,10 @@ function onAudioData(buf: Buffer): void {
         acrBuf[acrLen++] = s;
       }
 
-      // Ingen soft-clip: FFT är linjär (FFT(g·x)=g·FFT(x)) så bandenergin följer
-      // gainen exakt. Knät x/(1+|x|) komprimerade topparna → mer gain gav kapning
-      // i stället för mer ljus (gain 8/31/57 gav alla ~50 %).
-      const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      hs += hsAlpha * (raw - hs);
-      ring[pos] = hs + (raw - hs) * hsG;
+      hs += hsAlpha * (rawPre - hs);
+      ring[pos] = hs + (rawPre - hs) * hsG;
       pos = (pos + 1) & mask;
     }
   } else {
@@ -769,6 +788,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
       if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
+      lightSumLocal += rawPre * rawPre; lightCntLocal++;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -776,14 +796,10 @@ function onAudioData(buf: Buffer): void {
         acrBuf[acrLen++] = s;
       }
 
-      // Ingen soft-clip: FFT är linjär (FFT(g·x)=g·FFT(x)) så bandenergin följer
-      // gainen exakt. Knät x/(1+|x|) komprimerade topparna → mer gain gav kapning
-      // i stället för mer ljus (gain 8/31/57 gav alla ~50 %).
-      const raw = rawPre * gain;
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      hs += hsAlpha * (raw - hs);
-      ring[pos] = hs + (raw - hs) * hsG;
+      hs += hsAlpha * (rawPre - hs);
+      ring[pos] = hs + (rawPre - hs) * hsG;
       pos = (pos + 1) & mask;
     }
   }
@@ -794,6 +810,16 @@ function onAudioData(buf: Buffer): void {
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
   const peak = prePeak * gain;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
+
+  // LJUS-NIVÅ: ~130 ms EMA av block-RMS (samma tidskonstant som analysatorns
+  // levelVU hade) — men helt utan AGC. Gain appliceras i emitBands.
+  if (lightCntLocal > 0) {
+    const blockRms = Math.sqrt(lightSumLocal / lightCntLocal);
+    const dt = lightCntLocal / SAMPLE_RATE;
+    const a = 1 - Math.exp(-dt / 0.13);
+    lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
+  }
+
 
   if (calOn && micCalActive) {
     micCalSumSq += calSumLocal;
@@ -810,7 +836,8 @@ function onAudioData(buf: Buffer): void {
   while (analyserSamplesReceived >= ANALYSER_HOP) {
     const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
-    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+    // Fast pre-gain (inte användarens gain) så AGC:n hamnar i sitt 0.5–20×-span.
+    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask] * ANALYSER_PREGAIN;
     const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
     latestFrameAt = Date.now();
@@ -849,6 +876,7 @@ export function stopMic(): void {
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
+  lightRawRms = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   _audioCbCount = 0;
