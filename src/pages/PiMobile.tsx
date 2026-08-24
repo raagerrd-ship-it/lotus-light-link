@@ -172,13 +172,14 @@ type CalPoint = { vol: number; gain: number };
 /** Guidad tvåstegskalibrering. Nivåmätaren visas utanför, så wizardn fokuserar
  *  på instruktion + mätning + finjustering. */
 function GuidedGainWizard({
-  piBase, sonosVolume, micGain, setMicGain, onDone,
+  piBase, sonosVolume, micGain, setMicGain, onDone, onGainChanged,
 }: {
   piBase: string;
   sonosVolume: number | null;
   micGain: number;
   setMicGain: (g: number) => void;
   onDone: (low: CalPoint, high: CalPoint) => void;
+  onGainChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
@@ -198,6 +199,18 @@ function GuidedGainWizard({
     setOpen(false);
     setMeasuring(false);
     setMeasured(null);
+  };
+
+  // Finjustering måste skriva KURV-punkten (den enda gainen motorn använder) —
+  // `PUT /api/mic-gain` sätter bara fallback-basen och syns inte i ljuset.
+  const pushLivePoint = (g: number) => {
+    if (sonosVolume == null) return;
+    const key = step === 1 ? 'point1' : 'point2';
+    fetch(`${piBase}/api/gain-calibration`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: { vol: sonosVolume, gain: g } }),
+    }).catch(() => {});
+    onGainChanged();
   };
 
   const measure = async () => {
@@ -224,7 +237,11 @@ function GuidedGainWizard({
           setMeasuring(false);
           if (r.lastResult) {
             setMeasured({ ok: !!r.lastResult.ok, measuredRms: r.lastResult.measuredRms });
-            if (r.lastResult.ok) setMicGain(r.lastResult.newGain);
+            if (r.lastResult.ok) {
+              const g = Math.max(GAIN_MIN, Math.min(GAIN_MAX, r.lastResult.newGain));
+              setMicGain(g);
+              pushLivePoint(g);
+            }
           }
         }
       } catch { /* keep polling */ }
@@ -234,11 +251,9 @@ function GuidedGainWizard({
 
   const onSlide = (g: number) => {
     setMicGain(g);
-    fetch(`${piBase}/api/mic-gain`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gain: g }),
-    }).catch(() => {});
+    pushLivePoint(g);
   };
+
 
   const savePoint = async () => {
     const vol = sonosVolume ?? 0;
