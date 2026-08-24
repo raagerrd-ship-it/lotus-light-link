@@ -542,13 +542,13 @@ export function startConfigServer(port = 3050): void {
     //   Detta är engine-resultatet efter floor/gamma/punch — INTE sista
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
-    let micBass = 0, micMidHi = 0;
+    let micTotal = 0;
     let analyserFrame: any = null;
     let analyserCost: any = null;
     try {
       const m = getMic();
       const b = m?.getLatestBands?.();
-      if (b) { micBass = b.bassRms ?? 0; micMidHi = b.midHiRms ?? 0; }
+      if (b) { micTotal = b.totalRms ?? 0; }
       const f = (m as any)?.getLatestFrame?.();
       if (f) {
         analyserFrame = {
