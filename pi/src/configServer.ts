@@ -102,9 +102,13 @@ function applyProfileGlobals(profile: ProfileCal | undefined): void {
   const gc = profile.gainCalibration;
   if (gc && attachedMic && gc.point1 && gc.point2) {
     attachedMic.setGainCalPoints(gc.point1, gc.point2);
+    // Håll de två lagren i synk: profilen är source-of-truth, men live-lagret
+    // ('gain-cal-points') måste följa med annars laddar en omstart ett annat gain.
+    setItem('gain-cal-points', JSON.stringify({ point1: gc.point1, point2: gc.point2 }));
   }
 
 }
+
 
 /** Byt aktiv profil programmatiskt (används av TV-mode-växlingen i index.ts). */
 export function setActivePresetByName(name: string): boolean {
