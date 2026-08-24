@@ -844,7 +844,7 @@ function onAudioData(buf: Buffer): void {
     const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
     // Fast pre-gain (inte användarens gain) så AGC:n hamnar i sitt 0.5–20×-span.
-    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask] * ANALYSER_PREGAIN;
+    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
     const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
     latestFrameAt = Date.now();
