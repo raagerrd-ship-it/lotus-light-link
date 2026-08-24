@@ -345,27 +345,30 @@ export function getAcrCaptureWav(): Buffer | null {
 /**
  * Härled motorns BandResult ur analysatorns senaste frame. INGEN egen FFT —
  * spektrumet är redan beräknat en gång i audio-analyser.
- *   bassRms/midHiRms : viktad oktavbands-nivå (AGC 0..1) × levelVU × BAND_SCALE
- *   totalRms         : levelVU × BAND_SCALE (auto-gainad RMS, tystnad → 0)
+ *   bassRms/midHiRms : spektral ANDEL (ur specAbs) × ljus-amplituden
+ *   totalRms         : ljus-amplituden = rå RMS × micGain (ingen AGC)
  *   flux             : analysatorns bredbands-flux (skarp, för onset)
  *   bassFlux         : summerad per-band-onset under beatCutoffHz (kick/bas)
  */
 function emitBands(frame: Frame): void {
   const a = frame.specAbs;
   const o = frame.onset;
-  const amp = frame.levelVU * BAND_SCALE;
+  // TVÅ TAPPAR (2026-08-24): amplituden kommer INTE från frame.levelVU längre —
+  // den är AGC:ad och normaliserar bort användarens gain (ljuset blev gain-
+  // okänsligt och pinnade ~50 %). Ljuset drivs av den egna linjära RMS:en ×
+  // micGain (tvåpunkts Sonos-kurva). Analysatorns AGC rör bara detektionen.
+  let amp = lightRawRms * micGain * BAND_SCALE;
+  if (amp > 1) amp = 1;
 
-  // EN SIGNAL (2026-08-24): ljusets bandnivå får INTE komma ur den per-band
-  // AGC:ade spec:en — den mättar på 1 och gör ljuset nivå-oberoende. I stället
-  // används den ABSOLUTA bandmagnituden bara som SPEKTRAL ANDEL (bas kontra
-  // resten), och amplituden kommer linjärt ur levelVU (tvåpunkts Sonos-gain).
-  // Full input → bassRms/midHiRms ≈ levelVU → kedjan är coherent hela vägen.
+  // Den ABSOLUTA bandmagnituden används bara som SPEKTRAL ANDEL (bas kontra
+  // resten) — aldrig som nivå, eftersom den är AGC:ad.
   const lowAbs = a.sub + a.kick + a.bass;
   const hiAbs = a.lowMid + a.mid + a.highMid + a.treble + a.air;
   const totAbs = lowAbs + hiAbs + 1e-9;
   // share/0.5 → en jämnt fördelad mix ger 1.0 i båda tapparna (inget tapp vid w=0.5).
   const lowShare = Math.min(1, (lowAbs / totAbs) / 0.5);
   const hiShare = Math.min(1, (hiAbs / totAbs) / 0.5);
+
 
   latestBands.bassRms = amp * lowShare;
   latestBands.midHiRms = amp * hiShare;
