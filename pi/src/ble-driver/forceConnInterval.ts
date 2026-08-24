@@ -103,7 +103,7 @@ let reassertTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function applyConnInterval(
   getHandle: () => number | null,
-  bleStats: { requestedIntervalMs: string; intervalSource: string; connIntervalReassertCount: number },
+  bleStats: { requestedIntervalMs: string; intervalSource: string; connIntervalReassertCount: number; outstandingAgeMs: number },
   log: (msg: string) => void,
 ): Promise<void> {
   const targetUnits = 12;                 // 15 ms
@@ -129,21 +129,36 @@ export async function applyConnInterval(
   log('[forceConnInterval] gav upp efter 3 försök — länken kör på default interval (hackigt ljus förväntas)');
 }
 
+// BLEDOM förhandlar tillbaka till högt interval (~200ms) efter en stund →
+// re-forcera var 25:e sekund och VERIFIERA mot faktisk leveranstid
+// (outstandingAgeMs): >60ms betyder att intervallet tappats → forcera direkt igen.
+const REASSERT_MS = 25_000;
+const AGE_ALARM_MS = 60;
+
 function startConnIntervalReassert(
   getHandle: () => number | null,
-  bleStats: { connIntervalReassertCount: number },
+  bleStats: { connIntervalReassertCount: number; outstandingAgeMs: number; intervalSource: string },
   log: (msg: string) => void,
 ): void {
   stopConnIntervalReassert();
   reassertTimer = setInterval(() => {
     const handle = getHandle();
     if (handle == null) { stopConnIntervalReassert(); return; }
+    const ageBefore = bleStats.outstandingAgeMs;
     void forceConnInterval(handle, { min: 12, max: 12 }).then((r) => {
       bleStats.connIntervalReassertCount++;
-      if (!r.ok) log(`[forceConnInterval] re-assert FAIL exit=${r.exitCode} stderr="${r.stderr}"`);
+      if (!r.ok) {
+        log(`[forceConnInterval] re-assert FAIL exit=${r.exitCode} stderr="${r.stderr}"`);
+        return;
+      }
+      if (ageBefore >= AGE_ALARM_MS) {
+        bleStats.intervalSource = 'hcitool (re-forcerad efter drift)';
+        log(`[forceConnInterval] re-assert: outstandingAgeMs=${ageBefore}ms före → intervallet hade tappats, forcerat om`);
+      }
     });
-  }, 60_000);
+  }, REASSERT_MS);
 }
+
 
 export function stopConnIntervalReassert(): void {
   if (reassertTimer) { clearInterval(reassertTimer); reassertTimer = null; }

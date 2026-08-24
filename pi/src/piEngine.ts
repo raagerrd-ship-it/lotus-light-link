@@ -1588,17 +1588,31 @@ export class PiLightEngine {
       let _e = energyNorm;
       if (_e < 0) _e = 0;
       if (_e > 1) _e = 1;
-      // Perceptuell kurva FÖRST, LJUS-SKALA sist: lightScale blir då ett rent
-      // tak (full input → exakt lightScale × 100 %) i stället för att stackas
-      // med gamma + ett knä och kapa mitten (uppmätt: 100 % in → 50 % ut).
+      // Perceptuell kurva FÖRST, sedan TAK MED MJUKT KNÄ (2026-08-24):
+      // lightScale är taket. Under knät är mappningen LINJÄR (full dynamik i
+      // mitten), över knät komprimeras resten asymptotiskt in mot taket i
+      // stället för att klippas platt. Drop-blixten skriver 100 % direkt och
+      // får därmed fortfarande sticka ut över taket.
       if (pGamma > 0 && _e > 0.0001) _e = Math.exp(pGamma * Math.log(_e));
-      _e *= tc.lightScale;
-      let pct = floor + _e * (100 - floor);
+      const ceilN = tc.lightScale;
+      const kneeN = 0.7;
+      let out: number;
+      if (ceilN <= kneeN) {
+        out = _e * ceilN;
+      } else if (_e <= kneeN) {
+        out = _e;
+      } else {
+        const t = (_e - kneeN) / (1 - kneeN);
+        const shaped = (1 - Math.exp(-2 * t)) / (1 - Math.exp(-2));
+        out = kneeN + (ceilN - kneeN) * shaped;
+      }
+      let pct = floor + out * (100 - floor);
 
       // Fast round + clamp
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
+
 
       // TV-soft: remap brightness into a bright, gentle band (floor..ceil %).
       if (this._tvSoft) {
