@@ -815,7 +815,7 @@ function onAudioData(buf: Buffer): void {
   const prevRingPos = ringPos;
   ringPos = pos;
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
-  const peak = prePeak * gain;
+  const peak = prePeak * micGain;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
 
   // LJUS-NIVÅ: ~130 ms EMA av block-RMS (samma tidskonstant som analysatorns
