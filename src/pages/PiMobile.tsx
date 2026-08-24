@@ -63,19 +63,24 @@ const AUTO_VOL_LOW = 15;
 const AUTO_VOL_HIGH = 50;
 const DEFAULT_GAIN_LOW = 75;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 32;  // låg gain vid hög volym
-const GAIN_MIN = 5;
-const GAIN_MAX = 300;
+const GAIN_MIN = 1;
+// Gainen driver ENBART ljuset (analysatorn har egen AGC), så det praktiska
+// spannet är litet — 120× räcker med marginal även på låg Sonos-volym.
+const GAIN_MAX = 120;
+const HOLD_MS = 20_000;
 
 
-/** LAMPA: visar vad lampan faktiskt får (BLE brightness, post-gamma) med
- *  peak-hold (~0.8 s) och 100 %-tak. UI = lampa. */
-function LampMeter({ brightness }: { brightness: number | null }) {
+/** LAMPA: visar vad lampan faktiskt får (BLE brightness, post-gamma).
+ *  Strecket = max de senaste 20 s, nollställs när gainen ändras (resetKey). */
+function LampMeter({ brightness, resetKey }: { brightness: number | null; resetKey: number }) {
   const pct = Math.max(0, Math.min(100, brightness ?? 0));
 
-  const holdRef = useRef({ value: 0, at: 0 });
+  const holdRef = useRef({ value: 0, at: 0, key: resetKey });
   const now = Date.now();
-  if (pct >= holdRef.current.value || now - holdRef.current.at > 800) {
-    holdRef.current = { value: pct, at: now };
+  if (holdRef.current.key !== resetKey) {
+    holdRef.current = { value: pct, at: now, key: resetKey };
+  } else if (pct >= holdRef.current.value || now - holdRef.current.at > HOLD_MS) {
+    holdRef.current = { value: pct, at: now, key: resetKey };
   }
   const hold = holdRef.current.value;
 
@@ -107,18 +112,29 @@ function LampMeter({ brightness }: { brightness: number | null }) {
       </div>
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground/70 mt-1.5">
         <span>ljus {pct.toFixed(0)}%</span>
-        <span>headroom {(100 - pct).toFixed(0)}%</span>
+        <span>topp 20 s {hold.toFixed(0)}% · headroom {(100 - hold).toFixed(0)}%</span>
       </div>
     </div>
   );
 }
 
 
-/** Kompakt input-health för ANALYSATOR-gainen (rå, pre-ljus). */
-function InputHealth({ health, level }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null; level: number | null }) {
+/** Ljus-tappens insignal (linjär totalnivå × Sonos-gain, före ljusmappningen).
+ *  Strecket = max de senaste 20 s, nollställs vid gain-ändring. */
+function InputHealth({ health, level, resetKey }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null; level: number | null; resetKey: number }) {
   // TIDS-SYNKAD med lampan: nivån kommer ur samma /api/status-sample som
   // LampMeter (live.inputLevel), inte ur en separat health-poll.
   const peak = Math.min(1, level ?? health?.peak ?? 0);
+
+  const holdRef = useRef({ value: 0, at: 0, key: resetKey });
+  const now = Date.now();
+  if (holdRef.current.key !== resetKey) {
+    holdRef.current = { value: peak, at: now, key: resetKey };
+  } else if (peak >= holdRef.current.value || now - holdRef.current.at > HOLD_MS) {
+    holdRef.current = { value: peak, at: now, key: resetKey };
+  }
+  const hold = holdRef.current.value;
+
   // Status ska följa den VISADE nivån, annars kan baren stå på 100 % och ändå
   // säga "Bra".
   const status: 'low' | 'ok' | 'hot' = peak >= 0.98 ? 'hot' : peak < 0.15 ? 'low' : (health?.status ?? 'ok');
@@ -127,7 +143,7 @@ function InputHealth({ health, level }: { health: { peak: number; clipPct: numbe
   return (
     <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border px-3 py-2">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="label-eyebrow">Analysator-input</span>
+        <span className="label-eyebrow">Input (ljus-tapp)</span>
         <span className={`font-mono text-[10px] font-semibold ${cls}`}>
           {text} · {(peak * 100).toFixed(0)}%
         </span>
@@ -140,10 +156,15 @@ function InputHealth({ health, level }: { health: { peak: number; clipPct: numbe
           }`}
           style={{ width: `${peak * 100}%` }}
         />
+        <div className="absolute inset-y-0 w-[2px] bg-foreground/70" style={{ left: `calc(${hold * 100}% - 1px)` }} />
+      </div>
+      <div className="text-right font-mono text-[9px] tabular-nums text-muted-foreground/70 mt-1">
+        topp 20 s {(hold * 100).toFixed(0)}%
       </div>
     </div>
   );
 }
+
 
 
 type CalPoint = { vol: number; gain: number };
@@ -151,13 +172,14 @@ type CalPoint = { vol: number; gain: number };
 /** Guidad tvåstegskalibrering. Nivåmätaren visas utanför, så wizardn fokuserar
  *  på instruktion + mätning + finjustering. */
 function GuidedGainWizard({
-  piBase, sonosVolume, micGain, setMicGain, onDone,
+  piBase, sonosVolume, micGain, setMicGain, onDone, onGainChanged,
 }: {
   piBase: string;
   sonosVolume: number | null;
   micGain: number;
   setMicGain: (g: number) => void;
   onDone: (low: CalPoint, high: CalPoint) => void;
+  onGainChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
@@ -177,6 +199,18 @@ function GuidedGainWizard({
     setOpen(false);
     setMeasuring(false);
     setMeasured(null);
+  };
+
+  // Finjustering måste skriva KURV-punkten (den enda gainen motorn använder) —
+  // `PUT /api/mic-gain` sätter bara fallback-basen och syns inte i ljuset.
+  const pushLivePoint = (g: number) => {
+    if (sonosVolume == null) return;
+    const key = step === 1 ? 'point1' : 'point2';
+    fetch(`${piBase}/api/gain-calibration`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: { vol: sonosVolume, gain: g } }),
+    }).catch(() => {});
+    onGainChanged();
   };
 
   const measure = async () => {
@@ -203,7 +237,11 @@ function GuidedGainWizard({
           setMeasuring(false);
           if (r.lastResult) {
             setMeasured({ ok: !!r.lastResult.ok, measuredRms: r.lastResult.measuredRms });
-            if (r.lastResult.ok) setMicGain(r.lastResult.newGain);
+            if (r.lastResult.ok) {
+              const g = Math.max(GAIN_MIN, Math.min(GAIN_MAX, r.lastResult.newGain));
+              setMicGain(g);
+              pushLivePoint(g);
+            }
           }
         }
       } catch { /* keep polling */ }
@@ -213,11 +251,9 @@ function GuidedGainWizard({
 
   const onSlide = (g: number) => {
     setMicGain(g);
-    fetch(`${piBase}/api/mic-gain`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gain: g }),
-    }).catch(() => {});
+    pushLivePoint(g);
   };
+
 
   const savePoint = async () => {
     const vol = sonosVolume ?? 0;
@@ -332,6 +368,9 @@ function GainCalibrationPanel({
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
   const [lampBrightness, setLampBrightness] = useState<number | null>(null);
   const [inputLevel, setInputLevel] = useState<number | null>(null);
+  // Bumpas vid varje gain-ändring → 20 s-topparna i mätarna nollställs.
+  const [holdReset, setHoldReset] = useState(0);
+
 
   // Initial load: cal-punkter (kurvan är alltid aktiv)
   useEffect(() => {
@@ -340,8 +379,9 @@ function GainCalibrationPanel({
       fetch(`${piBase}/api/gain-calibration`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
     ]).then(([ag, cal]) => {
       if (ag.multiplier != null) setMultiplier(ag.multiplier);
-      if (cal?.point1?.gain != null) setGainLow(cal.point1.gain);
-      if (cal?.point2?.gain != null) setGainHigh(cal.point2.gain);
+      if (cal?.point1?.gain != null) setGainLow(Math.min(GAIN_MAX, cal.point1.gain));
+      if (cal?.point2?.gain != null) setGainHigh(Math.min(GAIN_MAX, cal.point2.gain));
+
       if (cal?.point1?.vol != null) setVolLow(cal.point1.vol);
       if (cal?.point2?.vol != null) setVolHigh(cal.point2.vol);
     }).catch(() => {});
@@ -391,6 +431,7 @@ function GainCalibrationPanel({
       }).catch(() => {});
     }, 150);
     fastPollUntilRef.current = Date.now() + 5000;
+    setHoldReset((n) => n + 1);
   };
 
   const onGainLowChange = (g: number) => {
@@ -404,8 +445,9 @@ function GainCalibrationPanel({
 
   return (
     <div className="space-y-3">
-      <LampMeter brightness={lampBrightness} />
-      <InputHealth health={health} level={inputLevel} />
+      <LampMeter brightness={lampBrightness} resetKey={holdReset} />
+      <InputHealth health={health} level={inputLevel} resetKey={holdReset} />
+
 
       <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/25 p-3 space-y-2">
         <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
@@ -445,13 +487,19 @@ function GainCalibrationPanel({
         sonosVolume={sonosVolume}
         micGain={micGain}
         setMicGain={setMicGain}
+        onGainChanged={() => {
+          fastPollUntilRef.current = Date.now() + 5000;
+          setHoldReset((n) => n + 1);
+        }}
         onDone={(low, high) => {
-          setGainLow(low.gain);
-          setGainHigh(high.gain);
+          setGainLow(Math.min(GAIN_MAX, low.gain));
+          setGainHigh(Math.min(GAIN_MAX, high.gain));
           setVolLow(low.vol);
           setVolHigh(high.vol);
           fastPollUntilRef.current = Date.now() + 5000;
+          setHoldReset((n) => n + 1);
         }}
+
       />
     </div>
   );
