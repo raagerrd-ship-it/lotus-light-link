@@ -734,6 +734,7 @@ export class Analyser {
         tauUp: cfgIn.tauUp ?? 3,
         tauDown: cfgIn.tauDown ?? 8,
         noiseFloor: cfgIn.noiseFloor ?? 0.002,
+        maxGain: cfgIn.maxGain ?? 20,
       },
       beat: null,
     };
