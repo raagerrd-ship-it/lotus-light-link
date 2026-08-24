@@ -487,13 +487,19 @@ function GainCalibrationPanel({
         sonosVolume={sonosVolume}
         micGain={micGain}
         setMicGain={setMicGain}
+        onGainChanged={() => {
+          fastPollUntilRef.current = Date.now() + 5000;
+          setHoldReset((n) => n + 1);
+        }}
         onDone={(low, high) => {
-          setGainLow(low.gain);
-          setGainHigh(high.gain);
+          setGainLow(Math.min(GAIN_MAX, low.gain));
+          setGainHigh(Math.min(GAIN_MAX, high.gain));
           setVolLow(low.vol);
           setVolHigh(high.vol);
           fastPollUntilRef.current = Date.now() + 5000;
+          setHoldReset((n) => n + 1);
         }}
+
       />
     </div>
   );
