@@ -1086,6 +1086,15 @@ export default function PiMobile() {
                   hint="Var musiken toppar. 80 % = drops har 20 % kvar att sticka ut med."
                 />
                 <Slider
+                  label="Ljus-bredd (bas ↔ bredband)"
+                  value={cal.lightBassWeight}
+                  display={`${Math.round(cal.lightBassWeight * 100)} % bas`}
+                  min={0} max={1} step={0.05}
+                  onChange={(v) => setCal({ ...cal, lightBassWeight: v })}
+                  hint="Hur mycket bara basen driver ljusstyrkan. 50 % = bredband (ljust även på mitt/diskant). Beat-detektionen påverkas inte."
+                />
+
+                <Slider
                   label="Beat-lead (försprång)"
                   value={cal.beatLeadMs}
                   display={`${cal.beatLeadMs} ms`}
