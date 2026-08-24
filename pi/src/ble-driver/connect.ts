@@ -12,7 +12,7 @@ import { HARDCODED_DEVICE, matchesHardcoded } from './device-config.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent, setReconnectTrigger } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
-import { forceConnInterval } from './forceConnInterval.js';
+import { applyConnInterval, stopConnIntervalReassert } from './forceConnInterval.js';
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
 import { dlog } from "./log.js";
 
@@ -481,18 +481,9 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // bench körde på ~20pps tak tills `hcitool lecup --min 6 --max 6`
             // kördes manuellt — då gick det till 50 pps utan kö).
             // Vi kör async, 500ms efter attach, så GATT-sessionen hinner sätta sig.
-            setTimeout(async () => {
-              const handle = getAttachedHandle();
-              if (handle == null) {
-                console.warn(`${ts()}    [forceConnInterval] ingen handle — skip`);
-                return;
-              }
-              const r = await forceConnInterval(handle);
-              if (r.ok) {
-                dlog(`${ts()}    [forceConnInterval] OK handle=${handle} → 20ms target (${r.durationMs}ms)`);
-              } else {
-                console.warn(`${ts()}    [forceConnInterval] FAIL handle=${handle} exit=${r.exitCode} stderr="${r.stderr}" (${r.durationMs}ms) — länken körs på default interval`);
-              }
+            stopConnIntervalReassert();
+            setTimeout(() => {
+              void applyConnInterval(getAttachedHandle, bleStats, (m) => console.log(`${ts()}    ${m}`));
             }, 500);
             // Aktivera auto-reconnect-loopen — från och med nu räknas varje
             // disconnect som "tappad länk vi vill ha tillbaka".
