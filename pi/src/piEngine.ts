@@ -1061,7 +1061,7 @@ export class PiLightEngine {
       this._tvSoftCeil = 100;   // brightness band ceil %
       this._tvSoftSavedCal = {
         releaseAlpha: this.cal.releaseAlpha,
-        bassWeight: this.cal.bassWeight,
+        lightBassWeight: this.cal.lightBassWeight,
         transientGain: this.cal.transientGain,
         perceptualGamma: this.cal.perceptualGamma,
         flickerDeadband: this.cal.flickerDeadband,
@@ -1070,7 +1070,7 @@ export class PiLightEngine {
       };
       // Tight-follow, voice-aware soft profile:
       this.cal.releaseAlpha = 0.85;        // near-instant down-tracking (low latency)
-      this.cal.bassWeight = 0.5;           // TV is voice/mid-treble, not bass -> full spectrum
+      this.cal.lightBassWeight = 0.5;      // TV is voice/mid-treble, not bass -> full spectrum
       this.cal.transientGain = 1.0;
       this.cal.perceptualGamma = 0;        // linear
       this.cal.flickerDeadband = 0.004;
