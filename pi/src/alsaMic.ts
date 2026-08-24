@@ -239,15 +239,22 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 // onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
 const ANALYSER_HOP = 128;
 // TVÅ TAPPAR (2026-08-24): ring-bufferten innehåller RÅ (o-gainad) mic-signal.
-//  • ANALYS-tappen: fast förstärkning ANALYSER_PREGAIN → analysatorns AGC
-//    (mål 0.8 = 80 % med headroom, aldrig pinnad 100 %). Användarens gain rör
-//    ALDRIG denna väg → en klippt analys-signal kan inte degradera beat/drop.
+//  • ANALYS-tappen: RÅ signal → analysatorns AGC gör HELA gainen dynamiskt
+//    (mål 0.8 = 80 % med headroom). INGEN fast pre-gain: en fast faktor före
+//    AGC:n kan bränna in klippning som AGC:n inte kan ta bort (uppmätt v1.0.743:
+//    level pinnad 100 → ostabilt beat-lås). Klampen höjs istället till 600× så
+//    AGC:n själv når målet från rå mic-nivå. Tystnad hanteras av noiseFloor-
+//    gaten i analysatorn (AGC:n fryser då och förstärker inte mic-brus).
+//    Användarens gain rör ALDRIG denna väg.
 //  • LJUS-tappen: egen linjär RMS × micGain (tvåpunkts Sonos-kurva) → brightness.
 //    Ingen AGC, ingen normalisering → gainen är effektiv hela vägen till lampan.
-const analyser = createAnalyser({ sampleRate: SAMPLE_RATE, hopSize: ANALYSER_HOP, autoGainTarget: 0.8 });
-// AGC:n får jobba HÄR (och bara här). Dess interna gain är klampad 0.5–20×, så
-// mic-signalen lyfts först med en FAST pre-gain så att AGC:n hamnar i sitt span.
-const ANALYSER_PREGAIN = 30;
+const analyser = createAnalyser({
+  sampleRate: SAMPLE_RATE,
+  hopSize: ANALYSER_HOP,
+  autoGainTarget: 0.8,
+  maxGain: 600,
+  noiseFloor: 0.0015,
+});
 analyser.setGainLock(false);
 const analyserScratch = new Float32Array(ANALYSER_HOP);
 
