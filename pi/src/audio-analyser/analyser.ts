@@ -899,7 +899,7 @@ export class Analyser {
       const ga = 1 - Math.exp(-dt / gTau);
       this.gain += (desired - this.gain) * ga;
       if (this.gain < 0.5) this.gain = 0.5;
-      else if (this.gain > 20) this.gain = 20;
+      else if (this.gain > d.maxGain) this.gain = d.maxGain;
     }
     const level = Math.min(1, rms * this.gain);
 
