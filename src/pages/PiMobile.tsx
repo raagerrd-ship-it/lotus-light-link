@@ -63,19 +63,24 @@ const AUTO_VOL_LOW = 15;
 const AUTO_VOL_HIGH = 50;
 const DEFAULT_GAIN_LOW = 75;   // hög gain vid låg volym
 const DEFAULT_GAIN_HIGH = 32;  // låg gain vid hög volym
-const GAIN_MIN = 5;
-const GAIN_MAX = 300;
+const GAIN_MIN = 1;
+// Gainen driver ENBART ljuset (analysatorn har egen AGC), så det praktiska
+// spannet är litet — 120× räcker med marginal även på låg Sonos-volym.
+const GAIN_MAX = 120;
+const HOLD_MS = 20_000;
 
 
-/** LAMPA: visar vad lampan faktiskt får (BLE brightness, post-gamma) med
- *  peak-hold (~0.8 s) och 100 %-tak. UI = lampa. */
-function LampMeter({ brightness }: { brightness: number | null }) {
+/** LAMPA: visar vad lampan faktiskt får (BLE brightness, post-gamma).
+ *  Strecket = max de senaste 20 s, nollställs när gainen ändras (resetKey). */
+function LampMeter({ brightness, resetKey }: { brightness: number | null; resetKey: number }) {
   const pct = Math.max(0, Math.min(100, brightness ?? 0));
 
-  const holdRef = useRef({ value: 0, at: 0 });
+  const holdRef = useRef({ value: 0, at: 0, key: resetKey });
   const now = Date.now();
-  if (pct >= holdRef.current.value || now - holdRef.current.at > 800) {
-    holdRef.current = { value: pct, at: now };
+  if (holdRef.current.key !== resetKey) {
+    holdRef.current = { value: pct, at: now, key: resetKey };
+  } else if (pct >= holdRef.current.value || now - holdRef.current.at > HOLD_MS) {
+    holdRef.current = { value: pct, at: now, key: resetKey };
   }
   const hold = holdRef.current.value;
 
@@ -107,18 +112,29 @@ function LampMeter({ brightness }: { brightness: number | null }) {
       </div>
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground/70 mt-1.5">
         <span>ljus {pct.toFixed(0)}%</span>
-        <span>headroom {(100 - pct).toFixed(0)}%</span>
+        <span>topp 20 s {hold.toFixed(0)}% · headroom {(100 - hold).toFixed(0)}%</span>
       </div>
     </div>
   );
 }
 
 
-/** Kompakt input-health för ANALYSATOR-gainen (rå, pre-ljus). */
-function InputHealth({ health, level }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null; level: number | null }) {
+/** Ljus-tappens insignal (linjär totalnivå × Sonos-gain, före ljusmappningen).
+ *  Strecket = max de senaste 20 s, nollställs vid gain-ändring. */
+function InputHealth({ health, level, resetKey }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null; level: number | null; resetKey: number }) {
   // TIDS-SYNKAD med lampan: nivån kommer ur samma /api/status-sample som
   // LampMeter (live.inputLevel), inte ur en separat health-poll.
   const peak = Math.min(1, level ?? health?.peak ?? 0);
+
+  const holdRef = useRef({ value: 0, at: 0, key: resetKey });
+  const now = Date.now();
+  if (holdRef.current.key !== resetKey) {
+    holdRef.current = { value: peak, at: now, key: resetKey };
+  } else if (peak >= holdRef.current.value || now - holdRef.current.at > HOLD_MS) {
+    holdRef.current = { value: peak, at: now, key: resetKey };
+  }
+  const hold = holdRef.current.value;
+
   // Status ska följa den VISADE nivån, annars kan baren stå på 100 % och ändå
   // säga "Bra".
   const status: 'low' | 'ok' | 'hot' = peak >= 0.98 ? 'hot' : peak < 0.15 ? 'low' : (health?.status ?? 'ok');
@@ -127,7 +143,7 @@ function InputHealth({ health, level }: { health: { peak: number; clipPct: numbe
   return (
     <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border px-3 py-2">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="label-eyebrow">Analysator-input</span>
+        <span className="label-eyebrow">Input (ljus-tapp)</span>
         <span className={`font-mono text-[10px] font-semibold ${cls}`}>
           {text} · {(peak * 100).toFixed(0)}%
         </span>
@@ -140,10 +156,15 @@ function InputHealth({ health, level }: { health: { peak: number; clipPct: numbe
           }`}
           style={{ width: `${peak * 100}%` }}
         />
+        <div className="absolute inset-y-0 w-[2px] bg-foreground/70" style={{ left: `calc(${hold * 100}% - 1px)` }} />
+      </div>
+      <div className="text-right font-mono text-[9px] tabular-nums text-muted-foreground/70 mt-1">
+        topp 20 s {(hold * 100).toFixed(0)}%
       </div>
     </div>
   );
 }
+
 
 
 type CalPoint = { vol: number; gain: number };
