@@ -96,6 +96,10 @@ export interface Frame {
   barShift: number;
   /** Rikt spektrum + per-band onset (anslag) från dubbel-FFT:n (hög-upplöst). */
   spec: Spectrum;       // per-band NIVÅ (AGC 0..1)
+  /** ABSOLUT per-band magnitud (INGEN AGC, ingen normalisering). Används av
+   *  ljus-vägen: ljusstyrkan ska följa insignalen linjärt, inte AGC-normaliserad
+   *  bandnivå (som mättar på 100 och gör ljuset nivå-oberoende). */
+  specAbs: Spectrum;
   onset: Spectrum;      // per-band ONSET/anslag (halvvågs-flux mot adaptiv baslinje, 0..1)
   /** TRUM-KIT-envelopes (0..1): peak-hold + decay PÅ HOP-TAKT (375Hz) → fångar
    *  varje anslag, aldrig missat mellan två render-frames. kick=diskret kick +
@@ -115,6 +119,7 @@ export class Analyser {
   private spectrum512!: number[];       // fft.js komplex-spektrum (scratch)
   private mag512!: Float32Array;        // magnitud denna hop (swap:as med prevMag)
   private outSpec: Spectrum = { sub: 0, kick: 0, bass: 0, lowMid: 0, mid: 0, highMid: 0, treble: 0, air: 0 };
+  private outSpecAbs: Spectrum = { sub: 0, kick: 0, bass: 0, lowMid: 0, mid: 0, highMid: 0, treble: 0, air: 0 };
   private outOnset: Spectrum = { sub: 0, kick: 0, bass: 0, lowMid: 0, mid: 0, highMid: 0, treble: 0, air: 0 };
   private outDrum = { kick: 0, snare: 0, hat: 0, bass: 0 };   // trum-envelopes (återanvänt)
   private outProfile = { punch: 0.4, bass: 0.5, bright: 0.3, beat: 0.5 };   // karaktärsprofil (återanvänt)
@@ -146,6 +151,7 @@ export class Analyser {
   private bandLo: number[] = [];        // bin-start per band (förberäknat)
   private bandHi: number[] = [];        // bin-slut per band
   private bandPeak = new Float32Array(8);  // per-band AGC-peak (själv-skalande nivå)
+  private bandAbs = new Float32Array(8);   // per-band ABSOLUT magnitud (pre-AGC, för ljus-vägen)
   private onsetMed = new Float32Array(8);  // robust glidande median av per-band-fluxen
   private onsetMad = new Float32Array(8);  // robust MAD -> troskelspridning per band
   private static readonly ONSET_K = 3.0;   // troskel = median + K*MAD
@@ -781,7 +787,7 @@ export class Analyser {
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
       dropCount: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
       kickAtMs: 0, barShift: -1,
-      spec: this.outSpec, onset: this.outOnset, drum: this.outDrum,
+      spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
   }
 
@@ -1131,6 +1137,7 @@ export class Analyser {
         if (d > 0) fl += d;
       }
       const avg = sum / nb;
+      this.bandAbs[b] = avg;
       // Per-band AGC: skala mot egen långsamt sjunkande peak → varje band nyttjar
       // full range oavsett mix (bas dominerar annars alltid rå-magnituden).
       // GOLV (~0.15·lvlSmooth): peaken nollställs INTE i tystnad → när ett tidigare
@@ -1338,6 +1345,8 @@ export class Analyser {
     const spec = this.outSpec, onset = this.outOnset;
     spec.sub = L[0]; spec.kick = L[1]; spec.bass = L[2]; spec.lowMid = L[3]; spec.mid = L[4]; spec.highMid = L[5]; spec.treble = L[6]; spec.air = L[7];
     onset.sub = O[0]; onset.kick = O[1]; onset.bass = O[2]; onset.lowMid = O[3]; onset.mid = O[4]; onset.highMid = O[5]; onset.treble = O[6]; onset.air = O[7];
+    const A = this.bandAbs, sa = this.outSpecAbs;
+    sa.sub = A[0]; sa.kick = A[1]; sa.bass = A[2]; sa.lowMid = A[3]; sa.mid = A[4]; sa.highMid = A[5]; sa.treble = A[6]; sa.air = A[7];
     const dr = this.outDrum;
     dr.kick = this.kickHit; dr.snare = this.snareHit; dr.hat = this.hatHit; dr.bass = L[2];
 
