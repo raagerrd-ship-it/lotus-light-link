@@ -24,5 +24,12 @@ normaliserar bort användarens gain (symptom: gain 40→75 ändrade inget, outpu
 pinnad ~50 %). Aldrig applicera användarens gain på rå-PCM/ringen igen (symptom:
 analysator-input pinnad 100 %). Aldrig återinföra fast pre-gain före AGC:n.
 
+**AGC-seed (2026-08-24):** `seedAnalyserGain()` i alsaMic sätter AGC:ns
+STARTVÄRDE till `micGain` (klampat 0.5–AUTO_GAIN_MAX) vid mic-reset och när
+kurvans gain flyttar sig >1.5×. `analyser.resetGain()` klampar mot `cfg.maxGain`
+(inte hårdkodat 20). Detta är ett startvärde, INTE en pre-gain: ringen/rå-PCM är
+fortsatt o-gainad och AGC:n reglerar fritt vidare därifrån.
+
 **Input-baren** visar `latestBands.totalRms` (= ljus-tappens linjära nivå), inte
 `max(bass, midHi)` — de är andelar mot 0.5 och pinnas nära 1.0.
+
