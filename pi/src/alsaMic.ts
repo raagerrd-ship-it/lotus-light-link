@@ -175,9 +175,6 @@ let bandHopCounter = 0;
 // frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
 // tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
 const BAND_SCALE = 1.0; // ingen extra konstant: enda taket är energyNorm > 1 → 1
-// Bandvikter: låg = sub/kick/bas, hög = lowMid..air (summerar till 1 var).
-const W_SUB = 0.35, W_KICK = 0.45, W_BASS = 0.20;
-const W_LOWMID = 0.20, W_MID = 0.30, W_HIGHMID = 0.25, W_TREBLE = 0.15, W_AIR = 0.10;
 
 // Övre kant (Hz) per analysator-band, i ordning sub..air.
 const BAND_TOP_HZ = [60, 120, 250, 500, 2000, 5000, 10000, 16000];
@@ -342,14 +339,24 @@ export function getAcrCaptureWav(): Buffer | null {
  *   bassFlux         : summerad per-band-onset under beatCutoffHz (kick/bas)
  */
 function emitBands(frame: Frame): void {
-  const s = frame.spec;
+  const a = frame.specAbs;
   const o = frame.onset;
   const amp = frame.levelVU * BAND_SCALE;
 
-  latestBands.bassRms = (W_SUB * s.sub + W_KICK * s.kick + W_BASS * s.bass) * amp;
-  latestBands.midHiRms =
-    (W_LOWMID * s.lowMid + W_MID * s.mid + W_HIGHMID * s.highMid +
-     W_TREBLE * s.treble + W_AIR * s.air) * amp;
+  // EN SIGNAL (2026-08-24): ljusets bandnivå får INTE komma ur den per-band
+  // AGC:ade spec:en — den mättar på 1 och gör ljuset nivå-oberoende. I stället
+  // används den ABSOLUTA bandmagnituden bara som SPEKTRAL ANDEL (bas kontra
+  // resten), och amplituden kommer linjärt ur levelVU (tvåpunkts Sonos-gain).
+  // Full input → bassRms/midHiRms ≈ levelVU → kedjan är coherent hela vägen.
+  const lowAbs = a.sub + a.kick + a.bass;
+  const hiAbs = a.lowMid + a.mid + a.highMid + a.treble + a.air;
+  const totAbs = lowAbs + hiAbs + 1e-9;
+  // share/0.5 → en jämnt fördelad mix ger 1.0 i båda tapparna (inget tapp vid w=0.5).
+  const lowShare = Math.min(1, (lowAbs / totAbs) / 0.5);
+  const hiShare = Math.min(1, (hiAbs / totAbs) / 0.5);
+
+  latestBands.bassRms = amp * lowShare;
+  latestBands.midHiRms = amp * hiShare;
   latestBands.totalRms = amp;
   latestBands.flux = frame.flux;
 

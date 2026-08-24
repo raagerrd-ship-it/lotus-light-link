@@ -42,8 +42,8 @@ export function forceConnInterval(
   handle: number,
   opts: { min?: number; max?: number; latency?: number; timeoutUnits?: number; cmdTimeoutMs?: number } = {}
 ): Promise<ForceConnIntervalResult> {
-  const min = opts.min ?? 16;            // 20 ms (var 6=7.5ms, sänkt BT-load mot 22h-hängning)
-  const max = opts.max ?? 16;            // 20 ms
+  const min = opts.min ?? 12;            // 15 ms (12 × 1.25ms) — verifierat manuellt på Pi:n
+  const max = opts.max ?? 12;            // 15 ms
   const latency = opts.latency ?? 0;
   const supTo = opts.timeoutUnits ?? 100; // 1 s
   const cmdTimeoutMs = opts.cmdTimeoutMs ?? 3000;
@@ -88,4 +88,63 @@ export function forceConnInterval(
       resolve({ ok: false, handle, exitCode: null, stderr: `error: ${e?.message ?? e}`, durationMs: Date.now() - t0 });
     });
   });
+}
+
+
+// ── Robust apply + persistent re-assert ────────────────────────────────────
+// hcitool exit 0 betyder bara att kommandot skickades — controllern kan ändå
+// ligga kvar på default-interval (skurvis leverans → hackigt ljus). Därför:
+//   1. Försök upp till 3 gånger med backoff direkt efter connect.
+//   2. Re-assert var 60:e sekund så länge länken lever (interval kan tappas
+//      vid en LE-connection-update från lampan eller efter en reconnect).
+//   3. Verifiera mot FAKTISK sändningstakt (writeLatMax/outstanding) via
+//      bleStats — loggas så vi ser om det slog igenom, inte bara exitkoden.
+let reassertTimer: ReturnType<typeof setInterval> | null = null;
+
+export async function applyConnInterval(
+  getHandle: () => number | null,
+  bleStats: { requestedIntervalMs: string; intervalSource: string; connIntervalReassertCount: number },
+  log: (msg: string) => void,
+): Promise<void> {
+  const targetUnits = 12;                 // 15 ms
+  const targetMs = (targetUnits * 1.25).toFixed(2);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const handle = getHandle();
+    if (handle == null) {
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+      continue;
+    }
+    const r = await forceConnInterval(handle, { min: targetUnits, max: targetUnits });
+    if (r.ok) {
+      bleStats.requestedIntervalMs = targetMs;
+      bleStats.intervalSource = 'hcitool';
+      log(`[forceConnInterval] OK handle=${handle} → ${targetMs}ms (försök ${attempt}, ${r.durationMs}ms)`);
+      startConnIntervalReassert(getHandle, bleStats, log);
+      return;
+    }
+    log(`[forceConnInterval] FAIL handle=${handle} exit=${r.exitCode} stderr="${r.stderr}" (försök ${attempt})`);
+    await new Promise((res) => setTimeout(res, 800 * attempt));
+  }
+  bleStats.intervalSource = 'default (lecup misslyckades)';
+  log('[forceConnInterval] gav upp efter 3 försök — länken kör på default interval (hackigt ljus förväntas)');
+}
+
+function startConnIntervalReassert(
+  getHandle: () => number | null,
+  bleStats: { connIntervalReassertCount: number },
+  log: (msg: string) => void,
+): void {
+  stopConnIntervalReassert();
+  reassertTimer = setInterval(() => {
+    const handle = getHandle();
+    if (handle == null) { stopConnIntervalReassert(); return; }
+    void forceConnInterval(handle, { min: 12, max: 12 }).then((r) => {
+      bleStats.connIntervalReassertCount++;
+      if (!r.ok) log(`[forceConnInterval] re-assert FAIL exit=${r.exitCode} stderr="${r.stderr}"`);
+    });
+  }, 60_000);
+}
+
+export function stopConnIntervalReassert(): void {
+  if (reassertTimer) { clearInterval(reassertTimer); reassertTimer = null; }
 }

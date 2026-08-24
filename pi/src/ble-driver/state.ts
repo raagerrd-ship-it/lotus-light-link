@@ -37,6 +37,8 @@ export const bleStats = {
   fftDroppedCount: 0,
   writeFailCount: 0,
   writeStuckCount: 0,
+  writeStallReleaseCount: 0,  // writeAsync hängde >1s → sloten släpptes (icke-blockerande recovery)
+  connIntervalReassertCount: 0, // antal gånger conn-interval tvingats om (hcitool lecup)
   controllerCompleteCount: 0, // antal gånger drain gått från >0 → 0
   controllerStuckCount: 0,    // drain-diagnostik fastnat längre än threshold
   controllerOutstandingCount: 0, // aktuellt antal outstanding paket i noble/HCI

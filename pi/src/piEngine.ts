@@ -200,6 +200,11 @@ export interface LightCalibration {
   /** LJUS-SKALA (Modul 3): mappar analyserad energi → lampans ljus med headroom.
    *  0.8 = musik toppar ~80 %, drops får de sista 20 %. Fast, aldrig adaptiv. */
   lightScale: number;
+  /** LJUS-BREDD: bas-vikt för LJUSET (0 = bara mid/diskant, 1 = bara bas).
+   *  Separat från `bassWeight`/`beatCutoffHz` som styr BEAT-detektionen — ett
+   *  smalt bas-filter för beat ska inte göra ljuset dimt på diskant-tungt
+   *  innehåll. 0.5 = bredband (default). */
+  lightBassWeight: number;
   [key: string]: any;
 }
 
@@ -231,6 +236,7 @@ const DEFAULT_CAL: LightCalibration = {
   intensityInfluence: 0.3,
   barAccent: 1.0,
   lightScale: 0.8,
+  lightBassWeight: 0.5,
 };
 
 
@@ -1055,7 +1061,7 @@ export class PiLightEngine {
       this._tvSoftCeil = 100;   // brightness band ceil %
       this._tvSoftSavedCal = {
         releaseAlpha: this.cal.releaseAlpha,
-        bassWeight: this.cal.bassWeight,
+        lightBassWeight: this.cal.lightBassWeight,
         transientGain: this.cal.transientGain,
         perceptualGamma: this.cal.perceptualGamma,
         flickerDeadband: this.cal.flickerDeadband,
@@ -1064,7 +1070,7 @@ export class PiLightEngine {
       };
       // Tight-follow, voice-aware soft profile:
       this.cal.releaseAlpha = 0.85;        // near-instant down-tracking (low latency)
-      this.cal.bassWeight = 0.5;           // TV is voice/mid-treble, not bass -> full spectrum
+      this.cal.lightBassWeight = 0.5;      // TV is voice/mid-treble, not bass -> full spectrum
       this.cal.transientGain = 1.0;
       this.cal.perceptualGamma = 0;        // linear
       this.cal.flickerDeadband = 0.004;
@@ -1490,7 +1496,9 @@ export class PiLightEngine {
 
       // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
       // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
-      const w = cal.bassWeight;
+      // LJUS-BREDD (2026-08-24): ljuset använder sin EGEN bas-vikt. bassWeight/
+      // beatCutoffHz styr fortsatt beat-detektionen (bassFlux) oförändrat.
+      const w = cal.lightBassWeight ?? 0.5;
       const bassGain  = w;       // monotonic crossfade: 0 = no bass, 1 = full bass
       const midHiGain = 1 - w;   // 0 = no treble, 1 = full treble
       let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
@@ -1577,17 +1585,14 @@ export class PiLightEngine {
       const pGamma = tc.perceptualGamma;
       // LJUS-SKALA: headroom mellan analyserad energi och lampans tak, så drops
       // (som skriver 100 % direkt) har kvar utrymme att sticka ut.
-      let _e = energyNorm * tc.lightScale;
+      let _e = energyNorm;
       if (_e < 0) _e = 0;
-      // MJUKT KNÄ mot taket i stället för hård klamp: över knäet komprimeras
-      // signalen asymptotiskt mot 1 så topp-nyansen bevaras (drop-blixten
-      // skriver 100 % direkt och poppar fortfarande).
-      const KNEE = 0.8;
-      if (_e > KNEE) {
-        const x = (_e - KNEE) / (1 - KNEE);
-        _e = KNEE + (1 - KNEE) * (x / (1 + x));
-      }
+      if (_e > 1) _e = 1;
+      // Perceptuell kurva FÖRST, LJUS-SKALA sist: lightScale blir då ett rent
+      // tak (full input → exakt lightScale × 100 %) i stället för att stackas
+      // med gamma + ett knä och kapa mitten (uppmätt: 100 % in → 50 % ut).
       if (pGamma > 0 && _e > 0.0001) _e = Math.exp(pGamma * Math.log(_e));
+      _e *= tc.lightScale;
       let pct = floor + _e * (100 - floor);
 
       // Fast round + clamp
