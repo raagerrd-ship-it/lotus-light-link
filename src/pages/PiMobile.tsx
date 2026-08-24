@@ -122,6 +122,7 @@ function InputHealth({ health, level }: { health: { peak: number; clipPct: numbe
   // Status ska följa den VISADE nivån, annars kan baren stå på 100 % och ändå
   // säga "Bra".
   const status: 'low' | 'ok' | 'hot' = peak >= 0.98 ? 'hot' : peak < 0.15 ? 'low' : (health?.status ?? 'ok');
+  const text = status === 'hot' ? 'Klipper' : status === 'low' ? 'Svag' : 'Bra';
   const cls = status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-ok' : 'text-muted-foreground';
   return (
     <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-inset ring-border px-3 py-2">
