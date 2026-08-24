@@ -81,6 +81,12 @@ export type WriteResult =
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
+// När writePending sattes. Om noble/HCI hänger settlar writeAsync aldrig och
+// writePending fastnar true → varje tick returnerar 'busy' → tickOk fryser och
+// playback-watchdogen tvingar en hård restart. Stale-release efter 1s gör en
+// BLE-stall icke-blockerande: kedjan öppnas igen och räknas i bleStats.
+let writePendingSince = 0;
+const WRITE_PENDING_TIMEOUT_MS = 1000;
 
 
 // ── ACL-outstanding gate ──
@@ -110,7 +116,7 @@ export function setSlotLeaseMs(ms: number): void {
 
 
 
-let lastR = -1, lastG = -1, lastB = -1, lastBr = -1;
+let lastR = -1, lastG = -1, lastB = -1, lastBr = -1, lastPct = -1;
 let lastWriteTime = 0;
 let writeFailCount = 0;
 let _writeLatAvgPrecise = 0;
@@ -121,7 +127,7 @@ let lastStuckWarnAt = 0;
 const STUCK_WARN_INTERVAL_MS = 10_000;
 
 export function resetLastSent(): void {
-  lastR = lastG = lastB = lastBr = -1;
+  lastR = lastG = lastB = lastBr = lastPct = -1;
   writePending = false;
   slotLockedUntil = 0;
   lastSendStartedAt = 0;
@@ -138,9 +144,11 @@ export function resetLastSent(): void {
 
 
 /** Senast skickade RGB + brightness-scale (0–255). För UI-display (Output-färg). */
-export function getLastSent(): { r: number; g: number; b: number; brightness: number } | null {
+export function getLastSent(): { r: number; g: number; b: number; brightness: number; pct: number } | null {
   if (lastR < 0) return null;
-  return { r: lastR, g: lastG, b: lastB, brightness: lastBr };
+  // pct = EXAKT det motorn kommenderade (0–100) — samma tal som UI-baren visar.
+  // brightness är samma värde efter dimmings-gamma, i BLEDOM:s 0–255-skala.
+  return { r: lastR, g: lastG, b: lastB, brightness: lastBr, pct: lastPct };
 }
 
 // ── Lease-gate + ACL-outstanding-gate (delas av sendToBLE + keep-alive) ──
@@ -183,7 +191,19 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
     }
   }
 
-  if (writePending)          return 'busy';
+  if (writePending) {
+    if (now - writePendingSince >= WRITE_PENDING_TIMEOUT_MS) {
+      // Stall: släpp sloten så motorn kan fortsätta ticka (write:en får landa senare).
+      writePending = false;
+      bleStats.writeStallReleaseCount = (bleStats.writeStallReleaseCount ?? 0) + 1;
+      if (now - lastStuckWarnAt >= STUCK_WARN_INTERVAL_MS) {
+        console.warn(`[BLE] writeAsync stall >${WRITE_PENDING_TIMEOUT_MS}ms — släpper sloten (icke-blockerande recovery)`);
+        lastStuckWarnAt = now;
+      }
+    } else {
+      return 'busy';
+    }
+  }
   if (now < slotLockedUntil) return 'busy';
   // Hård host-side ACL-gate: aldrig fler än ACL_MAX_OUTSTANDING paket ute samtidigt.
   // Bara aktiv när drain faktiskt är attached — annars degraderar vi till lease-only
@@ -202,7 +222,7 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
  */
 export function canWriteNow(): boolean {
   if (!getDevice()) return false;
-  if (writePending) return false;
+  if (writePending && performance.now() - writePendingSince < WRITE_PENDING_TIMEOUT_MS) return false;
   if (performance.now() < slotLockedUntil) return false;
   const drainAttached = isControllerDrainAttached();
   if (drainAttached && getOutstandingPackets() >= ACL_MAX_OUTSTANDING) return false;
@@ -235,6 +255,7 @@ export function startKeepAlive(): void {
 
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     writePending = true;
+    writePendingSince = now;
     lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
@@ -348,8 +369,10 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   // ── LÅS SLOTEN ──
   // slotLockedUntil hindrar nästa tick även om writeAsync resolvar på <1ms.
   lastR = cr; lastG = cg; lastB = cb; lastBr = cbr;
+  lastPct = brightness < 0 ? 0 : brightness > 100 ? 100 : brightness;
   const writeStartedAt = now;
   writePending = true;
+  writePendingSince = now;
   lastSendStartedAt = now;
   slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
@@ -406,5 +429,5 @@ export function setIdleColor(r: number, g: number, b: number): void {
   const cb = Math.max(0, Math.min(255, b | 0));
   writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
   brightBuf[3] = 0xff;
-  lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff;
+  lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff; lastPct = 100;
 }
