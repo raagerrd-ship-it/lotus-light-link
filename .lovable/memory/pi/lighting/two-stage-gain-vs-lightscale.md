@@ -1,11 +1,12 @@
 ---
-name: Två synliga kontroller — input-gain vs ljus-skala
-description: INPUT-GAIN (rå PCM, tvåpunkts mot Sonos) matar analysatorn full dynamik; LJUS-SKALA (cal.lightScale, default 0.8) mappar energi → lampa med headroom så drops (100%) syns. NIVÅ-baren visar BLE brightness.
+name: En signal — input-gain, ljus-bredd och ljus-skala
+description: Tvåpunkts Sonos-gain är enda input-gainen (ingen AGC på ljusvägen). Ljuset har egen bas-vikt (lightBassWeight) och lightScale appliceras SIST efter gamma. UI-baren visar ble.lastSent.pct.
 type: feature
 ---
-**2026-08-23.** En gain kan inte göra båda: hög gain (bra analys) maxar lampan → drops osynliga vid 98–100 %; låg gain svälter analysatorn.
+**Kedjan (2026-08-24, v1.0.741):**
+1. **Input-gain:** tvåpunkts Sonos-kurva på rå PCM. Ingen soft-clip, ingen AGC på ljusvägen. Analysatorns `specAbs` (icke-AGC:ad) används bara som spektral ANDEL; amplituden kommer linjärt ur `levelVU`.
+2. **Ljus-bredd:** `lightBassWeight` (default 0.5) styr LJUSET. `bassWeight`/`beatCutoffHz` styr fortsatt BEAT-detektionen — smalt bas-filter för beat får inte göra ljuset dimt på diskant-tungt innehåll.
+3. **Skal-stack:** ordning är `perceptualGamma` FÖRST, `lightScale` SIST. Då blir lightScale ett rent tak (100 % in → lightScale × 100 % ut). Inget extra knä — det stackade tidigare med gamma och kapade mitten (100 % in gav 50 % ut).
+4. **UI = lampa:** `LampMeter` läser `ble.lastSent.pct` (exakt kommenderad 0–100). Input-baren läser `live.inputLevel` ur SAMMA /api/status-sample (tids-synkad, ingen ×4-inflation).
 
-- **Modul 1 – INPUT-GAIN:** tvåpunkts Sonos-kurva på rå PCM, ingen soft-clip, ingen AGC. Sätts högt/brett för beat/drop/frekvens-upplösning.
-- **Modul 3 – LJUS-SKALA:** `LightCalibration.lightScale` (per profil, default 0.8, slider 0.30–1.00). Appliceras i `piEngine.tickInner` steg 7: `_e = energyNorm * tc.lightScale` innan floor/perceptualGamma/klamp. Fast, aldrig adaptiv. Drop-blixten skriver 100 % direkt → headroom-et är dess synlighet.
-- **UI:** NIVÅ-baren visar `ble.lastSent.brightness` (post-gamma, "Lampa (BLE)") med peak-hold + 100 %-tak — UI = lampa. Separat kompakt "Analysator-input"-indikator för gain-hälsan.
-- **Save-bug fixad:** `PUT /api/gain-calibration` behåller befintliga punkter när body saknar giltig punkt (tidigare `point1 ?? null` → gain=1). Samma guard i `applyProfileGlobals`.
+**Spara-bug (fixad):** `PUT /api/gain-calibration` skriver bara över punkter med giltig `vol`+`gain>0`; partiella PUT:ar nollar inte kurvan till gain=1.
