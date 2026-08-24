@@ -13,6 +13,7 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 
 ## Memories
 - [Input-gain vs ljus-skala](mem://pi/lighting/two-stage-gain-vs-lightscale) — lightScale 0.8 ger drop-headroom; NIVÅ-baren visar BLE brightness
+- [Två tappar: AGC vs ljus](mem://pi/audio/two-taps-agc-vs-light) — o-gainad ring; AGC (mål 0.8) bara till analysen, egen linjär RMS × micGain till ljuset
 - [En linjär gain](mem://pi/audio/single-linear-gain) — RAW_SCALE=5 borta; tvåpunkts Sonos-kurva enda gain-källan (5–300×)
 - [Analysator-synk](mem://pi/audio/analyser-sync) — mirror av DMX Control (commit a5ccabe0): tempogram-BPM, kickAtMs, barShift, Lotus-adapter
 - [TV-läge & profil-globaler](mem://pi/runtime/tv-mode-profiles) — TV idlar ej motorn, auto-gain-override, dimmingGamma/gainCalibration per profil, /api/tv-profile
