@@ -12,13 +12,13 @@ import { BeatMonitor } from "@/components/BeatMonitor";
 
 
 
-type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number; beatLeadMs: number; lightScale: number };
+type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number; beatLeadMs: number; lightScale: number; lightBassWeight: number };
 const PRESET_CALS: Record<string, Cal> = {
   // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.75 },
-  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8 },
-  Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260, beatLeadMs: 60, lightScale: 0.85 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8 },
+  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.75, lightBassWeight: 0.4 },
+  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8, lightBassWeight: 0.5 },
+  Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260, beatLeadMs: 60, lightScale: 0.85, lightBassWeight: 0.55 },
+  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 220, beatLeadMs: 60, lightScale: 0.8, lightBassWeight: 0.5 },
 };
 
 const DEFAULT_CAL = PRESET_CALS.Normal;
@@ -115,8 +115,10 @@ function LampMeter({ brightness }: { brightness: number | null }) {
 
 
 /** Kompakt input-health för ANALYSATOR-gainen (rå, pre-ljus). */
-function InputHealth({ health }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null }) {
-  const peak = health ? Math.min(1, health.peak) : 0;
+function InputHealth({ health, level }: { health: { peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null; level: number | null }) {
+  // TIDS-SYNKAD med lampan: nivån kommer ur samma /api/status-sample som
+  // LampMeter (live.inputLevel), inte ur en separat health-poll.
+  const peak = Math.min(1, level ?? health?.peak ?? 0);
   const status = health?.status ?? 'low';
   const text = status === 'hot' ? 'Klipper' : status === 'low' ? 'Svag' : 'Bra';
   const cls = status === 'hot' ? 'text-destructive' : status === 'ok' ? 'text-ok' : 'text-muted-foreground';
@@ -125,7 +127,7 @@ function InputHealth({ health }: { health: { peak: number; clipPct: number; stat
       <div className="flex items-center justify-between mb-1.5">
         <span className="label-eyebrow">Analysator-input</span>
         <span className={`font-mono text-[10px] font-semibold ${cls}`}>
-          {text} · {(health ? health.peak * 100 : 0).toFixed(0)}%
+          {text} · {(peak * 100).toFixed(0)}%
         </span>
       </div>
       <div className="relative h-1 rounded-full bg-muted overflow-hidden">
@@ -327,6 +329,7 @@ function GainCalibrationPanel({
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
   const [lampBrightness, setLampBrightness] = useState<number | null>(null);
+  const [inputLevel, setInputLevel] = useState<number | null>(null);
 
   // Initial load: cal-punkter (kurvan är alltid aktiv)
   useEffect(() => {
@@ -357,7 +360,9 @@ function GainCalibrationPanel({
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
           if (ag.effective != null) setEffectiveGain(ag.effective);
           setHealth(ag.health ?? null);
-          setLampBrightness(st?.ble?.lastSent?.brightness ?? null);
+          // pct = EXAKT den 0–100-nivå som kommenderades till lampan (bar = lampa).
+          setLampBrightness(st?.ble?.lastSent?.pct ?? null);
+          setInputLevel(st?.live?.inputLevel ?? null);
         }
       } catch {}
       if (cancelled) return;
@@ -398,7 +403,7 @@ function GainCalibrationPanel({
   return (
     <div className="space-y-3">
       <LampMeter brightness={lampBrightness} />
-      <InputHealth health={health} />
+      <InputHealth health={health} level={inputLevel} />
 
       <div className="rounded-xl bg-primary/[0.06] ring-1 ring-inset ring-primary/25 p-3 space-y-2">
         <Stat label="Sonos volym" value={sonosVolume ?? '—'} />
@@ -772,6 +777,7 @@ export default function PiMobile() {
           dropFlashMs: p.dropFlashMs,
           beatLeadMs: p.beatLeadMs,
           lightScale: p.lightScale,
+          lightBassWeight: p.lightBassWeight,
         };
       }
       const results = await Promise.allSettled([
@@ -853,6 +859,7 @@ export default function PiMobile() {
           dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
           beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
           lightScale: c?.lightScale ?? DEFAULT_CAL.lightScale,
+          lightBassWeight: c?.lightBassWeight ?? DEFAULT_CAL.lightBassWeight,
         };
       };
 
