@@ -251,8 +251,9 @@ const ANALYSER_HOP = 128;
 const analyser = createAnalyser({
   sampleRate: SAMPLE_RATE,
   hopSize: ANALYSER_HOP,
-  autoGainTarget: 0.8,
-  maxGain: 600,
+  // Percentil-AGC: 0.75 är ett TAK för topparna (95:e percentilen), inte ett medel.
+  autoGainTarget: 0.75,
+  maxGain: 200,
   noiseFloor: 0.0015,
 });
 analyser.setGainLock(false);
@@ -503,8 +504,9 @@ export function setMicGain(gain: number): void {
  *  Cal-punkterna är absoluta gain-värden, interpolerade på Sonos-volym. */
 export interface GainCalPoint { vol: number; gain: number; }
 
-let calPoint1: GainCalPoint | null = null;
-let calPoint2: GainCalPoint | null = null;
+// Defaults = live-intrimmade värden (2026-08-24): full dynamik, 0 % input-klipp.
+let calPoint1: GainCalPoint | null = { vol: 15, gain: 2.2 };
+let calPoint2: GainCalPoint | null = { vol: 50, gain: 1.6 };
 let lastSonosVol: number | null = null;  // cachat för live-omräkning vid slider-change
 const AUTO_GAIN_MAX = 300.0;
 const AUTO_GAIN_MIN = 0.1;
