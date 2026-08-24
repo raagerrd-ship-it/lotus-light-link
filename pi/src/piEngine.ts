@@ -228,7 +228,7 @@ const DEFAULT_CAL: LightCalibration = {
   beatCutoffHz: 150,
   dropEnabled: true,
   dropSensitivity: 1.0,
-  dropFlashMs: 220,
+  dropFlashMs: 320,
   beatGridPulse: true,
   beatLeadMs: 60,
   beatSyncStrength: 0.18,
