@@ -719,7 +719,7 @@ export class Analyser {
   private cfg: {
     audio: { rate: number };
     fft: { size: number; hop: number };
-    detection: { autoGainTarget: number; tauUp: number; tauDown: number; noiseFloor: number };
+    detection: { autoGainTarget: number; tauUp: number; tauDown: number; noiseFloor: number; maxGain: number };
     beat: BeatGrid | null;
   };
   /** Optional external beat grid (from a PLL). Null = no grid gate on kicks. */
