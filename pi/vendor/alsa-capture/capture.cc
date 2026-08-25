@@ -72,8 +72,12 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     }
 
     // Audio TSFN — high-frequency, binary frames.
+    // maxQueueSize=4: obegränsad kö (0) låter en JS-stall bygga upp
+    // ljudframes i heapen tills Pi:n OOM:ar. Med tak droppas gamla frames
+    // (NonBlockingCall returnerar napi_queue_full) — motorn tar hellre ett
+    // hål i ljudet än en växande heap.
     audioTsfn_ = Napi::ThreadSafeFunction::New(
-        env, info[0].As<Napi::Function>(), "alsa-audio", 0, 1);
+        env, info[0].As<Napi::Function>(), "alsa-audio", 4, 1);
     // Event TSFN — rare string events; same JS callback.
     eventTsfn_ = Napi::ThreadSafeFunction::New(
         env, info[0].As<Napi::Function>(), "alsa-event", 0, 1);
@@ -83,7 +87,19 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
 
   ~CaptureWorker() {
     closed_ = true;
-    if (thread_.joinable()) thread_.join();
+    JoinBounded();
+  }
+
+  // Bounded join: capture-tråden kan sitta fast i snd_pcm_readi om ALSA-
+  // enheten hängt. Ett obegränsat join() låser då hela processen vid
+  // stängning/omstart. Vänta max ~500 ms, detacha sen.
+  void JoinBounded() {
+    if (!thread_.joinable()) return;
+    for (int i = 0; i < 50; i++) {
+      if (threadDone_.load()) { thread_.join(); return; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    thread_.detach();
   }
 
  private:
@@ -104,6 +120,7 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
 
   Napi::Value CloseInput(const Napi::CallbackInfo& /*info*/) {
     closed_ = true;
+    JoinBounded();
     return Env().Undefined();
   }
 
@@ -113,7 +130,12 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     auto status = audioTsfn_.NonBlockingCall(frame, [](Napi::Env env, Napi::Function jsCb, AudioFrame* f) {
       std::unique_ptr<AudioFrame> owned(f);
       Napi::HandleScope scope(env);
-      auto buf = Napi::Buffer<char>::Copy(env, owned->bytes.data(), owned->bytes.size());
+      // Zero-copy: Buffer::New adopterar vektorns minne och frigör det via
+      // finalizern. Copy() innebar en extra memcpy per frame (100 Hz).
+      auto* raw = new std::vector<char>(std::move(owned->bytes));
+      auto buf = Napi::Buffer<char>::New(
+          env, raw->data(), raw->size(),
+          [](Napi::Env, char*, std::vector<char>* v) { delete v; }, raw);
       jsCb.Call({ Napi::String::New(env, "audio"),
                   Napi::String::New(env, ""),
                   buf });
