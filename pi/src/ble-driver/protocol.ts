@@ -103,6 +103,24 @@ const ACL_MAX_OUTSTANDING = (() => {
   return 6;
 })();
 
+// ── Send-rate-cap (~25–30 writes/s) ──
+// WiFi och BLE delar radio-chip på Pi Zero 2W: all WiFi-last (UI-polling, SSH)
+// contendar med BLE-trafiken. Med intensity-driven ljus ändras outputen varje
+// tick, så utan cap trycks ~46 writes/s ut och länken blir stall-känslig.
+// Cappen glesar ENBART leveransen — smoothing/beat/dynamics körs varje tick.
+// Override: BLE_MIN_SEND_GAP_MS (10–200).
+let minSendGapMs = (() => {
+  const raw = parseInt(process.env.BLE_MIN_SEND_GAP_MS ?? '', 10);
+  if (Number.isFinite(raw) && raw >= 10 && raw <= 200) return raw;
+  return 36; // ≈27 writes/s
+})();
+let lastActualSendAt = 0;
+
+export function getMinSendGapMs(): number { return minSendGapMs; }
+export function setMinSendGapMs(ms: number): void {
+  minSendGapMs = Math.max(10, Math.min(200, ms | 0));
+}
+
 // När senaste accepterade write skickades till noble (för drain-diagnostik).
 let lastSendStartedAt = 0;
 const STUCK_THRESHOLD_MS = 1000;
