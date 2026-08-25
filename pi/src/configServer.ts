@@ -1381,14 +1381,9 @@ export function startConfigServer(port = 3050): void {
       const point2 = valid(req.body?.point2) ? req.body.point2 : cur.point2;
       mic.setGainCalPoints(point1 ?? null, point2 ?? null);
       setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
-      try {
-        const pf = loadProfilesFile();
-        pf.profiles[pf.activePreset] = {
-          ...pf.profiles[pf.activePreset],
-          gainCalibration: { point1: point1 ?? null, point2: point2 ?? null },
-        };
-        saveProfilesFile(pf);
-      } catch {}
+      res.json({ ok: true, ...mic.getGainCalPoints() });
+    });
+
       res.json({ ok: true, ...mic.getGainCalPoints() });
     });
 
