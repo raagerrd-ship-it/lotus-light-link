@@ -54,14 +54,10 @@ export const bleStats = {
   writeLatMs: 0,
   writeLatAvgMs: 0,
   writeLatMaxMs: 0,
-  effectiveIntervalMs: 0,
 
   disconnectCount: 0,
-  reconnectCount: 0,
-  lastDisconnectReason: null as string | null,
   lastDisconnectAt: null as string | null,
 
   requestedIntervalMs: '—' as string,
-  actualIntervalMs: '—' as string,
   intervalSource: 'unknown' as string,
 };

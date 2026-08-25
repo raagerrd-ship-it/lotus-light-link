@@ -142,7 +142,6 @@ export function resetLastSent(): void {
   bleStats.controllerOutstandingCount = 0;
   bleStats.outstandingAgeMs = 0;
   bleStats.requestedIntervalMs = '—';
-  bleStats.actualIntervalMs = '—';
   bleStats.intervalSource = 'unknown';
 }
 
@@ -234,21 +233,6 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
   // (säkrare än att aldrig skriva när noble-internalen flyttats i en framtida build).
   if (drainAttached && outstanding >= ACL_MAX_OUTSTANDING) return 'busy';
   return 'ready';
-}
-
-/**
- * BILLIG, BIVERKNINGSFRI readiness-check.
- * Speglar leaseAndDrainState()'s 'ready'-villkor UTAN att mutera stats eller
- * trigga stuck-recovery. Behålls för externa driver-användare; engine-ticken
- * använder den inte längre, utan submit:ar alltid senaste frame till 1-slot.
- */
-export function canWriteNow(): boolean {
-  if (!getDevice()) return false;
-  if (writePending && performance.now() - writePendingSince < WRITE_PENDING_TIMEOUT_MS) return false;
-  if (performance.now() < slotLockedUntil) return false;
-  const drainAttached = isControllerDrainAttached();
-  if (drainAttached && getOutstandingPackets() >= ACL_MAX_OUTSTANDING) return false;
-  return true;
 }
 
 function recordQueuedDrop(now: number): void {
@@ -352,9 +336,6 @@ function drainQueuedWrite(): void {
         if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
         if (writeFailCount > 0) dlog(`[BLE] Write recovered after ${writeFailCount} failures`);
         writeFailCount = 0;
-        if (bleStats.intervalSource === 'estimated' && bleStats.sentCount > 50) {
-          bleStats.actualIntervalMs = bleStats.writeLatAvgMs.toFixed(1) + ' (est)';
-        }
       })
       .catch((e: any) => {
         writeFailCount++;

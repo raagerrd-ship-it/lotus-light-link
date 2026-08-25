@@ -21,7 +21,7 @@ import {
   connectHardcoded, disconnectHardcoded, getHardcodedConnected, setRestartHook,
 } from './connect.js';
 import {
-  sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, sendPower, canWriteNow,
+  sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, sendPower,
   setDimmingGamma, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive,
 } from './protocol.js';
 import { bleStats } from './state.js';
@@ -60,7 +60,6 @@ export function createLampDriver(config: LampDriverConfig = {}) {
     setPower: sendPower,
     powerOn: () => sendPower(true),
     powerOff: () => sendPower(false),
-    canWriteNow,
     setDimmingGamma,
     getDimmingGamma,
     setSlotLeaseMs,
@@ -77,12 +76,12 @@ export type { LampDevice };
 export type { DeviceMode, PiCharacteristic, DiscoveredDevice, ConnectedDevice } from './types.js';
 export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID, getDevice, setDevice, noble, hasNobleLoaded } from './state.js';
 export {
-  sendToBLE, canWriteNow, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma,
+  sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma,
   getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower,
 } from './protocol.js';
 export {
-  connectHardcoded, disconnectHardcoded, getHardcodedConnected, getHardcodedPeripheral,
-  getLastDisconnectReason, wasAutoDisconnected, getAutoReconnectStatus,
+  connectHardcoded, disconnectHardcoded, getHardcodedConnected,
+  getLastDisconnectReason,
   forceCleanupStalePeripheral, scheduleAutoReconnect, triggerIdleDisconnect,
   setEngineBleCallbacks, setRestartHook,
 } from './connect.js';

@@ -180,7 +180,6 @@ let bandHopCounter = 0;
 // ── BandResult ur analysatorns oktavband ──
 // spec/onset är per-band AGC:ade 0..1. Motorn använder bara spektral andel här;
 // brightness-formen kommer från frame.intensity och nivåskalan från lightRawRms×gain.
-const BAND_SCALE = 1.0; // ingen extra konstant: enda taket är energyNorm > 1 → 1
 
 // Övre kant (Hz) per analysator-band, i ordning sub..air.
 const BAND_TOP_HZ = [60, 120, 250, 500, 2000, 5000, 10000, 16000];
@@ -385,7 +384,7 @@ function emitBands(frame: Frame): void {
   // den är AGC:ad och normaliserar bort användarens gain (ljuset blev gain-
   // okänsligt och pinnade ~50 %). Ljuset drivs av den egna linjära RMS:en ×
   // micGain (tvåpunkts Sonos-kurva). Analysatorns AGC rör bara detektionen.
-  let amp = lightRawRms * micGain * BAND_SCALE;
+  let amp = lightRawRms * micGainAuto;
   if (amp > 1) amp = 1;
 
   // Den ABSOLUTA bandmagnituden används bara som SPEKTRAL ANDEL (bas kontra
@@ -393,9 +392,11 @@ function emitBands(frame: Frame): void {
   const lowAbs = a.sub + a.kick + a.bass;
   const hiAbs = a.lowMid + a.mid + a.highMid + a.treble + a.air;
   const totAbs = lowAbs + hiAbs + 1e-9;
+  const lowFrac = lowAbs / totAbs;
+  const hiFrac = hiAbs / totAbs;
   // share/0.5 → en jämnt fördelad mix ger 1.0 i båda tapparna (inget tapp vid w=0.5).
-  const lowShare = Math.min(1, (lowAbs / totAbs) / 0.5);
-  const hiShare = Math.min(1, (hiAbs / totAbs) / 0.5);
+  const lowShare = Math.min(1, lowFrac / 0.5);
+  const hiShare = Math.min(1, hiFrac / 0.5);
 
 
   latestBands.bassRms = amp * lowShare;
@@ -405,8 +406,8 @@ function emitBands(frame: Frame): void {
 
   // DIRIGENTEN v2: shape = sektionsrelativ energi. levelVU är uppmätt för platt
   // på riktiga låtar; intensity följer uppbyggnader och breakdowns.
-  latestBands.bassShare = lowAbs / totAbs;
-  latestBands.hiShare = hiAbs / totAbs;
+  latestBands.bassShare = lowFrac;
+  latestBands.hiShare = hiFrac;
 
   // Nivå-hälsa på den LINJÄRA totalnivån (samma tal som input-baren visar).
   // Inte max(bass, midHi) — de är andelar mot 0.5 och pinnas nära 1.0.
@@ -495,31 +496,33 @@ const BYTES_PER_SAMPLE = currentFormat === 'S32_LE' ? 4 : 2;
 // verktyget "kalibrera automatiskt").
 let micGainBase = 75.0;  // fallback innan kurvan är satt (RAW_SCALE=5 borta → ~5× högre tal)
 let micGainAuto = 75.0;  // gain interpolerad från Sonos-volym (kurvan)
-let micGain = 75.0;      // Effective — used in hot path
+// micGain borttagen (FIX 2) — micGainAuto ÄR den effektiva gainen; enda writern
+// var `micGain = micGainAuto`. Seed-on-large-change jämför nu ny vs förra värdet.
+let prevGainForSeed = 75.0;
 
 function updateEffectiveGain(): void {
-  const prev = micGain;
-  micGain = micGainAuto;
+  const prev = prevGainForSeed;
+  prevGainForSeed = micGainAuto;
   // Din kalibrering är en MÄTNING av rummets nivå vid en given Sonos-volym —
   // alltså exakt den information AGC:n annars måste jobba upp sig till. Vi
   // SEEDAR därför analysatorns AGC-startvärde när kurvan flyttar sig markant
   // (>1.5× upp/ner). Det är bara ett startvärde: AGC:n fortsätter fritt och
   // ingen användar-gain rör rå-PCM:en eller ringen.
-  if (prev > 0 && (micGain / prev > 1.5 || prev / micGain > 1.5)) seedAnalyserGain('gain-change');
+  if (prev > 0 && (micGainAuto / prev > 1.5 || prev / micGainAuto > 1.5)) seedAnalyserGain('gain-change');
 }
 
 /** Seedar analysatorns AGC från ljus-kalibreringen (storleksordning, inte exakt).
  *  Ljus-tappen är kalibrerad så att rms × micGain ≈ 1 vid topparna; AGC:n siktar
  *  på 0.8 av snitt-envelopen, så micGain är rätt storleksordning att börja på. */
 function seedAnalyserGain(reason: string): void {
-  const seed = Math.max(0.5, Math.min(AUTO_GAIN_MAX, micGain));
+  const seed = Math.max(0.5, Math.min(AUTO_GAIN_MAX, micGainAuto));
   analyser.resetGain(seed);
   dlog(`[ALSA] AGC seedad till ${seed.toFixed(1)}x från kalibreringen (${reason})`);
 }
 
 export function getMicGain(): number { return micGainBase; }
 
-export function getEffectiveGain(): number { return micGain; }
+export function getEffectiveGain(): number { return micGainAuto; }
 export function getAutoGainMultiplier(): number { return micGainAuto; }
 
 /** Sätt gain direkt (engångs-kalibreringsverktyget). Kurvan skriver över den
@@ -681,7 +684,7 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   if (p2) calPoint2 = p2;
   micGainAuto = calPoint1 && calPoint2 ? interpolateGain(calPoint1.vol) : micGainBase;
   updateEffectiveGain();
-  dlog(`[ALSA] Restored mic-state: gain=${micGain.toFixed(1)}x cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
+  dlog(`[ALSA] Restored mic-state: gain=${micGainAuto.toFixed(1)}x cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
 })();
 
 
@@ -748,7 +751,7 @@ export function startMic(): void {
     capture.on('close', () => {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
-    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, stereo→mono downmix, period=256, band-hop=${BAND_EVERY_HOPS}×${ANALYSER_HOP}, device: ${currentDevice})`);
+    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, left-channel select, period=256, band-hop=${BAND_EVERY_HOPS}×${ANALYSER_HOP}, device: ${currentDevice})`);
     
 
   } else {
@@ -892,7 +895,7 @@ function onAudioData(buf: Buffer): void {
   const prevRingPos = ringPos;
   ringPos = pos;
   const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
-  const peak = prePeak * micGain;
+  const peak = prePeak * micGainAuto;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
 
   // LJUS-NIVÅ: ~130 ms EMA av block-RMS (samma tidskonstant som analysatorns

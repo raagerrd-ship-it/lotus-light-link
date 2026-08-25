@@ -17,15 +17,15 @@
  * via systemctl status).
  *
  * Targetvärden (BLE spec):
- *   min=max=16 →  16 × 1.25ms = 20ms connection interval
+ *   min=max=12 →  12 × 1.25ms = 15ms connection interval
  *   latency=0  →  ingen slave latency (lampan ska svara på varje interval)
  *   timeout=100 → 100 × 10ms = 1s supervision timeout
  *
- * RATIONALE för 20ms (2026-04-25): Pi Zero 2W hängde sig efter ~22h drift med
+ * RATIONALE för 15ms (2026-04-25): Pi Zero 2W hängde sig efter ~22h drift med
  * 7.5ms interval. BCM43436 delar radio mellan WiFi+BT — 133 BLE-events/s gav
- * konstant interrupt-tryck. 20ms halverar BT-load (~50 events/s) utan att
- * äventyra single-slot-kontraktet (tickMs=20ms = exakt 1 BLE-slot per tick).
- * Worst-case latens: 20ms (under flicker-fusion-threshold).
+ * konstant interrupt-tryck. 15ms sänker BT-load (~67 events/s) utan att
+ * äventyra single-slot-kontraktet (en BLE-slot per lease).
+ * Worst-case latens: 15ms (under flicker-fusion-threshold).
  */
 
 import { spawn } from 'node:child_process';

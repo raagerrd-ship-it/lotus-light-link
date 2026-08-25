@@ -155,14 +155,12 @@ lamp.startKeepAlive();
 await lamp.powerOn();
 
 // ── 6. Skicka färger (respektera ALLTID backpressure) ──
-if (lamp.canWriteNow()) {
   lamp.setColor(255, 80, 0, 100);    // r, g, b, brightness(0–100)
 }
 
 // Exempel: loop med färgbyte var 25 ms
 let hue = 0;
 const colorInterval = setInterval(() => {
-  if (lamp.canWriteNow()) {
     hue = (hue + 15) % 360;
     const [r, g, b] = hsvToRgb(hue, 1, 1);   // din egen hsvToRgb()
     lamp.setColor(r, g, b, 80);
@@ -197,7 +195,6 @@ await lamp.disconnect();
 | `setColor(r,g,b,brightness=100): WriteResult` | Queua senaste färg + ljusstyrka |
 | `setIdleColor(r,g,b): void` | Sätt idle-färg (bärs av keep-alive, ingen write) |
 | `setPower(on): Promise<'sent'\|'no-device'\|'error'>` | Väck/släck LED-drivern |
-| `canWriteNow(): boolean` | Billig readiness-check för externa verktyg |
 | `startKeepAlive() / stopKeepAlive(): void` | 200ms keep-alive mot supervision-timeout |
 | `setDimmingGamma(v) / getDimmingGamma()` | Dimring-gamma 1.0–3.0 |
 | `setSlotLeaseMs(ms): void` | Minsta avstånd mellan faktiska writes (5–500ms) |
@@ -263,7 +260,6 @@ läs `p.address` / `p.advertisement.localName`.
 ## 9. Ovanpå drivern: ljudreaktiv motor (valfritt)
 
 Det här repots `piEngine.ts` är ett **lager ovanpå** drivern: det mappar
-ljud-FFT → färg/ljusstyrka och anropar `sendToBLE`/`canWriteNow`/`startKeepAlive`
 (re-exporterade från drivern). Vill du ha samma beteende i ett annat projekt:
 kopiera `ble-driver/` + `piEngine.ts` och mata motorn med dina FFT-frames. För
 ren färgstyrning behövs bara `ble-driver/`.
@@ -277,7 +273,6 @@ ren färgstyrning behövs bara `ble-driver/`.
 | `getNoble() called before getNobleAsync()` | Kör bootstrap (steg 4) först |
 | Ansluter aldrig, `hci0 inte UP` | `sudo systemctl restart bluetooth` |
 | `Permission denied` vid scan | `setcap` på node-binären (steg 3) |
-| Lampan hackar/halkar efter ljudet | Du skriver utan `canWriteNow()` eller utan keep-alive |
 | Tyst lampa efter ett tag | Saknar `startKeepAlive()` → supervision-timeout |
 | Hög latens trots gate | `forceConnInterval` kräver `setcap` på `hcitool` |
 | Processen dör med exit 0 | Förväntat efter 4 connect-fel — låt supervisor starta om |

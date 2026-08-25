@@ -3,8 +3,8 @@
  *
  * ⚠️  MIRROR — DO NOT EDIT DIRECTLY. Read-only i Lotus.
  * Master: DMX Control / pi-dmx/engine/src/analyser.ts.
- * Synk från commit: e5a72e88
- *   git log e5a72e88..HEAD -- pi-dmx/engine/src/analyser.ts
+ * Synk från commit: b0442f3
+ *   git log b0442f3..HEAD -- pi-dmx/engine/src/analyser.ts
  * För att uppdatera: ändra i DMX-projektet, commit:a där, kopiera hit,
  * uppdatera hashen ovan. Se README.md ("Source of truth").
  *

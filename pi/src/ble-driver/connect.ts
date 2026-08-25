@@ -96,15 +96,20 @@ let _lastReconnectRequestAt = 0;
 const RECONNECT_DEBOUNCE_MS = 1000;
 
 // ── Tracking av senaste disconnect-orsak ──
-// Manuell disconnect (UI-knapp) → wasAuto=false → Sonos-PLAYING-pathen i
-// index.ts blockerar auto-reconnect (manual-only-policy gäller).
-// Idle-timeout-disconnect (engine.handleIdleDisconnect) → wasAuto=true →
-// Sonos PLAYING får trigga reconnect automatiskt.
-let _lastDisconnectWasAuto = false;
 let _lastDisconnectReason: 'manual' | 'idle-timeout' | 'supervision-timeout' | 'unknown' = 'unknown';
 
-export function wasAutoDisconnected(): boolean { return _lastDisconnectWasAuto; }
 export function getLastDisconnectReason(): string { return _lastDisconnectReason; }
+
+/**
+ * Gemensam nedrivning av device-state (engine-callback, drain, device-slot,
+ * last-sent-cache). Cold path — anropas från alla disconnect-vägar.
+ */
+function teardownDeviceState(): void {
+  _onDisconnected?.();
+  detachControllerDrain();
+  setDevice(null);
+  resetLastSent();
+}
 
 function clearAutoReconnect(): void {
   if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
@@ -185,17 +190,8 @@ export function getHardcodedConnected(): { connected: boolean; name: string; mac
   return { connected: !!_connected && _connected.state === 'connected', name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac };
 }
 
-export function getAutoReconnectStatus(): { enabled: boolean; attempt: number; pending: boolean } {
-  return { enabled: _autoReconnectEnabled, attempt: _autoReconnectAttempt, pending: !!_autoReconnectTimer };
-}
-
-export function getHardcodedPeripheral(): any | null {
-  return _connected;
-}
-
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   // Manuell disconnect → stoppa auto-reconnect-loopen så vi inte kämpar mot användaren.
-  _lastDisconnectWasAuto = false;
   _lastDisconnectReason = 'manual';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
@@ -204,10 +200,7 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   _consecutiveFailures = 0;
   if (!_connected) return { disconnected: true };
   // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
-  _onDisconnected?.();
-  detachControllerDrain();
-  setDevice(null);
-  resetLastSent();
+  teardownDeviceState();
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   return { disconnected: true };
@@ -221,7 +214,6 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
  */
 export async function triggerIdleDisconnect(): Promise<void> {
   console.log('[connect-hardcoded] Idle-timeout disconnect — markerar som auto');
-  _lastDisconnectWasAuto = true;
   _lastDisconnectReason = 'idle-timeout';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
@@ -234,10 +226,7 @@ export async function triggerIdleDisconnect(): Promise<void> {
     await forceCleanupStalePeripheral('idle-disconnect-no-connected').catch(() => {});
     return;
   }
-  _onDisconnected?.();
-  detachControllerDrain();
-  setDevice(null);
-  resetLastSent();
+  teardownDeviceState();
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   // Purga noble's interna peripheral-cache så nästa connect garanterat
@@ -305,10 +294,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
   }
 
   // 4. Engine-side state reset (no-op om redan rent)
-  try { _onDisconnected?.(); } catch {}
-  try { detachControllerDrain(); } catch {}
-  try { setDevice(null); } catch {}
-  try { resetLastSent(); } catch {}
+  try { teardownDeviceState(); } catch {}
 }
 
 export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
@@ -424,10 +410,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           } catch {}
           peripheral.once?.('disconnect', () => {
             dlog(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
-            _onDisconnected?.();
-            detachControllerDrain();
-            setDevice(null);
-            resetLastSent();
+            teardownDeviceState();
             bleStats.disconnectCount++;
             bleStats.lastDisconnectAt = new Date().toISOString();
             if (_connected === peripheral) _connected = null;
@@ -478,7 +461,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // Hooka in noble's HCI ACL-räknare så vi vet om controllern
             // har outstanding paket (verklig drain-signal, inte promise).
             attachControllerDrain(peripheral);
-            // FORCE 20ms conn-interval connection interval via hcitool lecup.
+            // FORCE 15ms conn-interval connection interval via hcitool lecup.
             // Noble's egen HCI-request slår inte alltid igenom (bevisat:
             // bench körde på ~20pps tak tills `hcitool lecup --min 6 --max 6`
             // kördes manuellt — då gick det till 50 pps utan kö).
@@ -545,7 +528,6 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         dlog(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
       }
       _consecutiveFailures = 0;
-      _lastDisconnectWasAuto = false;
       _lastDisconnectReason = 'unknown';
       // Auto-wake the lamp's LED driver. Idempotent — sending power-on to
       // an already-on lamp is a no-op. Fire-and-forget; even if det failar
