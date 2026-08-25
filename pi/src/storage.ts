@@ -91,11 +91,40 @@ export function getItem(key: string): string | null {
   }
 }
 
+// A1: atomisk skrivning. Bar writeFileSync (truncate-then-write) lämnade en
+// halvskriven/nollad *.json om strömmen drogs mitt i en save → endpoints 500:ade
+// permanent. tmp + rename är atomiskt på samma filsystem.
 export function setItem(key: string, value: string): void {
   const dir = dirFor(key);
   ensureDir(dir);
-  writeFileSync(filePath(key), value, 'utf-8');
+  const target = filePath(key);
+  const tmp = `${target}.tmp`;
+  try {
+    writeFileSync(tmp, value, 'utf-8');
+    renameSync(tmp, target);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch {}
+    throw e;
+  }
 }
+
+/**
+ * A1: säker JSON-läsning. En trasig fil (halvskriven vid strömavbrott) ger
+ * fallback + filen raderas, i stället för att kasta upp i en express-handler.
+ */
+export function getJson<T>(key: string, fallback: T): T {
+  const raw = getItem(key);
+  if (raw == null) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed == null ? fallback : (parsed as T);
+  } catch {
+    console.warn(`[storage] korrupt ${key}.json — raderas, använder default`);
+    removeItem(key);
+    return fallback;
+  }
+}
+
 
 export function getStorageDiagnostics(): Array<{ name: string; path: string; writable: boolean; error: string | null }> {
   const dirs = [
