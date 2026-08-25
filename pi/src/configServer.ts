@@ -16,7 +16,7 @@ import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getRuntimeHealth } from './runtimeHealth.js';
 
-import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, getLastSuccessfulPollAt as getSonosLastPollAt, type SonosPollerConfig } from './sonosPoller.js';
+import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
 
 
@@ -876,175 +876,7 @@ export function startConfigServer(port = 3050): void {
       return res.status(400).json({ error: 'minWriteIntervalMs must be 5–100 (number) — overrides slot-lease tills nästa setTickMs' });
     }
     setSlotLeaseMs(v);
-    setItem('ble-min-write-interval-ms', String(v));
     res.json({ ok: true, minWriteIntervalMs: getSlotLeaseMs(), slotLeaseMs: getSlotLeaseMs(), maxHz: +(1000 / v).toFixed(1) });
-  });
-
-  // ─── BLE bench: auto-ramp tickMs (HÖG → LÅG) ───
-  // Förbigår engine, lease och delta-skip. Skickar 1 paket per tickMs över
-  // stepSec sekunder och mäter queuedPeak/pendingPeak från noble live.
-  // pending=8 är hårdvarutaket (ACL-buffrar) och ignoreras — bara queued
-  // (=noble's _aclQueue) indikerar att vi producerar snabbare än radion.
-  // Pass: queuedPeak ≤ maxQueued (default 2). LastGoodTickMs = lägsta som passade.
-  let _benchRunning = false;
-  let _benchLastResult: any = null;
-  app.post('/api/ble/bench', async (req, res) => {
-    if (_benchRunning) return res.status(409).json({ error: 'bench already running' });
-    const engine = requireEngine(res);
-    if (!engine) return;
-    const { getDevice } = await import('./ble-driver/state.js');
-    const { getNoble } = await import('./ble-driver/noble-singleton.js');
-    const { getAttachedHandle, isControllerDrainAttached } = await import('./ble-driver/controllerDrain.js');
-    const dev = getDevice();
-    if (!dev) return res.status(503).json({ error: 'no BLE device connected' });
-
-    const startTickMs = Math.max(10, Math.min(200, Number(req.body?.startTickMs ?? 30)));
-    const endTickMs   = Math.max(5,  Math.min(startTickMs, Number(req.body?.endTickMs ?? 10)));
-    const stepMs      = Math.max(1,  Math.min(20,  Number(req.body?.stepMs    ?? 5)));
-    const stepSec     = Math.max(2,  Math.min(15,  Number(req.body?.stepSec   ?? 5)));
-    const maxQueued   = Math.max(0,  Math.min(10,  Number(req.body?.maxQueued ?? 2)));
-
-    // Live drain-läsning som separerar pending/queued (controllerDrain.ts
-    // returnerar summan; här vill vi se dem var för sig).
-    const handle = getAttachedHandle();
-    const noble: any = getNoble();
-    function readDrain(): { pending: number; queued: number } {
-      try {
-        if (handle == null) return { pending: 0, queued: 0 };
-        const hci = noble?._bindings?._hci;
-        const conn = hci?._aclConnections?.get?.(handle);
-        const pending = conn?.pending ?? 0;
-        let queued = 0;
-        const q = hci?._aclQueue;
-        if (Array.isArray(q)) for (let i = 0; i < q.length; i++) if (q[i]?.handle === handle) queued++;
-        return { pending, queued };
-      } catch { return { pending: 0, queued: 0 }; }
-    }
-
-    // Läs faktisk LE connection interval från noble (om tillgänglig).
-    // Förväntat värde efter våra HCI-tweaks: ~7.5–10ms. Default annars: 50ms.
-    function readConnInterval(): { intervalMs: number | null; latency: number | null; supervisionTimeoutMs: number | null; raw: string } {
-      try {
-        if (handle == null) return { intervalMs: null, latency: null, supervisionTimeoutMs: null, raw: 'no-handle' };
-        const hci = noble?._bindings?._hci;
-        const conn = hci?._aclConnections?.get?.(handle) ?? hci?._handles?.[handle];
-        // BLE spec: interval i units à 1.25ms, supervision timeout i units à 10ms
-        const interval = conn?.interval ?? conn?.connInterval ?? null;
-        const latency  = conn?.latency  ?? conn?.connLatency  ?? null;
-        const sup      = conn?.supervisionTimeout ?? conn?.timeout ?? null;
-        const intervalMs = typeof interval === 'number' ? +(interval * 1.25).toFixed(2) : null;
-        const supMs      = typeof sup === 'number' ? sup * 10 : null;
-        const keys = conn ? Object.keys(conn).join(',') : '(no-conn)';
-        return { intervalMs, latency, supervisionTimeoutMs: supMs, raw: `keys=${keys}` };
-      } catch (e: any) {
-        return { intervalMs: null, latency: null, supervisionTimeoutMs: null, raw: `err:${e?.message ?? e}` };
-      }
-    }
-
-    _benchRunning = true;
-    const buf = Buffer.from([0x7e, 0x07, 0x05, 0x03, 0, 0, 0, 0x00, 0xef]);
-    const steps: any[] = [];
-    let lastGoodTickMs = 0;
-    let stoppedReason = 'completed';
-
-    // PAUSA engine + keep-alive — annars blandas våra writes med engine's,
-    // och queued/pending blir omöjligt att tolka. Resume i finally.
-    let suspended = false;
-    try { engine.suspend(); suspended = true; } catch {}
-    // Vänta tills allt drainat innan vi börjar mäta.
-    const drainStart = performance.now();
-    while (performance.now() - drainStart < 2000) {
-      const d = readDrain();
-      if (d.queued === 0 && d.pending === 0) break;
-      await new Promise(r => setTimeout(r, 50));
-    }
-    const preDrain = readDrain();
-    const connInfoStart = readConnInterval();
-    console.log(`[Bench] suspend=${suspended} preDrain pending=${preDrain.pending} queued=${preDrain.queued} connInterval=${connInfoStart.intervalMs}ms latency=${connInfoStart.latency} supTimeout=${connInfoStart.supervisionTimeoutMs}ms (${connInfoStart.raw})`);
-    console.log(`[Bench] Ramp tickMs ${startTickMs}→${endTickMs} step=${stepMs} stepSec=${stepSec} maxQueued=${maxQueued} attached=${isControllerDrainAttached()} handle=${handle}`);
-
-    try {
-      for (let tickMs = startTickMs; tickMs >= endTickMs; tickMs -= stepMs) {
-        const totalAttempts = Math.max(1, Math.round(stepSec * 1000 / tickMs));
-        let sent = 0, failed = 0, latSum = 0, latMax = 0;
-        let queuedPeak = 0, pendingPeak = 0;
-        const t0 = performance.now();
-        let colorIdx = 0;
-
-        for (let i = 0; i < totalAttempts; i++) {
-          const targetT = t0 + i * tickMs;
-          const delay = targetT - performance.now();
-          if (delay > 0) await new Promise(r => setTimeout(r, delay));
-          colorIdx = (colorIdx + 1) % 256;
-          buf[4] = colorIdx; buf[5] = 255 - colorIdx; buf[6] = (colorIdx * 3) & 0xff;
-          const wStart = performance.now();
-          try {
-            await dev.characteristic.writeAsync(buf, true);
-            const lat = performance.now() - wStart;
-            sent++; latSum += lat; if (lat > latMax) latMax = lat;
-          } catch {
-            failed++;
-          }
-          const d = readDrain();
-          if (d.queued  > queuedPeak)  queuedPeak  = d.queued;
-          if (d.pending > pendingPeak) pendingPeak = d.pending;
-        }
-
-        // Vänta extra ~1s så kön töms innan nästa steg och vi mäter rent.
-        const settleStart = performance.now();
-        while (performance.now() - settleStart < 1000) {
-          const d = readDrain();
-          if (d.queued === 0) break;
-          await new Promise(r => setTimeout(r, 50));
-        }
-
-        const failRate = failed / totalAttempts;
-        const avgLat = sent > 0 ? latSum / sent : 0;
-        const ratePps = +(1000 / tickMs).toFixed(1);
-        const passed = failRate < 0.05 && queuedPeak <= maxQueued;
-        const result = {
-          tickMs, ratePps, attempted: totalAttempts, sent, failed,
-          failRatePct: +(failRate * 100).toFixed(1),
-          avgLatencyMs: +avgLat.toFixed(2),
-          maxLatencyMs: +latMax.toFixed(2),
-          queuedPeak, pendingPeak, passed,
-        };
-        steps.push(result);
-        console.log(`[Bench] tick=${tickMs}ms (${ratePps} pps) sent=${sent}/${totalAttempts} fail=${failed} avgLat=${avgLat.toFixed(1)}ms queuedPk=${queuedPeak} pendingPk=${pendingPeak} → ${passed ? 'PASS' : 'FAIL'}`);
-
-        if (passed) {
-          lastGoodTickMs = tickMs;
-        } else {
-          stoppedReason = failRate >= 0.05
-            ? `failRate ${(failRate*100).toFixed(1)}%`
-            : `queuedPeak ${queuedPeak} > ${maxQueued}`;
-          break;
-        }
-      }
-    } catch (e: any) {
-      stoppedReason = `error: ${e?.message ?? e}`;
-    } finally {
-      _benchRunning = false;
-      if (suspended) { try { engine.resume(); } catch {} }
-    }
-
-    const connInfoEnd = readConnInterval();
-    _benchLastResult = {
-      ok: true, finishedAt: new Date().toISOString(),
-      startTickMs, endTickMs, stepMs, stepSec, maxQueued,
-      lastGoodTickMs,
-      lastGoodRatePps: lastGoodTickMs > 0 ? +(1000 / lastGoodTickMs).toFixed(1) : 0,
-      connIntervalMs: connInfoEnd.intervalMs,
-      connLatency: connInfoEnd.latency,
-      supervisionTimeoutMs: connInfoEnd.supervisionTimeoutMs,
-      stoppedReason, steps,
-    };
-    console.log(`[Bench] Done — lägsta stabila tick = ${lastGoodTickMs}ms (${_benchLastResult.lastGoodRatePps} pps) connInterval=${connInfoEnd.intervalMs}ms — ${stoppedReason}`);
-    res.json(_benchLastResult);
-  });
-
-  app.get('/api/ble/bench', (_req, res) => {
-    res.json({ running: _benchRunning, lastResult: _benchLastResult });
   });
 
   // --- BLE connection params (live från noble) ---
@@ -1183,9 +1015,8 @@ export function startConfigServer(port = 3050): void {
   
   let _lastSkipBusy = 0;
   let _lastSkipInFlight = 0;
-  let _lastFftDropped = 0;
   let _lastWriteFail = 0;
-  let _lastWriteStuck = 0;
+  let _lastWriteStallRelease = 0;
   let _lastFftFrames = 0;
   let _lastTickCount = 0;
   let _lastTickOk = 0;
@@ -1219,9 +1050,8 @@ export function startConfigServer(port = 3050): void {
       
       const skipBusyPerSec = perSec(bleStats.skipBusyCount, _lastSkipBusy);
       const skipInFlightPerSec = perSec(bleStats.skipInFlightCount ?? 0, _lastSkipInFlight);
-      const fftDroppedPerSec = perSec(bleStats.fftDroppedCount ?? 0, _lastFftDropped);
       const writeFailPerSec = perSec(bleStats.writeFailCount, _lastWriteFail);
-      const writeStuckPerSec = perSec(bleStats.writeStuckCount ?? 0, _lastWriteStuck);
+      const writeStallReleasePerSec = perSec(bleStats.writeStallReleaseCount ?? 0, _lastWriteStallRelease);
       const tickOkPerSec = perSec(bleStats.tickOkCount ?? 0, _lastTickOk);
       const tickAbortNoMicPerSec = perSec(bleStats.tickAbortNoMicCount ?? 0, _lastTickAbortNoMic);
       const tickAbortNoChangePerSec = perSec(bleStats.tickAbortNoChangeCount ?? 0, _lastTickAbortNoChange);
@@ -1241,9 +1071,8 @@ export function startConfigServer(port = 3050): void {
       
       _lastSkipBusy = bleStats.skipBusyCount;
       _lastSkipInFlight = bleStats.skipInFlightCount ?? 0;
-      _lastFftDropped = bleStats.fftDroppedCount ?? 0;
       _lastWriteFail = bleStats.writeFailCount;
-      _lastWriteStuck = bleStats.writeStuckCount ?? 0;
+      _lastWriteStallRelease = bleStats.writeStallReleaseCount ?? 0;
       _lastFftFrames = fftFrames;
       _lastTickCount = tickCount;
       _lastTickOk = bleStats.tickOkCount ?? 0;
@@ -1254,7 +1083,8 @@ export function startConfigServer(port = 3050): void {
 
       ble = {
         sentPerSec, skipBusyPerSec, skipInFlightPerSec,
-        fftDroppedPerSec, writeFailPerSec, writeStuckPerSec,
+        writeFailPerSec, writeStallReleasePerSec,
+        controllerStuckCount: bleStats.controllerStuckCount ?? 0,
         writeLatAvgMs: bleStats.writeLatAvgMs,
         writeLatMaxMs,
         fftPerSec, tickPerSec,
@@ -1343,14 +1173,6 @@ export function startConfigServer(port = 3050): void {
 
      });
    });
-   // Kurvan är alltid aktiv (inget manuellt läge kvar) — PUT är en no-op som
-   // behålls för bakåtkompatibilitet med äldre klienter.
-   app.put('/api/auto-gain', (_req, res) => {
-     const mic = requireMic(res);
-     if (!mic) return;
-     res.json({ ok: true, enabled: true, multiplier: mic.getAutoGainMultiplier(), effective: mic.getEffectiveGain() });
-   });
-
    // --- Gain calibration (two-point) ---
    app.get('/api/gain-calibration', (_req, res) => {
      const mic = getMic();
