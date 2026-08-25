@@ -759,20 +759,10 @@ function ConnectionSettingsSection({
 
 
 export default function PiMobile() {
-  const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
-  // 4 oberoende profiler — varje knapp kommer ihåg sina egna värden.
-  // Aktiv profils värden härleds som `cal` och muteras via `setCal`.
-  const [profiles, setProfiles] = useState<Record<string, Cal>>({
-    Lugn:   { ...PRESET_CALS.Lugn },
-    Normal: { ...PRESET_CALS.Normal },
-    Party:  { ...PRESET_CALS.Party },
-    Custom: { ...PRESET_CALS.Custom },
-  });
-  const cal = profiles[activePreset] ?? PRESET_CALS.Normal;
-  const setCal = useCallback((next: Cal) => {
-    setProfiles(p => ({ ...p, [activePreset]: next }));
-  }, [activePreset]);
+  // EN global inställnings-uppsättning (inga profiler).
+  const [cal, setCal] = useState<Cal>({ ...DEFAULT_CAL });
+
   const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState(() =>
     typeof window !== 'undefined'
