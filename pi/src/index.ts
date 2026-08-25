@@ -155,8 +155,10 @@ function applySonosStateToEngine(state: {
 async function ensureEngineInstance(): Promise<void> {
   if (engineInstance) return;
   engineMod = await import('./piEngine.js');
-  const savedTickMs = getItem('tick-ms');
-  const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
+  // Compute-ticken är låst till FFT-takten (TICK_MS). Ett gammalt sparat
+  // tick-ms (t.ex. 25 från nedsamplings-eran) får inte sätta smoothing-basen.
+  const savedTickMs = Number(getItem('tick-ms'));
+  const tick = savedTickMs >= 5 && savedTickMs <= TICK_MS ? savedTickMs : TICK_MS;
   engineInstance = new engineMod.PiLightEngine(tick);
   
 
