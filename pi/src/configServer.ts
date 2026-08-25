@@ -1317,7 +1317,7 @@ export function startConfigServer(port = 3050): void {
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
     const mic = getMic();
-    const saved = Number(getItem('mic-gain') || '15');
+    const saved = 15;
     res.json({ gain: mic ? mic.getMicGain() : saved });
   });
 
@@ -1339,7 +1339,7 @@ export function startConfigServer(port = 3050): void {
      res.json({
        enabled: mic ? mic.isAutoGainEnabled() : false,
        multiplier: mic ? mic.getAutoGainMultiplier() : 1,
-      effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
+      effective: mic ? mic.getEffectiveGain() : 15,
       health: mic ? mic.getMicHealth() : null,
 
      });
@@ -1637,10 +1637,10 @@ export function startConfigServer(port = 3050): void {
         peakBoost: cal.peakBoost,
       },
       micGain: {
-        base: mic ? mic.getMicGain() : Number(getItem('mic-gain') || '15'),
+        base: mic ? mic.getMicGain() : 15,
         autoGainEnabled: true,
         autoMultiplier: mic ? mic.getAutoGainMultiplier() : 1,
-        effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
+        effective: mic ? mic.getEffectiveGain() : 15,
         health: mic ? mic.getMicHealth() : null,
       },
 
