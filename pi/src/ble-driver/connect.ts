@@ -462,13 +462,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
               await withTimeout(ch.writeAsync(brightMaxBuf, true), 'anchor write', 3000);
               dlog(`${ts()}    anchor write OK`);
             } catch (e: any) {
-              // RACE GUARD: withTimeout(anchor write, 3000) kan kasta sent
-              // om writeAsync resolvar precis runt 3s-gränsen. Om finish()
-              // redan körts (resolved=true) är vi redan anslutna.
-              if (resolved) {
-                dlog(`${ts()}    (ignorerar sen anchor-write-timeout: ${e?.message ?? e})`);
-                return;
-              }
+
               console.warn(`${ts()}    anchor write FEL: ${e?.message ?? e} — disconnectar`);
               try { await peripheral.disconnectAsync(); } catch {}
               finish({ connected: false, error: `Anchor write failed: ${e?.message ?? e}` });
