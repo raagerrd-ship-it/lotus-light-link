@@ -662,7 +662,7 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   const s = loadMicState();
   if (!s) { dlog('[ALSA] No persisted mic-state found, using defaults'); return; }
   // A3: typeof NaN === 'number' → NaN slank igenom förr. Kräv finita värden.
-  if (Number.isFinite(s.micGainBase as number)) micGainBase = Math.max(0.1, Math.min(AUTO_GAIN_MAX, s.micGainBase));
+  if (Number.isFinite(s.micGainBase)) micGainBase = Math.max(0.1, Math.min(AUTO_GAIN_MAX, s.micGainBase as number));
   const p1 = sanitizeCalPoint(s.calPoint1 ?? null);
   const p2 = sanitizeCalPoint(s.calPoint2 ?? null);
   if (p1) calPoint1 = p1;
