@@ -535,22 +535,18 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
 
       n.on('discover', onDiscover);
 
+      // Yttre timern bounder BARA scan→match. Vid match clearas den högst i
+      // onDiscover, så den kan aldrig fyra mid-connect (de inre withTimeout
+      // bounder connect-fasen).
       const timer = setTimeout(async () => {
-        if (matched) {
-          // Detta ska aldrig hända nu (connectAsync har egen 4s timeout) —
-          // men om det gör det, säg sanningen istället för "ingen matchade".
-          dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — match hittades men connect hängde (${discoverCount} discover-events)`);
-        } else {
-          dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
-        }
+        dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
         try { await n.stopScanningAsync(); } catch {}
         finish({
           connected: false,
-          error: matched
-            ? `Match hittad men connect hängde efter ${timeoutMs}ms`
-            : `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms (${discoverCount} discover-events)`,
+          error: `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms (${discoverCount} discover-events)`,
         });
       }, timeoutMs);
+
 
       dlog(`${ts()} 2. startScanningAsync([], true)…`);
       n.startScanningAsync([], true)
