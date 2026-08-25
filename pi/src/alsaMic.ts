@@ -180,7 +180,6 @@ let bandHopCounter = 0;
 // ── BandResult ur analysatorns oktavband ──
 // spec/onset är per-band AGC:ade 0..1. Motorn använder bara spektral andel här;
 // brightness-formen kommer från frame.intensity och nivåskalan från lightRawRms×gain.
-const BAND_SCALE = 1.0; // ingen extra konstant: enda taket är energyNorm > 1 → 1
 
 // Övre kant (Hz) per analysator-band, i ordning sub..air.
 const BAND_TOP_HZ = [60, 120, 250, 500, 2000, 5000, 10000, 16000];
