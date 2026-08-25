@@ -398,24 +398,19 @@ function GainCalibrationPanel({
     }).catch(() => {});
   }, [piBase]);
 
-  // Live-poll: endast auto-gain (multiplier/effective). Snabbpoll i 5s efter slider-aktivitet.
+  // Live-poll: endast auto-gain (multiplier/effective). Lamp/input-nivåerna kommer
+  // ur den delade /api/live-pollern. Snabbpoll i 5s efter slider-aktivitet.
   const fastPollUntilRef = useRef(0);
   useEffect(() => {
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
       try {
-        const [ag, st] = await Promise.all([
-          fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
-          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null),
-        ]);
+        const ag = await fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json());
         if (!cancelled) {
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
           if (ag.effective != null) setEffectiveGain(ag.effective);
           setHealth(ag.health ?? null);
-          // pct = EXAKT den 0–100-nivå som kommenderades till lampan (bar = lampa).
-          setLampBrightness(st?.ble?.lastSent?.pct ?? null);
-          setInputLevel(st?.live?.inputLevel ?? null);
         }
       } catch {}
       if (cancelled) return;
@@ -425,6 +420,7 @@ function GainCalibrationPanel({
     poll();
     return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
   }, [piBase]);
+
 
   // Debounce:ad PUT medan man drar → motorn hinner tillämpa och nivå-baren
   // följer med i realtid (snabbpoll 400 ms i 5 s efter senaste dragning).
