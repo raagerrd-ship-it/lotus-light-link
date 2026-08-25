@@ -15,7 +15,7 @@ import { BeatMonitor } from "@/components/BeatMonitor";
 // EN global inställnings-uppsättning — profiler/presets borttagna 2026-08-25.
 type Cal = {
   bassWeight: number; attack: number; softness: number;
-  brightnessFloor: number; punchWhiteThreshold: number; transientGain: number;
+  brightnessFloor: number; loudnessFloor: number; punchWhiteThreshold: number; transientGain: number;
   ceilingSensitivity: number; colorSpectralTilt: number;
   onsetThreshold: number; onsetRefractoryMs: number;
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
@@ -25,7 +25,7 @@ type Cal = {
 
 const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 71,
-  brightnessFloor: 25, punchWhiteThreshold: 100, transientGain: 1.1,
+  brightnessFloor: 25, loudnessFloor: 0.12, punchWhiteThreshold: 100, transientGain: 1.1,
   ceilingSensitivity: 1.0, colorSpectralTilt: 0.25,
   onsetThreshold: 4.0, onsetRefractoryMs: 300,
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
