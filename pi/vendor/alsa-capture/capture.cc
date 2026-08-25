@@ -22,6 +22,8 @@
 #include <sched.h>
 #include <atomic>
 #include <thread>
+#include <chrono>
+#include <atomic>
 #include <string>
 #include <vector>
 #include <memory>
@@ -163,6 +165,11 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
   }
 
   void Run() {
+    RunInner();
+    threadDone_.store(true);
+  }
+
+  void RunInner() {
     TryRealtimePriority();
 
     snd_pcm_t* handle = nullptr;
@@ -250,6 +257,7 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
   CaptureOptions options_;
   std::atomic<bool> closed_;
   std::thread thread_;
+  std::atomic<bool> threadDone_{false};
   Napi::ThreadSafeFunction audioTsfn_;
   Napi::ThreadSafeFunction eventTsfn_;
 };
