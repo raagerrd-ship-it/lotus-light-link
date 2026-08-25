@@ -240,6 +240,7 @@ const DEFAULT_CAL: LightCalibration = {
   barAccent: 1.0,
   lightScale: 0.95,
   lightBassWeight: 0.5,
+  centerAdaptSeconds: 999,
 };
 
 
