@@ -56,6 +56,7 @@ export interface TickConstants {
   brightnessFloor: number;
   transientGain: number;
   ceilingSensitivity: number;
+  loudnessFloor: number;
   lutR: Uint8Array;
   lutG: Uint8Array;
   lutB: Uint8Array;
@@ -101,6 +102,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     brightnessFloor: cal.brightnessFloor ?? 0,
     transientGain: cal.transientGain ?? 1.0,
     ceilingSensitivity: cal.ceilingSensitivity ?? 1.0,
+    loudnessFloor: cal.loudnessFloor ?? 0.12,
     lutR,
     lutG,
     lutB,
