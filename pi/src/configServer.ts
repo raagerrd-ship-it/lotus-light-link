@@ -15,6 +15,13 @@ import {
 import type { GainCalPoint } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getRuntimeHealth } from './runtimeHealth.js';
+// FIX 2: statiska imports i stället för await import() per request — interna
+// moduler, ingen load-order-fara när servern lyssnar.
+import { getHardcodedConnected, getLastDisconnectReason } from './ble-driver/connect.js';
+import { getRestartHistory } from './restartLog.js';
+import { getLastSent } from './ble-driver/protocol.js';
+import { isControllerDrainAttached, getQueuedPackets } from './ble-driver/controllerDrain.js';
+import { getLifecycleState, isManualOverrideOff, getPendingShutdownInMs } from './engineLifecycle.js';
 
 import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
@@ -429,8 +436,6 @@ export function startConfigServer(port = 3050): void {
     refreshVersionInfo();
     const sonos = getSonosState();
     const engine = getEngine();
-    const { getHardcodedConnected, getLastDisconnectReason } = await import('./ble-driver/connect.js');
-    const { getRestartHistory } = await import('./restartLog.js');
     const c = getHardcodedConnected();
     // Live UI-strip: input/output/queue/palette/låt
     // Input = rå RMS efter mic-gain (samma källa som VU-mätaren i Avancerat).
@@ -467,7 +472,6 @@ export function startConfigServer(port = 3050): void {
     // normaliserade mot 0.5 och därför alltid pinnas nära 1.0 för det
     // dominerande bandet. outputBrightness är EXAKT lastSent.pct → bar = lampa.
     const inputLevel = Math.max(0, Math.min(1, micTotal));
-    const { getLastSent } = await import('./ble-driver/protocol.js');
     const sent = getLastSent();
     const lampPct = sent?.pct ?? (diag?.brightnessPct ?? 0);
     const outputBrightness = Math.max(0, Math.min(1, lampPct / 100));
@@ -475,19 +479,13 @@ export function startConfigServer(port = 3050): void {
     // pending=1 är normalt (paketet just nu i flygning till controllern) och
     // hör inte hemma i ett "kö"-mått — då skulle värdet alltid vara ≥1.
     let queueLen = 0;
-    try {
-      const cd = await import('./ble-driver/controllerDrain.js');
-      if (cd.isControllerDrainAttached?.()) queueLen = cd.getQueuedPackets?.() ?? 0;
-    } catch {}
+    if (isControllerDrainAttached()) queueLen = getQueuedPackets();
     let lifecycleState: string | null = null;
     let lifecycleOverride = false;
     let pendingShutdownInMs: number | null = null;
-    try {
-      const lc = await import('./engineLifecycle.js');
-      lifecycleState = lc.getLifecycleState();
-      lifecycleOverride = lc.isManualOverrideOff();
-      pendingShutdownInMs = lc.getPendingShutdownInMs();
-    } catch {}
+    lifecycleState = getLifecycleState();
+    lifecycleOverride = isManualOverrideOff();
+    pendingShutdownInMs = getPendingShutdownInMs();
     res.json({
       ok: true,
       lifecycle: { state: lifecycleState, manualOverrideOff: lifecycleOverride, pendingShutdownInMs },
