@@ -103,8 +103,18 @@ const RECONNECT_DEBOUNCE_MS = 1000;
 let _lastDisconnectWasAuto = false;
 let _lastDisconnectReason: 'manual' | 'idle-timeout' | 'supervision-timeout' | 'unknown' = 'unknown';
 
-export function wasAutoDisconnected(): boolean { return _lastDisconnectWasAuto; }
 export function getLastDisconnectReason(): string { return _lastDisconnectReason; }
+
+/**
+ * Gemensam nedrivning av device-state (engine-callback, drain, device-slot,
+ * last-sent-cache). Cold path — anropas från alla disconnect-vägar.
+ */
+function teardownDeviceState(): void {
+  _onDisconnected?.();
+  detachControllerDrain();
+  setDevice(null);
+  resetLastSent();
+}
 
 function clearAutoReconnect(): void {
   if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
@@ -185,14 +195,6 @@ export function getHardcodedConnected(): { connected: boolean; name: string; mac
   return { connected: !!_connected && _connected.state === 'connected', name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac };
 }
 
-export function getAutoReconnectStatus(): { enabled: boolean; attempt: number; pending: boolean } {
-  return { enabled: _autoReconnectEnabled, attempt: _autoReconnectAttempt, pending: !!_autoReconnectTimer };
-}
-
-export function getHardcodedPeripheral(): any | null {
-  return _connected;
-}
-
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   // Manuell disconnect → stoppa auto-reconnect-loopen så vi inte kämpar mot användaren.
   _lastDisconnectWasAuto = false;
@@ -204,10 +206,7 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
   _consecutiveFailures = 0;
   if (!_connected) return { disconnected: true };
   // Engine hanterar stopp av keep-alive + idle-heartbeat via callback.
-  _onDisconnected?.();
-  detachControllerDrain();
-  setDevice(null);
-  resetLastSent();
+  teardownDeviceState();
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   return { disconnected: true };
@@ -234,10 +233,7 @@ export async function triggerIdleDisconnect(): Promise<void> {
     await forceCleanupStalePeripheral('idle-disconnect-no-connected').catch(() => {});
     return;
   }
-  _onDisconnected?.();
-  detachControllerDrain();
-  setDevice(null);
-  resetLastSent();
+  teardownDeviceState();
   try { await _connected.disconnectAsync(); } catch {}
   _connected = null;
   // Purga noble's interna peripheral-cache så nästa connect garanterat
