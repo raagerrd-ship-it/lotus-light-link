@@ -481,7 +481,6 @@ async function main() {
             `lastTickAge=${Math.round(msSinceLastTick())}ms ` +
             `writePending=${wd.writePending} pendingAge=${wd.pendingAgeMs}ms ` +
             `lastWriteAge=${wd.lastWriteAgeMs}ms slotLocked=${wd.slotLockedForMs}ms ` +
-            `bleBusySkips=${bleStats.tickSkippedBleBusyCount} ` +
             `writeStallReleases=${bleStats.writeStallReleaseCount} ` +
             `writeSyncMax=${bleStats.writeSyncMaxMs}ms ` +
             `maxNativeCall=${rh.maxNativeCallMs}ms ` +

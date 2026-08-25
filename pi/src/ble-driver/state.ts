@@ -33,7 +33,6 @@ export const bleStats = {
   skipInFlightCount: 0,       // legacy: writePending
   skipLeaseLockedCount: 0,    // busy pga tick-lease ej utgången
   skipControllerBusyCount: 0, // busy pga outstanding paket i HCI
-  skipRateLimitCount: 0,
   fftDroppedCount: 0,
   writeFailCount: 0,
   writeStuckCount: 0,
@@ -50,11 +49,9 @@ export const bleStats = {
   tickOkCount: 0,
   tickAbortNoMicCount: 0,
   tickAbortBleBusyCount: 0,
-  tickAbortBleRateLimitCount: 0,
   tickAbortNoChangeCount: 0,
   tickAbortNoDeviceCount: 0,
   deadbandBlockedCount: 0,        // anti-flicker deadband held last value (no write generated)
-  tickSkippedBleBusyCount: 0,     // pre-gate: tick hoppades över FÖRE beräkning pga BLE busy (sparad CPU)
   dropCount: 0,                   // antal detekterade drops (lång-horisont bas-explosion → vit punch)
 
   writeSyncMaxMs: 0,          // längsta SYNKRONA tid i native writeAsync (event-loop-blockering)

@@ -9,7 +9,7 @@
  *   const lamp = createLampDriver({ device: { name: 'ELK-BLEDOM01', mac: 'BE:67:00:15:09:41' } });
  *   await lamp.connect();
  *   lamp.startKeepAlive();
- *   setInterval(() => { if (lamp.canWriteNow()) lamp.setColor(255, 80, 0, 100); }, 25);
+    setInterval(() => { lamp.setColor(255, 80, 0, 100); }, 25); // latest-frame wins
  *
  * Lagret ovanpå (ljudreaktiv motor) ligger i pi/src/piEngine.ts och bygger på
  * de råa funktionerna som re-exporteras härifrån.
@@ -31,7 +31,7 @@ export interface LampDriverConfig {
   device?: LampDevice;
   /** Valfri logger (annars tyst om inte LOTUS_DEBUG=1). */
   logger?: (...args: unknown[]) => void;
-  /** Tick-lease i ms (write-cadence-cap). Default 25. */
+  /** Tick-lease i ms. Default 25. */
   slotLeaseMs?: number;
   /** Dimming-gamma 1.0–3.0. Default 1.8. */
   dimmingGamma?: number;
