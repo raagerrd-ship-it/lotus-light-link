@@ -9,7 +9,7 @@
  *   const lamp = createLampDriver({ device: { name: 'ELK-BLEDOM01', mac: 'BE:67:00:15:09:41' } });
  *   await lamp.connect();
  *   lamp.startKeepAlive();
-    setInterval(() => { lamp.setColor(255, 80, 0, 100); }, 25); // latest-frame wins
+ *   setInterval(() => { lamp.setColor(255, 80, 0, 100); }, 25); // latest-frame wins
  *
  * Lagret ovanpå (ljudreaktiv motor) ligger i pi/src/piEngine.ts och bygger på
  * de råa funktionerna som re-exporteras härifrån.
