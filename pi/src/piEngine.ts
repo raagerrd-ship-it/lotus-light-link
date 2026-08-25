@@ -183,14 +183,15 @@ const DEFAULT_CAL: LightCalibration = {
   tickEnergyFloor: 0.01,
   beatSource: 'bass',
   beatCutoffHz: 150,
-  dropEnabled: true,
+  dropEnabled: false,
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 45,
+  beatLeadMs: 0,
   beatSyncStrength: 0.10,
   dropSource: 'analyser',
   barAccent: 1.0,
+  peakBoost: 0.2,
   colorSpectralTilt: 0.25,
 };
 
