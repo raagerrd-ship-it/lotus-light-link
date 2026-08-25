@@ -685,7 +685,7 @@ export class PiLightEngine {
 
     if (!kick || !this._beat) return;
 
-    const k0 = this.cal.beatSyncStrength ?? 0.10;
+    const k0 = this.cal.beatSyncStrength;
     const beatMsNow = 60000 / this._beat.bpm;
     // Fasen mäts helst mot analysatorns FÄRDIGMÄTTA slagtid (sub-hop, ±1.3 ms).
     // Date.now() här bär ALSA-leveransens jitter. Bara färska värden duger.
@@ -716,7 +716,7 @@ export class PiLightEngine {
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
-    const lead = this.cal.beatLeadMs ?? 0;
+    const lead = this.cal.beatLeadMs;
     return {
       locked: hasBeat(this._beat),
       bpm: this._beat?.bpm ?? 0,
@@ -797,7 +797,7 @@ export class PiLightEngine {
       this.breakdownFrames = 0;
       const _now = performance.now();
       // White INSTANTLY on drop — no black dip first (no dip branch exists).
-      this.dropFlashUntil = _now + (this.cal.dropFlashMs ?? 320);
+      this.dropFlashUntil = _now + (this.cal.dropFlashMs);
       bleStatsState.dropCount++;
       // Express-write: max brightness omedelbart, behåll palette-färgen
       // (2026-07-22: ingen vit tvingning — drop förstärker aktuell färg).
@@ -1092,7 +1092,7 @@ export class PiLightEngine {
         // som PLL:en). Är den gammal faller varje steg nedan tillbaka på den
         // egna FFT-vägen i stället för att styra ljuset på inaktuell struktur.
         const frame = Date.now() - getLatestFrameAt() < 60 ? getLatestFrame() : null;
-        const energyFloor = this.cal.onsetEnergyFloor ?? 0;
+        const energyFloor = this.cal.onsetEnergyFloor;
         const peakBand = bands ? Math.max(bands.bassRms, bands.midHiRms) : 0;
         const passesEnergyGate =
           energyFloor <= 0 ||
@@ -1116,14 +1116,14 @@ export class PiLightEngine {
         // Pulsen fyras av rutnätet med leadMs försprång → toppen landar PÅ slaget
         // trots BLE-skrivlatensen, i stället för strax efter det.
         if (gridDrives && passesEnergyGate) {
-          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 0));
+          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs));
           if (idx !== this._lastGridIdx) {
             this._lastGridIdx = idx;
             // ETTANS ACCENT (steg 5): barShift säger hur många slag ankaret ska
             // flyttas för att landa på ettan (-1 = osäkert), så ettan är de idx där
             // (idx + barShift) delas av 4. Kräver god konfidens — på ett gissat
             // rutnät hade accenten hamnat på fel slag och känts som en missad takt.
-            const accent = this.cal.barAccent ?? 1;
+            const accent = this.cal.barAccent;
             const shift = frame?.barShift ?? -1;
             const onOne = accent > 1 && shift >= 0 && (this._beat?.confidence ?? 0) > 0.4 &&
               ((((idx + shift) % 4) + 4) % 4) === 0;
@@ -1315,8 +1315,8 @@ export class PiLightEngine {
       progress,
       done: !this.autoTuneActive && this.autoTuneCount > 0,
       current: {
-        tickEnergyFloor: this.cal.tickEnergyFloor ?? 0,
-        onsetEnergyFloor: this.cal.onsetEnergyFloor ?? 0,
+        tickEnergyFloor: this.cal.tickEnergyFloor,
+        onsetEnergyFloor: this.cal.onsetEnergyFloor,
       },
     };
     if (!this.autoTuneActive && this.autoTuneCount > 32) {
@@ -1450,7 +1450,7 @@ export class PiLightEngine {
       // smoothingen så soft-releasen fadear ner den jämnt (inget hack).
       {
         const _px = bands.shape ?? 0;
-        const amt = cal.peakBoost ?? 0.2;
+        const amt = cal.peakBoost;
         if (amt > 0 && _px > 0.9) {
           shape += (_px - 0.9) * 10 * amt;
           if (shape > 1) shape = 1;
@@ -1463,7 +1463,7 @@ export class PiLightEngine {
       // ── 2. Tystnads-gate ──
       // När absolut amplitud < tickEnergyFloor är input rumsbrus, inte musik:
       // shape forceras till 0 och brightness sjunker mot golvet.
-      const tickFloor = cal.tickEnergyFloor ?? 0;
+      const tickFloor = cal.tickEnergyFloor;
       const inSilence = tickFloor > 0 && level < tickFloor;
       if (inSilence) shape = 0;
 
@@ -1500,7 +1500,7 @@ export class PiLightEngine {
         const alpha = 1 - Math.pow(1 - cal.attackAlpha, _eRatio);
         // MJUK attack vid låg energi (brus snäpper inte → inget flimmer),
         // full SNAP vid hög energi.
-        const _softFloor = cal.lowSoftFloor ?? 0.25;
+        const _softFloor = cal.lowSoftFloor;
         const _softK = _softFloor + (1 - _softFloor) * Math.min(1, shape / 0.5);
         this.smoothed += alpha * _softK * (shape - this.smoothed);
       }
@@ -1600,7 +1600,7 @@ export class PiLightEngine {
 
       // ── FÄRG-TILT på spektralbalans (helt oberoende av brightness) ──
       // bas-tung mix → varmare (rött upp, blått ner), diskant-tung → svalare.
-      const tilt = cal.colorSpectralTilt ?? 0;
+      const tilt = cal.colorSpectralTilt;
       let cr = this.color[0], cg = this.color[1], cb = this.color[2];
       if (tilt > 0 && !inSilence) {
         // -1 (helt diskant) .. +1 (helt bas)
