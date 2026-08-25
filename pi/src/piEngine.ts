@@ -1409,13 +1409,23 @@ export class PiLightEngine {
         return;
       }
 
-      // ── 1. DIRIGENTENS TVÅ INSIGNALER (isärhållna) ──
-      // level = ABSOLUT amplitud (lightRawRms × tvåpunktsGain). Ingen AGC.
-      //         → långsam loudness-skala för tyst/låg volym.
-      // shape = frame.intensity (sektionsenergi, 0..1).
-      //         → bär musikens uppbyggnader/breakdowns och beat-dynamik.
+      // ── 1. INPUT-SYNC: formen ÄR den råa, gain-satta inputen ──
+      // level/shape = bands.totalRms (lightRawRms × tvåpunktsGain, ingen AGC).
+      // frame.intensity (bands.shape) är sektions-relativ och används BARA till
+      // topp-boosten nedan — aldrig som form-källa.
       const level = Math.max(0, Math.min(1, bands.totalRms));
-      let shape = Math.max(0, Math.min(1, bands.shape ?? 0));
+      let shape = level;
+
+      // Mjuk topp-boost på ÄKTA toppar (intensity > 90 %), adderad FÖRE
+      // smoothingen så soft-releasen fadear ner den jämnt (inget hack).
+      {
+        const _px = bands.shape ?? 0;
+        const amt = cal.peakBoost ?? 0.2;
+        if (amt > 0 && _px > 0.9) {
+          shape += (_px - 0.9) * 10 * amt;
+          if (shape > 1) shape = 1;
+        }
+      }
 
       const bassNorm = normalizeFixed(bands.bassRms);
       const midHiNorm = normalizeFixed(bands.midHiRms);
