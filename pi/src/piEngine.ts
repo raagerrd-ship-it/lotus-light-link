@@ -65,11 +65,9 @@ export interface TickConstants {
 export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
-  // OBS: motorn kör 75 Hz (FRAME_MS ≈ 13.33). Denna 10 är den GAMLA 100 Hz-antagelsen som
-  // onset-alforna + refraktären fortfarande är gehörs-trimmade mot. Att byta till FRAME_MS gör
-  // punchen ~33 % snabbare OCH remappar persisterade onsetRefractoryMs → görs som LIVE-trim,
-  // inte blint. (Granskning M4.)
-  const fftMs = 10;
+  // fftMs = FRAME_MS: onset-alforna körs nu på sann 75 Hz-takt (var felaktigt hårdkodad 10 = 100 Hz-antagande).
+  const fftMs = FRAME_MS;
+
 
   const fftRatio = fftMs / 125;
   const fftSecRatio = fftMs / 1000;
@@ -131,7 +129,7 @@ export interface LightCalibration {
   transientGain: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
-  /** Minsta gap mellan onsets i ms — räknas om till frames (fftMs=10, se M4) . UI-default 110ms. */
+  /** Minsta gap mellan onsets i ms — räknas om till frames via FRAME_MS (sann 75 Hz). UI-default 110ms. */
   onsetRefractoryMs: number;
    /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
    flickerDeadband: number;
@@ -394,10 +392,10 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
-  // Refractory period — minimum gap between onsets, räknat i frames (fftMs=10, se M4)
+  // Refractory period — minimum gap between onsets, räknat i frames (FRAME_MS ≈ 13.33 ms)
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
-  // Refractory räknas dynamiskt från cal.onsetRefractoryMs (fftMs=10 — gammal 100 Hz-antagelse, se M4; sann takt 75 Hz / 13.33 ms)
+  // Refractory räknas dynamiskt från cal.onsetRefractoryMs / FRAME_MS (sann takt 75 Hz)
 
   // ── Drop-detektor (lång tidshorisont, @75Hz på bas-energi) ──
   // Drops är en struktur över sekunder: breakdown/uppbyggnad → plötslig bas-explosion.
@@ -577,8 +575,8 @@ export class PiLightEngine {
     this.onsetPrevFlux = flux;
 
 
-    // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 75Hz (10ms/frame)
-    const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
+    // Refractory gate: minimum gap mellan onsets, räknat i frames på sann takt (FRAME_MS ≈ 13.33 ms @ 75 Hz)
+    const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / FRAME_MS));
     this.onsetFrameCounter++;
     let fired = false;
     if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
