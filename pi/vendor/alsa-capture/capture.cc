@@ -81,7 +81,7 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
         env, info[0].As<Napi::Function>(), "alsa-audio", 4, 1);
     // Event TSFN — rare string events; same JS callback.
     eventTsfn_ = Napi::ThreadSafeFunction::New(
-        env, info[0].As<Napi::Function>(), "alsa-event", 0, 1);
+        env, info[0].As<Napi::Function>(), "alsa-event", 8, 1);
 
     thread_ = std::thread(&CaptureWorker::Run, this);
   }
@@ -129,14 +129,12 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
   void EmitAudio(std::vector<char>&& bytes) {
     auto frame = new AudioFrame{ std::move(bytes) };
     auto status = audioTsfn_.NonBlockingCall(frame, [](Napi::Env env, Napi::Function jsCb, AudioFrame* f) {
-      std::unique_ptr<AudioFrame> owned(f);
       Napi::HandleScope scope(env);
-      // Zero-copy: Buffer::New adopterar vektorns minne och frigör det via
-      // finalizern. Copy() innebar en extra memcpy per frame (100 Hz).
-      auto* raw = new std::vector<char>(std::move(owned->bytes));
+      // Zero-copy: Buffer::New pekar rakt in i AudioFrame-vektorn; finalizern
+      // äger framen. Ingen extra vektor-move/alloc per frame.
       auto buf = Napi::Buffer<char>::New(
-          env, raw->data(), raw->size(),
-          [](Napi::Env, char*, std::vector<char>* v) { delete v; }, raw);
+          env, f->bytes.data(), f->bytes.size(),
+          [](Napi::Env, char*, AudioFrame* owned) { delete owned; }, f);
       jsCb.Call({ Napi::String::New(env, "audio"),
                   Napi::String::New(env, ""),
                   buf });
@@ -219,10 +217,10 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     size_t bytesPerFrame = (static_cast<size_t>(options_.channels) * static_cast<size_t>(physWidth)) / 8;
     size_t bufferBytes   = static_cast<size_t>(actualFrames) * bytesPerFrame;
 
-    std::vector<char> readBuf(bufferBytes);
-
     while (!closed_.load(std::memory_order_acquire)) {
-      snd_pcm_sframes_t got = snd_pcm_readi(handle, readBuf.data(), actualFrames);
+      // Läs direkt i den vektor som skickas vidare — ingen memcpy per callback.
+      std::vector<char> frameBuf(bufferBytes);
+      snd_pcm_sframes_t got = snd_pcm_readi(handle, frameBuf.data(), actualFrames);
       if (got == -EPIPE) {
         EmitEvent("overrun", "overrun");
         snd_pcm_prepare(handle);
@@ -242,9 +240,9 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
         got = static_cast<snd_pcm_sframes_t>(actualFrames);
       }
       const size_t copyBytes = static_cast<size_t>(got) * bytesPerFrame;
-      if (copyBytes == 0 || copyBytes > readBuf.size()) continue;
-      std::vector<char> out(readBuf.data(), readBuf.data() + copyBytes);
-      EmitAudio(std::move(out));
+      if (copyBytes == 0 || copyBytes > frameBuf.size()) continue;
+      frameBuf.resize(copyBytes);  // krymper bara → ingen realloc
+      EmitAudio(std::move(frameBuf));
     }
 
     if (audioTsfn_) audioTsfn_.Release();
