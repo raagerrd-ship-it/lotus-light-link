@@ -754,6 +754,8 @@ export function getMicHealth(): MicHealth {
 
 
 function onAudioData(buf: Buffer): void {
+  const _cbT0 = performance.now();
+  _lastAudioCbAt = _cbT0;
   _audioCbCount++;
   _audioCbBytes += buf.byteLength;
   if (_audioCbFirstAt === 0) {
