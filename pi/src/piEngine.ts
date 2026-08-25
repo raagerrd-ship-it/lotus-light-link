@@ -92,6 +92,16 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     }
   }
 
+  const centerAdaptSeconds = cal.centerAdaptSeconds ?? 999;
+  // >= 900 s räknas som "i praktiken fast" — alpha blir 0 så dynamicCenter
+  // hålls exakt på 0.5 och applyDynamics expanderar absolut energi.
+  const centerAlpha = centerAdaptSeconds <= 0 || centerAdaptSeconds >= 900
+    ? 0
+    : 1 - Math.exp(-(tickMs / 1000) / centerAdaptSeconds);
+  const centerAlphaFft = centerAdaptSeconds <= 0 || centerAdaptSeconds >= 900
+    ? 0
+    : 1 - Math.exp(-(fftMs / 1000) / centerAdaptSeconds);
+
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
@@ -100,8 +110,8 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
     onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
-    centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
-    centerAlphaFft: 1 - Math.pow(1 - 0.002, fftRatio),
+    centerAlpha,
+    centerAlphaFft,
     gammaIsUnity,
     dimmingGamma: getDimmingGamma(),
     brightnessFloor: cal.brightnessFloor ?? 0,
@@ -205,6 +215,9 @@ export interface LightCalibration {
    *  smalt bas-filter för beat ska inte göra ljuset dimt på diskant-tungt
    *  innehåll. 0.5 = bredband (default). */
   lightBassWeight: number;
+  /** Dynamic-center adaptionshastighet i sekunder. 0 = fryst vid 0.5,
+   *  ~5 = gammal ljud-följande normalisering, 999 = i praktiken fast (default). */
+  centerAdaptSeconds: number;
   [key: string]: any;
 }
 
@@ -237,6 +250,7 @@ const DEFAULT_CAL: LightCalibration = {
   barAccent: 1.0,
   lightScale: 0.95,
   lightBassWeight: 0.5,
+  centerAdaptSeconds: 999,
 };
 
 
@@ -1150,8 +1164,11 @@ export class PiLightEngine {
         // Drop-detektor @100Hz (analysatorns dropCount med bas-svackan som fallback).
         if (bands) this.processDrop(bands.bassRms, frame);
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
-        // (50Hz) — center följer då 100% av musiken, inte varannan frame.
-        if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
+        // (50Hz). Med centerAdaptSeconds = 999 (default) är centret FAST = 0.5
+        // så applyDynamics expanderar ABSOLUT energi — uthålliga uppgångar syns
+        // fullt ut och sjunker inte tillbaka mot ett löpande snitt. Endast när
+        // centerAdaptSeconds sätts lågt (t.ex. 5) följer centret musiken igen.
+        if (this.tc.centerAlphaFft > 0 && this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
           const bN = normalizeFixed(bands.bassRms);
           const mN = normalizeFixed(bands.midHiRms);
           let raw = bN * 0.5 + mN * 0.5;
@@ -1167,6 +1184,8 @@ export class PiLightEngine {
           this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
           if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
           else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
+        } else if (this.dynamicCenter !== 0.5) {
+          this.dynamicCenter = 0.5;
         }
         // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @100Hz till recorder.
         if (this._analysisTap && bands) {

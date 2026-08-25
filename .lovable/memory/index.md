@@ -25,7 +25,8 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 - [Sonos metadata](mem://technical/sonos-metadata-resolution) — CORS and deep extraction of album art
 - [Frequency blending](mem://technical/audio-processing/frequency-blending) — 150Hz split and bass weight logic
 - [Punch white](mem://features/lighting/punch-white) — Threshold effect for maximum intensity flashes
-- [Symmetric dynamics](mem://technical/dynamics-processing/symmetric-dynamics) — Adaptive dynamicCenter tracking with symmetric expansion
+- [Symmetric dynamics](mem://technical/dynamics-processing/symmetric-dynamics) — Fixed dynamicCenter=0.5 by default (centerAdaptSeconds=999); adaptive mode optional via config
+- [Fast dynamic center](mem://pi/lighting/fixed-dynamic-center) — centerAdaptSeconds default 999 prevents sustained energy from being normalized back to a running average
 - [Device modes](mem://features/lighting/device-modes) — RGB vs Brightness-only packet configurations
 - [Google login](mem://auth/google-login-branding) — Custom OAuth redirect URI for branding
 - [Sonos capture constraint](mem://constraints/sonos-audio-capture-limitations) — Sonos capture requires OS routing
