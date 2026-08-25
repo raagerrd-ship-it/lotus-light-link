@@ -504,8 +504,11 @@ export class PiLightEngine {
 
 
 
-  private initOnsetBuffer(tickMs: number): void {
-    this.onsetSize = Math.max(3, ((175 / tickMs + 0.5) | 0));
+  private initOnsetBuffer(): void {
+    // ~175 ms median-fönster på den SANNA frame-takten (75 Hz) ≈ 13 frames.
+    // Tidigare kopplat till tickMs, som inte längre styr frame-takten (gav ~93 ms).
+    this.onsetSize = Math.max(3, Math.round(175 / FRAME_MS));
+
     if (this.onsetBuffer.length < this.onsetSize) {
       this.onsetBuffer = new Float64Array(this.onsetSize);
       this.onsetSorted = new Float64Array(this.onsetSize);
