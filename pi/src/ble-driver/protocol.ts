@@ -97,8 +97,6 @@ const ACL_MAX_OUTSTANDING = (() => {
   return 6;
 })();
 
-let lastActualSendAt = 0;
-
 type QueuedFrame = { r: number; g: number; b: number; brightness: number };
 let queuedFrame: QueuedFrame | null = null;
 let drainTimer: ReturnType<typeof setTimeout> | null = null;
@@ -139,7 +137,6 @@ export function resetLastSent(): void {
   lastSendStartedAt = 0;
   stuckRecoveryInFlight = false;
   lastWriteTime = 0;
-  lastActualSendAt = 0;
   _writeLatAvgPrecise = 0;
   bleStats.controllerOutstandingCount = 0;
   bleStats.outstandingAgeMs = 0;
@@ -324,7 +321,6 @@ function drainQueuedWrite(): void {
     lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
-    lastActualSendAt = now;
 
     const _syncT0 = performance.now();
     let _writePromise: Promise<unknown>;
@@ -419,7 +415,6 @@ export function startKeepAlive(): void {
     lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
-    lastActualSendAt = now;
 
     device.characteristic.writeAsync(buf, true)
       .then(() => {
