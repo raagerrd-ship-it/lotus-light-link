@@ -28,8 +28,8 @@ Filer i mappen:
 | `protocol.ts` | Paketformat, write-gate (lease + ACL-outstanding), keep-alive, gamma |
 | `state.ts` | BLE-core-state: connected device, `bleStats`, UUID:er |
 | `controllerDrain.ts` | Läser noble/HCI outstanding-paket för backpressure |
-| `forceConnInterval.ts` | Tvingar 7.5–10ms connection interval via `hcitool` |
-| `adapter-hci-check.ts` | `isHci0Up()` — passiv koll att hci0 är UP RUNNING |
+| `forceConnInterval.ts` | Tvingar 20ms connection interval (16 units) via `hcitool` |
+| `adapter-hci-check.ts` | `isHci0Up()` — passiv koll att hci0 är UP RUNNING (up-only-policy) |
 | `noble-singleton.ts` | Lazy `@stoprocent/noble`-singleton (`getNobleAsync`) |
 | `reconnect-flag.ts` | `/tmp`-flagga för auto-restart efter process.exit |
 | `device-config.ts` | Mål-lampa (`setDeviceConfig`, `matchesHardcoded`) |

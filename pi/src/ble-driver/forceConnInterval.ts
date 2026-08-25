@@ -13,8 +13,8 @@
  * Den här modulen kör samma kommando automatiskt 500ms efter lyckad GATT-
  * connect + drain-attach. Failure är icke-fatal: om hcitool saknas, om
  * controllern säger nej, eller om handle är ogiltig → vi loggar och fortsätter.
- * Bench-resultatet (`connInterval` i UI) avslöjar då att fallback inte slog
- * igenom och vi har spårbarhet via journalctl-alternativet (systemctl status).
+ * `/api/ble/conn-params` visar då att fallback inte slog igenom (spårbarhet
+ * via systemctl status).
  *
  * Targetvärden (BLE spec):
  *   min=max=16 →  16 × 1.25ms = 20ms connection interval

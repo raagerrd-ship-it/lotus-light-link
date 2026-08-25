@@ -9,7 +9,7 @@
  *
  * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
  *
- * Conn-interval: 12 units = 15 ms (latens-prioriterat, se forceConnInterval.ts).
+ * Conn-interval: 16 units = 20 ms (se forceConnInterval.ts — 7.5 ms hängde Pi:n).
  */
 
 import { getDevice, bleStats } from './state.js';
