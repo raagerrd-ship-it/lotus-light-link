@@ -6,18 +6,16 @@ import { useEffect, useRef } from "react";
  * samma kedja (attack/release → dynamik → golv) som piEngine använder.
  */
 export function LightPreview({
-  softness, brightnessFloor, ceilingSensitivity, loudnessFloor, beatCutoffHz,
+  softness, brightnessFloor, beatCutoffHz,
 }: {
   softness: number;
   brightnessFloor: number;
-  ceilingSensitivity: number;
-  loudnessFloor: number;
   beatCutoffHz: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const orbRef = useRef<HTMLDivElement>(null);
-  const params = useRef({ softness, brightnessFloor, ceilingSensitivity, loudnessFloor, beatCutoffHz });
-  params.current = { softness, brightnessFloor, ceilingSensitivity, loudnessFloor, beatCutoffHz };
+  const params = useRef({ softness, brightnessFloor, beatCutoffHz });
+  params.current = { softness, brightnessFloor, beatCutoffHz };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -74,12 +72,11 @@ export function LightPreview({
       intensitySm = intensity > intensitySm ? intensity : intensitySm + (intensity - intensitySm) * release;
 
       // Dirigent v2: rå nivå skalar loudness långsamt; intensity bär formen.
-      const amp = Math.min(1, (0.14 + 0.04 * Math.sin(t / 9000)) * p.ceilingSensitivity);
+      const amp = Math.min(1, 0.14 + 0.04 * Math.sin(t / 9000));
       ampEnv += (amp - ampEnv) * (amp > ampEnv ? 0.08 : 0.008);
 
       const floor = p.brightnessFloor / 100;
-      const lFloor = p.loudnessFloor;
-      const loudness = Math.min(1, Math.max(0, lFloor + ampEnv * (1 - lFloor)));
+      const loudness = Math.min(1, Math.max(0, ampEnv));
       const energyForm = Math.min(1, intensitySm + kick * 0.08);
       let out = floor + energyForm * (1 - floor) * loudness;
       out = out <= 0 ? 0 : out >= 1 ? 1 : out;
