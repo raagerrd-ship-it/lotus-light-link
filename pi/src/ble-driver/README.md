@@ -37,7 +37,6 @@ setInterval(() => {
 | `setColor(r,g,b,brightness=100)` | Queua senaste färg + ljusstyrka. Returnerar `WriteResult` (`sent`/`no-device`). |
 | `setIdleColor(r,g,b)` | Uppdatera idle-färg (keep-alive bär den). |
 | `setPower(on)` | Väck/släck LED-drivern (BLEDOM intern off-state). |
-| `canWriteNow()` | Billig readiness-check för externa verktyg (lease + ACL-outstanding). |
 | `startKeepAlive()` / `stopKeepAlive()` | 200ms keep-alive mot supervision-timeout. |
 | `setDimmingGamma()` / `getDimmingGamma()` | Justera dimring-gamma. |
 | `setSlotLeaseMs(ms)` | Minsta avstånd mellan faktiska writes. |
