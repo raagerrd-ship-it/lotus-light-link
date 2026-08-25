@@ -83,10 +83,12 @@ let slotLockedUntil = 0;
 let writePending = false;
 // När writePending sattes. Om noble/HCI hänger settlar writeAsync aldrig och
 // writePending fastnar true → varje tick returnerar 'busy' → tickOk fryser och
-// playback-watchdogen tvingar en hård restart. Stale-release efter 1s gör en
-// BLE-stall icke-blockerande: kedjan öppnas igen och räknas i bleStats.
+// playback-watchdogen tvingar en hård restart. Stale-release gör en BLE-stall
+// icke-blockerande: kedjan öppnas igen och räknas i bleStats.
+// 2026-08-25: 1000ms → 150ms. En hängande write ska kosta EN frame, inte en
+// sekund av frusen leverans (motorn tickar vidare, framen droppas).
 let writePendingSince = 0;
-const WRITE_PENDING_TIMEOUT_MS = 1000;
+const WRITE_PENDING_TIMEOUT_MS = 150;
 
 
 // ── ACL-outstanding gate ──
