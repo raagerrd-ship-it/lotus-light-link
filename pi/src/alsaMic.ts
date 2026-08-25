@@ -692,6 +692,7 @@ export function setAlsaDevice(device: string): void {
 export function startMic(): void {
   if (capture) return;
 
+  _captureOpenedAt = performance.now();   // C2: baseline för first-audio-stall
   micStartError = null;
   _audioCbCount = 0;
   _audioCbBytes = 0;
@@ -1021,5 +1022,6 @@ export function stopMic(): void {
   lastFFTTimestamp = 0;
   _fftFrameCount = 0;
   micStartError = null;
+  _captureOpenedAt = 0;
   dlog('[ALSA] Microphone stopped');
 }
