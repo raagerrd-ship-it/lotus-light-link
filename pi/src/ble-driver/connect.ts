@@ -301,10 +301,7 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
   }
 
   // 4. Engine-side state reset (no-op om redan rent)
-  try { _onDisconnected?.(); } catch {}
-  try { detachControllerDrain(); } catch {}
-  try { setDevice(null); } catch {}
-  try { resetLastSent(); } catch {}
+  try { teardownDeviceState(); } catch {}
 }
 
 export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
@@ -420,10 +417,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           } catch {}
           peripheral.once?.('disconnect', () => {
             dlog(`[connect-hardcoded] peripheral disconnected (${peripheral.address})`);
-            _onDisconnected?.();
-            detachControllerDrain();
-            setDevice(null);
-            resetLastSent();
+            teardownDeviceState();
             bleStats.disconnectCount++;
             bleStats.lastDisconnectAt = new Date().toISOString();
             if (_connected === peripheral) _connected = null;
