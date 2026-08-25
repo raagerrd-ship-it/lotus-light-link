@@ -1384,9 +1384,6 @@ export function startConfigServer(port = 3050): void {
       res.json({ ok: true, ...mic.getGainCalPoints() });
     });
 
-      res.json({ ok: true, ...mic.getGainCalPoints() });
-    });
-
 
     app.delete('/api/gain-calibration', (_req, res) => {
       const mic = getMic();
