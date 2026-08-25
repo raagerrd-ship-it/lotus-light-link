@@ -16,7 +16,7 @@
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame } from './audio-analyser/index.js';
-import { noteOverrun } from './runtimeHealth.js';
+import { noteOverrun, noteNativeCall } from './runtimeHealth.js';
 
 
 let _overrunLogAt = 0;
