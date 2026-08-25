@@ -15,7 +15,7 @@
 
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
-import { hasBeat, beatIndex, beatPhase, nextBeatIn, type Beat } from './audio-analyser/beatClock.js';
+import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
@@ -597,13 +597,34 @@ export class PiLightEngine {
    * per kick, adaptivt skalat med bpmConfidence, och en PI-frekvensterm nollar
    * det permanenta laget när BPM-siffran ligger ett snäpp fel (bunden ±4 BPM).
    */
+  /**
+   * LÅTBYTE (Sonos trackName ändrades, debouncat i index.ts).
+   * En HINT, inte en reset: gatewayen kan rapportera 1-2 s sent och ett byte
+   * betyder inte alltid nytt tempo. Nuvarande BPM behålls som startgissning
+   * medan tempo-sökningen vidgas i ~5 s, och lås-hållningen (coast) släpps så
+   * en verkligt ny takt får ta över direkt.
+   */
+  notifyTrackChange(): void {
+    const now = Date.now();
+    this._reacqUntil = now + 5000;
+    this._beatWasLocked = false;      // coast gäller inom EN låt
+    this._beatConfidentAt = now;      // ge nya låten full coast-budget
+    this._beatDetBpm = 0;             // nästa analysator-BPM får om-ankra direkt
+    hintAnalyserTrackChange(5000);
+    dlog('beat', `Track change → re-acquisition window 5s (guess ${Math.round(this._beat?.bpm ?? 0)} BPM)`);
+  }
+
   private updateBeatClock(kick: boolean): void {
     const frame = getLatestFrame();
     const bpm = frame?.bpm ?? 0;
     const conf = frame?.bpmConfidence ?? 0;
+    const nowMs = Date.now();
+    const reacq = nowMs < this._reacqUntil;
 
     if (bpm > 40) {
-      if (!this._beat || Math.abs(bpm - this._beatDetBpm) > 2) {
+      // Under re-acquisition räcker 0.5 BPM avvikelse för att om-ankra (annars 2),
+      // så en ny takt landar utan att glida in via PLL:en.
+      if (!this._beat || Math.abs(bpm - this._beatDetBpm) > (reacq ? 0.5 : 2)) {
         this._beatDetBpm = bpm;
         let anchor = frame?.beatAnchorMs || Date.now();
         if (this._beat) {
@@ -615,6 +636,23 @@ export class PiLightEngine {
         this._beat = { anchorMs: anchor, bpm, confidence: conf };
       } else {
         this._beat.confidence = conf;
+      }
+    }
+
+    // ── COAST: håll låset genom breakdowns ──
+    // Inom SAMMA låt (ingen track-change-hint) och när låset en gång varit
+    // bekräftat: en confidence-dipp får inte tappa taktlåset — då flappar
+    // grid-pulserna av/på i varje tyst parti. Vi behåller tempo+fas och låter
+    // PLL:en re-synka mjukt när slagen kommer tillbaka. Låset släpps bara vid
+    // faktiskt låtbyte eller >8 s helt utan pålitlig takt.
+    if (this._beat) {
+      if ((this._beat.confidence ?? 0) >= MIN_BEAT_CONFIDENCE) {
+        this._beatConfidentAt = nowMs;
+        this._beatWasLocked = true;
+      } else if (this._beatWasLocked && !reacq && nowMs - this._beatConfidentAt < 8000) {
+        this._beat.confidence = MIN_BEAT_CONFIDENCE;    // coasta på rutnätet
+      } else if (this._beatWasLocked && nowMs - this._beatConfidentAt >= 8000) {
+        this._beatWasLocked = false;                    // långvarig taktlöshet → släpp
       }
     }
 
