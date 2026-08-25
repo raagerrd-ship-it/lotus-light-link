@@ -10,7 +10,7 @@
 import { noble, getNoble } from './noble-singleton.js';
 import { HARDCODED_DEVICE, matchesHardcoded } from './device-config.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
-import { brightMaxBuf, stopKeepAlive, resetLastSent, setReconnectTrigger } from './protocol.js';
+import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { applyConnInterval, stopConnIntervalReassert } from './forceConnInterval.js';
 import { setReconnectOnBootFlag } from './reconnect-flag.js';
@@ -68,11 +68,10 @@ export function setRestartHook(fn: ((info: { count: number; error: string }) => 
 }
 
 // Wire write-fail/keep-alive-fail teardown → auto-reconnect-loopen. Utan denna
-// är _triggerReconnect i protocol.ts null: en skrivfel-teardown river länken
+// Reconnect sker via scheduleAutoReconnect() direkt från keep-alive/disconnect-pathen.
 // (removeAllListeners('disconnect') + setDevice(null) + disconnectAsync) men
 // återansluter aldrig → lampan mörk tills omstart. scheduleAutoReconnect har
 // interna guards som respekterar manuell disconnect-policyn.
-setReconnectTrigger(() => scheduleAutoReconnect());
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
@@ -401,7 +400,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         } catch (e: any) {
           console.warn(`${ts()}    stopScanningAsync warning: ${e?.message ?? e}`);
         }
-        dlog(`${ts()} 4. peripheral.connectAsync() (5s timeout)…`);
+        dlog(`${ts()} 4. peripheral.connectAsync() (4s timeout)…`);
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
           if (resolved) {
@@ -488,7 +487,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // Hooka in noble's HCI ACL-räknare så vi vet om controllern
             // har outstanding paket (verklig drain-signal, inte promise).
             attachControllerDrain(peripheral);
-            // FORCE 7.5ms connection interval via hcitool lecup.
+            // FORCE 15ms (12 units) connection interval via hcitool lecup.
             // Noble's egen HCI-request slår inte alltid igenom (bevisat:
             // bench körde på ~20pps tak tills `hcitool lecup --min 6 --max 6`
             // kördes manuellt — då gick det till 50 pps utan kö).
@@ -540,7 +539,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
 
       const timer = setTimeout(async () => {
         if (matched) {
-          // Detta ska aldrig hända nu (connectAsync har egen 5s timeout) —
+          // Detta ska aldrig hända nu (connectAsync har egen 4s timeout) —
           // men om det gör det, säg sanningen istället för "ingen matchade".
           dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — match hittades men connect hängde (${discoverCount} discover-events)`);
         } else {

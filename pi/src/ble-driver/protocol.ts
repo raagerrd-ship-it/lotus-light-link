@@ -8,6 +8,8 @@
  * att engine-ticken/smoothing/beat kan frysa.
  *
  * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
+ *
+ * Conn-interval: 12 units = 15 ms (latens-prioriterat, se forceConnInterval.ts).
  */
 
 import { getDevice, bleStats } from './state.js';
@@ -74,7 +76,8 @@ export type WriteResult =
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
-// När writePending sattes. Om noble/HCI hänger settlar writeAsync aldrig.
+// När writePending sattes (stale-release efter WRITE_PENDING_TIMEOUT_MS = 150 ms).
+// Om noble/HCI hänger settlar writeAsync aldrig.
 // Stale-release gör BLE-stall icke-blockerande: writern kan droppa gamla frames
 // och fortsätta med senaste utan att engine-ticken berörs.
 // 2026-08-25: 1000ms → 150ms. En hängande write ska kosta EN frame, inte en
