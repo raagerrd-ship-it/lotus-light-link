@@ -1112,8 +1112,17 @@ export default function PiMobile() {
                   display={`${cal.beatLeadMs} ms`}
                   min={0} max={150} step={5}
                   onChange={(v) => setCal({ ...cal, beatLeadMs: Math.round(v) })}
-                  hint="Hur långt före slaget pulsen skickas för att äta upp BLE-latensen. 0 = ingen kompensation."
+                  hint="Med input-sync ligger 0 rätt: punchen staplas på input-pulsen i stället för att smeta ut."
                 />
+                <Slider
+                  label="Topp-boost"
+                  value={cal.peakBoost}
+                  display={`${Math.round(cal.peakBoost * 100)} %`}
+                  min={0} max={1} step={0.05}
+                  onChange={(v) => setCal({ ...cal, peakBoost: v })}
+                  hint="Extra lyft bara på de äkta topparna (intensity > 90 %). 0 = av."
+                />
+
 
               </Panel>
 
