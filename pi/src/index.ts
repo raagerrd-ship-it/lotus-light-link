@@ -283,11 +283,29 @@ async function startSonosSubsystem(): Promise<void> {
       const lastArtUrl = { current: null as string | null };
       const wasTvMode = { current: false };
       const lastPaletteSig = { current: null as string | null };
+      // ── Låtbyte → hint till beat-trackern ──
+      // Gatewayen kan glitcha trackName (tom sträng mitt i en låt, dubbel-event),
+      // så bytet debouncas ~1.5 s innan motorn får sin hint. Hinten är mjuk:
+      // tempot behålls som startgissning, sökningen vidgas tillfälligt.
+      let lastTrackName: string | null = null;
+      let trackDebounce: NodeJS.Timeout | null = null;
+      const noteTrackName = (name: string | null) => {
+        if (name === lastTrackName) return;
+        lastTrackName = name;
+        if (trackDebounce) clearTimeout(trackDebounce);
+        if (!name) return;                       // TV/tomt namn är inget låtbyte
+        trackDebounce = setTimeout(() => {
+          trackDebounce = null;
+          if (name !== lastTrackName) return;    // hann ändras igen → glitch
+          engineInstance?.notifyTrackChange();
+        }, 1500);
+      };
       // await så fresh-status race (≤1500ms) hinner trigga setPlaying(true)
       // FÖRE markSubsystemReady — annars kan engine starta i paused-state
       // även om Sonos redan spelar.
       await sonos.onSonosChange((state) => {
         applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
+        noteTrackName(state.trackName ?? null);
       });
 
       markSubsystemReady('sonos');
