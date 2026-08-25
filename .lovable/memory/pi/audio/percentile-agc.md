@@ -20,8 +20,11 @@ Fix i `analyser.ts` (enda tillåtna avvikelsen från DMX-mastern på AGC:n):
 
 Acceptans: level ≥0.95 i <15 % av sampeln, clipPct ~0, status "ok", tydlig dynamik.
 
-**Ljus-defaults (persisterade, live-verifierade):** gain-punkter {vol 15, gain 2.2} /
-{vol 50, gain 1.6}, `lightScale 0.95`, `dropFlashMs 320`, `brightnessFloor 25`.
+**Ljus-defaults (persisterade, live-verifierade v1.0.749 2026-08-25):** gain-punkter
+{vol 15, gain 1.1} / {vol 50, gain 0.8} — sänkta från 2.2/1.6 eftersom percentil-AGC:n
+gjorde ljus-vägen hetare och gamla värden pinnade lampan i taket. Uppmätt över 200 s:
+output 0–100 % full span, pinnat 7 %, input-klipp 0 %, analysator 0.47 snitt (pinnad 1 %).
+`lightScale 0.95`, `dropFlashMs 320`, `brightnessFloor 25`.
 Gain-slidrarna i UI: 0.5–10× i 0.1-steg.
 
 **Synk-bugg (fixad):** `applyProfileGlobals` skriver nu även `gain-cal-points`, och
