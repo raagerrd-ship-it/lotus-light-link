@@ -504,9 +504,10 @@ export function setMicGain(gain: number): void {
  *  Cal-punkterna är absoluta gain-värden, interpolerade på Sonos-volym. */
 export interface GainCalPoint { vol: number; gain: number; }
 
-// Defaults = live-intrimmade värden (2026-08-24): full dynamik, 0 % input-klipp.
-let calPoint1: GainCalPoint | null = { vol: 15, gain: 2.2 };
-let calPoint2: GainCalPoint | null = { vol: 50, gain: 1.6 };
+// Defaults = live-intrimmade värden (v1.0.749, 2026-08-25): full 0–100 % span,
+// pinnat 7 %, 0 % input-klipp efter percentil-AGC:n (mål 0.75).
+let calPoint1: GainCalPoint | null = { vol: 15, gain: 1.1 };
+let calPoint2: GainCalPoint | null = { vol: 50, gain: 0.8 };
 let lastSonosVol: number | null = null;  // cachat för live-omräkning vid slider-change
 const AUTO_GAIN_MAX = 300.0;
 const AUTO_GAIN_MIN = 0.1;
