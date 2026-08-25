@@ -395,7 +395,6 @@ function emitBands(frame: Frame): void {
 
   // DIRIGENTEN v2: shape = sektionsrelativ energi. levelVU är uppmätt för platt
   // på riktiga låtar; intensity följer uppbyggnader och breakdowns.
-  latestBands.shape = Math.min(1, Math.max(0, frame.intensity));
   latestBands.bassShare = lowAbs / totAbs;
   latestBands.hiShare = hiAbs / totAbs;
 
@@ -414,6 +413,10 @@ function emitBands(frame: Frame): void {
   let bf = 0;
   for (let i = 0; i < beatCutoffBands; i++) bf += onsets[i];
   latestBands.bassFlux = bf / beatCutoffBands;
+
+  // Liten bassFlux-additiv (~0–0.15) ger beat-punch utan att suga ihop formen.
+  const beatPunch = Math.min(0.15, latestBands.bassFlux * 0.25);
+  latestBands.shape = Math.min(1, Math.max(0, frame.intensity + beatPunch));
 
   if (DEBUG_ENABLED) {
     debugTickCount++;
