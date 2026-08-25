@@ -527,8 +527,9 @@ export interface GainCalPoint { vol: number; gain: number; }
 
 // Defaults = live-intrimmade värden (v1.0.749, 2026-08-25): full 0–100 % span,
 // pinnat 7 %, 0 % input-klipp efter percentil-AGC:n (mål 0.75).
-let calPoint1: GainCalPoint | null = { vol: 15, gain: 1.1 };
-let calPoint2: GainCalPoint | null = { vol: 50, gain: 0.8 };
+// Live-intrimmade defaults (2026-08-25) — gäller tills storage laddar egna punkter.
+let calPoint1: GainCalPoint | null = { vol: 12, gain: 6 };
+let calPoint2: GainCalPoint | null = { vol: 45, gain: 0.6 };
 let lastSonosVol: number | null = null;  // cachat för live-omräkning vid slider-change
 const AUTO_GAIN_MAX = 300.0;
 const AUTO_GAIN_MIN = 0.1;
