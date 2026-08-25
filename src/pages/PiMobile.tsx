@@ -15,8 +15,8 @@ import { BeatMonitor } from "@/components/BeatMonitor";
 // EN global inställnings-uppsättning — profiler/presets borttagna 2026-08-25.
 type Cal = {
   bassWeight: number; attack: number; softness: number;
-  brightnessFloor: number; loudnessFloor: number; punchWhiteThreshold: number; transientGain: number;
-  ceilingSensitivity: number; colorSpectralTilt: number;
+  brightnessFloor: number; punchWhiteThreshold: number; transientGain: number;
+  colorSpectralTilt: number;
   onsetThreshold: number; onsetRefractoryMs: number;
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
   beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
@@ -25,8 +25,8 @@ type Cal = {
 
 const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 71,
-  brightnessFloor: 25, loudnessFloor: 0.12, punchWhiteThreshold: 100, transientGain: 1.1,
-  ceilingSensitivity: 1.0, colorSpectralTilt: 0.25,
+  brightnessFloor: 25, punchWhiteThreshold: 100, transientGain: 1.1,
+  colorSpectralTilt: 0.25,
   onsetThreshold: 4.0, onsetRefractoryMs: 300,
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
   beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64,
@@ -808,10 +808,8 @@ export default function PiMobile() {
         attackAlpha: attackToAlpha(cal.attack),
         releaseAlpha: softnessToAlpha(cal.softness),
         brightnessFloor: cal.brightnessFloor,
-        loudnessFloor: cal.loudnessFloor,
         punchWhiteThreshold: cal.punchWhiteThreshold,
         transientGain: cal.transientGain,
-        ceilingSensitivity: cal.ceilingSensitivity,
         colorSpectralTilt: cal.colorSpectralTilt,
         onsetThreshold: cal.onsetThreshold,
         onsetRefractoryMs: cal.onsetRefractoryMs,
@@ -884,10 +882,8 @@ export default function PiMobile() {
         attack: c?.attackAlpha != null ? alphaToAttack(c.attackAlpha) : DEFAULT_CAL.attack,
         softness: c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness,
         brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
-        loudnessFloor: c?.loudnessFloor ?? DEFAULT_CAL.loudnessFloor,
         punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
         transientGain: c?.transientGain ?? DEFAULT_CAL.transientGain,
-        ceilingSensitivity: c?.ceilingSensitivity ?? DEFAULT_CAL.ceilingSensitivity,
         colorSpectralTilt: c?.colorSpectralTilt ?? DEFAULT_CAL.colorSpectralTilt,
         onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
         onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
@@ -1070,8 +1066,6 @@ export default function PiMobile() {
                 <LightPreview
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
-                  ceilingSensitivity={cal.ceilingSensitivity}
-                  loudnessFloor={cal.loudnessFloor}
                   beatCutoffHz={cal.beatCutoffHz}
                 />
 
@@ -1085,28 +1079,12 @@ export default function PiMobile() {
                   hint="0 = rått fall, 100 = mycket mjuk fade-out."
                 />
                 <Slider
-                  label="Min ljusstyrka (golv)"
+                  label="Loudness-golv (min ljus)"
                   value={cal.brightnessFloor}
                   display={`${cal.brightnessFloor} %`}
                   min={0} max={100}
                   onChange={(v) => setCal({ ...cal, brightnessFloor: Math.round(v) })}
-                  hint="0 = släck helt i tystnad."
-                />
-                <Slider
-                  label="Loudness-golv"
-                  value={cal.loudnessFloor}
-                  display={`${Math.round(cal.loudnessFloor * 100)} %`}
-                  min={0} max={0.5} step={0.01}
-                  onChange={(v) => setCal({ ...cal, loudnessFloor: v })}
-                  hint="Hur mörkt en lugn låt blir. 0 = ren amplitud, högre = mer basljus."
-                />
-                <Slider
-                  label="Tak-känslighet"
-                  value={cal.ceilingSensitivity}
-                  display={`${cal.ceilingSensitivity.toFixed(2)}×`}
-                  min={0.3} max={2} step={0.05}
-                  onChange={(v) => setCal({ ...cal, ceilingSensitivity: v })}
-                  hint="Hur snabbt taket följer låtens absoluta nivå. Högre = lägre nivå räcker för fullt tak."
+                  hint="Insignalen 0–100 % mappas mellan detta golv och fullt ljus. 0 = släck helt i tystnad."
                 />
                 <Slider
                   label="Beat-källa (lyssnar under)"
