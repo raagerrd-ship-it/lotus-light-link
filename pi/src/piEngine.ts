@@ -693,7 +693,7 @@ export class PiLightEngine {
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
-    const lead = this.cal.beatLeadMs ?? 45;
+    const lead = this.cal.beatLeadMs ?? 0;
     return {
       locked: hasBeat(this._beat),
       bpm: this._beat?.bpm ?? 0,
@@ -1093,7 +1093,7 @@ export class PiLightEngine {
         // Pulsen fyras av rutnätet med leadMs försprång → toppen landar PÅ slaget
         // trots BLE-skrivlatensen, i stället för strax efter det.
         if (gridDrives && passesEnergyGate) {
-          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 45));
+          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 0));
           if (idx !== this._lastGridIdx) {
             this._lastGridIdx = idx;
             // ETTANS ACCENT (steg 5): barShift säger hur många slag ankaret ska
