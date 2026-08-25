@@ -129,6 +129,9 @@ export interface LightCalibration {
   /** TAK-KÄNSLIGHET: hur snabbt/högt den absoluta amplituden lyfter taket.
    *  1.0 = linjärt mot ampEnv, >1 = når fullt tak vid lägre absolut nivå. */
   ceilingSensitivity: number;
+  /** LOUDNESS-GOLV: minsta loudness-skalning vid tyst/låg volym (0..1). Default 0.12.
+   *  Ren amplitudmappning: loudness = floor + ampEnv * sens * (1 - floor). */
+  loudnessFloor: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
   /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
@@ -181,6 +184,7 @@ const DEFAULT_CAL: LightCalibration = {
   brightnessFloor: 25,
   transientGain: 0.8,
   ceilingSensitivity: 1.0,
+  loudnessFloor: 0.12,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
   flickerDeadband: 0.02,
