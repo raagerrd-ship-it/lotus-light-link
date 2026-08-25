@@ -103,6 +103,24 @@ const ACL_MAX_OUTSTANDING = (() => {
   return 6;
 })();
 
+// ── Send-rate-cap (~25–30 writes/s) ──
+// WiFi och BLE delar radio-chip på Pi Zero 2W: all WiFi-last (UI-polling, SSH)
+// contendar med BLE-trafiken. Med intensity-driven ljus ändras outputen varje
+// tick, så utan cap trycks ~46 writes/s ut och länken blir stall-känslig.
+// Cappen glesar ENBART leveransen — smoothing/beat/dynamics körs varje tick.
+// Override: BLE_MIN_SEND_GAP_MS (10–200).
+let minSendGapMs = (() => {
+  const raw = parseInt(process.env.BLE_MIN_SEND_GAP_MS ?? '', 10);
+  if (Number.isFinite(raw) && raw >= 10 && raw <= 200) return raw;
+  return 36; // ≈27 writes/s
+})();
+let lastActualSendAt = 0;
+
+export function getMinSendGapMs(): number { return minSendGapMs; }
+export function setMinSendGapMs(ms: number): void {
+  minSendGapMs = Math.max(10, Math.min(200, ms | 0));
+}
+
 // När senaste accepterade write skickades till noble (för drain-diagnostik).
 let lastSendStartedAt = 0;
 const STUCK_THRESHOLD_MS = 1000;
@@ -135,6 +153,7 @@ export function resetLastSent(): void {
   lastSendStartedAt = 0;
   stuckRecoveryInFlight = false;
   lastWriteTime = 0;
+  lastActualSendAt = 0;
   _writeLatAvgPrecise = 0;
   bleStats.controllerOutstandingCount = 0;
   bleStats.outstandingAgeMs = 0;
@@ -261,6 +280,7 @@ export function startKeepAlive(): void {
     lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
+    lastActualSendAt = now;
 
     device.characteristic.writeAsync(buf, true)
       .then(() => {
@@ -328,6 +348,12 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 
   const now = performance.now();
 
+  // ── Send-rate-cap: glesa faktisk leverans till ~1/minSendGapMs ──
+  if (lastActualSendAt > 0 && now - lastActualSendAt < minSendGapMs) {
+    bleStats.skipRateLimitCount++;
+    return 'busy';
+  }
+
   // ── Gate: lease + writePending + ACL-outstanding ──
   if (leaseAndDrainState(now) === 'busy') {
     bleStats.skipBusyCount++;
@@ -378,6 +404,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   lastSendStartedAt = now;
   slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
+  lastActualSendAt = now;
 
   // Tidsstämpla den SYNKRONA delen av det native anropet. writeAsync ska
   // returnera ett promise direkt; blockerar den event-loopen är det den som
