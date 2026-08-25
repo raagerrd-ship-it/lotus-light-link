@@ -23,7 +23,6 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
-#include <atomic>
 #include <string>
 #include <vector>
 #include <memory>
