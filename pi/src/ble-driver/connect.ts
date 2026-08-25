@@ -381,6 +381,11 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         ]);
 
       const onDiscover = async (peripheral: any) => {
+        // B1: yttre timeouten kan ha resolvat redan (finish() stoppar scanningen
+        // men avbryter inte ett pågående discover-handler-anrop). Utan denna grind
+        // fortsatte handlern connecta EFTER att callern fått "timeout" → länken
+        // etablerades bakom ryggen och nästa connect såg en stale peripheral.
+        if (resolved) return;
         discoverCount++;
         const isMatch = matchesHardcoded(peripheral);
         // Logga BARA matchande enheter — annars spammar varje närliggande
@@ -399,6 +404,13 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         dlog(`${ts()} 4. peripheral.connectAsync() (5s timeout)…`);
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
+          if (resolved) {
+            // B1: timeouten fyrade under connectAsync — callern har redan fått
+            // sitt svar. Släpp länken i stället för att lämna en osynlig connect.
+            dlog(`${ts()}    connect klar EFTER timeout — kopplar ner igen`);
+            try { await peripheral.disconnectAsync(); } catch {}
+            return;
+          }
           _connected = peripheral;
           // Rensa ev. gamla disconnect-listeners från tidigare connect-cyklar.
           // Noble emittar internt `disconnect:<uuid>` på SIG noble-objektet,
