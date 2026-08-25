@@ -392,10 +392,10 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
-  // Refractory period — minimum gap between onsets, räknat i frames (fftMs=10, se M4)
+  // Refractory period — minimum gap between onsets, räknat i frames (FRAME_MS ≈ 13.33 ms)
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
-  // Refractory räknas dynamiskt från cal.onsetRefractoryMs (fftMs=10 — gammal 100 Hz-antagelse, se M4; sann takt 75 Hz / 13.33 ms)
+  // Refractory räknas dynamiskt från cal.onsetRefractoryMs / FRAME_MS (sann takt 75 Hz)
 
   // ── Drop-detektor (lång tidshorisont, @75Hz på bas-energi) ──
   // Drops är en struktur över sekunder: breakdown/uppbyggnad → plötslig bas-explosion.
