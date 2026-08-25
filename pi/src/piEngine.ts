@@ -205,6 +205,9 @@ export interface LightCalibration {
    *  smalt bas-filter för beat ska inte göra ljuset dimt på diskant-tungt
    *  innehåll. 0.5 = bredband (default). */
   lightBassWeight: number;
+  /** Dynamic-center adaptionshastighet i sekunder. 0 = fryst vid 0.5,
+   *  ~5 = gammal ljud-följande normalisering, 999 = i praktiken fast (default). */
+  centerAdaptSeconds: number;
   [key: string]: any;
 }
 
