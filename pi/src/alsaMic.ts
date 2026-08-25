@@ -16,7 +16,7 @@
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame } from './audio-analyser/index.js';
-import { noteOverrun } from './runtimeHealth.js';
+import { noteOverrun, noteNativeCall } from './runtimeHealth.js';
 
 
 let _overrunLogAt = 0;
@@ -754,6 +754,8 @@ export function getMicHealth(): MicHealth {
 
 
 function onAudioData(buf: Buffer): void {
+  const _cbT0 = performance.now();
+  _lastAudioCbAt = _cbT0;
   _audioCbCount++;
   _audioCbBytes += buf.byteLength;
   if (_audioCbFirstAt === 0) {
@@ -883,6 +885,46 @@ function onAudioData(buf: Buffer): void {
       if (latestFrame) emitBands(latestFrame);
     }
   }
+
+  // Hela audio-callbacken (downmix + analysator-hops + engine-tick) är det enda
+  // som kör på event-loopen i mic-vägen. Tar den >200ms är det den som fryser
+  // ticken — noteNativeCall loggar med kontext och exponerar maxNativeCallMs.
+  noteNativeCall('alsa-audio-cb', performance.now() - _cbT0, `bytes=${buf.byteLength} hops=${analyserHopCount}`);
+}
+
+// ── Mic-stall-watchdog (2026-08-25) ──
+// ALSA-capturen kan sluta leverera audio-callbacks utan att fyra 'error' eller
+// 'close' (controller/DMA-stall). Då kommer inga FFT-frames → motorns tick
+// fryser → playback-watchdogen hard-restartade hela processen. Nu re-initieras
+// bara capturen. Anropas från 1 Hz-schedulern i index.ts.
+let _lastAudioCbAt = 0;
+let _micRestartCount = 0;
+const MIC_STALL_MS = 1500;
+
+export function getLastAudioCbAt(): number { return _lastAudioCbAt; }
+export function getMicRestartCount(): number { return _micRestartCount; }
+
+/** True om capturen är aktiv men inte levererat audio på MIC_STALL_MS. */
+export function isMicStalled(): boolean {
+  if (!capture || _lastAudioCbAt === 0) return false;
+  return performance.now() - _lastAudioCbAt >= MIC_STALL_MS;
+}
+
+/** Stäng och starta om ALSA-capturen utan process-restart. */
+export function restartCapture(reason: string): boolean {
+  if (!capture) return false;
+  const ageMs = Math.round(performance.now() - _lastAudioCbAt);
+  console.warn(`[ALSA] restartCapture (${reason}): senaste audio-cb ${ageMs}ms sedan — re-initierar capturen`);
+  try { stopMic(); } catch (e: any) { console.warn(`[ALSA] stopMic under restart: ${e?.message ?? e}`); }
+  _lastAudioCbAt = 0;
+  try {
+    startMic();
+  } catch (e: any) {
+    console.error(`[ALSA] startMic under restart misslyckades: ${e?.message ?? e}`);
+    return false;
+  }
+  _micRestartCount++;
+  return true;
 }
 
 export function stopMic(): void {

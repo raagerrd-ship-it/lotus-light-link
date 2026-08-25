@@ -57,6 +57,9 @@ export const bleStats = {
   tickSkippedBleBusyCount: 0,     // pre-gate: tick hoppades över FÖRE beräkning pga BLE busy (sparad CPU)
   dropCount: 0,                   // antal detekterade drops (lång-horisont bas-explosion → vit punch)
 
+  writeSyncMaxMs: 0,          // längsta SYNKRONA tid i native writeAsync (event-loop-blockering)
+  writeSyncSlowCount: 0,      // antal writes där den synkrona delen tog >50ms
+
   writeLatMs: 0,
   writeLatAvgMs: 0,
   writeLatMaxMs: 0,

@@ -83,10 +83,12 @@ let slotLockedUntil = 0;
 let writePending = false;
 // När writePending sattes. Om noble/HCI hänger settlar writeAsync aldrig och
 // writePending fastnar true → varje tick returnerar 'busy' → tickOk fryser och
-// playback-watchdogen tvingar en hård restart. Stale-release efter 1s gör en
-// BLE-stall icke-blockerande: kedjan öppnas igen och räknas i bleStats.
+// playback-watchdogen tvingar en hård restart. Stale-release gör en BLE-stall
+// icke-blockerande: kedjan öppnas igen och räknas i bleStats.
+// 2026-08-25: 1000ms → 150ms. En hängande write ska kosta EN frame, inte en
+// sekund av frusen leverans (motorn tickar vidare, framen droppas).
 let writePendingSince = 0;
-const WRITE_PENDING_TIMEOUT_MS = 1000;
+const WRITE_PENDING_TIMEOUT_MS = 150;
 
 
 // ── ACL-outstanding gate ──
@@ -377,7 +379,19 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
 
-  device.characteristic.writeAsync(buf, true)
+  // Tidsstämpla den SYNKRONA delen av det native anropet. writeAsync ska
+  // returnera ett promise direkt; blockerar den event-loopen är det den som
+  // fryser ticken (syns som bleStats.writeSyncMaxMs i /api/status).
+  const _syncT0 = performance.now();
+  const _writePromise = device.characteristic.writeAsync(buf, true);
+  const _syncMs = performance.now() - _syncT0;
+  if (_syncMs > bleStats.writeSyncMaxMs) bleStats.writeSyncMaxMs = Math.round(_syncMs * 10) / 10;
+  if (_syncMs >= 50) {
+    bleStats.writeSyncSlowCount++;
+    bleStats.lastStuckReason = `write-sync ${_syncMs.toFixed(1)}ms (blocking native call)`;
+  }
+
+  _writePromise
     .then(() => {
       const elapsed = performance.now() - writeStartedAt;
       bleStats.sentCount++;
@@ -430,4 +444,23 @@ export function setIdleColor(r: number, g: number, b: number): void {
   writeBuf[4] = cr; writeBuf[5] = cg; writeBuf[6] = cb;
   brightBuf[3] = 0xff;
   lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff; lastPct = 100;
+}
+
+/**
+ * Diagnostik för watchdogen: är en BLE-write hängande just nu, och hur gammal
+ * är den? Används i frys-dumpen för att avgöra BLE kontra mic.
+ */
+export function getWriteDiag(): {
+  writePending: boolean;
+  pendingAgeMs: number;
+  lastWriteAgeMs: number;
+  slotLockedForMs: number;
+} {
+  const now = performance.now();
+  return {
+    writePending,
+    pendingAgeMs: writePending && writePendingSince > 0 ? Math.round(now - writePendingSince) : 0,
+    lastWriteAgeMs: lastWriteTime > 0 ? Math.round(now - lastWriteTime) : -1,
+    slotLockedForMs: now < slotLockedUntil ? Math.round(slotLockedUntil - now) : 0,
+  };
 }

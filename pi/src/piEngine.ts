@@ -230,8 +230,8 @@ const DEFAULT_CAL: LightCalibration = {
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 60,
-  beatSyncStrength: 0.18,
+  beatLeadMs: 45,
+  beatSyncStrength: 0.10,
   dropSource: 'analyser',
   intensityInfluence: 0.3,
   barAccent: 1.0,
@@ -620,7 +620,7 @@ export class PiLightEngine {
    *
    * Tempot om-ankras bara när det avviker >2 BPM (annars ankrar varje litet
    * BPM-hopp om klockan och pulsen läses som stroboskop). Vid om-ankring bevaras
-   * fasen. PLL:en knuffar sedan ankaret cal.beatSyncStrength (18 %) av fasfelet
+   * fasen. PLL:en knuffar sedan ankaret cal.beatSyncStrength (10 %) av fasfelet
    * per kick, adaptivt skalat med bpmConfidence, och en PI-frekvensterm nollar
    * det permanenta laget när BPM-siffran ligger ett snäpp fel (bunden ±4 BPM).
    */
@@ -651,7 +651,7 @@ export class PiLightEngine {
 
     if (!kick || !this._beat) return;
 
-    const k0 = this.cal.beatSyncStrength ?? 0.18;
+    const k0 = this.cal.beatSyncStrength ?? 0.10;
     const beatMsNow = 60000 / this._beat.bpm;
     // Fasen mäts helst mot analysatorns FÄRDIGMÄTTA slagtid (sub-hop, ±1.3 ms).
     // Date.now() här bär ALSA-leveransens jitter. Bara färska värden duger.
@@ -682,7 +682,7 @@ export class PiLightEngine {
     dropSrc: 'analyser' | 'bass';
   } {
     const now = Date.now();
-    const lead = this.cal.beatLeadMs ?? 60;
+    const lead = this.cal.beatLeadMs ?? 45;
     return {
       locked: hasBeat(this._beat),
       bpm: this._beat?.bpm ?? 0,
@@ -1132,7 +1132,7 @@ export class PiLightEngine {
         // Pulsen fyras av rutnätet med leadMs försprång → toppen landar PÅ slaget
         // trots BLE-skrivlatensen, i stället för strax efter det.
         if (gridDrives && passesEnergyGate) {
-          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 60));
+          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 45));
           if (idx !== this._lastGridIdx) {
             this._lastGridIdx = idx;
             // ETTANS ACCENT (steg 5): barShift säger hur många slag ankaret ska
@@ -1201,6 +1201,9 @@ export class PiLightEngine {
   private _lastSmoothAt = 0;   // för tidsbaserad EMA-alpha (robust mot hoppade ticks)
   private _loopActive = false;
   private _nextTickDeadline = 0;
+  // När BLE-pre-gaten började blockera obrutet (0 = inte blockerad).
+  private _bleGateSince = 0;
+  private static readonly BLE_GATE_MAX_MS = 500;
 
   /** Called by ALSA FFT callback — runs in the audio data handler context */
   private onFFTFrame(): void {
@@ -1223,9 +1226,18 @@ export class PiLightEngine {
       // — resultatet hade ändå dött som 'busy' i sendToBLE. Skippa FÖRE den
       // dyra beräkningen och spara CPU. Gäller bara under aktiv playback;
       // idle-pathen styrs av keep-alive, inte tickInner.
+      // Leverans är FRIKOPPLAD från ticken (2026-08-25): pre-gaten sparar CPU,
+      // men får aldrig frysa beslutskedjan. Om BLE varit busy längre än
+      // BLE_GATE_MAX_MS kör vi tickInner ändå — writen dör som 'busy' (en
+      // droppad frame), men smoothing/beat/dynamics hålls levande.
       if (this.playing && this._bleOwner === 'active' && !canWriteNow()) {
-        bleStatsState.tickSkippedBleBusyCount++;
-        return;
+        if (this._bleGateSince === 0) this._bleGateSince = now;
+        if (now - this._bleGateSince < PiLightEngine.BLE_GATE_MAX_MS) {
+          bleStatsState.tickSkippedBleBusyCount++;
+          return;
+        }
+      } else {
+        this._bleGateSince = 0;
       }
 
       this._lastTickTime = now;
