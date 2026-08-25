@@ -508,11 +508,11 @@ async function main() {
           // Alla riktade försök misslyckades → hård restart via systemd.
           const reason = micFrozen ? 'mic-capture' : 'engine-tick';
           console.error(
-            `[Playback-Watchdog] tickOk still frozen after ${MAX_RECOVERY_ATTEMPTS} ` +
+            `[Playback-Watchdog] engine tick still frozen after ${MAX_RECOVERY_ATTEMPTS} ` +
             `soft recoveries (${reason}). Exit(1) for systemd restart.`
           );
           try {
-            recordRestart('playback-watchdog-stuck', `tickOk frozen ${stuckMs}ms, ${reason}, after ${MAX_RECOVERY_ATTEMPTS} soft recoveries`);
+            recordRestart('playback-watchdog-stuck', `engineTick frozen ${stuckMs}ms, ${reason}, after ${MAX_RECOVERY_ATTEMPTS} soft recoveries`);
             markGracefulShutdown();
           } catch {}
           process.exit(1);

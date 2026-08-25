@@ -10,7 +10,7 @@ export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID } from '../ble-driver/
 export { getDevice, setDevice, isDemandActive } from '../ble-driver/state.js';
 export { noble, hasNobleLoaded } from '../ble-driver/state.js';
 
-export { sendToBLE, canWriteNow, clearQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma, getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower } from '../ble-driver/protocol.js';
+export { sendToBLE, canWriteNow, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma, getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower } from '../ble-driver/protocol.js';
 
 export { connectHardcoded, disconnectHardcoded, getHardcodedConnected, getHardcodedPeripheral, scanForDevices } from '../ble-driver/connect.js';
 export { startBleEngineMinimal, isMinimalEngineStarted } from './engine-start-minimal.js';

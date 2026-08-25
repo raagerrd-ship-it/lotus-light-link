@@ -156,6 +156,16 @@ export function clearQueuedWrite(): void {
   }
 }
 
+export function hasQueuedWrite(): boolean { return queuedFrame != null; }
+
+export function flushQueuedWriteNow(): void {
+  if (drainTimer) {
+    clearTimeout(drainTimer);
+    drainTimer = null;
+  }
+  drainQueuedWrite();
+}
+
 
 
 /** Senast skickade RGB + brightness-scale (0–255). För UI-display (Output-färg). */
@@ -228,12 +238,10 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
 }
 
 /**
- * BILLIG, BIVERKNINGSFRI readiness-check (2026-06-02).
+ * BILLIG, BIVERKNINGSFRI readiness-check.
  * Speglar leaseAndDrainState()'s 'ready'-villkor UTAN att mutera stats eller
- * trigga stuck-recovery. Används av engine.onFFTFrame som pre-gate så att den
- * dyra tickInner-beräkningen hoppas över när BLE ändå inte kan ta emot writen
- * (lease-lock, pending write, eller ACL-outstanding-tak). BLE-out blir därmed
- * den faktiska takt-styrningen — ingen CPU bränns på frames som dör som 'busy'.
+ * trigga stuck-recovery. Behålls för externa driver-användare; engine-ticken
+ * använder den inte längre, utan submit:ar alltid senaste frame till 1-slot.
  */
 export function canWriteNow(): boolean {
   if (!getDevice()) return false;

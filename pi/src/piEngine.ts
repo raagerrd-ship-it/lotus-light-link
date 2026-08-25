@@ -16,7 +16,7 @@
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
-import { sendToBLE, clearQueuedWrite, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
+import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect } from './ble-driver/connect.js';
@@ -860,10 +860,11 @@ export class PiLightEngine {
     try { sendToBLE(idle[0], idle[1], idle[2], 100); } catch (e: any) {
       dlog(`[Engine] sendIdleFullBrightness failed: ${e?.message ?? e}`);
     }
+    flushQueuedWriteNow();
 
-    // 2. Vänta tills HCI-kön är tom så paketet faktiskt går iväg (max 500ms).
+    // 2. Vänta tills 1-slot + HCI-kön är tom så paketet faktiskt går iväg (max 500ms).
     const deadline = Date.now() + 500;
-    while (isControllerDrainAttached() && getOutstandingPackets() > 0) {
+    while (hasQueuedWrite() || (isControllerDrainAttached() && getOutstandingPackets() > 0)) {
       if (Date.now() > deadline) {
         dlog('[Engine] Outstanding-wait timeout — fortsätter ändå');
         break;
