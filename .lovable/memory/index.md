@@ -51,6 +51,8 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 - [Event-driven engine](mem://pi/performance/event-driven-architecture) — Engine execution triggered by FFT frames
 - [BLE optimization](mem://pi/ble/connection-optimization) — 7.5-10ms connection interval via HCI
 - [API routing](mem://pi/ui/api-routing) — API URLs generated as window.location.port + 50
+- [Frame-takt 75 Hz](mem://pi/audio/frame-ms-75hz) — FRAME_MS 13.33 ms är sann takt; fftMs=10 kvar medvetet (gehörs-trim)
+
 - [ARM64 build pipeline](mem://pi/deployment/arm64-build-pipeline) — Node 24 ARM64 actions and PCC static deploy
 - [Gamma correction](mem://technical/lighting/gamma-correction) — Gamma 1.8 applied to physical brightness
 - [Signal processing chain](mem://pi/audio/signal-processing-chain) — Pipeline order from Mic to Gamma
