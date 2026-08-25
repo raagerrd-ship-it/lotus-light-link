@@ -10,7 +10,7 @@
  * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
  */
 
-import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
+import { getDevice, bleStats } from './state.js';
 import { getOutstandingPackets, isControllerDrainAttached } from './controllerDrain.js';
 import { dlog } from "./log.js";
 
@@ -359,19 +359,6 @@ function drainQueuedWrite(): void {
         if (writeFailCount === 1 || writeFailCount === WRITE_FAIL_THRESHOLD) {
           console.warn(`[BLE] Write failed (${writeFailCount}x): ${e?.message ?? e}`);
         }
-        const dev = getDevice();
-        if (writeFailCount >= WRITE_FAIL_THRESHOLD && dev && isDemandActive()) {
-          console.warn('[BLE] Too many write failures — triggering proactive reconnect');
-          const periph = dev.peripheral;
-          const name = dev.name;
-          periph.removeAllListeners('disconnect');
-          stopKeepAlive();
-          setDevice(null);
-          resetLastSent();
-          Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
-            if (_triggerReconnect) _triggerReconnect(periph, name);
-          });
-        }
       })
       .finally(() => {
         if (seq === writeSeq) writePending = false;
@@ -436,20 +423,6 @@ export function startKeepAlive(): void {
               .catch(() => {})
               .finally(() => { scheduleAutoReconnect(); });
           }).catch(() => {});
-
-          if (isDemandActive()) {
-            const dev = getDevice();
-            if (dev) {
-              const periph = dev.peripheral;
-              const name = dev.name;
-              periph.removeAllListeners('disconnect');
-              setDevice(null);
-              resetLastSent();
-              Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
-                if (_triggerReconnect) _triggerReconnect(periph, name);
-              });
-            }
-          }
         }
       })
       .finally(() => {
@@ -461,12 +434,6 @@ export function startKeepAlive(): void {
 
 export function stopKeepAlive(): void {
   if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
-}
-
-// Forward declaration — set by reconnect module to break circular dep
-let _triggerReconnect: ((peripheral: any, name: string) => void) | null = null;
-export function setReconnectTrigger(fn: (peripheral: any, name: string) => void): void {
-  _triggerReconnect = fn;
 }
 
 /**
