@@ -178,7 +178,7 @@ const DEFAULT_CAL: LightCalibration = {
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
   flickerDeadband: 0.02,
-  lowSoftFloor: 0.25,
+  lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
   beatSource: 'bass',
