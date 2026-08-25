@@ -194,6 +194,8 @@ export class Analyser {
   private lockPeak = 0;        // tempogram-toppens styrka när takten är frisk (referens)
   private lastSongVoteMs = 0;  // väggklocka för förra låtbytesrösten (bevis mäts i TID)
   private newSongVote = 0;  // ihållande oenighet trots låst oktav → låtbyte utan tystnadslucka
+  /** Väggklocka: t.o.m. denna tid gäller vidgad tempo-sökning efter en låtbytes-hint. */
+  private reacqUntilMs = 0;
 
   // Ringbuffert för senaste råestimat (~5s) → median-stabilisering utan allokering.
   private static readonly BPM_HIST = 20;
@@ -596,12 +598,16 @@ export class Analyser {
         //      råestimatet vandrar) yanka låset under de första 15 s.
         //   3. HISTORIKEN TÖMS vid omlåsning — annars drar medianfönstret, halvfullt
         //      av det felaktiga tempot, tillbaka och låset glider i stället för att landa.
-        if (conf < 0.75) {
+        // LÅTBYTES-HINT (Sonos): under re-acquisition-fönstret sänks kvalitetsgrinden
+        // och röstkravet, så en ny takt kan bekräftas på ~2-3 s i stället för ~5 s.
+        // Skydden finns kvar (sammanhållen utmanare + tömd historik) — bara mildare.
+        const reacq = voteNow < this.reacqUntilMs;
+        if (conf < (reacq ? 0.55 : 0.75)) {
           this.nearVote = 0; this.nearChallenger = 0;
         } else if (this.nearChallenger > 0 && Math.abs(bpm / this.nearChallenger - 1) <= 0.04) {
           this.nearChallenger += (bpm - this.nearChallenger) * 0.3;
           this.nearVote++;
-          if (this.nearVote >= 8) {
+          if (this.nearVote >= (reacq ? 3 : 8)) {
             this.localBpm = Math.round(med);
             this.bpmHistLen = 0; this.bpmHistPos = 0;
             this.nearVote = 0; this.nearChallenger = 0; this.octaveVote = 0; this.bpmStable = 0;
