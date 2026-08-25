@@ -620,7 +620,7 @@ export class PiLightEngine {
    *
    * Tempot om-ankras bara när det avviker >2 BPM (annars ankrar varje litet
    * BPM-hopp om klockan och pulsen läses som stroboskop). Vid om-ankring bevaras
-   * fasen. PLL:en knuffar sedan ankaret cal.beatSyncStrength (18 %) av fasfelet
+   * fasen. PLL:en knuffar sedan ankaret cal.beatSyncStrength (10 %) av fasfelet
    * per kick, adaptivt skalat med bpmConfidence, och en PI-frekvensterm nollar
    * det permanenta laget när BPM-siffran ligger ett snäpp fel (bunden ±4 BPM).
    */
