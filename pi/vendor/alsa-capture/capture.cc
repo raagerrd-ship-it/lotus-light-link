@@ -1,8 +1,8 @@
 // Ultra-low-latency N-API ALSA PCM capture addon for lotus-light.
 // Optimized for minimum sound→FFT latency, NOT audio fidelity.
 //
-// Default config: 32-frame periods @ 44.1kHz = ~0.7ms capture buffer.
-// Buffer size = 2× period (minimal ALSA queue depth).
+// Faktisk config (Lotus): stereo S32_LE @ 48 kHz, period 256 frames,
+// buffer = 8× period (headroom mot event-loop-jitter på Pi Zero 2W).
 // Capture thread runs SCHED_FIFO priority 80 to avoid scheduler jitter.
 //
 // JS API (drop-in compatible with upstream alsa-capture):
@@ -30,11 +30,11 @@
 namespace {
 
 struct CaptureOptions {
-  int channels = 1;
+  int channels = 2;
   std::string device = "default";
-  snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
-  int periodSize = 32;       // ~0.7ms @ 44.1kHz — was 128 (~2.9ms)
-  int rate = 44100;
+  snd_pcm_format_t format = SND_PCM_FORMAT_S32_LE;
+  int periodSize = 256;      // ~5.3ms @ 48kHz — matchar alsaMic.ts
+  int rate = 48000;
 };
 
 // Audio frame passed thread → JS. Owns its bytes.

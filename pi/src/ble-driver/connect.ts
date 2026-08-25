@@ -468,7 +468,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // Hooka in noble's HCI ACL-räknare så vi vet om controllern
             // har outstanding paket (verklig drain-signal, inte promise).
             attachControllerDrain(peripheral);
-            // FORCE 20ms conn-interval connection interval via hcitool lecup.
+            // FORCE 15ms conn-interval connection interval via hcitool lecup.
             // Noble's egen HCI-request slår inte alltid igenom (bevisat:
             // bench körde på ~20pps tak tills `hcitool lecup --min 6 --max 6`
             // kördes manuellt — då gick det till 50 pps utan kö).
