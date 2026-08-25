@@ -15,7 +15,7 @@
  * inte "försvinner" när PCC börjar/slutar sätta variablerna.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, copyFileSync, accessSync, constants } from 'fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync, readdirSync, copyFileSync, accessSync, constants } from 'fs';
 import { join } from 'path';
 
 // Settings vs state separeras enligt PCC-kontrakt. Keys som matchar SETTINGS_KEYS
