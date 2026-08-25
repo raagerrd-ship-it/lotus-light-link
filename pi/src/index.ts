@@ -486,6 +486,8 @@ async function main() {
             `lastWriteAge=${wd.lastWriteAgeMs}ms slotLocked=${wd.slotLockedForMs}ms ` +
             `writeStallReleases=${bleStats.writeStallReleaseCount} ` +
             `writeSyncMax=${bleStats.writeSyncMaxMs}ms ` +
+            `writeSyncSlow=${bleStats.writeSyncSlowCount} ` +
+            `controllerStuck=${bleStats.controllerStuckCount} ` +
             `maxNativeCall=${rh.maxNativeCallMs}ms ` +
             `slowNative=${rh.slowNativeCallTotal}` +
             (rh.lastSlowNativeCall ? ` last=${rh.lastSlowNativeCall.op}/${rh.lastSlowNativeCall.ms}ms` : '')

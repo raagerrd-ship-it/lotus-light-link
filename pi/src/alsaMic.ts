@@ -368,6 +368,9 @@ export function getAcrCaptureWav(): Buffer | null {
  *   flux             : analysatorns bredbands-flux (skarp, för onset)
  *   bassFlux         : summerad per-band-onset under beatCutoffHz (kick/bas)
  */
+// Återanvänd buffert — emitBands körs 100 Hz, ingen per-frame allokering.
+const _onsetScratch = new Float64Array(8);
+
 function emitBands(frame: Frame): void {
   const a = frame.specAbs;
   const o = frame.onset;
@@ -409,7 +412,9 @@ function emitBands(frame: Frame): void {
   // bassFlux: onset-energi i banden under cutoffen. Onsets är 0..1 per band;
   // medelvärdet håller samma storleksordning som gamla flux (0.05–0.5) så
   // processOnsets absoluta golv (0.045) och median-prominens gäller oförändrat.
-  const onsets = [o.sub, o.kick, o.bass, o.lowMid, o.mid, o.highMid, o.treble, o.air];
+  const onsets = _onsetScratch;
+  onsets[0] = o.sub; onsets[1] = o.kick; onsets[2] = o.bass; onsets[3] = o.lowMid;
+  onsets[4] = o.mid; onsets[5] = o.highMid; onsets[6] = o.treble; onsets[7] = o.air;
   let bf = 0;
   for (let i = 0; i < beatCutoffBands; i++) bf += onsets[i];
   latestBands.bassFlux = bf / beatCutoffBands;

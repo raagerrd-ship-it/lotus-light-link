@@ -279,23 +279,42 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   let sseActive = false;
   let pollInFlight = false;
 
+  // Backoff: när gatewayen är nere kostar varje misslyckad fetch CPU + en
+  // timeout-timer. Vi dubblar intervallet (max 30s) och återgår till pollMs
+  // vid första lyckade svaret.
+  let pollFailStreak = 0;
+  const MAX_POLL_MS = 30_000;
+  const currentPollMs = () => Math.min(MAX_POLL_MS, pollMs * Math.pow(2, Math.min(5, pollFailStreak)));
+
   const startPollTimer = () => {
     if (pollTimer) return;
-    pollTimer = setInterval(async () => {
-      if (pollInFlight) return;
-      pollInFlight = true;
-      try {
-        const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
-        if (res.ok) { parseStatus(await res.json()); lastSuccessfulPollAt = Date.now(); }
-      } catch {
-      } finally {
-        pollInFlight = false;
-      }
-    }, pollMs);
+    const arm = (delay: number) => {
+      pollTimer = setTimeout(async () => {
+        pollTimer = null;
+        if (pollInFlight) { arm(currentPollMs()); return; }
+        pollInFlight = true;
+        try {
+          const res = await fetch(statusUrl, { signal: AbortSignal.timeout(pollTimeout) });
+          if (res.ok) {
+            parseStatus(await res.json());
+            lastSuccessfulPollAt = Date.now();
+            pollFailStreak = 0;
+          } else {
+            pollFailStreak++;
+          }
+        } catch {
+          pollFailStreak++;
+        } finally {
+          pollInFlight = false;
+          arm(currentPollMs());
+        }
+      }, delay);
+    };
+    arm(pollMs);
   };
 
   const stopPollTimer = () => {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   };
 
   if (!disableSSE) {
