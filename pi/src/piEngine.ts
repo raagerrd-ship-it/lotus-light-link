@@ -129,7 +129,7 @@ export interface LightCalibration {
   transientGain: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
-  /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
+  /** Minsta gap mellan onsets i ms — räknas om till frames (fftMs=10, se M4) . UI-default 110ms. */
   onsetRefractoryMs: number;
    /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
    flickerDeadband: number;
@@ -392,20 +392,20 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
-  // Refractory period — minimum gap between onsets, räknat i FFT-frames @ 100Hz
+  // Refractory period — minimum gap between onsets, räknat i frames (fftMs=10, se M4)
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
-  // Refractory räknas dynamiskt från cal.onsetRefractoryMs (FFT @ 100Hz → 10ms/frame)
+  // Refractory räknas dynamiskt från cal.onsetRefractoryMs (fftMs=10 — gammal 100 Hz-antagelse, se M4; sann takt 75 Hz / 13.33 ms)
 
-  // ── Drop-detektor (lång tidshorisont, @100Hz på bas-energi) ──
+  // ── Drop-detektor (lång tidshorisont, @75Hz på bas-energi) ──
   // Drops är en struktur över sekunder: breakdown/uppbyggnad → plötslig bas-explosion.
   /** B4: återanvänd grid-objekt (enkeltrådad JS → säkert att mutera). */
   private _gridScratch = { bpm: 0, anchorMs: 0 };
   private bassFast = 0;          // EMA ~150ms — aktuell bas-nivå
   private bassSlow = 0;          // EMA ~2.5s — baslinje
   private breakdownFrames = 0;   // antal frames bassFast legat lågt (i förhållande till baslinjen)
-  private dropFrameCounter = 0;   // räknar varje processDrop-anrop (@100Hz)
-  private dropLastFrameIdx = -100000; // refractory-räknare (frames @100Hz)
+  private dropFrameCounter = 0;   // räknar varje processDrop-anrop (@75Hz)
+  private dropLastFrameIdx = -100000; // refractory-räknare (frames @75Hz)
   private dropFlashUntil = 0;    // performance.now()-tidsstämpel då vit blixt slutar
   private _analyserDropCount = -1;         // flankreferens mot frame.dropCount (-1 = ej seedad)
   private _dropSourceActive: 'analyser' | 'bass' = 'bass';   // telemetri: vem triggade senast
@@ -445,7 +445,7 @@ export class PiLightEngine {
   // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som accepterats
   // till BLE-writerns 1-slot (faktisk leverans kan droppa äldre frames).
   private _frameTap: ((pct: number, r: number, g: number, b: number) => void) | null = null;
-  // Analys-tap: anropas per FFT-frame (~100Hz) med RÅ band/flux FÖRE ljus-estetik.
+  // Analys-tap: anropas per FFT-frame (~75Hz) med RÅ band/flux FÖRE ljus-estetik.
   private _analysisTap: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null = null;
   // Offline-playback/auto-sync borttaget (2026-06): allt körs realtime.
 
@@ -575,7 +575,7 @@ export class PiLightEngine {
     this.onsetPrevFlux = flux;
 
 
-    // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 100Hz (10ms/frame)
+    // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 75Hz (10ms/frame)
     const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
     this.onsetFrameCounter++;
     let fired = false;
@@ -728,7 +728,7 @@ export class PiLightEngine {
   }
 
   /**
-   * Drop-detektor @100Hz på bas-energi. Drops är en lång-horisont-struktur:
+   * Drop-detektor @75Hz på bas-energi. Drops är en lång-horisont-struktur:
    * breakdown/uppbyggnad (lugnt parti) → plötslig bas-explosion. Skiljer sig
    * från onset (70ms-transient) genom att kräva ett föregående nedbrutet parti.
    * Triggar en stor vit punch-blixt (dropFlashUntil) som overridas i tickInner.
@@ -737,7 +737,7 @@ export class PiLightEngine {
     if (!this.cal.dropEnabled) return;
     this.dropFrameCounter++;
 
-    // Tidsbaserade EMA:er @100Hz (dt=10ms): fast ~150ms, slow ~2.5s.
+    // Tidsbaserade EMA:er (dt-konstanterna är 100 Hz-kalibrerade, se M4): fast ~150ms, slow ~2.5s.
     const FAST_ALPHA = 0.064;
     const SLOW_ALPHA = 0.004;
     if (this.bassSlow <= 0) {
@@ -1126,12 +1126,12 @@ export class PiLightEngine {
             this._gridPulseCount++;
           }
         }
-        // Drop-detektor @100Hz (analysatorns dropCount med bas-svackan som fallback).
+        // Drop-detektor @75Hz (analysatorns dropCount med bas-svackan som fallback).
         if (bands) this.processDrop(bands.bassRms, frame);
         // (Dirigenten v2 2026-08-25: inget dynamicCenter. Brightness-formen
         //  kommer från analyser-intensity; rå amplitud är bara loudness-skala.)
 
-        // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @100Hz till recorder.
+        // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @75Hz till recorder.
         if (this._analysisTap && bands) {
           this._analysisTap(bands.bassRms, bands.midHiRms, bands.totalRms, flux);
         }
@@ -1154,7 +1154,8 @@ export class PiLightEngine {
   }
 
   // ── Event-driven tick scheduling ──
-  // FFT fires ~93 times/sec (48000/512). Vi kör tickInner när tickMs har
+  // Band-events fyras 75 ggr/sek (FRAME_MS = 13.33 ms). tickMs pacar bara BLE-slot-leasen,
+  // inte tick-takten (tick-gaten är borta). Vi kör tickInner när
   // förflutit — ALLTID med den färska FFT-framen i handen. Tidigare schemalades
   // en setTimeout för "remaining ms" när FFT kom för tidigt, vilket innebar
   // att tickInner körde mot en GAMMAL getLatestBands() (upp till tickMs sen).
@@ -1169,7 +1170,7 @@ export class PiLightEngine {
     if (!this._loopActive) return;
 
     // EN tick för hela compute-kedjan: ljus-beslutet körs på VARJE FFT-frame
-    // (~100 Hz) — ingen nedsampling, ingen aliasing, beslutet alltid ≤10ms
+    // (~75 Hz) — ingen nedsampling, ingen aliasing, beslutet alltid ≤13.33ms
     // färskt. BLE-leveransen är frikopplad (1-plats-slot), så radions
     // conn-interval styr sändtakten, inte compute-takten.
     const now = performance.now();

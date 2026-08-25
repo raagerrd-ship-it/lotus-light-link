@@ -3,7 +3,7 @@
  *
  * Usage:
  *   import { createAnalyser } from './audio-analyser';
- *   const a = createAnalyser({ sampleRate: 48000, hopSize: 480 });
+ *   const a = createAnalyser({ sampleRate: 48000, hopSize: 128 });
  *   // per hop of mono Float32 samples:
  *   const frame = a.process(samples);
  *   // frame.level, frame.kick, frame.bpm, frame.dropCount, frame.spec.*, frame.onset.*, ...
