@@ -21,7 +21,7 @@ import {
   connectHardcoded, disconnectHardcoded, getHardcodedConnected, setRestartHook,
 } from './connect.js';
 import {
-  sendToBLE, setIdleColor, sendPower, canWriteNow,
+  sendToBLE, clearQueuedWrite, setIdleColor, sendPower, canWriteNow,
   setDimmingGamma, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive,
 } from './protocol.js';
 import { bleStats } from './state.js';
@@ -54,6 +54,7 @@ export function createLampDriver(config: LampDriverConfig = {}) {
     /** Skicka färg + ljusstyrka (0–100). Returnerar WriteResult. */
     setColor: (r: number, g: number, b: number, brightness = 100) => sendToBLE(r, g, b, brightness),
     setIdleColor,
+    clearQueuedWrite,
     setPower: sendPower,
     powerOn: () => sendPower(true),
     powerOff: () => sendPower(false),
@@ -74,7 +75,7 @@ export type { LampDevice };
 export type { DeviceMode, PiCharacteristic, DiscoveredDevice, ConnectedDevice } from './types.js';
 export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID, getDevice, setDevice, isDemandActive, noble, hasNobleLoaded } from './state.js';
 export {
-  sendToBLE, canWriteNow, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma,
+  sendToBLE, canWriteNow, clearQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma,
   getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower,
 } from './protocol.js';
 export {

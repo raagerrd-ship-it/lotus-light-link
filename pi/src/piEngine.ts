@@ -16,7 +16,7 @@
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
-import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
+import { sendToBLE, clearQueuedWrite, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect } from './ble-driver/connect.js';
@@ -438,8 +438,8 @@ export class PiLightEngine {
   private _calDirty = false;
 
   // ── Frame/analys-taps (valfria observatörer) ──
-  // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som FAKTISKT
-  // skickades till BLE.
+  // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som accepterats
+  // till BLE-writerns 1-slot (faktisk leverans kan droppa äldre frames).
   private _frameTap: ((pct: number, r: number, g: number, b: number) => void) | null = null;
   // Analys-tap: anropas per FFT-frame (~100Hz) med RÅ band/flux FÖRE ljus-estetik.
   private _analysisTap: ((bassRms: number, midHiRms: number, totalRms: number, flux: number) => void) | null = null;
@@ -453,7 +453,7 @@ export class PiLightEngine {
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
-    setSlotLeaseMs(5); // floor: släpp fram alla frames ACL-gaten tillåter (user: skicka allt som inte är identiskt → backpressure ska komma från controller, inte cadence-cap)
+    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken; ingen separat rate-cap
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -464,7 +464,7 @@ export class PiLightEngine {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
-    setSlotLeaseMs(5); // floor — se constructor
+    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken; ingen separat rate-cap
   }
 
   setColor(rgb: [number, number, number]) {
@@ -781,7 +781,7 @@ export class PiLightEngine {
       bleStatsState.dropCount++;
       // Express-write: max brightness omedelbart, behåll palette-färgen
       // (2026-07-22: ingen vit tvingning — drop förstärker aktuell färg).
-      if (this._bleOwner === 'active' && canWriteNow()) {
+      if (this._bleOwner === 'active') {
         const r = this.color[0] | 0, g = this.color[1] | 0, b = this.color[2] | 0;
         const result = sendToBLE(r, g, b, 100);
         if (result === 'sent') this.lastSentPct = 100;
@@ -920,6 +920,7 @@ export class PiLightEngine {
     this._micPausedForIdle = false;
     if (!this.playing) {
       this.forceIdleNow();
+      clearQueuedWrite();
       startKeepAlive();
       dlog(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
     } else {
@@ -941,6 +942,7 @@ export class PiLightEngine {
   onBleDisconnected(): void {
     if (this._bleOwner === 'none') return;
     this._bleOwner = 'none';
+    clearQueuedWrite();
     stopKeepAlive();
     // Rensa idle-timer (kan vara pending om disconnect kom innan timeout fyrade).
     this.clearIdleDisconnectTimer();
@@ -991,6 +993,7 @@ export class PiLightEngine {
       this.stopLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'idle';
+        clearQueuedWrite();
         this.forceIdleNow();
         startKeepAlive();
         dlog('[Engine] → idle mode (owner=idle, keep-alive PÅ — väntar på lifecycle.shutdownToIgnition)');
@@ -1145,10 +1148,6 @@ export class PiLightEngine {
   private _lastSmoothAt = 0;   // för tidsbaserad EMA-alpha (robust mot hoppade ticks)
   private _loopActive = false;
   private _nextTickDeadline = 0;
-  // När BLE-pre-gaten började blockera obrutet (0 = inte blockerad).
-  private _bleGateSince = 0;
-  private static readonly BLE_GATE_MAX_MS = 500;
-
   /** Called by ALSA FFT callback — runs in the audio data handler context */
   private onFFTFrame(): void {
     if (!this._loopActive) return;
@@ -1161,27 +1160,6 @@ export class PiLightEngine {
       this._nextTickDeadline += this.tickMs;
       if (now - this._nextTickDeadline > this.tickMs) {
         this._nextTickDeadline = now + this.tickMs;
-      }
-
-      // ── BLE-styrd pre-gate (2026-06-02) ──
-      // BLE-out är den verkliga takt-styrningen. Om länken inte kan ta emot en
-      // write just nu (lease-lock, pending write eller ACL-outstanding-tak) är
-      // det meningslöst att räkna en hel tick (dynamics/gamma/fade/kalibrering)
-      // — resultatet hade ändå dött som 'busy' i sendToBLE. Skippa FÖRE den
-      // dyra beräkningen och spara CPU. Gäller bara under aktiv playback;
-      // idle-pathen styrs av keep-alive, inte tickInner.
-      // Leverans är FRIKOPPLAD från ticken (2026-08-25): pre-gaten sparar CPU,
-      // men får aldrig frysa beslutskedjan. Om BLE varit busy längre än
-      // BLE_GATE_MAX_MS kör vi tickInner ändå — writen dör som 'busy' (en
-      // droppad frame), men smoothing/beat/dynamics hålls levande.
-      if (this.playing && this._bleOwner === 'active' && !canWriteNow()) {
-        if (this._bleGateSince === 0) this._bleGateSince = now;
-        if (now - this._bleGateSince < PiLightEngine.BLE_GATE_MAX_MS) {
-          bleStatsState.tickSkippedBleBusyCount++;
-          return;
-        }
-      } else {
-        this._bleGateSince = 0;
       }
 
       this._lastTickTime = now;
@@ -1208,6 +1186,7 @@ export class PiLightEngine {
   stop(): void {
     this._running = false;
     this.stopLoop();
+    clearQueuedWrite();
     stopKeepAlive();
     onFFTReady(null); // unregister callback
     onFluxReady(null);
@@ -1218,6 +1197,7 @@ export class PiLightEngine {
   /** Suspend engine output (for BLE tests etc.) — stops loop + keep-alive */
   suspend(): void {
     this.stopLoop();
+    clearQueuedWrite();
     stopKeepAlive();
     dlog('[Engine] Suspended (BLE test mode)');
   }
@@ -1606,9 +1586,9 @@ export class PiLightEngine {
       applyColorCalibrationFast(cr, cg, cb, tc);
 
 
-      // ── BLE output (synkron hard-fail) ──
-      // sendToBLE returnerar direkt med WriteResult — engine räknar utfallet
-      // per tick istället för att blockera på writeAsync.
+      // ── BLE output (asynkron 1-slot delivery) ──
+      // sendToBLE returnerar direkt efter enqueue. Writern levererar senaste
+      // frame när BLE kan; busy leverans får aldrig stoppa tick/beat/smoothing.
       const writeResult: WriteResult = isPunch
         ? sendToBLE(255, 255, 255, pct)
         : sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], pct);
@@ -1619,7 +1599,7 @@ export class PiLightEngine {
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
       }
 
-      // ── Frame-tap: rapportera faktiskt skickad färg+brightness till recorder ──
+      // ── Frame-tap: rapportera queued färg+brightness till observer ──
       if (this._frameTap && writeResult === 'sent') {
         if (isPunch) this._frameTap(pct, 255, 255, 255);
         else this._frameTap(pct, _finalColor[0], _finalColor[1], _finalColor[2]);
