@@ -139,11 +139,6 @@ export function startConfigServer(port = 3050): void {
     next();
   });
 
-  // ─── Subsystem manual-start API (mic + sonos) ───
-  app.get('/api/subsystem/status', (_req, res) => {
-    res.json({ subsystems: getAllSubsystemStates() });
-  });
-
   // ─── Runtime permissions self-check ───
   // Frontend visar en "Setup måste köras"-banner om något saknas.
   // Detta händer typiskt när PCC packar upp release utan att köra setup-lotus.sh
@@ -465,7 +460,7 @@ export function startConfigServer(port = 3050): void {
     //   max(bass, midHi) * 4 → matchar VuMeter-skalningen (bassRms*400%) så att
     //   topp-stapeln i LiveStrip alltid visar samma värde som högsta band-stapeln
     //   i Avancerat. INNAN engine-smoothing/normalisering/dynamics.
-    // Output = engine.brightnessPct (samma källa som /api/ble/output i Avancerat).
+    // Output = engine.brightnessPct (samma källa som /api/live).
     //   Detta är engine-resultatet efter floor/gamma/punch — INTE sista
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
@@ -611,7 +606,6 @@ export function startConfigServer(port = 3050): void {
   // POST /api/ble/engine/start  → lazy-laddar noble + väntar poweredOn
   // POST /api/ble/connect        → scan-then-connect mot HARDCODED_DEVICE
   // POST /api/ble/disconnect     → kopplar från
-  // GET  /api/ble/state          → { engineReady, connected, device }
   // ─────────────────────────────────────────────────────────────────────
   app.post('/api/ble/engine/start', async (_req, res) => {
     try {
@@ -688,31 +682,6 @@ export function startConfigServer(port = 3050): void {
       res.json({ ok: result === 'sent', result, on });
     } catch (e: any) {
       res.status(500).json({ ok: false, error: e?.message ?? String(e) });
-    }
-  });
-
-  app.get('/api/ble/state', async (_req, res) => {
-    try {
-      const { getHardcodedConnected } = await import('./ble-driver/connect.js');
-      const { hasNobleLoaded } = await import('./ble-driver/state.js');
-      const { HARDCODED_DEVICE } = await import('./ble-driver/device-config.js');
-      let rawState: string | null = null;
-      let engineReady = false;
-      if (hasNobleLoaded()) {
-        const { getNoble } = await import('./ble-driver/noble-singleton.js');
-        const n = getNoble() as any;
-        rawState = n?.state ?? n?._state ?? null;
-        engineReady = rawState === 'poweredOn';
-      }
-      const c = getHardcodedConnected();
-      res.json({
-        engineReady,
-        connected: c.connected,
-        device: { name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac },
-        rawState,
-      });
-    } catch (e: any) {
-      res.status(500).json({ engineReady: false, connected: false, error: e?.message ?? String(e) });
     }
   });
 
@@ -1030,140 +999,8 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
-  // --- Live mic level ---
-  let _lastSampleTs = 0;
-  let _lastSent = 0;
-  
-  let _lastSkipBusy = 0;
-  let _lastSkipInFlight = 0;
-  let _lastWriteFail = 0;
-  let _lastWriteStallRelease = 0;
-  let _lastFftFrames = 0;
-  let _lastTickCount = 0;
-  let _lastTickOk = 0;
-  let _lastTickAbortNoMic = 0;
-  let _lastTickAbortNoChange = 0;
-  let _lastTickAbortNoDevice = 0;
-  let _lastTickAbortBleBusy = 0;
 
-  app.get('/api/mic/level', async (_req, res) => {
-    const mic = getMic();
-    const engine = getEngine();
-    const tickMs = engine ? engine.getTickMs() : null;
-    if (!mic) {
-      res.json({
-        active: false, totalRms: 0, bassRms: 0, midHiRms: 0,
-        backend: 'none', audioToBleLatencyMs: null, tickMs,
-        ble: null,
-      });
-      return;
-    }
-    const b = mic.getLatestBands();
-    let ble: any = null;
-    try {
-      const { bleStats } = await import('./ble-driver/state.js');
 
-      const now = performance.now();
-      const dt = _lastSampleTs > 0 ? (now - _lastSampleTs) / 1000 : 0;
-      const perSec = (cur: number, prev: number) => dt > 0 ? Math.round((cur - prev) / dt) : 0;
-
-      const sentPerSec = perSec(bleStats.sentCount, _lastSent);
-      
-      const skipBusyPerSec = perSec(bleStats.skipBusyCount, _lastSkipBusy);
-      const skipInFlightPerSec = perSec(bleStats.skipInFlightCount ?? 0, _lastSkipInFlight);
-      const writeFailPerSec = perSec(bleStats.writeFailCount, _lastWriteFail);
-      const writeStallReleasePerSec = perSec(bleStats.writeStallReleaseCount ?? 0, _lastWriteStallRelease);
-      const tickOkPerSec = perSec(bleStats.tickOkCount ?? 0, _lastTickOk);
-      const tickAbortNoMicPerSec = perSec(bleStats.tickAbortNoMicCount ?? 0, _lastTickAbortNoMic);
-      const tickAbortNoChangePerSec = perSec(bleStats.tickAbortNoChangeCount ?? 0, _lastTickAbortNoChange);
-      const tickAbortNoDevicePerSec = perSec(bleStats.tickAbortNoDeviceCount ?? 0, _lastTickAbortNoDevice);
-      const tickAbortBleBusyPerSec = perSec(bleStats.tickAbortBleBusyCount ?? 0, _lastTickAbortBleBusy);
-
-      const fftFrames = mic.getFFTFrameCount?.() ?? 0;
-      const tickCount = engine?.getDiagnostics().tickCount ?? 0;
-      const fftPerSec = perSec(fftFrames, _lastFftFrames);
-      const tickPerSec = perSec(tickCount, _lastTickCount);
-
-      const writeLatMaxMs = bleStats.writeLatMaxMs ?? 0;
-      bleStats.writeLatMaxMs = 0;
-
-      _lastSampleTs = now;
-      _lastSent = bleStats.sentCount;
-      
-      _lastSkipBusy = bleStats.skipBusyCount;
-      _lastSkipInFlight = bleStats.skipInFlightCount ?? 0;
-      _lastWriteFail = bleStats.writeFailCount;
-      _lastWriteStallRelease = bleStats.writeStallReleaseCount ?? 0;
-      _lastFftFrames = fftFrames;
-      _lastTickCount = tickCount;
-      _lastTickOk = bleStats.tickOkCount ?? 0;
-      _lastTickAbortNoMic = bleStats.tickAbortNoMicCount ?? 0;
-      _lastTickAbortNoChange = bleStats.tickAbortNoChangeCount ?? 0;
-      _lastTickAbortNoDevice = bleStats.tickAbortNoDeviceCount ?? 0;
-      _lastTickAbortBleBusy = bleStats.tickAbortBleBusyCount ?? 0;
-
-      ble = {
-        sentPerSec, skipBusyPerSec, skipInFlightPerSec,
-        writeFailPerSec, writeStallReleasePerSec,
-        controllerStuckCount: bleStats.controllerStuckCount ?? 0,
-        writeLatAvgMs: bleStats.writeLatAvgMs,
-        writeLatMaxMs,
-        fftPerSec, tickPerSec,
-        tickOkPerSec, tickAbortNoMicPerSec, tickAbortNoChangePerSec, tickAbortNoDevicePerSec,
-        tickAbortBleBusyPerSec,
-        dropCount: bleStats.dropCount ?? 0,
-      };
-    } catch { /* protocol module not loaded yet */ }
-    res.json({
-      active: true,
-      totalRms: b.totalRms,
-      bassRms: b.bassRms,
-      midHiRms: b.midHiRms,
-      backend: mic.getMicBackend(),
-      tickMs,
-      ble,
-    });
-  });
-
-  // --- Live BLE output (sista färg + brightness skickad till lampan) ---
-  app.get('/api/ble/output', async (_req, res) => {
-    const engine = getEngine();
-    if (!engine) {
-      res.json({ active: false, r: 0, g: 0, b: 0, brightness: 0, sentCount: 0 });
-      return;
-    }
-    const d = engine.getDiagnostics();
-    // Läs drain LIVE direkt från noble — bleStats.controllerOutstandingCount
-    // skrivs bara i leaseAndDrainState() och blir stale om engine pausar
-    // sendToBLE-anrop (idle/keep-alive). UI ska visa sanningen just nu.
-    let liveOutstanding = 0;
-    let liveQueued = 0;
-    try {
-      const cd = await import('./ble-driver/controllerDrain.js');
-      if (cd.isControllerDrainAttached()) {
-        liveOutstanding = cd.getOutstandingPackets();
-        liveQueued = cd.getQueuedPackets();
-      }
-    } catch {}
-    res.json({
-      active: true,
-      r: d.finalR,
-      g: d.finalG,
-      b: d.finalB,
-      brightness: d.brightnessPct,
-      sentCount: bleStats.sentCount,
-      
-      skipBusyCount: bleStats.skipBusyCount,
-      skipLeaseLockedCount: bleStats.skipLeaseLockedCount ?? 0,
-      skipControllerBusyCount: bleStats.skipControllerBusyCount ?? 0,
-      controllerCompleteCount: bleStats.controllerCompleteCount ?? 0,
-      controllerStuckCount: bleStats.controllerStuckCount ?? 0,
-      controllerOutstandingCount: liveOutstanding,
-      controllerQueuedCount: liveQueued,
-      outstandingAgeMs: bleStats.outstandingAgeMs ?? 0,
-      writeLatAvgMs: bleStats.writeLatAvgMs,
-    });
-  });
 
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {

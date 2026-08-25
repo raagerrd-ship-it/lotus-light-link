@@ -21,7 +21,7 @@ let _device: ConnectedDevice | null = null;
 export function getDevice(): ConnectedDevice | null { return _device; }
 export function setDevice(d: ConnectedDevice | null): void { _device = d; }
 
-// ── Stats (used by protocol.ts + /api/ble/output + /api/mic/level) ──
+// ── Stats (used by protocol.ts + /api/status + /api/live) ──
 export const bleStats = {
   sentCount: 0,
 

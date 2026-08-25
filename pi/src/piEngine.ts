@@ -803,7 +803,7 @@ export class PiLightEngine {
     const idle = loadIdleColor();
     const r = idle[0] | 0, g = idle[1] | 0, b = idle[2] | 0;
     setIdleColor(r, g, b);
-    // Reflektera idle-färgen i diagnostics så /api/ble/output visar rätt
+    // Reflektera idle-färgen i diagnostics så /api/live visar rätt
     // färg i UI:t. tickInner uppdaterar bara _diag i playing-mode, så utan
     // detta visar UI:t 0,0,0 (svart) hela tiden lampan står i idle.
     _diag.finalR = r;
