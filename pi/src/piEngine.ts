@@ -93,10 +93,12 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
   }
 
   const centerAdaptSeconds = cal.centerAdaptSeconds ?? 999;
-  const centerAlpha = centerAdaptSeconds <= 0
+  // >= 900 s räknas som "i praktiken fast" — alpha blir 0 så dynamicCenter
+  // hålls exakt på 0.5 och applyDynamics expanderar absolut energi.
+  const centerAlpha = centerAdaptSeconds <= 0 || centerAdaptSeconds >= 900
     ? 0
     : 1 - Math.exp(-(tickMs / 1000) / centerAdaptSeconds);
-  const centerAlphaFft = centerAdaptSeconds <= 0
+  const centerAlphaFft = centerAdaptSeconds <= 0 || centerAdaptSeconds >= 900
     ? 0
     : 1 - Math.exp(-(fftMs / 1000) / centerAdaptSeconds);
 
