@@ -1641,6 +1641,7 @@ export function startConfigServer(port = 3050): void {
         releaseAlpha: cal.releaseAlpha,
         brightnessFloor: cal.brightnessFloor,
         transientGain: cal.transientGain,
+        peakBoost: cal.peakBoost,
       },
       micGain: {
         base: mic ? mic.getMicGain() : Number(getItem('mic-gain') || '15'),

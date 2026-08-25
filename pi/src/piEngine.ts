@@ -159,6 +159,8 @@ export interface LightCalibration {
   dropSource: 'analyser' | 'bass';
   /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
   barAccent: number;
+  /** Topp-boost: extra lyft när analysatorns intensity > 90 %. 0 = av. Default 0.2. */
+  peakBoost: number;
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
   colorSpectralTilt: number;
@@ -168,27 +170,28 @@ export interface LightCalibration {
 const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 1.0, releaseAlpha: 0.15,
-  bassWeight: 0.9,
+  attackAlpha: 1.0, releaseAlpha: 0.45,
+  bassWeight: 0.95,
   punchWhiteThreshold: 100,
   brightnessFloor: 25,
-  transientGain: 0.8,
+  transientGain: 0.4,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
   flickerDeadband: 0.02,
-  lowSoftFloor: 0.25,
+  lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
   beatSource: 'bass',
   beatCutoffHz: 150,
-  dropEnabled: true,
+  dropEnabled: false,
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 45,
+  beatLeadMs: 0,
   beatSyncStrength: 0.10,
   dropSource: 'analyser',
   barAccent: 1.0,
+  peakBoost: 0.2,
   colorSpectralTilt: 0.25,
 };
 
@@ -690,7 +693,7 @@ export class PiLightEngine {
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
-    const lead = this.cal.beatLeadMs ?? 45;
+    const lead = this.cal.beatLeadMs ?? 0;
     return {
       locked: hasBeat(this._beat),
       bpm: this._beat?.bpm ?? 0,
@@ -1090,7 +1093,7 @@ export class PiLightEngine {
         // Pulsen fyras av rutnätet med leadMs försprång → toppen landar PÅ slaget
         // trots BLE-skrivlatensen, i stället för strax efter det.
         if (gridDrives && passesEnergyGate) {
-          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 45));
+          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs ?? 0));
           if (idx !== this._lastGridIdx) {
             this._lastGridIdx = idx;
             // ETTANS ACCENT (steg 5): barShift säger hur många slag ankaret ska
@@ -1409,13 +1412,23 @@ export class PiLightEngine {
         return;
       }
 
-      // ── 1. DIRIGENTENS TVÅ INSIGNALER (isärhållna) ──
-      // level = ABSOLUT amplitud (lightRawRms × tvåpunktsGain). Ingen AGC.
-      //         → långsam loudness-skala för tyst/låg volym.
-      // shape = frame.intensity (sektionsenergi, 0..1).
-      //         → bär musikens uppbyggnader/breakdowns och beat-dynamik.
+      // ── 1. INPUT-SYNC: formen ÄR den råa, gain-satta inputen ──
+      // level/shape = bands.totalRms (lightRawRms × tvåpunktsGain, ingen AGC).
+      // frame.intensity (bands.shape) är sektions-relativ och används BARA till
+      // topp-boosten nedan — aldrig som form-källa.
       const level = Math.max(0, Math.min(1, bands.totalRms));
-      let shape = Math.max(0, Math.min(1, bands.shape ?? 0));
+      let shape = level;
+
+      // Mjuk topp-boost på ÄKTA toppar (intensity > 90 %), adderad FÖRE
+      // smoothingen så soft-releasen fadear ner den jämnt (inget hack).
+      {
+        const _px = bands.shape ?? 0;
+        const amt = cal.peakBoost ?? 0.2;
+        if (amt > 0 && _px > 0.9) {
+          shape += (_px - 0.9) * 10 * amt;
+          if (shape > 1) shape = 1;
+        }
+      }
 
       const bassNorm = normalizeFixed(bands.bassRms);
       const midHiNorm = normalizeFixed(bands.midHiRms);
@@ -1476,10 +1489,11 @@ export class PiLightEngine {
         if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
       }
 
-      // ── 6. BRIGHTNESS: intensity-form × långsam loudness ──
+      // ── 6. BRIGHTNESS: input-formen mappas rakt golv→tak (ingen loudness-faktor,
+      // formen ÄR redan amplituden — att gånga med ampEnv dubbelräknar). ──
       let energyForm = shapeSm + fluxBoost;
       if (energyForm > 1) energyForm = 1;
-      let outN = floorN + energyForm * (1 - floorN) * loudness;
+      let outN = floorN + energyForm * (1 - floorN);
       if (outN < floorN) outN = floorN;
       if (outN > 1) outN = 1;
 
