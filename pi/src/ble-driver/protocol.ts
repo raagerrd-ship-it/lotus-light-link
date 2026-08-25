@@ -346,6 +346,12 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
 
   const now = performance.now();
 
+  // ── Send-rate-cap: glesa faktisk leverans till ~1/minSendGapMs ──
+  if (lastActualSendAt > 0 && now - lastActualSendAt < minSendGapMs) {
+    bleStats.skipRateLimitCount++;
+    return 'busy';
+  }
+
   // ── Gate: lease + writePending + ACL-outstanding ──
   if (leaseAndDrainState(now) === 'busy') {
     bleStats.skipBusyCount++;
