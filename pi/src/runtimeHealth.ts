@@ -27,8 +27,38 @@ let overrunPerMin = 0;
 
 let lateTickTotal = 0;
 
+// Monoton tick-räknare — watchdogen använder den för att skilja "motorn tickar
+// men BLE levererar inte" från "motorn tickar inte alls".
+let engineTickTotal = 0;
+
+// ── Native-anrop-instrumentering (2026-08-25) ──
+// Tick-frysningar (playback-watchdog-stuck) misstänktes komma från ett
+// blockerande native-anrop (BLE-write eller ALSA-callback). Vi tidsstämplar
+// varje sådant anrop och behåller peak + senaste långsamma anrop med kontext.
+let maxNativeCallMs = 0;
+let lastSlowNativeCall: { op: string; ms: number; atIso: string } | null = null;
+let slowNativeCallTotal = 0;
+let lastSlowLogAt = 0;
+const SLOW_NATIVE_MS = 200;
+const SLOW_LOG_INTERVAL_MS = 10_000;
+
+/** Anropas efter varje native-anrop (mic-callback, BLE-write) med dess varaktighet. */
+export function noteNativeCall(op: string, ms: number, context?: string): void {
+  if (ms > maxNativeCallMs) maxNativeCallMs = ms;
+  if (ms >= SLOW_NATIVE_MS) {
+    slowNativeCallTotal++;
+    lastSlowNativeCall = { op, ms: Math.round(ms), atIso: new Date().toISOString() };
+    const now = performance.now();
+    if (now - lastSlowLogAt >= SLOW_LOG_INTERVAL_MS) {
+      lastSlowLogAt = now;
+      console.warn(`[Health] slow native call: ${op} ${ms.toFixed(1)}ms${context ? ` (${context})` : ''}`);
+    }
+  }
+}
+
 /** Anropas en gång per engine-tick med aktuell tickMs. */
 export function noteTick(nowMs: number, tickMs: number): void {
+  engineTickTotal++;
   if (lastTickAt > 0) {
     const dt = nowMs - lastTickAt;
     const jitter = Math.abs(dt - tickMs);
@@ -38,6 +68,14 @@ export function noteTick(nowMs: number, tickMs: number): void {
     if (dt > tickMs * 1.5) lateTickTotal++;
   }
   lastTickAt = nowMs;
+}
+
+/** Monoton räknare över körda engine-ticks (watchdog-diagnos). */
+export function getEngineTickTotal(): number { return engineTickTotal; }
+
+/** Millisekunder sedan senaste engine-tick (watchdog-diagnos). */
+export function msSinceLastTick(): number {
+  return lastTickAt > 0 ? performance.now() - lastTickAt : -1;
 }
 
 /** Anropas vid varje ALSA buffer overrun (tappade samples). */
