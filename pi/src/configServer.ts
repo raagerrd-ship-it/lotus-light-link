@@ -932,8 +932,8 @@ export function startConfigServer(port = 3050): void {
     const SETTLE_MS = 500;
     const originalTickMs = engine.getTickMs();
     const results: Array<{
-      tickMs: number; fftDropped: number; writeFail: number;
-      writeStuck: number; sent: number; passed: boolean;
+      tickMs: number; stallReleases: number; writeFail: number;
+      controllerStuck: number; sent: number; passed: boolean;
     }> = [];
 
     console.log(`[Autotune] Start — sweep ${STEPS.length} steg, ${BLOCK_MS}ms/steg, original=${originalTickMs}ms`);
@@ -943,21 +943,21 @@ export function startConfigServer(port = 3050): void {
         engine.setTickMs(step);
         engine.restartTimer();
         await new Promise(r => setTimeout(r, SETTLE_MS));
-        const fftStart = bleStats.fftDroppedCount ?? 0;
+        const stallStart = bleStats.writeStallReleaseCount ?? 0;
         const failStart = bleStats.writeFailCount;
-        const stuckStart = bleStats.writeStuckCount ?? 0;
+        const stuckStart = bleStats.controllerStuckCount ?? 0;
         const sentStart = bleStats.sentCount;
 
         await new Promise(r => setTimeout(r, BLOCK_MS));
 
-        const fftDelta = (bleStats.fftDroppedCount ?? 0) - fftStart;
+        const stallDelta = (bleStats.writeStallReleaseCount ?? 0) - stallStart;
         const failDelta = bleStats.writeFailCount - failStart;
-        const stuckDelta = (bleStats.writeStuckCount ?? 0) - stuckStart;
+        const stuckDelta = (bleStats.controllerStuckCount ?? 0) - stuckStart;
         const sentDelta = bleStats.sentCount - sentStart;
-        const passed = fftDelta === 0 && failDelta === 0 && stuckDelta === 0;
+        const passed = stallDelta === 0 && failDelta === 0 && stuckDelta === 0;
 
-        results.push({ tickMs: step, fftDropped: fftDelta, writeFail: failDelta, writeStuck: stuckDelta, sent: sentDelta, passed });
-        console.log(`[Autotune] tickMs=${step} → fftDropped=${fftDelta} writeFail=${failDelta} writeStuck=${stuckDelta} sent=${sentDelta} ${passed ? '✓' : '✗'}`);
+        results.push({ tickMs: step, stallReleases: stallDelta, writeFail: failDelta, controllerStuck: stuckDelta, sent: sentDelta, passed });
+        console.log(`[Autotune] tickMs=${step} → stallReleases=${stallDelta} writeFail=${failDelta} controllerStuck=${stuckDelta} sent=${sentDelta} ${passed ? '✓' : '✗'}`);
       }
 
       const passing = results.filter(r => r.passed);
