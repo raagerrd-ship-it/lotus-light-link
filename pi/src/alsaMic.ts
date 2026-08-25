@@ -277,6 +277,10 @@ export function getLatestFrameAt(): number { return latestFrameAt; }
 export function setAnalyserBeatGrid(grid: { bpm: number; anchorMs: number } | null): void {
   analyser.setBeatGrid(grid);
 }
+/** Mjuk låtbytes-hint till tempo-sökningen (Sonos trackName ändrades). */
+export function hintAnalyserTrackChange(windowMs = 5000): void {
+  analyser.hintTrackChange(windowMs);
+}
 
 
 // ── Analyser cost budget (ms per 128-hop @ 375 Hz) ──────────────────────────

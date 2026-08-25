@@ -194,6 +194,8 @@ export class Analyser {
   private lockPeak = 0;        // tempogram-toppens styrka när takten är frisk (referens)
   private lastSongVoteMs = 0;  // väggklocka för förra låtbytesrösten (bevis mäts i TID)
   private newSongVote = 0;  // ihållande oenighet trots låst oktav → låtbyte utan tystnadslucka
+  /** Väggklocka: t.o.m. denna tid gäller vidgad tempo-sökning efter en låtbytes-hint. */
+  private reacqUntilMs = 0;
 
   // Ringbuffert för senaste råestimat (~5s) → median-stabilisering utan allokering.
   private static readonly BPM_HIST = 20;
@@ -596,12 +598,16 @@ export class Analyser {
         //      råestimatet vandrar) yanka låset under de första 15 s.
         //   3. HISTORIKEN TÖMS vid omlåsning — annars drar medianfönstret, halvfullt
         //      av det felaktiga tempot, tillbaka och låset glider i stället för att landa.
-        if (conf < 0.75) {
+        // LÅTBYTES-HINT (Sonos): under re-acquisition-fönstret sänks kvalitetsgrinden
+        // och röstkravet, så en ny takt kan bekräftas på ~2-3 s i stället för ~5 s.
+        // Skydden finns kvar (sammanhållen utmanare + tömd historik) — bara mildare.
+        const reacq = voteNow < this.reacqUntilMs;
+        if (conf < (reacq ? 0.55 : 0.75)) {
           this.nearVote = 0; this.nearChallenger = 0;
         } else if (this.nearChallenger > 0 && Math.abs(bpm / this.nearChallenger - 1) <= 0.04) {
           this.nearChallenger += (bpm - this.nearChallenger) * 0.3;
           this.nearVote++;
-          if (this.nearVote >= 8) {
+          if (this.nearVote >= (reacq ? 3 : 8)) {
             this.localBpm = Math.round(med);
             this.bpmHistLen = 0; this.bpmHistPos = 0;
             this.nearVote = 0; this.nearChallenger = 0; this.octaveVote = 0; this.bpmStable = 0;
@@ -700,6 +706,26 @@ export class Analyser {
     this.tempoGram.fill(0);
     this.barAcc.fill(0); this.barCount = 0;
   }
+
+  /**
+   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från resetTempo()
+   * kastas INTE tempot: många byten landar på liknande takt, och en bevarad
+   * startgissning bekräftas i praktiken direkt (~1 takt) i stället för att byggas
+   * upp från noll (~5 s MÄTT). Vi gör bara sökningen villigare att hoppa:
+   *   • historiken töms (medianfönstret tillhör förra låten),
+   *   • oktav-commit släpps (bpmStable=0) så ½×/2× får rättas igen,
+   *   • lockPeak nollas så nya låtens takt inte jämförs mot förra låtens styrka,
+   *   • under `windowMs` sänks grann-rättningens conf-grind och röstkrav.
+   */
+  hintTrackChange(windowMs = 5000): void {
+    this.reacqUntilMs = Date.now() + windowMs;
+    this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
+    this.bpmStable = 0; this.lockPeak = 0;
+    this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0;
+    this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0;
+    this.barAcc.fill(0); this.barCount = 0;
+  }
+
 
   /** Taktfasen är applicerad av motorn (ankaret flyttat) → börja om räkningen. */
   resetBar(): void { this.barAcc.fill(0); this.barCount = 0; }
