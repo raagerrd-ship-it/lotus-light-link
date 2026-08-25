@@ -701,6 +701,26 @@ export class Analyser {
     this.barAcc.fill(0); this.barCount = 0;
   }
 
+  /**
+   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från resetTempo()
+   * kastas INTE tempot: många byten landar på liknande takt, och en bevarad
+   * startgissning bekräftas i praktiken direkt (~1 takt) i stället för att byggas
+   * upp från noll (~5 s MÄTT). Vi gör bara sökningen villigare att hoppa:
+   *   • historiken töms (medianfönstret tillhör förra låten),
+   *   • oktav-commit släpps (bpmStable=0) så ½×/2× får rättas igen,
+   *   • lockPeak nollas så nya låtens takt inte jämförs mot förra låtens styrka,
+   *   • under `windowMs` sänks grann-rättningens conf-grind och röstkrav.
+   */
+  hintTrackChange(windowMs = 5000): void {
+    this.reacqUntilMs = Date.now() + windowMs;
+    this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
+    this.bpmStable = 0; this.lockPeak = 0;
+    this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0;
+    this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0;
+    this.barAcc.fill(0); this.barCount = 0;
+  }
+
+
   /** Taktfasen är applicerad av motorn (ankaret flyttat) → börja om räkningen. */
   resetBar(): void { this.barAcc.fill(0); this.barCount = 0; }
 
