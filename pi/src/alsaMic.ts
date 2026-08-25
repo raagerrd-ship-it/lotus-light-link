@@ -219,6 +219,10 @@ let debugPeakRaw = 0;
 
 const hsGain = Math.pow(10, 9 / 20);  // +9dB hi-shelf for INMP441 at ~1m distance
 const HS_ALPHA = 0.15;
+// ring = hs + (rawPre - hs) * hsGain, med hs redan uppdaterad → återanvänd deltat:
+// (rawPre - hs_new) = (1 - HS_ALPHA) * d, alltså ring = hs_new + d * HS_D_COEFF.
+const HS_D_COEFF = (1 - HS_ALPHA) * hsGain;
+
 
 // ── Event-driven FFT callback ──
 type FFTReadyCallback = (bands: BandResult) => void;
