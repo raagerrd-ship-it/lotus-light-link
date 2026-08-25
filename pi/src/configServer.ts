@@ -1317,8 +1317,7 @@ export function startConfigServer(port = 3050): void {
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
     const mic = getMic();
-    const saved = 15;
-    res.json({ gain: mic ? mic.getMicGain() : saved });
+    res.json({ gain: mic ? mic.getMicGain() : 15 });
   });
 
   app.put('/api/mic-gain', (req, res) => {
