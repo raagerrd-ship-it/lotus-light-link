@@ -1454,20 +1454,8 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
-  // --- TV-profil (vilken profil som aktiveras i TV-läge) ---
-  app.get('/api/tv-profile', (_req, res) => {
-    res.json({ name: getTvProfileName(), available: PROFILE_NAMES });
-  });
+  // --- TV-profil BORTTAGEN (2026-08-25): inga profiler längre ---
 
-  app.put('/api/tv-profile', (req, res) => {
-    const { name } = req.body ?? {};
-    if (!name || !PROFILE_NAMES.includes(name)) {
-      return res.status(400).json({ error: `name must be one of ${PROFILE_NAMES.join(', ')}` });
-    }
-    setItem('tv-profile', name);
-    console.log(`[Config] TV-profil → ${name}`);
-    res.json({ ok: true, name });
-  });
 
   // --- Record / Playback BORTTAGET (2026-06-02) ---
   // Inspelning/offline-playback och låt-studio är helt borttagna (2026-06-03).
