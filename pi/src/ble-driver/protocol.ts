@@ -153,6 +153,7 @@ export function resetLastSent(): void {
   lastSendStartedAt = 0;
   stuckRecoveryInFlight = false;
   lastWriteTime = 0;
+  lastActualSendAt = 0;
   _writeLatAvgPrecise = 0;
   bleStats.controllerOutstandingCount = 0;
   bleStats.outstandingAgeMs = 0;
@@ -279,6 +280,7 @@ export function startKeepAlive(): void {
     lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
+    lastActualSendAt = now;
 
     device.characteristic.writeAsync(buf, true)
       .then(() => {
@@ -402,6 +404,7 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   lastSendStartedAt = now;
   slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
+  lastActualSendAt = now;
 
   // Tidsstämpla den SYNKRONA delen av det native anropet. writeAsync ska
   // returnera ett promise direkt; blockerar den event-loopen är det den som
