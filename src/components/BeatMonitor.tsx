@@ -16,7 +16,7 @@ type BeatInfo = {
  * leadMs FÖRE det hörbara slaget. Serverklockan hämtas 1 Hz och extrapoleras
  * lokalt så att markörerna rör sig mjukt mellan pollningarna.
  */
-export function BeatMonitor({ piBase, onTapBpm }: { piBase: string; onTapBpm?: (bpm: number) => void }) {
+export function BeatMonitor({ onTapBpm }: { onTapBpm?: (bpm: number) => void }) {
   const [beat, setBeat] = useState<BeatInfo | null>(null);
   const clock = useRef<{ nextOutAt: number; periodMs: number } | null>(null);
   const [phase, setPhase] = useState(0);
