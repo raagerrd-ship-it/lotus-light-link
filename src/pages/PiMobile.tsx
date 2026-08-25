@@ -1068,7 +1068,7 @@ export default function PiMobile() {
                 <LightPreview
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
-                  dynamicDamping={cal.dynamicDamping}
+                  ceilingSensitivity={cal.ceilingSensitivity}
                   beatCutoffHz={cal.beatCutoffHz}
                 />
 
@@ -1082,7 +1082,7 @@ export default function PiMobile() {
                   hint="0 = rått fall, 100 = mycket mjuk fade-out."
                 />
                 <Slider
-                  label="Min ljusstyrka"
+                  label="Min ljusstyrka (golv)"
                   value={cal.brightnessFloor}
                   display={`${cal.brightnessFloor} %`}
                   min={0} max={100}
@@ -1090,12 +1090,12 @@ export default function PiMobile() {
                   hint="0 = släck helt i tystnad."
                 />
                 <Slider
-                  label="Dynamik"
-                  value={cal.dynamicDamping}
-                  display={`${cal.dynamicDamping.toFixed(1)}×`}
-                  min={-2} max={2} step={0.1}
-                  onChange={(v) => setCal({ ...cal, dynamicDamping: v })}
-                  hint="0 = av, positivt = kontrast, negativt = utjämning."
+                  label="Tak-känslighet"
+                  value={cal.ceilingSensitivity}
+                  display={`${cal.ceilingSensitivity.toFixed(2)}×`}
+                  min={0.3} max={2} step={0.05}
+                  onChange={(v) => setCal({ ...cal, ceilingSensitivity: v })}
+                  hint="Hur snabbt taket följer låtens absoluta nivå. Högre = lägre nivå räcker för fullt tak."
                 />
                 <Slider
                   label="Beat-källa (lyssnar under)"
@@ -1106,21 +1106,14 @@ export default function PiMobile() {
                   hint="Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa."
                 />
                 <Slider
-                  label="Ljus-skala (headroom)"
-                  value={cal.lightScale}
-                  display={`${Math.round(cal.lightScale * 100)} %`}
-                  min={0.3} max={1} step={0.01}
-                  onChange={(v) => setCal({ ...cal, lightScale: v })}
-                  hint="Var musiken toppar. 80 % = drops har 20 % kvar att sticka ut med."
+                  label="Färg-tilt (bas ↔ diskant)"
+                  value={cal.colorSpectralTilt}
+                  display={`${Math.round(cal.colorSpectralTilt * 100)} %`}
+                  min={0} max={0.6} step={0.05}
+                  onChange={(v) => setCal({ ...cal, colorSpectralTilt: v })}
+                  hint="Basrik mix drar färgen varmare, diskantrik svalare. 0 = ren palett."
                 />
-                <Slider
-                  label="Ljus-bredd (bas ↔ bredband)"
-                  value={cal.lightBassWeight}
-                  display={`${Math.round(cal.lightBassWeight * 100)} % bas`}
-                  min={0} max={1} step={0.05}
-                  onChange={(v) => setCal({ ...cal, lightBassWeight: v })}
-                  hint="Hur mycket bara basen driver ljusstyrkan. 50 % = bredband (ljust även på mitt/diskant). Beat-detektionen påverkas inte."
-                />
+
 
                 <Slider
                   label="Beat-lead (försprång)"
