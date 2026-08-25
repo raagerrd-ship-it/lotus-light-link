@@ -460,7 +460,7 @@ export function startConfigServer(port = 3050): void {
     //   max(bass, midHi) * 4 → matchar VuMeter-skalningen (bassRms*400%) så att
     //   topp-stapeln i LiveStrip alltid visar samma värde som högsta band-stapeln
     //   i Avancerat. INNAN engine-smoothing/normalisering/dynamics.
-    // Output = engine.brightnessPct (samma källa som /api/ble/output i Avancerat).
+    // Output = engine.brightnessPct (samma källa som /api/live).
     //   Detta är engine-resultatet efter floor/gamma/punch — INTE sista
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
@@ -606,7 +606,6 @@ export function startConfigServer(port = 3050): void {
   // POST /api/ble/engine/start  → lazy-laddar noble + väntar poweredOn
   // POST /api/ble/connect        → scan-then-connect mot HARDCODED_DEVICE
   // POST /api/ble/disconnect     → kopplar från
-  // GET  /api/ble/state          → { engineReady, connected, device }
   // ─────────────────────────────────────────────────────────────────────
   app.post('/api/ble/engine/start', async (_req, res) => {
     try {
