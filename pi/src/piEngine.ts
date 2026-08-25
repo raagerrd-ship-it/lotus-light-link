@@ -1486,10 +1486,11 @@ export class PiLightEngine {
         if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
       }
 
-      // ── 6. BRIGHTNESS: intensity-form × långsam loudness ──
+      // ── 6. BRIGHTNESS: input-formen mappas rakt golv→tak (ingen loudness-faktor,
+      // formen ÄR redan amplituden — att gånga med ampEnv dubbelräknar). ──
       let energyForm = shapeSm + fluxBoost;
       if (energyForm > 1) energyForm = 1;
-      let outN = floorN + energyForm * (1 - floorN) * loudness;
+      let outN = floorN + energyForm * (1 - floorN);
       if (outN < floorN) outN = floorN;
       if (outN > 1) outN = 1;
 
