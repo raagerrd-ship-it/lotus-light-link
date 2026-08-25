@@ -864,8 +864,8 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [profilesRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
-        safeFetch(`${piBase}/api/profiles`),
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
+        safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
         safeFetch(`${piBase}/api/dimming-gamma`),
@@ -876,47 +876,31 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
-      // Mappa varje profils stored kalibrering tillbaka till UI:ts Cal-form
+      // Mappa lagrad kalibrering tillbaka till UI:ts Cal-form
       // (attackAlpha → attack, releaseAlpha → softness, defaults för saknade fält).
-      const mapStoredToCal = (c: any): Cal => {
-        const softness = c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness;
-        const attack = c?.attackAlpha != null ? alphaToAttack(c.attackAlpha) : DEFAULT_CAL.attack;
-        return {
-          bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
-          attack,
-          softness,
-          dynamicDamping: c?.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
-          brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
-          punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
-          perceptualGamma: c?.perceptualGamma ?? (typeof c?.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
-          transientGain: c?.transientGain ?? (typeof c?.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
-          dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
-          onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
-          onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
-          onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
-          tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
-          flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
-          beatSource: c?.beatSource ?? DEFAULT_CAL.beatSource,
-          beatCutoffHz: c?.beatCutoffHz ?? DEFAULT_CAL.beatCutoffHz,
-          dropEnabled: c?.dropEnabled ?? DEFAULT_CAL.dropEnabled,
-          dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
-          dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
-          beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
-          lightScale: c?.lightScale ?? DEFAULT_CAL.lightScale,
-          lightBassWeight: c?.lightBassWeight ?? DEFAULT_CAL.lightBassWeight,
-        };
-      };
+      const mapStoredToCal = (c: any): Cal => ({
+        bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
+        attack: c?.attackAlpha != null ? alphaToAttack(c.attackAlpha) : DEFAULT_CAL.attack,
+        softness: c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness,
+        brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
+        punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
+        transientGain: c?.transientGain ?? DEFAULT_CAL.transientGain,
+        ceilingSensitivity: c?.ceilingSensitivity ?? DEFAULT_CAL.ceilingSensitivity,
+        colorSpectralTilt: c?.colorSpectralTilt ?? DEFAULT_CAL.colorSpectralTilt,
+        onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
+        onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
+        onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
+        tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
+        flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
+        beatCutoffHz: c?.beatCutoffHz ?? DEFAULT_CAL.beatCutoffHz,
+        dropEnabled: c?.dropEnabled ?? DEFAULT_CAL.dropEnabled,
+        dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
+        dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
+        beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
+      });
 
-      if (profilesRes?.profiles && typeof profilesRes.profiles === 'object') {
-        const next: Record<string, Cal> = {
-          Lugn:   mapStoredToCal(profilesRes.profiles.Lugn   ?? {}),
-          Normal: mapStoredToCal(profilesRes.profiles.Normal ?? {}),
-          Party:  mapStoredToCal(profilesRes.profiles.Party  ?? {}),
-          Custom: mapStoredToCal(profilesRes.profiles.Custom ?? {}),
-        };
-        setProfiles(next);
-        if (profilesRes.activePreset) setActivePreset(profilesRes.activePreset);
-      }
+      if (calRes && typeof calRes === 'object') setCal(mapStoredToCal(calRes));
+
       if (micRes?.device) setAlsaDevice(micRes.device);
       if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
       if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
