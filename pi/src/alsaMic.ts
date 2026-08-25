@@ -835,7 +835,7 @@ function onAudioData(buf: Buffer): void {
   // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
   
   const hsAlpha = HS_ALPHA;
-  const hsG = hsGain;
+  let hs = hsState;
   let hs = hsState;
   let pos = ringPos;
   const ring = ringBuf;
