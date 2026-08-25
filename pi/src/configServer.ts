@@ -50,13 +50,10 @@ export function attachConfigRuntime(runtime: {
   attachedMic = runtime.mic;
   invalidateIdleColorCacheFn = runtime.invalidateIdleColorCache ?? null;
 
-  try {
-    const saved = getItem('gain-cal-points');
-    if (saved) {
-      const { point1, point2 } = JSON.parse(saved);
-      attachedMic.setGainCalPoints(point1 ?? null, point2 ?? null);
-    }
-  } catch {}
+  // A2: cal-punkter laddas ENBART ur mic-state.json (alsaMic:s restoreMicState).
+  // Den redundanta laddningen härifrån skrev över auto-kalibrerade punkter med
+  // gamla gain-cal-points.json-värden vid varje boot.
+
 
   console.log('[Config] Runtime attached (engine + mic)');
 }
