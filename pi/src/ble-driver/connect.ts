@@ -96,11 +96,6 @@ let _lastReconnectRequestAt = 0;
 const RECONNECT_DEBOUNCE_MS = 1000;
 
 // ── Tracking av senaste disconnect-orsak ──
-// Manuell disconnect (UI-knapp) → wasAuto=false → Sonos-PLAYING-pathen i
-// index.ts blockerar auto-reconnect (manual-only-policy gäller).
-// Idle-timeout-disconnect (engine.handleIdleDisconnect) → wasAuto=true →
-// Sonos PLAYING får trigga reconnect automatiskt.
-let _lastDisconnectWasAuto = false;
 let _lastDisconnectReason: 'manual' | 'idle-timeout' | 'supervision-timeout' | 'unknown' = 'unknown';
 
 export function getLastDisconnectReason(): string { return _lastDisconnectReason; }
@@ -197,7 +192,6 @@ export function getHardcodedConnected(): { connected: boolean; name: string; mac
 
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   // Manuell disconnect → stoppa auto-reconnect-loopen så vi inte kämpar mot användaren.
-  _lastDisconnectWasAuto = false;
   _lastDisconnectReason = 'manual';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
@@ -220,7 +214,6 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
  */
 export async function triggerIdleDisconnect(): Promise<void> {
   console.log('[connect-hardcoded] Idle-timeout disconnect — markerar som auto');
-  _lastDisconnectWasAuto = true;
   _lastDisconnectReason = 'idle-timeout';
   _autoReconnectEnabled = false;
   clearAutoReconnect();
@@ -535,7 +528,6 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         dlog(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
       }
       _consecutiveFailures = 0;
-      _lastDisconnectWasAuto = false;
       _lastDisconnectReason = 'unknown';
       // Auto-wake the lamp's LED driver. Idempotent — sending power-on to
       // an already-on lamp is a no-op. Fire-and-forget; even if det failar

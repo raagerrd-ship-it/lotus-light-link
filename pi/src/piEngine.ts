@@ -59,8 +59,6 @@ export interface TickConstants {
 }
 
 export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
-  const ratio = tickMs / 125;
-  const secRatio = tickMs / 1000;
   // fftMs = FRAME_MS: onset-alforna körs nu på sann 75 Hz-takt (var felaktigt hårdkodad 10 = 100 Hz-antagande).
   const fftMs = FRAME_MS;
 
