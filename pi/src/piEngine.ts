@@ -1543,7 +1543,21 @@ export class PiLightEngine {
       // Drop längre ger max brightness men behåller palette-färg — bara
       // punchWhiteThreshold (peak-detektorn) tvingar vit.
       const isPunch = (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
-      applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], tc);
+
+      // ── FÄRG-TILT på spektralbalans (helt oberoende av brightness) ──
+      // bas-tung mix → varmare (rött upp, blått ner), diskant-tung → svalare.
+      const tilt = cal.colorSpectralTilt ?? 0;
+      let cr = this.color[0], cg = this.color[1], cb = this.color[2];
+      if (tilt > 0 && !inSilence) {
+        // -1 (helt diskant) .. +1 (helt bas)
+        const balance = (bands.bassShare ?? 0.5) * 2 - 1;
+        const warm = 1 + balance * tilt;
+        const cool = 1 - balance * tilt;
+        cr = Math.min(255, cr * warm);
+        cb = Math.min(255, cb * cool);
+      }
+      applyColorCalibrationFast(cr, cg, cb, tc);
+
 
       // ── BLE output (synkron hard-fail) ──
       // sendToBLE returnerar direkt med WriteResult — engine räknar utfallet
