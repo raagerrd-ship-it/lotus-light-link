@@ -159,6 +159,8 @@ export interface LightCalibration {
   dropSource: 'analyser' | 'bass';
   /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
   barAccent: number;
+  /** Topp-boost: extra lyft när analysatorns intensity > 90 %. 0 = av. Default 0.2. */
+  peakBoost: number;
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
   colorSpectralTilt: number;
