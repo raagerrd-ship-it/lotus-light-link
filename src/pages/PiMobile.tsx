@@ -6,6 +6,7 @@ import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { Panel, Row, Stat, Slider, Segmented, Button, Toggle } from "@/components/piUi";
 import { LightPreview } from "@/components/LightPreview";
 import { BeatMonitor } from "@/components/BeatMonitor";
+import { useLiveFeed, setLiveFeedFastUntil } from "@/lib/liveFeed";
 
 
 
@@ -441,6 +442,7 @@ function GainCalibrationPanel({
       }).catch(() => {});
     }, 150);
     fastPollUntilRef.current = Date.now() + 5000;
+    setLiveFeedFastUntil(Date.now() + 5000);
     setHoldReset((n) => n + 1);
   };
 
@@ -499,6 +501,7 @@ function GainCalibrationPanel({
         setMicGain={setMicGain}
         onGainChanged={() => {
           fastPollUntilRef.current = Date.now() + 5000;
+    setLiveFeedFastUntil(Date.now() + 5000);
           setHoldReset((n) => n + 1);
         }}
         onDone={(low, high) => {
@@ -507,6 +510,7 @@ function GainCalibrationPanel({
           setVolLow(low.vol);
           setVolHigh(high.vol);
           fastPollUntilRef.current = Date.now() + 5000;
+    setLiveFeedFastUntil(Date.now() + 5000);
           setHoldReset((n) => n + 1);
         }}
 
