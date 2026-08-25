@@ -12,6 +12,7 @@ Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnec
 BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process retry.
 
 ## Memories
+- [Input-sync (form)](mem://pi/lighting/input-sync-form) — formen = bands.totalRms; intensity BARA topp-boost >90%; ingen loudness-faktor; beatLeadMs 0
 - [Input-gain vs ljus-skala](mem://pi/lighting/two-stage-gain-vs-lightscale) — lightScale 0.8 ger drop-headroom; NIVÅ-baren visar BLE brightness
 - [Två tappar: AGC vs ljus](mem://pi/audio/two-taps-agc-vs-light) — o-gainad ring; AGC (mål 0.8) bara till analysen, egen linjär RMS × micGain till ljuset
 - [En linjär gain](mem://pi/audio/single-linear-gain) — RAW_SCALE=5 borta; tvåpunkts Sonos-kurva enda gain-källan (5–300×)
