@@ -371,11 +371,13 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       // Helper: race en promise mot en hård timeout. noble's connectAsync
       // kan på Pi Zero 2W hänga oändligt om L2CAP-handshake tappas, vilket
       // tidigare lät yttre 8s-watchdogen fyra "ingen matchade" trots match.
-      const withTimeout = <T,>(p: Promise<T>, label: string, ms: number): Promise<T> =>
-        Promise.race([
-          p,
-          new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms)),
-        ]);
+      const withTimeout = <T,>(p: Promise<T>, label: string, ms: number): Promise<T> => {
+        let t: ReturnType<typeof setTimeout>;
+        const timeout = new Promise<T>((_, rej) => {
+          t = setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms);
+        });
+        return Promise.race([p, timeout]).finally(() => clearTimeout(t));
+      };
 
       const onDiscover = async (peripheral: any) => {
         // B1: yttre timeouten kan ha resolvat redan (finish() stoppar scanningen
@@ -389,6 +391,9 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         // BLE-advertisement loggen och äter CPU på Pi Zero 2W.
         if (!isMatch) return;
         matched = true;
+        // R1: yttre scan-timern får INTE fyra mid-connect. Vi har matchat →
+        // resten av flödet bounder sig själv via withTimeout.
+        clearTimeout(timer);
         const name = peripheral.advertisement?.localName ?? '(no name)';
         dlog(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi} ← MATCH`);
         dlog(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
@@ -401,13 +406,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         dlog(`${ts()} 4. peripheral.connectAsync() (4s timeout)…`);
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
-          if (resolved) {
-            // B1: timeouten fyrade under connectAsync — callern har redan fått
-            // sitt svar. Släpp länken i stället för att lämna en osynlig connect.
-            dlog(`${ts()}    connect klar EFTER timeout — kopplar ner igen`);
-            try { await peripheral.disconnectAsync(); } catch {}
-            return;
-          }
+
           _connected = peripheral;
           // Rensa ev. gamla disconnect-listeners från tidigare connect-cyklar.
           // Noble emittar internt `disconnect:<uuid>` på SIG noble-objektet,
