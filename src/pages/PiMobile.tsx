@@ -803,36 +803,29 @@ export default function PiMobile() {
   const handleSave = async () => {
     setSaveError(null);
     try {
-      // Konvertera alla 4 profilers attack/softness → attackAlpha/releaseAlpha innan PUT
-      const profilesPayload: Record<string, any> = {};
-      for (const [name, p] of Object.entries(profiles)) {
-        profilesPayload[name] = {
-          bassWeight: p.bassWeight,
-          attackAlpha: attackToAlpha(p.attack),
-          releaseAlpha: softnessToAlpha(p.softness),
-          dynamicDamping: p.dynamicDamping,
-          brightnessFloor: p.brightnessFloor,
-          punchWhiteThreshold: p.punchWhiteThreshold,
-          perceptualGamma: p.perceptualGamma,
-          transientGain: p.transientGain,
-          dynamicsEnabled: p.dynamicsEnabled,
-          onsetThreshold: p.onsetThreshold,
-          onsetRefractoryMs: p.onsetRefractoryMs,
-          onsetEnergyFloor: p.onsetEnergyFloor,
-          tickEnergyFloor: p.tickEnergyFloor,
-          flickerDeadband: p.flickerDeadband,
-          beatSource: p.beatSource,
-          beatCutoffHz: p.beatCutoffHz,
-          dropEnabled: p.dropEnabled,
-          dropSensitivity: p.dropSensitivity,
-          dropFlashMs: p.dropFlashMs,
-          beatLeadMs: p.beatLeadMs,
-          lightScale: p.lightScale,
-          lightBassWeight: p.lightBassWeight,
-        };
-      }
+      const calPayload = {
+        bassWeight: cal.bassWeight,
+        attackAlpha: attackToAlpha(cal.attack),
+        releaseAlpha: softnessToAlpha(cal.softness),
+        brightnessFloor: cal.brightnessFloor,
+        punchWhiteThreshold: cal.punchWhiteThreshold,
+        transientGain: cal.transientGain,
+        ceilingSensitivity: cal.ceilingSensitivity,
+        colorSpectralTilt: cal.colorSpectralTilt,
+        onsetThreshold: cal.onsetThreshold,
+        onsetRefractoryMs: cal.onsetRefractoryMs,
+        onsetEnergyFloor: cal.onsetEnergyFloor,
+        tickEnergyFloor: cal.tickEnergyFloor,
+        flickerDeadband: cal.flickerDeadband,
+        beatCutoffHz: cal.beatCutoffHz,
+        dropEnabled: cal.dropEnabled,
+        dropSensitivity: cal.dropSensitivity,
+        dropFlashMs: cal.dropFlashMs,
+        beatLeadMs: cal.beatLeadMs,
+      };
       const results = await Promise.allSettled([
-        putJson('/api/profiles', { profiles: profilesPayload, activePreset }),
+        putJson('/api/calibration', calPayload),
+
         putJson('/api/tick-ms', { tickMs }),
         putJson('/api/mic-device', { device: alsaDevice }),
         putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
