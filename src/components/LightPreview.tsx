@@ -49,7 +49,6 @@ export function LightPreview({
     const hist = new Float32Array(N);
     const raw = new Float32Array(N);
     let intensitySm = 0.5;
-    let ampEnv = 0.2;
     let raf = 0;
     const t0 = performance.now();
     const BEAT_MS = 500;
