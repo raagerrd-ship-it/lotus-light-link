@@ -49,8 +49,8 @@ export function LightPreview({
     const N = 140;
     const hist = new Float32Array(N);
     const raw = new Float32Array(N);
-    let level = 0;
-    let ampEnv = 0.35;
+    let intensitySm = 0.5;
+    let ampEnv = 0.2;
     let raf = 0;
     const t0 = performance.now();
     const BEAT_MS = 500;
@@ -59,26 +59,27 @@ export function LightPreview({
       const p = params.current;
       const t = performance.now() - t0;
 
-      // Syntetisk källa: kick-transient + mellanregister som släpps in av cutoff.
+      // Syntetisk källa: intensity-swell + kick-transient, loudness nästan konstant.
       const phase = t % BEAT_MS;
       const kick = Math.exp(-phase / 90);
       const mid = 0.35 * (0.5 + 0.5 * Math.sin(t / 130)) * Math.exp(-(phase % 250) / 160);
       const melodyMix = Math.min(1, Math.max(0, (p.beatCutoffHz - 60) / 1940));
       let x = (1 - melodyMix * 0.55) * kick + melodyMix * mid;
+      const swell = 0.5 + 0.5 * Math.sin(t / 6200 - 1.2);
+      const intensity = Math.min(1, Math.max(0, 0.22 + swell * 0.72 + kick * 0.08));
 
       // Attack direkt, release mjuknar exponentiellt med softness.
       const release = 0.6 * Math.pow(0.04, p.softness / 100);
-      level = x > level ? x : level + (x - level) * release;
+      intensitySm = intensity > intensitySm ? intensity : intensitySm + (intensity - intensitySm) * release;
 
-      // Dirigenten: taket följer absolut nivå (långsam envelope), shape ger
-      // snabb dynamik inom golv→tak.
-      const amp = Math.min(1, level * p.ceilingSensitivity);
+      // Dirigent v2: rå nivå skalar loudness långsamt; intensity bär formen.
+      const amp = Math.min(1, (0.14 + 0.04 * Math.sin(t / 9000)) * p.ceilingSensitivity);
       ampEnv += (amp - ampEnv) * (amp > ampEnv ? 0.08 : 0.008);
 
       const floor = p.brightnessFloor / 100;
-      const ceiling = floor + (1 - floor) * ampEnv;
-      const shape = Math.min(1, level);
-      let out = floor + shape * (ceiling - floor);
+      const loudness = Math.min(1, Math.max(0, 0.65 + ampEnv * 0.35));
+      const energyForm = Math.min(1, intensitySm + kick * 0.08);
+      let out = floor + energyForm * (1 - floor) * loudness;
       out = out <= 0 ? 0 : out >= 1 ? 1 : out;
 
       hist.copyWithin(0, 1); hist[N - 1] = out;

@@ -292,12 +292,16 @@ export interface DiagSnapshot {
   midHiNorm: number;
   /** ABSOLUT amplitud från INPUT (rå RMS × tvåpunktsGain) */
   level: number;
-  /** Långsam envelope av level — driver taket */
+  /** Långsam envelope av level — rå loudness-källa */
   ampEnv: number;
-  /** RELATIV dynamik från analysatorns AGC-energi (0..1) */
+  /** SEKTIONSENERGI från analysatorn, efter heartbeat-smoothing (0..1) */
   shape: number;
-  /** Taket i normaliserad enhet (floorN..1) */
+  /** Loudness-viktat max för energyForm (floorN..1) */
   ceiling: number;
+  /** Loudness-skala från rå amplitud-envelope (0..1) */
+  loudness: number;
+  /** Slutlig form från intensity + onset-punch (0..1) */
+  energyForm: number;
   energyNorm: number;
   onsetBoost: number;
   brightnessPct: number;
@@ -312,7 +316,7 @@ export interface DiagSnapshot {
 const _diag: DiagSnapshot = {
   rawRms: 0, bassRms: 0, midHiRms: 0,
   bassNorm: 0, midHiNorm: 0,
-  level: 0, ampEnv: 0, shape: 0, ceiling: 0,
+  level: 0, ampEnv: 0, shape: 0, ceiling: 0, loudness: 0, energyForm: 0,
   energyNorm: 0, onsetBoost: 0,
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
@@ -354,9 +358,8 @@ export class PiLightEngine {
   private playing = false;
   private tickMs: number;
 
-  // TAK: långsam envelope av den ABSOLUTA amplituden (level). Attack ~300ms,
-  // release ~2.5s. Aldrig ett löpande snitt som output normaliseras mot —
-  // uthålliga energi-uppgångar lyfter taket och HÅLLER det uppe.
+  // LOUDNESS: långsam envelope av den ABSOLUTA amplituden (level). Attack ~300ms,
+  // release ~2.5s. Den bär inte musikdynamiken; den skalar bara tyst/låg volym.
   private ampEnv = 0;
   private smoothed = 0;  // heartbeat-EMA (snabb attack / mjuk release) @ tick-takt
 
@@ -1106,8 +1109,8 @@ export class PiLightEngine {
         }
         // Drop-detektor @100Hz (analysatorns dropCount med bas-svackan som fallback).
         if (bands) this.processDrop(bands.bassRms, frame);
-        // (Dirigenten 2026-08-25: inget dynamicCenter längre. Taket sätts av
-        //  ampEnv i tickInner från ABSOLUT amplitud — ingen normalisering.)
+        // (Dirigenten v2 2026-08-25: inget dynamicCenter. Brightness-formen
+        //  kommer från analyser-intensity; rå amplitud är bara loudness-skala.)
 
         // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @100Hz till recorder.
         if (this._analysisTap && bands) {
@@ -1441,9 +1444,9 @@ export class PiLightEngine {
 
       // ── 1. DIRIGENTENS TVÅ INSIGNALER (isärhållna) ──
       // level = ABSOLUT amplitud (lightRawRms × tvåpunktsGain). Ingen AGC.
-      //         → driver TAKET via en långsam envelope.
-      // shape = RELATIV dynamik ur analysatorns AGC-energi (0..1, snabb).
-      //         → fyller golv→tak med beat-dynamik.
+      //         → långsam loudness-skala för tyst/låg volym.
+      // shape = frame.intensity (sektionsenergi, 0..1).
+      //         → bär musikens uppbyggnader/breakdowns och beat-dynamik.
       const level = Math.max(0, Math.min(1, bands.totalRms));
       let shape = Math.max(0, Math.min(1, bands.shape ?? 0));
 
@@ -1452,15 +1455,14 @@ export class PiLightEngine {
 
       // ── 2. Tystnads-gate ──
       // När absolut amplitud < tickEnergyFloor är input rumsbrus, inte musik:
-      // shape forceras till 0 och taket sjunker mot golvet.
+      // shape forceras till 0 och brightness sjunker mot golvet.
       const tickFloor = cal.tickEnergyFloor ?? 0;
       const inSilence = tickFloor > 0 && level < tickFloor;
       if (inSilence) shape = 0;
 
-      // ── 3. Långsam amplitud-envelope → TAKET ──
-      // Attack ~300 ms, release ~2.5 s. Detta är INGET löpande center som
-      // outputen normaliseras mot: taket är monotont i absolut nivå, så en
-      // uthållig uppbyggnad lyfter taket och HÅLLER det uppe.
+      // ── 3. Långsam amplitud-envelope → LOUDNESS ──
+      // Rå amplitud är uppmätt för platt inom låt. Den används därför inte som
+      // dynamikbärare, utan bara för att tyst/låg volym ska lysa svagare.
       const _envElapsed = this._lastSmoothAt > 0
         ? Math.min(250, _tickStart - this._lastSmoothAt)
         : this.tickMs;
@@ -1468,13 +1470,14 @@ export class PiLightEngine {
       const envDown = 1 - Math.exp(-_envElapsed / 2500);
       const envA = level > this.ampEnv ? envUp : envDown;
       this.ampEnv += envA * (level - this.ampEnv);
-      let ampEnv = this.ampEnv;
+      const ampEnv = this.ampEnv;
       const sens = tc.ceilingSensitivity;
-      if (sens !== 1) ampEnv = Math.min(1, ampEnv * sens);
+      const loudnessRaw = Math.min(1, ampEnv * sens);
 
       const floor = tc.brightnessFloor;
       const floorN = floor / 100;
-      const ceiling = floorN + (1 - floorN) * ampEnv;
+      const loudness = Math.max(0, Math.min(1, 0.65 + loudnessRaw * 0.35));
+      const ceiling = floorN + (1 - floorN) * loudness;
 
       // ── 4. HEARTBEAT: snabb attack, mjuk release på shape ──
       // Tidsbaserad alpha så fade-takten blir identisk även när BLE hoppar frames.
@@ -1507,9 +1510,10 @@ export class PiLightEngine {
         if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
       }
 
-      // ── 6. BRIGHTNESS: golv → tak, fyllt av shape ──
-      let outN = floorN + shapeSm * (ceiling - floorN);
-      outN += fluxBoost * (1 - floorN);
+      // ── 6. BRIGHTNESS: intensity-form × långsam loudness ──
+      let energyForm = shapeSm + fluxBoost;
+      if (energyForm > 1) energyForm = 1;
+      let outN = floorN + energyForm * (1 - floorN) * loudness;
       if (outN < floorN) outN = floorN;
       if (outN > 1) outN = 1;
 
@@ -1631,6 +1635,8 @@ export class PiLightEngine {
       _diag.ampEnv = ampEnv;
       _diag.shape = shapeSm;
       _diag.ceiling = ceiling;
+      _diag.loudness = loudness;
+      _diag.energyForm = energyForm;
       _diag.energyNorm = energyNorm;
 
       _diag.onsetBoost = this.onsetBoost;

@@ -4,8 +4,8 @@
 Headless Pi engine + PiMobile UI. No Web Audio/BLE in browser. Redirect to /pi-mobile.
 Audio capture requires OS routing. Uses native alsa-capture binding.
 Offline-first: localStorage syncs to Supabase user_settings on login.
-Två synliga kontroller: input-gain (tvåpunkts Sonos, rå PCM) + ljus-skala (lightScale, headroom för drops).
-Gain = EN linjär tvåpunkts-kurva mot Sonos-volym. Ingen dold RAW_SCALE, ingen mic-soft-clip, analysator-AGC låst 1×, inget manuellt gain-läge.
+Dirigent v2: brightness-formen drivs av analyser.intensity; rå amplitud är bara långsam loudness-skala.
+Gain = EN linjär tvåpunkts-kurva mot Sonos-volym. Ingen dold RAW_SCALE, ingen mic-soft-clip, inget manuellt gain-läge.
 Engine decoupled from UI. API URLs use port + 50.
 Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnect sätter override som blockerar auto-start.
@@ -18,6 +18,7 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 - [Analysator-synk](mem://pi/audio/analyser-sync) — mirror av DMX Control (commit a5ccabe0): tempogram-BPM, kickAtMs, barShift, Lotus-adapter
 - [TV-läge & profil-globaler](mem://pi/runtime/tv-mode-profiles) — TV idlar ej motorn, auto-gain-override, dimmingGamma/gainCalibration per profil, /api/tv-profile
 - [Taktklocka + grid-puls](mem://pi/audio/beat-clock-grid-pulse) — beatClock.ts, PLL mot kicks, puls med beatLeadMs försprång
+- [Dirigent v2](mem://pi/lighting/dirigent-v2-intensity-brightness) — brightness = intensity-form × långsam loudness; levelVU driver aldrig ljus-formen
 - [Portable BLE driver](mem://pi/ble/portable-driver-layering) — pi/src/ble-driver/ fristående (noll outside-imports); ble/ är app-glue shims + subsystem-state; motor via createLampDriver
 - [Attack/release smoothing](mem://pi/lighting/attack-release-smoothing) — log-release vs mjuk-attack (lowSoftFloor), golv som dynamisk lyft, inverterat flicker-deadband, soft-watchdog
 - [Hardware limitations](mem://constraints/hardware-limitations) — BLEDOM forces color change on mic mode, use mobile mic

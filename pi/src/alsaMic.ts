@@ -152,8 +152,8 @@ export interface BandResult {
   /** Spectral flux summerad ENBART över sub+bas-bins (< 150 Hz). Används för
    *  kick/bastrumme-onset så hi-hats/snare inte triggar pulsen. */
   bassFlux: number;
-  /** DIRIGENTEN, insignal 2: RELATIV dynamik (0..1) från analysatorns AGC-energi.
-   *  Full svängning, snabb — driver beat-dynamiken inom golv→tak. Aldrig nivå. */
+  /** DIRIGENTEN, insignal 2: SEKTIONSENERGI (0..1) från analysatorn.
+   *  Följer uppbyggnader/breakdowns; rå amplitud får bara skala loudness. */
   shape: number;
   /** Spektral andel bas (0..1) — bara för färg-tilt, aldrig brightness. */
   bassShare: number;
@@ -178,10 +178,8 @@ const BAND_EVERY_HOPS = 5;
 let bandHopCounter = 0;
 
 // ── BandResult ur analysatorns oktavband ──
-// spec/onset är per-band AGC:ade 0..1. Motorn använder banden linjärt (RAW_SCALE
-// borttagen 2026-08-23) → gain-kurvan är enda känslighets-kontrollen.
-// frame.levelVU (auto-gainad, hop-takt-smoothad RMS) används som amplitud så
-// tystnad ger 0 och tickEnergyFloor/onsetEnergyFloor fortsätter fungera.
+// spec/onset är per-band AGC:ade 0..1. Motorn använder bara spektral andel här;
+// brightness-formen kommer från frame.intensity och nivåskalan från lightRawRms×gain.
 const BAND_SCALE = 1.0; // ingen extra konstant: enda taket är energyNorm > 1 → 1
 
 // Övre kant (Hz) per analysator-band, i ordning sub..air.
@@ -395,10 +393,9 @@ function emitBands(frame: Frame): void {
   latestBands.totalRms = amp;
   latestBands.flux = frame.flux;
 
-  // DIRIGENTEN: shape = analysatorns AGC-energi (relativ dynamik, 0..1).
-
-  // Isolerad från amp — AGC:n får aldrig påverka nivån, bara formen.
-  latestBands.shape = Math.min(1, Math.max(0, frame.levelVU));
+  // DIRIGENTEN v2: shape = sektionsrelativ energi. levelVU är uppmätt för platt
+  // på riktiga låtar; intensity följer uppbyggnader och breakdowns.
+  latestBands.shape = Math.min(1, Math.max(0, frame.intensity));
   latestBands.bassShare = lowAbs / totAbs;
   latestBands.hiShare = hiAbs / totAbs;
 
