@@ -12,16 +12,27 @@ import { BeatMonitor } from "@/components/BeatMonitor";
 
 
 
-type Cal = { bassWeight: number; attack: number; softness: number; dynamicDamping: number; brightnessFloor: number; punchWhiteThreshold: number; perceptualGamma: number; transientGain: number; dynamicsEnabled: boolean; onsetThreshold: number; onsetRefractoryMs: number; onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number; beatSource: 'bass' | 'full'; beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number; dropFlashMs: number; beatLeadMs: number; lightScale: number; lightBassWeight: number };
-const PRESET_CALS: Record<string, Cal> = {
-  // Nytänkta preset-värden som utnyttjar nya slidrarnas bredd
-  Lugn:   { bassWeight: 0.7, attack: 70,  softness: 75, dynamicDamping: -1.5, brightnessFloor: 8, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true,  onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.03, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.2, dropFlashMs: 220, beatLeadMs: 45, lightScale: 0.75, lightBassWeight: 0.4 },
-  Normal: { bassWeight: 0.95, attack: 100, softness: 71, dynamicDamping: 0.4, brightnessFloor: 25, punchWhiteThreshold: 100, perceptualGamma: 1.2, transientGain: 1.1, dynamicsEnabled: true, onsetThreshold: 4.0, onsetRefractoryMs: 300, onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64, dropFlashMs: 320, beatLeadMs: 45, lightScale: 0.95, lightBassWeight: 0.5 },
-  Party:  { bassWeight: 0.5, attack: 100, softness: 37, dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true,  onsetThreshold: 1.6, onsetRefractoryMs: 90,  onsetEnergyFloor: 0.03, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.85, dropFlashMs: 260, beatLeadMs: 45, lightScale: 0.85, lightBassWeight: 0.55 },
-  Custom: { bassWeight: 0.5, attack: 100, softness: 0,  dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true,  onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.05, tickEnergyFloor: 0.02, flickerDeadband: 0.02, beatSource: 'bass', beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 1.0, dropFlashMs: 320, beatLeadMs: 45, lightScale: 0.95, lightBassWeight: 0.5 },
+// EN global inställnings-uppsättning — profiler/presets borttagna 2026-08-25.
+type Cal = {
+  bassWeight: number; attack: number; softness: number;
+  brightnessFloor: number; punchWhiteThreshold: number; transientGain: number;
+  ceilingSensitivity: number; colorSpectralTilt: number;
+  onsetThreshold: number; onsetRefractoryMs: number;
+  onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
+  beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
+  dropFlashMs: number; beatLeadMs: number;
 };
 
-const DEFAULT_CAL = PRESET_CALS.Normal;
+const DEFAULT_CAL: Cal = {
+  bassWeight: 0.95, attack: 100, softness: 71,
+  brightnessFloor: 25, punchWhiteThreshold: 100, transientGain: 1.1,
+  ceilingSensitivity: 1.0, colorSpectralTilt: 0.25,
+  onsetThreshold: 4.0, onsetRefractoryMs: 300,
+  onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
+  beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64,
+  dropFlashMs: 320, beatLeadMs: 45,
+};
+
 
 
 
@@ -748,20 +759,10 @@ function ConnectionSettingsSection({
 
 
 export default function PiMobile() {
-  const [activePreset, setActivePreset] = useState<string>("Normal");
   const [idleColor, setIdleColor] = useState([255, 60, 0]);
-  // 4 oberoende profiler — varje knapp kommer ihåg sina egna värden.
-  // Aktiv profils värden härleds som `cal` och muteras via `setCal`.
-  const [profiles, setProfiles] = useState<Record<string, Cal>>({
-    Lugn:   { ...PRESET_CALS.Lugn },
-    Normal: { ...PRESET_CALS.Normal },
-    Party:  { ...PRESET_CALS.Party },
-    Custom: { ...PRESET_CALS.Custom },
-  });
-  const cal = profiles[activePreset] ?? PRESET_CALS.Normal;
-  const setCal = useCallback((next: Cal) => {
-    setProfiles(p => ({ ...p, [activePreset]: next }));
-  }, [activePreset]);
+  // EN global inställnings-uppsättning (inga profiler).
+  const [cal, setCal] = useState<Cal>({ ...DEFAULT_CAL });
+
   const [tickMs, setTickMs] = useState(25);
   const [sonosUrl, setSonosUrl] = useState(() =>
     typeof window !== 'undefined'
@@ -802,36 +803,29 @@ export default function PiMobile() {
   const handleSave = async () => {
     setSaveError(null);
     try {
-      // Konvertera alla 4 profilers attack/softness → attackAlpha/releaseAlpha innan PUT
-      const profilesPayload: Record<string, any> = {};
-      for (const [name, p] of Object.entries(profiles)) {
-        profilesPayload[name] = {
-          bassWeight: p.bassWeight,
-          attackAlpha: attackToAlpha(p.attack),
-          releaseAlpha: softnessToAlpha(p.softness),
-          dynamicDamping: p.dynamicDamping,
-          brightnessFloor: p.brightnessFloor,
-          punchWhiteThreshold: p.punchWhiteThreshold,
-          perceptualGamma: p.perceptualGamma,
-          transientGain: p.transientGain,
-          dynamicsEnabled: p.dynamicsEnabled,
-          onsetThreshold: p.onsetThreshold,
-          onsetRefractoryMs: p.onsetRefractoryMs,
-          onsetEnergyFloor: p.onsetEnergyFloor,
-          tickEnergyFloor: p.tickEnergyFloor,
-          flickerDeadband: p.flickerDeadband,
-          beatSource: p.beatSource,
-          beatCutoffHz: p.beatCutoffHz,
-          dropEnabled: p.dropEnabled,
-          dropSensitivity: p.dropSensitivity,
-          dropFlashMs: p.dropFlashMs,
-          beatLeadMs: p.beatLeadMs,
-          lightScale: p.lightScale,
-          lightBassWeight: p.lightBassWeight,
-        };
-      }
+      const calPayload = {
+        bassWeight: cal.bassWeight,
+        attackAlpha: attackToAlpha(cal.attack),
+        releaseAlpha: softnessToAlpha(cal.softness),
+        brightnessFloor: cal.brightnessFloor,
+        punchWhiteThreshold: cal.punchWhiteThreshold,
+        transientGain: cal.transientGain,
+        ceilingSensitivity: cal.ceilingSensitivity,
+        colorSpectralTilt: cal.colorSpectralTilt,
+        onsetThreshold: cal.onsetThreshold,
+        onsetRefractoryMs: cal.onsetRefractoryMs,
+        onsetEnergyFloor: cal.onsetEnergyFloor,
+        tickEnergyFloor: cal.tickEnergyFloor,
+        flickerDeadband: cal.flickerDeadband,
+        beatCutoffHz: cal.beatCutoffHz,
+        dropEnabled: cal.dropEnabled,
+        dropSensitivity: cal.dropSensitivity,
+        dropFlashMs: cal.dropFlashMs,
+        beatLeadMs: cal.beatLeadMs,
+      };
       const results = await Promise.allSettled([
-        putJson('/api/profiles', { profiles: profilesPayload, activePreset }),
+        putJson('/api/calibration', calPayload),
+
         putJson('/api/tick-ms', { tickMs }),
         putJson('/api/mic-device', { device: alsaDevice }),
         putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
@@ -870,8 +864,8 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [profilesRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
-        safeFetch(`${piBase}/api/profiles`),
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
+        safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
         safeFetch(`${piBase}/api/dimming-gamma`),
@@ -882,47 +876,31 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
-      // Mappa varje profils stored kalibrering tillbaka till UI:ts Cal-form
+      // Mappa lagrad kalibrering tillbaka till UI:ts Cal-form
       // (attackAlpha → attack, releaseAlpha → softness, defaults för saknade fält).
-      const mapStoredToCal = (c: any): Cal => {
-        const softness = c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness;
-        const attack = c?.attackAlpha != null ? alphaToAttack(c.attackAlpha) : DEFAULT_CAL.attack;
-        return {
-          bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
-          attack,
-          softness,
-          dynamicDamping: c?.dynamicDamping ?? DEFAULT_CAL.dynamicDamping,
-          brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
-          punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
-          perceptualGamma: c?.perceptualGamma ?? (typeof c?.perceptualCurve === 'boolean' ? (c.perceptualCurve ? 1.8 : 0) : DEFAULT_CAL.perceptualGamma),
-          transientGain: c?.transientGain ?? (typeof c?.transientBoost === 'boolean' ? (c.transientBoost ? 1.0 : 0) : DEFAULT_CAL.transientGain),
-          dynamicsEnabled: c?.dynamicsEnabled ?? DEFAULT_CAL.dynamicsEnabled,
-          onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
-          onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
-          onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
-          tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
-          flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
-          beatSource: c?.beatSource ?? DEFAULT_CAL.beatSource,
-          beatCutoffHz: c?.beatCutoffHz ?? DEFAULT_CAL.beatCutoffHz,
-          dropEnabled: c?.dropEnabled ?? DEFAULT_CAL.dropEnabled,
-          dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
-          dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
-          beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
-          lightScale: c?.lightScale ?? DEFAULT_CAL.lightScale,
-          lightBassWeight: c?.lightBassWeight ?? DEFAULT_CAL.lightBassWeight,
-        };
-      };
+      const mapStoredToCal = (c: any): Cal => ({
+        bassWeight: c?.bassWeight ?? DEFAULT_CAL.bassWeight,
+        attack: c?.attackAlpha != null ? alphaToAttack(c.attackAlpha) : DEFAULT_CAL.attack,
+        softness: c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness,
+        brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
+        punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
+        transientGain: c?.transientGain ?? DEFAULT_CAL.transientGain,
+        ceilingSensitivity: c?.ceilingSensitivity ?? DEFAULT_CAL.ceilingSensitivity,
+        colorSpectralTilt: c?.colorSpectralTilt ?? DEFAULT_CAL.colorSpectralTilt,
+        onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
+        onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
+        onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
+        tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
+        flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,
+        beatCutoffHz: c?.beatCutoffHz ?? DEFAULT_CAL.beatCutoffHz,
+        dropEnabled: c?.dropEnabled ?? DEFAULT_CAL.dropEnabled,
+        dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
+        dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
+        beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
+      });
 
-      if (profilesRes?.profiles && typeof profilesRes.profiles === 'object') {
-        const next: Record<string, Cal> = {
-          Lugn:   mapStoredToCal(profilesRes.profiles.Lugn   ?? {}),
-          Normal: mapStoredToCal(profilesRes.profiles.Normal ?? {}),
-          Party:  mapStoredToCal(profilesRes.profiles.Party  ?? {}),
-          Custom: mapStoredToCal(profilesRes.profiles.Custom ?? {}),
-        };
-        setProfiles(next);
-        if (profilesRes.activePreset) setActivePreset(profilesRes.activePreset);
-      }
+      if (calRes && typeof calRes === 'object') setCal(mapStoredToCal(calRes));
+
       if (micRes?.device) setAlsaDevice(micRes.device);
       if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
       if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
@@ -1090,7 +1068,7 @@ export default function PiMobile() {
                 <LightPreview
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
-                  dynamicDamping={cal.dynamicDamping}
+                  ceilingSensitivity={cal.ceilingSensitivity}
                   beatCutoffHz={cal.beatCutoffHz}
                 />
 
@@ -1104,7 +1082,7 @@ export default function PiMobile() {
                   hint="0 = rått fall, 100 = mycket mjuk fade-out."
                 />
                 <Slider
-                  label="Min ljusstyrka"
+                  label="Min ljusstyrka (golv)"
                   value={cal.brightnessFloor}
                   display={`${cal.brightnessFloor} %`}
                   min={0} max={100}
@@ -1112,12 +1090,12 @@ export default function PiMobile() {
                   hint="0 = släck helt i tystnad."
                 />
                 <Slider
-                  label="Dynamik"
-                  value={cal.dynamicDamping}
-                  display={`${cal.dynamicDamping.toFixed(1)}×`}
-                  min={-2} max={2} step={0.1}
-                  onChange={(v) => setCal({ ...cal, dynamicDamping: v })}
-                  hint="0 = av, positivt = kontrast, negativt = utjämning."
+                  label="Tak-känslighet"
+                  value={cal.ceilingSensitivity}
+                  display={`${cal.ceilingSensitivity.toFixed(2)}×`}
+                  min={0.3} max={2} step={0.05}
+                  onChange={(v) => setCal({ ...cal, ceilingSensitivity: v })}
+                  hint="Hur snabbt taket följer låtens absoluta nivå. Högre = lägre nivå räcker för fullt tak."
                 />
                 <Slider
                   label="Beat-källa (lyssnar under)"
@@ -1128,21 +1106,14 @@ export default function PiMobile() {
                   hint="Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa."
                 />
                 <Slider
-                  label="Ljus-skala (headroom)"
-                  value={cal.lightScale}
-                  display={`${Math.round(cal.lightScale * 100)} %`}
-                  min={0.3} max={1} step={0.01}
-                  onChange={(v) => setCal({ ...cal, lightScale: v })}
-                  hint="Var musiken toppar. 80 % = drops har 20 % kvar att sticka ut med."
+                  label="Färg-tilt (bas ↔ diskant)"
+                  value={cal.colorSpectralTilt}
+                  display={`${Math.round(cal.colorSpectralTilt * 100)} %`}
+                  min={0} max={0.6} step={0.05}
+                  onChange={(v) => setCal({ ...cal, colorSpectralTilt: v })}
+                  hint="Basrik mix drar färgen varmare, diskantrik svalare. 0 = ren palett."
                 />
-                <Slider
-                  label="Ljus-bredd (bas ↔ bredband)"
-                  value={cal.lightBassWeight}
-                  display={`${Math.round(cal.lightBassWeight * 100)} % bas`}
-                  min={0} max={1} step={0.05}
-                  onChange={(v) => setCal({ ...cal, lightBassWeight: v })}
-                  hint="Hur mycket bara basen driver ljusstyrkan. 50 % = bredband (ljust även på mitt/diskant). Beat-detektionen påverkas inte."
-                />
+
 
                 <Slider
                   label="Beat-lead (försprång)"

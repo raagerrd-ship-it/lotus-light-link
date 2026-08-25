@@ -51,15 +51,11 @@ export interface TickConstants {
   onsetRiseAlpha: number;
   onsetRiseAlphaFft: number;
   onsetDecayFft: number;
-  centerAlpha: number;
-  centerAlphaFft: number;
   gammaIsUnity: boolean;
   dimmingGamma: number;
   brightnessFloor: number;
   transientGain: number;
-  perceptualGamma: number;
-  dynamicsEnabled: boolean;
-  lightScale: number;
+  ceilingSensitivity: number;
   lutR: Uint8Array;
   lutG: Uint8Array;
   lutB: Uint8Array;
@@ -92,16 +88,6 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     }
   }
 
-  const centerAdaptSeconds = cal.centerAdaptSeconds ?? 999;
-  // >= 900 s räknas som "i praktiken fast" — alpha blir 0 så dynamicCenter
-  // hålls exakt på 0.5 och applyDynamics expanderar absolut energi.
-  const centerAlpha = centerAdaptSeconds <= 0 || centerAdaptSeconds >= 900
-    ? 0
-    : 1 - Math.exp(-(tickMs / 1000) / centerAdaptSeconds);
-  const centerAlphaFft = centerAdaptSeconds <= 0 || centerAdaptSeconds >= 900
-    ? 0
-    : 1 - Math.exp(-(fftMs / 1000) / centerAdaptSeconds);
-
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
@@ -110,60 +96,37 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
     onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
-    centerAlpha,
-    centerAlphaFft,
     gammaIsUnity,
     dimmingGamma: getDimmingGamma(),
     brightnessFloor: cal.brightnessFloor ?? 0,
     transientGain: cal.transientGain ?? 1.0,
-    perceptualGamma: cal.perceptualGamma ?? 0,
-    dynamicsEnabled: cal.dynamicsEnabled !== false,
-    lightScale: cal.lightScale ?? 1,
+    ceilingSensitivity: cal.ceilingSensitivity ?? 1.0,
     lutR,
     lutG,
     lutB,
   };
 }
 
-// --- Dynamics (zero-alloc, no Math.pow/Math.sign) ---
-export function applyDynamics(energyNorm: number, center: number, dynamicDamping: number): number {
-  let result = energyNorm;
-  if (dynamicDamping > 0) {
-    const amount = dynamicDamping < 2 ? dynamicDamping * 0.5 : 1;
-    const exponent = 1 / (1 + amount * 4);
-    const range = result >= center ? (1 - center) || 0.5 : center || 0.5;
-    const normalized = (result - center) / range;
-    // Fast pow approximation: exp(exponent * ln(|x|)) via Math.exp/Math.log
-    const absN = normalized < 0 ? -normalized : normalized;
-    const powered = absN > 0.0001 ? Math.exp(exponent * Math.log(absN)) : 0;
-    const expanded = normalized < 0 ? -powered : powered;
-    const gain = 1 + amount * 0.5;
-    result = center + expanded * range * gain;
-    const ceiling = 1 + amount * 0.4;
-    if (result > ceiling) result = ceiling + (result - ceiling) * 0.2;
-  } else if (dynamicDamping < 0) {
-    const absDamp = -dynamicDamping;
-    const amount = absDamp < 3 ? absDamp / 3 : 1;
-    const compression = 1 / (1 + amount * 4);
-    result = center + (result - center) * compression;
-  }
-  return result < 0 ? 0 : result;
-}
 
 // --- Calibration ---
 
 export interface LightCalibration {
   gammaR: number; gammaG: number; gammaB: number;
   offsetR: number; offsetG: number; offsetB: number;
-  attackAlpha: number; releaseAlpha: number;
-  dynamicDamping: number; bassWeight: number;
+  /** HEARTBEAT: snabb attack (snäpper på rise). 1.0 = full snap. */
+  attackAlpha: number;
+  /** HEARTBEAT: mjuk release (softness-slidern). */
+  releaseAlpha: number;
+  /** BEAT-detektion: bas-vikt i onset-källan (ej ljusstyrka). */
+  bassWeight: number;
   punchWhiteThreshold: number;
+  /** Golv i procent — ljuset går aldrig under detta under play. Default 25. */
   brightnessFloor: number;
   /** 0 = av (ingen boost), 1.0 = nuvarande default, upp till ~2.0 = överdrivna transienter */
   transientGain: number;
-  /** 0 = av (linjärt, kurvan hoppas helt över), 1.0 = linjärt via math, 1.8 = tidigare default, upp till 3.0 = kraftig mörkkomprimering */
-  perceptualGamma: number;
-  dynamicsEnabled: boolean;
+  /** TAK-KÄNSLIGHET: hur snabbt/högt den absoluta amplituden lyfter taket.
+   *  1.0 = linjärt mot ampEnv, >1 = når fullt tak vid lägre absolut nivå. */
+  ceilingSensitivity: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
   /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
@@ -176,10 +139,8 @@ export interface LightCalibration {
    *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
    *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
   onsetEnergyFloor: number;
-  /** Tystnads-gate i tickInner. När bands.totalRms < tickEnergyFloor behandlas
-   *  input som rumsbrus: energyNorm forceras till 0 via release, fluxBoost
-   *  blockeras, onsetBoost bleed:as. brightnessFloor håller lampan dim solid.
-   *  0 = av, 0.05 = default. */
+  /** Tystnads-gate i tickInner: under detta är input rumsbrus, inte musik.
+   *  0 = av, 0.01 = default. */
   tickEnergyFloor: number;
   /** Beat-källa för onset: 'bass' = endast kick/bas (<150Hz), 'full' = hela spektrumet. Legacy — ersatt av beatCutoffHz. */
   beatSource: 'bass' | 'full';
@@ -189,48 +150,35 @@ export interface LightCalibration {
   dropEnabled: boolean;
   /** Drop-känslighet 0.5–3.0 (lägre = lättare att trigga). Default 1.0. */
   dropSensitivity: number;
-  /** Varaktighet (ms) för den vita drop-blixten. Default 220. */
+  /** Varaktighet (ms) för drop-blixten. Default 320. */
   dropFlashMs: number;
   /** Grid-driven puls: när takten är låst fyras pulsen av taktklockan i stället
    *  för av onseten. Default true. */
   beatGridPulse: boolean;
-  /** Försprång (ms) på grid-pulsen — kompenserar BLE-skrivlatens (~40–60 ms).
-   *  Default 60. */
+  /** Försprång (ms) på grid-pulsen — kompenserar BLE-skrivlatens (~40–60 ms). */
   beatLeadMs: number;
-  /** PLL: andel av fasfelet som korrigeras per kick (0 = av). Default 0.18. */
+  /** PLL: andel av fasfelet som korrigeras per kick (0 = av). */
   beatSyncStrength: number;
   /** Drop-källa: 'analyser' = analysatorns novelty/kropp-baserade dropCount (faller
    *  tillbaka på bas-svackan när takten inte är låst), 'bass' = bara egen svacka. */
   dropSource: 'analyser' | 'bass';
-  /** Hur mycket analysatorns sektionsenergi (intensity) får dra dynamicCenter.
-   *  0 = av (bara mic-energi), 1 = bara intensity. Default 0.3. */
-  intensityInfluence: number;
   /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
   barAccent: number;
-  /** LJUS-SKALA (Modul 3): mappar analyserad energi → lampans ljus med headroom.
-   *  0.8 = musik toppar ~80 %, drops får de sista 20 %. Fast, aldrig adaptiv. */
-  lightScale: number;
-  /** LJUS-BREDD: bas-vikt för LJUSET (0 = bara mid/diskant, 1 = bara bas).
-   *  Separat från `bassWeight`/`beatCutoffHz` som styr BEAT-detektionen — ett
-   *  smalt bas-filter för beat ska inte göra ljuset dimt på diskant-tungt
-   *  innehåll. 0.5 = bredband (default). */
-  lightBassWeight: number;
-  /** Dynamic-center adaptionshastighet i sekunder. 0 = fryst vid 0.5,
-   *  ~5 = gammal ljud-följande normalisering, 999 = i praktiken fast (default). */
-  centerAdaptSeconds: number;
+  /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
+   *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
+  colorSpectralTilt: number;
   [key: string]: any;
 }
 
 const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 1.0, releaseAlpha: 0.15, dynamicDamping: 0.8,
+  attackAlpha: 1.0, releaseAlpha: 0.15,
   bassWeight: 0.9,
   punchWhiteThreshold: 100,
   brightnessFloor: 25,
   transientGain: 0.8,
-  perceptualGamma: 0,
-  dynamicsEnabled: true,
+  ceilingSensitivity: 1.0,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
   flickerDeadband: 0.02,
@@ -246,15 +194,22 @@ const DEFAULT_CAL: LightCalibration = {
   beatLeadMs: 45,
   beatSyncStrength: 0.10,
   dropSource: 'analyser',
-  intensityInfluence: 0.3,
   barAccent: 1.0,
-  lightScale: 0.95,
-  lightBassWeight: 0.5,
-  centerAdaptSeconds: 999,
+  colorSpectralTilt: 0.25,
 };
 
 
-/** Migrera gamla boolean-fält från sparade inställningar till de nya numeriska */
+
+/** Rensa bort borttagna legacy-fält ur sparade inställningar (2026-08-25:
+ *  Dirigenten omskriven — dynamicCenter/dynamics/perceptual-kurvan/profiler
+ *  finns inte längre). */
+const DROPPED_CAL_KEYS = [
+  'transientBoost', 'perceptualCurve', 'perceptualGamma',
+  'dynamicDamping', 'dynamicsEnabled', 'intensityInfluence',
+  'lightScale', 'lightBassWeight', 'centerAdaptSeconds',
+  'maxRisePerSec', 'maxFallPerSec', 'saturation',
+];
+
 function migrateLegacyCalibration(cal: any): any {
   if (!cal || typeof cal !== 'object') return cal;
   const out = { ...cal };
@@ -262,22 +217,14 @@ function migrateLegacyCalibration(cal: any): any {
   if (typeof out.transientBoost === 'boolean' && out.transientGain == null) {
     out.transientGain = out.transientBoost ? 1.0 : 0;
   }
-  delete out.transientBoost;
-  // perceptualCurve: true → 1.8 (tidigare hårdkodad gamma), false → 0
-  if (typeof out.perceptualCurve === 'boolean' && out.perceptualGamma == null) {
-    out.perceptualGamma = out.perceptualCurve ? 1.8 : 0;
-  }
-  delete out.perceptualCurve;
   // beatSource: 'full' → hög cutoff (hela spektrumet), 'bass' → 150 Hz. Bara om beatCutoffHz saknas.
   if (out.beatCutoffHz == null && typeof out.beatSource === 'string') {
     out.beatCutoffHz = out.beatSource === 'full' ? 15000 : 150;
   }
-  // Inga värde-migreringar — slider-inställningar respekteras alltid.
-  // (Tidigare clampades flickerDeadband>0 → 0, brightnessFloor≥15 → 5,
-  //  onsetEnergyFloor≥0.04 → 0.01, tickEnergyFloor≥0.04 → 0.01 vid varje
-  //  load, vilket skrev över medvetna user-värden. Borttaget 2026-05-05.)
+  for (const k of DROPPED_CAL_KEYS) delete out[k];
   return out;
 }
+
 
 function loadCalibration(): LightCalibration {
   try {
@@ -341,11 +288,17 @@ export interface DiagSnapshot {
   rawRms: number;
   bassRms: number;
   midHiRms: number;
-  bassNorm: number;      // bassRms * RAW_SCALE, clamped 0-1
-  midHiNorm: number;     // midHiRms * RAW_SCALE, clamped 0-1
-  preDynamics: number;   // energyNorm BEFORE dynamics expansion
-  energyNorm: number;    // after dynamics
-  dynamicCenter: number;
+  bassNorm: number;
+  midHiNorm: number;
+  /** ABSOLUT amplitud från INPUT (rå RMS × tvåpunktsGain) */
+  level: number;
+  /** Långsam envelope av level — driver taket */
+  ampEnv: number;
+  /** RELATIV dynamik från analysatorns AGC-energi (0..1) */
+  shape: number;
+  /** Taket i normaliserad enhet (floorN..1) */
+  ceiling: number;
+  energyNorm: number;
   onsetBoost: number;
   brightnessPct: number;
   bleScaleRaw: number;
@@ -359,12 +312,14 @@ export interface DiagSnapshot {
 const _diag: DiagSnapshot = {
   rawRms: 0, bassRms: 0, midHiRms: 0,
   bassNorm: 0, midHiNorm: 0,
-  preDynamics: 0, energyNorm: 0, dynamicCenter: 0, onsetBoost: 0,
+  level: 0, ampEnv: 0, shape: 0, ceiling: 0,
+  energyNorm: 0, onsetBoost: 0,
   brightnessPct: 0, bleScaleRaw: 0,
   finalR: 0, finalG: 0, finalB: 0,
   tickCount: 0, lastTickUs: 0,
   inSilence: false, tickSilenceCount: 0,
 };
+
 
 // Reusable TickData — mutated in place
 const _tickData: TickData = {
@@ -399,8 +354,12 @@ export class PiLightEngine {
   private playing = false;
   private tickMs: number;
 
-  private dynamicCenter = 0.5;
-  private smoothed = 0;  // EMA-state för release-smoothing @ tick-takt
+  // TAK: långsam envelope av den ABSOLUTA amplituden (level). Attack ~300ms,
+  // release ~2.5s. Aldrig ett löpande snitt som output normaliseras mot —
+  // uthålliga energi-uppgångar lyfter taket och HÅLLER det uppe.
+  private ampEnv = 0;
+  private smoothed = 0;  // heartbeat-EMA (snabb attack / mjuk release) @ tick-takt
+
   // Anti-flicker: senast skickad brightness (post-slew, pre-gamma, 0..1)
   private lastBrightness = 0;
   // Anti-flicker: senast UI-/BLE-rapporterad pct (för deadband-jämförelse)
@@ -469,10 +428,6 @@ export class PiLightEngine {
   private _rawMode = false;
   private _savedCal: Partial<LightCalibration> | null = null;
   // TV-soft mode — bright, gentle band profile for TV/SPDIF playback
-  private _tvSoft = false;
-  private _tvSoftFloor = 40;
-  private _tvSoftCeil = 100;
-  private _tvSoftSavedCal: Partial<LightCalibration> | null = null;
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
 
@@ -586,11 +541,12 @@ export class PiLightEngine {
     const mid = n >> 1;
     const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
     // Stricter threshold (cal.onsetThreshold × median + floor) → only real beats trigger, not noise
-    // Adaptiv suppression: när dynamicCenter > 0.5 (loud sustain) höj tröskeln upp till +75%.
-    // Förhindrar att flux-jitter på "fulla" mixar lägger pulser ovanpå redan hög nivå.
-    const dc = this.dynamicCenter;
+    // Adaptiv suppression: vid uthålligt hög amplitud (ampEnv > 0.5) höj tröskeln
+    // upp till +75% så flux-jitter på "fulla" mixar inte staplar pulser.
+    const dc = this.ampEnv;
     const suppression = dc > 0.5 ? 1 + (dc - 0.5) * 1.5 : 1;
     const threshold = med * this.cal.onsetThreshold * suppression + 0.008;
+
     // False-positive-skydd (2026-06-02):
     //  1) ABS_FLUX_FLOOR — i tystnad/brus faller median mot 0 och tröskeln
     //     kollapsar till +0.008; ett absolut golv hindrar flimmer i tysta partier.
@@ -1020,24 +976,9 @@ export class PiLightEngine {
     this._calDirty = true; // mark for next save cycle
     // Re-apply raw mode overrides if active
     if (this._rawMode) {
-      this.cal.dynamicsEnabled = false;
       this.cal.transientGain = 0;
-      this.cal.perceptualGamma = 0;
     }
     this.tc = computeTickConstants(this.tickMs, this.cal);
-  }
-
-  /**
-   * Plugga in en profils kalibreringsvärden i pipelinen.
-   * Skriver profilen till light-calibration-storage och kör reloadCalibration().
-   * Så hela befintliga pipelinen (gain, bands, dynamics, gamma, punch, ...) följer
-   * automatiskt aktiv profil utan att vi behöver duplicera fältmappning här.
-   */
-  setActiveProfile(profileCal: Partial<LightCalibration>): void {
-    const current = loadCalibration();
-    const merged = { ...current, ...profileCal };
-    saveCalibration(merged);
-    this.reloadCalibration();
   }
 
   /** Enable raw mode — disables all processors for gain calibration */
@@ -1045,13 +986,9 @@ export class PiLightEngine {
     if (on && !this._rawMode) {
       this._rawMode = true;
       this._savedCal = {
-        dynamicsEnabled: this.cal.dynamicsEnabled,
         transientGain: this.cal.transientGain,
-        perceptualGamma: this.cal.perceptualGamma,
       };
-      this.cal.dynamicsEnabled = false;
       this.cal.transientGain = 0;
-      this.cal.perceptualGamma = 0;
       this.tc = computeTickConstants(this.tickMs, this.cal);
       dlog('[Engine] Raw mode ON — all processors disabled');
     } else if (!on && this._rawMode) {
@@ -1067,43 +1004,6 @@ export class PiLightEngine {
 
   isRawMode(): boolean { return this._rawMode; }
 
-  /** Enable TV-soft mode — bright, gentle band profile for TV/SPDIF playback */
-  setTvSoft(on: boolean): void {
-    if (on && !this._tvSoft) {
-      this._tvSoft = true;
-      this._tvSoftFloor = 40;   // brightness band floor %
-      this._tvSoftCeil = 100;   // brightness band ceil %
-      this._tvSoftSavedCal = {
-        releaseAlpha: this.cal.releaseAlpha,
-        lightBassWeight: this.cal.lightBassWeight,
-        transientGain: this.cal.transientGain,
-        perceptualGamma: this.cal.perceptualGamma,
-        flickerDeadband: this.cal.flickerDeadband,
-        dropEnabled: this.cal.dropEnabled,
-        punchWhiteThreshold: this.cal.punchWhiteThreshold,
-      };
-      // Tight-follow, voice-aware soft profile:
-      this.cal.releaseAlpha = 0.85;        // near-instant down-tracking (low latency)
-      this.cal.lightBassWeight = 0.5;      // TV is voice/mid-treble, not bass -> full spectrum
-      this.cal.transientGain = 1.0;
-      this.cal.perceptualGamma = 0;        // linear
-      this.cal.flickerDeadband = 0.004;
-      this.cal.dropEnabled = false;        // no drop-strobe in TV
-      this.cal.punchWhiteThreshold = 100;  // no white-punch (peaks stay inside the band)
-      this.tc = computeTickConstants(this.tickMs, this.cal);
-      dlog(`[Engine] TV-soft ON — band ${this._tvSoftFloor}-${this._tvSoftCeil}%`);
-    } else if (!on && this._tvSoft) {
-      this._tvSoft = false;
-      if (this._tvSoftSavedCal) {
-        Object.assign(this.cal, this._tvSoftSavedCal);
-        this._tvSoftSavedCal = null;
-      }
-      this.tc = computeTickConstants(this.tickMs, this.cal);
-      dlog('[Engine] TV-soft OFF — dynamics restored');
-    }
-  }
-
-  isTvSoft(): boolean { return this._tvSoft; }
 
   /** Initialize engine — call once at boot. Loop only starts when setPlaying(true). */
   start(): void {
@@ -1163,30 +1063,9 @@ export class PiLightEngine {
         }
         // Drop-detektor @100Hz (analysatorns dropCount med bas-svackan som fallback).
         if (bands) this.processDrop(bands.bassRms, frame);
-        // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
-        // (50Hz). Med centerAdaptSeconds = 999 (default) är centret FAST = 0.5
-        // så applyDynamics expanderar ABSOLUT energi — uthålliga uppgångar syns
-        // fullt ut och sjunker inte tillbaka mot ett löpande snitt. Endast när
-        // centerAdaptSeconds sätts lågt (t.ex. 5) följer centret musiken igen.
-        if (this.tc.centerAlphaFft > 0 && this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
-          const bN = normalizeFixed(bands.bassRms);
-          const mN = normalizeFixed(bands.midHiRms);
-          let raw = bN * 0.5 + mN * 0.5;
-          // SEKTIONSMEDVETEN DYNAMIK (steg 2): frame.intensity är nivån relativt
-          // LÅTENS EGET snitt (0.5 = snittet). Mic-energin vet bara hur högt det
-          // är just nu — den kan inte skilja en tyst låt från en breakdown i en
-          // hög låt. Att blanda in intensity flyttar centret nedåt i breakdowns
-          // (mer expansion i det tysta) och uppåt i topp-zonen (mindre pumpande).
-          const infl = this.cal.intensityInfluence ?? 0;
-          if (infl > 0 && frame && frame.bpm > 40) {
-            raw = raw * (1 - infl) + frame.intensity * infl;
-          }
-          this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
-          if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
-          else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
-        } else if (this.dynamicCenter !== 0.5) {
-          this.dynamicCenter = 0.5;
-        }
+        // (Dirigenten 2026-08-25: inget dynamicCenter längre. Taket sätts av
+        //  ampEnv i tickInner från ABSOLUT amplitud — ingen normalisering.)
+
         // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @100Hz till recorder.
         if (this._analysisTap && bands) {
           this._analysisTap(bands.bassRms, bands.midHiRms, bands.totalRms, flux);
@@ -1317,7 +1196,7 @@ export class PiLightEngine {
 
   /** Guard against NaN/Infinity corrupting smoothing state */
   private sanitizeState(): void {
-    if (!Number.isFinite(this.dynamicCenter)) this.dynamicCenter = 0.5;
+    if (!Number.isFinite(this.ampEnv)) this.ampEnv = 0;
     if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
     if (!Number.isFinite(this.lastBrightness)) this.lastBrightness = 0;
@@ -1517,143 +1396,94 @@ export class PiLightEngine {
         return;
       }
 
-      // ── 1. Fast normalization (Sonos-vol-baserad mic-gain redan applicerad upstream) ──
-      // bands kommer nu ur analysatorns oktavband (en källa) — normalizeFixed
-      // behålls så befintliga kalibreringar/gain-kurvor gäller oförändrat.
+      // ── 1. DIRIGENTENS TVÅ INSIGNALER (isärhållna) ──
+      // level = ABSOLUT amplitud (lightRawRms × tvåpunktsGain). Ingen AGC.
+      //         → driver TAKET via en långsam envelope.
+      // shape = RELATIV dynamik ur analysatorns AGC-energi (0..1, snabb).
+      //         → fyller golv→tak med beat-dynamik.
+      const level = Math.max(0, Math.min(1, bands.totalRms));
+      let shape = Math.max(0, Math.min(1, bands.shape ?? 0));
+
       const bassNorm = normalizeFixed(bands.bassRms);
       const midHiNorm = normalizeFixed(bands.midHiRms);
 
-      // (dynamicCenter spåras nu i onFluxReady @ 100Hz — inte här)
-
-      // ── 3. Bas/Disk mix (asymmetrisk dämpning) ──
-      // 0.5 = neutral (båda 100%). <0.5 dämpar bas, >0.5 dämpar disk. Sidan man drar mot stannar 100%.
-      // LJUS-BREDD (2026-08-24): ljuset använder sin EGEN bas-vikt. bassWeight/
-      // beatCutoffHz styr fortsatt beat-detektionen (bassFlux) oförändrat.
-      const w = cal.lightBassWeight ?? 0.5;
-      const bassGain  = w;       // monotonic crossfade: 0 = no bass, 1 = full bass
-      const midHiGain = 1 - w;   // 0 = no treble, 1 = full treble
-      let energyNorm = bassNorm * bassGain + midHiNorm * midHiGain;
-
-      // ── 3.5. Tystnads-gate (2026-05-04) ──
-      // Spegelbild av onsetEnergyFloor som gatear express-onset i onFluxReady.
-      // När absolut mic-energi < tickEnergyFloor är det rumsbrus, inte musik.
-      // Forcera energyNorm=0 + använd release så smoothed glidar mjukt ner mot
-      // brightnessFloor utan att attackAlpha=1.0 snappar upp på brus-spikar.
+      // ── 2. Tystnads-gate ──
+      // När absolut amplitud < tickEnergyFloor är input rumsbrus, inte musik:
+      // shape forceras till 0 och taket sjunker mot golvet.
       const tickFloor = cal.tickEnergyFloor ?? 0;
-      const peakBand = Math.max(bands.bassRms, bands.midHiRms);
-      const inSilence = tickFloor > 0 && peakBand < tickFloor;
-      if (inSilence) energyNorm = 0;
+      const inSilence = tickFloor > 0 && level < tickFloor;
+      if (inSilence) shape = 0;
 
-      // ── 4. Release smoothing (enda smoothing — alsaMic levererar rå RMS) ──
-      // Körs på tick-takt (50Hz) så filtret är synkat mot output-raten och
-      // undviker alias-hack mellan FFT-takt (100Hz) och tick-takt.
-      // Adaptive "punch on drop" borttagen 2026-05-04 — punch hör till
-      // attack-pathen (attackAlpha=1.0), inte release. Användarens
-      // releaseAlpha (softness-slider) ska vara enda kontrollen för fade-out.
-      // Tidsbaserad alpha (2026-06-02): BLE-pre-gaten gör att ticks nu kommer
-      // med varierande intervall (hoppade frames när BLE är busy). En precomputed
-      // per-tickMs-alpha skulle då ge ojämn fade-takt. Härled alpha ur FAKTISK
-      // elapsed med samma 1-(1-base)^(elapsed/125)-formel som computeTickConstants,
-      // så ljusbilden blir identisk oavsett hur många frames som hoppats över.
-      const _smoothElapsed = this._lastSmoothAt > 0
+      // ── 3. Långsam amplitud-envelope → TAKET ──
+      // Attack ~300 ms, release ~2.5 s. Detta är INGET löpande center som
+      // outputen normaliseras mot: taket är monotont i absolut nivå, så en
+      // uthållig uppbyggnad lyfter taket och HÅLLER det uppe.
+      const _envElapsed = this._lastSmoothAt > 0
         ? Math.min(250, _tickStart - this._lastSmoothAt)
         : this.tickMs;
+      const envUp = 1 - Math.exp(-_envElapsed / 300);
+      const envDown = 1 - Math.exp(-_envElapsed / 2500);
+      const envA = level > this.ampEnv ? envUp : envDown;
+      this.ampEnv += envA * (level - this.ampEnv);
+      let ampEnv = this.ampEnv;
+      const sens = tc.ceilingSensitivity;
+      if (sens !== 1) ampEnv = Math.min(1, ampEnv * sens);
+
+      const floor = tc.brightnessFloor;
+      const floorN = floor / 100;
+      const ceiling = floorN + (1 - floorN) * ampEnv;
+
+      // ── 4. HEARTBEAT: snabb attack, mjuk release på shape ──
+      // Tidsbaserad alpha så fade-takten blir identisk även när BLE hoppar frames.
       this._lastSmoothAt = _tickStart;
-      const _eRatio = _smoothElapsed / 125;
-      let alpha: number;
-      if (inSilence) {
-        // Tystnad: dra mot 0 via release oavsett brus-spikar
-        alpha = 1 - Math.pow(1 - this.cal.releaseAlpha, _eRatio);
-      } else if (energyNorm > this.smoothed) {
-        alpha = 1 - Math.pow(1 - this.cal.attackAlpha, _eRatio);
-      } else {
-        alpha = 1 - Math.pow(1 - this.cal.releaseAlpha, _eRatio);
-      }
-      if (energyNorm < this.smoothed) {
-        // Logaritmisk release: jämn, perceptuell fade (konstant ratio/tick). Ingen attack-mjukhet här.
+      const _eRatio = _envElapsed / 125;
+      if (shape < this.smoothed) {
+        const alpha = 1 - Math.pow(1 - cal.releaseAlpha, _eRatio);
+        // Logaritmisk release: jämn, perceptuell fade (konstant ratio/tick).
         const _lo = 1e-4;
         const _c = this.smoothed < _lo ? _lo : this.smoothed;
-        const _t = energyNorm < _lo ? _lo : energyNorm;
+        const _t = shape < _lo ? _lo : shape;
         this.smoothed = Math.exp(Math.log(_c) + alpha * (Math.log(_t) - Math.log(_c)));
       } else {
-        // Attack: MJUK vid låg energi (lågt brus snäpper inte → inget flimmer), full SNAP vid hög energi.
+        const alpha = 1 - Math.pow(1 - cal.attackAlpha, _eRatio);
+        // MJUK attack vid låg energi (brus snäpper inte → inget flimmer),
+        // full SNAP vid hög energi.
         const _softFloor = cal.lowSoftFloor ?? 0.25;
-        const _softK = _softFloor + (1 - _softFloor) * Math.min(1, energyNorm / 0.5);
-        this.smoothed = this.smoothed + alpha * _softK * (energyNorm - this.smoothed);
+        const _softK = _softFloor + (1 - _softFloor) * Math.min(1, shape / 0.5);
+        this.smoothed += alpha * _softK * (shape - this.smoothed);
       }
-      energyNorm = this.smoothed;
+      let shapeSm = this.smoothed;
+      if (shapeSm < 0) shapeSm = 0;
+      if (shapeSm > 1) shapeSm = 1;
 
-      const preDynamics = energyNorm;
-
-      // ── 5. Dynamics expansion ──
-      // (dynamicCenter uppdateras i onFluxReady @ 100Hz — se start())
-      if (tc.dynamicsEnabled) {
-        energyNorm = applyDynamics(energyNorm, this.dynamicCenter, cal.dynamicDamping);
-      }
-
-      // ── 6. Transient boost (0 = av, 1.0 = default, 2.0 = överdrivet) ──
+      // ── 5. Transient boost (additiv bump, aldrig normalisering) ──
       const transientGain = tc.transientGain;
       const fluxBoost = (transientGain > 0 && !inSilence) ? this.onsetBoost * transientGain : 0;
-      energyNorm = energyNorm + fluxBoost;
-      if (energyNorm > 1) energyNorm = 1;
       if (inSilence) {
-        // Bleed onsetBoost-state så gammal flux inte väcker upp på nästa frame
         this.onsetBoost *= 0.5;
         if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
       }
 
-      // ── 6b. (Slew-rate limiter borttagen 2026-04-26) ──
-      // Anti-alias-bufferten i alsaMic (~30ms rolling average) + EMA i tickInner
-      // sköter all smoothing av rå brus. Slew-en bromsade bara snabba kicks utan
-      // att tillföra något efter att aliaseringen försvann från källan.
-      // cal.maxRisePerSec / cal.maxFallPerSec finns kvar i typen för bakåt-
-      // kompatibilitet med sparade profiler men har ingen runtime-effekt längre.
+      // ── 6. BRIGHTNESS: golv → tak, fyllt av shape ──
+      let outN = floorN + shapeSm * (ceiling - floorN);
+      outN += fluxBoost * (1 - floorN);
+      if (outN < floorN) outN = floorN;
+      if (outN > 1) outN = 1;
 
-      // ── 7. Floor + Perceptual curve ──
-      const floor = tc.brightnessFloor;
-      // Golv som dynamisk LYFT (inte hård-klipp): energyNorm mappas in i [floor,100]
-      // → låga nivåer varierar precis ovanför golvet i stället för att plattas.
-      const pGamma = tc.perceptualGamma;
-      // LJUS-SKALA: headroom mellan analyserad energi och lampans tak, så drops
-      // (som skriver 100 % direkt) har kvar utrymme att sticka ut.
-      let _e = energyNorm;
-      if (_e < 0) _e = 0;
-      if (_e > 1) _e = 1;
-      // Perceptuell kurva FÖRST, sedan TAK MED MJUKT KNÄ (2026-08-24):
-      // lightScale är taket. Under knät är mappningen LINJÄR (full dynamik i
-      // mitten), över knät komprimeras resten asymptotiskt in mot taket i
-      // stället för att klippas platt. Drop-blixten skriver 100 % direkt och
-      // får därmed fortfarande sticka ut över taket.
-      if (pGamma > 0 && _e > 0.0001) _e = Math.exp(pGamma * Math.log(_e));
-      const ceilN = tc.lightScale;
-      const kneeN = 0.45;
-      let out: number;
-      if (ceilN <= kneeN) {
-        out = _e * ceilN;
-      } else if (_e <= kneeN) {
-        out = _e;
-      } else {
-        const t = (_e - kneeN) / (1 - kneeN);
-        const shaped = (1 - Math.exp(-1.2 * t)) / (1 - Math.exp(-1.2));
-        out = kneeN + (ceilN - kneeN) * shaped;
-      }
-      let pct = floor + out * (100 - floor);
+      const energyNorm = outN;
+      let pct = outN * 100;
 
       // Fast round + clamp
       pct = (pct + 0.5) | 0;
       if (pct > 100) pct = 100;
       if (pct < floor) pct = floor;
 
-
-      // TV-soft: remap brightness into a bright, gentle band (floor..ceil %).
-      if (this._tvSoft) {
-        const _lo = this._tvSoftFloor ?? 60, _hi = this._tvSoftCeil ?? 95;
-        pct = (_lo + (pct / 100) * (_hi - _lo) + 0.5) | 0;
-      }
-
-      // Auto-tune sampler: registrera RÅ mic-RMS (innan smoothing/dynamics) så
-      // analysen kan separera tysta partier (rumsbrus) från musik-nivå.
+      // Auto-tune sampler: registrera RÅ mic-RMS (innan smoothing) så analysen
+      // kan separera tysta partier (rumsbrus) från musik-nivå.
       if (this.autoTuneActive) this.recordAutoTuneSample(bands.totalRms);
+
+
+
 
 
 
@@ -1713,7 +1543,21 @@ export class PiLightEngine {
       // Drop längre ger max brightness men behåller palette-färg — bara
       // punchWhiteThreshold (peak-detektorn) tvingar vit.
       const isPunch = (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
-      applyColorCalibrationFast(this.color[0], this.color[1], this.color[2], tc);
+
+      // ── FÄRG-TILT på spektralbalans (helt oberoende av brightness) ──
+      // bas-tung mix → varmare (rött upp, blått ner), diskant-tung → svalare.
+      const tilt = cal.colorSpectralTilt ?? 0;
+      let cr = this.color[0], cg = this.color[1], cb = this.color[2];
+      if (tilt > 0 && !inSilence) {
+        // -1 (helt diskant) .. +1 (helt bas)
+        const balance = (bands.bassShare ?? 0.5) * 2 - 1;
+        const warm = 1 + balance * tilt;
+        const cool = 1 - balance * tilt;
+        cr = Math.min(255, cr * warm);
+        cb = Math.min(255, cb * cool);
+      }
+      applyColorCalibrationFast(cr, cg, cb, tc);
+
 
       // ── BLE output (synkron hard-fail) ──
       // sendToBLE returnerar direkt med WriteResult — engine räknar utfallet
@@ -1740,9 +1584,12 @@ export class PiLightEngine {
       _diag.midHiRms = bands.midHiRms;
       _diag.bassNorm = bassNorm;
       _diag.midHiNorm = midHiNorm;
-      _diag.preDynamics = preDynamics;
+      _diag.level = level;
+      _diag.ampEnv = ampEnv;
+      _diag.shape = shapeSm;
+      _diag.ceiling = ceiling;
       _diag.energyNorm = energyNorm;
-      _diag.dynamicCenter = this.dynamicCenter;
+
       _diag.onsetBoost = this.onsetBoost;
       _diag.brightnessPct = pct;
       _diag.bleScaleRaw = pct / 100;

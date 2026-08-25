@@ -6,17 +6,17 @@ import { useEffect, useRef } from "react";
  * samma kedja (attack/release → dynamik → golv) som piEngine använder.
  */
 export function LightPreview({
-  softness, brightnessFloor, dynamicDamping, beatCutoffHz,
+  softness, brightnessFloor, ceilingSensitivity, beatCutoffHz,
 }: {
   softness: number;
   brightnessFloor: number;
-  dynamicDamping: number;
+  ceilingSensitivity: number;
   beatCutoffHz: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const orbRef = useRef<HTMLDivElement>(null);
-  const params = useRef({ softness, brightnessFloor, dynamicDamping, beatCutoffHz });
-  params.current = { softness, brightnessFloor, dynamicDamping, beatCutoffHz };
+  const params = useRef({ softness, brightnessFloor, ceilingSensitivity, beatCutoffHz });
+  params.current = { softness, brightnessFloor, ceilingSensitivity, beatCutoffHz };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,7 +50,7 @@ export function LightPreview({
     const hist = new Float32Array(N);
     const raw = new Float32Array(N);
     let level = 0;
-    let center = 0.35;
+    let ampEnv = 0.35;
     let raf = 0;
     const t0 = performance.now();
     const BEAT_MS = 500;
@@ -70,16 +70,16 @@ export function LightPreview({
       const release = 0.6 * Math.pow(0.04, p.softness / 100);
       level = x > level ? x : level + (x - level) * release;
 
-      // Dynamik: expansion/utjämning kring rörligt center (som motorns dynamicCenter).
-      center += (level - center) * 0.02;
-      const gain = Math.pow(1.6, p.dynamicDamping);
-      let out = center + (level - center) * gain;
-      // Mjuk knä istället för hård klippning, så slidern syns i hela sitt spann.
-      out = out <= 0 ? 0 : out >= 1 ? 1 : out < 0.85 ? out : 0.85 + (1 - Math.exp(-(out - 0.85) / 0.15)) * 0.15;
+      // Dirigenten: taket följer absolut nivå (långsam envelope), shape ger
+      // snabb dynamik inom golv→tak.
+      const amp = Math.min(1, level * p.ceilingSensitivity);
+      ampEnv += (amp - ampEnv) * (amp > ampEnv ? 0.08 : 0.008);
 
-      // Ljusgolv.
       const floor = p.brightnessFloor / 100;
-      out = floor + (1 - floor) * out;
+      const ceiling = floor + (1 - floor) * ampEnv;
+      const shape = Math.min(1, level);
+      let out = floor + shape * (ceiling - floor);
+      out = out <= 0 ? 0 : out >= 1 ? 1 : out;
 
       hist.copyWithin(0, 1); hist[N - 1] = out;
       raw.copyWithin(0, 1); raw[N - 1] = Math.min(1, x);
