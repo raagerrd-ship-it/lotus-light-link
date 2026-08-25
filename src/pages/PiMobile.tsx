@@ -1071,6 +1071,7 @@ export default function PiMobile() {
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
                   ceilingSensitivity={cal.ceilingSensitivity}
+                  loudnessFloor={cal.loudnessFloor}
                   beatCutoffHz={cal.beatCutoffHz}
                 />
 
@@ -1090,6 +1091,14 @@ export default function PiMobile() {
                   min={0} max={100}
                   onChange={(v) => setCal({ ...cal, brightnessFloor: Math.round(v) })}
                   hint="0 = släck helt i tystnad."
+                />
+                <Slider
+                  label="Loudness-golv"
+                  value={cal.loudnessFloor}
+                  display={`${Math.round(cal.loudnessFloor * 100)} %`}
+                  min={0} max={0.5} step={0.01}
+                  onChange={(v) => setCal({ ...cal, loudnessFloor: v })}
+                  hint="Hur mörkt en lugn låt blir. 0 = ren amplitud, högre = mer basljus."
                 />
                 <Slider
                   label="Tak-känslighet"
