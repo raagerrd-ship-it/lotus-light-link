@@ -505,13 +505,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             dlog(`${ts()} 8. anslutning klar — engine notifierad om BLE-status`);
             finish({ connected: true });
           } catch (e: any) {
-            // RACE GUARD: samma sen-timeout-mönster som connectAsync nedan.
-            // GATT discovery kan resolva precis runt 8s-gränsen och tickande
-            // setTimeout kastar ändå — disconnecta INTE en lyckad session.
-            if (resolved) {
-              dlog(`${ts()}    (ignorerar sen GATT-discovery-timeout: ${e?.message ?? e})`);
-              return;
-            }
+
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
             try { await peripheral.disconnectAsync(); } catch {}
             finish({ connected: false, error: `GATT discovery failed: ${e?.message ?? e}` });
