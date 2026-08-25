@@ -256,12 +256,22 @@ function nextDrainDelay(now: number): number {
 }
 
 function armDrain(delayMs = 0): void {
-  if (drainTimer) return;
+  if (drainTimer || drainImmediate) return;
+  if (delayMs <= 0) {
+    // setTimeout(...,0) klampas till 1 ms och kostar en timer-heap-insert per
+    // frame (~50-66/s). setImmediate kör fortfarande off caller-stacken.
+    drainImmediate = setImmediate(() => {
+      drainImmediate = null;
+      drainQueuedWrite();
+    });
+    return;
+  }
   drainTimer = setTimeout(() => {
     drainTimer = null;
     drainQueuedWrite();
-  }, Math.max(0, delayMs));
+  }, delayMs);
 }
+
 
 function drainQueuedWrite(): void {
   if (drainRunning) return;
