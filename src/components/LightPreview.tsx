@@ -6,17 +6,18 @@ import { useEffect, useRef } from "react";
  * samma kedja (attack/release → dynamik → golv) som piEngine använder.
  */
 export function LightPreview({
-  softness, brightnessFloor, ceilingSensitivity, beatCutoffHz,
+  softness, brightnessFloor, ceilingSensitivity, loudnessFloor, beatCutoffHz,
 }: {
   softness: number;
   brightnessFloor: number;
   ceilingSensitivity: number;
+  loudnessFloor: number;
   beatCutoffHz: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const orbRef = useRef<HTMLDivElement>(null);
-  const params = useRef({ softness, brightnessFloor, ceilingSensitivity, beatCutoffHz });
-  params.current = { softness, brightnessFloor, ceilingSensitivity, beatCutoffHz };
+  const params = useRef({ softness, brightnessFloor, ceilingSensitivity, loudnessFloor, beatCutoffHz });
+  params.current = { softness, brightnessFloor, ceilingSensitivity, loudnessFloor, beatCutoffHz };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -77,7 +78,8 @@ export function LightPreview({
       ampEnv += (amp - ampEnv) * (amp > ampEnv ? 0.08 : 0.008);
 
       const floor = p.brightnessFloor / 100;
-      const loudness = Math.min(1, Math.max(0, 0.65 + ampEnv * 0.35));
+      const lFloor = p.loudnessFloor;
+      const loudness = Math.min(1, Math.max(0, lFloor + ampEnv * (1 - lFloor)));
       const energyForm = Math.min(1, intensitySm + kick * 0.08);
       let out = floor + energyForm * (1 - floor) * loudness;
       out = out <= 0 ? 0 : out >= 1 ? 1 : out;
