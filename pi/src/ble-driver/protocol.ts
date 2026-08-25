@@ -379,7 +379,19 @@ export function sendToBLE(r: number, g: number, b: number, brightness: number): 
   slotLockedUntil = now + slotLeaseMs;
   lastWriteTime = now;
 
-  device.characteristic.writeAsync(buf, true)
+  // Tidsstämpla den SYNKRONA delen av det native anropet. writeAsync ska
+  // returnera ett promise direkt; blockerar den event-loopen är det den som
+  // fryser ticken (syns som bleStats.writeSyncMaxMs i /api/status).
+  const _syncT0 = performance.now();
+  const _writePromise = device.characteristic.writeAsync(buf, true);
+  const _syncMs = performance.now() - _syncT0;
+  if (_syncMs > bleStats.writeSyncMaxMs) bleStats.writeSyncMaxMs = Math.round(_syncMs * 10) / 10;
+  if (_syncMs >= 50) {
+    bleStats.writeSyncSlowCount++;
+    bleStats.lastStuckReason = `write-sync ${_syncMs.toFixed(1)}ms (blocking native call)`;
+  }
+
+  _writePromise
     .then(() => {
       const elapsed = performance.now() - writeStartedAt;
       bleStats.sentCount++;
