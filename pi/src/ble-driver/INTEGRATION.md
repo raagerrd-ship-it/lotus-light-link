@@ -219,8 +219,8 @@ await lamp.disconnect();
    (`slotLeaseMs`) med en ACL-outstanding-gräns (max 6 paket ute samtidigt).
 
 2. **`setColor` är synkron och fire-and-forget.** Den `await`:ar aldrig
-   radio-bekräftelse — den returnerar `'sent'`/`'busy'` direkt. Backpressure
-   sköts av gaten, inte av promise-resolve.
+   radio-bekräftelse — den returnerar direkt efter att senaste frame lagts i
+   1-slot-writern. Backpressure sköts av den interna writern, inte av promise-resolve.
 
 3. **Kör alltid keep-alive.** Utan en write var ~200ms tappar BLEDOM länken via
    supervision-timeout. `startKeepAlive()` löser detta; den följer samma gate.
