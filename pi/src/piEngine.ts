@@ -575,8 +575,8 @@ export class PiLightEngine {
     this.onsetPrevFlux = flux;
 
 
-    // Refractory gate: minimum gap mellan onsets, räknat i FFT-frames @ 75Hz (10ms/frame)
-    const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / 10));
+    // Refractory gate: minimum gap mellan onsets, räknat i frames på sann takt (FRAME_MS ≈ 13.33 ms @ 75 Hz)
+    const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / FRAME_MS));
     this.onsetFrameCounter++;
     let fired = false;
     if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
