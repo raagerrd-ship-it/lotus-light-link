@@ -453,7 +453,7 @@ export class PiLightEngine {
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer(tickMs);
     this.tc = computeTickConstants(tickMs, this.cal);
-    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken; ingen separat rate-cap
+    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -464,7 +464,7 @@ export class PiLightEngine {
     this.tickMs = ms;
     this.initOnsetBuffer(ms);
     this.tc = computeTickConstants(ms, this.cal);
-    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken; ingen separat rate-cap
+    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken
   }
 
   setColor(rgb: [number, number, number]) {

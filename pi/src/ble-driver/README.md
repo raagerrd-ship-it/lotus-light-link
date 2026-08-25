@@ -15,16 +15,16 @@ import { createLampDriver } from './ble-driver/index.js';
 const lamp = createLampDriver({
   device: { name: 'ELK-BLEDOM01', mac: 'BE:67:00:15:09:41' },
   // logger: console.log,        // valfritt; annars tyst om inte LOTUS_DEBUG=1
-  // slotLeaseMs: 25,            // write-cadence-cap (default 25ms ≈ 40Hz)
+  // slotLeaseMs: 25,            // 1:1 med 25ms engine-tick (~40Hz)
   // dimmingGamma: 1.8,          // perceptuell dimring
 });
 
 await lamp.connect();
 lamp.startKeepAlive();           // håll länken vid liv när inga färgwrites sker
 
-// Skicka färger i en loop — respektera backpressure via canWriteNow().
+// Skicka färger i en loop — senaste frame vinner om BLE är upptagen.
 setInterval(() => {
-  if (lamp.canWriteNow()) lamp.setColor(255, 80, 0, 100); // r,g,b,brightness(0–100)
+  lamp.setColor(255, 80, 0, 100); // r,g,b,brightness(0–100)
 }, 25);
 ```
 
@@ -34,13 +34,13 @@ setInterval(() => {
 | --- | --- |
 | `connect()` / `disconnect()` | Anslut/koppla från mål-lampan (scan → connect → anchor write). |
 | `isConnected()` | `true` om GATT-länken är uppe. |
-| `setColor(r,g,b,brightness=100)` | Skicka färg + ljusstyrka. Returnerar `WriteResult` (`sent`/`busy`/`no-device`). |
+| `setColor(r,g,b,brightness=100)` | Queua senaste färg + ljusstyrka. Returnerar `WriteResult` (`sent`/`no-device`). |
 | `setIdleColor(r,g,b)` | Uppdatera idle-färg (keep-alive bär den). |
 | `setPower(on)` | Väck/släck LED-drivern (BLEDOM intern off-state). |
-| `canWriteNow()` | Billig backpressure-check (lease + ACL-outstanding). |
+| `canWriteNow()` | Billig readiness-check för externa verktyg (lease + ACL-outstanding). |
 | `startKeepAlive()` / `stopKeepAlive()` | 200ms keep-alive mot supervision-timeout. |
 | `setDimmingGamma()` / `getDimmingGamma()` | Justera dimring-gamma. |
-| `setSlotLeaseMs(ms)` | Write-cadence-cap. |
+| `setSlotLeaseMs(ms)` | Minsta avstånd mellan faktiska writes. |
 | `getStats()` | Ögonblicksbild av write/latency/reconnect-statistik. |
 
 ## Konfiguration
