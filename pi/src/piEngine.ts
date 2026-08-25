@@ -1201,6 +1201,9 @@ export class PiLightEngine {
   private _lastSmoothAt = 0;   // för tidsbaserad EMA-alpha (robust mot hoppade ticks)
   private _loopActive = false;
   private _nextTickDeadline = 0;
+  // När BLE-pre-gaten började blockera obrutet (0 = inte blockerad).
+  private _bleGateSince = 0;
+  private static readonly BLE_GATE_MAX_MS = 500;
 
   /** Called by ALSA FFT callback — runs in the audio data handler context */
   private onFFTFrame(): void {
