@@ -244,6 +244,13 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 // mot 375 Hz i DMX-projektet. Att köra den på 100 Hz skulle ge 3.75× för glesa
 // onsets och 4s kick-warmup. Egen tap = drop-in-passform utan omkalibrering.
 const ANALYSER_HOP = 128;
+
+/**
+ * Sann dirigent-takt: emitBands fyras var BAND_EVERY_HOPS:te analysator-hop.
+ * 128 × 5 / 48000 = 13.333… ms → 75 Hz (INTE 100 Hz som gamla kommentarer påstod).
+ */
+export const FRAME_MS = (ANALYSER_HOP * BAND_EVERY_HOPS / SAMPLE_RATE) * 1000;
+
 // TVÅ TAPPAR (2026-08-24): ring-bufferten innehåller RÅ (o-gainad) mic-signal.
 //  • ANALYS-tappen: RÅ signal → analysatorns AGC gör HELA gainen dynamiskt
 //    (mål 0.8 = 80 % med headroom). INGEN fast pre-gain: en fast faktor före
