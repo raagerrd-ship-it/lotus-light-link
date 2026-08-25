@@ -145,24 +145,30 @@ export function resetLastSent(): void {
   bleStats.intervalSource = 'unknown';
 }
 
-/** Drop any not-yet-written active frame without touching an in-flight native write. */
-export function clearQueuedWrite(): void {
-  queuedFrame = null;
+function cancelDrain(): void {
   if (drainTimer) {
     clearTimeout(drainTimer);
     drainTimer = null;
   }
+  if (drainImmediate) {
+    clearImmediate(drainImmediate);
+    drainImmediate = null;
+  }
+}
+
+/** Drop any not-yet-written active frame without touching an in-flight native write. */
+export function clearQueuedWrite(): void {
+  queuedFrame = null;
+  cancelDrain();
 }
 
 export function hasQueuedWrite(): boolean { return queuedFrame != null; }
 
 export function flushQueuedWriteNow(): void {
-  if (drainTimer) {
-    clearTimeout(drainTimer);
-    drainTimer = null;
-  }
+  cancelDrain();
   drainQueuedWrite();
 }
+
 
 
 
