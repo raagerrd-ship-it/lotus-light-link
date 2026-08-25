@@ -67,9 +67,9 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 25;   // 40 Hz — tätare, mjukare uppdatering. BLE-länken hinner
-                      // med utan kö (verifierat live: queued=0, skipBusy=0,
-                      // outstanding max 5 av tak 6).
+const TICK_MS = 10;   // 100 Hz — EN tick för hela compute-kedjan (samma takt som
+                      // FFT:n). tickInner körs på varje FFT-frame; BLE-leveransen
+                      // är frikopplad via 1-plats-slot (senaste vinner).
 
 // --- Lazy module references (filled by starters) ---
 type AlsaMicModule = typeof import('./alsaMic.js');
