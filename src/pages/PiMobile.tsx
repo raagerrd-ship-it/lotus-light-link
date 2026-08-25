@@ -377,8 +377,11 @@ function GainCalibrationPanel({
   const [volHigh, setVolHigh] = useState(AUTO_VOL_HIGH);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
-  const [lampBrightness, setLampBrightness] = useState<number | null>(null);
-  const [inputLevel, setInputLevel] = useState<number | null>(null);
+  // Lamp-pct + input-nivå kommer ur den delade /api/live-pollern.
+  const liveFeed = useLiveFeed();
+  const lampBrightness = liveFeed.data?.ble?.lastSent?.pct ?? null;
+  const inputLevel = liveFeed.data?.live?.inputLevel ?? null;
+
   // Bumpas vid varje gain-ändring → 20 s-topparna i mätarna nollställs.
   const [holdReset, setHoldReset] = useState(0);
 
