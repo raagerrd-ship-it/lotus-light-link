@@ -103,6 +103,7 @@ type QueuedFrame = { r: number; g: number; b: number; brightness: number };
 let queuedFrame: QueuedFrame | null = null;
 let drainTimer: ReturnType<typeof setTimeout> | null = null;
 let drainRunning = false;
+let writeSeq = 0;
 
 // När senaste accepterade write skickades till noble (för drain-diagnostik).
 let lastSendStartedAt = 0;
@@ -133,6 +134,7 @@ export function resetLastSent(): void {
   lastR = lastG = lastB = lastBr = lastPct = -1;
   clearQueuedWrite();
   writePending = false;
+  writeSeq++;
   slotLockedUntil = 0;
   lastSendStartedAt = 0;
   stuckRecoveryInFlight = false;
@@ -318,6 +320,7 @@ function drainQueuedWrite(): void {
     const writeStartedAt = now;
     writePending = true;
     writePendingSince = now;
+    const seq = ++writeSeq;
     lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
@@ -377,7 +380,7 @@ function drainQueuedWrite(): void {
         }
       })
       .finally(() => {
-        writePending = false;
+        if (seq === writeSeq) writePending = false;
         if (queuedFrame) armDrain(nextDrainDelay(performance.now()));
       });
   } finally {
@@ -412,6 +415,7 @@ export function startKeepAlive(): void {
     const buf = device.mode === 'brightness' ? brightBuf : writeBuf;
     writePending = true;
     writePendingSince = now;
+    const seq = ++writeSeq;
     lastSendStartedAt = now;
     slotLockedUntil = now + slotLeaseMs;
     lastWriteTime = now;
@@ -457,7 +461,7 @@ export function startKeepAlive(): void {
       })
       .finally(() => {
         // Släpp ENDAST writePending. slotLockedUntil styr nästa write.
-        writePending = false;
+        if (seq === writeSeq) writePending = false;
       });
   }, KEEPALIVE_MS);
 }
