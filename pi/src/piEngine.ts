@@ -65,11 +65,9 @@ export interface TickConstants {
 export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   const ratio = tickMs / 125;
   const secRatio = tickMs / 1000;
-  // OBS: motorn kör 75 Hz (FRAME_MS ≈ 13.33). Denna 10 är den GAMLA 100 Hz-antagelsen som
-  // onset-alforna + refraktären fortfarande är gehörs-trimmade mot. Att byta till FRAME_MS gör
-  // punchen ~33 % snabbare OCH remappar persisterade onsetRefractoryMs → görs som LIVE-trim,
-  // inte blint. (Granskning M4.)
-  const fftMs = 10;
+  // fftMs = FRAME_MS: onset-alforna körs nu på sann 75 Hz-takt (var felaktigt hårdkodad 10 = 100 Hz-antagande).
+  const fftMs = FRAME_MS;
+
 
   const fftRatio = fftMs / 125;
   const fftSecRatio = fftMs / 1000;
