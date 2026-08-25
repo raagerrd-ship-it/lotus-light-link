@@ -385,7 +385,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 export function stopSonosPoller(): void {
   sseCleanup?.();
   sseCleanup = null;
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   if (staleWatchdogTimer) { clearInterval(staleWatchdogTimer); staleWatchdogTimer = null; }
   staleEmitted = false;
   activeConfig = null;

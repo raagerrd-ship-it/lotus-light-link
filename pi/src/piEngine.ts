@@ -102,8 +102,9 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     gammaIsUnity,
     dimmingGamma: getDimmingGamma(),
-    brightnessFloor: cal.brightnessFloor ?? 0,
-    transientGain: cal.transientGain ?? 1.0,
+    brightnessFloor: cal.brightnessFloor,
+    transientGain: cal.transientGain,
+
     lutR,
     lutG,
     lutB,
@@ -125,7 +126,7 @@ export interface LightCalibration {
   punchWhiteThreshold: number;
   /** Golv i procent — ljuset går aldrig under detta under play. Default 25. */
   brightnessFloor: number;
-  /** 0 = av (ingen boost), 1.0 = nuvarande default, upp till ~2.0 = överdrivna transienter */
+  /** 0 = av (ingen boost), 0.4 = default, upp till ~2.0 = överdrivna transienter */
   transientGain: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
@@ -233,11 +234,15 @@ function loadCalibration(): LightCalibration {
     const raw = getItem('light-calibration');
     if (raw) {
       const parsed = migrateLegacyCalibration(JSON.parse(raw));
-      return { ...DEFAULT_CAL, ...parsed };
+      // C1: null/undefined i en sparad profil får INTE skugga DEFAULT_CAL —
+      // annars föll het-pathen tillbaka på divergerande inline-literaler.
+      const clean = Object.fromEntries(Object.entries(parsed).filter(([, v]) => v != null));
+      return { ...DEFAULT_CAL, ...clean } as LightCalibration;
     }
   } catch {}
   return { ...DEFAULT_CAL };
 }
+
 
 function saveCalibration(cal: LightCalibration): void {
   setItem('light-calibration', JSON.stringify(cal));
