@@ -71,14 +71,10 @@ export function LightPreview({
       const release = 0.6 * Math.pow(0.04, p.softness / 100);
       intensitySm = intensity > intensitySm ? intensity : intensitySm + (intensity - intensitySm) * release;
 
-      // Dirigent v2: rå nivå skalar loudness långsamt; intensity bär formen.
-      const amp = Math.min(1, 0.14 + 0.04 * Math.sin(t / 9000));
-      ampEnv += (amp - ampEnv) * (amp > ampEnv ? 0.08 : 0.008);
-
+      // Input-sync: formen ÄR den gain-satta inputen — ingen loudness-faktor.
       const floor = p.brightnessFloor / 100;
-      const loudness = Math.min(1, Math.max(0, ampEnv));
       const energyForm = Math.min(1, intensitySm + kick * 0.08);
-      let out = floor + energyForm * (1 - floor) * loudness;
+      let out = floor + energyForm * (1 - floor);
       out = out <= 0 ? 0 : out >= 1 ? 1 : out;
 
       hist.copyWithin(0, 1); hist[N - 1] = out;
