@@ -1000,21 +1000,8 @@ export function startConfigServer(port = 3050): void {
     }
   });
 
-  // --- Live mic level ---
-  let _lastSampleTs = 0;
-  let _lastSent = 0;
-  
-  let _lastSkipBusy = 0;
-  let _lastSkipInFlight = 0;
-  let _lastWriteFail = 0;
-  let _lastWriteStallRelease = 0;
-  let _lastFftFrames = 0;
-  let _lastTickCount = 0;
-  let _lastTickOk = 0;
-  let _lastTickAbortNoMic = 0;
-  let _lastTickAbortNoChange = 0;
-  let _lastTickAbortNoDevice = 0;
-  let _lastTickAbortBleBusy = 0;
+
+
 
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
