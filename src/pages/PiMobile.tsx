@@ -20,17 +20,17 @@ type Cal = {
   onsetThreshold: number; onsetRefractoryMs: number;
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
   beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
-  dropFlashMs: number; beatLeadMs: number;
+  dropFlashMs: number; beatLeadMs: number; peakBoost: number;
 };
 
 const DEFAULT_CAL: Cal = {
-  bassWeight: 0.95, attack: 100, softness: 71,
-  brightnessFloor: 25, punchWhiteThreshold: 100, transientGain: 1.1,
+  bassWeight: 0.95, attack: 100, softness: 43,
+  brightnessFloor: 25, punchWhiteThreshold: 100, transientGain: 0.4,
   colorSpectralTilt: 0.25,
   onsetThreshold: 4.0, onsetRefractoryMs: 300,
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
-  beatCutoffHz: 150, dropEnabled: true, dropSensitivity: 0.64,
-  dropFlashMs: 320, beatLeadMs: 45,
+  beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
+  dropFlashMs: 320, beatLeadMs: 0, peakBoost: 0.2,
 };
 
 
