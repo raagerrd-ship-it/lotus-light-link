@@ -445,3 +445,22 @@ export function setIdleColor(r: number, g: number, b: number): void {
   brightBuf[3] = 0xff;
   lastR = cr; lastG = cg; lastB = cb; lastBr = 0xff; lastPct = 100;
 }
+
+/**
+ * Diagnostik för watchdogen: är en BLE-write hängande just nu, och hur gammal
+ * är den? Används i frys-dumpen för att avgöra BLE kontra mic.
+ */
+export function getWriteDiag(): {
+  writePending: boolean;
+  pendingAgeMs: number;
+  lastWriteAgeMs: number;
+  slotLockedForMs: number;
+} {
+  const now = performance.now();
+  return {
+    writePending,
+    pendingAgeMs: writePending && writePendingSince > 0 ? Math.round(now - writePendingSince) : 0,
+    lastWriteAgeMs: lastWriteTime > 0 ? Math.round(now - lastWriteTime) : -1,
+    slotLockedForMs: now < slotLockedUntil ? Math.round(slotLockedUntil - now) : 0,
+  };
+}
