@@ -424,65 +424,114 @@ async function main() {
   }
 
 
-  // ── FIX 24: Playback-Watchdog — auto-recover från stuck engine.playing ──
-  // Om lifecycle är MOTOR_ON men bleStats.tickOkCount inte växer på 8s →
-  // engine sitter i stale state (playing=false eller _bleOwner='idle' trots
-  // MOTOR_ON). process.exit(1) → systemd Restart=always gör återställning.
+  // ── FIX 24: Playback-Watchdog — diagnostiserande, per-delsystem recovery ──
+  // 2026-08-25: tidigare version tittade BARA på bleStats.tickOkCount och
+  // "soft recovery" var alltid en BLE-reconnect. Frös mic-capturen (ALSA slutar
+  // leverera callbacks utan att fyra 'error') hjälpte det inte → exit(1) och
+  // ~5s nere. Nu avgör vi VILKET delsystem som står still och återställer just
+  // det: mic → restartCapture(), BLE → scheduleAutoReconnect(). Hård restart
+  // först när flera riktade försök misslyckats.
   void (async () => {
     try {
       const { bleStats } = await import('./ble/index.js');
       const lc = await import('./engineLifecycle.js');
       const { scheduleAutoReconnect } = await import('./ble-driver/connect.js');
+      const { getWriteDiag } = await import('./ble-driver/protocol.js');
       const { recordRestart, markGracefulShutdown } = await import('./restartLog.js');
+      const { getRuntimeHealth, msSinceLastTick, getEngineTickTotal } = await import('./runtimeHealth.js');
+
       let lastTickOk = 0;
+      let lastEngineTicks = 0;
+      let lastAudioCbs = 0;
       let stuckMs = 0;
-      let softTried = false;
+      let recoveryAttempts = 0;
       const INTERVAL_MS = 2000;
       const STUCK_THRESHOLD_MS = 8000;
+      const MAX_RECOVERY_ATTEMPTS = 3;
 
       everySeconds(INTERVAL_MS / 1000, () => {
         try {
+          // Mic-stall fångas direkt, oberoende av lifecycle: utan audio-callbacks
+          // finns ingen FFT och därmed ingen tick alls.
+          if (alsaMic?.isMicStalled?.()) {
+            alsaMic.restartCapture('mic-stall-watchdog');
+          }
+
           if (lc.getLifecycleState() !== 'MOTOR_ON') {
             stuckMs = 0;
-            softTried = false;
+            recoveryAttempts = 0;
             lastTickOk = bleStats.tickOkCount;
+            lastEngineTicks = getEngineTickTotal();
+            lastAudioCbs = alsaMic?.getAudioCbStats?.().count ?? 0;
             return;
           }
-          const cur = bleStats.tickOkCount;
-          if (cur === lastTickOk) {
-            stuckMs += INTERVAL_MS;
-            if (stuckMs >= STUCK_THRESHOLD_MS) {
-              if (!softTried) {
-                // Första frysning → mjuk recovery: försök reconnecta BLE och ge
-                // ett nytt fönster innan vi tar till hård restart.
-                console.warn(
-                  `[Playback-Watchdog] tickOk frozen ${stuckMs}ms while ` +
-                  `MOTOR_ON (tickOk=${cur}). Soft recovery: scheduleAutoReconnect().`
-                );
-                softTried = true;
-                stuckMs = 0;
-                try { scheduleAutoReconnect(); } catch {}
-              } else {
-                // Andra frysning trots soft recovery → hård restart via systemd.
-                console.error(
-                  `[Playback-Watchdog] tickOk still frozen ${stuckMs}ms after ` +
-                  `soft recovery (tickOk=${cur}). Exit(1) for systemd restart.`
-                );
-                try {
-                  recordRestart('playback-watchdog-stuck', `tickOk frozen ${stuckMs}ms after soft recovery`);
-                  markGracefulShutdown();
-                } catch {}
-                process.exit(1);
-              }
-            }
-          } else {
+
+          const curTickOk = bleStats.tickOkCount;
+          const curEngineTicks = getEngineTickTotal();
+          const curAudioCbs = alsaMic?.getAudioCbStats?.().count ?? 0;
+
+          if (curTickOk !== lastTickOk) {
             stuckMs = 0;
-            softTried = false;
-            lastTickOk = cur;
+            recoveryAttempts = 0;
+            lastTickOk = curTickOk;
+            lastEngineTicks = curEngineTicks;
+            lastAudioCbs = curAudioCbs;
+            return;
           }
+
+          stuckMs += INTERVAL_MS;
+          if (stuckMs < STUCK_THRESHOLD_MS) return;
+
+          // ── Frys-dump: säger definitivt vilket delsystem som står still ──
+          const micFrozen = curAudioCbs === lastAudioCbs;
+          const engineFrozen = curEngineTicks === lastEngineTicks;
+          const wd = getWriteDiag();
+          const rh = getRuntimeHealth();
+          console.warn(
+            `[Playback-Watchdog] FROZEN ${stuckMs}ms — tickOk=${curTickOk} ` +
+            `engineTicks=${curEngineTicks} (${engineFrozen ? 'frozen' : 'running'}) ` +
+            `audioCbs=${curAudioCbs} (${micFrozen ? 'frozen' : 'running'}) ` +
+            `lastTickAge=${Math.round(msSinceLastTick())}ms ` +
+            `writePending=${wd.writePending} pendingAge=${wd.pendingAgeMs}ms ` +
+            `lastWriteAge=${wd.lastWriteAgeMs}ms slotLocked=${wd.slotLockedForMs}ms ` +
+            `bleBusySkips=${bleStats.tickSkippedBleBusyCount} ` +
+            `writeStallReleases=${bleStats.writeStallReleaseCount} ` +
+            `writeSyncMax=${bleStats.writeSyncMaxMs}ms ` +
+            `maxNativeCall=${rh.maxNativeCallMs}ms ` +
+            `slowNative=${rh.slowNativeCallTotal}` +
+            (rh.lastSlowNativeCall ? ` last=${rh.lastSlowNativeCall.op}/${rh.lastSlowNativeCall.ms}ms` : '')
+          );
+
+          recoveryAttempts++;
+          if (recoveryAttempts <= MAX_RECOVERY_ATTEMPTS) {
+            // Riktad soft recovery — återställ DET stallade delsystemet.
+            if (micFrozen) {
+              console.warn(`[Playback-Watchdog] soft recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS}: mic-capture restart`);
+              alsaMic?.restartCapture?.('playback-watchdog');
+            } else {
+              console.warn(`[Playback-Watchdog] soft recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS}: BLE reconnect`);
+              try { scheduleAutoReconnect(); } catch {}
+            }
+            stuckMs = 0;
+            lastEngineTicks = curEngineTicks;
+            lastAudioCbs = curAudioCbs;
+            return;
+          }
+
+          // Alla riktade försök misslyckades → hård restart via systemd.
+          const reason = micFrozen ? 'mic-capture' : 'ble-delivery';
+          console.error(
+            `[Playback-Watchdog] tickOk still frozen after ${MAX_RECOVERY_ATTEMPTS} ` +
+            `soft recoveries (${reason}). Exit(1) for systemd restart.`
+          );
+          try {
+            recordRestart('playback-watchdog-stuck', `tickOk frozen ${stuckMs}ms, ${reason}, after ${MAX_RECOVERY_ATTEMPTS} soft recoveries`);
+            markGracefulShutdown();
+          } catch {}
+          process.exit(1);
         } catch { /* watchdog must never crash */ }
       });
-      console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms, soft-recovery first)`);
+      console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms, ${MAX_RECOVERY_ATTEMPTS} targeted soft recoveries first)`);
     } catch (e: any) {
       console.warn('[Boot] Playback-Watchdog failed to start:', e?.message ?? e);
     }
