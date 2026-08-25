@@ -101,6 +101,8 @@ const ACL_MAX_OUTSTANDING = (() => {
 type QueuedFrame = { r: number; g: number; b: number; brightness: number };
 let queuedFrame: QueuedFrame | null = null;
 let drainTimer: ReturnType<typeof setTimeout> | null = null;
+let drainImmediate: ReturnType<typeof setImmediate> | null = null;
+
 let drainRunning = false;
 let writeSeq = 0;
 
