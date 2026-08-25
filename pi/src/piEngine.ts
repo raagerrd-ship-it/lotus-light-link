@@ -1223,9 +1223,18 @@ export class PiLightEngine {
       // — resultatet hade ändå dött som 'busy' i sendToBLE. Skippa FÖRE den
       // dyra beräkningen och spara CPU. Gäller bara under aktiv playback;
       // idle-pathen styrs av keep-alive, inte tickInner.
+      // Leverans är FRIKOPPLAD från ticken (2026-08-25): pre-gaten sparar CPU,
+      // men får aldrig frysa beslutskedjan. Om BLE varit busy längre än
+      // BLE_GATE_MAX_MS kör vi tickInner ändå — writen dör som 'busy' (en
+      // droppad frame), men smoothing/beat/dynamics hålls levande.
       if (this.playing && this._bleOwner === 'active' && !canWriteNow()) {
-        bleStatsState.tickSkippedBleBusyCount++;
-        return;
+        if (this._bleGateSince === 0) this._bleGateSince = now;
+        if (now - this._bleGateSince < PiLightEngine.BLE_GATE_MAX_MS) {
+          bleStatsState.tickSkippedBleBusyCount++;
+          return;
+        }
+      } else {
+        this._bleGateSince = 0;
       }
 
       this._lastTickTime = now;
