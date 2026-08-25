@@ -1162,8 +1162,11 @@ export class PiLightEngine {
         // Drop-detektor @100Hz (analysatorns dropCount med bas-svackan som fallback).
         if (bands) this.processDrop(bands.bassRms, frame);
         // Uppdatera dynamicCenter per FFT-frame (100Hz) istället för per tick
-        // (50Hz) — center följer då 100% av musiken, inte varannan frame.
-        if (this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
+        // (50Hz). Med centerAdaptSeconds = 999 (default) är centret FAST = 0.5
+        // så applyDynamics expanderar ABSOLUT energi — uthålliga uppgångar syns
+        // fullt ut och sjunker inte tillbaka mot ett löpande snitt. Endast när
+        // centerAdaptSeconds sätts lågt (t.ex. 5) följer centret musiken igen.
+        if (this.tc.centerAlphaFft > 0 && this.tc.dynamicsEnabled && bands && Number.isFinite(bands.totalRms)) {
           const bN = normalizeFixed(bands.bassRms);
           const mN = normalizeFixed(bands.midHiRms);
           let raw = bN * 0.5 + mN * 0.5;
@@ -1179,6 +1182,8 @@ export class PiLightEngine {
           this.dynamicCenter += this.tc.centerAlphaFft * (raw - this.dynamicCenter);
           if (this.dynamicCenter < 0.2) this.dynamicCenter = 0.2;
           else if (this.dynamicCenter > 0.7) this.dynamicCenter = 0.7;
+        } else if (this.dynamicCenter !== 0.5) {
+          this.dynamicCenter = 0.5;
         }
         // Analys-tap: rapportera RÅ band/flux (oförvrängd källa) @100Hz till recorder.
         if (this._analysisTap && bands) {
