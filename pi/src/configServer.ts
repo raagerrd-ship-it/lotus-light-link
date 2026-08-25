@@ -5,7 +5,7 @@
 
 import { readFileSync } from 'fs';
 import express from 'express';
-import { getItem, setItem, getStorageDiagnostics } from './storage.js';
+import { getItem, setItem, getJson, getStorageDiagnostics } from './storage.js';
 import {
   bleStats, BLE_BUILD_TAG,
   setDimmingGamma, getDimmingGamma,
@@ -50,13 +50,10 @@ export function attachConfigRuntime(runtime: {
   attachedMic = runtime.mic;
   invalidateIdleColorCacheFn = runtime.invalidateIdleColorCache ?? null;
 
-  try {
-    const saved = getItem('gain-cal-points');
-    if (saved) {
-      const { point1, point2 } = JSON.parse(saved);
-      attachedMic.setGainCalPoints(point1 ?? null, point2 ?? null);
-    }
-  } catch {}
+  // A2: cal-punkter laddas ENBART ur mic-state.json (alsaMic:s restoreMicState).
+  // Den redundanta laddningen härifrån skrev över auto-kalibrerade punkter med
+  // gamla gain-cal-points.json-värden vid varje boot.
+
 
   console.log('[Config] Runtime attached (engine + mic)');
 }
@@ -742,15 +739,13 @@ export function startConfigServer(port = 3050): void {
   });
 
   app.get('/api/calibration', (_req, res) => {
-    const raw = getItem('light-calibration');
-    res.json(raw ? JSON.parse(raw) : {});
+    res.json(getJson<Record<string, unknown>>('light-calibration', {}));
   });
 
   app.put('/api/calibration', (req, res) => {
     const engine = requireEngine(res);
     if (!engine) return;
-    const current = getItem('light-calibration');
-    const merged = { ...(current ? JSON.parse(current) : {}), ...req.body };
+    const merged = { ...getJson<Record<string, unknown>>('light-calibration', {}), ...req.body };
     setItem('light-calibration', JSON.stringify(merged));
     engine.reloadCalibration();
     res.json({ ok: true });
@@ -796,8 +791,7 @@ export function startConfigServer(port = 3050): void {
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: 'Need tickEnergyFloor and/or onsetEnergyFloor' });
     }
-    const current = getItem('light-calibration');
-    const merged = { ...(current ? JSON.parse(current) : {}), ...patch };
+    const merged = { ...getJson<Record<string, unknown>>('light-calibration', {}), ...patch };
     setItem('light-calibration', JSON.stringify(merged));
     engine.reloadCalibration();
     console.log(`[Config] Auto-tune applied: ${JSON.stringify(patch)}`);
@@ -823,25 +817,27 @@ export function startConfigServer(port = 3050): void {
   app.put('/api/color', (req, res) => {
     const engine = requireEngine(res);
     if (!engine) return;
+    // A4: typeof NaN === 'number' → NaN/negativa/>255 slank igenom. Klampa.
     const { r, g, b } = req.body;
-    if (typeof r === 'number' && typeof g === 'number' && typeof b === 'number') {
-      engine.setColor([r, g, b]);
+    if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+      const c = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+      engine.setColor([c(r), c(g), c(b)]);
       res.json({ ok: true });
     } else {
-      res.status(400).json({ error: 'Need r, g, b' });
+      res.status(400).json({ error: 'Need finite r, g, b' });
     }
   });
 
   // --- Idle color ---
   app.get('/api/idle-color', (_req, res) => {
-    const raw = getItem('idle-color');
-    res.json(raw ? JSON.parse(raw) : [255, 60, 0]);
+    res.json(getJson<number[]>('idle-color', [255, 60, 0]));
   });
 
   app.put('/api/idle-color', (req, res) => {
     const { color } = req.body;
-    if (Array.isArray(color) && color.length === 3) {
-      setItem('idle-color', JSON.stringify(color));
+    if (Array.isArray(color) && color.length === 3 && color.every((v) => Number.isFinite(v))) {
+      const clamped = color.map((v: number) => Math.max(0, Math.min(255, Math.round(v))));
+      setItem('idle-color', JSON.stringify(clamped));
       invalidateIdleColorCacheFn?.();
       res.json({ ok: true });
     } else {
@@ -1321,8 +1317,7 @@ export function startConfigServer(port = 3050): void {
   // --- Mic gain (software) ---
   app.get('/api/mic-gain', (_req, res) => {
     const mic = getMic();
-    const saved = Number(getItem('mic-gain') || '15');
-    res.json({ gain: mic ? mic.getMicGain() : saved });
+    res.json({ gain: mic ? mic.getMicGain() : 15 });
   });
 
   app.put('/api/mic-gain', (req, res) => {
@@ -1330,8 +1325,7 @@ export function startConfigServer(port = 3050): void {
     if (!mic) return;
     const { gain } = req.body;
     if (typeof gain === 'number' && gain >= 0.1 && gain <= 300) {
-      mic.setMicGain(gain);
-      setItem('mic-gain', String(gain));
+      mic.setMicGain(gain);   // A2: persisteras av mic-setter (mic-state.json)
       res.json({ ok: true, gain });
     } else {
       res.status(400).json({ error: 'gain must be 0.1-300' });
@@ -1344,7 +1338,7 @@ export function startConfigServer(port = 3050): void {
      res.json({
        enabled: mic ? mic.isAutoGainEnabled() : false,
        multiplier: mic ? mic.getAutoGainMultiplier() : 1,
-      effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
+      effective: mic ? mic.getEffectiveGain() : 15,
       health: mic ? mic.getMicHealth() : null,
 
      });
@@ -1373,16 +1367,14 @@ export function startConfigServer(port = 3050): void {
       const cur = mic.getGainCalPoints();
       const point1 = valid(req.body?.point1) ? req.body.point1 : cur.point1;
       const point2 = valid(req.body?.point2) ? req.body.point2 : cur.point2;
-      mic.setGainCalPoints(point1 ?? null, point2 ?? null);
-      setItem('gain-cal-points', JSON.stringify({ point1, point2 }));
+      mic.setGainCalPoints(point1 ?? null, point2 ?? null);  // A2: persisteras i mic-state.json
       res.json({ ok: true, ...mic.getGainCalPoints() });
     });
 
 
     app.delete('/api/gain-calibration', (_req, res) => {
       const mic = getMic();
-      mic?.setGainCalPoints(null, null);
-      setItem('gain-cal-points', JSON.stringify({ point1: null, point2: null }));
+      mic?.setGainCalPoints(null, null);   // A2: persisteras i mic-state.json
       res.json({ ok: true });
     });
 
@@ -1644,10 +1636,10 @@ export function startConfigServer(port = 3050): void {
         peakBoost: cal.peakBoost,
       },
       micGain: {
-        base: mic ? mic.getMicGain() : Number(getItem('mic-gain') || '15'),
+        base: mic ? mic.getMicGain() : 15,
         autoGainEnabled: true,
         autoMultiplier: mic ? mic.getAutoGainMultiplier() : 1,
-        effective: mic ? mic.getEffectiveGain() : Number(getItem('mic-gain') || '15'),
+        effective: mic ? mic.getEffectiveGain() : 15,
         health: mic ? mic.getMicHealth() : null,
       },
 

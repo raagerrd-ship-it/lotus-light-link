@@ -718,7 +718,9 @@ export class Analyser {
    *   • under `windowMs` sänks grann-rättningens conf-grind och röstkrav.
    */
   hintTrackChange(windowMs = 5000): void {
-    this.reacqUntilMs = Date.now() + windowMs;
+    // A5: reacq-fönstret jämförs mot perfNow() (samma tidbas som voteNow).
+    // Date.now() gjorde `voteNow < reacqUntilMs` alltid falskt → hinten var död.
+    this.reacqUntilMs = this.perfNow() + windowMs;
     this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
     this.bpmStable = 0; this.lockPeak = 0;
     this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0;

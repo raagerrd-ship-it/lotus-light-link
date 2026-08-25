@@ -394,6 +394,8 @@ export class PiLightEngine {
 
   // ── Drop-detektor (lång tidshorisont, @100Hz på bas-energi) ──
   // Drops är en struktur över sekunder: breakdown/uppbyggnad → plötslig bas-explosion.
+  /** B4: återanvänd grid-objekt (enkeltrådad JS → säkert att mutera). */
+  private _gridScratch = { bpm: 0, anchorMs: 0 };
   private bassFast = 0;          // EMA ~150ms — aktuell bas-nivå
   private bassSlow = 0;          // EMA ~2.5s — baslinje
   private breakdownFrames = 0;   // antal frames bassFast legat lågt (i förhållande till baslinjen)
@@ -658,7 +660,15 @@ export class PiLightEngine {
 
     // Ge analysatorn vårt grid: den grindar kick-kandidater mot takten och kan
     // räkna taktfas (barShift). Utan grid faller den tillbaka på ogrindad flux.
-    setAnalyserBeatGrid(this._beat ? { bpm: this._beat.bpm, anchorMs: this._beat.anchorMs } : null);
+    // B4: scratch-objekt i stället för nyallokering var frame (~75 Hz) — enda
+    // kvarvarande per-frame-heap-allokeringen i den heta loopen (matade GC-pausen).
+    if (this._beat) {
+      this._gridScratch.bpm = this._beat.bpm;
+      this._gridScratch.anchorMs = this._beat.anchorMs;
+      setAnalyserBeatGrid(this._gridScratch);
+    } else {
+      setAnalyserBeatGrid(null);
+    }
 
     if (!kick || !this._beat) return;
 
@@ -1217,6 +1227,9 @@ export class PiLightEngine {
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
     if (!Number.isFinite(this.lastBrightness)) this.lastBrightness = 0;
     if (!Number.isFinite(this.lastSentPct)) this.lastSentPct = -1;
+    // A4: drop-EMA:erna kunde låsa till NaN permanent (togs inte av saneraren).
+    if (!Number.isFinite(this.bassFast)) this.bassFast = 0;
+    if (!Number.isFinite(this.bassSlow)) this.bassSlow = 0;
   }
 
   getDiagnostics(): DiagSnapshot { return _diag; }

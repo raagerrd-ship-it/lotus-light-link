@@ -605,9 +605,20 @@ export function getGainCalPoints(): { point1: GainCalPoint | null; point2: GainC
   return { point1: calPoint1, point2: calPoint2 };
 }
 
+/** A3: cal-gain måste vara positiv och finit — annars ger Math.log() NaN som
+ *  förgiftar micGain → alla band-RMS → hela ljus-kedjan, utan återhämtning. */
+function sanitizeCalPoint(p: GainCalPoint | null): GainCalPoint | null {
+  if (!p) return null;
+  if (!Number.isFinite(p.vol) || !Number.isFinite(p.gain)) return null;
+  const gain = Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, p.gain));
+  if (!(gain > 0)) return null;
+  return { vol: Math.max(0, Math.min(100, p.vol)), gain };
+}
+
 export function setGainCalPoints(p1: GainCalPoint | null, p2: GainCalPoint | null): void {
-  calPoint1 = p1;
-  calPoint2 = p2;
+  calPoint1 = sanitizeCalPoint(p1);
+  calPoint2 = sanitizeCalPoint(p2);
+  p1 = calPoint1; p2 = calPoint2;
   saveMicState();
   if (p1 && p2) {
     dlog(`[ALSA] Gain cal: point1=(vol=${p1.vol}, gain=${p1.gain.toFixed(1)}), point2=(vol=${p2.vol}, gain=${p2.gain.toFixed(1)})`);
@@ -621,11 +632,15 @@ function interpolateGain(sonosVolume: number): number {
   if (!calPoint1 || !calPoint2) return micGainBase;
   const v1 = calPoint1.vol, g1 = calPoint1.gain;
   const v2 = calPoint2.vol, g2 = calPoint2.gain;
+  // A3: log(0)/log(neg) → -Inf/NaN. Bättre ett trubbigt base-gain än NaN i kedjan.
+  if (!(g1 > 0) || !(g2 > 0) || !Number.isFinite(sonosVolume)) return micGainBase;
   if (v1 === v2) return g1;
   const logG1 = Math.log(g1), logG2 = Math.log(g2);
   const t = (sonosVolume - v1) / (v2 - v1);
   const logG = logG1 + t * (logG2 - logG1);
-  return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, Math.exp(logG)));
+  const out = Math.exp(logG);
+  if (!Number.isFinite(out)) return micGainBase;
+  return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, out));
 }
 
 function recomputeAutoGain(sonosVolume: number): void {
@@ -646,9 +661,12 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
 (function restoreMicState() {
   const s = loadMicState();
   if (!s) { dlog('[ALSA] No persisted mic-state found, using defaults'); return; }
-  if (typeof s.micGainBase === 'number') micGainBase = Math.max(0.1, Math.min(AUTO_GAIN_MAX, s.micGainBase));
-  if (s.calPoint1 && typeof s.calPoint1.vol === 'number' && typeof s.calPoint1.gain === 'number') calPoint1 = s.calPoint1;
-  if (s.calPoint2 && typeof s.calPoint2.vol === 'number' && typeof s.calPoint2.gain === 'number') calPoint2 = s.calPoint2;
+  // A3: typeof NaN === 'number' → NaN slank igenom förr. Kräv finita värden.
+  if (Number.isFinite(s.micGainBase)) micGainBase = Math.max(0.1, Math.min(AUTO_GAIN_MAX, s.micGainBase as number));
+  const p1 = sanitizeCalPoint(s.calPoint1 ?? null);
+  const p2 = sanitizeCalPoint(s.calPoint2 ?? null);
+  if (p1) calPoint1 = p1;
+  if (p2) calPoint2 = p2;
   micGainAuto = calPoint1 && calPoint2 ? interpolateGain(calPoint1.vol) : micGainBase;
   updateEffectiveGain();
   dlog(`[ALSA] Restored mic-state: gain=${micGain.toFixed(1)}x cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
@@ -674,6 +692,7 @@ export function setAlsaDevice(device: string): void {
 export function startMic(): void {
   if (capture) return;
 
+  _captureOpenedAt = performance.now();   // C2: baseline för first-audio-stall
   micStartError = null;
   _audioCbCount = 0;
   _audioCbBytes = 0;
@@ -926,25 +945,48 @@ const MIC_STALL_MS = 1500;
 export function getLastAudioCbAt(): number { return _lastAudioCbAt; }
 export function getMicRestartCount(): number { return _micRestartCount; }
 
+// C1/C2: reopen skjuts upp så gamla capture-tråden hinner släppa hw:0,0
+// (annars -EBUSY-race), och "startad men aldrig levererat" räknas som stall så
+// watchdogen fortsätter retria en mic som aldrig ger sin första callback.
+const REOPEN_DELAY_MS = 120;
+const FIRST_AUDIO_GRACE_MS = 3000;
+let _reopenPending = false;
+let _captureOpenedAt = 0;
+
 /** True om capturen är aktiv men inte levererat audio på MIC_STALL_MS. */
 export function isMicStalled(): boolean {
-  if (!capture || _lastAudioCbAt === 0) return false;
+  if (_reopenPending) return false;            // reopen är på väg — vänta ut den
+  if (!capture) return false;
+  if (_lastAudioCbAt === 0) {
+    // C2: aldrig levererat sedan open → stall efter grace-perioden.
+    return _captureOpenedAt > 0 && performance.now() - _captureOpenedAt >= FIRST_AUDIO_GRACE_MS;
+  }
   return performance.now() - _lastAudioCbAt >= MIC_STALL_MS;
 }
 
 /** Stäng och starta om ALSA-capturen utan process-restart. */
 export function restartCapture(reason: string): boolean {
-  if (!capture) return false;
-  const ageMs = Math.round(performance.now() - _lastAudioCbAt);
+  if (_reopenPending) return true;             // redan på väg
+  if (!capture) return false;                  // C3: icke-omstartbart (ej wedged)
+  const ageMs = _lastAudioCbAt === 0 ? -1 : Math.round(performance.now() - _lastAudioCbAt);
   console.warn(`[ALSA] restartCapture (${reason}): senaste audio-cb ${ageMs}ms sedan — re-initierar capturen`);
   try { stopMic(); } catch (e: any) { console.warn(`[ALSA] stopMic under restart: ${e?.message ?? e}`); }
   _lastAudioCbAt = 0;
-  try {
-    startMic();
-  } catch (e: any) {
-    console.error(`[ALSA] startMic under restart misslyckades: ${e?.message ?? e}`);
-    return false;
-  }
+  _reopenPending = true;
+  setTimeout(() => {
+    _reopenPending = false;
+    try {
+      startMic();
+    } catch (e: any) {
+      console.error(`[ALSA] startMic under restart misslyckades: ${e?.message ?? e}`);
+      return;
+    }
+    // Bekräfta att capturen faktiskt levererar — annars markerar isMicStalled()
+    // den som stall igen efter grace-perioden och watchdogen retriar.
+    void waitForFirstAudio(FIRST_AUDIO_GRACE_MS).catch(() => {
+      console.warn('[ALSA] restartCapture: ingen audio inom grace — watchdogen retriar');
+    });
+  }, REOPEN_DELAY_MS);
   _micRestartCount++;
   return true;
 }
@@ -980,5 +1022,6 @@ export function stopMic(): void {
   lastFFTTimestamp = 0;
   _fftFrameCount = 0;
   micStartError = null;
+  _captureOpenedAt = 0;
   dlog('[ALSA] Microphone stopped');
 }
