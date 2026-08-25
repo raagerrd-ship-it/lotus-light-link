@@ -896,6 +896,7 @@ export default function PiMobile() {
         dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
         dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
         beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
+        peakBoost: c?.peakBoost ?? DEFAULT_CAL.peakBoost,
       });
 
       if (calRes && typeof calRes === 'object') setCal(mapStoredToCal(calRes));
