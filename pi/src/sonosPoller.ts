@@ -291,6 +291,10 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     const arm = (delay: number) => {
       pollTimer = setTimeout(async () => {
         pollTimer = null;
+        // R2: SSE kan ha tagit över medan timern var armerad. Utan denna grind
+        // re-armar finally:n en timer som stopPollTimer aldrig hittade → dubbel
+        // Sonos-trafik för alltid.
+        if (sseActive) return;
         if (pollInFlight) { arm(currentPollMs()); return; }
         pollInFlight = true;
         try {
@@ -306,8 +310,9 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
           pollFailStreak++;
         } finally {
           pollInFlight = false;
-          arm(currentPollMs());
+          if (!sseActive) arm(currentPollMs());
         }
+
       }, delay);
     };
     arm(pollMs);
@@ -380,7 +385,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 export function stopSonosPoller(): void {
   sseCleanup?.();
   sseCleanup = null;
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   if (staleWatchdogTimer) { clearInterval(staleWatchdogTimer); staleWatchdogTimer = null; }
   staleEmitted = false;
   activeConfig = null;
