@@ -90,31 +90,8 @@ function normalizeSonosBaseUrl(raw: string | null | undefined): string {
   return LEGACY_LOCAL_SONOS_URLS.has(base) ? SONOS_BUDDY_API_URL : base;
 }
 
-// TV-läge byter aktiv profil till TV-profilen (konfigurerbar via
-// GET/PUT /api/tv-profile, default "Custom") och tillbaka till musikprofilen
-// när TV-läget upphör.
-let _presetBeforeTv: string | null = null;
-
-async function switchToTvProfile(on: boolean): Promise<void> {
-  try {
-    const cfg = await import('./configServer.js');
-    if (on) {
-      const tvName = cfg.getTvProfileName();
-      const current = cfg.getActivePresetName();
-      if (current === tvName) return;
-      _presetBeforeTv = current;
-      cfg.setActivePresetByName(tvName);
-      console.log(`[Profile] TV-läge → profil "${tvName}" (var "${current}")`);
-    } else if (_presetBeforeTv) {
-      const back = _presetBeforeTv;
-      _presetBeforeTv = null;
-      cfg.setActivePresetByName(back);
-      console.log(`[Profile] TV-läge slut → profil "${back}"`);
-    }
-  } catch (e: any) {
-    console.warn('[Profile] TV-profilväxling fel:', e?.message ?? e);
-  }
-}
+// Profiler BORTTAGNA (2026-08-25): EN global inställnings-uppsättning.
+// TV-läge loggas men byter inte längre kalibrering.
 
 function applySonosStateToEngine(state: {
   playbackState: string;
@@ -129,16 +106,12 @@ function applySonosStateToEngine(state: {
   // Här uppdaterar vi enbart palette/volym/TV-mode-side-effects.
   if (state.isTvMode) {
     if (wasTvModeRef && !wasTvModeRef.current) {
-      console.log('[Engine] → TV-läge (soft)');
-      engineInstance.setTvSoft?.(true);
+      console.log('[Engine] → TV-läge');
       wasTvModeRef.current = true;
-      void switchToTvProfile(true);
     }
   } else if (wasTvModeRef?.current) {
     console.log('[Engine] TV-läge → Normal');
-    engineInstance.setTvSoft?.(false);
     wasTvModeRef.current = false;
-    void switchToTvProfile(false);
   }
 
   if (state.volume != null) {
