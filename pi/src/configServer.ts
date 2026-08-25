@@ -36,102 +36,10 @@ export function attachSubsystemStarters(s: SubsystemStarters): void {
   console.log('[Config] subsystem starters attached');
 }
 
-// ── Profiles (4 oberoende kalibreringsprofiler) ──
-type ProfileCal = Record<string, any>;
-const PROFILE_NAMES = ['Lugn', 'Normal', 'Party', 'Custom'] as const;
-type ProfileName = typeof PROFILE_NAMES[number];
-
-// Defaults speglar PRESET_CALS i src/pages/PiMobile.tsx — om de ändras där,
-// uppdatera även här. Båda måste vara i sync vid första boot/seed.
-const DEFAULT_PROFILES: Record<ProfileName, ProfileCal> = {
-  Lugn:   { bassWeight: 0.7, attackAlpha: 0.061, releaseAlpha: 0.025, dynamicDamping: -1.5, brightnessFloor: 3, punchWhiteThreshold: 100, perceptualGamma: 2.2, transientGain: 0.7, dynamicsEnabled: true, onsetThreshold: 2.0, onsetRefractoryMs: 150, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.025, beatCutoffHz: 150 },
-  Normal: { bassWeight: 0.8, attackAlpha: 1.0,   releaseAlpha: 0.15,  dynamicDamping: 0,    brightnessFloor: 25, lightScale: 0.95, dropFlashMs: 320, punchWhiteThreshold: 100, perceptualGamma: 0.9, transientGain: 0.8, dynamicsEnabled: false, onsetThreshold: 1.8, onsetRefractoryMs: 200, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.02, beatCutoffHz: 150 },
-  Party:  { bassWeight: 0.3, attackAlpha: 1.0,   releaseAlpha: 0.5,   dynamicDamping: 1.5,  brightnessFloor: 0, punchWhiteThreshold: 93,  perceptualGamma: 1.5, transientGain: 1.5, dynamicsEnabled: true, onsetThreshold: 1.6, onsetRefractoryMs: 90, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.005, beatCutoffHz: 150 },
-  Custom: { bassWeight: 0.5, attackAlpha: 1.0,   releaseAlpha: 0.025, dynamicDamping: 0,    brightnessFloor: 0, punchWhiteThreshold: 100, perceptualGamma: 0,   transientGain: 0.5, dynamicsEnabled: true, onsetThreshold: 3.0, onsetRefractoryMs: 110, onsetEnergyFloor: 0.01, tickEnergyFloor: 0.01, flickerDeadband: 0.02, beatCutoffHz: 150 },
-  // bassWeight semantik: 0=bara disk, 0.5=neutral (båda 100%), 1.0=bara bas. Asymmetrisk dämpning av "andra" sidan.
-  // saturation/maxRisePerSec/maxFallPerSec/hiShelfGainDb borttagna 2026-05-04 — ingen runtime-effekt.
-};
-
-interface ProfilesFile {
-  profiles: Record<string, ProfileCal>;
-  activePreset: ProfileName;
-}
-
-function loadProfilesFile(): ProfilesFile {
-  try {
-    const raw = getItem('profiles');
-    if (raw) {
-      const p = JSON.parse(raw);
-      if (p?.profiles && p?.activePreset) {
-        // Säkerställ att alla 4 namn finns (forward-kompat)
-        const merged: Record<string, ProfileCal> = { ...DEFAULT_PROFILES };
-        for (const name of PROFILE_NAMES) {
-          if (p.profiles[name]) merged[name] = { ...DEFAULT_PROFILES[name], ...p.profiles[name] };
-        }
-        const active = PROFILE_NAMES.includes(p.activePreset) ? p.activePreset : 'Normal';
-        return { profiles: merged, activePreset: active };
-      }
-    }
-  } catch {}
-  // Första boot: seed:a med defaults. Om en gammal /api/calibration finns
-  // (light-calibration), pluggar vi in den i Normal så användaren inte
-  // tappar sin nuvarande inställning.
-  const seeded: Record<string, ProfileCal> = JSON.parse(JSON.stringify(DEFAULT_PROFILES));
-  try {
-    const legacy = getItem('light-calibration');
-    if (legacy) {
-      const lc = JSON.parse(legacy);
-      seeded.Normal = { ...seeded.Normal, ...lc };
-    }
-  } catch {}
-  return { profiles: seeded, activePreset: 'Normal' };
-}
-
-function saveProfilesFile(p: ProfilesFile): void {
-  setItem('profiles', JSON.stringify(p));
-}
-
-// ── Per-profil globaler ──────────────────────────────────────────────────────
-// dimmingGamma (transport) och gainCalibration (Sonos-vol→gain-punkter) låg
-// tidigare globalt och delades av alla profiler. De bor nu i profilen. Saknas
-// fältet → vi rör inte det globala värdet (mjuk migrering).
-function applyProfileGlobals(profile: ProfileCal | undefined): void {
-  if (!profile) return;
-  const g = profile.dimmingGamma;
-  if (typeof g === 'number' && g >= 1.0 && g <= 3.0) setDimmingGamma(g);
-  const gc = profile.gainCalibration;
-  if (gc && attachedMic && gc.point1 && gc.point2) {
-    attachedMic.setGainCalPoints(gc.point1, gc.point2);
-    // Håll de två lagren i synk: profilen är source-of-truth, men live-lagret
-    // ('gain-cal-points') måste följa med annars laddar en omstart ett annat gain.
-    setItem('gain-cal-points', JSON.stringify({ point1: gc.point1, point2: gc.point2 }));
-  }
-
-}
-
-
-/** Byt aktiv profil programmatiskt (används av TV-mode-växlingen i index.ts). */
-export function setActivePresetByName(name: string): boolean {
-  if (!PROFILE_NAMES.includes(name as ProfileName)) return false;
-  const pf = loadProfilesFile();
-  if (pf.activePreset === name) return true;
-  pf.activePreset = name as ProfileName;
-  saveProfilesFile(pf);
-  attachedEngine?.setActiveProfile(pf.profiles[name]);
-  applyProfileGlobals(pf.profiles[name]);
-  console.log(`[Config] Active profile → ${name} (auto)`);
-  return true;
-}
-
-export function getActivePresetName(): string {
-  return loadProfilesFile().activePreset;
-}
-
-/** TV-profil: vilken profil som aktiveras när Sonos går i TV-läge. */
-export function getTvProfileName(): string {
-  const raw = getItem('tv-profile');
-  return raw && PROFILE_NAMES.includes(raw as ProfileName) ? raw : 'Custom';
-}
+// ── Profiler BORTTAGNA (2026-08-25) ──
+// Dirigenten har EN global inställnings-uppsättning. TV-mode/preset-växlingen,
+// per-profil-speglingen och profiles-storage är borta. dimmingGamma och
+// gainCalibration är globala igen och bor i sina egna storage-nycklar.
 
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
@@ -150,19 +58,9 @@ export function attachConfigRuntime(runtime: {
     }
   } catch {}
 
-  // Seed profiles.json vid behov + applicera aktiv profil i pipelinen
-  try {
-    const pf = loadProfilesFile();
-    if (!getItem('profiles')) saveProfilesFile(pf);
-    runtime.engine.setActiveProfile(pf.profiles[pf.activePreset]);
-    applyProfileGlobals(pf.profiles[pf.activePreset]);
-    console.log(`[Config] Active profile: ${pf.activePreset}`);
-  } catch (e: any) {
-    console.warn('[Config] Profile seed failed:', e?.message ?? e);
-  }
-
   console.log('[Config] Runtime attached (engine + mic)');
 }
+
 
 // Version info — cached at boot.
 let SERVICE_VERSION = '1.0.0';
@@ -855,58 +753,10 @@ export function startConfigServer(port = 3050): void {
     const merged = { ...(current ? JSON.parse(current) : {}), ...req.body };
     setItem('light-calibration', JSON.stringify(merged));
     engine.reloadCalibration();
-    // Spegla även i aktiv profil så /api/profiles förblir source-of-truth
-    try {
-      const pf = loadProfilesFile();
-      pf.profiles[pf.activePreset] = { ...pf.profiles[pf.activePreset], ...req.body };
-      saveProfilesFile(pf);
-      applyProfileGlobals(pf.profiles[pf.activePreset]);
-    } catch {}
     res.json({ ok: true });
   });
 
 
-  // ── Profiles (4 oberoende kalibreringsprofiler) ──
-  app.get('/api/profiles', (_req, res) => {
-    res.json(loadProfilesFile());
-  });
-
-  app.put('/api/profiles', (req, res) => {
-    const engine = requireEngine(res);
-    if (!engine) return;
-    const { profiles, activePreset } = req.body ?? {};
-    if (!profiles || typeof profiles !== 'object') {
-      return res.status(400).json({ error: 'Need profiles object' });
-    }
-    const current = loadProfilesFile();
-    const mergedProfiles: Record<string, ProfileCal> = { ...current.profiles };
-    for (const name of PROFILE_NAMES) {
-      if (profiles[name]) mergedProfiles[name] = { ...mergedProfiles[name], ...profiles[name] };
-    }
-    const active: ProfileName = (activePreset && PROFILE_NAMES.includes(activePreset))
-      ? activePreset : current.activePreset;
-    const next: ProfilesFile = { profiles: mergedProfiles, activePreset: active };
-    saveProfilesFile(next);
-    engine.setActiveProfile(next.profiles[active]);
-    applyProfileGlobals(next.profiles[active]);
-    res.json({ ok: true, ...next });
-  });
-
-  app.put('/api/active-preset', (req, res) => {
-    const engine = requireEngine(res);
-    if (!engine) return;
-    const { name } = req.body ?? {};
-    if (!name || !PROFILE_NAMES.includes(name)) {
-      return res.status(400).json({ error: `name must be one of ${PROFILE_NAMES.join(', ')}` });
-    }
-    const pf = loadProfilesFile();
-    pf.activePreset = name;
-    saveProfilesFile(pf);
-    engine.setActiveProfile(pf.profiles[name]);
-    applyProfileGlobals(pf.profiles[name]);
-    console.log(`[Config] Active profile → ${name}`);
-    res.json({ ok: true, activePreset: name, profile: pf.profiles[name] });
-  });
 
   // ─── Auto-tune anti-flicker ───
   // Mäter pct-rörelser i N sekunder och föreslår maxFallPerSec + flickerDeadband
@@ -933,7 +783,7 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true });
   });
 
-  // Skriver suggestion in i aktiv profil.
+  // Skriver suggestion in i den globala kalibreringen.
   // Klienten skickar {tickEnergyFloor, onsetEnergyFloor} så användaren kan
   // välja att inte tillämpa båda.
   app.post('/api/autotune/apply', (req, res) => {
@@ -946,14 +796,14 @@ export function startConfigServer(port = 3050): void {
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: 'Need tickEnergyFloor and/or onsetEnergyFloor' });
     }
-    const pf = loadProfilesFile();
-    const active = pf.activePreset;
-    pf.profiles[active] = { ...pf.profiles[active], ...patch };
-    saveProfilesFile(pf);
-    engine.setActiveProfile(pf.profiles[active]);
-    console.log(`[Config] Auto-tune applied to "${active}": ${JSON.stringify(patch)}`);
-    res.json({ ok: true, activePreset: active, profile: pf.profiles[active] });
+    const current = getItem('light-calibration');
+    const merged = { ...(current ? JSON.parse(current) : {}), ...patch };
+    setItem('light-calibration', JSON.stringify(merged));
+    engine.reloadCalibration();
+    console.log(`[Config] Auto-tune applied: ${JSON.stringify(patch)}`);
+    res.json({ ok: true, calibration: merged });
   });
+
 
   // --- Raw mode (for gain calibration) ---
   app.put('/api/raw-mode', (req, res) => {

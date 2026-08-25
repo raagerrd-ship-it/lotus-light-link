@@ -152,7 +152,15 @@ export interface BandResult {
   /** Spectral flux summerad ENBART över sub+bas-bins (< 150 Hz). Används för
    *  kick/bastrumme-onset så hi-hats/snare inte triggar pulsen. */
   bassFlux: number;
+  /** DIRIGENTEN, insignal 2: RELATIV dynamik (0..1) från analysatorns AGC-energi.
+   *  Full svängning, snabb — driver beat-dynamiken inom golv→tak. Aldrig nivå. */
+  shape: number;
+  /** Spektral andel bas (0..1) — bara för färg-tilt, aldrig brightness. */
+  bassShare: number;
+  /** Spektral andel mid/diskant (0..1) — bara för färg-tilt. */
+  hiShare: number;
 }
+
 
 const SAMPLE_RATE = 48000;
 
@@ -200,7 +208,7 @@ let lightRawRms = 0;
 
 
 // Latest computed bands (static object — mutated in place)
-let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0 };
+let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, bassFlux: 0, shape: 0, bassShare: 0.5, hiShare: 0.5 };
 
 
 // Timestamp of last FFT completion (performance.now())
@@ -383,12 +391,20 @@ function emitBands(frame: Frame): void {
   latestBands.totalRms = amp;
   latestBands.flux = frame.flux;
 
+  // DIRIGENTEN: shape = analysatorns AGC-energi (relativ dynamik, 0..1).
+
+  // Isolerad från amp — AGC:n får aldrig påverka nivån, bara formen.
+  latestBands.shape = Math.min(1, Math.max(0, frame.levelVU));
+  latestBands.bassShare = lowAbs / totAbs;
+  latestBands.hiShare = hiAbs / totAbs;
+
   // Nivå-hälsa på den LINJÄRA totalnivån (samma tal som input-baren visar).
   // Inte max(bass, midHi) — de är andelar mot 0.5 och pinnas nära 1.0.
   const be = latestBands.totalRms;
   if (be > healthBandPeakWin) healthBandPeakWin = be;
   if (be >= 1) healthClipFrames++;
   healthFrames++;
+
 
   // bassFlux: onset-energi i banden under cutoffen. Onsets är 0..1 per band;
   // medelvärdet håller samma storleksordning som gamla flux (0.05–0.5) så
@@ -425,6 +441,7 @@ export function resetFluxState(): void {
   lightRawRms = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
+  latestBands.shape = 0;
   bandHopCounter = 0;
   // Analysatorns AGC startas om — men SEEDAD från kalibreringen (se
   // seedAnalyserGain) istället för 1×, så den är i rätt storleksordning direkt.
@@ -950,6 +967,7 @@ export function stopMic(): void {
   lightRawRms = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
+  latestBands.shape = 0;
   _audioCbCount = 0;
   _audioCbBytes = 0;
   _audioCbFirstAt = 0;
