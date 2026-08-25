@@ -1639,10 +1639,10 @@ export function startConfigServer(port = 3050): void {
       calibration: {
         dimmingGamma: getDimmingGamma(),
         releaseAlpha: cal.releaseAlpha,
-        dynamicDamping: cal.dynamicDamping,
         brightnessFloor: cal.brightnessFloor,
-        perceptualCurve: cal.perceptualCurve,
-        transientBoost: cal.transientBoost,
+        loudnessFloor: cal.loudnessFloor,
+        transientGain: cal.transientGain,
+        ceilingSensitivity: cal.ceilingSensitivity,
       },
       micGain: {
         base: mic ? mic.getMicGain() : Number(getItem('mic-gain') || '15'),

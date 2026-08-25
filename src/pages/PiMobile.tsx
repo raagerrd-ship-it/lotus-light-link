@@ -15,7 +15,7 @@ import { BeatMonitor } from "@/components/BeatMonitor";
 // EN global inställnings-uppsättning — profiler/presets borttagna 2026-08-25.
 type Cal = {
   bassWeight: number; attack: number; softness: number;
-  brightnessFloor: number; punchWhiteThreshold: number; transientGain: number;
+  brightnessFloor: number; loudnessFloor: number; punchWhiteThreshold: number; transientGain: number;
   ceilingSensitivity: number; colorSpectralTilt: number;
   onsetThreshold: number; onsetRefractoryMs: number;
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
@@ -25,7 +25,7 @@ type Cal = {
 
 const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 71,
-  brightnessFloor: 25, punchWhiteThreshold: 100, transientGain: 1.1,
+  brightnessFloor: 25, loudnessFloor: 0.12, punchWhiteThreshold: 100, transientGain: 1.1,
   ceilingSensitivity: 1.0, colorSpectralTilt: 0.25,
   onsetThreshold: 4.0, onsetRefractoryMs: 300,
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
@@ -808,6 +808,7 @@ export default function PiMobile() {
         attackAlpha: attackToAlpha(cal.attack),
         releaseAlpha: softnessToAlpha(cal.softness),
         brightnessFloor: cal.brightnessFloor,
+        loudnessFloor: cal.loudnessFloor,
         punchWhiteThreshold: cal.punchWhiteThreshold,
         transientGain: cal.transientGain,
         ceilingSensitivity: cal.ceilingSensitivity,
@@ -883,6 +884,7 @@ export default function PiMobile() {
         attack: c?.attackAlpha != null ? alphaToAttack(c.attackAlpha) : DEFAULT_CAL.attack,
         softness: c?.releaseAlpha != null ? alphaToCurve(c.releaseAlpha) : DEFAULT_CAL.softness,
         brightnessFloor: c?.brightnessFloor ?? DEFAULT_CAL.brightnessFloor,
+        loudnessFloor: c?.loudnessFloor ?? DEFAULT_CAL.loudnessFloor,
         punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
         transientGain: c?.transientGain ?? DEFAULT_CAL.transientGain,
         ceilingSensitivity: c?.ceilingSensitivity ?? DEFAULT_CAL.ceilingSensitivity,
@@ -1069,6 +1071,7 @@ export default function PiMobile() {
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
                   ceilingSensitivity={cal.ceilingSensitivity}
+                  loudnessFloor={cal.loudnessFloor}
                   beatCutoffHz={cal.beatCutoffHz}
                 />
 
@@ -1088,6 +1091,14 @@ export default function PiMobile() {
                   min={0} max={100}
                   onChange={(v) => setCal({ ...cal, brightnessFloor: Math.round(v) })}
                   hint="0 = släck helt i tystnad."
+                />
+                <Slider
+                  label="Loudness-golv"
+                  value={cal.loudnessFloor}
+                  display={`${Math.round(cal.loudnessFloor * 100)} %`}
+                  min={0} max={0.5} step={0.01}
+                  onChange={(v) => setCal({ ...cal, loudnessFloor: v })}
+                  hint="Hur mörkt en lugn låt blir. 0 = ren amplitud, högre = mer basljus."
                 />
                 <Slider
                   label="Tak-känslighet"

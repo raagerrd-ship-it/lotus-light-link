@@ -56,6 +56,7 @@ export interface TickConstants {
   brightnessFloor: number;
   transientGain: number;
   ceilingSensitivity: number;
+  loudnessFloor: number;
   lutR: Uint8Array;
   lutG: Uint8Array;
   lutB: Uint8Array;
@@ -101,6 +102,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     brightnessFloor: cal.brightnessFloor ?? 0,
     transientGain: cal.transientGain ?? 1.0,
     ceilingSensitivity: cal.ceilingSensitivity ?? 1.0,
+    loudnessFloor: cal.loudnessFloor ?? 0.12,
     lutR,
     lutG,
     lutB,
@@ -127,6 +129,9 @@ export interface LightCalibration {
   /** TAK-KÄNSLIGHET: hur snabbt/högt den absoluta amplituden lyfter taket.
    *  1.0 = linjärt mot ampEnv, >1 = når fullt tak vid lägre absolut nivå. */
   ceilingSensitivity: number;
+  /** LOUDNESS-GOLV: minsta loudness-skalning vid tyst/låg volym (0..1). Default 0.12.
+   *  Ren amplitudmappning: loudness = floor + ampEnv * sens * (1 - floor). */
+  loudnessFloor: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
   /** Minsta gap mellan onsets i ms — räknas om till frames @ 100Hz FFT-takt. UI-default 110ms. */
@@ -179,6 +184,7 @@ const DEFAULT_CAL: LightCalibration = {
   brightnessFloor: 25,
   transientGain: 0.8,
   ceilingSensitivity: 1.0,
+  loudnessFloor: 0.12,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
   flickerDeadband: 0.02,
@@ -1449,7 +1455,9 @@ export class PiLightEngine {
 
       const floor = tc.brightnessFloor;
       const floorN = floor / 100;
-      const loudness = Math.max(0, Math.min(1, 0.65 + loudnessRaw * 0.35));
+      // Ren loudness-mappning: tyst/låg volym blir dimm, hög volym blir ljust.
+      const loudnessFloor = tc.loudnessFloor;
+      const loudness = Math.max(0, Math.min(1, loudnessFloor + loudnessRaw * (1 - loudnessFloor)));
       const ceiling = floorN + (1 - floorN) * loudness;
 
       // ── 4. HEARTBEAT: snabb attack, mjuk release på shape ──
