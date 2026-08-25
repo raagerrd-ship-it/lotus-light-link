@@ -219,6 +219,10 @@ let debugPeakRaw = 0;
 
 const hsGain = Math.pow(10, 9 / 20);  // +9dB hi-shelf for INMP441 at ~1m distance
 const HS_ALPHA = 0.15;
+// ring = hs + (rawPre - hs) * hsGain, med hs redan uppdaterad → återanvänd deltat:
+// (rawPre - hs_new) = (1 - HS_ALPHA) * d, alltså ring = hs_new + d * HS_D_COEFF.
+const HS_D_COEFF = (1 - HS_ALPHA) * hsGain;
+
 
 // ── Event-driven FFT callback ──
 type FFTReadyCallback = (bands: BandResult) => void;
@@ -831,30 +835,27 @@ function onAudioData(buf: Buffer): void {
   // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
   
   const hsAlpha = HS_ALPHA;
-  const hsG = hsGain;
   let hs = hsState;
+
   let pos = ringPos;
   const ring = ringBuf;
   const mask = RING_MASK;
   // Debug-peak (pre-gain) — nivå-hälsan mäts på bandenergin i emitBands().
   let prePeak = 0;
-  // Kalibrering: ackumulera rawPre² lokalt (block-summa) → commit efter loop.
+  // Kalibrering: samma rawPre²-summa som ljus-tappen → commit från den.
   const calOn = micCalActive;
-  let calSumLocal = 0;
-  let calCntLocal = 0;
   // LJUS-TAPP: block-RMS på rå signal (gain appliceras efteråt → linjärt).
   let lightSumLocal = 0;
-  let lightCntLocal = 0;
+  let frameCount = 0;
 
 
   if (currentFormat === 'S32_LE') {
     const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
-    const frameCount = samples.length >> 1;
+    frameCount = samples.length >> 1;
     const INV_S32 = 1 / 2147483648;
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
-      if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
-      lightSumLocal += rawPre * rawPre; lightCntLocal++;
+      lightSumLocal += rawPre * rawPre;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -864,18 +865,18 @@ function onAudioData(buf: Buffer): void {
 
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      hs += hsAlpha * (rawPre - hs);
-      ring[pos] = hs + (rawPre - hs) * hsG;
+      const d = rawPre - hs;
+      hs += hsAlpha * d;
+      ring[pos] = hs + d * HS_D_COEFF;
       pos = (pos + 1) & mask;
     }
   } else {
     const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
-    const frameCount = samples.length >> 1;
+    frameCount = samples.length >> 1;
     const INV_S16 = 1 / 32768;
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
-      if (calOn) { calSumLocal += rawPre * rawPre; calCntLocal++; }
-      lightSumLocal += rawPre * rawPre; lightCntLocal++;
+      lightSumLocal += rawPre * rawPre;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -885,32 +886,31 @@ function onAudioData(buf: Buffer): void {
 
       const absPre = rawPre < 0 ? -rawPre : rawPre;
       if (absPre > prePeak) prePeak = absPre;
-      hs += hsAlpha * (rawPre - hs);
-      ring[pos] = hs + (rawPre - hs) * hsG;
+      const d = rawPre - hs;
+      hs += hsAlpha * d;
+      ring[pos] = hs + d * HS_D_COEFF;
       pos = (pos + 1) & mask;
     }
   }
 
   hsState = hs;
-  const prevRingPos = ringPos;
   ringPos = pos;
-  const newSamples = (pos - prevRingPos) & mask; // frames tillförda denna callback
   const peak = prePeak * micGainAuto;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
 
   // LJUS-NIVÅ: ~130 ms EMA av block-RMS (samma tidskonstant som analysatorns
   // levelVU hade) — men helt utan AGC. Gain appliceras i emitBands.
-  if (lightCntLocal > 0) {
-    const blockRms = Math.sqrt(lightSumLocal / lightCntLocal);
-    const dt = lightCntLocal / SAMPLE_RATE;
+  if (frameCount > 0) {
+    const blockRms = Math.sqrt(lightSumLocal / frameCount);
+    const dt = frameCount / SAMPLE_RATE;
     const a = 1 - Math.exp(-dt / 0.13);
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
   }
 
 
   if (calOn && micCalActive) {
-    micCalSumSq += calSumLocal;
-    micCalCount += calCntLocal;
+    micCalSumSq += lightSumLocal;
+    micCalCount += frameCount;
     if (performance.now() - micCalStartAt >= micCalDurationMs) finishMicCalibration();
   }
 
@@ -919,12 +919,16 @@ function onAudioData(buf: Buffer): void {
   // Portable analyser: egen 128-hop-tap (375 Hz), decoupled från 480-hop-FFT:n.
   // Dränera alla kompletta 128-block som ackumulerats. periodSize=256 → oftast
   // 2 hops per callback; jitter kan ge 1 eller 3. Läser bakåt från ringPos.
-  analyserSamplesReceived += newSamples;
+  analyserSamplesReceived += frameCount;
   while (analyserSamplesReceived >= ANALYSER_HOP) {
     const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
-    // Fast pre-gain (inte användarens gain) så AGC:n hamnar i sitt 0.5–20×-span.
-    for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+    // Bulk-copy när blocket är kontiguet i ringen (~87.5 % av hoppen).
+    if (start + ANALYSER_HOP <= RING_SIZE) {
+      analyserScratch.set(ringBuf.subarray(start, start + ANALYSER_HOP));
+    } else {
+      for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+    }
     const t0 = performance.now();
     latestFrame = analyser.process(analyserScratch);
     latestFrameAt = Date.now();
@@ -941,6 +945,7 @@ function onAudioData(buf: Buffer): void {
       if (latestFrame) emitBands(latestFrame);
     }
   }
+
 
   // Hela audio-callbacken (downmix + analysator-hops + engine-tick) är det enda
   // som kör på event-loopen i mic-vägen. Tar den >200ms är det den som fryser

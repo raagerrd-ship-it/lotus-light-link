@@ -6,6 +6,7 @@ import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { Panel, Row, Stat, Slider, Segmented, Button, Toggle } from "@/components/piUi";
 import { LightPreview } from "@/components/LightPreview";
 import { BeatMonitor } from "@/components/BeatMonitor";
+import { useLiveFeed, setLiveFeedFastUntil } from "@/lib/liveFeed";
 
 
 
@@ -377,8 +378,11 @@ function GainCalibrationPanel({
   const [volHigh, setVolHigh] = useState(AUTO_VOL_HIGH);
   const [effectiveGain, setEffectiveGain] = useState<number | null>(null);
   const [health, setHealth] = useState<{ peak: number; clipPct: number; status: 'low' | 'ok' | 'hot' } | null>(null);
-  const [lampBrightness, setLampBrightness] = useState<number | null>(null);
-  const [inputLevel, setInputLevel] = useState<number | null>(null);
+  // Lamp-pct + input-nivå kommer ur den delade /api/live-pollern.
+  const liveFeed = useLiveFeed();
+  const lampBrightness = liveFeed.data?.ble?.lastSent?.pct ?? null;
+  const inputLevel = liveFeed.data?.live?.inputLevel ?? null;
+
   // Bumpas vid varje gain-ändring → 20 s-topparna i mätarna nollställs.
   const [holdReset, setHoldReset] = useState(0);
 
@@ -398,24 +402,19 @@ function GainCalibrationPanel({
     }).catch(() => {});
   }, [piBase]);
 
-  // Live-poll: endast auto-gain (multiplier/effective). Snabbpoll i 5s efter slider-aktivitet.
+  // Live-poll: endast auto-gain (multiplier/effective). Lamp/input-nivåerna kommer
+  // ur den delade /api/live-pollern. Snabbpoll i 5s efter slider-aktivitet.
   const fastPollUntilRef = useRef(0);
   useEffect(() => {
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
       try {
-        const [ag, st] = await Promise.all([
-          fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()),
-          fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null),
-        ]);
+        const ag = await fetch(`${piBase}/api/auto-gain`, { signal: AbortSignal.timeout(2000) }).then(r => r.json());
         if (!cancelled) {
           if (ag.multiplier != null) setMultiplier(ag.multiplier);
           if (ag.effective != null) setEffectiveGain(ag.effective);
           setHealth(ag.health ?? null);
-          // pct = EXAKT den 0–100-nivå som kommenderades till lampan (bar = lampa).
-          setLampBrightness(st?.ble?.lastSent?.pct ?? null);
-          setInputLevel(st?.live?.inputLevel ?? null);
         }
       } catch {}
       if (cancelled) return;
@@ -425,6 +424,7 @@ function GainCalibrationPanel({
     poll();
     return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
   }, [piBase]);
+
 
   // Debounce:ad PUT medan man drar → motorn hinner tillämpa och nivå-baren
   // följer med i realtid (snabbpoll 400 ms i 5 s efter senaste dragning).
@@ -442,6 +442,7 @@ function GainCalibrationPanel({
       }).catch(() => {});
     }, 150);
     fastPollUntilRef.current = Date.now() + 5000;
+    setLiveFeedFastUntil(Date.now() + 5000);
     setHoldReset((n) => n + 1);
   };
 
@@ -500,6 +501,7 @@ function GainCalibrationPanel({
         setMicGain={setMicGain}
         onGainChanged={() => {
           fastPollUntilRef.current = Date.now() + 5000;
+    setLiveFeedFastUntil(Date.now() + 5000);
           setHoldReset((n) => n + 1);
         }}
         onDone={(low, high) => {
@@ -508,6 +510,7 @@ function GainCalibrationPanel({
           setVolLow(low.vol);
           setVolHigh(high.vol);
           fastPollUntilRef.current = Date.now() + 5000;
+    setLiveFeedFastUntil(Date.now() + 5000);
           setHoldReset((n) => n + 1);
         }}
 
@@ -931,31 +934,20 @@ export default function PiMobile() {
     load();
   }, []);
 
-  // Poll status every 5s to get live track, BLE count, palette
+  // Delad 1 Hz-poller mot magra /api/live (pausar när fliken är dold).
   const lastTrackRef = useRef<string | null>(null);
+  const live = useLiveFeed();
   useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(3000) });
-        if (!r.ok || cancelled) return;
-        const data = await r.json();
-        if (cancelled) return;
-        setPiOnline(true);
-        if (data.engine) setEngineStatus({ running: data.engine.running, hz: data.engine.hz, tickMs: data.engine.tickMs });
-        setSonosPlaying(typeof data.sonos?.playbackState === 'string' && data.sonos.playbackState.includes('PLAYING'));
-        setSonosState(typeof data.sonos?.playbackState === 'string' ? data.sonos.playbackState : null);
-        setBleConnected(!!data.ble?.connected);
-        setSonosVolume(data.sonos?.volume ?? null);
+    const d = live.data;
+    setPiOnline(live.online);
+    if (!d) return;
+    if (d.engine) setEngineStatus({ running: d.engine.running, hz: d.engine.hz, tickMs: d.engine.tickMs });
+    setSonosPlaying(typeof d.sonos?.playbackState === 'string' && d.sonos.playbackState.includes('PLAYING'));
+    setSonosState(typeof d.sonos?.playbackState === 'string' ? d.sonos.playbackState : null);
+    setBleConnected(!!d.ble?.connected);
+    setSonosVolume(d.sonos?.volume ?? null);
+  }, [live]);
 
-      } catch {
-        if (!cancelled) setPiOnline(false);
-      }
-    };
-    poll();
-    const id = setInterval(poll, 5000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [piBase]);
 
 
   const engineState: 'ok' | 'warn' | 'error' | 'idle' =
@@ -1064,7 +1056,7 @@ export default function PiMobile() {
 
               {/* Ljusinställningar — appens huvudkontroller */}
               <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-5">
-                <BeatMonitor piBase={piBase} />
+                <BeatMonitor />
                 <LightPreview
                   softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}

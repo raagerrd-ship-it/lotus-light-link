@@ -101,6 +101,8 @@ const ACL_MAX_OUTSTANDING = (() => {
 type QueuedFrame = { r: number; g: number; b: number; brightness: number };
 let queuedFrame: QueuedFrame | null = null;
 let drainTimer: ReturnType<typeof setTimeout> | null = null;
+let drainImmediate: ReturnType<typeof setImmediate> | null = null;
+
 let drainRunning = false;
 let writeSeq = 0;
 
@@ -145,24 +147,30 @@ export function resetLastSent(): void {
   bleStats.intervalSource = 'unknown';
 }
 
-/** Drop any not-yet-written active frame without touching an in-flight native write. */
-export function clearQueuedWrite(): void {
-  queuedFrame = null;
+function cancelDrain(): void {
   if (drainTimer) {
     clearTimeout(drainTimer);
     drainTimer = null;
   }
+  if (drainImmediate) {
+    clearImmediate(drainImmediate);
+    drainImmediate = null;
+  }
+}
+
+/** Drop any not-yet-written active frame without touching an in-flight native write. */
+export function clearQueuedWrite(): void {
+  queuedFrame = null;
+  cancelDrain();
 }
 
 export function hasQueuedWrite(): boolean { return queuedFrame != null; }
 
 export function flushQueuedWriteNow(): void {
-  if (drainTimer) {
-    clearTimeout(drainTimer);
-    drainTimer = null;
-  }
+  cancelDrain();
   drainQueuedWrite();
 }
+
 
 
 
@@ -256,12 +264,22 @@ function nextDrainDelay(now: number): number {
 }
 
 function armDrain(delayMs = 0): void {
-  if (drainTimer) return;
+  if (drainTimer || drainImmediate) return;
+  if (delayMs <= 0) {
+    // setTimeout(...,0) klampas till 1 ms och kostar en timer-heap-insert per
+    // frame (~50-66/s). setImmediate kör fortfarande off caller-stacken.
+    drainImmediate = setImmediate(() => {
+      drainImmediate = null;
+      drainQueuedWrite();
+    });
+    return;
+  }
   drainTimer = setTimeout(() => {
     drainTimer = null;
     drainQueuedWrite();
-  }, Math.max(0, delayMs));
+  }, delayMs);
 }
+
 
 function drainQueuedWrite(): void {
   if (drainRunning) return;

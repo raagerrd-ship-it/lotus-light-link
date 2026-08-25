@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLiveFeed } from "@/lib/liveFeed";
 
 type BeatInfo = {
   locked: boolean;
@@ -15,7 +16,7 @@ type BeatInfo = {
  * leadMs FÖRE det hörbara slaget. Serverklockan hämtas 1 Hz och extrapoleras
  * lokalt så att markörerna rör sig mjukt mellan pollningarna.
  */
-export function BeatMonitor({ piBase, onTapBpm }: { piBase: string; onTapBpm?: (bpm: number) => void }) {
+export function BeatMonitor({ onTapBpm }: { onTapBpm?: (bpm: number) => void }) {
   const [beat, setBeat] = useState<BeatInfo | null>(null);
   const clock = useRef<{ nextOutAt: number; periodMs: number } | null>(null);
   const [phase, setPhase] = useState(0);
@@ -24,27 +25,18 @@ export function BeatMonitor({ piBase, onTapBpm }: { piBase: string; onTapBpm?: (
   const [tapBpm, setTapBpm] = useState<number | null>(null);
   const taps = useRef<number[]>([]);
 
-  // Serverklocka 1 Hz
+  // Serverklocka via den delade /api/live-pollern (1 Hz)
+  const live = useLiveFeed();
   useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const r = await fetch(`${piBase}/api/status`, { signal: AbortSignal.timeout(3000) });
-        if (!r.ok || cancelled) return;
-        const b = (await r.json())?.beat as BeatInfo | null;
-        if (cancelled || !b) return;
-        setBeat(b);
-        if (b.locked && b.bpm > 40) {
-          clock.current = { nextOutAt: performance.now() + b.nextBeatMs, periodMs: 60000 / b.bpm };
-        } else {
-          clock.current = null;
-        }
-      } catch { /* offline — behåll senaste */ }
-    };
-    poll();
-    const id = setInterval(poll, 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [piBase]);
+    const b = live.data?.beat ?? null;
+    if (!b) return;
+    setBeat(b);
+    if (b.locked && b.bpm > 40) {
+      clock.current = { nextOutAt: performance.now() + b.nextBeatMs, periodMs: 60000 / b.bpm };
+    } else {
+      clock.current = null;
+    }
+  }, [live]);
 
   // Lokal extrapolering + blink
   useEffect(() => {

@@ -431,6 +431,29 @@ export function startConfigServer(port = 3050): void {
     });
   });
 
+  // --- Live (mager poll-endpoint, ~1 Hz från UI) ---
+  // /api/status skickar restarts/transitions/subsystems/analyser/paletter som
+  // det monterade UI:t inte läser. Denna returnerar bara de fält UI:t använder.
+  app.get('/api/live', (_req, res) => {
+    const sonos = getSonosState();
+    const engine = getEngine();
+    const c = getHardcodedConnected();
+    const sent = getLastSent();
+    let micTotal = 0;
+    try { micTotal = getMic()?.getLatestBands?.()?.totalRms ?? 0; } catch {}
+    res.json({
+      ok: true,
+      ble: { connected: c.connected ? 1 : 0, lastSent: sent },
+      live: { inputLevel: Math.max(0, Math.min(1, micTotal)) },
+      sonos: { playbackState: sonos?.playbackState ?? null, volume: sonos?.volume ?? null },
+      engine: engine
+        ? { running: true, tickMs: engine.getTickMs(), hz: Math.round(1000 / engine.getTickMs()), palette: engine.getPalette() }
+        : { running: false, tickMs: null, hz: null, palette: [] },
+      beat: engine?.getBeatInfo?.() ?? null,
+    });
+  });
+
+
   // --- Status (full app status) ---
   app.get('/api/status', async (_req, res) => {
     refreshVersionInfo();
