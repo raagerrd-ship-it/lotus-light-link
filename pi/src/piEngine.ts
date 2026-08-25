@@ -1455,7 +1455,9 @@ export class PiLightEngine {
 
       const floor = tc.brightnessFloor;
       const floorN = floor / 100;
-      const loudness = Math.max(0, Math.min(1, 0.65 + loudnessRaw * 0.35));
+      // Ren loudness-mappning: tyst/låg volym blir dimm, hög volym blir ljust.
+      const loudnessFloor = tc.loudnessFloor;
+      const loudness = Math.max(0, Math.min(1, loudnessFloor + loudnessRaw * (1 - loudnessFloor)));
       const ceiling = floorN + (1 - floorN) * loudness;
 
       // ── 4. HEARTBEAT: snabb attack, mjuk release på shape ──
