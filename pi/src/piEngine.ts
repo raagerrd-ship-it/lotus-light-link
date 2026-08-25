@@ -92,6 +92,14 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     }
   }
 
+  const centerAdaptSeconds = cal.centerAdaptSeconds ?? 999;
+  const centerAlpha = centerAdaptSeconds <= 0
+    ? 0
+    : 1 - Math.exp(-(tickMs / 1000) / centerAdaptSeconds);
+  const centerAlphaFft = centerAdaptSeconds <= 0
+    ? 0
+    : 1 - Math.exp(-(fftMs / 1000) / centerAdaptSeconds);
+
   return {
     attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
     releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
@@ -100,8 +108,8 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
     onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
-    centerAlpha: 1 - Math.pow(1 - 0.002, ratio),
-    centerAlphaFft: 1 - Math.pow(1 - 0.002, fftRatio),
+    centerAlpha,
+    centerAlphaFft,
     gammaIsUnity,
     dimmingGamma: getDimmingGamma(),
     brightnessFloor: cal.brightnessFloor ?? 0,
