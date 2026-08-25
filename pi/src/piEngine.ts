@@ -1153,23 +1153,15 @@ export class PiLightEngine {
   private onFFTFrame(): void {
     if (!this._loopActive) return;
 
+    // EN tick för hela compute-kedjan: ljus-beslutet körs på VARJE FFT-frame
+    // (~100 Hz) — ingen nedsampling, ingen aliasing, beslutet alltid ≤10ms
+    // färskt. BLE-leveransen är frikopplad (1-plats-slot), så radions
+    // conn-interval styr sändtakten, inte compute-takten.
     const now = performance.now();
-    if (now >= this._nextTickDeadline) {
-      noteTick(now, this.tickMs);
-
-      // Grid-align: nästa deadline är tickMs efter den förra, inte efter now.
-      this._nextTickDeadline += this.tickMs;
-      if (now - this._nextTickDeadline > this.tickMs) {
-        this._nextTickDeadline = now + this.tickMs;
-      }
-
-      this._lastTickTime = now;
-      this.tickInner();
-    } else {
-      // FFT kom för tidigt — släng den ur output-perspektiv. Nästa FFT
-      // (~10.7ms senare) triggar tickInner direkt om tickMs då passerats.
-      bleStatsState.fftDroppedCount++;
-    }
+    noteTick(now, this.tickMs);
+    this._nextTickDeadline = now + this.tickMs;
+    this._lastTickTime = now;
+    this.tickInner();
   }
 
   private startLoop(): void {

@@ -67,9 +67,9 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 25;   // 40 Hz — tätare, mjukare uppdatering. BLE-länken hinner
-                      // med utan kö (verifierat live: queued=0, skipBusy=0,
-                      // outstanding max 5 av tak 6).
+const TICK_MS = 10;   // 100 Hz — EN tick för hela compute-kedjan (samma takt som
+                      // FFT:n). tickInner körs på varje FFT-frame; BLE-leveransen
+                      // är frikopplad via 1-plats-slot (senaste vinner).
 
 // --- Lazy module references (filled by starters) ---
 type AlsaMicModule = typeof import('./alsaMic.js');
@@ -155,8 +155,10 @@ function applySonosStateToEngine(state: {
 async function ensureEngineInstance(): Promise<void> {
   if (engineInstance) return;
   engineMod = await import('./piEngine.js');
-  const savedTickMs = getItem('tick-ms');
-  const tick = savedTickMs ? Math.max(5, Math.min(50, Number(savedTickMs))) : TICK_MS;
+  // Compute-ticken är låst till FFT-takten (TICK_MS). Ett gammalt sparat
+  // tick-ms (t.ex. 25 från nedsamplings-eran) får inte sätta smoothing-basen.
+  const savedTickMs = Number(getItem('tick-ms'));
+  const tick = savedTickMs >= 5 && savedTickMs <= TICK_MS ? savedTickMs : TICK_MS;
   engineInstance = new engineMod.PiLightEngine(tick);
   
 
