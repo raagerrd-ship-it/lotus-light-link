@@ -415,18 +415,14 @@ async function main() {
   }
 
 
-  // ── FIX 24: Playback-Watchdog — diagnostiserande, per-delsystem recovery ──
-  // 2026-08-25: tidigare version tittade BARA på bleStats.tickOkCount och
-  // "soft recovery" var alltid en BLE-reconnect. Frös mic-capturen (ALSA slutar
-  // leverera callbacks utan att fyra 'error') hjälpte det inte → exit(1) och
-  // ~5s nere. Nu avgör vi VILKET delsystem som står still och återställer just
-  // det: mic → restartCapture(), BLE → scheduleAutoReconnect(). Hård restart
-  // först när flera riktade försök misslyckats.
+  // ── Playback-Watchdog — analys-tick, inte BLE-delivery ──
+  // 2026-08-25: BLE-leverans är asynkron 1-slot. Watchdogen får därför ALDRIG
+  // hard-restarta för ren delivery-stall; den tittar på engineTickTotal. BLE får
+  // hacka/droppa frames under WiFi-contention, men analys-ticken ska fortsätta.
   void (async () => {
     try {
       const { bleStats } = await import('./ble/index.js');
       const lc = await import('./engineLifecycle.js');
-      const { scheduleAutoReconnect } = await import('./ble-driver/connect.js');
       const { getWriteDiag } = await import('./ble-driver/protocol.js');
       const { recordRestart, markGracefulShutdown } = await import('./restartLog.js');
       const { getRuntimeHealth, msSinceLastTick, getEngineTickTotal } = await import('./runtimeHealth.js');
@@ -461,7 +457,7 @@ async function main() {
           const curEngineTicks = getEngineTickTotal();
           const curAudioCbs = alsaMic?.getAudioCbStats?.().count ?? 0;
 
-          if (curTickOk !== lastTickOk) {
+          if (curEngineTicks !== lastEngineTicks) {
             stuckMs = 0;
             recoveryAttempts = 0;
             lastTickOk = curTickOk;
@@ -485,7 +481,6 @@ async function main() {
             `lastTickAge=${Math.round(msSinceLastTick())}ms ` +
             `writePending=${wd.writePending} pendingAge=${wd.pendingAgeMs}ms ` +
             `lastWriteAge=${wd.lastWriteAgeMs}ms slotLocked=${wd.slotLockedForMs}ms ` +
-            `bleBusySkips=${bleStats.tickSkippedBleBusyCount} ` +
             `writeStallReleases=${bleStats.writeStallReleaseCount} ` +
             `writeSyncMax=${bleStats.writeSyncMaxMs}ms ` +
             `maxNativeCall=${rh.maxNativeCallMs}ms ` +
@@ -495,13 +490,13 @@ async function main() {
 
           recoveryAttempts++;
           if (recoveryAttempts <= MAX_RECOVERY_ATTEMPTS) {
-            // Riktad soft recovery — återställ DET stallade delsystemet.
+            // Riktad soft recovery — återställ analyskedjan, aldrig BLE-delivery.
             if (micFrozen) {
               console.warn(`[Playback-Watchdog] soft recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS}: mic-capture restart`);
               alsaMic?.restartCapture?.('playback-watchdog');
             } else {
-              console.warn(`[Playback-Watchdog] soft recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS}: BLE reconnect`);
-              try { scheduleAutoReconnect(); } catch {}
+              console.warn(`[Playback-Watchdog] soft recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS}: engine tick scheduler restart`);
+              try { engineInstance?.restartTimer?.(); } catch {}
             }
             stuckMs = 0;
             lastEngineTicks = curEngineTicks;
@@ -510,13 +505,13 @@ async function main() {
           }
 
           // Alla riktade försök misslyckades → hård restart via systemd.
-          const reason = micFrozen ? 'mic-capture' : 'ble-delivery';
+          const reason = micFrozen ? 'mic-capture' : 'engine-tick';
           console.error(
-            `[Playback-Watchdog] tickOk still frozen after ${MAX_RECOVERY_ATTEMPTS} ` +
+            `[Playback-Watchdog] engine tick still frozen after ${MAX_RECOVERY_ATTEMPTS} ` +
             `soft recoveries (${reason}). Exit(1) for systemd restart.`
           );
           try {
-            recordRestart('playback-watchdog-stuck', `tickOk frozen ${stuckMs}ms, ${reason}, after ${MAX_RECOVERY_ATTEMPTS} soft recoveries`);
+            recordRestart('playback-watchdog-stuck', `engineTick frozen ${stuckMs}ms, ${reason}, after ${MAX_RECOVERY_ATTEMPTS} soft recoveries`);
             markGracefulShutdown();
           } catch {}
           process.exit(1);

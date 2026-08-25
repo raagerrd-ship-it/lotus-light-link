@@ -9,7 +9,7 @@
  *   const lamp = createLampDriver({ device: { name: 'ELK-BLEDOM01', mac: 'BE:67:00:15:09:41' } });
  *   await lamp.connect();
  *   lamp.startKeepAlive();
- *   setInterval(() => { if (lamp.canWriteNow()) lamp.setColor(255, 80, 0, 100); }, 25);
+ *   setInterval(() => { lamp.setColor(255, 80, 0, 100); }, 25); // latest-frame wins
  *
  * Lagret ovanpå (ljudreaktiv motor) ligger i pi/src/piEngine.ts och bygger på
  * de råa funktionerna som re-exporteras härifrån.
@@ -21,7 +21,7 @@ import {
   connectHardcoded, disconnectHardcoded, getHardcodedConnected, setRestartHook,
 } from './connect.js';
 import {
-  sendToBLE, setIdleColor, sendPower, canWriteNow,
+  sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, sendPower, canWriteNow,
   setDimmingGamma, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive,
 } from './protocol.js';
 import { bleStats } from './state.js';
@@ -31,7 +31,7 @@ export interface LampDriverConfig {
   device?: LampDevice;
   /** Valfri logger (annars tyst om inte LOTUS_DEBUG=1). */
   logger?: (...args: unknown[]) => void;
-  /** Tick-lease i ms (write-cadence-cap). Default 25. */
+  /** Tick-lease i ms. Default 25. */
   slotLeaseMs?: number;
   /** Dimming-gamma 1.0–3.0. Default 1.8. */
   dimmingGamma?: number;
@@ -51,9 +51,12 @@ export function createLampDriver(config: LampDriverConfig = {}) {
     connect: () => connectHardcoded(),
     disconnect: () => disconnectHardcoded(),
     isConnected: () => getHardcodedConnected().connected,
-    /** Skicka färg + ljusstyrka (0–100). Returnerar WriteResult. */
+    /** Queua senaste färg + ljusstyrka (0–100). Returnerar WriteResult. */
     setColor: (r: number, g: number, b: number, brightness = 100) => sendToBLE(r, g, b, brightness),
     setIdleColor,
+    clearQueuedWrite,
+    flushQueuedWriteNow,
+    hasQueuedWrite,
     setPower: sendPower,
     powerOn: () => sendPower(true),
     powerOff: () => sendPower(false),
@@ -74,7 +77,7 @@ export type { LampDevice };
 export type { DeviceMode, PiCharacteristic, DiscoveredDevice, ConnectedDevice } from './types.js';
 export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID, getDevice, setDevice, isDemandActive, noble, hasNobleLoaded } from './state.js';
 export {
-  sendToBLE, canWriteNow, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma,
+  sendToBLE, canWriteNow, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma,
   getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower,
 } from './protocol.js';
 export {

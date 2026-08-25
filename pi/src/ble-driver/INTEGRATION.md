@@ -194,33 +194,33 @@ await lamp.disconnect();
 | `connect(): Promise<{connected,error?,durationMs}>` | Anslut till mål-lampan |
 | `disconnect(): Promise<{disconnected}>` | Manuell frånkoppling (stoppar auto-reconnect) |
 | `isConnected(): boolean` | `true` om GATT-länken är uppe |
-| `setColor(r,g,b,brightness=100): WriteResult` | Skicka färg + ljusstyrka |
+| `setColor(r,g,b,brightness=100): WriteResult` | Queua senaste färg + ljusstyrka |
 | `setIdleColor(r,g,b): void` | Sätt idle-färg (bärs av keep-alive, ingen write) |
 | `setPower(on): Promise<'sent'\|'no-device'\|'error'>` | Väck/släck LED-drivern |
-| `canWriteNow(): boolean` | Billig backpressure-check (gör detta före varje write) |
+| `canWriteNow(): boolean` | Billig readiness-check för externa verktyg |
 | `startKeepAlive() / stopKeepAlive(): void` | 200ms keep-alive mot supervision-timeout |
 | `setDimmingGamma(v) / getDimmingGamma()` | Dimring-gamma 1.0–3.0 |
-| `setSlotLeaseMs(ms): void` | Write-cadence-cap (5–500ms) |
+| `setSlotLeaseMs(ms): void` | Minsta avstånd mellan faktiska writes (5–500ms) |
 | `getStats(): object` | Ögonblicksbild: sent/lat/reconnect/outstanding m.m. |
 
 **`config`-fält:** `device?: {name,mac}`, `logger?`, `slotLeaseMs?`,
 `dimmingGamma?`, `onConsecutiveFailures?`.
 
-**`WriteResult`** (retur från `setColor`): `'sent'` | `'busy'` (gate stängd —
-försök igen nästa tick) | `'no-change'` | `'no-device'`.
+**`WriteResult`** (retur från `setColor`): `'sent'` (frame accepterad till
+1-slot-writer) | `'no-device'`.
 
 ---
 
 ## 7. Viktiga kontrakt (läs detta — annars hackar ljuset)
 
-1. **Skriv aldrig snabbare än gaten tillåter.** Anropa `canWriteNow()` före
-   varje `setColor()`. BLEDOM ger ingen ACK; paket köas i HCI-lagret om du
-   spammar och lampan halkar sekunder efter. Gaten kombinerar en tick-lease
+1. **Skriv senaste frame till 1-slot-writern.** `setColor()` ersätter ev. väntande
+   frame; senaste vinner. BLEDOM ger ingen ACK; den interna writern skyddar HCI-lagret
+   med tick-lease
    (`slotLeaseMs`) med en ACL-outstanding-gräns (max 6 paket ute samtidigt).
 
 2. **`setColor` är synkron och fire-and-forget.** Den `await`:ar aldrig
-   radio-bekräftelse — den returnerar `'sent'`/`'busy'` direkt. Backpressure
-   sköts av gaten, inte av promise-resolve.
+   radio-bekräftelse — den returnerar direkt efter att senaste frame lagts i
+   1-slot-writern. Backpressure sköts av den interna writern, inte av promise-resolve.
 
 3. **Kör alltid keep-alive.** Utan en write var ~200ms tappar BLEDOM länken via
    supervision-timeout. `startKeepAlive()` löser detta; den följer samma gate.

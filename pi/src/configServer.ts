@@ -1187,7 +1187,6 @@ export function startConfigServer(port = 3050): void {
   
   let _lastSkipBusy = 0;
   let _lastSkipInFlight = 0;
-  let _lastSkipRateLimit = 0;
   let _lastFftDropped = 0;
   let _lastWriteFail = 0;
   let _lastWriteStuck = 0;
@@ -1198,7 +1197,6 @@ export function startConfigServer(port = 3050): void {
   let _lastTickAbortNoChange = 0;
   let _lastTickAbortNoDevice = 0;
   let _lastTickAbortBleBusy = 0;
-  let _lastTickSkippedBleBusy = 0;
 
   app.get('/api/mic/level', async (_req, res) => {
     const mic = getMic();
@@ -1225,7 +1223,6 @@ export function startConfigServer(port = 3050): void {
       
       const skipBusyPerSec = perSec(bleStats.skipBusyCount, _lastSkipBusy);
       const skipInFlightPerSec = perSec(bleStats.skipInFlightCount ?? 0, _lastSkipInFlight);
-      const skipRateLimitPerSec = perSec(bleStats.skipRateLimitCount ?? 0, _lastSkipRateLimit);
       const fftDroppedPerSec = perSec(bleStats.fftDroppedCount ?? 0, _lastFftDropped);
       const writeFailPerSec = perSec(bleStats.writeFailCount, _lastWriteFail);
       const writeStuckPerSec = perSec(bleStats.writeStuckCount ?? 0, _lastWriteStuck);
@@ -1234,7 +1231,6 @@ export function startConfigServer(port = 3050): void {
       const tickAbortNoChangePerSec = perSec(bleStats.tickAbortNoChangeCount ?? 0, _lastTickAbortNoChange);
       const tickAbortNoDevicePerSec = perSec(bleStats.tickAbortNoDeviceCount ?? 0, _lastTickAbortNoDevice);
       const tickAbortBleBusyPerSec = perSec(bleStats.tickAbortBleBusyCount ?? 0, _lastTickAbortBleBusy);
-      const tickSkippedBleBusyPerSec = perSec(bleStats.tickSkippedBleBusyCount ?? 0, _lastTickSkippedBleBusy);
 
       const fftFrames = mic.getFFTFrameCount?.() ?? 0;
       const tickCount = engine?.getDiagnostics().tickCount ?? 0;
@@ -1249,7 +1245,6 @@ export function startConfigServer(port = 3050): void {
       
       _lastSkipBusy = bleStats.skipBusyCount;
       _lastSkipInFlight = bleStats.skipInFlightCount ?? 0;
-      _lastSkipRateLimit = bleStats.skipRateLimitCount ?? 0;
       _lastFftDropped = bleStats.fftDroppedCount ?? 0;
       _lastWriteFail = bleStats.writeFailCount;
       _lastWriteStuck = bleStats.writeStuckCount ?? 0;
@@ -1260,16 +1255,15 @@ export function startConfigServer(port = 3050): void {
       _lastTickAbortNoChange = bleStats.tickAbortNoChangeCount ?? 0;
       _lastTickAbortNoDevice = bleStats.tickAbortNoDeviceCount ?? 0;
       _lastTickAbortBleBusy = bleStats.tickAbortBleBusyCount ?? 0;
-      _lastTickSkippedBleBusy = bleStats.tickSkippedBleBusyCount ?? 0;
 
       ble = {
         sentPerSec, skipBusyPerSec, skipInFlightPerSec,
-        skipRateLimitPerSec, fftDroppedPerSec, writeFailPerSec, writeStuckPerSec,
+        fftDroppedPerSec, writeFailPerSec, writeStuckPerSec,
         writeLatAvgMs: bleStats.writeLatAvgMs,
         writeLatMaxMs,
         fftPerSec, tickPerSec,
         tickOkPerSec, tickAbortNoMicPerSec, tickAbortNoChangePerSec, tickAbortNoDevicePerSec,
-        tickAbortBleBusyPerSec, tickSkippedBleBusyPerSec,
+        tickAbortBleBusyPerSec,
         dropCount: bleStats.dropCount ?? 0,
       };
     } catch { /* protocol module not loaded yet */ }
