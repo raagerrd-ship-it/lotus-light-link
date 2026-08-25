@@ -821,6 +821,7 @@ export default function PiMobile() {
         dropSensitivity: cal.dropSensitivity,
         dropFlashMs: cal.dropFlashMs,
         beatLeadMs: cal.beatLeadMs,
+        peakBoost: cal.peakBoost,
       };
       const results = await Promise.allSettled([
         putJson('/api/calibration', calPayload),
