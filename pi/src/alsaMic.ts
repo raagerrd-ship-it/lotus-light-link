@@ -836,7 +836,7 @@ function onAudioData(buf: Buffer): void {
   
   const hsAlpha = HS_ALPHA;
   let hs = hsState;
-  let hs = hsState;
+
   let pos = ringPos;
   const ring = ringBuf;
   const mask = RING_MASK;
