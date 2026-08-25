@@ -75,7 +75,7 @@ export type { LampDevice };
 
 // ── Låg-nivå re-exports (för motor-lagret och app-glue) ──
 export type { DeviceMode, PiCharacteristic, DiscoveredDevice, ConnectedDevice } from './types.js';
-export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID, getDevice, setDevice, isDemandActive, noble, hasNobleLoaded } from './state.js';
+export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID, getDevice, setDevice, noble, hasNobleLoaded } from './state.js';
 export {
   sendToBLE, canWriteNow, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma,
   getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower,

@@ -67,11 +67,9 @@ export function setRestartHook(fn: ((info: { count: number; error: string }) => 
   _restartHook = fn;
 }
 
-// Wire write-fail/keep-alive-fail teardown → auto-reconnect-loopen. Utan denna
-// Reconnect sker via scheduleAutoReconnect() direkt från keep-alive/disconnect-pathen.
-// (removeAllListeners('disconnect') + setDevice(null) + disconnectAsync) men
-// återansluter aldrig → lampan mörk tills omstart. scheduleAutoReconnect har
-// interna guards som respekterar manuell disconnect-policyn.
+// Reconnect sker via scheduleAutoReconnect() direkt från keep-alive- och
+// disconnect-pathen. scheduleAutoReconnect har interna guards som respekterar
+// manuell disconnect-policyn.
 
 let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;

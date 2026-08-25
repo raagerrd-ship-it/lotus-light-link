@@ -7,7 +7,7 @@
 export type { DeviceMode, PiCharacteristic, DiscoveredDevice } from '../ble-driver/types.js';
 
 export { bleStats, BLE_BUILD_TAG, SERVICE_UUID, CHAR_UUID } from '../ble-driver/state.js';
-export { getDevice, setDevice, isDemandActive } from '../ble-driver/state.js';
+export { getDevice, setDevice } from '../ble-driver/state.js';
 export { noble, hasNobleLoaded } from '../ble-driver/state.js';
 
 export { sendToBLE, canWriteNow, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, resetLastSent, setDimmingGamma, getDimmingGamma, getSlotLeaseMs, setSlotLeaseMs, startKeepAlive, stopKeepAlive, sendPower } from '../ble-driver/protocol.js';

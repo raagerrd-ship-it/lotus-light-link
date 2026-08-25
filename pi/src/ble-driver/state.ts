@@ -21,10 +21,6 @@ let _device: ConnectedDevice | null = null;
 export function getDevice(): ConnectedDevice | null { return _device; }
 export function setDevice(d: ConnectedDevice | null): void { _device = d; }
 
-// Legacy demand-flag — alltid false i hardcoded-flödet (protocol.ts har en
-// proaktiv reconnect-gren bakom denna flagga som aldrig ska triggas nu).
-export function isDemandActive(): boolean { return false; }
-
 // ── Stats (used by protocol.ts + /api/ble/output + /api/mic/level) ──
 export const bleStats = {
   sentCount: 0,
@@ -33,10 +29,8 @@ export const bleStats = {
   skipInFlightCount: 0,       // legacy: writePending
   skipLeaseLockedCount: 0,    // busy pga tick-lease ej utgången
   skipControllerBusyCount: 0, // busy pga outstanding paket i HCI
-  fftDroppedCount: 0,
   writeFailCount: 0,
-  writeStuckCount: 0,
-  writeStallReleaseCount: 0,  // writeAsync hängde >1s → sloten släpptes (icke-blockerande recovery)
+  writeStallReleaseCount: 0,  // writeAsync hängde >150ms → sloten släpptes (icke-blockerande recovery)
   connIntervalReassertCount: 0, // antal gånger conn-interval tvingats om (hcitool lecup)
   controllerCompleteCount: 0, // antal gånger drain gått från >0 → 0
   controllerStuckCount: 0,    // drain-diagnostik fastnat längre än threshold
