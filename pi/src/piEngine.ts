@@ -129,7 +129,7 @@ export interface LightCalibration {
   transientGain: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
-  /** Minsta gap mellan onsets i ms — räknas om till frames (fftMs=10, se M4) . UI-default 110ms. */
+  /** Minsta gap mellan onsets i ms — räknas om till frames via FRAME_MS (sann 75 Hz). UI-default 110ms. */
   onsetRefractoryMs: number;
    /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
    flickerDeadband: number;
