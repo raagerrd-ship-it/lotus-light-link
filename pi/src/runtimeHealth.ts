@@ -106,6 +106,10 @@ export function getRuntimeHealth(): {
   fftFps: number;
   overrunTotal: number; overrunPerMin: number;
   lateTickTotal: number;
+  engineTickTotal: number;
+  maxNativeCallMs: number;
+  slowNativeCallTotal: number;
+  lastSlowNativeCall: { op: string; ms: number; atIso: string } | null;
 } {
   const out = {
     loopLagMsEMA: loopLagEMA,
@@ -116,6 +120,10 @@ export function getRuntimeHealth(): {
     overrunTotal,
     overrunPerMin,
     lateTickTotal,
+    engineTickTotal,
+    maxNativeCallMs: Math.round(maxNativeCallMs * 10) / 10,
+    slowNativeCallTotal,
+    lastSlowNativeCall,
   };
   loopLagMax = 0;
   tickJitterMax = 0;
