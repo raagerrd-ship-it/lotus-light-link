@@ -19,10 +19,11 @@ AGC:n ska vara låst: AGC:n är TILLBAKA, men BARA på analys-tappen.
   ALSA-callback. `emitBands`: `amp = min(1, lightRawRms * micGain)`.
   `bassRms/midHiRms` = amp × spektral andel ur `specAbs` (andel, aldrig nivå).
 
-**Aldrig:** använd `frame.level`/`frame.levelVU` för ljuset — de är AGC:ade och
-normaliserar bort användarens gain (symptom: gain 40→75 ändrade inget, output
-pinnad ~50 %). Aldrig applicera användarens gain på rå-PCM/ringen igen (symptom:
-analysator-input pinnad 100 %). Aldrig återinföra fast pre-gain före AGC:n.
+**Aldrig:** använd `frame.level`/`frame.levelVU` för ljus-formen — de är uppmätt
+platta i låtar och gav output pinnad ~50 %. Dirigent v2 använder `frame.intensity`
+som form och `lightRawRms * micGain` bara som långsam loudness-skala. Aldrig
+applicera användarens gain på rå-PCM/ringen igen (symptom: analysator-input
+pinnad 100 %). Aldrig återinföra fast pre-gain före AGC:n.
 
 **AGC-seed (2026-08-24):** `seedAnalyserGain()` i alsaMic sätter AGC:ns
 STARTVÄRDE till `micGain` (klampat 0.5–AUTO_GAIN_MAX) vid mic-reset och när
