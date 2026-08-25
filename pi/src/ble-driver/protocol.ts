@@ -67,8 +67,6 @@ function brightnessToScale(brightness: number): number {
 // ── Write result type — synkron rapport till engine ──
 export type WriteResult =
   | 'sent'         // frame accepterad/queued (faktisk write sker i async writer)
-  | 'busy'         // slot låst (lease ej utgången ELLER pending writeAsync)
-  | 'no-change'    // delta-skip (samma färg+brightness)
   | 'no-device';   // ingen ConnectedDevice
 
 // ── Lease state ──

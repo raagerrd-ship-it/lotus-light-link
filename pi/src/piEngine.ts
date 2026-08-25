@@ -1595,8 +1595,6 @@ export class PiLightEngine {
         : sendToBLE(_finalColor[0], _finalColor[1], _finalColor[2], pct);
       switch (writeResult) {
         case 'sent':         bleStatsState.tickOkCount++; break;
-        case 'busy':         bleStatsState.tickAbortBleBusyCount++; break;
-        case 'no-change':    bleStatsState.tickAbortNoChangeCount++; break;
         case 'no-device':    bleStatsState.tickAbortNoDeviceCount++; break;
       }
 

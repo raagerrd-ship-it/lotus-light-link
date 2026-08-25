@@ -51,7 +51,7 @@ export function createLampDriver(config: LampDriverConfig = {}) {
     connect: () => connectHardcoded(),
     disconnect: () => disconnectHardcoded(),
     isConnected: () => getHardcodedConnected().connected,
-    /** Skicka färg + ljusstyrka (0–100). Returnerar WriteResult. */
+    /** Queua senaste färg + ljusstyrka (0–100). Returnerar WriteResult. */
     setColor: (r: number, g: number, b: number, brightness = 100) => sendToBLE(r, g, b, brightness),
     setIdleColor,
     clearQueuedWrite,
