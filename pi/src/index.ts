@@ -16,6 +16,18 @@ installLocalStorageShim();
 import { logDebugBanner } from './debugLog.js';
 logDebugBanner();
 
+// B2: minimal crash-handler REDAN här. main() installerar de fullständiga
+// (med restart-logg) långt senare — en krasch under boot-importerna lämnade
+// tidigare bara ett tomt systemd-exit utan reason.
+const bootCrash = (tag: string) => (e: unknown) => {
+  console.error(`[Fatal/boot:${tag}]`, e);
+  process.exit(1);
+};
+const _bootUncaught = bootCrash('uncaughtException');
+const _bootRejection = bootCrash('unhandledRejection');
+process.once('uncaughtException', _bootUncaught);
+process.once('unhandledRejection', _bootRejection);
+
 import { getItem, setItem } from './storage.js';
 import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,
@@ -204,23 +216,12 @@ async function startMicSubsystem(): Promise<void> {
       alsaMic = await import('./alsaMic.js');
       
 
+      // A2: gain + cal-punkter laddas ENBART av alsaMic (mic-state.json). Att
+      // läsa legacy-nycklarna här skrev över nyss auto-kalibrerade värden.
       const savedAlsaDevice = getItem('alsa-device');
-      const savedMicGain = getItem('mic-gain');
       if (savedAlsaDevice) alsaMic.setAlsaDevice(savedAlsaDevice);
-      if (savedMicGain) {
-        const g = parseFloat(savedMicGain);
-        if (g >= 0.1 && g <= 300) alsaMic.setMicGain(g);
-      }
 
       await ensureEngineInstance();
-
-      try {
-        const saved = getItem('gain-cal-points');
-        if (saved) {
-          const { point1, point2 } = JSON.parse(saved);
-          alsaMic.setGainCalPoints(point1 ?? null, point2 ?? null);
-        }
-      } catch {}
 
       const eng = engineInstance!;
       configServer?.attachConfigRuntime?.({
@@ -623,6 +624,9 @@ async function main() {
   })();
 
   // Crash-handlers: logga reason, sätt flagga, exit. systemd Restart=always tar oss tillbaka.
+  // Boot-handlarna lämnar plats åt dessa (annars dubbel-exit utan restart-logg).
+  process.off('uncaughtException', _bootUncaught);
+  process.off('unhandledRejection', _bootRejection);
   process.on('uncaughtException', (err) => {
     console.error('[Fatal/uncaughtException]', err);
     try {
