@@ -81,7 +81,7 @@ export {
 } from './protocol.js';
 export {
   connectHardcoded, disconnectHardcoded, getHardcodedConnected,
-  getLastDisconnectReason, wasAutoDisconnected, getAutoReconnectStatus,
+  getLastDisconnectReason,
   forceCleanupStalePeripheral, scheduleAutoReconnect, triggerIdleDisconnect,
   setEngineBleCallbacks, setRestartHook,
 } from './connect.js';

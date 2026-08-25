@@ -47,14 +47,10 @@ export function normalizeFixed(value: number): number {
 
 // --- Precomputed tick constants ---
 export interface TickConstants {
-  attackAlpha: number;
-  releaseAlpha: number;
-  onsetDecay: number;
-  onsetRiseAlpha: number;
+  refractoryFrames: number;
   onsetRiseAlphaFft: number;
   onsetDecayFft: number;
   gammaIsUnity: boolean;
-  dimmingGamma: number;
   brightnessFloor: number;
   transientGain: number;
   lutR: Uint8Array;
