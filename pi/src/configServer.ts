@@ -1427,12 +1427,8 @@ export function startConfigServer(port = 3050): void {
     if (typeof gamma === 'number' && gamma >= 1.0 && gamma <= 3.0) {
       setDimmingGamma(gamma);
       setItem('dimming-gamma', String(gamma));
-      try {
-        const pf = loadProfilesFile();
-        pf.profiles[pf.activePreset] = { ...pf.profiles[pf.activePreset], dimmingGamma: gamma };
-        saveProfilesFile(pf);
-      } catch {}
       res.json({ ok: true, gamma });
+
     } else {
       res.status(400).json({ error: 'gamma must be 1.0-3.0' });
     }
