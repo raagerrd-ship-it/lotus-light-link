@@ -9,8 +9,10 @@
  * Pipeline: Mic PCM → FFT → [event] → Engine tick → BLE write
  * Latency: ~5.8ms (audio buffer) + <1ms (processing) + ~25ms (BLE) ≈ 31ms
  * 
- * The tickMs setting controls minimum interval between ticks,
- * NOT a polling rate. Faster tickMs = more responsive, more CPU.
+ * Takt: band-events (och därmed motorn) körs i 75 Hz — FRAME_MS = 13.33 ms
+ * (BAND_EVERY_HOPS=5 × ANALYSER_HOP=128 @ 48 kHz = 640 sampel).
+ * tickMs pacar BARA BLE-slot-leasen, inte tick-takten (tick-gaten är borta).
+
  */
 
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS } from './alsaMic.js';
