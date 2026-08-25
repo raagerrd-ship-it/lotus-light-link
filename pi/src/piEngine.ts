@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
@@ -455,7 +455,7 @@ export class PiLightEngine {
     setBeatCutoffHz(this.cal.beatCutoffHz);
     this.onsetBuffer = new Float64Array(7);
     this.onsetSorted = new Float64Array(7);
-    this.initOnsetBuffer(tickMs);
+    this.initOnsetBuffer();
     this.tc = computeTickConstants(tickMs, this.cal);
     setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken
   }
@@ -466,7 +466,7 @@ export class PiLightEngine {
 
   setTickMs(ms: number) {
     this.tickMs = ms;
-    this.initOnsetBuffer(ms);
+    this.initOnsetBuffer();
     this.tc = computeTickConstants(ms, this.cal);
     setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken
   }
