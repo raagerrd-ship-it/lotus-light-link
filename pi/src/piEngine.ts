@@ -13,7 +13,7 @@
  * NOT a polling rate. Faster tickMs = more responsive, more CPU.
  */
 
-import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, canWriteNow, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
@@ -409,6 +409,9 @@ export class PiLightEngine {
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
   private _gridPulseCount = 0;
+  private _reacqUntil = 0;             // vidgat re-lås-fönster efter låtbyte
+  private _beatConfidentAt = 0;        // senast takten var pålitlig (coast-timeout)
+  private _beatWasLocked = false;      // har låset varit bekräftat i denna låt?
 
   private cal: LightCalibration;
 
