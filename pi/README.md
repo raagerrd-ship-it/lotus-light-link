@@ -16,7 +16,7 @@ Event-driven engine using ALSA microphone + noble BLE + custom zero-alloc FFT.
 │  PiLightEngine (20ms min interval / 50 Hz max)   │
 │       ↓ (fire-and-forget, non-blocking)          │
 │  noble → BLE GATT write-without-response         │
-│       ↓ (7.5ms connection interval)              │
+│       ↓ (20ms connection interval)               │
 │  BLEDOM LED strip                                │
 │                                                  │
 │  Sonos SSE ← Sonos Gateway :3000                 │
@@ -306,7 +306,7 @@ End-to-end latency from sound hitting the microphone to LED color change:
 │  Hann window + FFT     │  <0.5ms  │ Zero-alloc radix-2, N=1024 │
 │  Engine tick           │  <0.3ms  │ AGC + smoothing + onset    │
 │  BLE write             │  ~7ms    │ Write-without-response,    │
-│                        │          │ 7.5ms fixed conn interval  │
+│                        │          │ 20ms fixed conn interval   │
 ├────────────────────────┼──────────┼────────────────────────────┤
 │  TOTAL                 │  ~8.5ms  │ Sound → light              │
 └─────────────────────────────────────────────────────────────────┘
@@ -321,7 +321,7 @@ End-to-end latency from sound hitting the microphone to LED color change:
 | **75% FFT overlap** | Trigger every 128 samples instead of 256 (~3ms faster response) |
 | **Precomputed tick constants** | All `Math.pow` calls computed once on tickMs/calibration change |
 | **BLE brightness LUT** | 101-entry lookup table replaces `Math.pow` per tick |
-| **7.5ms connection interval** | Negotiated via HCI after connect (default is ~30ms) |
+| **20ms connection interval** | Forcerat via `hcitool lecup` efter connect (default ~30ms; 7.5ms gav radio-överlast) |
 | **Write-without-response** | Fire-and-forget GATT writes, non-reentrant guard prevents queueing |
 | **Bitwise rounding** | `(x + 0.5) \| 0` replaces `Math.round` in hot path |
 | **Zero allocation** | Static objects, pre-allocated Float64Arrays, no GC pauses |

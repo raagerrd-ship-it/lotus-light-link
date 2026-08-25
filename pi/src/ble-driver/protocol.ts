@@ -8,9 +8,11 @@
  * att engine-ticken/smoothing/beat kan frysa.
  *
  * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
+ *
+ * Conn-interval: 16 units = 20 ms (se forceConnInterval.ts — 7.5 ms hängde Pi:n).
  */
 
-import { getDevice, setDevice, bleStats, isDemandActive } from './state.js';
+import { getDevice, bleStats } from './state.js';
 import { getOutstandingPackets, isControllerDrainAttached } from './controllerDrain.js';
 import { dlog } from "./log.js";
 
@@ -74,7 +76,8 @@ export type WriteResult =
 let slotLeaseMs = 25;
 let slotLockedUntil = 0;
 let writePending = false;
-// När writePending sattes. Om noble/HCI hänger settlar writeAsync aldrig.
+// När writePending sattes (stale-release efter WRITE_PENDING_TIMEOUT_MS = 150 ms).
+// Om noble/HCI hänger settlar writeAsync aldrig.
 // Stale-release gör BLE-stall icke-blockerande: writern kan droppa gamla frames
 // och fortsätta med senaste utan att engine-ticken berörs.
 // 2026-08-25: 1000ms → 150ms. En hängande write ska kosta EN frame, inte en
@@ -359,19 +362,6 @@ function drainQueuedWrite(): void {
         if (writeFailCount === 1 || writeFailCount === WRITE_FAIL_THRESHOLD) {
           console.warn(`[BLE] Write failed (${writeFailCount}x): ${e?.message ?? e}`);
         }
-        const dev = getDevice();
-        if (writeFailCount >= WRITE_FAIL_THRESHOLD && dev && isDemandActive()) {
-          console.warn('[BLE] Too many write failures — triggering proactive reconnect');
-          const periph = dev.peripheral;
-          const name = dev.name;
-          periph.removeAllListeners('disconnect');
-          stopKeepAlive();
-          setDevice(null);
-          resetLastSent();
-          Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
-            if (_triggerReconnect) _triggerReconnect(periph, name);
-          });
-        }
       })
       .finally(() => {
         if (seq === writeSeq) writePending = false;
@@ -436,20 +426,6 @@ export function startKeepAlive(): void {
               .catch(() => {})
               .finally(() => { scheduleAutoReconnect(); });
           }).catch(() => {});
-
-          if (isDemandActive()) {
-            const dev = getDevice();
-            if (dev) {
-              const periph = dev.peripheral;
-              const name = dev.name;
-              periph.removeAllListeners('disconnect');
-              setDevice(null);
-              resetLastSent();
-              Promise.resolve(periph.disconnectAsync?.()).catch(() => {}).finally(() => {
-                if (_triggerReconnect) _triggerReconnect(periph, name);
-              });
-            }
-          }
         }
       })
       .finally(() => {
@@ -461,12 +437,6 @@ export function startKeepAlive(): void {
 
 export function stopKeepAlive(): void {
   if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
-}
-
-// Forward declaration — set by reconnect module to break circular dep
-let _triggerReconnect: ((peripheral: any, name: string) => void) | null = null;
-export function setReconnectTrigger(fn: (peripheral: any, name: string) => void): void {
-  _triggerReconnect = fn;
 }
 
 /**

@@ -58,6 +58,18 @@ function _loadTransitionsFromDisk(): void {
   }
 }
 
+// Debounced: transitions kommer i burst vid start/reconnect. Synkron
+// writeFileSync per transition blockerar event-loopen (= tick-jitter).
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+function _scheduleSaveTransitions(): void {
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    _saveTransitionsToDisk();
+  }, 1000);
+  _saveTimer.unref?.();
+}
+
 function _saveTransitionsToDisk(): void {
   try {
     mkdirSync(DATA_DIR, { recursive: true });
@@ -79,7 +91,7 @@ function _logTransition(id: SubsystemId, from: SubsystemStatus, to: SubsystemSta
     uptimeMs,
   });
   if (_transitions.length > MAX_TRANSITIONS) _transitions.splice(0, _transitions.length - MAX_TRANSITIONS);
-  _saveTransitionsToDisk();
+  _scheduleSaveTransitions();
 }
 
 export function getSubsystemTransitions(): SubsystemTransition[] {
