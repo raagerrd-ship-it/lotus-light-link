@@ -15,20 +15,6 @@ let _nobleInstance: any = null;
 let _loadedAt: number | null = null;
 
 export function hasNobleLoaded(): boolean { return _nobleInstance != null; }
-export function getNobleLoadedAt(): number | null { return _loadedAt; }
-
-/**
- * Backåt-kompatibel no-op. Tidigare registrerade en stateChange-callback
- * direkt mot noble — men det är borttaget för att matcha SSH-skriptet 1:1.
- * Anropare som vill veta state får polla via getNoble().state.
- */
-export function onNobleStateChange(_cb: (state: string) => void): void {
-  // intentionally empty — engine-start-minimal binds its own listener
-}
-
-export function getCachedNobleState(): string | undefined {
-  return _nobleInstance?.state;
-}
 
 /**
  * Synkron access — kräver att getNobleAsync() har körts en gång.
