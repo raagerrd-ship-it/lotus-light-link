@@ -18,7 +18,7 @@
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
-import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, getDimmingGamma, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
+import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect } from './ble-driver/connect.js';
@@ -93,15 +93,10 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
   }
 
   return {
-    attackAlpha: 1 - Math.pow(1 - cal.attackAlpha, ratio),
-    releaseAlpha: 1 - Math.pow(1 - cal.releaseAlpha, ratio),
-    // Snabbare decay → kortare, skarpare puls (matchar trum-attack ~80ms)
-    onsetDecay: Math.pow(0.04, secRatio),
-    onsetRiseAlpha: 1 - Math.pow(0.05, ratio), // snabbare attack på pulsen
+    refractoryFrames: Math.max(1, Math.round(cal.onsetRefractoryMs / FRAME_MS)),
     onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     gammaIsUnity,
-    dimmingGamma: getDimmingGamma(),
     brightnessFloor: cal.brightnessFloor,
     transientGain: cal.transientGain,
 
@@ -580,8 +575,8 @@ export class PiLightEngine {
     this.onsetPrevFlux = flux;
 
 
-    // Refractory gate: minimum gap mellan onsets, räknat i frames på sann takt (FRAME_MS ≈ 13.33 ms @ 75 Hz)
-    const refractoryFrames = Math.max(1, Math.round(this.cal.onsetRefractoryMs / FRAME_MS));
+    // Refractory gate: minimum gap mellan onsets, i frames på sann takt (hoistad till tc)
+    const refractoryFrames = this.tc.refractoryFrames;
     this.onsetFrameCounter++;
     let fired = false;
     if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
@@ -641,12 +636,12 @@ export class PiLightEngine {
       // så en ny takt landar utan att glida in via PLL:en.
       if (!this._beat || Math.abs(bpm - this._beatDetBpm) > (reacq ? 0.5 : 2)) {
         this._beatDetBpm = bpm;
-        let anchor = frame?.beatAnchorMs || Date.now();
+        let anchor = frame?.beatAnchorMs || nowMs;
         if (this._beat) {
           // Bevara nuvarande fas vid tempoändring så pulsen inte hoppar.
           const oldMs = 60000 / this._beat.bpm, newMs = 60000 / bpm;
-          const ph = ((((Date.now() - this._beat.anchorMs) % oldMs) + oldMs) % oldMs) / oldMs;
-          anchor = Date.now() - ph * newMs;
+          const ph = ((((nowMs - this._beat.anchorMs) % oldMs) + oldMs) % oldMs) / oldMs;
+          anchor = nowMs - ph * newMs;
         }
         this._beat = { anchorMs: anchor, bpm, confidence: conf };
       } else {
@@ -690,7 +685,7 @@ export class PiLightEngine {
     // Fasen mäts helst mot analysatorns FÄRDIGMÄTTA slagtid (sub-hop, ±1.3 ms).
     // Date.now() här bär ALSA-leveransens jitter. Bara färska värden duger.
     const kickAt = frame?.kickAtMs ?? 0;
-    const nowRef = kickAt > 0 && Date.now() - kickAt < 60 ? kickAt : Date.now();
+    const nowRef = kickAt > 0 && nowMs - kickAt < 60 ? kickAt : nowMs;
     const ph = ((((nowRef - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
 
     const err = ph < 0.5 ? ph : ph - 1;    // -0.5..0.5 av ett taktslag
@@ -1457,8 +1452,8 @@ export class PiLightEngine {
         }
       }
 
-      const bassNorm = normalizeFixed(bands.bassRms);
-      const midHiNorm = normalizeFixed(bands.midHiRms);
+      _diag.bassNorm = normalizeFixed(bands.bassRms);
+      _diag.midHiNorm = normalizeFixed(bands.midHiRms);
 
       // ── 2. Tystnads-gate ──
       // När absolut amplitud < tickEnergyFloor är input rumsbrus, inte musik:
@@ -1482,8 +1477,9 @@ export class PiLightEngine {
       const floorN = floor / 100;
       // EN mappning: tvåpunkts-gainen mot Sonos-volymen ger amplituden 0..1,
       // som mappas rakt in i golv..100 %. Loudness-golvet är enda ratten.
-      const loudness = ampEnv <= 0 ? 0 : ampEnv >= 1 ? 1 : ampEnv;
-      const ceiling = floorN + (1 - floorN) * loudness;
+      // loudness ≡ ampEnv (clampen bet aldrig) — bara diagnostik.
+      _diag.loudness = ampEnv;
+      _diag.ceiling = floorN + (1 - floorN) * ampEnv;
 
       // ── 4. HEARTBEAT: snabb attack, mjuk release på shape ──
       // Tidsbaserad alpha så fade-takten blir identisk även när BLE hoppar frames.
@@ -1495,7 +1491,7 @@ export class PiLightEngine {
         const _lo = 1e-4;
         const _c = this.smoothed < _lo ? _lo : this.smoothed;
         const _t = shape < _lo ? _lo : shape;
-        this.smoothed = Math.exp(Math.log(_c) + alpha * (Math.log(_t) - Math.log(_c)));
+        this.smoothed = _c * Math.pow(_t / _c, alpha);
       } else {
         const alpha = 1 - Math.pow(1 - cal.attackAlpha, _eRatio);
         // MJUK attack vid låg energi (brus snäpper inte → inget flimmer),
@@ -1524,7 +1520,7 @@ export class PiLightEngine {
       if (outN < floorN) outN = floorN;
       if (outN > 1) outN = 1;
 
-      const energyNorm = outN;
+      _diag.energyNorm = outN;
       let pct = outN * 100;
 
       // Fast round + clamp
@@ -1634,15 +1630,10 @@ export class PiLightEngine {
       _diag.rawRms = bands.totalRms;
       _diag.bassRms = bands.bassRms;
       _diag.midHiRms = bands.midHiRms;
-      _diag.bassNorm = bassNorm;
-      _diag.midHiNorm = midHiNorm;
       _diag.level = level;
       _diag.ampEnv = ampEnv;
       _diag.shape = shapeSm;
-      _diag.ceiling = ceiling;
-      _diag.loudness = loudness;
       _diag.energyForm = energyForm;
-      _diag.energyNorm = energyNorm;
 
       _diag.onsetBoost = this.onsetBoost;
       _diag.brightnessPct = pct;
