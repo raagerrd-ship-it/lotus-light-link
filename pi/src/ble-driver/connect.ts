@@ -317,7 +317,6 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
 export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
   _connectCallCount++;
   const sinceLast = Date.now() - _lastConnectCallAt;
-  _lastConnectCallAt = Date.now();
   // Diagnostik: om någon hamrar denna endpoint vill vi se det i loggen.
   // Stack-trace ger oss caller (HTTP-route, intern reconnect, etc).
   dlog(`[connect-hardcoded] CALL #${_connectCallCount} (${sinceLast}ms sedan förra)`);
@@ -329,6 +328,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
     const r = await _connectInFlight;
     return { ...r, durationMs: 0 };
   }
+
   if (_connected && _connected.state === 'connected') {
     dlog(`[connect-hardcoded]   → redan ansluten, returnerar idempotent`);
     return { connected: true, durationMs: 0 };
