@@ -13,6 +13,7 @@ import {
   getAllSubsystemStates, getSubsystemState, getSubsystemTransitions, type SubsystemId,
 } from './ble/index.js';
 import type { GainCalPoint } from './alsaMic.js';
+import { FRAME_MS } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { getRuntimeHealth } from './runtimeHealth.js';
 // FIX 2: statiska imports i stället för await import() per request — interna
@@ -442,7 +443,7 @@ export function startConfigServer(port = 3050): void {
       live: { inputLevel: Math.max(0, Math.min(1, micTotal)) },
       sonos: { playbackState: sonos?.playbackState ?? null, volume: sonos?.volume ?? null },
       engine: engine
-        ? { running: true, tickMs: engine.getTickMs(), hz: Math.round(1000 / engine.getTickMs()), palette: engine.getPalette() }
+        ? { running: true, tickMs: engine.getTickMs(), hz: Math.round(1000 / FRAME_MS), palette: engine.getPalette() }
         : { running: false, tickMs: null, hz: null, palette: [] },
       beat: engine?.getBeatInfo?.() ?? null,
     });
@@ -539,7 +540,7 @@ export function startConfigServer(port = 3050): void {
         ? {
             running: true,
             tickMs: engine.getTickMs(),
-            hz: Math.round(1000 / engine.getTickMs()),
+            hz: Math.round(1000 / FRAME_MS),
             palette: engine.getPalette(),
           }
         : {

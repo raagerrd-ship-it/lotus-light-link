@@ -96,6 +96,13 @@ let configServer: typeof import('./configServer.js') | null = null;
 
 const _inflight: Partial<Record<SubsystemId, Promise<void>>> = {};
 
+// A3: EN onSonosChange-prenumeration (registreras i startSonosSubsystem).
+// Lifecycle registrerar sin playing-handler via ignite-dep:n och får senast
+// kända state replay:at direkt. Två prenumerationer = två boot-fetches, eftersom
+// onSonosChange gör en färsk fetchStatusOnce per registrering.
+let _sonosPlayingHandler: ((playing: boolean) => Promise<void> | void) | null = null;
+let _lastSonosPlaying: boolean | null = null;
+
 function normalizeSonosBaseUrl(raw: string | null | undefined): string {
   const trimmed = (raw ?? '').trim().replace(/\/$/, '');
   const base = trimmed.length > 0 ? trimmed : SONOS_BUDDY_API_URL;
@@ -176,19 +183,13 @@ async function ensureEngineInstance(): Promise<void> {
 
 
 
-  const setCb = (globalThis as any).__lotusSetEngineCb;
-  if (typeof setCb === 'function') {
-    setCb(
-      () => engineInstance?.onBleConnected(),
-      () => engineInstance?.onBleDisconnected(),
-    );
-  } else {
-    const { setEngineBleCallbacks } = await import('./ble-driver/connect.js');
-    setEngineBleCallbacks(
-      () => engineInstance?.onBleConnected(),
-      () => engineInstance?.onBleDisconnected(),
-    );
-  }
+  // Additiv registrering (listener-lista i connect.ts) — main:s hook
+  // läggs till separat, ingen globalThis-indirektion behövs.
+  const { setEngineBleCallbacks } = await import('./ble-driver/connect.js');
+  setEngineBleCallbacks(
+    () => engineInstance?.onBleConnected(),
+    () => engineInstance?.onBleDisconnected(),
+  );
 
   try {
     const savedGamma = getItem('dimming-gamma');
@@ -306,9 +307,17 @@ async function startSonosSubsystem(): Promise<void> {
       // await så fresh-status race (≤1500ms) hinner trigga setPlaying(true)
       // FÖRE markSubsystemReady — annars kan engine starta i paused-state
       // även om Sonos redan spelar.
+      // EN prenumeration (A3): dispatchar till både engine-side-effects och
+      // lifecycle:s playing-handler.
       await sonos.onSonosChange((state) => {
         applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
         noteTrackName(state.trackName ?? null);
+        // TV-läge håller motorn IGÅNG så den reaktiva TV-profilen tickar.
+        // Idle gäller enbart äkta "spelar inte".
+        const playing = typeof state.playbackState === 'string'
+          && state.playbackState.includes('PLAYING');
+        _lastSonosPlaying = playing;
+        void _sonosPlayingHandler?.(playing);
       });
 
       markSubsystemReady('sonos');
@@ -333,13 +342,6 @@ async function logRuntimePermissions(): Promise<void> {
     const groups = process.getgroups?.() ?? [];
     console.log(`[Boot/Perms] uid=${uid} gid=${gid} supplementary-gids=[${groups.join(',')}]`);
 
-    try {
-      const { execFile } = await import('node:child_process');
-      const { promisify } = await import('node:util');
-      const exec = promisify(execFile);
-      const { stdout } = await exec('id', ['-Gn']);
-      console.log(`[Boot/Perms] groups: ${stdout.trim()}`);
-    } catch {}
 
     try {
       const status = fs.readFileSync('/proc/self/status', 'utf8');
@@ -430,7 +432,6 @@ async function main() {
       const { recordRestart, markGracefulShutdown } = await import('./restartLog.js');
       const { getRuntimeHealth, msSinceLastTick, getEngineTickTotal } = await import('./runtimeHealth.js');
 
-      let lastTickOk = 0;
       let lastEngineTicks = 0;
       let lastAudioCbs = 0;
       let stuckMs = 0;
@@ -450,7 +451,6 @@ async function main() {
           if (lc.getLifecycleState() !== 'MOTOR_ON') {
             stuckMs = 0;
             recoveryAttempts = 0;
-            lastTickOk = bleStats.tickOkCount;
             lastEngineTicks = getEngineTickTotal();
             lastAudioCbs = alsaMic?.getAudioCbStats?.().count ?? 0;
             return;
@@ -463,7 +463,6 @@ async function main() {
           if (curEngineTicks !== lastEngineTicks) {
             stuckMs = 0;
             recoveryAttempts = 0;
-            lastTickOk = curTickOk;
             lastEngineTicks = curEngineTicks;
             lastAudioCbs = curAudioCbs;
             return;
@@ -553,41 +552,20 @@ async function main() {
     console.warn('[Boot] kunde inte koppla BLE restart-hook:', e?.message ?? e);
   }
 
-  // ── Auto-restart efter ofrivillig död ────────────────────────────────────
-  const {
-    consumeReconnectOnBootFlag,
-    setReconnectOnBootFlag,
-    clearReconnectOnBootFlag,
-  } = await import('./ble-driver/reconnect-flag.js');
-
-  // Hook in BLE-callbacks så flaggan sätts när lampa ansluts.
+  // Hook in BLE-connect-callback: uppdatera session-marker när lampan ansluts
+  // så restart-loggens uptimeBeforeMs blir korrekt. Additiv registrering —
+  // engine:s egna callbacks sattes redan i ensureEngineInstance().
   try {
     const { setEngineBleCallbacks } = await import('./ble-driver/connect.js');
-    let engineConnected: (() => void) | null = null;
-    let engineDisconnected: (() => void) | null = null;
-    setEngineBleCallbacks(
-      () => {
-        // Sätt flagga + uppdatera session-marker så uptimeBeforeMs blir korrekt
-        setReconnectOnBootFlag();
-        markSessionAlive();
-        engineConnected?.();
-      },
-      () => { engineDisconnected?.(); },
-    );
-    (globalThis as any).__lotusSetEngineCb = (onC: () => void, onD: () => void) => {
-      engineConnected = onC;
-      engineDisconnected = onD;
-    };
+    setEngineBleCallbacks(() => { markSessionAlive(); }, () => {});
   } catch (e: any) {
-    console.warn('[Boot] kunde inte koppla post-connect flagg-hook:', e?.message ?? e);
+    console.warn('[Boot] kunde inte koppla post-connect hook:', e?.message ?? e);
   }
 
   // ── Sonos-driven lifecycle (bil-tändning-modell) ─────────────────────────
-  // Ersätter den tidigare /tmp-flagga-baserade auto-restart-pathen.
-  // Sonos playbackState är nu källan till sanning för om motorn ska köra.
-  // /tmp-flaggan kvarstår som redundant safety net (skrivs av crash-handlers
-  // nedan + post-connect-hook ovan) men consumeras inte längre vid boot.
-  consumeReconnectOnBootFlag(); // dränera ev. gammal flagga så den inte hänger kvar
+  // Sonos playbackState är källan till sanning för om motorn ska köra.
+  // (Den gamla /tmp/lotus-auto-reconnect-on-boot-flaggan är borttagen — den
+  //  skrevs överallt men drev inget boot-beslut.)
   // Eager engine init: skapa engineInstance INNAN ignite() så lifecycle.toMotorOn()
   // kan kalla setPlaying(true) omedelbart utan race mot startMicSubsystem.
   try {
@@ -601,23 +579,24 @@ async function main() {
     try {
       const { ignite } = await import('./engineLifecycle.js');
       const { startBleEngineMinimal } = await import('./ble/engine-start-minimal.js');
-      const { connectHardcoded, getHardcodedConnected } = await import('./ble-driver/connect.js');
+      const {
+        connectHardcoded, getHardcodedConnected,
+        requestAutoReconnect, cancelAutoReconnect,
+      } = await import('./ble-driver/connect.js');
       await ignite({
         startBleEngineMinimal,
         startSonosSubsystem,
         startMicSubsystem,
         connectHardcoded: () => connectHardcoded(),
         getHardcodedConnected,
+        requestAutoReconnect,
+        cancelAutoReconnect,
         getEngineInstance: () => engineInstance as any,
         onSonosPlayingChange: async (fn) => {
-          if (!sonos) return;
-          await sonos.onSonosChange(async (state) => {
-            const playing = typeof state.playbackState === 'string'
-              && state.playbackState.includes('PLAYING');
-            // TV-läge håller motorn IGÅNG så den reaktiva TV-profilen tickar.
-            // Idle gäller enbart äkta "spelar inte".
-            await fn(playing);
-          });
+          _sonosPlayingHandler = fn;
+          // Replay:a senast kända state — annars missas ett PLAYING som
+          // anlände mellan startSonosSubsystem() och ignite().
+          if (_lastSonosPlaying != null) await fn(_lastSonosPlaying);
         },
       });
     } catch (e: any) {
@@ -625,7 +604,7 @@ async function main() {
     }
   })();
 
-  // Crash-handlers: logga reason, sätt flagga, exit. systemd Restart=always tar oss tillbaka.
+  // Crash-handlers: logga reason, exit. systemd Restart=always tar oss tillbaka.
   // Boot-handlarna lämnar plats åt dessa (annars dubbel-exit utan restart-logg).
   process.off('uncaughtException', _bootUncaught);
   process.off('unhandledRejection', _bootRejection);
@@ -635,7 +614,6 @@ async function main() {
       recordRestart('uncaught-exception', err?.stack ?? err?.message ?? String(err));
       markGracefulShutdown(); // säg åt nästa boot att INTE logga 'unknown' — vi har loggat reason
     } catch {}
-    setReconnectOnBootFlag();
     process.exit(1);
   });
   process.on('unhandledRejection', (reason) => {
@@ -645,15 +623,13 @@ async function main() {
       recordRestart('unhandled-rejection', detail);
       markGracefulShutdown();
     } catch {}
-    setReconnectOnBootFlag();
     process.exit(1);
   });
 
-  // Graceful shutdown — UI eller user-initiated. Rensa flagga + session-marker
+  // Graceful shutdown — UI eller user-initiated. Markera session-marker
   // så nästa boot inte loggar en falsk 'unknown-systemd-restart'.
   const shutdown = async () => {
     console.log('\n[Shutdown] Cleaning up…');
-    clearReconnectOnBootFlag();
     markGracefulShutdown();
     try { engineInstance?.stop(); } catch {}
     try { alsaMic?.stopMic(); } catch {}

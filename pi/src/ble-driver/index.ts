@@ -83,10 +83,10 @@ export {
   connectHardcoded, disconnectHardcoded, getHardcodedConnected,
   getLastDisconnectReason,
   forceCleanupStalePeripheral, scheduleAutoReconnect, triggerIdleDisconnect,
+  requestAutoReconnect, cancelAutoReconnect,
   setEngineBleCallbacks, setRestartHook,
 } from './connect.js';
 export { HARDCODED_DEVICE, matchesHardcoded, setDeviceConfig } from './device-config.js';
 export { isHci0Up } from './adapter-hci-check.js';
 export { getOutstandingPackets, isControllerDrainAttached, getAttachedHandle, attachControllerDrain, detachControllerDrain } from './controllerDrain.js';
 export { getNoble, getNobleAsync } from './noble-singleton.js';
-export { setReconnectOnBootFlag, consumeReconnectOnBootFlag, clearReconnectOnBootFlag } from './reconnect-flag.js';
