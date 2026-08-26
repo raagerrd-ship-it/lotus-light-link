@@ -583,6 +583,10 @@ async function main() {
         connectHardcoded, getHardcodedConnected,
         requestAutoReconnect, cancelAutoReconnect,
       } = await import('./ble-driver/connect.js');
+      const { waitForConnectCooldown, setChurnHook } = await import('./ble-driver/connect-throttle.js');
+      setChurnHook(({ attempts, pauseMs }) => {
+        recordRestart('ble-churn-guard', `${attempts} connect-försök på 30s — pausar ${pauseMs}ms`);
+      });
       await ignite({
         startBleEngineMinimal,
         startSonosSubsystem,
@@ -591,7 +595,9 @@ async function main() {
         getHardcodedConnected,
         requestAutoReconnect,
         cancelAutoReconnect,
+        waitForConnectCooldown: () => waitForConnectCooldown(),
         getEngineInstance: () => engineInstance as any,
+
         onSonosPlayingChange: async (fn) => {
           _sonosPlayingHandler = fn;
           // Replay:a senast kända state — annars missas ett PLAYING som
