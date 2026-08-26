@@ -156,6 +156,14 @@ export interface LightCalibration {
   barAccent: number;
   /** Topp-boost: extra lyft när analysatorns intensity > 90 %. 0 = av. Default 0.2. */
   peakBoost: number;
+  /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
+   *  inLowFrac × point1.gain → golv. Default 0.009 (uppmätt v772). */
+  inLowFrac: number;
+  /** DYNAMIK: övre input-tröskel som fraktion av gainens primärpunkt. level över
+   *  inHighFrac × point1.gain → full. Default 0.031 (uppmätt v772). */
+  inHighFrac: number;
+  /** DYNAMIK: exponent på den expanderade formen. 1.0 = linjär, >1 = mer kontrast. */
+  shapeExpand: number;
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
   colorSpectralTilt: number;
@@ -168,7 +176,7 @@ const DEFAULT_CAL: LightCalibration = {
   attackAlpha: 1.0, releaseAlpha: 0.45,
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
-  brightnessFloor: 25,
+  brightnessFloor: 10,
   transientGain: 0.4,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
@@ -185,8 +193,11 @@ const DEFAULT_CAL: LightCalibration = {
   beatLeadMs: 0,
   beatSyncStrength: 0.10,
   dropSource: 'analyser',
-  barAccent: 1.0,
+  barAccent: 1.8,
   peakBoost: 0.2,
+  inLowFrac: 0.009,
+  inHighFrac: 0.031,
+  shapeExpand: 1.0,
   colorSpectralTilt: 0.25,
 };
 
