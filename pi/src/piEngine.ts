@@ -156,6 +156,14 @@ export interface LightCalibration {
   barAccent: number;
   /** Topp-boost: extra lyft när analysatorns intensity > 90 %. 0 = av. Default 0.2. */
   peakBoost: number;
+  /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
+   *  inLowFrac × point1.gain → golv. Default 0.009 (uppmätt v772). */
+  inLowFrac: number;
+  /** DYNAMIK: övre input-tröskel som fraktion av gainens primärpunkt. level över
+   *  inHighFrac × point1.gain → full. Default 0.031 (uppmätt v772). */
+  inHighFrac: number;
+  /** DYNAMIK: exponent på den expanderade formen. 1.0 = linjär, >1 = mer kontrast. */
+  shapeExpand: number;
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
   colorSpectralTilt: number;
@@ -168,7 +176,7 @@ const DEFAULT_CAL: LightCalibration = {
   attackAlpha: 1.0, releaseAlpha: 0.45,
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
-  brightnessFloor: 25,
+  brightnessFloor: 10,
   transientGain: 0.4,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
@@ -185,8 +193,11 @@ const DEFAULT_CAL: LightCalibration = {
   beatLeadMs: 0,
   beatSyncStrength: 0.10,
   dropSource: 'analyser',
-  barAccent: 1.0,
+  barAccent: 1.8,
   peakBoost: 0.2,
+  inLowFrac: 0.009,
+  inHighFrac: 0.031,
+  shapeExpand: 1.0,
   colorSpectralTilt: 0.25,
 };
 
@@ -1433,7 +1444,17 @@ export class PiLightEngine {
       // frame.intensity (bands.shape) är sektions-relativ och används BARA till
       // topp-boosten nedan — aldrig som form-källa.
       const level = Math.max(0, Math.min(1, bands.totalRms));
-      let shape = level;
+      // STATISK DYNAMIK-EXPANSION: sträck det komprimerade level-området till
+      // golv→tak. inLow/inHigh binds till gainens primärpunkt så de följer en
+      // gain-omkalibrering men INTE volymen (level är redan volym-kompenserat).
+      // Fasta tal → ingen AGC, ingen dynamicCenter.
+      const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
+      const inLow = (cal.inLowFrac ?? 0.009) * gRef;
+      const inHigh = (cal.inHighFrac ?? 0.031) * gRef;
+      let e = (level - inLow) / Math.max(1e-6, inHigh - inLow);
+      e = e < 0 ? 0 : e > 1 ? 1 : e;
+      const sx = cal.shapeExpand ?? 1.0;
+      let shape = sx === 1 ? e : Math.pow(e, sx);
 
       // Mjuk topp-boost på ÄKTA toppar (intensity > 90 %), adderad FÖRE
       // smoothingen så soft-releasen fadear ner den jämnt (inget hack).
