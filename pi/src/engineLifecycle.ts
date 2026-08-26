@@ -96,15 +96,6 @@ function cancelScheduledShutdown(): void {
   }
 }
 
-function cancelScheduledShutdown(): void {
-  if (pendingShutdownTimer) {
-    clearTimeout(pendingShutdownTimer);
-    pendingShutdownTimer = null;
-    pendingShutdownAt = 0;
-    console.log('[Lifecycle] Pending shutdown cancelled (PLAYING resumed inom grace)');
-  }
-}
-
 async function doShutdown(): Promise<void> {
   pendingShutdownTimer = null;
   pendingShutdownAt = 0;
