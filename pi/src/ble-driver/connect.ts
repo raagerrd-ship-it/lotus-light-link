@@ -494,7 +494,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // Notifiera engine — den startar keep-alive + idle-heartbeat
             // (om Sonos är pausad). Vid spelande musik skippar engine
             // keep-alive eftersom mic-writes håller länken.
-            _onConnected?.();
+            for (const fn of _onConnectedCbs) { try { fn(); } catch {} }
             dlog(`${ts()} 8. anslutning klar — engine notifierad om BLE-status`);
             finish({ connected: true });
           } catch (e: any) {
