@@ -334,8 +334,18 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
     return { connected: true, durationMs: 0 };
   }
 
+  // H3: hårt golv (2s) mellan connect-försök i samma process, oavsett väg.
+  if (_lastConnectCallAt > 0 && sinceLast < MIN_CONNECT_GAP_MS) {
+    const wait = MIN_CONNECT_GAP_MS - sinceLast;
+    dlog(`[connect-hardcoded]   → golv: väntar ${wait}ms sedan förra försöket`);
+    await sleep(wait);
+  }
+  _lastConnectCallAt = Date.now();
+  noteConnectAttempt(); // H2: persistera attempt på tmpfs (cross-restart)
+
   const t0 = Date.now();
   const ts = () => `+${(Date.now() - t0).toString().padStart(5, ' ')}ms`;
+
 
   const inflight = (async (): Promise<{ connected: boolean; error?: string }> => {
     const n = getNoble();
