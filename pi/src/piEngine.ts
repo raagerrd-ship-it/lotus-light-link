@@ -157,13 +157,27 @@ export interface LightCalibration {
   /** Topp-boost: extra lyft när analysatorns intensity > 90 %. 0 = av. Default 0.2. */
   peakBoost: number;
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
-   *  inLowFrac × point1.gain → golv. Default 0.009 (uppmätt v772). */
+   *  inLowFrac × point1.gain → golv. Används BARA i fast-läge (adaptiveCeiling=false). */
   inLowFrac: number;
   /** DYNAMIK: övre input-tröskel som fraktion av gainens primärpunkt. level över
-   *  inHighFrac × point1.gain → full. Default 0.031 (uppmätt v772). */
+   *  inHighFrac × point1.gain → full. Används BARA i fast-läge. */
   inHighFrac: number;
   /** DYNAMIK: exponent på den expanderade formen. 1.0 = linjär, >1 = mer kontrast. */
   shapeExpand: number;
+  /** ADAPTIVT TAK: låt inLow/inHigh följa en långsam medelnivå av level → varje låt
+   *  normaliseras till sin egen energi. Default true. */
+  adaptiveCeiling: boolean;
+  /** Tidskonstant (ms) för det adaptiva takets EMA. Default 7000. */
+  ceilFollowMs: number;
+  /** Golv på medelnivån → en tyst låt drar inte upp taket på brus. Default 0.12. */
+  ceilFloor: number;
+  /** Multiplikator medelnivå → inLow. Default 0.55. */
+  ceilLowMul: number;
+  /** Multiplikator medelnivå → inHigh. Default 1.35. */
+  ceilHighMul: number;
+  /** PRE-DROP: hur mycket analysatorns buildUp-tension lyfter ljuset in i droppen. */
+  buildUpGain: number;
+
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
   colorSpectralTilt: number;
