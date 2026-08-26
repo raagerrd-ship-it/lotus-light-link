@@ -1,70 +1,41 @@
-# Bedömning: stabilitet OK, dynamiken är sannolikt den svaga punkten
+# FIX 5 — Anti-churn för BLEDOM-lampan
 
-## Vad koden faktiskt gör idag (verifierat i källan)
+Målet: en deploy-svit ska aldrig kunna hamra lampan med connect/disconnect-cykler så att dess firmware låser sig. Endast tids-spärrar runt connect/disconnect — write-path, ACL-drain, conn-interval-forcering (15 ms) och watchdogen lämnas orörda.
 
-Ljus-kedjan i `piEngine.tickInner` är nu:
+## H1 — Bounded ren disconnect vid shutdown
 
-```text
-shape = clamp(bands.totalRms)            // rå RMS × tvåpunkts-gain, ingen AGC
- + peakBoost om intensity > 0.90
- → tystnads-gate (tickEnergyFloor 0.01)
- → attack/release-smoothing (attack 1.0, log-release 0.45)
- + fluxBoost (transientGain 0.4)
-outN = floorN + energyForm × (1 - floorN)   // floor = 25 %
-pct  = round(outN × 100), flickerDeadband 0.02
-```
+`pi/src/index.ts`: shutdown-handlern (SIGINT/SIGTERM) väntar i dag på `disconnectHardcoded()` utan tidsgräns, så systemd kan SIGKILL:a mitt i och lampan får ett abrupt tapp.
 
-Stabilitetssidan ser bra ut: hard-fail-pipeline med abort-räknare när mic-frame
-saknas, NaN-guards, atomiska storage-skrivningar, icke-blockerande 1-slot
-BLE-writer med stale-release, ACL-gate och keep-alive-recovery. Inget i den
-delen pekar mot frysningar längre.
+Åtgärd: kör disconnect via `Promise.race([disconnectHardcoded(), sleep(1500)])`, logga om timeouten vann, och `process.exit(0)` direkt efteråt.
 
-Dynamiken är den svaga punkten, av två strukturella skäl i koden ovan:
+## H2 — Cross-restart connect-cooldown (kärnan)
 
-1. `shape` ÄR RMS-amplituden rakt av. RMS på loudness-normaliserad musik varierar
-   litet inom en låt, så mellanregistret dominerar och 0-till-1-svinget används
-   aldrig fullt ut — ljuset "andas" i ett band i stället för floor→tak.
-2. `brightnessFloor = 25` äter dessutom nedersta fjärdedelen, så det svinget som
-   finns komprimeras in i 25–100 %.
+Ny liten modul i ble-drivern (fristående, bara `node:fs`) som läser/skriver `/tmp/lotus-ble-connect-at`:
 
-Hur stort svinget faktiskt är just nu är INTE mätt — det avgör hur hårt vi ska
-expandera, så steg 1 nedan är en mätning, inte en gissning.
+- `connectHardcoded()` skriver `Date.now()` till filen vid STARTEN av varje connect-försök (inte per write).
+- `toMotorOn()` i `pi/src/engineLifecycle.ts` läser filen före initial `connectHardcoded()`. Om `now - last < 4000 ms`: `await sleep(4000 - elapsed)`.
 
-## Plan
+Effekt: normal omstart (senaste connect timmar gammal) → ingen fördröjning. Snabb deploy-svit → connect-försöken sprids ≥4 s isär. tmpfs → ingen SD-slitage och nollställs vid Pi-reboot, vilket är rätt.
 
-### Steg 1 — Mät det verkliga svinget (ingen kodändring)
-Logga `level`, `shape`, `energyForm`, `brightnessPct` från `/api/diagnostics`
-i ~2 minuter under en typisk låt och räkna ut min / median / p95 för `level`.
-Verifiering: vi vet om `level` ligger t.ex. 0.35–0.85 (komprimerat) eller redan
-0.05–1.0 (då är floor/deadband problemet, inte formen).
+## H3 — Hårt golv mellan connect-försök i samma process
 
-### Steg 2 — Statisk expansionskurva på formen
-Ny cal-param `shapeExpand` (default 1.0 = av, dvs. exakt dagens beteende):
+`pi/src/ble-driver/connect.ts` har redan `_lastConnectCallAt` men använder den bara för hammer-varningen. Åtgärd: gör den till en spärr — i början av `connectHardcoded()` (efter in-flight/redan-ansluten-guards) `await sleep()` upp till 2000 ms sedan förra försöket, oavsett väg (HTTP, lifecycle, auto-reconnect-loop).
 
-```text
-shape = clamp((level - inLow) / (inHigh - inLow)) ^ shapeExpand
-```
+## H4 — Churn-detektor → lång paus
 
-med `inLow`/`inHigh` satta från mätningen i steg 1 som FASTA tal i inställningarna
-(inte adaptiva). Det ger floor→tak-svep utan att införa AGC, dynamicCenter eller
-profiler på ljus-tappen — de förblir borta enligt tidigare beslut. Kurvan läggs
-FÖRE peakBoost och smoothingen så release fortfarande fadear jämnt.
+Håll en liten ring med de senaste connect-tidsstämplarna i `/tmp/lotus-ble-connect-at` (JSON-array, max ~8 poster). Fler än 5 försök inom 30 s → skjut nästa connect ~15 s framåt och logga `ble-churn-guard` via restart-loggen (app-sidan; drivern får en hook likt `setRestartHook` så den förblir importfri).
 
-### Steg 3 — Släpp botten fri
-Sänk `brightnessFloor`-defaulten från 25 till ca 8–10 så breakdowns faktiskt går
-mörka, och behåll deadband 0.02 (den blockerar bara mikrojitter).
+## Teknisk sammanfattning
 
-### Steg 4 — UI
-En slider "Dynamik" i Ljus-panelen som styr `shapeExpand`, plus visning av
-in-låg/in-hög som två små numeriska fält (ifyllda av mätningen). `LightPreview`
-visar redan `outputBrightness`, så effekten syns direkt när man drar.
+- `pi/src/ble-driver/connect-throttle.ts` (ny): `noteConnectAttempt()`, `getCooldownWaitMs(cooldownMs)`, churn-räkning på tmpfs-filen.
+- `pi/src/ble-driver/connect.ts`: kalla `noteConnectAttempt()` + hårt 2 s-golv i `connectHardcoded()`; churn-paus innan försöket.
+- `pi/src/ble-driver/index.ts`: re-exportera de nya hjälparna.
+- `pi/src/engineLifecycle.ts`: ny dep `waitForConnectCooldown()` som `toMotorOn()` awaitar före initial connect.
+- `pi/src/index.ts`: bounded disconnect i shutdown + wire:a in cooldown-dep och churn-logg-hook.
+- `pi/package.json`: version-bump.
 
-### Steg 5 — Verifiering
-Kör om mätningen från steg 1: `brightnessPct` ska nu nå ≤ golvet i breakdowns och
-95–100 % i refränger under samma låt. Om inte, justera bara `inHigh`/`shapeExpand`.
+## Verifiering
 
-## Teknisk detalj
-- Rör bara `pi/src/piEngine.ts` (kurvan + defaults) och `src/pages/PiMobile.tsx`
-  (slidern). Ingen ändring i `alsaMic.ts`-gainen eller analysatorns AGC.
-- `shapeExpand = 1.0`, `inLow = 0`, `inHigh = 1` ger bit-identiskt dagens output,
-  så uppgraderingen är riskfri innan man rör slidern.
+- Normal omstart: motorn ansluter som förut, ingen märkbar extra fördröjning.
+- 3–4 snabba `systemctl restart` → loggen visar cooldown-väntan och connect-försök ≥4 s isär; lampan fortsätter annonsera.
+- Deploy: loggen visar ren disconnect före exit (eller "disconnect timeout" efter 1,5 s) i stället för att blockera till SIGKILL.
