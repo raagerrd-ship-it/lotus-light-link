@@ -31,7 +31,6 @@ Filer i mappen:
 | `forceConnInterval.ts` | Tvingar 20ms connection interval (16 units) via `hcitool` |
 | `adapter-hci-check.ts` | `isHci0Up()` — passiv koll att hci0 är UP RUNNING (up-only-policy) |
 | `noble-singleton.ts` | Lazy `@stoprocent/noble`-singleton (`getNobleAsync`) |
-| `reconnect-flag.ts` | `/tmp`-flagga för auto-restart efter process.exit |
 | `device-config.ts` | Mål-lampa (`setDeviceConfig`, `matchesHardcoded`) |
 | `log.ts` | Lokal logger (env-gated `LOTUS_DEBUG`, override via `setLogger`) |
 | `types.ts` | TypeScript-typer |

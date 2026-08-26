@@ -43,25 +43,31 @@ lifecycle-state.
 - `POST /api/lifecycle/override { off }` → explicit toggle.
 - `/api/status.lifecycle` → `{ state, manualOverrideOff, pendingShutdownInMs }`.
 
-## Connect-retry inom MOTOR_ON
+## Connect-retry inom MOTOR_ON (FIX 4B, v1.0.771)
 
-Om initial `connectHardcoded()` failar i `toMotorOn()` (t.ex. BLEDOM svarar
-inte) startas en backoff-sekvens i `engineLifecycle.ts`:
-`scheduleConnectRetries()` med schema `[2s, 5s, 10s, 20s]` (4 försök, ger
-upp efter ~37s). Cancelleras direkt av:
-- PAUSED (`scheduleShutdownToIgnition` kallar `cancelConnectRetries`)
-- `userStopAll()` (manuell disconnect)
-- Ny `toMotorOn()`-cykel (cycle-token bumpas)
-- Lyckad connect (egen path eller annan)
-
-Räknas oberoende av `CONSECUTIVE_FAIL_LIMIT` i `connect-hardcoded.ts` —
-process.exit-pathen där lever kvar som last-resort.
+Om initial `connectHardcoded()` failar i `toMotorOn()` aktiveras drivrutinens
+auto-reconnect-loop via `deps.requestAutoReconnect()` — samma backoff-loop
+(2/4/8/16/30s) som täcker tappad länk. AV via `cancelAutoReconnect()` vid:
+- PAUSED (`scheduleShutdownToIgnition`)
+- `userStopAll()`
+- Ny `toMotorOn()`-cykel
+Lyckad connect återställer loopen inne i drivern. Lifecycle har ingen egen
+retry-machineri längre (den gamla [2s,5s,10s,20s]-sekvensen är borttagen).
+`CONSECUTIVE_FAIL_LIMIT` → `process.exit` kvarstår som last-resort.
 
 ## Process.exit-recovery
 BLE 4-fails → `process.exit(0)` → systemd restart → boot → IGNITION →
 sonos-poller säger PLAYING (cached på sonos-buddy) → `toMotorOn()` →
-blink. Inget UI-klick. `/tmp/lotus-auto-reconnect-on-boot` är legacy
-(no-op vid read), kvar bara som redundant safety net.
+blink. Inget UI-klick. `/tmp/lotus-auto-reconnect-on-boot` är BORTTAGEN
+(v1.0.771) — skrevs överallt men drev inget boot-beslut; `reconnect-flag.ts`
+raderad ur ble-driver.
+
+## Övrigt (v1.0.771)
+- `setEngineBleCallbacks` är ADDITIV (listener-array) — engine-registrering +
+  app-hook co-existerar; `globalThis.__lotusSetEngineCb` borttagen.
+- EN `onSonosChange`-prenumeration i index.ts (A3-dispatcher) som både kör
+  `applySonosStateToEngine` och forwardar playing till lifecycle; senaste
+  playing-state replayas till sen registrant.
 
 ## Supersedes
 - `mem://pi/runtime/idle-disconnect-policy` — 2-min idle-disconnect-pathen
