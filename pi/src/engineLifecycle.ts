@@ -30,14 +30,11 @@ let pendingShutdownTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingShutdownAt = 0;
 const listeners = new Set<(s: LifecycleState) => void>();
 
-// Connect-retry inom MOTOR_ON: körs om initial connectHardcoded failar.
-// Cancelleras av PAUSED, IGNITION_OFF, ny toMotorOn-cykel, eller lyckad connect.
-const CONNECT_RETRY_SCHEDULE_MS = [2000, 5000, 10000, 20000];
-let _connectRetryTimer: ReturnType<typeof setTimeout> | null = null;
-let _connectRetryActive = false;
-let _connectRetryAttempt = 0;
-let _connectRetryNextAt = 0;
-let _connectRetryCycle = 0;
+// Connect-retry inom MOTOR_ON är konsoliderad (FIX 4B): initial connect-fail
+// aktiverar ble-driverns auto-reconnect-loop (backoff 2/4/8/16/30s) via
+// deps.requestAutoReconnect(). AV via deps.cancelAutoReconnect() vid
+// PAUSED-shutdown, userStopAll och ny toMotorOn-cykel. Manual-only-policyn
+// hålls: i IGNITION_OFF körs varken toMotorOn eller requestAutoReconnect.
 
 function setState(next: LifecycleState): void {
   if (next === state) return;
@@ -78,6 +75,10 @@ interface IgniteDeps {
   startMicSubsystem: () => Promise<void>;
   connectHardcoded: () => Promise<{ connected: boolean }>;
   getHardcodedConnected: () => { connected: boolean };
+  /** Aktivera driverns auto-reconnect-loop (backoff 2/4/8/16/30s). */
+  requestAutoReconnect: () => void;
+  /** Stäng av auto-reconnect-loopen helt. */
+  cancelAutoReconnect: () => void;
   getEngineInstance: () => { setPlaying: (p: boolean) => void; shutdownToIgnition: () => Promise<void> } | null;
   onSonosPlayingChange: (fn: (playing: boolean) => Promise<void> | void) => Promise<void> | void;
 }
@@ -95,73 +96,13 @@ function cancelScheduledShutdown(): void {
   }
 }
 
-function cancelConnectRetries(reason: string): void {
-  if (_connectRetryTimer) {
-    clearTimeout(_connectRetryTimer);
-    _connectRetryTimer = null;
+function cancelScheduledShutdown(): void {
+  if (pendingShutdownTimer) {
+    clearTimeout(pendingShutdownTimer);
+    pendingShutdownTimer = null;
+    pendingShutdownAt = 0;
+    console.log('[Lifecycle] Pending shutdown cancelled (PLAYING resumed inom grace)');
   }
-  if (_connectRetryActive) {
-    console.log(`[Lifecycle] connect-retry avbruten (${reason})`);
-  }
-  _connectRetryActive = false;
-  _connectRetryAttempt = 0;
-  _connectRetryNextAt = 0;
-}
-
-export function getConnectRetryStatus(): { active: boolean; attempt: number; nextInMs: number | null } {
-  return {
-    active: _connectRetryActive,
-    attempt: _connectRetryAttempt,
-    nextInMs: _connectRetryNextAt ? Math.max(0, _connectRetryNextAt - Date.now()) : null,
-  };
-}
-
-function scheduleConnectRetries(deps: IgniteDeps): void {
-  if (_connectRetryActive) return;
-  _connectRetryActive = true;
-  _connectRetryCycle++;
-  const cycle = _connectRetryCycle;
-
-  const runStep = (idx: number) => {
-    if (idx >= CONNECT_RETRY_SCHEDULE_MS.length) {
-      console.warn(`[Lifecycle] connect-retry uttömd (${CONNECT_RETRY_SCHEDULE_MS.length} försök) — ger upp tills ny PLAYING`);
-      _connectRetryActive = false;
-      _connectRetryAttempt = 0;
-      _connectRetryNextAt = 0;
-      return;
-    }
-    const delay = CONNECT_RETRY_SCHEDULE_MS[idx];
-    _connectRetryAttempt = idx + 1;
-    _connectRetryNextAt = Date.now() + delay;
-    console.log(`[Lifecycle] connect-retry ${idx + 1}/${CONNECT_RETRY_SCHEDULE_MS.length} schemalagd om ${delay}ms`);
-
-    _connectRetryTimer = setTimeout(async () => {
-      _connectRetryTimer = null;
-      if (cycle !== _connectRetryCycle) return;
-      if (state !== 'MOTOR_ON') { cancelConnectRetries('state ej MOTOR_ON'); return; }
-      if (deps.getHardcodedConnected().connected) {
-        console.log('[Lifecycle] connect-retry: redan ansluten — avbryter');
-        _connectRetryActive = false; _connectRetryAttempt = 0; _connectRetryNextAt = 0;
-        return;
-      }
-      try {
-        const r = await deps.connectHardcoded();
-        if (cycle !== _connectRetryCycle) return;
-        if (r.connected) {
-          console.log(`[Lifecycle] connect-retry ${idx + 1} lyckades`);
-          _connectRetryActive = false; _connectRetryAttempt = 0; _connectRetryNextAt = 0;
-          return;
-        }
-        console.warn(`[Lifecycle] connect-retry ${idx + 1} failed`);
-      } catch (e: any) {
-        console.warn(`[Lifecycle] connect-retry ${idx + 1} fel:`, e?.message ?? e);
-      }
-      if (cycle !== _connectRetryCycle) return;
-      if (state !== 'MOTOR_ON') { cancelConnectRetries('state ej MOTOR_ON'); return; }
-      runStep(idx + 1);
-    }, delay);
-  };
-  runStep(0);
 }
 
 async function doShutdown(): Promise<void> {
@@ -180,7 +121,9 @@ async function doShutdown(): Promise<void> {
 
 function scheduleShutdownToIgnition(): void {
   if (pendingShutdownTimer) return;
-  cancelConnectRetries('PAUSED — shutdown schemalagt');
+  // Stoppa auto-reconnect direkt — annars kan loopen återansluta lampan
+  // mitt under grace-fönstret, precis innan shutdown river ner den igen.
+  _deps?.cancelAutoReconnect();
   pendingShutdownAt = Date.now() + IGNITION_REENTRY_GRACE_MS;
   console.log(`[Lifecycle] PAUSED — schemalägger shutdown om ${IGNITION_REENTRY_GRACE_MS}ms (cancellerbar)`);
   pendingShutdownTimer = setTimeout(() => { void doShutdown(); }, IGNITION_REENTRY_GRACE_MS);
@@ -196,7 +139,7 @@ async function toMotorOn(): Promise<void> {
   if (state === 'MOTOR_ON') return;
 
   const deps = _deps;
-  cancelConnectRetries('ny toMotorOn-cykel');
+  deps.cancelAutoReconnect(); // ny cykel — direkt connect-försök tar över
   _motorOnInflight = (async () => {
     console.log('[Lifecycle] PLAYING → setPlaying(true) omedelbart, subsystem startas i bakgrunden');
 
@@ -235,10 +178,11 @@ async function toMotorOn(): Promise<void> {
     }
     await Promise.all(tasks);
 
-    // Initial connect failed? Starta backoff-retry tills PAUSED/IGNITION_OFF/connected.
+    // Initial connect failed? Aktivera driverns auto-reconnect-loop
+    // (backoff 2/4/8/16/30s) tills connected / PAUSED-shutdown / userStopAll.
     if ((state as LifecycleState) === 'MOTOR_ON' && !deps.getHardcodedConnected().connected) {
-      console.warn('[Lifecycle] initial connect failade — startar retry-sekvens (2/5/10/20s)');
-      scheduleConnectRetries(deps);
+      console.warn('[Lifecycle] initial connect failade — aktiverar auto-reconnect-loop');
+      deps.requestAutoReconnect();
     }
   })();
   try { await _motorOnInflight; } finally { _motorOnInflight = null; }
@@ -256,7 +200,7 @@ export async function userStartAll(): Promise<void> {
 export async function userStopAll(): Promise<void> {
   persistOverride(true);
   cancelScheduledShutdown();
-  cancelConnectRetries('userStopAll');
+  _deps?.cancelAutoReconnect();
   await doShutdown();
   setState('IGNITION_OFF');
 }
@@ -294,6 +238,11 @@ export async function ignite(deps: IgniteDeps): Promise<void> {
     if (playing) {
       cancelScheduledShutdown();
       await toMotorOn();
+      // Om en PAUSED-grace hann cancella auto-reconnect och lampan fortfarande
+      // är nere: återaktivera loopen (toMotorOn early-returnar i MOTOR_ON).
+      if (state === 'MOTOR_ON' && _deps && !_deps.getHardcodedConnected().connected) {
+        _deps.requestAutoReconnect();
+      }
     } else {
       // PAUSED: schemalägg nedrivning (cancelleras om PLAYING kommer tillbaka).
       if (state === 'MOTOR_ON') scheduleShutdownToIgnition();
