@@ -79,6 +79,9 @@ interface IgniteDeps {
   requestAutoReconnect: () => void;
   /** Stäng av auto-reconnect-loopen helt. */
   cancelAutoReconnect: () => void;
+  /** Cross-restart anti-churn: vänta ut cooldown före initial connect. */
+  waitForConnectCooldown: () => Promise<void>;
+
   getEngineInstance: () => { setPlaying: (p: boolean) => void; shutdownToIgnition: () => Promise<void> } | null;
   onSonosPlayingChange: (fn: (playing: boolean) => Promise<void> | void) => Promise<void> | void;
 }
