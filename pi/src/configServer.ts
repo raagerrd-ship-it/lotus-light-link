@@ -524,6 +524,8 @@ export function startConfigServer(port = 3050): void {
       live: {
         inputLevel,                                  // 0..1 (rå RMS×4, matchar VU-meter)
         outputBrightness,                            // 0..1 (engine brightnessPct/100)
+        buildUp: analyserFrame?.buildUp ?? 0,        // 0..1 pre-drop-tension
+
         // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
         // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
         // inte om motorns mellanresultat.

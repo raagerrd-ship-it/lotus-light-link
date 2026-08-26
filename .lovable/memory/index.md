@@ -13,6 +13,7 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 
 ## Memories
 - [Input-sync (form)](mem://pi/lighting/input-sync-form) — formen = bands.totalRms; intensity BARA topp-boost >90%; ingen loudness-faktor; beatLeadMs 0
+- [Adaptivt tak + pre-drop](mem://pi/lighting/adaptive-ceiling-and-buildup) — inLow/inHigh från långsam EMA (~7s) per låt + buildUpGain-svällning; bryggeri-defaults
 - [Statisk dynamik-expansion](mem://pi/lighting/static-dynamic-expansion) — level sträcks inLowFrac/inHighFrac × point1.gain → 0..1 ^ shapeExpand; floor 10, barAccent 1.8
 - [Input-gain vs ljus-skala](mem://pi/lighting/two-stage-gain-vs-lightscale) — lightScale 0.8 ger drop-headroom; NIVÅ-baren visar BLE brightness
 - [Två tappar: AGC vs ljus](mem://pi/audio/two-taps-agc-vs-light) — o-gainad ring; AGC (mål 0.8) bara till analysen, egen linjär RMS × micGain till ljuset

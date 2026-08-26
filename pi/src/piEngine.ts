@@ -157,13 +157,27 @@ export interface LightCalibration {
   /** Topp-boost: extra lyft när analysatorns intensity > 90 %. 0 = av. Default 0.2. */
   peakBoost: number;
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
-   *  inLowFrac × point1.gain → golv. Default 0.009 (uppmätt v772). */
+   *  inLowFrac × point1.gain → golv. Används BARA i fast-läge (adaptiveCeiling=false). */
   inLowFrac: number;
   /** DYNAMIK: övre input-tröskel som fraktion av gainens primärpunkt. level över
-   *  inHighFrac × point1.gain → full. Default 0.031 (uppmätt v772). */
+   *  inHighFrac × point1.gain → full. Används BARA i fast-läge. */
   inHighFrac: number;
   /** DYNAMIK: exponent på den expanderade formen. 1.0 = linjär, >1 = mer kontrast. */
   shapeExpand: number;
+  /** ADAPTIVT TAK: låt inLow/inHigh följa en långsam medelnivå av level → varje låt
+   *  normaliseras till sin egen energi. Default true. */
+  adaptiveCeiling: boolean;
+  /** Tidskonstant (ms) för det adaptiva takets EMA. Default 7000. */
+  ceilFollowMs: number;
+  /** Golv på medelnivån → en tyst låt drar inte upp taket på brus. Default 0.12. */
+  ceilFloor: number;
+  /** Multiplikator medelnivå → inLow. Default 0.55. */
+  ceilLowMul: number;
+  /** Multiplikator medelnivå → inHigh. Default 1.35. */
+  ceilHighMul: number;
+  /** PRE-DROP: hur mycket analysatorns buildUp-tension lyfter ljuset in i droppen. */
+  buildUpGain: number;
+
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
   colorSpectralTilt: number;
@@ -173,11 +187,11 @@ export interface LightCalibration {
 const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 1.0, releaseAlpha: 0.45,
+  attackAlpha: 1.0, releaseAlpha: 0.4,
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
-  brightnessFloor: 10,
-  transientGain: 0.4,
+  brightnessFloor: 25,
+  transientGain: 0.2,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
   flickerDeadband: 0.02,
@@ -190,14 +204,20 @@ const DEFAULT_CAL: LightCalibration = {
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 0,
+  beatLeadMs: 45,
   beatSyncStrength: 0.10,
   dropSource: 'analyser',
-  barAccent: 1.8,
+  barAccent: 1.0,
   peakBoost: 0.2,
-  inLowFrac: 0.009,
-  inHighFrac: 0.031,
-  shapeExpand: 1.0,
+  inLowFrac: 0.022,
+  inHighFrac: 0.075,
+  shapeExpand: 2.0,
+  adaptiveCeiling: true,
+  ceilFollowMs: 7000,
+  ceilFloor: 0.12,
+  ceilLowMul: 0.55,
+  ceilHighMul: 1.35,
+  buildUpGain: 0.25,
   colorSpectralTilt: 0.25,
 };
 
@@ -387,6 +407,9 @@ export class PiLightEngine {
   private autoTunePos = 0;
   private autoTuneCount = 0;
   private autoTuneCap = 0;
+
+  /** Långsam EMA av level — driver det adaptiva taket (per-låt-normalisering). */
+  private _slowMean?: number;
 
 
   // Onset detection state — zero-alloc insertion-sort median
@@ -1444,13 +1467,22 @@ export class PiLightEngine {
       // frame.intensity (bands.shape) är sektions-relativ och används BARA till
       // topp-boosten nedan — aldrig som form-källa.
       const level = Math.max(0, Math.min(1, bands.totalRms));
-      // STATISK DYNAMIK-EXPANSION: sträck det komprimerade level-området till
-      // golv→tak. inLow/inHigh binds till gainens primärpunkt så de följer en
-      // gain-omkalibrering men INTE volymen (level är redan volym-kompenserat).
-      // Fasta tal → ingen AGC, ingen dynamicCenter.
-      const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
-      const inLow = (cal.inLowFrac ?? 0.009) * gRef;
-      const inHigh = (cal.inHighFrac ?? 0.031) * gRef;
+      // DYNAMIK-EXPANSION: sträck det komprimerade level-området till golv→tak.
+      let inLow: number, inHigh: number;
+      if (cal.adaptiveCeiling !== false) {
+        // Adaptivt tak: långsam symmetrisk EMA av level (~ceilFollowMs) → varje låt
+        // normaliseras till sin egen energi. Mild och långsam — ingen per-beat-AGC.
+        if (this._slowMean === undefined) this._slowMean = 0.4;
+        this._slowMean += (level - this._slowMean) * (FRAME_MS / (cal.ceilFollowMs ?? 7000));
+        const m = Math.max(cal.ceilFloor ?? 0.12, this._slowMean);
+        inLow = m * (cal.ceilLowMul ?? 0.55);
+        inHigh = m * (cal.ceilHighMul ?? 1.35);
+      } else {
+        // Fast läge (fallback): bundet till gainens primärpunkt.
+        const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
+        inLow = (cal.inLowFrac ?? 0.022) * gRef;
+        inHigh = (cal.inHighFrac ?? 0.075) * gRef;
+      }
       let e = (level - inLow) / Math.max(1e-6, inHigh - inLow);
       e = e < 0 ? 0 : e > 1 ? 1 : e;
       const sx = cal.shapeExpand ?? 1.0;
@@ -1530,6 +1562,12 @@ export class PiLightEngine {
       // ── 6. BRIGHTNESS: input-formen mappas rakt golv→tak (ingen loudness-faktor,
       // formen ÄR redan amplituden — att gånga med ampEnv dubbelräknar). ──
       let energyForm = shapeSm + fluxBoost;
+      // PRE-DROP: analysatorns buildUp-tension sväller upp ljuset IN i droppen.
+      {
+        const f = getLatestFrame();
+        const bu = (f && (f as any).buildUp) ? (f as any).buildUp : 0;
+        energyForm += bu * (cal.buildUpGain ?? 0);
+      }
       if (energyForm > 1) energyForm = 1;
       let outN = floorN + energyForm * (1 - floorN);
       if (outN < floorN) outN = floorN;
