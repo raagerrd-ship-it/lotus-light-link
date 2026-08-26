@@ -75,6 +75,10 @@ let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = n
 let _lastConnectCallAt = 0;
 let _connectCallCount = 0;
 
+/** H3: hårt minsta intervall mellan connect-försök inom samma process. */
+const MIN_CONNECT_GAP_MS = 2000;
+
+
 // ── Auto-reconnect-loop ──────────────────────────────────────────────────
 // Aktiveras när en lyckad connect följs av disconnect (alltså: lampan VAR
 // ansluten och tappade länken). Inaktiveras vid manuell disconnectHardcoded()
