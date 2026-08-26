@@ -13,6 +13,8 @@ import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { applyConnInterval, stopConnIntervalReassert } from './forceConnInterval.js';
+import { noteConnectAttempt, sleep } from './connect-throttle.js';
+
 
 import { dlog } from "./log.js";
 
