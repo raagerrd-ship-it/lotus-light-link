@@ -1444,7 +1444,17 @@ export class PiLightEngine {
       // frame.intensity (bands.shape) är sektions-relativ och används BARA till
       // topp-boosten nedan — aldrig som form-källa.
       const level = Math.max(0, Math.min(1, bands.totalRms));
-      let shape = level;
+      // STATISK DYNAMIK-EXPANSION: sträck det komprimerade level-området till
+      // golv→tak. inLow/inHigh binds till gainens primärpunkt så de följer en
+      // gain-omkalibrering men INTE volymen (level är redan volym-kompenserat).
+      // Fasta tal → ingen AGC, ingen dynamicCenter.
+      const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
+      const inLow = (cal.inLowFrac ?? 0.009) * gRef;
+      const inHigh = (cal.inHighFrac ?? 0.031) * gRef;
+      let e = (level - inLow) / Math.max(1e-6, inHigh - inLow);
+      e = e < 0 ? 0 : e > 1 ? 1 : e;
+      const sx = cal.shapeExpand ?? 1.0;
+      let shape = sx === 1 ? e : Math.pow(e, sx);
 
       // Mjuk topp-boost på ÄKTA toppar (intensity > 90 %), adderad FÖRE
       // smoothingen så soft-releasen fadear ner den jämnt (inget hack).
