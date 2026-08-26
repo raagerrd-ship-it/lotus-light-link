@@ -408,6 +408,9 @@ export class PiLightEngine {
   private autoTuneCount = 0;
   private autoTuneCap = 0;
 
+  /** Långsam EMA av level — driver det adaptiva taket (per-låt-normalisering). */
+  private _slowMean?: number;
+
 
   // Onset detection state — zero-alloc insertion-sort median
   private onsetBuffer: Float64Array;
