@@ -13,7 +13,7 @@ import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { applyConnInterval, stopConnIntervalReassert } from './forceConnInterval.js';
-import { setReconnectOnBootFlag } from './reconnect-flag.js';
+
 import { dlog } from "./log.js";
 
 // ─── SAME-PROCESS RETRY BAN — REGRESSION TARGET ──────────────────
@@ -36,10 +36,6 @@ import { dlog } from "./log.js";
 // is NOT same-process retry. The fix is process.exit.
 // ─────────────────────────────────────────────────────────────────
 
-// Flagga som persisterar över systemd-restart. Sätts när vi kör process.exit(0)
-// pga consecutive connect-failures, läses i index.ts boot för att auto-anropa
-// connectHardcoded() direkt efter restart (så användaren slipper trycka Anslut).
-
 // Consecutive connect-failures räknare. Mönster från fältet: BLEDOM ansluter
 // alltid på 1-2s eller aldrig. Efter N misslyckanden i rad är noble's HCI-state
 // fastnat — enda fungerande lösning är full process-restart (systemd Restart=always).
@@ -49,14 +45,15 @@ import { dlog } from "./log.js";
 const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
 
-// Engine-callbacks — sätts av piEngine via setEngineBleCallbacks() vid boot.
-// Används så att engine kan toggla keep-alive/idle-heartbeat baserat på
-// faktisk BLE-status (inte vid engine.start() innan lampan är ansluten).
-let _onConnected: (() => void) | null = null;
-let _onDisconnected: (() => void) | null = null;
+// Engine-callbacks — ADDITIVA: varje setEngineBleCallbacks()-anrop lägger till
+// i listan (engine-registrering i ensureEngineInstance + app-hook i main
+// co-existerar). Används så att engine kan toggla keep-alive/idle-heartbeat
+// baserat på faktisk BLE-status (inte vid engine.start() innan lampan är ansluten).
+const _onConnectedCbs: Array<() => void> = [];
+const _onDisconnectedCbs: Array<() => void> = [];
 export function setEngineBleCallbacks(onConnected: () => void, onDisconnected: () => void): void {
-  _onConnected = onConnected;
-  _onDisconnected = onDisconnected;
+  _onConnectedCbs.push(onConnected);
+  _onDisconnectedCbs.push(onDisconnected);
 }
 
 // Valfri hook som körs precis innan process.exit(0) vid N consecutive
@@ -105,7 +102,7 @@ export function getLastDisconnectReason(): string { return _lastDisconnectReason
  * last-sent-cache). Cold path — anropas från alla disconnect-vägar.
  */
 function teardownDeviceState(): void {
-  _onDisconnected?.();
+  for (const fn of _onDisconnectedCbs) { try { fn(); } catch {} }
   detachControllerDrain();
   setDevice(null);
   resetLastSent();
@@ -115,6 +112,26 @@ function clearAutoReconnect(): void {
   if (_autoReconnectTimer) { clearTimeout(_autoReconnectTimer); _autoReconnectTimer = null; }
   _autoReconnectAttempt = 0;
   _autoReconnectGivenUp = false;
+}
+
+/**
+ * Aktivera + trigga auto-reconnect-loopen utifrån. Används av lifecycle vid
+ * INITIAL connect-fail i MOTOR_ON (Sonos PLAYING men lampan nere) — samma
+ * backoff-loop som täcker tappad länk. Återställer give-up-läget.
+ *
+ * Manual-only-policyn: anropas ALDRIG i IGNITION_OFF — lifecycle early-returnar
+ * där, och userStopAll()/PAUSED-shutdown kallar cancelAutoReconnect().
+ */
+export function requestAutoReconnect(): void {
+  _autoReconnectGivenUp = false;
+  _autoReconnectEnabled = true;
+  scheduleAutoReconnect();
+}
+
+/** Stäng av auto-reconnect-loopen helt (PAUSED-shutdown / manuell stop). */
+export function cancelAutoReconnect(): void {
+  _autoReconnectEnabled = false;
+  clearAutoReconnect();
 }
 
 /**
