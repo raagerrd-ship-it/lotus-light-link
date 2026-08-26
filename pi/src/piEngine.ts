@@ -1464,13 +1464,22 @@ export class PiLightEngine {
       // frame.intensity (bands.shape) är sektions-relativ och används BARA till
       // topp-boosten nedan — aldrig som form-källa.
       const level = Math.max(0, Math.min(1, bands.totalRms));
-      // STATISK DYNAMIK-EXPANSION: sträck det komprimerade level-området till
-      // golv→tak. inLow/inHigh binds till gainens primärpunkt så de följer en
-      // gain-omkalibrering men INTE volymen (level är redan volym-kompenserat).
-      // Fasta tal → ingen AGC, ingen dynamicCenter.
-      const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
-      const inLow = (cal.inLowFrac ?? 0.009) * gRef;
-      const inHigh = (cal.inHighFrac ?? 0.031) * gRef;
+      // DYNAMIK-EXPANSION: sträck det komprimerade level-området till golv→tak.
+      let inLow: number, inHigh: number;
+      if (cal.adaptiveCeiling !== false) {
+        // Adaptivt tak: långsam symmetrisk EMA av level (~ceilFollowMs) → varje låt
+        // normaliseras till sin egen energi. Mild och långsam — ingen per-beat-AGC.
+        if (this._slowMean === undefined) this._slowMean = 0.4;
+        this._slowMean += (level - this._slowMean) * (FRAME_MS / (cal.ceilFollowMs ?? 7000));
+        const m = Math.max(cal.ceilFloor ?? 0.12, this._slowMean);
+        inLow = m * (cal.ceilLowMul ?? 0.55);
+        inHigh = m * (cal.ceilHighMul ?? 1.35);
+      } else {
+        // Fast läge (fallback): bundet till gainens primärpunkt.
+        const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
+        inLow = (cal.inLowFrac ?? 0.022) * gRef;
+        inHigh = (cal.inHighFrac ?? 0.075) * gRef;
+      }
       let e = (level - inLow) / Math.max(1e-6, inHigh - inLow);
       e = e < 0 ? 0 : e > 1 ? 1 : e;
       const sx = cal.shapeExpand ?? 1.0;
