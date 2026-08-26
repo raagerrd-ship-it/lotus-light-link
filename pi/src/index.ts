@@ -583,6 +583,10 @@ async function main() {
         connectHardcoded, getHardcodedConnected,
         requestAutoReconnect, cancelAutoReconnect,
       } = await import('./ble-driver/connect.js');
+      const { waitForConnectCooldown, setChurnHook } = await import('./ble-driver/connect-throttle.js');
+      setChurnHook(({ attempts, pauseMs }) => {
+        recordRestart('ble-churn-guard', `${attempts} connect-försök på 30s — pausar ${pauseMs}ms`);
+      });
       await ignite({
         startBleEngineMinimal,
         startSonosSubsystem,
@@ -591,7 +595,9 @@ async function main() {
         getHardcodedConnected,
         requestAutoReconnect,
         cancelAutoReconnect,
+        waitForConnectCooldown: () => waitForConnectCooldown(),
         getEngineInstance: () => engineInstance as any,
+
         onSonosPlayingChange: async (fn) => {
           _sonosPlayingHandler = fn;
           // Replay:a senast kända state — annars missas ett PLAYING som
@@ -636,10 +642,17 @@ async function main() {
     try { sonos?.stopSonosPoller(); } catch {}
     try {
       const { disconnectHardcoded } = await import('./ble-driver/connect.js');
-      await disconnectHardcoded();
+      // Bounded (1500ms): ren disconnect om lampan hinner svara, annars ge upp
+      // snabbt så processen alltid hinner ut innan systemd SIGKILL:ar.
+      const timedOut = await Promise.race([
+        disconnectHardcoded().then(() => false),
+        new Promise<boolean>((r) => setTimeout(() => r(true), 1500)),
+      ]);
+      if (timedOut) console.warn('[Shutdown] BLE disconnect timeout (1500ms) — avslutar ändå');
     } catch {}
     process.exit(0);
   };
+
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

@@ -13,6 +13,8 @@ import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
 import { applyConnInterval, stopConnIntervalReassert } from './forceConnInterval.js';
+import { noteConnectAttempt, sleep } from './connect-throttle.js';
+
 
 import { dlog } from "./log.js";
 
@@ -72,6 +74,10 @@ let _connected: any = null;
 let _connectInFlight: Promise<{ connected: boolean; error?: string }> | null = null;
 let _lastConnectCallAt = 0;
 let _connectCallCount = 0;
+
+/** H3: hårt minsta intervall mellan connect-försök inom samma process. */
+const MIN_CONNECT_GAP_MS = 2000;
+
 
 // ── Auto-reconnect-loop ──────────────────────────────────────────────────
 // Aktiveras när en lyckad connect följs av disconnect (alltså: lampan VAR
@@ -317,7 +323,6 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
 export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: boolean; error?: string; durationMs: number }> {
   _connectCallCount++;
   const sinceLast = Date.now() - _lastConnectCallAt;
-  _lastConnectCallAt = Date.now();
   // Diagnostik: om någon hamrar denna endpoint vill vi se det i loggen.
   // Stack-trace ger oss caller (HTTP-route, intern reconnect, etc).
   dlog(`[connect-hardcoded] CALL #${_connectCallCount} (${sinceLast}ms sedan förra)`);
@@ -329,13 +334,24 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
     const r = await _connectInFlight;
     return { ...r, durationMs: 0 };
   }
+
   if (_connected && _connected.state === 'connected') {
     dlog(`[connect-hardcoded]   → redan ansluten, returnerar idempotent`);
     return { connected: true, durationMs: 0 };
   }
 
+  // H3: hårt golv (2s) mellan connect-försök i samma process, oavsett väg.
+  if (_lastConnectCallAt > 0 && sinceLast < MIN_CONNECT_GAP_MS) {
+    const wait = MIN_CONNECT_GAP_MS - sinceLast;
+    dlog(`[connect-hardcoded]   → golv: väntar ${wait}ms sedan förra försöket`);
+    await sleep(wait);
+  }
+  _lastConnectCallAt = Date.now();
+  noteConnectAttempt(); // H2: persistera attempt på tmpfs (cross-restart)
+
   const t0 = Date.now();
   const ts = () => `+${(Date.now() - t0).toString().padStart(5, ' ')}ms`;
+
 
   const inflight = (async (): Promise<{ connected: boolean; error?: string }> => {
     const n = getNoble();
