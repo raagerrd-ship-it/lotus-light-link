@@ -560,11 +560,12 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       const errStr = r.error ?? 'okänt fel';
       console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures): ${errStr}`);
       if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
+        // systemd restart → boot → IGNITION → Sonos-poller avgör om motorn
+        // ska igång igen (mem://pi/runtime/sonos-driven-lifecycle).
         console.error(
           `[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures` +
-          ` — sätter reconnect-flagga och process.exit(0) för systemd restart`
+          ` — process.exit(0) för systemd restart`
         );
-        setReconnectOnBootFlag();
         try {
           _restartHook?.({ count: _consecutiveFailures, error: errStr });
         } catch (e: any) {
