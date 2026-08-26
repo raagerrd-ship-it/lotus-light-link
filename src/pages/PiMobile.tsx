@@ -22,16 +22,18 @@ type Cal = {
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
   beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
   dropFlashMs: number; beatLeadMs: number; peakBoost: number;
+  shapeExpand: number;
 };
 
 const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 43,
-  brightnessFloor: 25, punchWhiteThreshold: 100, transientGain: 0.4,
+  brightnessFloor: 10, punchWhiteThreshold: 100, transientGain: 0.4,
   colorSpectralTilt: 0.25,
   onsetThreshold: 4.0, onsetRefractoryMs: 300,
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
   dropFlashMs: 320, beatLeadMs: 0, peakBoost: 0.2,
+  shapeExpand: 1.0,
 };
 
 
@@ -825,6 +827,7 @@ export default function PiMobile() {
         dropFlashMs: cal.dropFlashMs,
         beatLeadMs: cal.beatLeadMs,
         peakBoost: cal.peakBoost,
+        shapeExpand: cal.shapeExpand,
       };
       const results = await Promise.allSettled([
         putJson('/api/calibration', calPayload),
@@ -900,6 +903,7 @@ export default function PiMobile() {
         dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
         beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
         peakBoost: c?.peakBoost ?? DEFAULT_CAL.peakBoost,
+        shapeExpand: c?.shapeExpand ?? DEFAULT_CAL.shapeExpand,
       });
 
       if (calRes && typeof calRes === 'object') setCal(mapStoredToCal(calRes));
@@ -1079,6 +1083,14 @@ export default function PiMobile() {
                   min={0} max={100}
                   onChange={(v) => setCal({ ...cal, brightnessFloor: Math.round(v) })}
                   hint="Insignalen 0–100 % mappas mellan detta golv och fullt ljus. 0 = släck helt i tystnad."
+                />
+                <Slider
+                  label="Dynamik (kontrast)"
+                  value={cal.shapeExpand}
+                  display={cal.shapeExpand.toFixed(1)}
+                  min={1} max={2.5} step={0.1}
+                  onChange={(v) => setCal({ ...cal, shapeExpand: Math.round(v * 10) / 10 })}
+                  hint="1.0 = rak expansion golv→tak, högre = hårdare kontrast (mitten mörkare)."
                 />
                 <Slider
                   label="Beat-källa (lyssnar under)"
