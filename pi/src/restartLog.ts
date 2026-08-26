@@ -28,7 +28,9 @@ export type RestartReason =
   | 'unknown-systemd-restart'    // föregående process dog utan att vi hann logga
   | 'manual-start-all'           // användaren tryckte Starta allt / Starta om
   | 'alsa-watchdog-stuck'        // ALSA-watchdog: FFT-loop frusen → exit(1)
-  | 'playback-watchdog-stuck';   // Playback-watchdog: tickOk frusen efter soft recovery → exit(1)
+  | 'playback-watchdog-stuck'    // Playback-watchdog: tickOk frusen efter soft recovery → exit(1)
+  | 'ble-churn-guard';           // Anti-churn: för många connect-försök i 30s-fönstret → paus
+
 
 export interface RestartEntry {
   ts: string;                  // ISO timestamp för restart-eventet
