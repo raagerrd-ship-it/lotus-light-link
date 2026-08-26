@@ -87,6 +87,8 @@ export {
   setEngineBleCallbacks, setRestartHook,
 } from './connect.js';
 export { HARDCODED_DEVICE, matchesHardcoded, setDeviceConfig } from './device-config.js';
+export { waitForConnectCooldown, getLastConnectAttemptAt, setChurnHook } from './connect-throttle.js';
+
 export { isHci0Up } from './adapter-hci-check.js';
 export { getOutstandingPackets, isControllerDrainAttached, getAttachedHandle, attachControllerDrain, detachControllerDrain } from './controllerDrain.js';
 export { getNoble, getNobleAsync } from './noble-singleton.js';
