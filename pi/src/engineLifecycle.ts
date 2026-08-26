@@ -165,11 +165,17 @@ async function toMotorOn(): Promise<void> {
     }
     if (!deps.getHardcodedConnected().connected) {
       tasks.push(
-        deps.connectHardcoded().catch(e =>
+        (async () => {
+          // Anti-churn: sprid connect-försök ≥4s isär över process-restarter.
+          try { await deps.waitForConnectCooldown(); } catch {}
+          if ((state as LifecycleState) !== 'MOTOR_ON') return;
+          await deps.connectHardcoded();
+        })().catch(e =>
           console.warn('[Lifecycle] connectHardcoded fel:', e?.message ?? e),
         ),
       );
     }
+
     await Promise.all(tasks);
 
     // Initial connect failed? Aktivera driverns auto-reconnect-loop
