@@ -47,6 +47,8 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 - [Noble compatibility](mem://pi/runtime/noble-compatibility) — Check state and _state on noble object
 - [Build resources](mem://pi/deployment/build-and-resources) — RAM/swap requirements for building on Pi Zero 2W
 - [BLE keep-alive](mem://pi/ble/keep-alive) — 1s keep-alive packet to prevent BLEDOM timeout
+- [BLE anti-churn](mem://pi/ble/anti-churn-connect-cooldown) — 4s cross-restart cooldown, 2s golv, churn-guard, bounded shutdown-disconnect
+
 - [BLE fast-fail restart](mem://pi/ble/fast-fail-self-restart) — Process restart after 4 consecutive failures; same-process retry banned
 - [Pi exclusive focus](mem://architecture/pi-exclusive-focus) — Architecture focused on headless Pi engine
 - [Event-driven engine](mem://pi/performance/event-driven-architecture) — Engine execution triggered by FFT frames
