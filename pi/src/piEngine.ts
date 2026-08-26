@@ -1559,6 +1559,12 @@ export class PiLightEngine {
       // ── 6. BRIGHTNESS: input-formen mappas rakt golv→tak (ingen loudness-faktor,
       // formen ÄR redan amplituden — att gånga med ampEnv dubbelräknar). ──
       let energyForm = shapeSm + fluxBoost;
+      // PRE-DROP: analysatorns buildUp-tension sväller upp ljuset IN i droppen.
+      {
+        const f = getLatestFrame();
+        const bu = (f && (f as any).buildUp) ? (f as any).buildUp : 0;
+        energyForm += bu * (cal.buildUpGain ?? 0);
+      }
       if (energyForm > 1) energyForm = 1;
       let outN = floorN + energyForm * (1 - floorN);
       if (outN < floorN) outN = floorN;
