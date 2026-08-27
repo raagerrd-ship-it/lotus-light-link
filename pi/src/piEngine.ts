@@ -1055,6 +1055,7 @@ export class PiLightEngine {
       this.onsetBoost = 0;
       this.onsetTarget = 0;
       this.smoothed = 0;
+      this._wlevelSm = undefined;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
       this._lastTickAtForFade = 0;
