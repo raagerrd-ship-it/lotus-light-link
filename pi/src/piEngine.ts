@@ -353,6 +353,10 @@ export interface DiagSnapshot {
   lastTickUs: number;
   inSilence: boolean;
   tickSilenceCount: number;
+  /** Frekvensviktad nivå (dB-vägen) */
+  wlevel?: number;
+  /** 20·log10(wlevel) — mät detta live för att sätta anchorDb */
+  wdb?: number;
 }
 
 const _diag: DiagSnapshot = {
