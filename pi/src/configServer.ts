@@ -466,6 +466,7 @@ export function startConfigServer(port = 3050): void {
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
     let micTotal = 0;
+    let micContentFrozenMs = 0;
     let analyserFrame: any = null;
     let analyserCost: any = null;
     try {
