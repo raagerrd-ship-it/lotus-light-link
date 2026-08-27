@@ -540,6 +540,8 @@ export function startConfigServer(port = 3050): void {
         nextArtist: sonos?.nextArtistName ?? null,
         playbackState: sonos?.playbackState ?? null,
         queue: queueLen,
+        learnedGain: (getMic() as any)?.getLearnedGainState?.()?.entries ?? null,
+
       },
       engine: engine
         ? {
