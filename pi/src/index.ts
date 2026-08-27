@@ -424,6 +424,11 @@ async function main() {
     });
   }
 
+  // FIX 4: lärd volym→gain förfinas långsamt (~minuter) → följ den även utan
+  // volymbyte. Ändringstakten är omärkbar inom en låt.
+  everySeconds(1, () => { alsaMic?.refreshAutoGain?.(); });
+
+
 
   // ── Playback-Watchdog — analys-tick, inte BLE-delivery ──
   // 2026-08-25: BLE-leverans är asynkron 1-slot. Watchdogen får därför ALDRIG
