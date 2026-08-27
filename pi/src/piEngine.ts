@@ -125,6 +125,8 @@ export interface LightCalibration {
    flickerDeadband: number;
    /** Attack-mjukhet vid låg energi (0–1). Lågt brus snäpper inte → inget flimmer; full snap vid hög energi. Default 0.25. */
    lowSoftFloor: number;
+  /** BAS-AVBRUS: input-EMA tidskonstant på ljus-signalen (ms). Kort EMA före dB-mappning tar bort frame-brus utan att sakta riktiga stegringar. Default 35. */
+  lightSmoothMs: number;
   /** Absolut energy-gate (totalRms) under vilken onset-detektorn inte processar.
    *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
    *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
