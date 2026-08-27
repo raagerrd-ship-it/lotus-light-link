@@ -838,13 +838,33 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   const p2 = sanitizeCalPoint(s.calPoint2 ?? null);
   if (p1) calPoint1 = p1;
   if (p2) calPoint2 = p2;
-  if (s.learnedGainRefs) {
+  if (s.learnedGain) {
+    for (const [k, e] of Object.entries(s.learnedGain)) {
+      const vol = Number(k);
+      if (!Number.isFinite(vol) || vol <= 0 || !e || !Number.isFinite(e.ref) || !(e.ref > 0)) continue;
+      lgTable.set(vol, {
+        ref: e.ref,
+        sum: Number.isFinite(e.sum) ? e.sum : e.ref,
+        count: Number.isFinite(e.count) && e.count > 0 ? e.count : 1,
+        learnMs: Number.isFinite(e.learnMs) ? e.learnMs : 0,
+        locked: e.locked === true,
+      });
+    }
+  } else if (s.learnedGainRefs) {
+    // Migrera gammalt format (volym→number): gamla värdet blir seed, aggregatet
+    // byggs om rent och mognar till lås.
     for (const [k, v] of Object.entries(s.learnedGainRefs)) {
       const vol = Number(k);
-      if (Number.isFinite(vol) && vol > 0 && Number.isFinite(v) && (v as number) > 0) lgTable.set(vol, v as number);
+      if (Number.isFinite(vol) && vol > 0 && Number.isFinite(v) && (v as number) > 0) {
+        lgTable.set(vol, { ref: v as number, sum: v as number, count: 1, learnMs: 0, locked: false });
+      }
     }
-    if (lgTable.size > 0) dlog(`[ALSA] Restored ${lgTable.size} lärda gain-punkter`);
   }
+  if (lgTable.size > 0) {
+    const locked = [...lgTable.values()].filter(e => e.locked).length;
+    dlog(`[ALSA] Restored ${lgTable.size} lärda gain-punkter (${locked} låsta)`);
+  }
+
   micGainAuto = calPoint1 && calPoint2 ? interpolateGain(calPoint1.vol) : micGainBase;
 
   updateEffectiveGain();
