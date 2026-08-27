@@ -1288,6 +1288,7 @@ export class PiLightEngine {
   private sanitizeState(): void {
     if (!Number.isFinite(this.ampEnv)) this.ampEnv = 0;
     if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
+    if (!Number.isFinite(this._wlevelSm)) this._wlevelSm = undefined;
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
     if (!Number.isFinite(this.lastBrightness)) this.lastBrightness = 0;
     if (!Number.isFinite(this.lastSentPct)) this.lastSentPct = -1;
