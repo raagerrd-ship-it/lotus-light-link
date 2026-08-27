@@ -227,6 +227,11 @@ const DEFAULT_CAL: LightCalibration = {
   ceilFloor: 0.12,
   ceilLowMul: 0.55,
   ceilHighMul: 1.35,
+  dbWindow: true,
+  lightHiWeight: 1.0,
+  lightBassWeight: 0.0,
+  anchorDb: -10,
+  windowDb: 18,
   buildUpGain: 0.25,
   colorSpectralTilt: 0.25,
 };
