@@ -663,7 +663,13 @@ function interpolateGain(sonosVolume: number): number {
 }
 
 function recomputeAutoGain(sonosVolume: number): void {
-  if (sonosVolume <= 0) { micGainAuto = AUTO_GAIN_MAX; updateEffectiveGain(); return; }
+  // Volym 0 = mutad/ingen uppspelning, INTE "svag signal som behöver mer gain".
+  // Tidigare AUTO_GAIN_MAX (300×) här → rumsbrus pinnade ljuset på 100 % i tyst rum.
+  // Ren fallthrough duger inte: kurvan extrapolerar (vol 0 → ~28×). Att behålla
+  // föregående gain är rätt i båda fallen: äkta mute → tystnadsgolvet tar ljuset
+  // till idle ändå; falsk 0:a från pollning → ändringen blir osynlig. `!(v > 0)`
+  // fångar även NaN.
+  if (!(sonosVolume > 0)) return;
   micGainAuto = interpolateGain(sonosVolume);
   updateEffectiveGain();
 }
