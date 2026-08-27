@@ -29,24 +29,27 @@ interface PersistedMicState {
   micGainBase?: number;
   calPoint1?: { vol: number; gain: number } | null;
   calPoint2?: { vol: number; gain: number } | null;
-  /** FIX 4: lärd volym→ref-tabell (volym → p90-ref av rå block-RMS). */
+  /** Gammalt format (FIX 4): volym → ref. Migreras till learnedGain vid load. */
   learnedGainRefs?: Record<string, number>;
+  /** FIX 4b: volym → {ref, sum, count, learnMs, locked}. */
+  learnedGain?: Record<string, LgEntry>;
 }
 function saveMicState(): void {
   try {
-    const refs: Record<string, number> = {};
-    for (const [vol, ref] of lgTable) refs[String(vol)] = ref;
+    const learned: Record<string, LgEntry> = {};
+    for (const [vol, e] of lgTable) learned[String(vol)] = e;
     const s: PersistedMicState = {
       micGainBase,
       calPoint1,
       calPoint2,
-      learnedGainRefs: refs,
+      learnedGain: learned,
     };
     setItem(MIC_STATE_KEY, JSON.stringify(s));
   } catch (e: any) {
     dlog(`[ALSA] saveMicState failed: ${e?.message ?? e}`);
   }
 }
+
 
 function loadMicState(): PersistedMicState | null {
   try {
