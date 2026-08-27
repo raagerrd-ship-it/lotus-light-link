@@ -23,6 +23,7 @@ type Cal = {
   beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
   dropFlashMs: number; beatLeadMs: number; peakBoost: number;
   shapeExpand: number;
+  windowDb: number; lightBassWeight: number;
 };
 
 const DEFAULT_CAL: Cal = {
@@ -34,6 +35,7 @@ const DEFAULT_CAL: Cal = {
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
   dropFlashMs: 320, beatLeadMs: 0, peakBoost: 0.2,
   shapeExpand: 1.0,
+  windowDb: 18, lightBassWeight: 0,
 };
 
 
@@ -828,6 +830,8 @@ export default function PiMobile() {
         beatLeadMs: cal.beatLeadMs,
         peakBoost: cal.peakBoost,
         shapeExpand: cal.shapeExpand,
+        windowDb: cal.windowDb,
+        lightBassWeight: cal.lightBassWeight,
       };
       const results = await Promise.allSettled([
         putJson('/api/calibration', calPayload),
@@ -904,6 +908,8 @@ export default function PiMobile() {
         beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
         peakBoost: c?.peakBoost ?? DEFAULT_CAL.peakBoost,
         shapeExpand: c?.shapeExpand ?? DEFAULT_CAL.shapeExpand,
+        windowDb: c?.windowDb ?? DEFAULT_CAL.windowDb,
+        lightBassWeight: c?.lightBassWeight ?? DEFAULT_CAL.lightBassWeight,
       });
 
       if (calRes && typeof calRes === 'object') setCal(mapStoredToCal(calRes));
@@ -1086,11 +1092,19 @@ export default function PiMobile() {
                 />
                 <Slider
                   label="Dynamik (kontrast)"
-                  value={cal.shapeExpand}
-                  display={cal.shapeExpand.toFixed(1)}
-                  min={1} max={2.5} step={0.1}
-                  onChange={(v) => setCal({ ...cal, shapeExpand: Math.round(v * 10) / 10 })}
-                  hint="1.0 = rak expansion golv→tak, högre = hårdare kontrast (mitten mörkare)."
+                  value={cal.windowDb}
+                  display={`${cal.windowDb} dB`}
+                  min={12} max={30} step={1}
+                  onChange={(v) => setCal({ ...cal, windowDb: Math.round(v) })}
+                  hint="dB-fönstret från golv till fullt ljus. 12 = mer kontrast, 30 = mjukare."
+                />
+                <Slider
+                  label="Bas-närvaro"
+                  value={cal.lightBassWeight}
+                  display={cal.lightBassWeight.toFixed(2)}
+                  min={0} max={0.5} step={0.05}
+                  onChange={(v) => setCal({ ...cal, lightBassWeight: Math.round(v * 100) / 100 })}
+                  hint="Hur mycket basen väger in i ljusnivån. 0 = ren mid/diskant, högre = mer kropp."
                 />
                 <Slider
                   label="Beat-källa (lyssnar under)"
