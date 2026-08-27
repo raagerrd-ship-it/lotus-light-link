@@ -1064,6 +1064,10 @@ export function stopMic(): void {
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
   lightRawRms = 0;
+  _lastLightSum = -1;
+  _lastFrameCount = -1;
+  _contentFreezeStreak = 0;
+  _contentFreezeAt = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   latestBands.shape = 0;
