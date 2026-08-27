@@ -913,6 +913,23 @@ function onAudioData(buf: Buffer): void {
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
   }
 
+  // Innehålls-frys-detektor: en wedged I2S-DMA matar IDENTISKA bytes varje callback.
+  // lightSumLocal är en deterministisk summa av blocket → byte-identiskt block ⇒
+  // bit-identisk summa. Äkta tystnad har alltid LSB-brus → summan skiljer varje
+  // gång. K identiska summor i rad ⟹ enheten matar frusen buffert. frameCount
+  // matchas också, så jitter (1–3 hops/callback) aldrig triggar falskt.
+  if (frameCount > 0) {
+    if (lightSumLocal === _lastLightSum && frameCount === _lastFrameCount) {
+      if (_contentFreezeStreak === 0) _contentFreezeAt = performance.now();
+      _contentFreezeStreak++;
+    } else {
+      _contentFreezeStreak = 0;
+      _lastLightSum = lightSumLocal;
+      _lastFrameCount = frameCount;
+    }
+  }
+
+
 
   if (calOn && micCalActive) {
     micCalSumSq += lightSumLocal;
