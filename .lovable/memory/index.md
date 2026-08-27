@@ -13,7 +13,7 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 
 ## Memories
 - [Input-sync (form)](mem://pi/lighting/input-sync-form) — formen = bands.totalRms; intensity BARA topp-boost >90%; ingen loudness-faktor; beatLeadMs 0
-- [Lärd volym→gain](mem://pi/audio/learned-volume-gain) — per-Sonos-volym p90-ref (4s→180s), persisterad; tvåpunktskurvan är prior; adaptiveCeiling=false
+- [Lärd volym→gain](mem://pi/audio/learned-volume-gain) — per-volym aggregat (4s-p90 medel) → LÅS efter 20 min → persisterat; relearnGain för omlärning
 - [Adaptivt tak + pre-drop](mem://pi/lighting/adaptive-ceiling-and-buildup) — inLow/inHigh från långsam EMA (~7s) per låt + buildUpGain-svällning; bryggeri-defaults
 
 - [Statisk dynamik-expansion](mem://pi/lighting/static-dynamic-expansion) — level sträcks inLowFrac/inHighFrac × point1.gain → 0..1 ^ shapeExpand; floor 10, barAccent 1.8
