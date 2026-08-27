@@ -29,7 +29,8 @@ export type RestartReason =
   | 'manual-start-all'           // användaren tryckte Starta allt / Starta om
   | 'alsa-watchdog-stuck'        // ALSA-watchdog: FFT-loop frusen → exit(1)
   | 'playback-watchdog-stuck'    // Playback-watchdog: tickOk frusen efter soft recovery → exit(1)
-  | 'ble-churn-guard';           // Anti-churn: för många connect-försök i 30s-fönstret → paus
+  | 'ble-churn-guard'            // Anti-churn: för många connect-försök i 30s-fönstret → paus
+  | 'mic-content-freeze';        // I2S-DMA wedge: byte-identisk mic-buffert, reopen hjälpte ej
 
 
 export interface RestartEntry {

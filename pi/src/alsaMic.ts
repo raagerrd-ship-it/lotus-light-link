@@ -202,6 +202,15 @@ let hsState = 0;
 // LJUS-TAPP: ~130 ms EMA av RÅ (o-gainad) block-RMS. micGain appliceras i
 // emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
 let lightRawRms = 0;
+let _lastLightSum = -1;
+let _lastFrameCount = -1;
+let _contentFreezeStreak = 0;
+let _contentFreezeAt = 0;
+
+/** Ms som mic-buffertens innehåll varit byte-identiskt (0 = ej fruset). */
+export function getMicContentFrozenMs(): number {
+  return _contentFreezeStreak > 0 ? Math.round(performance.now() - _contentFreezeAt) : 0;
+}
 
 
 // Latest computed bands (static object — mutated in place)
@@ -913,6 +922,23 @@ function onAudioData(buf: Buffer): void {
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
   }
 
+  // Innehålls-frys-detektor: en wedged I2S-DMA matar IDENTISKA bytes varje callback.
+  // lightSumLocal är en deterministisk summa av blocket → byte-identiskt block ⇒
+  // bit-identisk summa. Äkta tystnad har alltid LSB-brus → summan skiljer varje
+  // gång. K identiska summor i rad ⟹ enheten matar frusen buffert. frameCount
+  // matchas också, så jitter (1–3 hops/callback) aldrig triggar falskt.
+  if (frameCount > 0) {
+    if (lightSumLocal === _lastLightSum && frameCount === _lastFrameCount) {
+      if (_contentFreezeStreak === 0) _contentFreezeAt = performance.now();
+      _contentFreezeStreak++;
+    } else {
+      _contentFreezeStreak = 0;
+      _lastLightSum = lightSumLocal;
+      _lastFrameCount = frameCount;
+    }
+  }
+
+
 
   if (calOn && micCalActive) {
     micCalSumSq += lightSumLocal;
@@ -1038,6 +1064,10 @@ export function stopMic(): void {
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
   lightRawRms = 0;
+  _lastLightSum = -1;
+  _lastFrameCount = -1;
+  _contentFreezeStreak = 0;
+  _contentFreezeAt = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   latestBands.shape = 0;

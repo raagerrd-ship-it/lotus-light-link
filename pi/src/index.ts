@@ -522,6 +522,42 @@ async function main() {
         } catch { /* watchdog must never crash */ }
       });
       console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms, ${MAX_RECOVERY_ATTEMPTS} targeted soft recoveries first)`);
+
+      // ── Content-Freeze-watchdog: tyst I2S-DMA-wedge matar byte-identisk buffert.
+      // Tiered + tmpfs-spärr så en wedge som kräver reboot inte blir restart-loop.
+      {
+        const fs = await import('node:fs');
+        const FREEZE_FILE = '/tmp/lotus-mic-freeze-restart-at';
+        const CONTENT_FREEZE_MS = 4000;      // 4s byte-identiskt = otvetydig wedge
+        const RESTART_SUPPRESS_MS = 120000;  // rensade ej reopen+restart det <2min sen → churna inte
+        let contentSteps = 0;
+        everySeconds(2, () => {
+          try {
+            if (lc.getLifecycleState() !== 'MOTOR_ON') { contentSteps = 0; return; }
+            const frozenMs = alsaMic?.getMicContentFrozenMs?.() ?? 0;
+            if (frozenMs < CONTENT_FREEZE_MS) { contentSteps = 0; return; }
+            contentSteps++;
+            console.warn(`[Content-Freeze] identisk mic-buffert ${frozenMs}ms — steg ${contentSteps}`);
+            if (contentSteps === 1) {
+              alsaMic?.restartCapture?.('content-freeze');       // steg 1: reopen ALSA (rör ej BLE)
+            } else if (contentSteps >= 3) {                       // efter ~2 reopen-försök
+              let lastRestart = 0;
+              try { lastRestart = Number(fs.readFileSync(FREEZE_FILE, 'utf8')) || 0; } catch {}
+              const since = lastRestart ? (Date.now() - lastRestart) : Infinity;
+              if (since > RESTART_SUPPRESS_MS) {
+                try { fs.writeFileSync(FREEZE_FILE, String(Date.now())); } catch {}
+                recordRestart('mic-content-freeze', `frozen ${frozenMs}ms, reopen hjälpte ej`);
+                markGracefulShutdown();
+                process.exit(1);                                 // steg 2: ren process-restart en gång
+              } else {
+                console.error('[Content-Freeze] KVARSTÅR efter reopen+restart — I2S-DMA wedge under processen, ' +
+                  'KRÄVER REBOOT. Churnar inte BLE med fler restarts.');
+              }
+            }
+          } catch { /* watchdog must never crash */ }
+        });
+        console.log(`[Boot] Content-Freeze-Watchdog active (${CONTENT_FREEZE_MS}ms byte-identisk buffert)`);
+      }
     } catch (e: any) {
       console.warn('[Boot] Playback-Watchdog failed to start:', e?.message ?? e);
     }

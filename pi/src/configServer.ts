@@ -466,12 +466,14 @@ export function startConfigServer(port = 3050): void {
     //   faktiskt sända BLE-paketet (som hoppas över vid små deltan / full kö).
     const diag = engine?.getDiagnostics?.() ?? null;
     let micTotal = 0;
+    let micContentFrozenMs = 0;
     let analyserFrame: any = null;
     let analyserCost: any = null;
     try {
       const m = getMic();
       const b = m?.getLatestBands?.();
       if (b) { micTotal = b.totalRms ?? 0; }
+      micContentFrozenMs = (m as any)?.getMicContentFrozenMs?.() ?? 0;
       const f = (m as any)?.getLatestFrame?.();
       if (f) {
         analyserFrame = {
@@ -525,6 +527,7 @@ export function startConfigServer(port = 3050): void {
         inputLevel,                                  // 0..1 (rå RMS×4, matchar VU-meter)
         outputBrightness,                            // 0..1 (engine brightnessPct/100)
         buildUp: analyserFrame?.buildUp ?? 0,        // 0..1 pre-drop-tension
+        micContentFrozenMs,                          // >0 = byte-identisk mic-buffert (I2S-wedge)
 
         // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
         // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
