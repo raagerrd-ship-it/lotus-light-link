@@ -1466,27 +1466,41 @@ export class PiLightEngine {
       // level/shape = bands.totalRms (lightRawRms × tvåpunktsGain, ingen AGC).
       // frame.intensity (bands.shape) är sektions-relativ och används BARA till
       // topp-boosten nedan — aldrig som form-källa.
-      const level = Math.max(0, Math.min(1, bands.totalRms));
-      // DYNAMIK-EXPANSION: sträck det komprimerade level-området till golv→tak.
-      let inLow: number, inHigh: number;
-      if (cal.adaptiveCeiling !== false) {
-        // Adaptivt tak: långsam symmetrisk EMA av level (~ceilFollowMs) → varje låt
-        // normaliseras till sin egen energi. Mild och långsam — ingen per-beat-AGC.
-        if (this._slowMean === undefined) this._slowMean = 0.4;
-        this._slowMean += (level - this._slowMean) * (FRAME_MS / (cal.ceilFollowMs ?? 7000));
-        const m = Math.max(cal.ceilFloor ?? 0.12, this._slowMean);
-        inLow = m * (cal.ceilLowMul ?? 0.55);
-        inHigh = m * (cal.ceilHighMul ?? 1.35);
+      const level = Math.max(0, Math.min(1, bands.totalRms));   // behålls: silence-gate + diagnostik
+      let shape: number;
+      if (cal.dbWindow !== false) {
+        // FREKVENSVIKTAD dB-MAPPNING: bredbandssignalen är i praktiken en basmätare
+        // (3.9 dB dynamik) — mid/diskant bär ~3× mer. Vikta dit så dynamiken finns
+        // i mätsignalen innan mappningen.
+        const wlevel = bands.midHiRms * (cal.lightHiWeight ?? 1.0)
+                     + bands.bassRms  * (cal.lightBassWeight ?? 0.0);
+        const wdb = 20 * Math.log10(Math.max(wlevel, 1e-4));
+        // FAST fönster i dB (jagar inte → kan inte släpa/släcka dynamik). Spotify-
+        // normaliserat → samma fönster gäller alla låtar. windowDb = dynamik-ratten.
+        const anchorDb = cal.anchorDb ?? -10;    // wdb som ska nå 100 %
+        const windowDb = cal.windowDb ?? 18;     // fönsterbredd i dB
+        shape = (wdb - (anchorDb - windowDb)) / windowDb;
+        shape = shape < 0 ? 0 : shape > 1 ? 1 : shape;
+        _diag.wlevel = wlevel; _diag.wdb = wdb;  // för live-kalibrering av anchorDb
       } else {
-        // Fast läge (fallback): bundet till gainens primärpunkt.
-        const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
-        inLow = (cal.inLowFrac ?? 0.022) * gRef;
-        inHigh = (cal.inHighFrac ?? 0.075) * gRef;
+        // ── FALLBACK (dbWindow=false): gamla adaptiva taket + expansion ──
+        let inLow: number, inHigh: number;
+        if (cal.adaptiveCeiling !== false) {
+          if (this._slowMean === undefined) this._slowMean = 0.4;
+          this._slowMean += (level - this._slowMean) * (FRAME_MS / (cal.ceilFollowMs ?? 7000));
+          const m = Math.max(cal.ceilFloor ?? 0.12, this._slowMean);
+          inLow = m * (cal.ceilLowMul ?? 0.55);
+          inHigh = m * (cal.ceilHighMul ?? 1.35);
+        } else {
+          const gRef = (cal.gainCalibration?.point1?.gain as number) || 20;
+          inLow = (cal.inLowFrac ?? 0.022) * gRef;
+          inHigh = (cal.inHighFrac ?? 0.075) * gRef;
+        }
+        let e = (level - inLow) / Math.max(1e-6, inHigh - inLow);
+        e = e < 0 ? 0 : e > 1 ? 1 : e;
+        const sx = cal.shapeExpand ?? 1.0;
+        shape = sx === 1 ? e : Math.pow(e, sx);
       }
-      let e = (level - inLow) / Math.max(1e-6, inHigh - inLow);
-      e = e < 0 ? 0 : e > 1 ? 1 : e;
-      const sx = cal.shapeExpand ?? 1.0;
-      let shape = sx === 1 ? e : Math.pow(e, sx);
 
       // Mjuk topp-boost på ÄKTA toppar (intensity > 90 %), adderad FÖRE
       // smoothingen så soft-releasen fadear ner den jämnt (inget hack).
