@@ -1500,13 +1500,21 @@ export class PiLightEngine {
         // FREKVENSVIKTAD dB-MAPPNING: bredbandssignalen är i praktiken en basmätare
         // (3.9 dB dynamik) — mid/diskant bär ~3× mer. Vikta dit så dynamiken finns
         // i mätsignalen innan mappningen.
-        const wlevel = bands.midHiRms * (cal.lightHiWeight ?? 1.0)
-                     + bands.bassRms  * (cal.lightBassWeight ?? 0.0);
+        const wlevelRaw = bands.midHiRms * (cal.lightHiWeight ?? 1.0)
+                        + bands.bassRms  * (cal.lightBassWeight ?? 0.0);
+        // AVBRUSA BASEN: kort EMA (~lightSmoothMs) tar bort frame-brus utan att sakta
+        // riktiga stegringar märkbart. Beat-punchen (fluxBoost nedan) är oberörd → attacken
+        // kan vara instant och ljuset stiger fort, men grundnivån slutar flimra.
+        const aSm = 1 - Math.exp(-FRAME_MS / (cal.lightSmoothMs ?? 35));
+        this._wlevelSm = (this._wlevelSm === undefined)
+          ? wlevelRaw
+          : this._wlevelSm + (wlevelRaw - this._wlevelSm) * aSm;
+        const wlevel = this._wlevelSm;
         const wdb = 20 * Math.log10(Math.max(wlevel, 1e-4));
         // FAST fönster i dB (jagar inte → kan inte släpa/släcka dynamik). Spotify-
         // normaliserat → samma fönster gäller alla låtar. windowDb = dynamik-ratten.
-        const anchorDb = cal.anchorDb ?? -10;    // wdb som ska nå 100 %
-        const windowDb = cal.windowDb ?? 18;     // fönsterbredd i dB
+        const anchorDb = cal.anchorDb ?? -4;    // wdb som ska nå 100 %
+        const windowDb = cal.windowDb ?? 22;     // fönsterbredd i dB
         shape = (wdb - (anchorDb - windowDb)) / windowDb;
         shape = shape < 0 ? 0 : shape > 1 ? 1 : shape;
         _diag.wlevel = wlevel; _diag.wdb = wdb;  // för live-kalibrering av anchorDb
