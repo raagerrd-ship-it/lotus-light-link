@@ -1,17 +1,18 @@
 ---
-name: Lärd volym→gain-AGC (FIX 4)
-description: alsaMic lär per Sonos-volym ett p90-ref av rå block-RMS (tvåstegs: 4s-fönster → 180s EMA), gain = lgTarget/ref. Persisteras i mic-state.json. Tvåpunktskurvan är cold-start-prior.
+name: Lärd volym→gain — lär → LÅS → sparat (FIX 4b)
+description: Per Sonos-volym ackumuleras ett stabilt aggregat (löpande medel av 4s-p90 över alla låtar). Efter lgLockAfterMs (20 min) låses ref:et och gainen står helt still. Persisteras per volym i mic-state.json. Omlärning via relearnGain()/POST /api/learned-gain/relearn.
 type: feature
 ---
-**Varför inte den förbjudna AGC:n:** den anpassar sig mot SONOS-VOLYMEN, inte mot ljudnivån. Vers→refräng vid samma volym rör inte gainen (inom-låt-variation 0,7 %); volymbyte ger direkt ny gain (feed-forward).
+**Varför inte EMA (FIX 4, ersatt):** EMA:n stod aldrig still — drev ±25–30 % inom en låt och 4 dB mellan låtar vid samma volym. Aggregat-medel + lås ger ett värde som fryser.
 
 **Implementation (`pi/src/alsaMic.ts`):**
-- `learnGainSample(blockRms, dt)` anropas per audio-block direkt efter `lightRawRms`-EMA:n.
-- Steg 1: p90 över ett ~`lgWinSec` 4 s ring-fönster (transient-tåligt). Steg 2: `ref[vol] += (measured - ref) * dt/lgRefTauSec` (180 s) → rör sig i minuter.
-- `learnedGainFor(vol)`: exakt lärt → log-interpolerade lärda grannar → `null` (då används tvåpunkts-`interpolateGain` som prior).
-- `recomputeAutoGain` föredrar lärt värde; `refreshAutoGain()` körs 1 Hz från `index.ts` så gainen följer det förfinade ref:et utan volymbyte.
-- Gates: `setGainLearnGate(playing, tvMode)` från `applySonosStateToEngine` (lär aldrig i TV-läge), tystnadsgolv 0.0015, 3 s frys efter volymbyte (ring töms), volym > 0.
-- Persistens: `learnedGainRefs` i `mic-state.json`, debounced 30 s.
-- Params: `setLearnedGainParams({enabled,target,winSec,refTauSec})` — `enabled:false` = exakt gamla beteendet (riskfri rollback). Default `lgTarget 0.6`.
+- `LgEntry = { ref, sum, count, learnMs, locked }`, `lgTable: Map<vol, LgEntry>`.
+- `learnGainSample(blockRms, blockSec)`: gate:ad (spelar, ej TV, ej tystnad < 0.0015, 3 s frys efter volymbyte). 4s-ring → p90 → `sum += p90; count++; ref = sum/count`. `learnMs += blockSec*1000`; `learnMs >= lgLockAfterMs` (default 1 200 000 ms) → `locked = true` och all vidare uppdatering hoppas över.
+- `learnedGainFor(v)`: exakt lärt ref → log-interpolerade lärda grannars ref → `null` (då tvåpunkts-`interpolateGain` som prior). Gain = `lgTarget / ref` clampad.
+- `relearnGain(vol?)`: raderar en volym eller hela tabellen, sparar direkt, `refreshAutoGain()`.
+- Persistens: `learnedGain` i `mic-state.json` (debounced 30 s). Gammalt `learnedGainRefs` (volym→number) migreras till `{ref, sum:ref, count:1, learnMs:0, locked:false}`.
+- Params: `setLearnedGainParams({enabled, target, winSec, lockAfterMs})`. `lgRefTauSec` borta.
 
-**Parat med:** `DEFAULT_CAL.adaptiveCeiling = false` i `piEngine.ts` — med konsistent lärd gain är det jagande taket överflödigt och orsakade "släpet".
+**API:** `GET /api/learned-gain`, `POST /api/learned-gain/relearn` `{vol?}`, samt `live.learnedGain` i `/api/status` (per volym: ref, gain, learnMs, locked).
+
+**Parat med:** `DEFAULT_CAL.adaptiveCeiling = false` i `piEngine.ts`.

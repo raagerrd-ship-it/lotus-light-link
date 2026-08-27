@@ -29,24 +29,27 @@ interface PersistedMicState {
   micGainBase?: number;
   calPoint1?: { vol: number; gain: number } | null;
   calPoint2?: { vol: number; gain: number } | null;
-  /** FIX 4: lärd volym→ref-tabell (volym → p90-ref av rå block-RMS). */
+  /** Gammalt format (FIX 4): volym → ref. Migreras till learnedGain vid load. */
   learnedGainRefs?: Record<string, number>;
+  /** FIX 4b: volym → {ref, sum, count, learnMs, locked}. */
+  learnedGain?: Record<string, LgEntry>;
 }
 function saveMicState(): void {
   try {
-    const refs: Record<string, number> = {};
-    for (const [vol, ref] of lgTable) refs[String(vol)] = ref;
+    const learned: Record<string, LgEntry> = {};
+    for (const [vol, e] of lgTable) learned[String(vol)] = e;
     const s: PersistedMicState = {
       micGainBase,
       calPoint1,
       calPoint2,
-      learnedGainRefs: refs,
+      learnedGain: learned,
     };
     setItem(MIC_STATE_KEY, JSON.stringify(s));
   } catch (e: any) {
     dlog(`[ALSA] saveMicState failed: ${e?.message ?? e}`);
   }
 }
+
 
 function loadMicState(): PersistedMicState | null {
   try {
@@ -677,19 +680,22 @@ function interpolateGain(sonosVolume: number): number {
   return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, out));
 }
 
-// ── FIX 4: lärd volym→gain (självkalibrerande ljus-gain) ──
-// Anpassar sig mot SONOS-VOLYMEN, inte mot ljudnivån: vers→refräng vid samma
-// volym rör inte gainen (dynamiken bevaras), men ett volymbyte ger direkt ny
-// gain. Tvåstegs: kort p90-fönster (transient-tåligt) → mycket långsam EMA av
-// det lagrade ref-värdet per volym (rör sig i minuter, inte inom en låt).
+// ── FIX 4b: lärd volym→gain, "lär → LÅS → sparat" (per volym) ──
+// Anpassar sig mot SONOS-VOLYMEN, inte mot ljudnivån. Per volym ackumuleras ett
+// STABILT AGGREGAT (löpande medel av 4s-p90 över alla låtar) — INTE en EMA som
+// dras mot senaste låten. Efter lgLockAfterMs gate:ad musik låses ref:et och
+// gainen står helt still. Omlärning sker explicit via relearnGain().
+export type LgEntry = { ref: number; sum: number; count: number; learnMs: number; locked: boolean };
+
 let lgEnabled = true;
 let lgTarget = 0.6;
 let lgWinSec = 4;
-let lgRefTauSec = 180;
+let lgLockAfterMs = 1_200_000;  // 20 min gate:ad musik → lås
 const LG_SETTLE_MS = 3000;      // frys efter volymbyte
 const LG_NOISE_FLOOR = 0.0015;  // under detta = tystnad
 
-const lgTable = new Map<number, number>();   // volym → lagrat ref (persisteras)
+const lgTable = new Map<number, LgEntry>();   // volym → tillstånd (persisteras)
+
 let lgRing: number[] = [];
 let lgRingVol: number | null = null;
 let lgVolChangedAt = -1e9;
@@ -702,17 +708,21 @@ export function setGainLearnGate(playing: boolean, tvMode: boolean): void {
   lgLearnAllowed = playing && !tvMode;
 }
 
-export function setLearnedGainParams(p: { enabled?: boolean; target?: number; winSec?: number; refTauSec?: number }): void {
+export function setLearnedGainParams(p: { enabled?: boolean; target?: number; winSec?: number; lockAfterMs?: number }): void {
   if (typeof p.enabled === 'boolean') lgEnabled = p.enabled;
   if (Number.isFinite(p.target) && (p.target as number) > 0) lgTarget = p.target as number;
   if (Number.isFinite(p.winSec) && (p.winSec as number) > 0) lgWinSec = p.winSec as number;
-  if (Number.isFinite(p.refTauSec) && (p.refTauSec as number) > 0) lgRefTauSec = p.refTauSec as number;
+  if (Number.isFinite(p.lockAfterMs) && (p.lockAfterMs as number) > 0) lgLockAfterMs = p.lockAfterMs as number;
 }
 
 function scheduleLgSave(): void {
   if (lgSaveTimer) return;
   lgSaveTimer = setTimeout(() => { lgSaveTimer = null; saveMicState(); }, 30000);
   (lgSaveTimer as any)?.unref?.();
+}
+
+function gainFromRef(ref: number): number {
+  return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / ref));
 }
 
 function learnGainSample(blockRms: number, blockSec: number): void {
@@ -722,6 +732,8 @@ function learnGainSample(blockRms: number, blockSec: number): void {
   if (v !== _lgLastVol) { _lgLastVol = v; lgVolChangedAt = performance.now(); }
   if (!(blockRms > LG_NOISE_FLOOR)) return;
   if (performance.now() - lgVolChangedAt < LG_SETTLE_MS) { lgRing.length = 0; return; }
+  let e = lgTable.get(v);
+  if (e && e.locked) return;                    // LÅST → rör inte
   if (lgRingVol !== v) { lgRing.length = 0; lgRingVol = v; }
   const winN = Math.max(8, Math.round(lgWinSec / Math.max(1e-4, blockSec)));
   lgRing.push(blockRms);
@@ -729,39 +741,63 @@ function learnGainSample(blockRms: number, blockSec: number): void {
   if (lgRing.length < winN) return;
   const s = [...lgRing].sort((a, b) => a - b);
   const measured = s[Math.floor(s.length * 0.9)];
-  const prev = lgTable.get(v);
-  const refAlpha = Math.min(1, blockSec / lgRefTauSec);
-  const next = prev === undefined ? measured : prev + (measured - prev) * refAlpha;
-  if (!(next > 0) || !Number.isFinite(next)) return;
-  lgTable.set(v, next);
+  if (!(measured > 0) || !Number.isFinite(measured)) return;
+  if (!e) e = { ref: measured, sum: 0, count: 0, learnMs: 0, locked: false };
+  // AGGREGAT: löpande medel av p90 över alla låtar (ej EMA mot senaste låten)
+  e.sum += measured;
+  e.count += 1;
+  e.ref = e.sum / e.count;
+  e.learnMs += blockSec * 1000;
+  if (e.learnMs >= lgLockAfterMs) {
+    e.locked = true;
+    dlog(`[ALSA] Lärd gain LÅST vid vol=${v}: ref=${e.ref.toFixed(5)} gain=${gainFromRef(e.ref).toFixed(2)}x`);
+  }
+  lgTable.set(v, e);
   scheduleLgSave();
 }
 
 /** Gain för en volym: lärt värde → interpolerade lärda grannar → tvåpunkts-prior. */
 function learnedGainFor(v: number): number | null {
-  const ref = lgTable.get(v);
-  if (ref !== undefined && ref > 1e-6) return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / ref));
+  const e = lgTable.get(v);
+  if (e && e.ref > 1e-6) return gainFromRef(e.ref);
   const ks = [...lgTable.keys()].sort((a, b) => a - b);
   const lo = ks.filter(k => k <= v).pop();
   const hi = ks.find(k => k >= v);
   if (lo != null && hi != null && lo !== hi) {
-    const rl = lgTable.get(lo)!, rh = lgTable.get(hi)!, t = (v - lo) / (hi - lo);
+    const rl = lgTable.get(lo)!.ref, rh = lgTable.get(hi)!.ref, t = (v - lo) / (hi - lo);
     const r = Math.exp(Math.log(rl) + t * (Math.log(rh) - Math.log(rl)));
     if (!(r > 1e-6)) return null;
-    return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / r));
+    return gainFromRef(r);
   }
   return null;   // olärt → cold start (tvåpunkts-prior)
 }
 
-export function getLearnedGainState(): { enabled: boolean; target: number; entries: Array<{ vol: number; ref: number; gain: number }> } {
+/** Lås upp en volym (eller alla) → lär om från prior. För rums-/uppställningsändring. */
+export function relearnGain(vol?: number): void {
+  if (vol == null) lgTable.clear();
+  else lgTable.delete(vol);
+  lgRing.length = 0;
+  lgRingVol = null;
+  saveMicState();
+  refreshAutoGain();
+}
+
+export function getLearnedGainState(): {
+  enabled: boolean;
+  target: number;
+  lockAfterMs: number;
+  entries: Array<{ vol: number; ref: number; gain: number; learnMs: number; locked: boolean }>;
+} {
   return {
     enabled: lgEnabled,
     target: lgTarget,
-    entries: [...lgTable.entries()].sort((a, b) => a[0] - b[0]).map(([vol, ref]) => ({
-      vol, ref, gain: Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / ref)),
+    lockAfterMs: lgLockAfterMs,
+    entries: [...lgTable.entries()].sort((a, b) => a[0] - b[0]).map(([vol, e]) => ({
+      vol, ref: e.ref, gain: gainFromRef(e.ref), learnMs: Math.round(e.learnMs), locked: e.locked,
     })),
   };
 }
+
 
 function recomputeAutoGain(sonosVolume: number): void {
   // Volym 0 = mutad/ingen uppspelning, INTE "svag signal som behöver mer gain".
@@ -802,13 +838,33 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   const p2 = sanitizeCalPoint(s.calPoint2 ?? null);
   if (p1) calPoint1 = p1;
   if (p2) calPoint2 = p2;
-  if (s.learnedGainRefs) {
+  if (s.learnedGain) {
+    for (const [k, e] of Object.entries(s.learnedGain)) {
+      const vol = Number(k);
+      if (!Number.isFinite(vol) || vol <= 0 || !e || !Number.isFinite(e.ref) || !(e.ref > 0)) continue;
+      lgTable.set(vol, {
+        ref: e.ref,
+        sum: Number.isFinite(e.sum) ? e.sum : e.ref,
+        count: Number.isFinite(e.count) && e.count > 0 ? e.count : 1,
+        learnMs: Number.isFinite(e.learnMs) ? e.learnMs : 0,
+        locked: e.locked === true,
+      });
+    }
+  } else if (s.learnedGainRefs) {
+    // Migrera gammalt format (volym→number): gamla värdet blir seed, aggregatet
+    // byggs om rent och mognar till lås.
     for (const [k, v] of Object.entries(s.learnedGainRefs)) {
       const vol = Number(k);
-      if (Number.isFinite(vol) && vol > 0 && Number.isFinite(v) && (v as number) > 0) lgTable.set(vol, v as number);
+      if (Number.isFinite(vol) && vol > 0 && Number.isFinite(v) && (v as number) > 0) {
+        lgTable.set(vol, { ref: v as number, sum: v as number, count: 1, learnMs: 0, locked: false });
+      }
     }
-    if (lgTable.size > 0) dlog(`[ALSA] Restored ${lgTable.size} lärda gain-punkter`);
   }
+  if (lgTable.size > 0) {
+    const locked = [...lgTable.values()].filter(e => e.locked).length;
+    dlog(`[ALSA] Restored ${lgTable.size} lärda gain-punkter (${locked} låsta)`);
+  }
+
   micGainAuto = calPoint1 && calPoint2 ? interpolateGain(calPoint1.vol) : micGainBase;
 
   updateEffectiveGain();

@@ -540,6 +540,8 @@ export function startConfigServer(port = 3050): void {
         nextArtist: sonos?.nextArtistName ?? null,
         playbackState: sonos?.playbackState ?? null,
         queue: queueLen,
+        learnedGain: (getMic() as any)?.getLearnedGainState?.()?.entries ?? null,
+
       },
       engine: engine
         ? {
@@ -1078,6 +1080,22 @@ export function startConfigServer(port = 3050): void {
       const started = mic.startMicGainCalibration({ durationMs, targetRms });
       res.json({ ok: true, ...started });
     });
+
+    // --- FIX 4b: lärd gain per volym (lär → LÅS → sparat) ---
+    app.get('/api/learned-gain', (_req, res) => {
+      const mic = getMic() as any;
+      if (!mic?.getLearnedGainState) return res.json({ available: false });
+      res.json({ available: true, ...mic.getLearnedGainState() });
+    });
+    app.post('/api/learned-gain/relearn', (req, res) => {
+      const mic = requireMic(res) as any;
+      if (!mic) return;
+      if (!mic.relearnGain) return res.status(501).json({ error: 'not supported' });
+      const vol = Number(req.body?.vol);
+      mic.relearnGain(Number.isFinite(vol) && vol > 0 ? vol : undefined);
+      res.json({ ok: true, ...mic.getLearnedGainState() });
+    });
+
 
 
 
