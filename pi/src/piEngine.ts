@@ -222,7 +222,7 @@ const DEFAULT_CAL: LightCalibration = {
   inLowFrac: 0.022,
   inHighFrac: 0.075,
   shapeExpand: 2.0,
-  adaptiveCeiling: true,
+  adaptiveCeiling: false,
   ceilFollowMs: 7000,
   ceilFloor: 0.12,
   ceilLowMul: 0.55,
