@@ -432,6 +432,8 @@ export class PiLightEngine {
 
   /** Långsam EMA av level — driver det adaptiva taket (per-låt-normalisering). */
   private _slowMean?: number;
+  /** BAS-AVBRUS: kort EMA av frekvensviktad nivå FÖRE dB-mappning. */
+  private _wlevelSm?: number;
 
 
   // Onset detection state — zero-alloc insertion-sort median
