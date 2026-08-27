@@ -234,7 +234,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightBassWeight: 0.0,
   anchorDb: -4,
   windowDb: 22,
-  lightSmoothMs: 35,
+  lightSmoothMs: 35, // bas-avbrusning i ms (0 = av; 20 = knappt, 60 = tydligt lugnare bas)
   buildUpGain: 0.25,
   colorSpectralTilt: 0.25,
 };
