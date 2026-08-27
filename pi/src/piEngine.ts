@@ -175,6 +175,16 @@ export interface LightCalibration {
   ceilLowMul: number;
   /** Multiplikator medelnivå → inHigh. Default 1.35. */
   ceilHighMul: number;
+  /** DYNAMIK v3: frekvensviktad, FAST dB-mappning. false = gamla adaptiva taket. */
+  dbWindow: boolean;
+  /** Vikt på midHiRms i den viktade nivån (dB-vägen). Default 1.0. */
+  lightHiWeight: number;
+  /** Vikt på bassRms i den viktade nivån — höj för mer "kropp". Default 0.0. */
+  lightBassWeight: number;
+  /** wdb (dB) som mappar till 100 %. Kalibreras live. Default -10. */
+  anchorDb: number;
+  /** dB-fönstrets bredd: 12 = mer kontrast, 30 = mjukare. Default 18. */
+  windowDb: number;
   /** PRE-DROP: hur mycket analysatorns buildUp-tension lyfter ljuset in i droppen. */
   buildUpGain: number;
 
