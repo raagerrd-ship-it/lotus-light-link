@@ -202,6 +202,15 @@ let hsState = 0;
 // LJUS-TAPP: ~130 ms EMA av RÅ (o-gainad) block-RMS. micGain appliceras i
 // emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
 let lightRawRms = 0;
+let _lastLightSum = -1;
+let _lastFrameCount = -1;
+let _contentFreezeStreak = 0;
+let _contentFreezeAt = 0;
+
+/** Ms som mic-buffertens innehåll varit byte-identiskt (0 = ej fruset). */
+export function getMicContentFrozenMs(): number {
+  return _contentFreezeStreak > 0 ? Math.round(performance.now() - _contentFreezeAt) : 0;
+}
 
 
 // Latest computed bands (static object — mutated in place)
