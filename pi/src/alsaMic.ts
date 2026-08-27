@@ -802,7 +802,15 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   const p2 = sanitizeCalPoint(s.calPoint2 ?? null);
   if (p1) calPoint1 = p1;
   if (p2) calPoint2 = p2;
+  if (s.learnedGainRefs) {
+    for (const [k, v] of Object.entries(s.learnedGainRefs)) {
+      const vol = Number(k);
+      if (Number.isFinite(vol) && vol > 0 && Number.isFinite(v) && (v as number) > 0) lgTable.set(vol, v as number);
+    }
+    if (lgTable.size > 0) dlog(`[ALSA] Restored ${lgTable.size} lärda gain-punkter`);
+  }
   micGainAuto = calPoint1 && calPoint2 ? interpolateGain(calPoint1.vol) : micGainBase;
+
   updateEffectiveGain();
   dlog(`[ALSA] Restored mic-state: gain=${micGainAuto.toFixed(1)}x cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
 })();
