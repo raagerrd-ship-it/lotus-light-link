@@ -29,19 +29,25 @@ interface PersistedMicState {
   micGainBase?: number;
   calPoint1?: { vol: number; gain: number } | null;
   calPoint2?: { vol: number; gain: number } | null;
+  /** FIX 4: lärd volym→ref-tabell (volym → p90-ref av rå block-RMS). */
+  learnedGainRefs?: Record<string, number>;
 }
 function saveMicState(): void {
   try {
+    const refs: Record<string, number> = {};
+    for (const [vol, ref] of lgTable) refs[String(vol)] = ref;
     const s: PersistedMicState = {
       micGainBase,
       calPoint1,
       calPoint2,
+      learnedGainRefs: refs,
     };
     setItem(MIC_STATE_KEY, JSON.stringify(s));
   } catch (e: any) {
     dlog(`[ALSA] saveMicState failed: ${e?.message ?? e}`);
   }
 }
+
 function loadMicState(): PersistedMicState | null {
   try {
     const raw = getItem(MIC_STATE_KEY);
@@ -671,6 +677,92 @@ function interpolateGain(sonosVolume: number): number {
   return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, out));
 }
 
+// ── FIX 4: lärd volym→gain (självkalibrerande ljus-gain) ──
+// Anpassar sig mot SONOS-VOLYMEN, inte mot ljudnivån: vers→refräng vid samma
+// volym rör inte gainen (dynamiken bevaras), men ett volymbyte ger direkt ny
+// gain. Tvåstegs: kort p90-fönster (transient-tåligt) → mycket långsam EMA av
+// det lagrade ref-värdet per volym (rör sig i minuter, inte inom en låt).
+let lgEnabled = true;
+let lgTarget = 0.6;
+let lgWinSec = 4;
+let lgRefTauSec = 180;
+const LG_SETTLE_MS = 3000;      // frys efter volymbyte
+const LG_NOISE_FLOOR = 0.0015;  // under detta = tystnad
+
+const lgTable = new Map<number, number>();   // volym → lagrat ref (persisteras)
+let lgRing: number[] = [];
+let lgRingVol: number | null = null;
+let lgVolChangedAt = -1e9;
+let _lgLastVol: number | null = null;
+let lgLearnAllowed = false;      // sätts av index: spelar && ej TV-läge
+let lgSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Gate:ar inlärningen. TV-läge har icke-normaliserat ljud → skulle korrumpera tabellen. */
+export function setGainLearnGate(playing: boolean, tvMode: boolean): void {
+  lgLearnAllowed = playing && !tvMode;
+}
+
+export function setLearnedGainParams(p: { enabled?: boolean; target?: number; winSec?: number; refTauSec?: number }): void {
+  if (typeof p.enabled === 'boolean') lgEnabled = p.enabled;
+  if (Number.isFinite(p.target) && (p.target as number) > 0) lgTarget = p.target as number;
+  if (Number.isFinite(p.winSec) && (p.winSec as number) > 0) lgWinSec = p.winSec as number;
+  if (Number.isFinite(p.refTauSec) && (p.refTauSec as number) > 0) lgRefTauSec = p.refTauSec as number;
+}
+
+function scheduleLgSave(): void {
+  if (lgSaveTimer) return;
+  lgSaveTimer = setTimeout(() => { lgSaveTimer = null; saveMicState(); }, 30000);
+  (lgSaveTimer as any)?.unref?.();
+}
+
+function learnGainSample(blockRms: number, blockSec: number): void {
+  if (!lgEnabled) return;
+  const v = lastSonosVol;
+  if (v == null || !(v > 0) || !lgLearnAllowed) return;
+  if (v !== _lgLastVol) { _lgLastVol = v; lgVolChangedAt = performance.now(); }
+  if (!(blockRms > LG_NOISE_FLOOR)) return;
+  if (performance.now() - lgVolChangedAt < LG_SETTLE_MS) { lgRing.length = 0; return; }
+  if (lgRingVol !== v) { lgRing.length = 0; lgRingVol = v; }
+  const winN = Math.max(8, Math.round(lgWinSec / Math.max(1e-4, blockSec)));
+  lgRing.push(blockRms);
+  if (lgRing.length > winN) lgRing.shift();
+  if (lgRing.length < winN) return;
+  const s = [...lgRing].sort((a, b) => a - b);
+  const measured = s[Math.floor(s.length * 0.9)];
+  const prev = lgTable.get(v);
+  const refAlpha = Math.min(1, blockSec / lgRefTauSec);
+  const next = prev === undefined ? measured : prev + (measured - prev) * refAlpha;
+  if (!(next > 0) || !Number.isFinite(next)) return;
+  lgTable.set(v, next);
+  scheduleLgSave();
+}
+
+/** Gain för en volym: lärt värde → interpolerade lärda grannar → tvåpunkts-prior. */
+function learnedGainFor(v: number): number | null {
+  const ref = lgTable.get(v);
+  if (ref !== undefined && ref > 1e-6) return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / ref));
+  const ks = [...lgTable.keys()].sort((a, b) => a - b);
+  const lo = ks.filter(k => k <= v).pop();
+  const hi = ks.find(k => k >= v);
+  if (lo != null && hi != null && lo !== hi) {
+    const rl = lgTable.get(lo)!, rh = lgTable.get(hi)!, t = (v - lo) / (hi - lo);
+    const r = Math.exp(Math.log(rl) + t * (Math.log(rh) - Math.log(rl)));
+    if (!(r > 1e-6)) return null;
+    return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / r));
+  }
+  return null;   // olärt → cold start (tvåpunkts-prior)
+}
+
+export function getLearnedGainState(): { enabled: boolean; target: number; entries: Array<{ vol: number; ref: number; gain: number }> } {
+  return {
+    enabled: lgEnabled,
+    target: lgTarget,
+    entries: [...lgTable.entries()].sort((a, b) => a[0] - b[0]).map(([vol, ref]) => ({
+      vol, ref, gain: Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / ref)),
+    })),
+  };
+}
+
 function recomputeAutoGain(sonosVolume: number): void {
   // Volym 0 = mutad/ingen uppspelning, INTE "svag signal som behöver mer gain".
   // Tidigare AUTO_GAIN_MAX (300×) här → rumsbrus pinnade ljuset på 100 % i tyst rum.
@@ -679,16 +771,25 @@ function recomputeAutoGain(sonosVolume: number): void {
   // till idle ändå; falsk 0:a från pollning → ändringen blir osynlig. `!(v > 0)`
   // fångar även NaN.
   if (!(sonosVolume > 0)) return;
+  if (lgEnabled) {
+    const g = learnedGainFor(sonosVolume);
+    if (g != null) { micGainAuto = g; updateEffectiveGain(); return; }
+  }
   micGainAuto = interpolateGain(sonosVolume);
   updateEffectiveGain();
 }
 
+/** Kör periodiskt (1 Hz) så micGainAuto följer det långsamt förfinade ref:et. */
+export function refreshAutoGain(): void {
+  if (lastSonosVol != null) recomputeAutoGain(lastSonosVol);
+}
+
 export function setAutoGainFromVolume(sonosVolume: number): void {
   lastSonosVol = sonosVolume;
-  if (!calPoint1 || !calPoint2) return;
   recomputeAutoGain(sonosVolume);
   dlog(`[ALSA] Gain-kurva: vol=${sonosVolume} → gain=${micGainAuto.toFixed(2)}x`);
 }
+
 
 // Restore persisted state vid modulinit. Körs efter att alla let:s deklarerats.
 // Krasch/restart mitt i låt → samma gain/cal som innan.
@@ -701,7 +802,15 @@ export function setAutoGainFromVolume(sonosVolume: number): void {
   const p2 = sanitizeCalPoint(s.calPoint2 ?? null);
   if (p1) calPoint1 = p1;
   if (p2) calPoint2 = p2;
+  if (s.learnedGainRefs) {
+    for (const [k, v] of Object.entries(s.learnedGainRefs)) {
+      const vol = Number(k);
+      if (Number.isFinite(vol) && vol > 0 && Number.isFinite(v) && (v as number) > 0) lgTable.set(vol, v as number);
+    }
+    if (lgTable.size > 0) dlog(`[ALSA] Restored ${lgTable.size} lärda gain-punkter`);
+  }
   micGainAuto = calPoint1 && calPoint2 ? interpolateGain(calPoint1.vol) : micGainBase;
+
   updateEffectiveGain();
   dlog(`[ALSA] Restored mic-state: gain=${micGainAuto.toFixed(1)}x cal=${calPoint1 && calPoint2 ? 'yes' : 'no'}`);
 })();
@@ -920,7 +1029,9 @@ function onAudioData(buf: Buffer): void {
     const dt = frameCount / SAMPLE_RATE;
     const a = 1 - Math.exp(-dt / 0.13);
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
+    learnGainSample(blockRms, dt);   // FIX 4: lärd volym→gain (gate:ad, långsam)
   }
+
 
   // Innehålls-frys-detektor: en wedged I2S-DMA matar IDENTISKA bytes varje callback.
   // lightSumLocal är en deterministisk summa av blocket → byte-identiskt block ⇒

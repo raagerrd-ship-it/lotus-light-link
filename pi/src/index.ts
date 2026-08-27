@@ -133,6 +133,10 @@ function applySonosStateToEngine(state: {
     wasTvModeRef.current = false;
   }
 
+  // FIX 4: lärd volym→gain lär BARA när musik spelar och inte i TV-läge
+  // (icke-normaliserat TV-ljud skulle korrumpera per-volym-inlärningen).
+  alsaMic?.setGainLearnGate?.(state.playbackState.includes('PLAYING'), state.isTvMode);
+
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
     // Gain-kurvan är alltid aktiv (2026-08-23) — inget auto-läge att slå på.
@@ -142,6 +146,7 @@ function applySonosStateToEngine(state: {
     // via PUT /api/auto-gain {enabled:false} slår den aldrig på sig själv igen.
     alsaMic?.setAutoGainFromVolume(state.volume);
   }
+
 
   if (!state.isTvMode) {
     const artChanged = !!lastArtUrlRef && state.albumArtUrl !== lastArtUrlRef.current;
@@ -418,6 +423,11 @@ async function main() {
       sample(fftCount);
     });
   }
+
+  // FIX 4: lärd volym→gain förfinas långsamt (~minuter) → följ den även utan
+  // volymbyte. Ändringstakten är omärkbar inom en låt.
+  everySeconds(1, () => { alsaMic?.refreshAutoGain?.(); });
+
 
 
   // ── Playback-Watchdog — analys-tick, inte BLE-delivery ──
