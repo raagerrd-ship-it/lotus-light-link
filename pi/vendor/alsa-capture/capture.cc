@@ -217,6 +217,12 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     size_t bytesPerFrame = (static_cast<size_t>(options_.channels) * static_cast<size_t>(physWidth)) / 8;
     size_t bufferBytes   = static_cast<size_t>(actualFrames) * bytesPerFrame;
 
+    // snd_pcm_wait pollar annars en PREPARED (ej RUNNING) capture-ström → aldrig
+    // data → INGET LJUD. Original-koden auto-startade via första snd_pcm_readi;
+    // med wait-först måste strömmen startas explicit här.
+    { int sr = snd_pcm_start(handle); if (sr < 0) snd_pcm_prepare(handle); }
+
+
     while (!closed_.load(std::memory_order_acquire)) {
       // Vänta max 100ms på data. Utan detta blockerar snd_pcm_readi tills en hel
       // period kommit → closed_ kan ej kollas → JoinBounded detachar en fastnad
