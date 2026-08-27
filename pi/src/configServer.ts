@@ -525,6 +525,7 @@ export function startConfigServer(port = 3050): void {
         inputLevel,                                  // 0..1 (rå RMS×4, matchar VU-meter)
         outputBrightness,                            // 0..1 (engine brightnessPct/100)
         buildUp: analyserFrame?.buildUp ?? 0,        // 0..1 pre-drop-tension
+        micContentFrozenMs,                          // >0 = byte-identisk mic-buffert (I2S-wedge)
 
         // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
         // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
