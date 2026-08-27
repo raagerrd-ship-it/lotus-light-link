@@ -206,7 +206,7 @@ const DEFAULT_CAL: LightCalibration = {
   transientGain: 0.2,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
-  flickerDeadband: 0.02,
+  flickerDeadband: 0.045,
   lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
@@ -234,6 +234,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightBassWeight: 0.0,
   anchorDb: -4,
   windowDb: 22,
+  lightSmoothMs: 35,
   buildUpGain: 0.25,
   colorSpectralTilt: 0.25,
 };
