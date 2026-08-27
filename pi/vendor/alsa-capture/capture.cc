@@ -218,6 +218,20 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     size_t bufferBytes   = static_cast<size_t>(actualFrames) * bytesPerFrame;
 
     while (!closed_.load(std::memory_order_acquire)) {
+      // Vänta max 100ms på data. Utan detta blockerar snd_pcm_readi tills en hel
+      // period kommit → closed_ kan ej kollas → JoinBounded detachar en fastnad
+      // tråd → snd_pcm_drop/close körs ALDRIG → I2S-strömmen halvt nedriven →
+      // nästa open wedgar DMA:n (tyst mic-frys, kräver reboot). Med wait exitar
+      // tråden rent inom ~100ms → ren teardown, ingen detach.
+      int wr = snd_pcm_wait(handle, 100);
+      if (wr == 0) continue;  // timeout → kolla closed_ igen
+      if (wr < 0) {           // -EPIPE (overrun) m.fl.
+        if (snd_pcm_recover(handle, wr, 1) < 0) {
+          EmitEvent("readError", snd_strerror(wr));
+          break;
+        }
+        continue;
+      }
       // Läs direkt i den vektor som skickas vidare — ingen memcpy per callback.
       std::vector<char> frameBuf(bufferBytes);
       snd_pcm_sframes_t got = snd_pcm_readi(handle, frameBuf.data(), actualFrames);
