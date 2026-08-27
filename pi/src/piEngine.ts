@@ -574,6 +574,7 @@ export class PiLightEngine {
     this.onsetTarget = 0;
     this.onsetFrameCounter = 0;
     this.onsetLastFrameIdx = -1000;
+    this._wlevelSm = undefined;
     // Drop-detektor-state
     this.bassFast = 0;
     this.bassSlow = 0;
