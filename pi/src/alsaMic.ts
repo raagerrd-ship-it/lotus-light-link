@@ -680,19 +680,22 @@ function interpolateGain(sonosVolume: number): number {
   return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, out));
 }
 
-// ── FIX 4: lärd volym→gain (självkalibrerande ljus-gain) ──
-// Anpassar sig mot SONOS-VOLYMEN, inte mot ljudnivån: vers→refräng vid samma
-// volym rör inte gainen (dynamiken bevaras), men ett volymbyte ger direkt ny
-// gain. Tvåstegs: kort p90-fönster (transient-tåligt) → mycket långsam EMA av
-// det lagrade ref-värdet per volym (rör sig i minuter, inte inom en låt).
+// ── FIX 4b: lärd volym→gain, "lär → LÅS → sparat" (per volym) ──
+// Anpassar sig mot SONOS-VOLYMEN, inte mot ljudnivån. Per volym ackumuleras ett
+// STABILT AGGREGAT (löpande medel av 4s-p90 över alla låtar) — INTE en EMA som
+// dras mot senaste låten. Efter lgLockAfterMs gate:ad musik låses ref:et och
+// gainen står helt still. Omlärning sker explicit via relearnGain().
+export type LgEntry = { ref: number; sum: number; count: number; learnMs: number; locked: boolean };
+
 let lgEnabled = true;
 let lgTarget = 0.6;
 let lgWinSec = 4;
-let lgRefTauSec = 180;
+let lgLockAfterMs = 1_200_000;  // 20 min gate:ad musik → lås
 const LG_SETTLE_MS = 3000;      // frys efter volymbyte
 const LG_NOISE_FLOOR = 0.0015;  // under detta = tystnad
 
-const lgTable = new Map<number, number>();   // volym → lagrat ref (persisteras)
+const lgTable = new Map<number, LgEntry>();   // volym → tillstånd (persisteras)
+
 let lgRing: number[] = [];
 let lgRingVol: number | null = null;
 let lgVolChangedAt = -1e9;
