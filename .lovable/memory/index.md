@@ -10,6 +10,7 @@ Engine decoupled from UI. API URLs use port + 50.
 Pi Control Center (PCC) aligned. Pi Zero 2W requires 512MB swap.
 Lifecycle drivs av Sonos playbackState (ignite() vid boot). Manuell UI-disconnect sätter override som blockerar auto-start.
 BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process retry.
+Short input-EMA (`lightSmoothMs` ~35 ms) before dB-mapping denoises base level without slowing beat attack.
 
 ## Memories
 - [Input-sync (form)](mem://pi/lighting/input-sync-form) — formen = bands.totalRms; intensity BARA topp-boost >90%; ingen loudness-faktor; beatLeadMs 0

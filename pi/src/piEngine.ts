@@ -125,6 +125,8 @@ export interface LightCalibration {
    flickerDeadband: number;
    /** Attack-mjukhet vid låg energi (0–1). Lågt brus snäpper inte → inget flimmer; full snap vid hög energi. Default 0.25. */
    lowSoftFloor: number;
+  /** BAS-AVBRUS: input-EMA tidskonstant på ljus-signalen (ms). Kort EMA före dB-mappning tar bort frame-brus utan att sakta riktiga stegringar. Default 35. */
+  lightSmoothMs: number;
   /** Absolut energy-gate (totalRms) under vilken onset-detektorn inte processar.
    *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
    *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
@@ -204,7 +206,7 @@ const DEFAULT_CAL: LightCalibration = {
   transientGain: 0.2,
   onsetThreshold: 1.8,
   onsetRefractoryMs: 200,
-  flickerDeadband: 0.02,
+  flickerDeadband: 0.045,
   lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
@@ -232,6 +234,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightBassWeight: 0.0,
   anchorDb: -4,
   windowDb: 22,
+  lightSmoothMs: 35,
   buildUpGain: 0.25,
   colorSpectralTilt: 0.25,
 };
@@ -429,6 +432,8 @@ export class PiLightEngine {
 
   /** Långsam EMA av level — driver det adaptiva taket (per-låt-normalisering). */
   private _slowMean?: number;
+  /** BAS-AVBRUS: kort EMA av frekvensviktad nivå FÖRE dB-mappning. */
+  private _wlevelSm?: number;
 
 
   // Onset detection state — zero-alloc insertion-sort median
@@ -569,6 +574,7 @@ export class PiLightEngine {
     this.onsetTarget = 0;
     this.onsetFrameCounter = 0;
     this.onsetLastFrameIdx = -1000;
+    this._wlevelSm = undefined;
     // Drop-detektor-state
     this.bassFast = 0;
     this.bassSlow = 0;
@@ -992,6 +998,7 @@ export class PiLightEngine {
       this.onsetBoost = 0;
       this.onsetTarget = 0;
       this.smoothed = 0;
+      this._wlevelSm = undefined;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
@@ -1049,6 +1056,7 @@ export class PiLightEngine {
       this.onsetBoost = 0;
       this.onsetTarget = 0;
       this.smoothed = 0;
+      this._wlevelSm = undefined;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
       this._lastTickAtForFade = 0;
@@ -1280,6 +1288,7 @@ export class PiLightEngine {
   private sanitizeState(): void {
     if (!Number.isFinite(this.ampEnv)) this.ampEnv = 0;
     if (!Number.isFinite(this.smoothed)) this.smoothed = 0;
+    if (!Number.isFinite(this._wlevelSm)) this._wlevelSm = undefined;
     if (!Number.isFinite(this.onsetBoost)) { this.onsetBoost = 0; this.onsetTarget = 0; }
     if (!Number.isFinite(this.lastBrightness)) this.lastBrightness = 0;
     if (!Number.isFinite(this.lastSentPct)) this.lastSentPct = -1;
@@ -1491,13 +1500,21 @@ export class PiLightEngine {
         // FREKVENSVIKTAD dB-MAPPNING: bredbandssignalen är i praktiken en basmätare
         // (3.9 dB dynamik) — mid/diskant bär ~3× mer. Vikta dit så dynamiken finns
         // i mätsignalen innan mappningen.
-        const wlevel = bands.midHiRms * (cal.lightHiWeight ?? 1.0)
-                     + bands.bassRms  * (cal.lightBassWeight ?? 0.0);
+        const wlevelRaw = bands.midHiRms * (cal.lightHiWeight ?? 1.0)
+                        + bands.bassRms  * (cal.lightBassWeight ?? 0.0);
+        // AVBRUSA BASEN: kort EMA (~lightSmoothMs) tar bort frame-brus utan att sakta
+        // riktiga stegringar märkbart. Beat-punchen (fluxBoost nedan) är oberörd → attacken
+        // kan vara instant och ljuset stiger fort, men grundnivån slutar flimra.
+        const aSm = 1 - Math.exp(-FRAME_MS / (cal.lightSmoothMs ?? 35));
+        this._wlevelSm = (this._wlevelSm === undefined)
+          ? wlevelRaw
+          : this._wlevelSm + (wlevelRaw - this._wlevelSm) * aSm;
+        const wlevel = this._wlevelSm;
         const wdb = 20 * Math.log10(Math.max(wlevel, 1e-4));
         // FAST fönster i dB (jagar inte → kan inte släpa/släcka dynamik). Spotify-
         // normaliserat → samma fönster gäller alla låtar. windowDb = dynamik-ratten.
-        const anchorDb = cal.anchorDb ?? -10;    // wdb som ska nå 100 %
-        const windowDb = cal.windowDb ?? 18;     // fönsterbredd i dB
+        const anchorDb = cal.anchorDb ?? -4;    // wdb som ska nå 100 %
+        const windowDb = cal.windowDb ?? 22;     // fönsterbredd i dB
         shape = (wdb - (anchorDb - windowDb)) / windowDb;
         shape = shape < 0 ? 0 : shape > 1 ? 1 : shape;
         _diag.wlevel = wlevel; _diag.wdb = wdb;  // för live-kalibrering av anchorDb
