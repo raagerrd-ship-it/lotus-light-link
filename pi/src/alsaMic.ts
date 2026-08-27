@@ -29,19 +29,25 @@ interface PersistedMicState {
   micGainBase?: number;
   calPoint1?: { vol: number; gain: number } | null;
   calPoint2?: { vol: number; gain: number } | null;
+  /** FIX 4: lärd volym→ref-tabell (volym → p90-ref av rå block-RMS). */
+  learnedGainRefs?: Record<string, number>;
 }
 function saveMicState(): void {
   try {
+    const refs: Record<string, number> = {};
+    for (const [vol, ref] of lgTable) refs[String(vol)] = ref;
     const s: PersistedMicState = {
       micGainBase,
       calPoint1,
       calPoint2,
+      learnedGainRefs: refs,
     };
     setItem(MIC_STATE_KEY, JSON.stringify(s));
   } catch (e: any) {
     dlog(`[ALSA] saveMicState failed: ${e?.message ?? e}`);
   }
 }
+
 function loadMicState(): PersistedMicState | null {
   try {
     const raw = getItem(MIC_STATE_KEY);
