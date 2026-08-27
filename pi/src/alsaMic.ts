@@ -1029,7 +1029,9 @@ function onAudioData(buf: Buffer): void {
     const dt = frameCount / SAMPLE_RATE;
     const a = 1 - Math.exp(-dt / 0.13);
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
+    learnGainSample(blockRms, dt);   // FIX 4: lärd volym→gain (gate:ad, långsam)
   }
+
 
   // Innehålls-frys-detektor: en wedged I2S-DMA matar IDENTISKA bytes varje callback.
   // lightSumLocal är en deterministisk summa av blocket → byte-identiskt block ⇒
