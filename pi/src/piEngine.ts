@@ -218,7 +218,7 @@ const DEFAULT_CAL: LightCalibration = {
   releaseAlpha: 0.4,         // mjuk fade-out
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
-  brightnessFloor: 20,       // 0 % av tiden under upplevt 5 %
+  brightnessFloor: 28,       // upplevt golv 9.8 % — dalarna går inte nästan svarta
   transientGain: 0.45,       // beat-punch (0.2 gav osynlig modulation) — parad med windowDb 18
   onsetThreshold: 2.0,
   onsetRefractoryMs: 200,
