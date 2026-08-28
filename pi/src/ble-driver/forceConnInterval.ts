@@ -102,10 +102,11 @@ export function forceConnInterval(
 // hcitool exit 0 betyder bara att kommandot skickades — controllern kan ändå
 // ligga kvar på default-interval (skurvis leverans → hackigt ljus). Därför:
 //   1. Försök upp till 3 gånger med backoff direkt efter connect.
-//   2. Re-assert var 60:e sekund så länge länken lever (interval kan tappas
+//   2. Re-assert var 25:e sekund så länge länken lever (interval kan tappas
 //      vid en LE-connection-update från lampan eller efter en reconnect).
 //   3. Verifiera mot FAKTISK sändningstakt (writeLatMax/outstanding) via
 //      bleStats — loggas så vi ser om det slog igenom, inte bara exitkoden.
+
 let reassertTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function applyConnInterval(

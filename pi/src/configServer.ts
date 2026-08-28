@@ -15,7 +15,8 @@ import {
 import type { GainCalPoint } from './alsaMic.js';
 import { FRAME_MS } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
-import { getRuntimeHealth } from './runtimeHealth.js';
+import { getRuntimeHealth, getBleDownForMs } from './runtimeHealth.js';
+
 // FIX 2: statiska imports i stället för await import() per request — interna
 // moduler, ingen load-order-fara när servern lyssnar.
 import { getHardcodedConnected, getLastDisconnectReason } from './ble-driver/connect.js';
@@ -512,6 +513,7 @@ export function startConfigServer(port = 3050): void {
       lifecycle: { state: lifecycleState, manualOverrideOff: lifecycleOverride, pendingShutdownInMs },
       ble: {
         connected: c.connected ? 1 : 0,
+        downForMs: getBleDownForMs(),
         devices: c.connected ? [c.name] : [],
         stats: bleStats,
         lastSent: sent,                              // {r,g,b,brightness} | null
