@@ -252,8 +252,10 @@ const DEFAULT_CAL: LightCalibration = {
   windowDb: 19,              // vers→refräng 25.6 upplevda enheter
   lightSmoothMs: 60,         // bas-avbrusning i ms; sitter på energivägen (wlevel), INTE beat-vägen
   buildUpGain: 0.25,
-  beatDepth: 0.7,
-  barAccentLift: 0.25,
+  beatDepth: 0.45,           // 0.70 = strobe (2.7× luminanspuls 2.2 ggr/s)
+  barAccentLift: 0.30,
+  beatDoubleBelowBpm: 105,
+  beatMultiplier: 1,
   colorSpectralTilt: 0.25,
 };
 
