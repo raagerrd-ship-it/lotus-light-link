@@ -184,8 +184,11 @@ export class Analyser {
   private bpmCounter = 0;
   private localBpm = 0;
   private localBpmConfidence = 0;
-  private static readonly BPM_MIN = 80;    // festintervall; MAX maste vara exakt 2x MIN
-  private static readonly BPM_MAX = 160;
+  // 90..180 = EXAKT en oktav → vikningen är entydig. (80..180 gav 2.25× och
+  // tvetydighet i 80–90.) Snabba låtar presenteras dubbelt av dirigentens
+  // auto-dubbel (beatDoubleBelowBpm), inte genom att vidga spannet.
+  private static readonly BPM_MIN = 90;    // festintervall; MAX maste vara exakt 2x MIN
+  private static readonly BPM_MAX = 180;
   private octaveVote = 0;   // ackumulerat bevis för att byta oktav (självrättande lås)
   private nearVote = 0;     // bevis för GRANN-fel (t.ex. 122 låst mot 136): bara före commit
   private nearChallenger = 0;  // tempot grann-rösterna pekar på (måste hålla ihop, som challengerBpm)
