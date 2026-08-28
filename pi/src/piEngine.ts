@@ -156,8 +156,9 @@ export interface LightCalibration {
   dropSource: 'analyser' | 'bass';
   /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
   barAccent: number;
-  /** Topp-boost: extra lyft när analysatorns intensity > 90 %. 0 = av. Default 0.2. */
-  peakBoost: number;
+  /** Onset-envelopens stigtid i ms. 0 = instant attack (default), >0 = EMA. */
+  onsetRiseMs: number;
+
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
    *  inLowFrac × point1.gain → golv. Används BARA i fast-läge (adaptiveCeiling=false). */
   inLowFrac: number;
@@ -199,14 +200,15 @@ export interface LightCalibration {
 const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
-  attackAlpha: 1.0, releaseAlpha: 0.4,
+  attackAlpha: 1.0,          // SNABB attack — beats får inte missas
+  releaseAlpha: 0.4,         // mjuk fade-out
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
-  brightnessFloor: 15,
-  transientGain: 0.2,
-  onsetThreshold: 1.8,
+  brightnessFloor: 20,       // 0 % av tiden under upplevt 5 %
+  transientGain: 0.45,       // beat-punch (0.2 gav osynlig modulation) — parad med windowDb 18
+  onsetThreshold: 2.0,
   onsetRefractoryMs: 200,
-  flickerDeadband: 0.045,
+  flickerDeadband: 0.010,    // 0.045 tvingade fram 4.5-pct-hopp (=32 % upplevt vid låga nivåer)
   lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
@@ -216,11 +218,11 @@ const DEFAULT_CAL: LightCalibration = {
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 45,
-  beatSyncStrength: 0.10,
+  beatLeadMs: 45,            // med instant onset-attack (onsetRiseMs 0) försvinner ~79 ms lag
+  beatSyncStrength: 0.10,    // PLL:ens fas-ankarknuff, INTE ljus-modulation
   dropSource: 'analyser',
-  barAccent: 1.0,
-  peakBoost: 0.2,
+  barAccent: 1.5,            // ettans accent
+  onsetRiseMs: 0,            // 0 = instant attack; >0 = gammalt EMA-beteende i ms
   inLowFrac: 0.022,
   inHighFrac: 0.075,
   shapeExpand: 2.0,
@@ -232,9 +234,9 @@ const DEFAULT_CAL: LightCalibration = {
   dbWindow: true,
   lightHiWeight: 1.0,
   lightBassWeight: 0.0,
-  anchorDb: -4,
-  windowDb: 22,
-  lightSmoothMs: 35, // bas-avbrusning i ms (0 = av; 20 = knappt, 60 = tydligt lugnare bas)
+  anchorDb: -6,              // fönstret [-24,-6] täcker musikens faktiska område
+  windowDb: 18,              // ljusnivå/kontrast — HUVUDRATTEN (19-20 dovare, 17 ljusare)
+  lightSmoothMs: 25,         // bas-avbrusning i ms (0 = av; 35 kostade 23 % av ett beat i attack)
   buildUpGain: 0.25,
   colorSpectralTilt: 0.25,
 };
@@ -249,7 +251,9 @@ const DROPPED_CAL_KEYS = [
   'dynamicDamping', 'dynamicsEnabled', 'intensityInfluence',
   'lightScale', 'lightBassWeight', 'centerAdaptSeconds',
   'maxRisePerSec', 'maxFallPerSec', 'saturation',
+  'peakBoost',
 ];
+
 
 function migrateLegacyCalibration(cal: any): any {
   if (!cal || typeof cal !== 'object') return cal;
@@ -639,13 +643,22 @@ export class PiLightEngine {
       if (allowTrigger) this.onsetTarget = 0.45;
     }
 
-    // Fast rise using precomputed alpha, smooth decay using precomputed decay
     if (this.onsetBoost < this.onsetTarget) {
-      this.onsetBoost += tc.onsetRiseAlphaFft * (this.onsetTarget - this.onsetBoost);
+      // INSTANT ATTACK: pulsen ska landa PÅ slaget, inte krypa dit. Samma princip som
+      // attackAlpha=1.0 på ljus-vägen. Stigtiden var uppmätt ~79 ms = hela beat-latensen.
+      // onsetRiseMs > 0 ger EMA-beteende igen (bakåtkompatibelt), 0 = instant.
+      const riseMs = this.cal.onsetRiseMs ?? 0;
+      if (riseMs <= 0) {
+        this.onsetBoost = this.onsetTarget;
+      } else {
+        const a = 1 - Math.exp(-FRAME_MS / riseMs);
+        this.onsetBoost += a * (this.onsetTarget - this.onsetBoost);
+      }
     } else {
       this.onsetBoost *= tc.onsetDecayFft;
     }
     this.onsetTarget *= tc.onsetDecayFft;
+
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
     return fired;
@@ -1538,16 +1551,8 @@ export class PiLightEngine {
         shape = sx === 1 ? e : Math.pow(e, sx);
       }
 
-      // Mjuk topp-boost på ÄKTA toppar (intensity > 90 %), adderad FÖRE
-      // smoothingen så soft-releasen fadear ner den jämnt (inget hack).
-      {
-        const _px = bands.shape ?? 0;
-        const amt = cal.peakBoost;
-        if (amt > 0 && _px > 0.9) {
-          shape += (_px - 0.9) * 10 * amt;
-          if (shape > 1) shape = 1;
-        }
-      }
+
+
 
       _diag.bassNorm = normalizeFixed(bands.bassRms);
       _diag.midHiNorm = normalizeFixed(bands.midHiRms);
