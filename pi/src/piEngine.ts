@@ -246,11 +246,11 @@ const DEFAULT_CAL: LightCalibration = {
   ceilLowMul: 0.55,
   ceilHighMul: 1.35,
   dbWindow: true,
-  lightHiWeight: 1.0,
-  lightBassWeight: 0.0,
-  anchorDb: -6,              // fönstret [-24,-6] täcker musikens faktiska område
-  windowDb: 18,              // ljusnivå/kontrast — HUVUDRATTEN (19-20 dovare, 17 ljusare)
-  lightSmoothMs: 25,         // bas-avbrusning i ms (0 = av; 35 kostade 23 % av ett beat i attack)
+  lightHiWeight: 0.3,
+  lightBassWeight: 0.9,      // mindre röstkänslighet ("kropp") — kräver att fältet inte migreras bort
+  anchorDb: -1.5,            // takmättnad 1.0 % — ger tillbaka headroom för drops
+  windowDb: 19,              // vers→refräng 25.6 upplevda enheter
+  lightSmoothMs: 60,         // bas-avbrusning i ms; sitter på energivägen (wlevel), INTE beat-vägen
   buildUpGain: 0.25,
   beatDepth: 0.7,
   barAccentLift: 0.25,
