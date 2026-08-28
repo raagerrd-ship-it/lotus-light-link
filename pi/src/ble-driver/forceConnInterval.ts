@@ -6,7 +6,7 @@
  * bevisat i fält att lampan default:ar till ~50ms (=20 pps tak) tills man
  * manuellt kör:
  *
- *   sudo hcitool lecup --handle <H> --min 16 --max 16 --latency 0 --timeout 100
+ *   sudo hcitool lecup --handle <H> --min 16 --max 16 --latency 0 --timeout 500
  *
  * Direkt efter det manuella anropet → 50 pps utan kö (bevisat med bench).
  *
@@ -15,24 +15,6 @@
  * controllern säger nej, eller om handle är ogiltig → vi loggar och fortsätter.
  * `/api/ble/conn-params` visar då att fallback inte slog igenom (spårbarhet
  * via systemctl status).
- *
- * Targetvärden (BLE spec):
- *   min=max=12 →  12 × 1.25ms = 15ms connection interval
- *   latency=0  →  ingen slave latency (lampan ska svara på varje interval)
- *   timeout=500 → 500 × 10ms = 5s supervision timeout
- *
- * SUPERVISION (2026-08-28): 1 s (100 units) = länken dör efter ~66 missade paket
- * vid 15 ms interval. Pi:ns WiFi delar 2.4 GHz-radio med BLE och en WiFi-burst
- * räcker → reason=8-tapp. 5 s tolererar bursten. Kostar inget: bara hur länge
- * tystnad tolereras (latens/throughput/beat-timing oberörda). BLE-spec:
- * 5000 ms > (1+latency) × maxInterval × 2 = 30 ms. OBS: re-assert-timern MÅSTE
- * skicka timeoutUnits också, annars återställs den till 1 s var 25:e sekund.
- *
- * RATIONALE för 15ms (2026-04-25): Pi Zero 2W hängde sig efter ~22h drift med
- * 7.5ms interval. BCM43436 delar radio mellan WiFi+BT — 133 BLE-events/s gav
- * konstant interrupt-tryck. 15ms sänker BT-load (~67 events/s) utan att
- * äventyra single-slot-kontraktet (en BLE-slot per lease).
- * Worst-case latens: 15ms (under flicker-fusion-threshold).
  */
 
 import { spawn } from 'node:child_process';
