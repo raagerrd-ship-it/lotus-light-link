@@ -717,7 +717,7 @@ export class Analyser {
       this.lowConfSinceMs = voteNow;
     } else if (this.lowConfSinceMs > 0 && voteNow - this.lowConfSinceMs > 8000) {
       this.lowConfSinceMs = voteNow;
-      this.hintTrackChange(5000);
+      this.hintTrackChange(5000, true);   // släpp LÅSET, behåll tempo-gissningen
     } else if (this.lowConfSinceMs === 0) {
       this.lowConfSinceMs = voteNow;
     }
