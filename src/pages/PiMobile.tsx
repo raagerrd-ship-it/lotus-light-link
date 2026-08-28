@@ -21,19 +21,20 @@ type Cal = {
   onsetThreshold: number; onsetRefractoryMs: number;
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
   beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
-  dropFlashMs: number; beatLeadMs: number; peakBoost: number;
+  dropFlashMs: number; beatLeadMs: number;
   shapeExpand: number;
   windowDb: number; lightBassWeight: number;
 };
 
 const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 43,
-  brightnessFloor: 10, punchWhiteThreshold: 100, transientGain: 0.4,
+  brightnessFloor: 20, punchWhiteThreshold: 100, transientGain: 0.45,
   colorSpectralTilt: 0.25,
-  onsetThreshold: 4.0, onsetRefractoryMs: 300,
+  onsetThreshold: 2.0, onsetRefractoryMs: 200,
+
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
-  dropFlashMs: 320, beatLeadMs: 0, peakBoost: 0.2,
+  dropFlashMs: 320, beatLeadMs: 45,
   shapeExpand: 1.0,
   windowDb: 18, lightBassWeight: 0,
 };
@@ -828,7 +829,6 @@ export default function PiMobile() {
         dropSensitivity: cal.dropSensitivity,
         dropFlashMs: cal.dropFlashMs,
         beatLeadMs: cal.beatLeadMs,
-        peakBoost: cal.peakBoost,
         shapeExpand: cal.shapeExpand,
         windowDb: cal.windowDb,
         lightBassWeight: cal.lightBassWeight,
@@ -906,7 +906,6 @@ export default function PiMobile() {
         dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
         dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
         beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
-        peakBoost: c?.peakBoost ?? DEFAULT_CAL.peakBoost,
         shapeExpand: c?.shapeExpand ?? DEFAULT_CAL.shapeExpand,
         windowDb: c?.windowDb ?? DEFAULT_CAL.windowDb,
         lightBassWeight: c?.lightBassWeight ?? DEFAULT_CAL.lightBassWeight,
@@ -1132,14 +1131,8 @@ export default function PiMobile() {
                   onChange={(v) => setCal({ ...cal, beatLeadMs: Math.round(v) })}
                   hint="Med input-sync ligger 0 rätt: punchen staplas på input-pulsen i stället för att smeta ut."
                 />
-                <Slider
-                  label="Topp-boost"
-                  value={cal.peakBoost}
-                  display={`${Math.round(cal.peakBoost * 100)} %`}
-                  min={0} max={1} step={0.05}
-                  onChange={(v) => setCal({ ...cal, peakBoost: v })}
-                  hint="Extra lyft bara på de äkta topparna (intensity > 90 %). 0 = av."
-                />
+
+
 
 
               </Panel>
