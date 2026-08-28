@@ -222,7 +222,7 @@ const DEFAULT_CAL: LightCalibration = {
   transientGain: 0.45,       // beat-punch (0.2 gav osynlig modulation) — parad med windowDb 18
   onsetThreshold: 2.0,
   onsetRefractoryMs: 200,
-  flickerDeadband: 0.010,    // 0.045 tvingade fram 4.5-pct-hopp (=32 % upplevt vid låga nivåer)
+  flickerDeadband: 0.020,    // HÖJ INTE — vid 0.06 ökar icke-rytmisk jitter (staircase)
   lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
