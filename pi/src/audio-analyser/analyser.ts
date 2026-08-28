@@ -1065,7 +1065,7 @@ export class Analyser {
         this.localBpmConfidence = 0;          // beat-UTSIGNALEN av (inga fantom-pulser)
         this.beatAnchorMs = 0; this.pendingKickMs = 0;
         this.envFilled = 0; this.envBassAccum = 0;
-        this.hintTrackChange(5000);           // släpper commit + historik, rör INTE localBpm
+        this.hintTrackChange(5000, true);     // släpper commit + historik, rör INTE localBpm
         for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
       }
       if (this.silentMs > 10000) { this.localBpm = 0; this.tempoGram.fill(0); }   // full släppning
