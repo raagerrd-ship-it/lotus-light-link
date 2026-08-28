@@ -52,6 +52,7 @@ export interface TickConstants {
   gammaIsUnity: boolean;
   brightnessFloor: number;
   transientGain: number;
+  beatDepth: number;
   lutR: Uint8Array;
   lutG: Uint8Array;
   lutB: Uint8Array;
@@ -91,6 +92,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     gammaIsUnity,
     brightnessFloor: cal.brightnessFloor,
     transientGain: cal.transientGain,
+    beatDepth: Math.max(0, Math.min(1, cal.beatDepth ?? 0.7)),
 
     lutR,
     lutG,
@@ -113,7 +115,9 @@ export interface LightCalibration {
   punchWhiteThreshold: number;
   /** Golv i procent — ljuset går aldrig under detta under play. Default 25. */
   brightnessFloor: number;
-  /** 0 = av (ingen boost), 0.4 = default, upp till ~2.0 = överdrivna transienter */
+  /** RAW-/onset-vägen: 0 = av (ingen boost), 0.4 = default. OBS: skalar sedan
+   *  2026-08-28 INTE längre ljuspulsen — dirigenten normaliserar pulsen mot dess
+   *  nominella mål (0.45) och styr djupet med beatDepth. */
   transientGain: number;
   /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
   onsetThreshold: number;
@@ -188,6 +192,10 @@ export interface LightCalibration {
   windowDb: number;
   /** PRE-DROP: hur mycket analysatorns buildUp-tension lyfter ljuset in i droppen. */
   buildUpGain: number;
+  /** DIRIGENT: 0..1, hur djupt takten modulerar INOM taket. Default 0.7. */
+  beatDepth: number;
+  /** DIRIGENT: 0..1, hur mycket ettan höjer TAKET. Default 0.25. */
+  barAccentLift: number;
 
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
@@ -236,6 +244,8 @@ const DEFAULT_CAL: LightCalibration = {
   windowDb: 18,              // ljusnivå/kontrast — HUVUDRATTEN (19-20 dovare, 17 ljusare)
   lightSmoothMs: 25,         // bas-avbrusning i ms (0 = av; 35 kostade 23 % av ett beat i attack)
   buildUpGain: 0.25,
+  beatDepth: 0.7,
+  barAccentLift: 0.25,
   colorSpectralTilt: 0.25,
 };
 
@@ -243,11 +253,14 @@ const DEFAULT_CAL: LightCalibration = {
 
 /** Rensa bort borttagna legacy-fält ur sparade inställningar (2026-08-25:
  *  Dirigenten omskriven — dynamicCenter/dynamics/perceptual-kurvan/profiler
- *  finns inte längre). */
+ *  finns inte längre).
+ *  LÄRDOM 2026-08-28: återanvänd ALDRIG ett namn som ligger i denna lista för en
+ *  ny funktion. 'lightBassWeight' återinfördes i FIX 3 som ett nytt fält och
+ *  raderades vid varje loadCalibration() → bas-viktningen var aldrig aktiv. */
 const DROPPED_CAL_KEYS = [
   'transientBoost', 'perceptualCurve', 'perceptualGamma',
   'dynamicDamping', 'dynamicsEnabled', 'intensityInfluence',
-  'lightScale', 'lightBassWeight', 'centerAdaptSeconds',
+  'lightScale', 'centerAdaptSeconds',
   'maxRisePerSec', 'maxFallPerSec', 'saturation',
   'peakBoost',
 ];
@@ -1620,15 +1633,28 @@ export class PiLightEngine {
         if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
       }
 
-      // ── 6. BRIGHTNESS: input-formen mappas rakt golv→tak (ingen loudness-faktor,
-      // formen ÄR redan amplituden — att gånga med ampEnv dubbelräknar). ──
-      let energyForm = shapeSm + fluxBoost;
-      // PRE-DROP: analysatorns buildUp-tension sväller upp ljuset IN i droppen.
-      {
-        const f = getLatestFrame();
-        const bu = (f && (f as any).buildUp) ? (f as any).buildUp : 0;
-        energyForm += bu * (cal.buildUpGain ?? 0);
-      }
+      // ── 6. BRIGHTNESS — TAKTEN ÄR GRUNDEN, ENERGIN SÄTTER TAKET (multiplikativ).
+      // Pulsen normaliseras mot sitt NOMINELLA mål (0.45) i stället för att klampas:
+      // additivt klampade både vanligt slag och ettan till ~1.0 och accenten försvann.
+      const NOM = 0.45;                                   // grid-pulsens nominella onsetTarget
+      const p   = this.onsetBoost / NOM;                  // 1.0 på vanligt slag, upp till barAccent på ettan
+      const pn  = p < 1 ? p : 1;                          // djupet INOM taket
+      const acc = Math.max(1, cal.barAccent ?? 1);
+      const one = acc > 1 ? Math.min(1, Math.max(0, p - 1) / (acc - 1)) : 0;   // 1 på ettan
+
+      // buildUp OCH ettan höjer TAKET (adderas inte ovanpå — då klampar de bort pulsen)
+      const _f = getLatestFrame();
+      const bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
+      let ceil = shapeSm * (1 + bu * (cal.buildUpGain ?? 0));
+      ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.25);
+      if (ceil > 1) ceil = 1;
+
+      // Luta inte på ett beat som inte finns: taktlös musik/TV/pauser dimmades
+      // annars 70 %. Fixar även raw-läget (transientGain 0 → puls 0 → 30 % ljus).
+      const trust = Math.min(1, (this._beat?.confidence ?? 0) / 0.4);
+      const bd    = tc.beatDepth * trust;
+
+      let energyForm = ceil * ((1 - bd) + bd * pn);
       if (energyForm > 1) energyForm = 1;
       let outN = floorN + energyForm * (1 - floorN);
       if (outN < floorN) outN = floorN;
