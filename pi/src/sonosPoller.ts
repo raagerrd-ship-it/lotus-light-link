@@ -374,6 +374,19 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   // WiFi vaknar → buddy fresh igen.
   if (staleWatchdogTimer) clearInterval(staleWatchdogTimer);
   staleWatchdogTimer = setInterval(() => {
+    // SSE-liveness: en halvöppen ström fyrar aldrig onerror. Utan detta står
+    // pollningen av OCH stale-vakten sover (den kollar bara medan PLAYING) →
+    // uppspelningsstart upptäcks aldrig. Gatewayen skickar ~1 händelse/s.
+    if (sseActive && lastSseEventAt > 0 && Date.now() - lastSseEventAt > SSE_LIVENESS_MS) {
+      console.warn(`[Sonos] SSE tyst ${Date.now() - lastSseEventAt}ms — behandlar som död, återupptar poll`);
+      sseActive = false;
+      lastSseEventAt = 0;
+      try { sseCleanup?.(); } catch {}
+      sseCleanup = null;
+      startPollTimer();
+      void connectSse();
+    }
+
     if (staleEmitted) return;
     if (lastResponseTime === 0) return;
     if (!isPlaying(currentState.playbackState)) return;
@@ -383,6 +396,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     staleEmitted = true;
     apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED' });
   }, STALE_CHECK_INTERVAL_MS);
+
 
   dlog(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, mode: trust-gateway-state)`);
 }
