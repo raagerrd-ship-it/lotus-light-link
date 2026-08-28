@@ -192,10 +192,18 @@ export interface LightCalibration {
   windowDb: number;
   /** PRE-DROP: hur mycket analysatorns buildUp-tension lyfter ljuset in i droppen. */
   buildUpGain: number;
-  /** DIRIGENT: 0..1, hur djupt takten modulerar INOM taket. Default 0.7. */
+  /** DIRIGENT: 0..1, hur djupt takten modulerar INOM taket. Default 0.45.
+   *  0.70 gav en 2.7× luminanspuls 2.2 ggr/s = strobe; under 0.38 inverteras
+   *  "djupet växer med energin". Smakintervall 0.38–0.55. */
   beatDepth: number;
-  /** DIRIGENT: 0..1, hur mycket ettan höjer TAKET. Default 0.25. */
+  /** DIRIGENT: 0..1, hur mycket ettan höjer TAKET. Default 0.30.
+   *  Inert tills analysatorns barShift faktiskt beräknas. */
   barAccentLift: number;
+  /** AUTO-DUBBEL: pulsa i halvslag när låtens takt är under detta (BPM).
+   *  0 = av. Default 105 — en lampa som pulsar <105/min känns trög. */
+  beatDoubleBelowBpm: number;
+  /** Manuell puls-multiplikator (1 = låtens takt, 2 = halvslag). Default 1. */
+  beatMultiplier: number;
 
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
