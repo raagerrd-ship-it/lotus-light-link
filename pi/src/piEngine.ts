@@ -1088,9 +1088,8 @@ export class PiLightEngine {
         this.forceIdleNow();
         startKeepAlive();
         dlog('[Engine] → idle mode (owner=idle, keep-alive PÅ — väntar på lifecycle.shutdownToIgnition)');
-        // OBS: 2-min idle-disconnect-timer borttagen. Lifecycle (engineLifecycle.ts)
-        // schemalägger shutdownToIgnition() efter IGNITION_REENTRY_GRACE_MS (1500ms)
-        // och cancellerar om PLAYING kommer tillbaka inom fönstret.
+        // Lifecycle (engineLifecycle.ts) schemalägger shutdownToIgnition()
+        // efter IGNITION_REENTRY_GRACE_MS och cancellerar om PLAYING kommer tillbaka.
       } else {
         dlog('[Engine] → idle mode (BLE ej ansluten)');
       }
