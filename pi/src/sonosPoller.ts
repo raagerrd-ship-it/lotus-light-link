@@ -322,13 +322,14 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   };
 
-  if (!disableSSE) {
+  const connectSse = async () => {
     try {
       const mod = await import('eventsource');
       const ESClass = (mod as any).default ?? mod;
       const sseUrl = `${baseUrl}${ssePath}`;
       const es = new ESClass(sseUrl);
       es.onopen = () => {
+        lastSseEventAt = Date.now();
         if (!sseActive) {
           sseActive = true;
           stopPollTimer();
@@ -336,6 +337,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         }
       };
       es.onmessage = (e: any) => {
+        lastSseEventAt = Date.now();
         try { parseStatus(JSON.parse(e.data)); } catch {}
       };
       es.onerror = () => {
@@ -350,7 +352,10 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     } catch {
       dlog('[Sonos] No SSE support, using poll-only mode');
     }
-  }
+  };
+
+  if (!disableSSE) await connectSse();
+
 
   // Initial status fetch — fire-and-forget så subsystem-start inte blockeras
   // om gateway är otillgänglig. Timer:n picker upp värden vid nästa cykel.
