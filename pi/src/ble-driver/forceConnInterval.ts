@@ -6,7 +6,7 @@
  * bevisat i fält att lampan default:ar till ~50ms (=20 pps tak) tills man
  * manuellt kör:
  *
- *   sudo hcitool lecup --handle <H> --min 16 --max 16 --latency 0 --timeout 100
+ *   sudo hcitool lecup --handle <H> --min 16 --max 16 --latency 0 --timeout 500
  *
  * Direkt efter det manuella anropet → 50 pps utan kö (bevisat med bench).
  *
@@ -15,17 +15,6 @@
  * controllern säger nej, eller om handle är ogiltig → vi loggar och fortsätter.
  * `/api/ble/conn-params` visar då att fallback inte slog igenom (spårbarhet
  * via systemctl status).
- *
- * Targetvärden (BLE spec):
- *   min=max=12 →  12 × 1.25ms = 15ms connection interval
- *   latency=0  →  ingen slave latency (lampan ska svara på varje interval)
- *   timeout=100 → 100 × 10ms = 1s supervision timeout
- *
- * RATIONALE för 15ms (2026-04-25): Pi Zero 2W hängde sig efter ~22h drift med
- * 7.5ms interval. BCM43436 delar radio mellan WiFi+BT — 133 BLE-events/s gav
- * konstant interrupt-tryck. 15ms sänker BT-load (~67 events/s) utan att
- * äventyra single-slot-kontraktet (en BLE-slot per lease).
- * Worst-case latens: 15ms (under flicker-fusion-threshold).
  */
 
 import { spawn } from 'node:child_process';
@@ -45,7 +34,7 @@ export function forceConnInterval(
   const min = opts.min ?? 12;            // 15 ms (12 × 1.25ms) — verifierat manuellt på Pi:n
   const max = opts.max ?? 12;            // 15 ms
   const latency = opts.latency ?? 0;
-  const supTo = opts.timeoutUnits ?? 100; // 1 s
+  const supTo = opts.timeoutUnits ?? 500; // 5 s supervision timeout (se SUPERVISION nedan)
   const cmdTimeoutMs = opts.cmdTimeoutMs ?? 3000;
 
   return new Promise((resolve) => {
@@ -95,10 +84,11 @@ export function forceConnInterval(
 // hcitool exit 0 betyder bara att kommandot skickades — controllern kan ändå
 // ligga kvar på default-interval (skurvis leverans → hackigt ljus). Därför:
 //   1. Försök upp till 3 gånger med backoff direkt efter connect.
-//   2. Re-assert var 60:e sekund så länge länken lever (interval kan tappas
+//   2. Re-assert var 25:e sekund så länge länken lever (interval kan tappas
 //      vid en LE-connection-update från lampan eller efter en reconnect).
 //   3. Verifiera mot FAKTISK sändningstakt (writeLatMax/outstanding) via
 //      bleStats — loggas så vi ser om det slog igenom, inte bara exitkoden.
+
 let reassertTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function applyConnInterval(
@@ -114,7 +104,7 @@ export async function applyConnInterval(
       await new Promise((r) => setTimeout(r, 500 * attempt));
       continue;
     }
-    const r = await forceConnInterval(handle, { min: targetUnits, max: targetUnits });
+    const r = await forceConnInterval(handle, { min: targetUnits, max: targetUnits, timeoutUnits: SUPERVISION_UNITS });
     if (r.ok) {
       bleStats.requestedIntervalMs = targetMs;
       bleStats.intervalSource = 'hcitool';
@@ -133,6 +123,8 @@ export async function applyConnInterval(
 // re-forcera var 25:e sekund och VERIFIERA mot faktisk leveranstid
 // (outstandingAgeMs): >60ms betyder att intervallet tappats → forcera direkt igen.
 const REASSERT_MS = 25_000;
+/** 500 × 10 ms = 5 s supervision timeout — måste skickas med i BÅDA anropen. */
+export const SUPERVISION_UNITS = 500;
 const AGE_ALARM_MS = 60;
 
 function startConnIntervalReassert(
@@ -145,7 +137,7 @@ function startConnIntervalReassert(
     const handle = getHandle();
     if (handle == null) { stopConnIntervalReassert(); return; }
     const ageBefore = bleStats.outstandingAgeMs;
-    void forceConnInterval(handle, { min: 12, max: 12 }).then((r) => {
+    void forceConnInterval(handle, { min: 12, max: 12, timeoutUnits: SUPERVISION_UNITS }).then((r) => {
       bleStats.connIntervalReassertCount++;
       if (!r.ok) {
         log(`[forceConnInterval] re-assert FAIL exit=${r.exitCode} stderr="${r.stderr}"`);

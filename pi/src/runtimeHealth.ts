@@ -31,6 +31,11 @@ let lateTickTotal = 0;
 // men BLE levererar inte" från "motorn tickar inte alls".
 let engineTickTotal = 0;
 
+// BLE-down telemetry: uppdateras av 1 Hz-schedulern när MOTOR_ON kör utan ansluten lampa.
+let bleDownForMs = 0;
+export function setBleDownForMs(ms: number): void { bleDownForMs = Math.max(0, Math.round(ms)); }
+export function getBleDownForMs(): number { return bleDownForMs; }
+
 // ── Native-anrop-instrumentering (2026-08-25) ──
 // Tick-frysningar (playback-watchdog-stuck) misstänktes komma från ett
 // blockerande native-anrop (BLE-write eller ALSA-callback). Vi tidsstämplar
