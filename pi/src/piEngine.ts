@@ -92,7 +92,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     gammaIsUnity,
     brightnessFloor: cal.brightnessFloor,
     transientGain: cal.transientGain,
-    beatDepth: Math.max(0, Math.min(1, cal.beatDepth ?? 0.7)),
+    beatDepth: Math.max(0, Math.min(1, cal.beatDepth ?? 0.45)),
 
     lutR,
     lutG,
@@ -192,10 +192,18 @@ export interface LightCalibration {
   windowDb: number;
   /** PRE-DROP: hur mycket analysatorns buildUp-tension lyfter ljuset in i droppen. */
   buildUpGain: number;
-  /** DIRIGENT: 0..1, hur djupt takten modulerar INOM taket. Default 0.7. */
+  /** DIRIGENT: 0..1, hur djupt takten modulerar INOM taket. Default 0.45.
+   *  0.70 gav en 2.7× luminanspuls 2.2 ggr/s = strobe; under 0.38 inverteras
+   *  "djupet växer med energin". Smakintervall 0.38–0.55. */
   beatDepth: number;
-  /** DIRIGENT: 0..1, hur mycket ettan höjer TAKET. Default 0.25. */
+  /** DIRIGENT: 0..1, hur mycket ettan höjer TAKET. Default 0.30.
+   *  Inert tills analysatorns barShift faktiskt beräknas. */
   barAccentLift: number;
+  /** AUTO-DUBBEL: pulsa i halvslag när låtens takt är under detta (BPM).
+   *  0 = av. Default 105 — en lampa som pulsar <105/min känns trög. */
+  beatDoubleBelowBpm: number;
+  /** Manuell puls-multiplikator (1 = låtens takt, 2 = halvslag). Default 1. */
+  beatMultiplier: number;
 
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
@@ -210,11 +218,11 @@ const DEFAULT_CAL: LightCalibration = {
   releaseAlpha: 0.4,         // mjuk fade-out
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
-  brightnessFloor: 20,       // 0 % av tiden under upplevt 5 %
+  brightnessFloor: 28,       // upplevt golv 9.8 % — dalarna går inte nästan svarta
   transientGain: 0.45,       // beat-punch (0.2 gav osynlig modulation) — parad med windowDb 18
   onsetThreshold: 2.0,
   onsetRefractoryMs: 200,
-  flickerDeadband: 0.010,    // 0.045 tvingade fram 4.5-pct-hopp (=32 % upplevt vid låga nivåer)
+  flickerDeadband: 0.020,    // HÖJ INTE — vid 0.06 ökar icke-rytmisk jitter (staircase)
   lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
@@ -238,14 +246,16 @@ const DEFAULT_CAL: LightCalibration = {
   ceilLowMul: 0.55,
   ceilHighMul: 1.35,
   dbWindow: true,
-  lightHiWeight: 1.0,
-  lightBassWeight: 0.0,
-  anchorDb: -6,              // fönstret [-24,-6] täcker musikens faktiska område
-  windowDb: 18,              // ljusnivå/kontrast — HUVUDRATTEN (19-20 dovare, 17 ljusare)
-  lightSmoothMs: 25,         // bas-avbrusning i ms (0 = av; 35 kostade 23 % av ett beat i attack)
+  lightHiWeight: 0.3,
+  lightBassWeight: 0.9,      // mindre röstkänslighet ("kropp") — kräver att fältet inte migreras bort
+  anchorDb: -1.5,            // takmättnad 1.0 % — ger tillbaka headroom för drops
+  windowDb: 19,              // vers→refräng 25.6 upplevda enheter
+  lightSmoothMs: 60,         // bas-avbrusning i ms; sitter på energivägen (wlevel), INTE beat-vägen
   buildUpGain: 0.25,
-  beatDepth: 0.7,
-  barAccentLift: 0.25,
+  beatDepth: 0.45,           // 0.70 = strobe (2.7× luminanspuls 2.2 ggr/s)
+  barAccentLift: 0.30,
+  beatDoubleBelowBpm: 105,
+  beatMultiplier: 1,
   colorSpectralTilt: 0.25,
 };
 
@@ -482,6 +492,7 @@ export class PiLightEngine {
   private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
+  private _lastGridIdxH = -1;          // senaste HALVSLAG som fyrade en puls (auto-dubbel)
   private _gridPulseCount = 0;
   private _reacqUntil = 0;             // vidgat re-lås-fönster efter låtbyte
   private _beatConfidentAt = 0;        // senast takten var pålitlig (coast-timeout)
@@ -1212,6 +1223,23 @@ export class PiLightEngine {
             this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
             this._gridPulseCount++;
           }
+          // AUTO-DUBBEL: analysatorn äger låtens kanoniska takt, dirigenten
+          // presenterar den dubbelt när den är låg (<105/min känns trög — en
+          // 194-BPM-låt viks till 97). Halvslaget får INGEN ettans-accent, så
+          // taktstrukturen behålls. beatDoubleBelowBpm = 0 stänger av.
+          const mult     = this.cal.beatMultiplier ?? 1;
+          const bpmNow   = this._beat?.bpm ?? 0;
+          const dblBelow = this.cal.beatDoubleBelowBpm ?? 105;
+          const wantDbl  = mult >= 2 || (dblBelow > 0 && bpmNow > 0 && bpmNow < dblBelow);
+          if (wantDbl && bpmNow > 0) {
+            const halfMs = 30000 / bpmNow;
+            const idxH = beatIndex(this._beat, Date.now() + this.cal.beatLeadMs + halfMs);
+            if (idxH !== this._lastGridIdxH) {
+              this._lastGridIdxH = idxH;
+              this.onsetTarget = 0.45;
+              this._gridPulseCount++;
+            }
+          }
         }
         // Drop-detektor @75Hz (analysatorns dropCount med bas-svackan som fallback).
         if (bands) this.processDrop(bands.bassRms, frame);
@@ -1646,12 +1674,14 @@ export class PiLightEngine {
       const _f = getLatestFrame();
       const bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
       let ceil = shapeSm * (1 + bu * (cal.buildUpGain ?? 0));
-      ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.25);
+      ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.30);
       if (ceil > 1) ceil = 1;
 
       // Luta inte på ett beat som inte finns: taktlös musik/TV/pauser dimmades
       // annars 70 %. Fixar även raw-läget (transientGain 0 → puls 0 → 30 % ljus).
-      const trust = Math.min(1, (this._beat?.confidence ?? 0) / 0.4);
+      // `locked` är trubbigt men ÄRLIGT. Använd INTE confidence — den är
+      // anti-diagnostisk (AUC 0.355; 34 % av fel-tempo-sampel har conf = 1.000).
+      const trust = hasBeat(this._beat) ? 1 : 0;   // samma "locked" som /api/status
       const bd    = tc.beatDepth * trust;
 
       let energyForm = ceil * ((1 - bd) + bd * pn);

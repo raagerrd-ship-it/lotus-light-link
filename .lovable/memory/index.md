@@ -13,7 +13,8 @@ BLEDOM HCI-stuck recovery is process.exit via systemd. Never add same-process re
 Short input-EMA (`lightSmoothMs` ~35 ms) before dB-mapping denoises base level without slowing beat attack.
 
 ## Memories
-- [Dirigent multiplikativ](mem://pi/lighting/dirigent-multiplikativ) — energyForm = tak × takt-djup; trust mot beat-conf; DROPPED_CAL_KEYS-namn får aldrig återanvändas
+- [Dirigent multiplikativ](mem://pi/lighting/dirigent-multiplikativ) — energyForm = tak × takt-djup; trust = locked (ALDRIG confidence); auto-dubbel <105 BPM; DROPPED_CAL_KEYS-fällan
+- [Tempo-lås](mem://pi/audio/tempo-lock-stability) — vikning 90..180 (exakt oktav); commit 24 vs låtbytesvakt 60; hintTrackChange nollar localBpm, tystnad keepBpm
 - [Input-sync (form)](mem://pi/lighting/input-sync-form) — formen = bands.totalRms; intensity BARA topp-boost >90%; ingen loudness-faktor; beatLeadMs 0
 - [Lärd volym→gain](mem://pi/audio/learned-volume-gain) — per-volym aggregat (4s-p90 medel) → LÅS efter 20 min → persisterat; relearnGain för omlärning
 - [Adaptivt tak + pre-drop](mem://pi/lighting/adaptive-ceiling-and-buildup) — inLow/inHigh från långsam EMA (~7s) per låt + buildUpGain-svällning; bryggeri-defaults

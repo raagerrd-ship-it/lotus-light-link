@@ -184,8 +184,11 @@ export class Analyser {
   private bpmCounter = 0;
   private localBpm = 0;
   private localBpmConfidence = 0;
-  private static readonly BPM_MIN = 80;    // festintervall; MAX maste vara exakt 2x MIN
-  private static readonly BPM_MAX = 160;
+  // 90..180 = EXAKT en oktav → vikningen är entydig. (80..180 gav 2.25× och
+  // tvetydighet i 80–90.) Snabba låtar presenteras dubbelt av dirigentens
+  // auto-dubbel (beatDoubleBelowBpm), inte genom att vidga spannet.
+  private static readonly BPM_MIN = 90;    // festintervall; MAX maste vara exakt 2x MIN
+  private static readonly BPM_MAX = 180;
   private octaveVote = 0;   // ackumulerat bevis för att byta oktav (självrättande lås)
   private nearVote = 0;     // bevis för GRANN-fel (t.ex. 122 låst mot 136): bara före commit
   private nearChallenger = 0;  // tempot grann-rösterna pekar på (måste hålla ihop, som challengerBpm)
@@ -529,14 +532,14 @@ export class Analyser {
 
 
     let bpm = (HZ * 60) / lagF;
-    // BPM-FILTER: vik in i 80..160 — festmusik ligger dar, och allt utanfor ar
+    // BPM-FILTER: vik in i 90..180 — festmusik ligger dar, och allt utanfor ar
     // en oktav-artefakt (en 76-BPM-last ar i praktiken 152, en 170 ar 85).
     // Intervallet MASTE spanna exakt en oktav (max = 2x min): med t.ex. 80..150
     // blir 155 -> 77.5 -> 155 -> 77.5 i all evighet och motorn hanger.
     // STRUKTURELL FÖLJD (2026-08-28): eftersom MAX === 2*MIN kollapsar b och 2b till
     // SAMMA representant. Alltså: ett äkta oktavfel kan aldrig visa sig som ratio≈2 —
     // det visar sig som ratio≈1. ratio>1.4 / <0.7 är därför INTE oktavgrenar; de
-    // fångar 3:2-/triol-artefakter och wrap-sömmen kring 80/160. Off-beat-testet
+    // fångar 3:2-/triol-artefakter och wrap-sömmen kring 90/180. Off-beat-testet
     // (bestLag = P) upphävs exakt av vikningen och är en no-op för oktaven.
     while (bpm < Analyser.BPM_MIN) bpm *= 2;
     while (bpm >= Analyser.BPM_MAX) bpm /= 2;
@@ -714,23 +717,30 @@ export class Analyser {
       this.lowConfSinceMs = voteNow;
     } else if (this.lowConfSinceMs > 0 && voteNow - this.lowConfSinceMs > 8000) {
       this.lowConfSinceMs = voteNow;
-      this.hintTrackChange(5000);
+      this.hintTrackChange(5000, true);   // släpp LÅSET, behåll tempo-gissningen
     } else if (this.lowConfSinceMs === 0) {
       this.lowConfSinceMs = voteNow;
     }
   }
 
   /**
-   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från en hård nollställning
-   * kastas INTE tempot: många byten landar på liknande takt, och en bevarad
-   * startgissning bekräftas i praktiken direkt (~1 takt) i stället för att byggas
-   * upp från noll (~5 s MÄTT). Vi gör bara sökningen villigare att hoppa:
+   * LÅTBYTES-HINT = REN OMLÅSNING. Att behålla `localBpm` som startgissning gjorde att
+   * varje låt öppnade med FÖRRA låtens tempo och hill-climbade dit rätt (MÄTT: 3.5–23.4 s,
+   * en låt satt 5–8 s per steg i en trappa uppåt). `localBpm = 0` ger dessutom stride 1
+   * (fri sökning) i stället för 25. Utöver tempot:
    *   • historiken töms (medianfönstret tillhör förra låten),
    *   • oktav-commit släpps (bpmStable=0) så ½×/2× får rättas igen,
    *   • lockPeak nollas så nya låtens takt inte jämförs mot förra låtens styrka,
    *   • under `windowMs` sänks grann-rättningens conf-grind och röstkrav.
+   * @param keepBpm true = behåll tempo-gissningen (tystnads-vägen: ett kort uppehåll
+   *   mitt i en låt ska släppa LÅSET men inte kasta takten).
    */
-  hintTrackChange(windowMs = 5000): void {
+  hintTrackChange(windowMs = 5000, keepBpm = false): void {
+    if (!keepBpm) {
+      this.localBpm = 0;
+      this.localBpmConfidence = 0;
+      this.tempoGram.fill(0);
+    }
     // A5: reacq-fönstret jämförs mot perfNow() (samma tidbas som voteNow).
     // Date.now() gjorde `voteNow < reacqUntilMs` alltid falskt → hinten var död.
     this.reacqUntilMs = this.perfNow() + windowMs;
@@ -1055,7 +1065,7 @@ export class Analyser {
         this.localBpmConfidence = 0;          // beat-UTSIGNALEN av (inga fantom-pulser)
         this.beatAnchorMs = 0; this.pendingKickMs = 0;
         this.envFilled = 0; this.envBassAccum = 0;
-        this.hintTrackChange(5000);           // släpper commit + historik, rör INTE localBpm
+        this.hintTrackChange(5000, true);     // släpper commit + historik, rör INTE localBpm
         for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
       }
       if (this.silentMs > 10000) { this.localBpm = 0; this.tempoGram.fill(0); }   // full släppning
