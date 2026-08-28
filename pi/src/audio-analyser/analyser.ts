@@ -532,14 +532,14 @@ export class Analyser {
 
 
     let bpm = (HZ * 60) / lagF;
-    // BPM-FILTER: vik in i 80..160 — festmusik ligger dar, och allt utanfor ar
+    // BPM-FILTER: vik in i 90..180 — festmusik ligger dar, och allt utanfor ar
     // en oktav-artefakt (en 76-BPM-last ar i praktiken 152, en 170 ar 85).
     // Intervallet MASTE spanna exakt en oktav (max = 2x min): med t.ex. 80..150
     // blir 155 -> 77.5 -> 155 -> 77.5 i all evighet och motorn hanger.
     // STRUKTURELL FÖLJD (2026-08-28): eftersom MAX === 2*MIN kollapsar b och 2b till
     // SAMMA representant. Alltså: ett äkta oktavfel kan aldrig visa sig som ratio≈2 —
     // det visar sig som ratio≈1. ratio>1.4 / <0.7 är därför INTE oktavgrenar; de
-    // fångar 3:2-/triol-artefakter och wrap-sömmen kring 80/160. Off-beat-testet
+    // fångar 3:2-/triol-artefakter och wrap-sömmen kring 90/180. Off-beat-testet
     // (bestLag = P) upphävs exakt av vikningen och är en no-op för oktaven.
     while (bpm < Analyser.BPM_MIN) bpm *= 2;
     while (bpm >= Analyser.BPM_MAX) bpm /= 2;
