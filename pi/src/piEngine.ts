@@ -903,6 +903,7 @@ export class PiLightEngine {
   // Se mem://pi/runtime/idle-disconnect-policy.
   private _idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private _idleEnteredAt: number | null = null;
+  private _idleColorPending = false;
   private _micPausedForIdle = false;
   private _lastPlayingChangeAt = 0;
   private static readonly IDLE_DISCONNECT_MS = 2 * 60 * 1000;
@@ -928,10 +929,12 @@ export class PiLightEngine {
   private async handleIdleDisconnect(): Promise<void> {
     this._idleDisconnectTimer = null;
     if (this._bleOwner === 'none') {
+      this._idleColorPending = true;
       this._idleEnteredAt = null;
-      dlog('[Engine] shutdownToIgnition: BLE redan disconnected — no-op');
+      dlog('[Engine] shutdownToIgnition: BLE nere — idle-färg schemalagd till nästa connect');
       return;
     }
+    this._idleColorPending = false;
     dlog('[Engine] Idle-disconnect: idle-färg @ 100% → drain HCI → BLE off → ALSA stop');
 
     // 1. Sista write: idle-färg @ full ljusstyrka så lampan står lyst efter disconnect.
@@ -999,7 +1002,12 @@ export class PiLightEngine {
     this.clearIdleDisconnectTimer();
     this._micPausedForIdle = false;
     if (!this.playing) {
-      this.forceIdleNow();
+      if (this._idleColorPending) {
+        this._idleColorPending = false;
+        this.forceIdleNow();
+      } else {
+        this.forceIdleNow();
+      }
       clearQueuedWrite();
       startKeepAlive();
       dlog(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
@@ -1061,6 +1069,8 @@ export class PiLightEngine {
 
     this.playing = playing;
     dlog(`[Engine] setPlaying(${playing}) — wasPlaying=${wasPlaying}, owner=${this._bleOwner}`);
+
+    if (playing) this._idleColorPending = false;
 
     if (!playing) {
       // active → idle: reset onset + force idle-färg, starta keep-alive.
