@@ -721,7 +721,7 @@ export class Analyser {
   }
 
   /**
-   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från resetTempo()
+   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från en hård nollställning
    * kastas INTE tempot: många byten landar på liknande takt, och en bevarad
    * startgissning bekräftas i praktiken direkt (~1 takt) i stället för att byggas
    * upp från noll (~5 s MÄTT). Vi gör bara sökningen villigare att hoppa:
