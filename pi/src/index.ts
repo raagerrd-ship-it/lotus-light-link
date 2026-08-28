@@ -428,6 +428,35 @@ async function main() {
   // volymbyte. Ändringstakten är omärkbar inom en låt.
   everySeconds(1, () => { alsaMic?.refreshAutoGain?.(); });
 
+  // ── BLE-down-larm (FIX 8): när BLE tappas under MOTOR_ON fryser ljus-pipelinen
+  // tyst — micen är frisk så ingen befintlig watchdog ser det. Larma EN gång per
+  // nedtid. Ingen omstart utlöses; recordRestart används som händelselogg.
+  {
+    const { getHardcodedConnected } = await import('./ble/index.js');
+    const lc = await import('./engineLifecycle.js');
+    const { recordRestart } = await import('./restartLog.js');
+    const { setBleDownForMs } = await import('./runtimeHealth.js');
+    const ALARM_AFTER_MS = 15000;
+    let downSinceMs = 0;
+    let alarmed = false;
+    everySeconds(1, () => {
+      if (lc.getLifecycleState() !== 'MOTOR_ON' || getHardcodedConnected().connected) {
+        downSinceMs = 0; alarmed = false; setBleDownForMs(0);
+        return;
+      }
+      if (!downSinceMs) downSinceMs = Date.now();
+      const downMs = Date.now() - downSinceMs;
+      setBleDownForMs(downMs);
+      if (!alarmed && downMs >= ALARM_AFTER_MS) {
+        alarmed = true;
+        console.error(`[BLE-Down] ljuset fryst ${downMs}ms — BLE ej ansluten under MOTOR_ON`);
+        try { recordRestart('ble-down-light-frozen', `BLE nere ${downMs}ms under MOTOR_ON (ingen omstart)`); } catch {}
+      }
+    });
+  }
+
+
+
 
 
   // ── Playback-Watchdog — analys-tick, inte BLE-delivery ──
