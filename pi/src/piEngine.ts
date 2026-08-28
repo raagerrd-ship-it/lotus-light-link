@@ -92,7 +92,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
     gammaIsUnity,
     brightnessFloor: cal.brightnessFloor,
     transientGain: cal.transientGain,
-    beatDepth: Math.max(0, Math.min(1, cal.beatDepth ?? 0.7)),
+    beatDepth: Math.max(0, Math.min(1, cal.beatDepth ?? 0.45)),
 
     lutR,
     lutG,
