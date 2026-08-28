@@ -241,9 +241,12 @@ let activeConfig: SonosPollerConfig | null = null;
 let lastSuccessfulPollAt: number | null = null;
 let staleWatchdogTimer: NodeJS.Timeout | null = null;
 let staleEmitted = false;
+let lastSseEventAt = 0;
 
 const STALE_THRESHOLD_MS = 30_000;
 const STALE_CHECK_INTERVAL_MS = 5_000;
+const SSE_LIVENESS_MS = 8_000;   // gatewayen skickar ~1/s → 8 s = 8× marginal
+
 
 const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   ssePath: '/events',
