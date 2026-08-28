@@ -21,7 +21,7 @@ type Cal = {
   onsetThreshold: number; onsetRefractoryMs: number;
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
   beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
-  dropFlashMs: number; beatLeadMs: number; peakBoost: number;
+  dropFlashMs: number; beatLeadMs: number;
   shapeExpand: number;
   windowDb: number; lightBassWeight: number;
 };
@@ -33,7 +33,7 @@ const DEFAULT_CAL: Cal = {
   onsetThreshold: 4.0, onsetRefractoryMs: 300,
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
-  dropFlashMs: 320, beatLeadMs: 0, peakBoost: 0.2,
+  dropFlashMs: 320, beatLeadMs: 45,
   shapeExpand: 1.0,
   windowDb: 18, lightBassWeight: 0,
 };
@@ -828,7 +828,6 @@ export default function PiMobile() {
         dropSensitivity: cal.dropSensitivity,
         dropFlashMs: cal.dropFlashMs,
         beatLeadMs: cal.beatLeadMs,
-        peakBoost: cal.peakBoost,
         shapeExpand: cal.shapeExpand,
         windowDb: cal.windowDb,
         lightBassWeight: cal.lightBassWeight,
@@ -906,7 +905,6 @@ export default function PiMobile() {
         dropSensitivity: c?.dropSensitivity ?? DEFAULT_CAL.dropSensitivity,
         dropFlashMs: c?.dropFlashMs ?? DEFAULT_CAL.dropFlashMs,
         beatLeadMs: c?.beatLeadMs ?? DEFAULT_CAL.beatLeadMs,
-        peakBoost: c?.peakBoost ?? DEFAULT_CAL.peakBoost,
         shapeExpand: c?.shapeExpand ?? DEFAULT_CAL.shapeExpand,
         windowDb: c?.windowDb ?? DEFAULT_CAL.windowDb,
         lightBassWeight: c?.lightBassWeight ?? DEFAULT_CAL.lightBassWeight,
