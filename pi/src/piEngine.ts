@@ -492,6 +492,7 @@ export class PiLightEngine {
   private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
+  private _lastGridIdxH = -1;          // senaste HALVSLAG som fyrade en puls (auto-dubbel)
   private _gridPulseCount = 0;
   private _reacqUntil = 0;             // vidgat re-lås-fönster efter låtbyte
   private _beatConfidentAt = 0;        // senast takten var pålitlig (coast-timeout)
