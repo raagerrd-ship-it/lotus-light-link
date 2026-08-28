@@ -1681,7 +1681,7 @@ export class PiLightEngine {
       // annars 70 %. Fixar även raw-läget (transientGain 0 → puls 0 → 30 % ljus).
       // `locked` är trubbigt men ÄRLIGT. Använd INTE confidence — den är
       // anti-diagnostisk (AUC 0.355; 34 % av fel-tempo-sampel har conf = 1.000).
-      const trust = this._beat?.locked ? 1 : 0;
+      const trust = hasBeat(this._beat) ? 1 : 0;   // samma "locked" som /api/status
       const bd    = tc.beatDepth * trust;
 
       let energyForm = ceil * ((1 - bd) + bd * pn);
