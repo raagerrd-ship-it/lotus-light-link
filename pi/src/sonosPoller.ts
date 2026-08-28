@@ -326,7 +326,17 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   };
 
-  const connectSse = async () => {
+  function scheduleSseReconnect(): void {
+    if (disableSSE || activeConfig !== cfg || sseReconnectTimer) return;
+    sseReconnectTimer = setTimeout(() => {
+      sseReconnectTimer = null;
+      if (disableSSE || activeConfig !== cfg || sseActive || sseCleanup) return;
+      void connectSse();
+    }, 1000);
+  }
+
+  async function connectSse(): Promise<void> {
+    if (sseActive || sseCleanup || disableSSE || activeConfig !== cfg) return;
     try {
       const mod = await import('eventsource');
       const ESClass = (mod as any).default ?? mod;
@@ -345,18 +355,21 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         try { parseStatus(JSON.parse(e.data)); } catch {}
       };
       es.onerror = () => {
-        if (sseActive) {
-          sseActive = false;
-          startPollTimer();
-          console.warn(`[Sonos] SSE error — pollTimer resumed`);
-        }
+        const wasActive = sseActive;
+        sseActive = false;
+        lastSseEventAt = 0;
+        try { es.close(); } catch {}
+        if (sseCleanup) sseCleanup = null;
+        startPollTimer();
+        if (wasActive) console.warn(`[Sonos] SSE error — pollTimer resumed`);
+        scheduleSseReconnect();
       };
       sseCleanup = () => es.close();
       dlog(`[Sonos] SSE connecting → ${sseUrl}`);
     } catch {
       dlog('[Sonos] No SSE support, using poll-only mode');
     }
-  };
+  }
 
   if (!disableSSE) await connectSse();
 
@@ -388,7 +401,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
       try { sseCleanup?.(); } catch {}
       sseCleanup = null;
       startPollTimer();
-      void connectSse();
+      scheduleSseReconnect();
     }
 
     if (staleEmitted) return;
@@ -406,8 +419,10 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 }
 
 export function stopSonosPoller(): void {
+  if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
   sseCleanup?.();
   sseCleanup = null;
+  lastSseEventAt = 0;
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   if (staleWatchdogTimer) { clearInterval(staleWatchdogTimer); staleWatchdogTimer = null; }
   staleEmitted = false;

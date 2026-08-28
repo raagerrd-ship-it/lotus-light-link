@@ -1004,10 +1004,9 @@ export class PiLightEngine {
     if (!this.playing) {
       if (this._idleColorPending) {
         this._idleColorPending = false;
-        this.forceIdleNow();
-      } else {
-        this.forceIdleNow();
+        dlog('[Engine] pending idle-färg → skickar direkt vid connect');
       }
+      this.forceIdleNow();
       clearQueuedWrite();
       startKeepAlive();
       dlog(`[Engine] BLE connected → idle mode (keep-alive PÅ)`);
