@@ -1223,6 +1223,23 @@ export class PiLightEngine {
             this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
             this._gridPulseCount++;
           }
+          // AUTO-DUBBEL: analysatorn äger låtens kanoniska takt, dirigenten
+          // presenterar den dubbelt när den är låg (<105/min känns trög — en
+          // 194-BPM-låt viks till 97). Halvslaget får INGEN ettans-accent, så
+          // taktstrukturen behålls. beatDoubleBelowBpm = 0 stänger av.
+          const mult     = this.cal.beatMultiplier ?? 1;
+          const bpmNow   = this._beat?.bpm ?? 0;
+          const dblBelow = this.cal.beatDoubleBelowBpm ?? 105;
+          const wantDbl  = mult >= 2 || (dblBelow > 0 && bpmNow > 0 && bpmNow < dblBelow);
+          if (wantDbl && bpmNow > 0) {
+            const halfMs = 30000 / bpmNow;
+            const idxH = beatIndex(this._beat, Date.now() + this.cal.beatLeadMs + halfMs);
+            if (idxH !== this._lastGridIdxH) {
+              this._lastGridIdxH = idxH;
+              this.onsetTarget = 0.45;
+              this._gridPulseCount++;
+            }
+          }
         }
         // Drop-detektor @75Hz (analysatorns dropCount med bas-svackan som fallback).
         if (bands) this.processDrop(bands.bassRms, frame);
