@@ -1674,12 +1674,14 @@ export class PiLightEngine {
       const _f = getLatestFrame();
       const bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
       let ceil = shapeSm * (1 + bu * (cal.buildUpGain ?? 0));
-      ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.25);
+      ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.30);
       if (ceil > 1) ceil = 1;
 
       // Luta inte på ett beat som inte finns: taktlös musik/TV/pauser dimmades
       // annars 70 %. Fixar även raw-läget (transientGain 0 → puls 0 → 30 % ljus).
-      const trust = Math.min(1, (this._beat?.confidence ?? 0) / 0.4);
+      // `locked` är trubbigt men ÄRLIGT. Använd INTE confidence — den är
+      // anti-diagnostisk (AUC 0.355; 34 % av fel-tempo-sampel har conf = 1.000).
+      const trust = this._beat?.locked ? 1 : 0;
       const bd    = tc.beatDepth * trust;
 
       let energyForm = ceil * ((1 - bd) + bd * pn);
