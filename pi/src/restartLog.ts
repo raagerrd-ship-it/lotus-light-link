@@ -30,7 +30,8 @@ export type RestartReason =
   | 'alsa-watchdog-stuck'        // ALSA-watchdog: FFT-loop frusen → exit(1)
   | 'playback-watchdog-stuck'    // Playback-watchdog: tickOk frusen efter soft recovery → exit(1)
   | 'ble-churn-guard'            // Anti-churn: för många connect-försök i 30s-fönstret → paus
-  | 'mic-content-freeze';        // I2S-DMA wedge: byte-identisk mic-buffert, reopen hjälpte ej
+  | 'mic-content-freeze'         // I2S-DMA wedge: byte-identisk mic-buffert, reopen hjälpte ej
+  | 'ble-down-light-frozen';     // BLE nere >15 s under MOTOR_ON (larm, ingen omstart)
 
 
 export interface RestartEntry {
