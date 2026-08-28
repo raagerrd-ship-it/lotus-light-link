@@ -19,7 +19,14 @@
  * Targetvärden (BLE spec):
  *   min=max=12 →  12 × 1.25ms = 15ms connection interval
  *   latency=0  →  ingen slave latency (lampan ska svara på varje interval)
- *   timeout=100 → 100 × 10ms = 1s supervision timeout
+ *   timeout=500 → 500 × 10ms = 5s supervision timeout
+ *
+ * SUPERVISION (2026-08-28): 1 s (100 units) = länken dör efter ~66 missade paket
+ * vid 15 ms interval. Pi:ns WiFi delar 2.4 GHz-radio med BLE och en WiFi-burst
+ * räcker → reason=8-tapp. 5 s tolererar bursten. Kostar inget: bara hur länge
+ * tystnad tolereras (latens/throughput/beat-timing oberörda). BLE-spec:
+ * 5000 ms > (1+latency) × maxInterval × 2 = 30 ms. OBS: re-assert-timern MÅSTE
+ * skicka timeoutUnits också, annars återställs den till 1 s var 25:e sekund.
  *
  * RATIONALE för 15ms (2026-04-25): Pi Zero 2W hängde sig efter ~22h drift med
  * 7.5ms interval. BCM43436 delar radio mellan WiFi+BT — 133 BLE-events/s gav
@@ -45,7 +52,7 @@ export function forceConnInterval(
   const min = opts.min ?? 12;            // 15 ms (12 × 1.25ms) — verifierat manuellt på Pi:n
   const max = opts.max ?? 12;            // 15 ms
   const latency = opts.latency ?? 0;
-  const supTo = opts.timeoutUnits ?? 100; // 1 s
+  const supTo = opts.timeoutUnits ?? 500; // 5 s supervision timeout (se SUPERVISION nedan)
   const cmdTimeoutMs = opts.cmdTimeoutMs ?? 3000;
 
   return new Promise((resolve) => {
@@ -114,7 +121,7 @@ export async function applyConnInterval(
       await new Promise((r) => setTimeout(r, 500 * attempt));
       continue;
     }
-    const r = await forceConnInterval(handle, { min: targetUnits, max: targetUnits });
+    const r = await forceConnInterval(handle, { min: targetUnits, max: targetUnits, timeoutUnits: SUPERVISION_UNITS });
     if (r.ok) {
       bleStats.requestedIntervalMs = targetMs;
       bleStats.intervalSource = 'hcitool';
@@ -133,6 +140,8 @@ export async function applyConnInterval(
 // re-forcera var 25:e sekund och VERIFIERA mot faktisk leveranstid
 // (outstandingAgeMs): >60ms betyder att intervallet tappats → forcera direkt igen.
 const REASSERT_MS = 25_000;
+/** 500 × 10 ms = 5 s supervision timeout — måste skickas med i BÅDA anropen. */
+export const SUPERVISION_UNITS = 500;
 const AGE_ALARM_MS = 60;
 
 function startConnIntervalReassert(
@@ -145,7 +154,7 @@ function startConnIntervalReassert(
     const handle = getHandle();
     if (handle == null) { stopConnIntervalReassert(); return; }
     const ageBefore = bleStats.outstandingAgeMs;
-    void forceConnInterval(handle, { min: 12, max: 12 }).then((r) => {
+    void forceConnInterval(handle, { min: 12, max: 12, timeoutUnits: SUPERVISION_UNITS }).then((r) => {
       bleStats.connIntervalReassertCount++;
       if (!r.ok) {
         log(`[forceConnInterval] re-assert FAIL exit=${r.exitCode} stderr="${r.stderr}"`);
