@@ -242,6 +242,8 @@ export class Analyser {
     return t;
   })();
   private silentMs = 0;
+  private silenceArmed = false;   // flank-trigg för tystnads-släppningen
+  private lowConfSinceMs = 0;     // när localBpmConfidence senast var >= 0.3
   private beatAnchorMs = 0;
   // #2 sub-hop fas: kick-flankens flux-topp ligger sällan exakt på en hop. Vi
   // sparar de två föregående kick-flux-värdena och gör parabolisk interpolation
@@ -531,6 +533,11 @@ export class Analyser {
     // en oktav-artefakt (en 76-BPM-last ar i praktiken 152, en 170 ar 85).
     // Intervallet MASTE spanna exakt en oktav (max = 2x min): med t.ex. 80..150
     // blir 155 -> 77.5 -> 155 -> 77.5 i all evighet och motorn hanger.
+    // STRUKTURELL FÖLJD (2026-08-28): eftersom MAX === 2*MIN kollapsar b och 2b till
+    // SAMMA representant. Alltså: ett äkta oktavfel kan aldrig visa sig som ratio≈2 —
+    // det visar sig som ratio≈1. ratio>1.4 / <0.7 är därför INTE oktavgrenar; de
+    // fångar 3:2-/triol-artefakter och wrap-sömmen kring 80/160. Off-beat-testet
+    // (bestLag = P) upphävs exakt av vikningen och är en no-op för oktaven.
     while (bpm < Analyser.BPM_MIN) bpm *= 2;
     while (bpm >= Analyser.BPM_MAX) bpm /= 2;
     // Median över RÅestimaten (utan oktav-tvång) → dämpar brus men låser inte
@@ -569,7 +576,10 @@ export class Analyser {
       // bara finjustering tillåts, aldrig ½×/2× mitt i en låt (en låt byter inte
       // oktav; halvering nollade takt-gridet & bröt beat-synken). Ett wrong initial-
       // lås hinner rättas under första 15s. Nollställs vid tystnad/låtbyte (localBpm=0).
-      const committed = this.bpmStable >= 60;
+      // ASYMMETRIN ÄR MEDVETEN: 24 (~6 s) för oktav-låset — låset hann annars aldrig
+      // committa innan tempot rörde sig (MÄTT: spann 96–146 → 142–143 BPM) — men 60
+      // (~15 s) för låtbytes-vakten nedan, som ska vara konservativ.
+      const committed = this.bpmStable >= 24;      // OKTAV-LÅS: ~6 s
       const ratio = med / this.localBpm;
       if (ratio >= 0.9 && ratio <= 1.11) {
         this.nearVote = 0; this.nearChallenger = 0;                                 // samma takt → inget grann-fel
@@ -585,8 +595,8 @@ export class Analyser {
       } else if (!committed && ratio < 0.7) {
         this.octaveVote = Math.min(0, this.octaveVote) - 1;                          // estimaten LÄGRE oktav
         if (this.octaveVote <= -8) { this.localBpm = Math.round(med); this.octaveVote = 0; this.bpmStable = 0; }
-      } else if (!committed) {
-        // GRANNRÄTTNING: ett tidigt lås från 0.5 s fönster kan hamna 10-20 % fel
+      } else if (!committed && ratio >= 0.7 && ratio <= 1.4) {   // GRANNRÄTTNING
+        // ett tidigt lås från 0.5 s fönster kan hamna 10-20 % fel
         // (MÄTT: brusigt rum 136 låste 122 på en av åtta brus-seeder och satt kvar
         // hela låten — glid-bandet slutar vid 1.11 och oktav-grenen börjar vid 1.4,
         // så felet låg i ett dödområde). Räknas bara före commit.
@@ -641,7 +651,7 @@ export class Analyser {
       //      ackumulerade tempogrammet? Ett breakdown gör låset svagare men ger ingen
       //      dominant rival — en ny låt gör det.
       // Rösterna räknas i TID, inte i anrop: stride växlar 100→20 Hz med låset.
-      const committedNow = this.bpmStable >= 60;
+      const committedNow = this.bpmStable >= 60;   // LÅTBYTES-VAKT: konservativ, ~15 s
       const rawOff = Math.abs(bpm / this.localBpm - 1) > 0.11;
       const sameChallenger = this.challengerBpm > 0 && Math.abs(bpm / this.challengerBpm - 1) <= 0.04;
       // 4. FRISK TAKT. Ett breakdown ser ut som ett låtbyte i allt utom kvaliteten:
@@ -694,21 +704,24 @@ export class Analyser {
     const cA = this.localBpmConfidence;
     const aC = 1 - Math.exp(-dt / (conf > cA ? 0.025 : 0.120));
     this.localBpmConfidence = cA + (conf - cA) * aC;
-  }
 
-  /** Nollställ tempoläget — anropas när låtminnet BEKRÄFTAT en låtgräns. Då vet vi
-   *  att historiken tillhör förra låten; att medianrösta vidare på den kostade 6 s
-   *  omlåsning. Nästa estimat får låsa direkt (localBpm === 0 ⇒ första röst låser). */
-  resetTempo(): void {
-    this.localBpm = 0; this.localBpmConfidence = 0;
-    this.bpmHistLen = 0; this.bpmHistPos = 0;
-    this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0; this.bpmStable = 0; this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0; this.lockPeak = 0;
-    this.tempoGram.fill(0);
-    this.barAcc.fill(0); this.barCount = 0;
+    // SLÄPPNING SOM INTE BYGGER PÅ TYSTNAD: Sonos-låtbyteshinten missas i TV-/SPDIF-
+    // läge (definierat som avsaknad av trackName), på radio/streams där spårnamnet
+    // aldrig ändras, och under pollnings-backoff (upp till 30 s). I ett bryggeri
+    // återställs dessutom silentMs av en hostning eller en dörr. Så: har takten varit
+    // svag (< 0.3) i mer än 8 s är låset inte längre trovärdigt → släpp committen.
+    if (this.localBpmConfidence >= 0.3) {
+      this.lowConfSinceMs = voteNow;
+    } else if (this.lowConfSinceMs > 0 && voteNow - this.lowConfSinceMs > 8000) {
+      this.lowConfSinceMs = voteNow;
+      this.hintTrackChange(5000);
+    } else if (this.lowConfSinceMs === 0) {
+      this.lowConfSinceMs = voteNow;
+    }
   }
 
   /**
-   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från resetTempo()
+   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från en hård nollställning
    * kastas INTE tempot: många byten landar på liknande takt, och en bevarad
    * startgissning bekräftas i praktiken direkt (~1 takt) i stället för att byggas
    * upp från noll (~5 s MÄTT). Vi gör bara sökningen villigare att hoppa:
@@ -1034,9 +1047,20 @@ export class Analyser {
     // Tystnad → nollställ BPM-klockan så beat-effekter inte fortsätter i fantom-takt.
     if (rms < this.cfg.detection.noiseFloor * 1.5) {
       this.silentMs += hopMs;
-      if (this.silentMs > 350) { this.localBpm = 0; this.localBpmConfidence = 0; this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0; this.bpmStable = 0; this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0; this.lockPeak = 0; this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0; this.bpmHistLen = 0; this.bpmHistPos = 0; this.tempoGram.fill(0); this.envBassAccum = 0; this.barAcc.fill(0); this.barCount = 0; }
+      // BEHÅLL GISSNINGEN, SLÄPP LÅSET: att nolla localBpm gjorde återinlåsningen 25×
+      // långsammare (stride 25 när localBpm !== 0) och ett kort uppehåll mitt i en låt
+      // räckte. FLANK-triggat: tempoGram-skrivningarna kördes annars varje tyst hop.
+      if (this.silentMs > 350 && !this.silenceArmed) {
+        this.silenceArmed = true;
+        this.localBpmConfidence = 0;          // beat-UTSIGNALEN av (inga fantom-pulser)
+        this.beatAnchorMs = 0; this.pendingKickMs = 0;
+        this.envFilled = 0; this.envBassAccum = 0;
+        this.hintTrackChange(5000);           // släpper commit + historik, rör INTE localBpm
+        for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
+      }
+      if (this.silentMs > 10000) { this.localBpm = 0; this.tempoGram.fill(0); }   // full släppning
     } else {
-      this.silentMs = 0;
+      this.silentMs = 0; this.silenceArmed = false;
     }
     // --- Onset-envelope → lokal BPM (nedsamplad till 100 Hz) ---
 
