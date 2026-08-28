@@ -48,7 +48,6 @@ export function normalizeFixed(value: number): number {
 // --- Precomputed tick constants ---
 export interface TickConstants {
   refractoryFrames: number;
-  onsetRiseAlphaFft: number;
   onsetDecayFft: number;
   gammaIsUnity: boolean;
   brightnessFloor: number;
@@ -88,7 +87,6 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
 
   return {
     refractoryFrames: Math.max(1, Math.round(cal.onsetRefractoryMs / FRAME_MS)),
-    onsetRiseAlphaFft: 1 - Math.pow(0.05, fftRatio),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     gammaIsUnity,
     brightnessFloor: cal.brightnessFloor,
