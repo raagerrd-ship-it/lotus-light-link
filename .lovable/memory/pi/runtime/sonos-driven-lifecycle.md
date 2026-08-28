@@ -23,12 +23,13 @@ transition tillbaka till IGNITION via `IGNITION_REENTRY_GRACE_MS = 1500ms`.
 2. Parallellt: `startMicSubsystem()` + `connectHardcoded()`.
 3. `setState('MOTOR_ON')`; `engineInstance.setPlaying(true)`.
 
-## PAUSE-grace (1500ms)
+## PAUSE-grace (3 min)
 
-PLAYING→PAUSED triggar `scheduleShutdownToIgnition()` med 1500ms timer.
-Cancelleras direkt om PLAYING återkommer (Spotify-stutter, spårbyte).
-Vid timeout: `engine.shutdownToIgnition()` → idle-färg @ 100% → drain HCI →
-BLE off → mic stop → `setState('IGNITION')`.
+PLAYING→PAUSED triggar `scheduleShutdownToIgnition()` med 180 000ms timer.
+Korta pauser behåller BLE-länken och idle-färgen; timern cancelleras direkt om
+PLAYING återkommer (Spotify-stutter, spårbyte). Vid timeout:
+`engine.shutdownToIgnition()` → idle-färg @ 100% → drain HCI → BLE off → mic
+stop → `setState('IGNITION')`.
 
 ## Lifecycle = enda setPlaying-ägaren
 

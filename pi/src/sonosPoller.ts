@@ -237,13 +237,17 @@ function parseStatus(s: any): void {
 
 let pollTimer: NodeJS.Timeout | null = null;
 let sseCleanup: (() => void) | null = null;
+let sseReconnectTimer: NodeJS.Timeout | null = null;
 let activeConfig: SonosPollerConfig | null = null;
 let lastSuccessfulPollAt: number | null = null;
 let staleWatchdogTimer: NodeJS.Timeout | null = null;
 let staleEmitted = false;
+let lastSseEventAt = 0;
 
 const STALE_THRESHOLD_MS = 30_000;
 const STALE_CHECK_INTERVAL_MS = 5_000;
+const SSE_LIVENESS_MS = 8_000;   // gatewayen skickar ~1/s → 8 s = 8× marginal
+
 
 const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   ssePath: '/events',
@@ -322,13 +326,24 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   };
 
-  if (!disableSSE) {
+  function scheduleSseReconnect(): void {
+    if (disableSSE || activeConfig !== cfg || sseReconnectTimer) return;
+    sseReconnectTimer = setTimeout(() => {
+      sseReconnectTimer = null;
+      if (disableSSE || activeConfig !== cfg || sseActive || sseCleanup) return;
+      void connectSse();
+    }, 1000);
+  }
+
+  async function connectSse(): Promise<void> {
+    if (sseActive || sseCleanup || disableSSE || activeConfig !== cfg) return;
     try {
       const mod = await import('eventsource');
       const ESClass = (mod as any).default ?? mod;
       const sseUrl = `${baseUrl}${ssePath}`;
       const es = new ESClass(sseUrl);
       es.onopen = () => {
+        lastSseEventAt = Date.now();
         if (!sseActive) {
           sseActive = true;
           stopPollTimer();
@@ -336,14 +351,18 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         }
       };
       es.onmessage = (e: any) => {
+        lastSseEventAt = Date.now();
         try { parseStatus(JSON.parse(e.data)); } catch {}
       };
       es.onerror = () => {
-        if (sseActive) {
-          sseActive = false;
-          startPollTimer();
-          console.warn(`[Sonos] SSE error — pollTimer resumed`);
-        }
+        const wasActive = sseActive;
+        sseActive = false;
+        lastSseEventAt = 0;
+        try { es.close(); } catch {}
+        if (sseCleanup) sseCleanup = null;
+        startPollTimer();
+        if (wasActive) console.warn(`[Sonos] SSE error — pollTimer resumed`);
+        scheduleSseReconnect();
       };
       sseCleanup = () => es.close();
       dlog(`[Sonos] SSE connecting → ${sseUrl}`);
@@ -351,6 +370,9 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
       dlog('[Sonos] No SSE support, using poll-only mode');
     }
   }
+
+  if (!disableSSE) await connectSse();
+
 
   // Initial status fetch — fire-and-forget så subsystem-start inte blockeras
   // om gateway är otillgänglig. Timer:n picker upp värden vid nästa cykel.
@@ -369,6 +391,19 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   // WiFi vaknar → buddy fresh igen.
   if (staleWatchdogTimer) clearInterval(staleWatchdogTimer);
   staleWatchdogTimer = setInterval(() => {
+    // SSE-liveness: en halvöppen ström fyrar aldrig onerror. Utan detta står
+    // pollningen av OCH stale-vakten sover (den kollar bara medan PLAYING) →
+    // uppspelningsstart upptäcks aldrig. Gatewayen skickar ~1 händelse/s.
+    if (sseActive && lastSseEventAt > 0 && Date.now() - lastSseEventAt > SSE_LIVENESS_MS) {
+      console.warn(`[Sonos] SSE tyst ${Date.now() - lastSseEventAt}ms — behandlar som död, återupptar poll`);
+      sseActive = false;
+      lastSseEventAt = 0;
+      try { sseCleanup?.(); } catch {}
+      sseCleanup = null;
+      startPollTimer();
+      scheduleSseReconnect();
+    }
+
     if (staleEmitted) return;
     if (lastResponseTime === 0) return;
     if (!isPlaying(currentState.playbackState)) return;
@@ -379,12 +414,15 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     apply({ ...currentState, playbackState: 'PLAYBACK_STATE_PAUSED' });
   }, STALE_CHECK_INTERVAL_MS);
 
+
   dlog(`[Sonos] Poller started → ${baseUrl} (poll: ${pollMs}ms, SSE: ${disableSSE ? 'off' : ssePath}, mode: trust-gateway-state)`);
 }
 
 export function stopSonosPoller(): void {
+  if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
   sseCleanup?.();
   sseCleanup = null;
+  lastSseEventAt = 0;
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   if (staleWatchdogTimer) { clearInterval(staleWatchdogTimer); staleWatchdogTimer = null; }
   staleEmitted = false;
