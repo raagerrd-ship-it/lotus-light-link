@@ -724,16 +724,23 @@ export class Analyser {
   }
 
   /**
-   * MJUK låtbytes-hint (Sonos trackName ändrades). Till skillnad från en hård nollställning
-   * kastas INTE tempot: många byten landar på liknande takt, och en bevarad
-   * startgissning bekräftas i praktiken direkt (~1 takt) i stället för att byggas
-   * upp från noll (~5 s MÄTT). Vi gör bara sökningen villigare att hoppa:
+   * LÅTBYTES-HINT = REN OMLÅSNING. Att behålla `localBpm` som startgissning gjorde att
+   * varje låt öppnade med FÖRRA låtens tempo och hill-climbade dit rätt (MÄTT: 3.5–23.4 s,
+   * en låt satt 5–8 s per steg i en trappa uppåt). `localBpm = 0` ger dessutom stride 1
+   * (fri sökning) i stället för 25. Utöver tempot:
    *   • historiken töms (medianfönstret tillhör förra låten),
    *   • oktav-commit släpps (bpmStable=0) så ½×/2× får rättas igen,
    *   • lockPeak nollas så nya låtens takt inte jämförs mot förra låtens styrka,
    *   • under `windowMs` sänks grann-rättningens conf-grind och röstkrav.
+   * @param keepBpm true = behåll tempo-gissningen (tystnads-vägen: ett kort uppehåll
+   *   mitt i en låt ska släppa LÅSET men inte kasta takten).
    */
-  hintTrackChange(windowMs = 5000): void {
+  hintTrackChange(windowMs = 5000, keepBpm = false): void {
+    if (!keepBpm) {
+      this.localBpm = 0;
+      this.localBpmConfidence = 0;
+      this.tempoGram.fill(0);
+    }
     // A5: reacq-fönstret jämförs mot perfNow() (samma tidbas som voteNow).
     // Date.now() gjorde `voteNow < reacqUntilMs` alltid falskt → hinten var död.
     this.reacqUntilMs = this.perfNow() + windowMs;
