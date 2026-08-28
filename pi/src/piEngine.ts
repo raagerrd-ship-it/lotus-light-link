@@ -1625,13 +1625,13 @@ export class PiLightEngine {
       if (shapeSm < 0) shapeSm = 0;
       if (shapeSm > 1) shapeSm = 1;
 
-      // ── 5. Transient boost (additiv bump, aldrig normalisering) ──
-      const transientGain = tc.transientGain;
-      const fluxBoost = (transientGain > 0 && !inSilence) ? this.onsetBoost * transientGain : 0;
+      // ── 5. Puls-envelopen förfaller i tystnad (transientGain skalar inte längre
+      // ljuspulsen — se dirigenten nedan; fältet lever kvar för raw-/onset-vägen) ──
       if (inSilence) {
         this.onsetBoost *= 0.5;
         if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
       }
+
 
       // ── 6. BRIGHTNESS — TAKTEN ÄR GRUNDEN, ENERGIN SÄTTER TAKET (multiplikativ).
       // Pulsen normaliseras mot sitt NOMINELLA mål (0.45) i stället för att klampas:
