@@ -28,9 +28,10 @@ type Cal = {
 
 const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 43,
-  brightnessFloor: 10, punchWhiteThreshold: 100, transientGain: 0.4,
+  brightnessFloor: 20, punchWhiteThreshold: 100, transientGain: 0.45,
   colorSpectralTilt: 0.25,
-  onsetThreshold: 4.0, onsetRefractoryMs: 300,
+  onsetThreshold: 2.0, onsetRefractoryMs: 200,
+
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
   dropFlashMs: 320, beatLeadMs: 45,
