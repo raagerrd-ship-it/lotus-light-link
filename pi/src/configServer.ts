@@ -477,7 +477,6 @@ export function startConfigServer(port = 3050): void {
       if (b) { micTotal = b.totalRms ?? 0; }
       micContentFrozenMs = (m as any)?.getMicContentFrozenMs?.() ?? 0;
       micStableContentFrozenMs = (m as any)?.getMicStableContentFrozenMs?.() ?? 0;
-      micStableContentFrozenMs = (m as any)?.getMicStableContentFrozenMs?.() ?? 0;
       const f = (m as any)?.getLatestFrame?.();
       if (f) {
         analyserFrame = {
