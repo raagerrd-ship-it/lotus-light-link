@@ -220,7 +220,13 @@ let _micPlaybackGate = false;
 let _stableRmsSince = 0;
 let _stableRmsValue = 0;
 const STABLE_RMS_MIN = 0.003;
+// RELATIVT fönster: lightRawRms är en 130 ms EMA — ett fast absolut tak på 2e-5
+// gav falsk "frys" på lugna, jämna partier (2e-5 vid nivå 0.003 = 0.7 %) →
+// onödiga reopen och till slut process-restart. En äkta DMA-wedge ger EXAKT
+// noll variation, så ett relativt golv fångar den ändå.
 const STABLE_RMS_DELTA = 0.00002;
+const STABLE_RMS_REL = 0.02;
+
 
 /** Matas från Sonos playback-state; freeze-diagnostik kör bara under PLAYING. */
 export function setMicPlaybackGate(playing: boolean): void {
