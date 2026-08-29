@@ -533,6 +533,8 @@ export function startConfigServer(port = 3050): void {
         buildUp: analyserFrame?.buildUp ?? 0,        // 0..1 pre-drop-tension
         micContentFrozenMs,                          // >0 = byte-identisk mic-buffert (I2S-wedge)
         micStableContentFrozenMs,                     // >0 = nästan konstant RMS under PLAYING
+        micRecovery: getMicRecoveryStatus(),          // stegen: försökslogg + gaveUp (mic död)
+
 
         // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
         // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
