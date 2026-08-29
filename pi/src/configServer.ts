@@ -21,6 +21,8 @@ import { getRuntimeHealth, getBleDownForMs } from './runtimeHealth.js';
 // moduler, ingen load-order-fara när servern lyssnar.
 import { getHardcodedConnected, getLastDisconnectReason } from './ble-driver/connect.js';
 import { getRestartHistory } from './restartLog.js';
+import { getMicRecoveryStatus } from './micRecovery.js';
+
 import { getLastSent } from './ble-driver/protocol.js';
 import { isControllerDrainAttached, getQueuedPackets } from './ble-driver/controllerDrain.js';
 import { getLifecycleState, isManualOverrideOff, getPendingShutdownInMs } from './engineLifecycle.js';
