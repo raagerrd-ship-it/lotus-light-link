@@ -568,15 +568,19 @@ async function main() {
         const fs = await import('node:fs');
         const FREEZE_FILE = '/tmp/lotus-mic-freeze-restart-at';
         const CONTENT_FREEZE_MS = 4000;      // 4s byte-identiskt = otvetydig wedge
+        const STABLE_CONTENT_FREEZE_MS = 4000; // fångar nästan konstant DMA-innehåll
         const RESTART_SUPPRESS_MS = 120000;  // rensade ej reopen+restart det <2min sen → churna inte
         let contentSteps = 0;
         everySeconds(2, () => {
           try {
             if (lc.getLifecycleState() !== 'MOTOR_ON') { contentSteps = 0; return; }
             const frozenMs = alsaMic?.getMicContentFrozenMs?.() ?? 0;
-            if (frozenMs < CONTENT_FREEZE_MS) { contentSteps = 0; return; }
+            const stableFrozenMs = alsaMic?.getMicStableContentFrozenMs?.() ?? 0;
+            const freezeMs = Math.max(frozenMs >= CONTENT_FREEZE_MS ? frozenMs : 0,
+              stableFrozenMs >= STABLE_CONTENT_FREEZE_MS ? stableFrozenMs : 0);
+            if (freezeMs === 0) { contentSteps = 0; return; }
             contentSteps++;
-            console.warn(`[Content-Freeze] identisk mic-buffert ${frozenMs}ms — steg ${contentSteps}`);
+            console.warn(`[Content-Freeze] mic-innehåll fruset ${freezeMs}ms — steg ${contentSteps}`);
             if (contentSteps === 1) {
               alsaMic?.restartCapture?.('content-freeze');       // steg 1: reopen ALSA (rör ej BLE)
             } else if (contentSteps >= 3) {                       // efter ~2 reopen-försök
@@ -585,7 +589,7 @@ async function main() {
               const since = lastRestart ? (Date.now() - lastRestart) : Infinity;
               if (since > RESTART_SUPPRESS_MS) {
                 try { fs.writeFileSync(FREEZE_FILE, String(Date.now())); } catch {}
-                recordRestart('mic-content-freeze', `frozen ${frozenMs}ms, reopen hjälpte ej`);
+                recordRestart('mic-content-freeze', `frozen ${freezeMs}ms, reopen hjälpte ej`);
                 markGracefulShutdown();
                 process.exit(1);                                 // steg 2: ren process-restart en gång
               } else {

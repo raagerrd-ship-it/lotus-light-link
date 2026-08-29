@@ -215,6 +215,23 @@ let _lastLightSum = -1;
 let _lastFrameCount = -1;
 let _contentFreezeStreak = 0;
 let _contentFreezeAt = 0;
+// Andra freeze-detektorn: fångar en DMA-wedge som varierar sista decimalen.
+let _micPlaybackGate = false;
+let _stableRmsSince = 0;
+let _stableRmsValue = 0;
+const STABLE_RMS_MIN = 0.003;
+const STABLE_RMS_DELTA = 0.00002;
+
+/** Matas från Sonos playback-state; freeze-diagnostik kör bara under PLAYING. */
+export function setMicPlaybackGate(playing: boolean): void {
+  _micPlaybackGate = playing;
+  if (!playing) { _stableRmsSince = 0; _stableRmsValue = 0; }
+}
+
+/** Ms som micens RMS varit nästan konstant under PLAYING (0 = ej fruset). */
+export function getMicStableContentFrozenMs(): number {
+  return _stableRmsSince > 0 ? Math.round(performance.now() - _stableRmsSince) : 0;
+}
 
 /** Ms som mic-buffertens innehåll varit byte-identiskt (0 = ej fruset). */
 export function getMicContentFrozenMs(): number {
@@ -1086,6 +1103,15 @@ function onAudioData(buf: Buffer): void {
     const a = 1 - Math.exp(-dt / 0.13);
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
     learnGainSample(blockRms, dt);   // FIX 4: lärd volym→gain (gate:ad, långsam)
+    if (_micPlaybackGate && lightRawRms >= STABLE_RMS_MIN) {
+      if (_stableRmsSince === 0 || Math.abs(lightRawRms - _stableRmsValue) > STABLE_RMS_DELTA) {
+        _stableRmsSince = performance.now();
+        _stableRmsValue = lightRawRms;
+      }
+    } else {
+      _stableRmsSince = 0;
+      _stableRmsValue = lightRawRms;
+    }
   }
 
 
@@ -1235,6 +1261,8 @@ export function stopMic(): void {
   _lastFrameCount = -1;
   _contentFreezeStreak = 0;
   _contentFreezeAt = 0;
+  _stableRmsSince = 0;
+  _stableRmsValue = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   latestBands.shape = 0;
