@@ -1446,6 +1446,18 @@ export class PiLightEngine {
   getDiagnostics(): DiagSnapshot { return _diag; }
   getCalibration(): LightCalibration { return this.cal; }
 
+  // ── Mic-safe-mode (FIX 15) ──
+  // Sätts när mic-återställningens steg är uttömda: lampan låses på idle-färg
+  // och tickInner skriver inte längre från fruset mic-underlag.
+  private _micSafeMode = false;
+  setMicSafeMode(on: boolean): void {
+    if (this._micSafeMode === on) return;
+    this._micSafeMode = on;
+    if (on) this.forceIdleNow();
+  }
+  isMicSafeMode(): boolean { return this._micSafeMode; }
+
+
   // ── Auto-tune API ──
   /** Starta sampling av rå pct (post-slew, pre-deadband) i `durationMs`.
    *  Endast en session i taget — ny start avbryter pågående. */
