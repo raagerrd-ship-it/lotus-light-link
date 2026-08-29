@@ -742,13 +742,11 @@ export default function PiMobile() {
   const [cal, setCal] = useState<Cal>({ ...DEFAULT_CAL });
 
   const [tickMs, setTickMs] = useState(25);
-  const [sonosUrl, setSonosUrl] = useState(() =>
-    typeof window !== 'undefined'
-      ? `http://${window.location.hostname}:3053/api/sonos`
-      : 'http://127.0.0.1:3053/api/sonos'
-  );
-  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto');
-  const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);
+  // Ingen lokal default — gatewayen körs på en annan maskin och adressen
+  // måste anges explicit (annars rapporterar motorn ett tydligt fel).
+  const [sonosUrl, setSonosUrl] = useState('');
+  const [activeGatewayUrl, setActiveGatewayUrl] = useState<string | null>(null);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
