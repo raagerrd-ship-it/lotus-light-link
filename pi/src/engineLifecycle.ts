@@ -143,18 +143,8 @@ async function toMotorOn(): Promise<void> {
     setState('MOTOR_ON');
     try { deps.getEngineInstance()?.setPlaying(true); } catch {}
 
-    // STEG 2: BLE-stack + mic + connect i bakgrunden (sekventiellt BLE först).
-    try {
-      const r = await deps.startBleEngineMinimal();
-      if (!r.ready) {
-        console.warn('[Lifecycle] startBleEngineMinimal ready=false — engine.playing kvar, väntar på recovery');
-        return;
-      }
-    } catch (e: any) {
-      console.warn('[Lifecycle] startBleEngineMinimal fel:', e?.message ?? e);
-      return;
-    }
-
+    // STEG 2: micen startas FÖRST och oberoende av BLE. BLE-stacken får aldrig
+    // gata ljudinsamlingen (tidigare return vid ready=false lämnade micen ostartad).
     const tasks: Promise<unknown>[] = [];
     if (getSubsystemState('mic').status !== 'ready') {
       tasks.push(
@@ -163,6 +153,21 @@ async function toMotorOn(): Promise<void> {
         ),
       );
     }
+
+    // STEG 3: BLE-stack + connect.
+    try {
+      const r = await deps.startBleEngineMinimal();
+      if (!r.ready) {
+        console.warn('[Lifecycle] startBleEngineMinimal ready=false — engine.playing kvar, väntar på recovery');
+        await Promise.all(tasks);
+        return;
+      }
+    } catch (e: any) {
+      console.warn('[Lifecycle] startBleEngineMinimal fel:', e?.message ?? e);
+      await Promise.all(tasks);
+      return;
+    }
+
     if (!deps.getHardcodedConnected().connected) {
       tasks.push(
         (async () => {
