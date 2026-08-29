@@ -1097,7 +1097,7 @@ export default function PiMobile() {
                 micGain={micGain} setMicGain={setMicGain}
                 idleColor={idleColor} setIdleColor={setIdleColor}
                 autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
-                sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
+                activeGatewayUrl={activeGatewayUrl} gatewayError={gatewayError}
                 piBase={piBase} sonosVolume={sonosVolume}
               />
 
