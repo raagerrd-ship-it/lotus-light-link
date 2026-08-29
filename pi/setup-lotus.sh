@@ -369,7 +369,9 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   if [ ${#ADDED_GROUPS[@]} -gt 0 ]; then
     echo "  ⚠ Logga ut och in (eller reboot) för att gruppändringarna ska aktiveras"
     BLE_NEEDS_RELOGIN=true
+  fi
 fi
+
 
 # 1e. Mic-återställning (FIX 15): I2S-ombindningsskript + EN smal sudoers-regel.
 #     Speglar brew-control/spi_rebind.sh. NOPASSWD ges BARA för detta skript och
