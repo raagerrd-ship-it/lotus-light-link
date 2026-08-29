@@ -62,6 +62,7 @@ Mic-start får aldrig gatas av BLE; starta mic-tasken före BLE-initiering och a
 - [BLE fast-fail restart](mem://pi/ble/fast-fail-self-restart) — Process restart after 4 consecutive failures; same-process retry banned
 - [Heap-tak & swappiness](mem://pi/runtime/heap-cap-and-swappiness) — heap 96MB + vm.swappiness=10 mot watchdog-frysningar vid RSS ~110MB
 - [Runtime-hälsa](mem://pi/runtime/health-telemetry) — /api/status.runtime: fftFps, loopLag, tickJitter + OS-checklista
+- [Ingen lokal Sonos-gateway](mem://pi/sonos/no-local-gateway) — gateway på brew-Pi:n; inga 127.0.0.1-fallbackar, explicit adress + degraded efter 30 s
 - [Sonos-driven lifecycle](mem://pi/runtime/sonos-driven-lifecycle) — ignite() + state-machine, ersätter /tmp-flagga som restart-driver
 - [Input-gain vs ljus-skala](mem://pi/lighting/two-stage-gain-vs-lightscale) — lightScale 0.8 ger drop-headroom; NIVÅ-baren visar BLE brightness
 - [Frame-takt 75 Hz](mem://pi/audio/frame-ms-75hz) — FRAME_MS 13.33 ms är sann takt; fftMs=10 kvar medvetet (gehörs-trim)
