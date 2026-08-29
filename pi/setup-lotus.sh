@@ -369,8 +369,35 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   if [ ${#ADDED_GROUPS[@]} -gt 0 ]; then
     echo "  ⚠ Logga ut och in (eller reboot) för att gruppändringarna ska aktiveras"
     BLE_NEEDS_RELOGIN=true
-  fi
 fi
+
+# 1e. Mic-återställning (FIX 15): I2S-ombindningsskript + EN smal sudoers-regel.
+#     Speglar brew-control/spi_rebind.sh. NOPASSWD ges BARA för detta skript och
+#     /sbin/reboot — en regel för `tee` eller `sh -c` lämnar över hela filsystemet.
+I2S_SRC=""
+for I2S_CAND in "$SCRIPT_DIR/scripts/i2s_rebind.sh" "$PI_DIR/scripts/i2s_rebind.sh"; do
+  [ -f "$I2S_CAND" ] && I2S_SRC="$I2S_CAND" && break
+done
+if [ -n "$I2S_SRC" ]; then
+  sudo install -m 0755 -o root -g root "$I2S_SRC" /usr/local/sbin/lotus-i2s-rebind \
+    && echo "  Installerade /usr/local/sbin/lotus-i2s-rebind ✓" \
+    || echo "  ⚠ Kunde inte installera lotus-i2s-rebind"
+  if [ -n "$TARGET_USER" ]; then
+    I2S_SUDO_TMP="$(mktemp)"
+    printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/lotus-i2s-rebind, /sbin/reboot\n' "$TARGET_USER" > "$I2S_SUDO_TMP"
+    if sudo visudo -cqf "$I2S_SUDO_TMP" 2>/dev/null; then
+      sudo install -m 0440 -o root -g root "$I2S_SUDO_TMP" /etc/sudoers.d/lotus-i2s-rebind \
+        && echo "  Sudoers-regel för mic-återställning ✓" \
+        || echo "  ⚠ Kunde inte skriva /etc/sudoers.d/lotus-i2s-rebind"
+    else
+      echo "  ⚠ sudoers-regeln validerade inte — hoppar över"
+    fi
+    rm -f "$I2S_SUDO_TMP"
+  fi
+else
+  echo "  ⚠ scripts/i2s_rebind.sh hittades inte — mic-ombindning ej installerad"
+fi
+
 
 # ─── Engine system-service (skippas om PCC hanterar tjänsten) ─────────
 # RATIONALE (2026-04-19): PCC skapar lotus-light-engine som --user-service.
