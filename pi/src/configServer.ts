@@ -1232,10 +1232,11 @@ export function startConfigServer(port = 3050): void {
   app.put('/api/sonos-gateway', (req, res) => {
     const config = normalizeSonosGatewayConfig(req.body);
     if (!config.baseUrl) {
-      return res.status(400).json({ error: 'Need baseUrl' });
+      return res.status(400).json({ error: 'Need baseUrl (får inte peka på localhost/127.0.0.1 — gatewayen körs på en annan maskin)' });
     }
     setItem('sonos-gateway', JSON.stringify(config));
     stopSonosPoller();
+    setSonosGatewayError(null);
     startSonosPoller(config).catch((e: any) => console.warn('[Sonos] Restart failed:', e.message));
     res.json({ ok: true, config });
   });
