@@ -1190,43 +1190,10 @@ export function startConfigServer(port = 3050): void {
     };
   };
 
-  app.get('/api/sonos-gateway/detect', async (_req, res) => {
-    const CORE_PORTS = [3050, 3051, 3052, 3053];
-    const probes = CORE_PORTS.map(async (port) => {
-      try {
-        const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1500) });
-        if (!r.ok) return null;
-        const data = await r.json();
-        const name = String(data?.service ?? '').toLowerCase();
-        if (!name.includes('sonos')) return null;
+  // /api/sonos-gateway/detect borttagen 2026-08-29: gatewayen (Sonos Buddy /
+  // Cast Away) flyttades till brew-Pi:n, så en localhost-scan kan bara ge
+  // felaktiga adresser. Adressen anges explicit i UI istället.
 
-        const candidates = [`/api/sonos`, `/api`];
-        let chosenBase: string | null = null;
-        for (const suffix of candidates) {
-          try {
-            const probe = await fetch(`http://127.0.0.1:${port}${suffix}/status`, { signal: AbortSignal.timeout(1000) });
-            if (probe.ok) { chosenBase = suffix; break; }
-          } catch {}
-        }
-        if (!chosenBase) return null;
-
-        return {
-          port,
-          url: `http://127.0.0.1:${port}${chosenBase}`,
-          name: data.service,
-          version: data.version ?? null,
-          core: port - 3050,
-        };
-      } catch { return null; }
-    });
-    const results = (await Promise.all(probes)).filter(Boolean);
-    if (results.length > 0) {
-      const best = results[0]!;
-      res.json({ found: true, url: best.url, name: best.name, version: best.version, core: best.core });
-    } else {
-      res.json({ found: false });
-    }
-  });
 
   app.get('/api/sonos-gateway', (_req, res) => {
     const savedRaw = getItem('sonos-gateway');
