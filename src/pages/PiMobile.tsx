@@ -887,24 +887,12 @@ export default function PiMobile() {
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
       if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
 
-      // Sonos gateway: detect local service or fall back to saved/extern
-      if (detectRes?.found) {
-        setSonosLocalDetected(detectRes);
-        // If saved URL matches local default, use local mode
-        const savedUrl = sonosRes?.active?.baseUrl ?? sonosRes?.saved?.baseUrl ?? '';
-        const isLocal = !savedUrl || savedUrl.includes('127.0.0.1:3053');
-        setSonosMode(isLocal ? 'local' : 'extern');
-        if (isLocal) {
-          setSonosUrl(detectRes.url);
-        } else {
-          setSonosUrl(savedUrl);
-        }
-      } else {
-        setSonosLocalDetected(detectRes ?? { found: false, url: '', name: '', version: null });
-        setSonosMode('extern');
-        if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
-        else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
-      }
+      // Sonos gateway: alltid explicit adress (ingen lokal detektering).
+      const savedUrl = sonosRes?.active?.baseUrl ?? sonosRes?.saved?.baseUrl ?? '';
+      if (savedUrl) setSonosUrl(savedUrl);
+      setActiveGatewayUrl(statusRes?.sonosGateway?.gatewayUrl ?? null);
+      setGatewayError(statusRes?.sonosGateway?.error ?? null);
+
 
     };
     load();
