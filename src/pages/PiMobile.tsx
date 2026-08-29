@@ -650,15 +650,15 @@ function ConnectionSettingsSection({
   micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
-  sonosMode, setSonosMode, sonosLocalDetected,
+  activeGatewayUrl, gatewayError,
   piBase, sonosVolume,
 }: {
   sonosUrl: string; setSonosUrl: (v: string) => void;
   micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
-  sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
-  sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
+  activeGatewayUrl: string | null;
+  gatewayError: string | null;
   piBase: string;
   sonosVolume: number | null;
 }) {
@@ -669,51 +669,21 @@ function ConnectionSettingsSection({
         <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} sonosVolume={sonosVolume} />
       </Panel>
 
-      <Panel
-        title="Sonos gateway"
-        action={
-          sonosLocalDetected?.found ? (
-            <span className="flex items-center gap-1 text-[10px] font-semibold text-ok">
-              <Check size={11} /> Lokal
-            </span>
-          ) : undefined
-        }
-      >
+      {/* Gatewayen körs på en annan maskin (flyttad 2026-08-29) — adressen är
+          alltid explicit, inget "lokalt" läge finns kvar. */}
+      <Panel title="Sonos gateway">
         <div className="space-y-3">
-          {sonosLocalDetected?.found && (
-            <p className="text-[11px] text-muted-foreground">
-              {sonosLocalDetected.name}
-              {sonosLocalDetected.version && <span className="font-mono"> v{sonosLocalDetected.version}</span>}
-            </p>
+          <input
+            type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
+            placeholder="http://192.168.1.x:3053/api/sonos"
+            className="w-full rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-[12px] font-mono ring-1 ring-inset ring-border focus:outline-none focus:ring-primary/60"
+          />
+          {gatewayError && (
+            <p className="rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">{gatewayError}</p>
           )}
-
-          {sonosLocalDetected?.found && (
-            <Segmented
-              value={sonosMode === 'extern' ? 'extern' : 'local'}
-              onChange={(mode) => {
-                setSonosMode(mode);
-                if (mode === 'local' && sonosLocalDetected?.url) setSonosUrl(sonosLocalDetected.url);
-              }}
-              options={[
-                { value: 'local', label: 'Lokal' },
-                { value: 'extern', label: 'Extern' },
-              ]}
-            />
-          )}
-
-          {(sonosMode === 'extern' || !sonosLocalDetected?.found) && (
-            <input
-              type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
-              placeholder="http://192.168.1.x:3053/api/sonos"
-              className="w-full rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-[12px] font-mono ring-1 ring-inset ring-border focus:outline-none focus:ring-primary/60"
-            />
-          )}
-
-          {sonosMode === 'local' && sonosLocalDetected?.found && (
-            <div className="rounded-xl bg-foreground/[0.03] px-3 py-2 text-[10px] font-mono text-muted-foreground truncate">
-              {sonosUrl}
-            </div>
-          )}
+          <div className="rounded-xl bg-foreground/[0.03] px-3 py-2 text-[10px] font-mono text-muted-foreground truncate">
+            Aktiv: {activeGatewayUrl ?? '—'}
+          </div>
         </div>
       </Panel>
 
