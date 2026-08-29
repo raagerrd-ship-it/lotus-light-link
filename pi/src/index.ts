@@ -58,14 +58,12 @@ void (async () => {
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad, allt körs realtime.
 
 // --- Config ---
-const SONOS_BUDDY_API_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3053/api';
-const LEGACY_LOCAL_SONOS_URLS = new Set([
-  'http://172.0.0.1:3003/api/sonos',
-  'http://127.0.0.1:3003/api/sonos',
-  'http://127.0.0.1:3002/api/sonos',
-  'http://127.0.0.1:3053/api/sonos',
-  'http://127.0.0.1:3052/api/sonos',
-]);
+// Gatewayen flyttades till brew-Pi:n (2026-08-29) — den finns INTE lokalt.
+// Ingen fallback-gissning: saknas BRIDGE_URL ska det märkas, inte döljas.
+const SONOS_BUDDY_API_URL: string | null =
+  process.env.BRIDGE_URL && process.env.BRIDGE_URL.trim().length > 0
+    ? process.env.BRIDGE_URL.trim().replace(/\/$/, '')
+    : null;
 // PCC sätter PORT direkt på engine. Fallback: räkna från UI_PORT + 50
 // (samma offset som services.json portOffset). Sista fallback: 3050.
 const CONFIG_PORT = Number(
