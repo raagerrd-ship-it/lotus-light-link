@@ -204,6 +204,24 @@ export interface LightCalibration {
   beatDoubleBelowBpm: number;
   /** Manuell puls-multiplikator (1 = låtens takt, 2 = halvslag). Default 1. */
   beatMultiplier: number;
+  /** Energin väljer ½× / 1× / 2× pulsning på gridet. */
+  energySubdiv: number;
+  subdivHiOn: number; subdivHiOff: number;
+  subdivLoOn: number; subdivLoOff: number;
+  subdivMinHoldMs: number;
+  /** Mode B: release-tau skalas med effektivt grid-intervall. */
+  fadeMode: number;
+  fadeIntervalK: number;
+  fadeTauMin: number;
+  fadeTauMax: number;
+  /** Långsam automatisk centrering av dB-ankaret. */
+  autoAnchor: number;
+  autoAnchorSec: number;
+  anchorOffsetDb: number;
+  /** Asymmetrisk input-attack och separat formjämning. */
+  lightRiseMs: number;
+  shapeSmoothUpMs: number;
+  shapeSmoothDownMs: number;
 
   /** FÄRG-TILT: hur mycket spektralbalansen får värma/kyla palett-färgen.
    *  0 = ren palett, 0.25 = default mild. Påverkar ALDRIG brightness. */
@@ -218,7 +236,7 @@ const DEFAULT_CAL: LightCalibration = {
   releaseAlpha: 0.4,         // mjuk fade-out
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
-  brightnessFloor: 28,       // upplevt golv 9.8 % — dalarna går inte nästan svarta
+  brightnessFloor: 18,       // verifierat ljusgolv — håller strobe-dalar synliga
   transientGain: 0.45,       // beat-punch (0.2 gav osynlig modulation) — parad med windowDb 18
   onsetThreshold: 2.0,
   onsetRefractoryMs: 200,
@@ -235,7 +253,7 @@ const DEFAULT_CAL: LightCalibration = {
   beatLeadMs: 45,            // med instant onset-attack (onsetRiseMs 0) försvinner ~79 ms lag
   beatSyncStrength: 0.10,    // PLL:ens fas-ankarknuff, INTE ljus-modulation
   dropSource: 'analyser',
-  barAccent: 1.5,            // ettans accent
+  barAccent: 1.6,            // ettans accent
   onsetRiseMs: 0,            // 0 = instant attack; >0 = gammalt EMA-beteende i ms
   inLowFrac: 0.022,
   inHighFrac: 0.075,
@@ -246,16 +264,33 @@ const DEFAULT_CAL: LightCalibration = {
   ceilLowMul: 0.55,
   ceilHighMul: 1.35,
   dbWindow: true,
-  lightHiWeight: 0.3,
-  lightBassWeight: 0.9,      // mindre röstkänslighet ("kropp") — kräver att fältet inte migreras bort
-  anchorDb: -1.5,            // takmättnad 1.0 % — ger tillbaka headroom för drops
-  windowDb: 19,              // vers→refräng 25.6 upplevda enheter
-  lightSmoothMs: 60,         // bas-avbrusning i ms; sitter på energivägen (wlevel), INTE beat-vägen
+  lightHiWeight: 1.3,       // mer dynamiskt mid/hi-band utan att ändra beat-vägen
+  lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
+  anchorDb: -4,
+  windowDb: 18,
+  lightSmoothMs: 60,         // release-avbrusning på energivägen
+
   buildUpGain: 0.25,
   beatDepth: 0.45,           // 0.70 = strobe (2.7× luminanspuls 2.2 ggr/s)
   barAccentLift: 0.30,
   beatDoubleBelowBpm: 105,
   beatMultiplier: 1,
+  energySubdiv: 1,
+  subdivHiOn: 0.88,
+  subdivHiOff: 0.70,
+  subdivLoOn: 0.33,
+  subdivLoOff: 0.45,
+  subdivMinHoldMs: 10000,
+  fadeMode: 2,
+  fadeIntervalK: 0.9,
+  fadeTauMin: 0.12,
+  fadeTauMax: 1.2,
+  autoAnchor: 1,
+  autoAnchorSec: 60,
+  anchorOffsetDb: 4,
+  lightRiseMs: 0,
+  shapeSmoothUpMs: 300,
+  shapeSmoothDownMs: 120,
   colorSpectralTilt: 0.25,
 };
 
@@ -457,8 +492,12 @@ export class PiLightEngine {
 
   /** Långsam EMA av level — driver det adaptiva taket (per-låt-normalisering). */
   private _slowMean?: number;
-  /** BAS-AVBRUS: kort EMA av frekvensviktad nivå FÖRE dB-mappning. */
+  /** BAS-AVBRUS: asymmetrisk EMA av frekvensviktad nivå före dB-mappning. */
   private _wlevelSm?: number;
+  /** Långsamt dB-ankare; följer uppåt tre gånger långsammare. */
+  private _wdbSlow?: number;
+  /** Takjämning före heartbeat-smoothing. */
+  private _shapeSm?: number;
 
 
   // Onset detection state — zero-alloc insertion-sort median
@@ -493,6 +532,9 @@ export class PiLightEngine {
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
   private _lastGridIdxH = -1;          // senaste HALVSLAG som fyrade en puls (auto-dubbel)
+  private _subdivLevel = 0;             // -1 = ½×, 0 = 1×, 1 = 2×
+  private _subdivChangedAt = 0;
+  private _pulseIntervalMs = 0;
   private _gridPulseCount = 0;
   private _reacqUntil = 0;             // vidgat re-lås-fönster efter låtbyte
   private _beatConfidentAt = 0;        // senast takten var pålitlig (coast-timeout)
@@ -601,6 +643,11 @@ export class PiLightEngine {
     this.onsetFrameCounter = 0;
     this.onsetLastFrameIdx = -1000;
     this._wlevelSm = undefined;
+    this._wdbSlow = undefined;
+    this._shapeSm = undefined;
+    this._subdivLevel = 0;
+    this._subdivChangedAt = 0;
+    this._pulseIntervalMs = 0;
     // Drop-detektor-state
     this.bassFast = 0;
     this.bassSlow = 0;
@@ -677,9 +724,29 @@ export class PiLightEngine {
         this.onsetBoost += a * (this.onsetTarget - this.onsetBoost);
       }
     } else {
-      this.onsetBoost *= tc.onsetDecayFft;
+      let decay = tc.onsetDecayFft;
+      if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
+        const tau = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(
+          this.cal.fadeTauMax ?? 1.2,
+          (this.cal.fadeIntervalK ?? 0.9) * this._pulseIntervalMs / 1000,
+        ));
+        decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
+      }
+      this.onsetBoost *= decay;
+      this.onsetTarget *= decay;
     }
-    this.onsetTarget *= tc.onsetDecayFft;
+    if (this.onsetBoost < this.onsetTarget) {
+      // targeten får samma intervallskalade release även under attack-grenen.
+      let decay = tc.onsetDecayFft;
+      if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
+        const tau = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(
+          this.cal.fadeTauMax ?? 1.2,
+          (this.cal.fadeIntervalK ?? 0.9) * this._pulseIntervalMs / 1000,
+        ));
+        decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
+      }
+      this.onsetTarget *= decay;
+    }
 
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
@@ -1041,6 +1108,8 @@ export class PiLightEngine {
       this.onsetTarget = 0;
       this.smoothed = 0;
       this._wlevelSm = undefined;
+      this._wdbSlow = undefined;
+      this._shapeSm = undefined;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
       this._lastTickAtForFade = 0;  // första fade efter play ska börja från noll-elapsed
@@ -1101,6 +1170,8 @@ export class PiLightEngine {
       this.onsetTarget = 0;
       this.smoothed = 0;
       this._wlevelSm = undefined;
+      this._wdbSlow = undefined;
+      this._shapeSm = undefined;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
       this._lastTickAtForFade = 0;
@@ -1206,34 +1277,57 @@ export class PiLightEngine {
         }
         // Taktklocka: tempo från analysatorn, fas låst mot verkliga kicks (PLL).
         this.updateBeatClock(kickFired);
-        // Pulsen fyras av rutnätet med leadMs försprång → toppen landar PÅ slaget
-        // trots BLE-skrivlatensen, i stället för strax efter det.
+        // Grid-pulsen med leadMs försprång → toppen landar PÅ slaget trots BLE-latensen.
         if (gridDrives && passesEnergyGate) {
-          const idx = beatIndex(this._beat, Date.now() + (this.cal.beatLeadMs));
+          const nowMs = Date.now() + this.cal.beatLeadMs;
+          const idx = beatIndex(this._beat, nowMs);
+          const bpmNow = this._beat?.bpm ?? 0;
+          const baseIntervalMs = bpmNow > 0 ? 60000 / bpmNow : 0;
+          const energySubdiv = (this.cal.energySubdiv ?? 0) > 0;
+          const energy = this.smoothed;
+          const current = this._subdivLevel;
+
           if (idx !== this._lastGridIdx) {
+            let next = current;
+            if (energySubdiv) {
+              if (current <= 0 && energy > (this.cal.subdivHiOn ?? 0.88)) next = 1;
+              else if (current === 1 && energy < (this.cal.subdivHiOff ?? 0.70)) next = 0;
+              else if (current >= 0 && energy < (this.cal.subdivLoOn ?? 0.33)) next = -1;
+              else if (current === -1 && energy > (this.cal.subdivLoOff ?? 0.45)) next = 0;
+            } else next = 0;
+            if (next !== current) {
+              const holdMs = this.cal.subdivMinHoldMs ?? 10000;
+              if (this._subdivChangedAt > 0 && Date.now() - this._subdivChangedAt < holdMs) next = current;
+              else this._subdivChangedAt = Date.now();
+            }
+            this._subdivLevel = next;
             this._lastGridIdx = idx;
-            // ETTANS ACCENT (steg 5): barShift säger hur många slag ankaret ska
-            // flyttas för att landa på ettan (-1 = osäkert), så ettan är de idx där
-            // (idx + barShift) delas av 4. Kräver god konfidens — på ett gissat
-            // rutnät hade accenten hamnat på fel slag och känts som en missad takt.
-            const accent = this.cal.barAccent;
+
+            const mult = this.cal.beatMultiplier ?? 1;
+            const dblBelow = this.cal.beatDoubleBelowBpm ?? 105;
+            const wantDbl = next !== -1 && (mult >= 2 || (dblBelow > 0 && bpmNow > 0 && bpmNow < dblBelow));
+            const doubled = next === 1 || wantDbl;
+            const fireBase = next !== -1 || ((((idx % 2) + 2) % 2) === 0);
+            const accent = this.cal.barAccent ?? 1;
             const shift = frame?.barShift ?? -1;
-            const onOne = accent > 1 && shift >= 0 && (this._beat?.confidence ?? 0) > 0.4 &&
-              ((((idx + shift) % 4) + 4) % 4) === 0;
-            this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
-            this._gridPulseCount++;
+            const onOne = fireBase && accent > 1 && shift >= 0 && ((((idx + shift) % 4) + 4) % 4) === 0;
+            if (fireBase) {
+              this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
+              this._gridPulseCount++;
+            }
+            const ppb = doubled ? 2 : (next === -1 ? 0.5 : 1);
+            this._pulseIntervalMs = baseIntervalMs > 0 ? baseIntervalMs / ppb : 0;
           }
-          // AUTO-DUBBEL: analysatorn äger låtens kanoniska takt, dirigenten
-          // presenterar den dubbelt när den är låg (<105/min känns trög — en
-          // 194-BPM-låt viks till 97). Halvslaget får INGEN ettans-accent, så
-          // taktstrukturen behålls. beatDoubleBelowBpm = 0 stänger av.
-          const mult     = this.cal.beatMultiplier ?? 1;
-          const bpmNow   = this._beat?.bpm ?? 0;
-          const dblBelow = this.cal.beatDoubleBelowBpm ?? 105;
-          const wantDbl  = mult >= 2 || (dblBelow > 0 && bpmNow > 0 && bpmNow < dblBelow);
-          if (wantDbl && bpmNow > 0) {
+
+          // 2× pulses land on the half-grid. They are extra pulses, never one-accented.
+          const presentationDouble = this._subdivLevel === 1 || (
+            this._subdivLevel !== -1 &&
+            (this.cal.beatMultiplier ?? 1) >= 2 ||
+            ((this.cal.beatDoubleBelowBpm ?? 105) > 0 && bpmNow > 0 && bpmNow < (this.cal.beatDoubleBelowBpm ?? 105))
+          );
+          if (presentationDouble && bpmNow > 0) {
             const halfMs = 30000 / bpmNow;
-            const idxH = beatIndex(this._beat, Date.now() + this.cal.beatLeadMs + halfMs);
+            const idxH = beatIndex(this._beat, nowMs + halfMs);
             if (idxH !== this._lastGridIdxH) {
               this._lastGridIdxH = idxH;
               this.onsetTarget = 0.45;
@@ -1565,16 +1659,25 @@ export class PiLightEngine {
         // AVBRUSA BASEN: kort EMA (~lightSmoothMs) tar bort frame-brus utan att sakta
         // riktiga stegringar märkbart. Beat-punchen (fluxBoost nedan) är oberörd → attacken
         // kan vara instant och ljuset stiger fort, men grundnivån slutar flimra.
-        const aSm = 1 - Math.exp(-FRAME_MS / (cal.lightSmoothMs ?? 35));
-        this._wlevelSm = (this._wlevelSm === undefined)
+        const downMs = Math.max(1, cal.lightSmoothMs ?? 60);
+        const upMs = cal.lightRiseMs ?? 0;
+        const rising = this._wlevelSm !== undefined && wlevelRaw > this._wlevelSm;
+        const aSm = rising && upMs <= 0 ? 1 : 1 - Math.exp(-FRAME_MS / (rising ? Math.max(1, upMs) : downMs));
+        this._wlevelSm = this._wlevelSm === undefined
           ? wlevelRaw
           : this._wlevelSm + (wlevelRaw - this._wlevelSm) * aSm;
         const wlevel = this._wlevelSm;
         const wdb = 20 * Math.log10(Math.max(wlevel, 1e-4));
-        // FAST fönster i dB (jagar inte → kan inte släpa/släcka dynamik). Spotify-
-        // normaliserat → samma fönster gäller alla låtar. windowDb = dynamik-ratten.
-        const anchorDb = cal.anchorDb ?? -4;    // wdb som ska nå 100 %
-        const windowDb = cal.windowDb ?? 22;     // fönsterbredd i dB
+        let anchorDb = cal.anchorDb ?? -4;
+        if ((cal.autoAnchor ?? 0) > 0) {
+          const tauMs = Math.max(1000, (cal.autoAnchorSec ?? 60) * 1000);
+          const anchorUp = this._wdbSlow !== undefined && wdb > this._wdbSlow;
+          const anchorAlpha = 1 - Math.exp(-FRAME_MS / (anchorUp ? tauMs * 3 : tauMs));
+          this._wdbSlow = this._wdbSlow === undefined ? wdb : this._wdbSlow + anchorAlpha * (wdb - this._wdbSlow);
+          anchorDb = this._wdbSlow + (cal.anchorOffsetDb ?? 4);
+        }
+        // FAST dB-fönster; auto-ankaret följer långsamt så sektionsdynamiken bevaras.
+        const windowDb = Math.max(1, cal.windowDb ?? 18);
         shape = (wdb - (anchorDb - windowDb)) / windowDb;
         shape = shape < 0 ? 0 : shape > 1 ? 1 : shape;
         _diag.wlevel = wlevel; _diag.wdb = wdb;  // för live-kalibrering av anchorDb
@@ -1610,6 +1713,20 @@ export class PiLightEngine {
       const tickFloor = cal.tickEnergyFloor;
       const inSilence = tickFloor > 0 && level < tickFloor;
       if (inSilence) shape = 0;
+
+      // Takjämning före heartbeat-smoothing: shape uppdateras ~15 Hz medan motorn
+      // renderar ~75 Hz, så stora enstaka hopp fördelas över flera frames.
+      const shapeUpMs = cal.shapeSmoothUpMs ?? 300;
+      const shapeDownMs = cal.shapeSmoothDownMs ?? 120;
+      if (shapeUpMs > 0 || shapeDownMs > 0) {
+        if (this._shapeSm === undefined) this._shapeSm = shape;
+        else {
+          const shapeMs = shape > this._shapeSm ? shapeUpMs : shapeDownMs;
+          const shapeAlpha = shapeMs > 0 ? 1 - Math.exp(-FRAME_MS / shapeMs) : 1;
+          this._shapeSm += shapeAlpha * (shape - this._shapeSm);
+        }
+        shape = this._shapeSm;
+      }
 
       // ── 3. Långsam amplitud-envelope → LOUDNESS ──
       // Rå amplitud är uppmätt för platt inom låt. Den används därför inte som
