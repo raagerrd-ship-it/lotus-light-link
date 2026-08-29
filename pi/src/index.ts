@@ -101,10 +101,15 @@ const _inflight: Partial<Record<SubsystemId, Promise<void>>> = {};
 let _sonosPlayingHandler: ((playing: boolean) => Promise<void> | void) | null = null;
 let _lastSonosPlaying: boolean | null = null;
 
-function normalizeSonosBaseUrl(raw: string | null | undefined): string {
+/** Sparad config får aldrig tyst peka lokalt — gatewayen körs på en annan maskin. */
+function normalizeSonosBaseUrl(raw: string | null | undefined, isLocal: (u: string | null) => boolean): string | null {
   const trimmed = (raw ?? '').trim().replace(/\/$/, '');
-  const base = trimmed.length > 0 ? trimmed : SONOS_BUDDY_API_URL;
-  return LEGACY_LOCAL_SONOS_URLS.has(base) ? SONOS_BUDDY_API_URL : base;
+  if (trimmed.length === 0) return SONOS_BUDDY_API_URL;
+  if (isLocal(trimmed)) {
+    console.warn(`[Sonos] Sparad gateway-adress ${trimmed} pekar lokalt — ignoreras (gatewayen körs inte på den här maskinen)`);
+    return SONOS_BUDDY_API_URL;
+  }
+  return trimmed;
 }
 
 // Profiler BORTTAGNA (2026-08-25): EN global inställnings-uppsättning.
