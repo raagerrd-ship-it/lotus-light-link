@@ -1321,9 +1321,10 @@ export class PiLightEngine {
 
           // 2× pulses land on the half-grid. They are extra pulses, never one-accented.
           const presentationDouble = this._subdivLevel === 1 || (
-            this._subdivLevel !== -1 &&
-            (this.cal.beatMultiplier ?? 1) >= 2 ||
-            ((this.cal.beatDoubleBelowBpm ?? 105) > 0 && bpmNow > 0 && bpmNow < (this.cal.beatDoubleBelowBpm ?? 105))
+            this._subdivLevel !== -1 && (
+              (this.cal.beatMultiplier ?? 1) >= 2 ||
+              ((this.cal.beatDoubleBelowBpm ?? 105) > 0 && bpmNow > 0 && bpmNow < (this.cal.beatDoubleBelowBpm ?? 105))
+            )
           );
           if (presentationDouble && bpmNow > 0) {
             const halfMs = 30000 / bpmNow;

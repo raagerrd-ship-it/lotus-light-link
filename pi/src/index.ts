@@ -135,7 +135,9 @@ function applySonosStateToEngine(state: {
 
   // FIX 4: lärd volym→gain lär BARA när musik spelar och inte i TV-läge
   // (icke-normaliserat TV-ljud skulle korrumpera per-volym-inlärningen).
-  alsaMic?.setGainLearnGate?.(state.playbackState.includes('PLAYING'), state.isTvMode);
+  const isPlaying = state.playbackState.includes('PLAYING');
+  alsaMic?.setGainLearnGate?.(isPlaying, state.isTvMode);
+  alsaMic?.setMicPlaybackGate?.(isPlaying);
 
   if (state.volume != null) {
     engineInstance.setVolume(state.volume);
