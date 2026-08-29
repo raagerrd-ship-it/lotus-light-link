@@ -277,28 +277,28 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
 
   const statusUrl = `${baseUrl}${statusPath}`;
 
-  // SSE connection (unless disabled). När SSE är ANSLUTEN pausar vi
-  // pollTimer för att undvika redundanta parseStatus-anrop var 2:a sekund
-  // (sparar CPU + nätverk på Pi Zero 2W). Vid SSE-error startar vi om pollen.
+  // SSE connection (unless disabled). När SSE är ANSLUTEN glesar vi ut
+  // pollTimer (SSE_SAFETY_POLL_MS) istället för att stänga av den helt — en
+  // halvöppen ström får då aldrig fördröja IDLE→PLAYING mer än några sekunder.
   let sseActive = false;
   let pollInFlight = false;
 
   // Backoff: när gatewayen är nere kostar varje misslyckad fetch CPU + en
-  // timeout-timer. Vi dubblar intervallet (max 30s) och återgår till pollMs
-  // vid första lyckade svaret.
+  // timeout-timer. Vi dubblar intervallet men taket hålls lågt så att
+  // uppspelningsstart alltid upptäcks inom några sekunder.
   let pollFailStreak = 0;
-  const MAX_POLL_MS = 30_000;
-  const currentPollMs = () => Math.min(MAX_POLL_MS, pollMs * Math.pow(2, Math.min(5, pollFailStreak)));
+  const MAX_POLL_MS = 8_000;
+  const SSE_SAFETY_POLL_MS = 5_000;
+  const currentPollMs = () => {
+    if (sseActive) return SSE_SAFETY_POLL_MS;
+    return Math.min(MAX_POLL_MS, pollMs * Math.pow(2, Math.min(5, pollFailStreak)));
+  };
 
   const startPollTimer = () => {
     if (pollTimer) return;
     const arm = (delay: number) => {
       pollTimer = setTimeout(async () => {
         pollTimer = null;
-        // R2: SSE kan ha tagit över medan timern var armerad. Utan denna grind
-        // re-armar finally:n en timer som stopPollTimer aldrig hittade → dubbel
-        // Sonos-trafik för alltid.
-        if (sseActive) return;
         if (pollInFlight) { arm(currentPollMs()); return; }
         pollInFlight = true;
         try {
@@ -314,7 +314,7 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
           pollFailStreak++;
         } finally {
           pollInFlight = false;
-          if (!sseActive) arm(currentPollMs());
+          if (activeConfig === cfg) arm(currentPollMs());
         }
 
       }, delay);
@@ -322,9 +322,6 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
     arm(pollMs);
   };
 
-  const stopPollTimer = () => {
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-  };
 
   function scheduleSseReconnect(): void {
     if (disableSSE || activeConfig !== cfg || sseReconnectTimer) return;
@@ -346,14 +343,20 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         lastSseEventAt = Date.now();
         if (!sseActive) {
           sseActive = true;
-          stopPollTimer();
-          dlog(`[Sonos] SSE active — pollTimer paused`);
+          dlog(`[Sonos] SSE active — poll glesas ut till safety-intervall`);
         }
       };
-      es.onmessage = (e: any) => {
+      const onSseData = (e: any) => {
         lastSseEventAt = Date.now();
         try { parseStatus(JSON.parse(e.data)); } catch {}
       };
+      es.onmessage = onSseData;
+      // Namngivna events (event: status / now-playing / position) fyrar inte
+      // onmessage — utan dessa räknas strömmen som tyst och IDLE→PLAYING
+      // fördröjs av liveness-vakten.
+      for (const name of ['status', 'state', 'now-playing', 'nowplaying', 'position', 'position-tick']) {
+        try { es.addEventListener(name, onSseData); } catch {}
+      }
       es.onerror = () => {
         const wasActive = sseActive;
         sseActive = false;
