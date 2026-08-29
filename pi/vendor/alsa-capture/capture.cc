@@ -2,7 +2,7 @@
 // Optimized for minimum sound→FFT latency, NOT audio fidelity.
 //
 // Faktisk config (Lotus): stereo S32_LE @ 48 kHz, period 256 frames,
-// buffer = 8× period (headroom mot event-loop-jitter på Pi Zero 2W).
+// buffer = 16× period (I2S-DMA-stabilitet på Pi Zero 2W).
 // Capture thread runs SCHED_FIFO priority 80 to avoid scheduler jitter.
 //
 // JS API (drop-in compatible with upstream alsa-capture):
@@ -193,13 +193,11 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     snd_pcm_uframes_t frames = static_cast<snd_pcm_uframes_t>(options_.periodSize);
     snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
 
-    // Buffer = 8× period. På Pi Zero 2W är 2× för aggressivt — varje JS GC
-    // eller långsam BLE-write överstiger 5.8ms och vi tappar samples →
-    // [ALSA] Buffer overrun spam → engine får inga FFT-frames → 0% output.
-    // 8× ger ~23ms headroom @ period=128 (~46ms @ period=256). Latens påverkas
-    // INTE — ALSA-tråden läser så fort den kan, bufferten är bara säkerhetsmarginal
-    // mot eventloop-jitter på den lilla CPU:n.
-    snd_pcm_uframes_t bufFrames = frames * 8;
+    // Buffer = 16× period. 8× (2048 @ period=256) wedgar I2S-DMA:n — reproducerat
+    // med ren arecord: period 256 + buffer 2048 → WEDGAR, 4096 → STABIL.
+    // Latens påverkas INTE — ALSA-tråden läser så fort den kan, bufferten är bara
+    // säkerhetsmarginal mot eventloop-jitter på den lilla CPU:n.
+    snd_pcm_uframes_t bufFrames = frames * 16;
     snd_pcm_hw_params_set_buffer_size_near(handle, params, &bufFrames);
 
     rc = snd_pcm_hw_params(handle, params);
@@ -208,6 +206,22 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
       snd_pcm_close(handle);
       return;
     }
+
+    // Satt SW-PARAMS EXPLICIT. capture.cc gjorde det ALDRIG, arecord gor det alltid.
+    // Utan dem far strommen ALSA:s defaults -> annan start-semantik -> I2S-DMA-wedge
+    // (mikrofonen levererar samma sampel om och om igen, "tyst mic-frys").
+    {
+      snd_pcm_sw_params_t *sw;
+      snd_pcm_sw_params_alloca(&sw);
+      if (snd_pcm_sw_params_current(handle, sw) >= 0) {
+        snd_pcm_sw_params_set_start_threshold(handle, sw, 1);
+        snd_pcm_sw_params_set_avail_min(handle, sw, frames);
+        snd_pcm_sw_params_set_stop_threshold(handle, sw, bufFrames);
+        int swrc = snd_pcm_sw_params(handle, sw);
+        if (swrc < 0) EmitEvent("readError", std::string("sw_params: ") + snd_strerror(swrc));
+      }
+    }
+
 
     snd_pcm_uframes_t actualFrames = 0;
     snd_pcm_hw_params_get_period_size(params, &actualFrames, &dir);
