@@ -851,7 +851,6 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway`),
         safeFetch(`${piBase}/api/auto-tv-mode`),
         safeFetch(`${piBase}/api/mic-gain`),
-        safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
       // Mappa lagrad kalibrering tillbaka till UI:ts Cal-form
