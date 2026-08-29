@@ -323,10 +323,6 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
   };
 
 
-  const stopPollTimer = () => {
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-  };
-
   function scheduleSseReconnect(): void {
     if (disableSSE || activeConfig !== cfg || sseReconnectTimer) return;
     sseReconnectTimer = setTimeout(() => {
@@ -347,14 +343,31 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         lastSseEventAt = Date.now();
         if (!sseActive) {
           sseActive = true;
-          stopPollTimer();
-          dlog(`[Sonos] SSE active — pollTimer paused`);
+          dlog(`[Sonos] SSE active — poll glesas ut till safety-intervall`);
         }
       };
-      es.onmessage = (e: any) => {
+      const onSseData = (e: any) => {
         lastSseEventAt = Date.now();
         try { parseStatus(JSON.parse(e.data)); } catch {}
       };
+      es.onmessage = onSseData;
+      // Namngivna events (event: status / now-playing / position) fyrar inte
+      // onmessage — utan dessa räknas strömmen som tyst och IDLE→PLAYING
+      // fördröjs av liveness-vakten.
+      for (const name of ['status', 'state', 'now-playing', 'nowplaying', 'position', 'position-tick']) {
+        try { es.addEventListener(name, onSseData); } catch {}
+      }
+      es.onerror = () => {
+        const wasActive = sseActive;
+        sseActive = false;
+        lastSseEventAt = 0;
+        try { es.close(); } catch {}
+        if (sseCleanup) sseCleanup = null;
+        startPollTimer();
+        if (wasActive) console.warn(`[Sonos] SSE error — pollTimer resumed`);
+        scheduleSseReconnect();
+      };
+
       es.onerror = () => {
         const wasActive = sseActive;
         sseActive = false;
