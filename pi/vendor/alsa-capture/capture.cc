@@ -2,7 +2,7 @@
 // Optimized for minimum sound→FFT latency, NOT audio fidelity.
 //
 // Faktisk config (Lotus): stereo S32_LE @ 48 kHz, period 256 frames,
-// buffer = 8× period (headroom mot event-loop-jitter på Pi Zero 2W).
+// buffer = 16× period (I2S-DMA-stabilitet på Pi Zero 2W).
 // Capture thread runs SCHED_FIFO priority 80 to avoid scheduler jitter.
 //
 // JS API (drop-in compatible with upstream alsa-capture):
