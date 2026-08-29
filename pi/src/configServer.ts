@@ -529,6 +529,14 @@ export function startConfigServer(port = 3050): void {
       uptime: Math.floor((Date.now() - START_TIME) / 1000),
       startedAt: new Date(START_TIME).toISOString(),
       sonos,
+      // Vilken gateway-adress motorn FAKTISKT använder + tydligt fel om den saknas.
+      // Under flytten 2026-08-29 gick det inte att se adressen utan att läsa disk.
+      sonosGateway: {
+        gatewayUrl: getPollerConfig()?.baseUrl ?? null,
+        error: getSonosGatewayError(),
+        dataAgeMs: getSonosDataAgeMs(),
+      },
+      sonosGatewayError: getSonosGatewayError(),
       live: {
         inputLevel,                                  // 0..1 (rå RMS×4, matchar VU-meter)
         outputBrightness,                            // 0..1 (engine brightnessPct/100)
