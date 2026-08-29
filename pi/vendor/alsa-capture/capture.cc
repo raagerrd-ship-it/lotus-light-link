@@ -200,6 +200,14 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
     snd_pcm_uframes_t bufFrames = frames * 16;
     snd_pcm_hw_params_set_buffer_size_near(handle, params, &bufFrames);
 
+    // BÅDE buffer_size och periods måste sättas explicit — ingen räcker ensam på
+    // Pi Zero 2W I2S-DMA. 16 perioder ger samma totala buffertstorlek som ovan.
+    {
+      unsigned int nper = 16; int pdir = 0;
+      snd_pcm_hw_params_set_periods_near(handle, params, &nper, &pdir);
+    }
+
+
     rc = snd_pcm_hw_params(handle, params);
     if (rc < 0) {
       EmitEvent("readError", std::string("Unable to set HW params: ") + snd_strerror(rc));
