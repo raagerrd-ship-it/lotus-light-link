@@ -367,17 +367,6 @@ export async function startSonosPoller(configOrUrl: string | SonosPollerConfig =
         if (wasActive) console.warn(`[Sonos] SSE error — pollTimer resumed`);
         scheduleSseReconnect();
       };
-
-      es.onerror = () => {
-        const wasActive = sseActive;
-        sseActive = false;
-        lastSseEventAt = 0;
-        try { es.close(); } catch {}
-        if (sseCleanup) sseCleanup = null;
-        startPollTimer();
-        if (wasActive) console.warn(`[Sonos] SSE error — pollTimer resumed`);
-        scheduleSseReconnect();
-      };
       sseCleanup = () => es.close();
       dlog(`[Sonos] SSE connecting → ${sseUrl}`);
     } catch {
