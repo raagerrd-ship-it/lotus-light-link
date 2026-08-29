@@ -1110,7 +1110,9 @@ function onAudioData(buf: Buffer): void {
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
     learnGainSample(blockRms, dt);   // FIX 4: lärd volym→gain (gate:ad, långsam)
     if (_micPlaybackGate && lightRawRms >= STABLE_RMS_MIN) {
-      if (_stableRmsSince === 0 || Math.abs(lightRawRms - _stableRmsValue) > STABLE_RMS_DELTA) {
+      const tol = Math.max(STABLE_RMS_DELTA, lightRawRms * STABLE_RMS_REL);
+      if (_stableRmsSince === 0 || Math.abs(lightRawRms - _stableRmsValue) > tol) {
+
         _stableRmsSince = performance.now();
         _stableRmsValue = lightRawRms;
       }
