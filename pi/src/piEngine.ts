@@ -267,15 +267,15 @@ const DEFAULT_CAL: LightCalibration = {
   lightHiWeight: 1.3,       // mer dynamiskt mid/hi-band utan att ändra beat-vägen
   lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
   anchorDb: -4,
-  windowDb: 18,
+  windowDb: 10,              // kalibrerat 2026-08-29: (p95−p05)/0.82 på frisk mic
   lightSmoothMs: 60,         // release-avbrusning på energivägen
 
   buildUpGain: 0.25,
   beatDepth: 0.45,           // 0.70 = strobe (2.7× luminanspuls 2.2 ggr/s)
   barAccentLift: 0.30,
-  beatDoubleBelowBpm: 105,
+  beatDoubleBelowBpm: 0,     // AV: dubblade i lugna partier kring 105-tröskeln
   beatMultiplier: 1,
-  energySubdiv: 1,
+  energySubdiv: 0,           // AV som default: 2× gav 4–5 Hz fladder i lugna partier
   subdivHiOn: 0.88,
   subdivHiOff: 0.70,
   subdivLoOn: 0.33,
@@ -287,10 +287,10 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMax: 1.2,
   autoAnchor: 1,
   autoAnchorSec: 60,
-  anchorOffsetDb: 4,
+  anchorOffsetDb: 6.9,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
   lightRiseMs: 0,
-  shapeSmoothUpMs: 300,
-  shapeSmoothDownMs: 120,
+  shapeSmoothUpMs: 0,        // uppåt: ingen jämning — refrängen ska synas direkt
+  shapeSmoothDownMs: 150,
   colorSpectralTilt: 0.25,
 };
 
