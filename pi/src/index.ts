@@ -570,7 +570,7 @@ async function main() {
         const fs = await import('node:fs');
         const FREEZE_FILE = '/tmp/lotus-mic-freeze-restart-at';
         const CONTENT_FREEZE_MS = 4000;      // 4s byte-identiskt = otvetydig wedge
-        const STABLE_CONTENT_FREEZE_MS = 4000; // fångar nästan konstant DMA-innehåll
+        const STABLE_CONTENT_FREEZE_MS = 15000; // heuristisk (EMA) → längre fönster
         const RESTART_SUPPRESS_MS = 120000;  // rensade ej reopen+restart det <2min sen → churna inte
         let contentSteps = 0;
         everySeconds(2, () => {
@@ -578,14 +578,16 @@ async function main() {
             if (lc.getLifecycleState() !== 'MOTOR_ON') { contentSteps = 0; return; }
             const frozenMs = alsaMic?.getMicContentFrozenMs?.() ?? 0;
             const stableFrozenMs = alsaMic?.getMicStableContentFrozenMs?.() ?? 0;
-            const freezeMs = Math.max(frozenMs >= CONTENT_FREEZE_MS ? frozenMs : 0,
+            const hardFreezeMs = frozenMs >= CONTENT_FREEZE_MS ? frozenMs : 0;
+            const freezeMs = Math.max(hardFreezeMs,
               stableFrozenMs >= STABLE_CONTENT_FREEZE_MS ? stableFrozenMs : 0);
             if (freezeMs === 0) { contentSteps = 0; return; }
             contentSteps++;
             console.warn(`[Content-Freeze] mic-innehåll fruset ${freezeMs}ms — steg ${contentSteps}`);
             if (contentSteps === 1) {
               alsaMic?.restartCapture?.('content-freeze');       // steg 1: reopen ALSA (rör ej BLE)
-            } else if (contentSteps >= 3) {                       // efter ~2 reopen-försök
+            } else if (contentSteps >= 3 && hardFreezeMs > 0) {   // process-restart BARA på byte-identisk wedge
+
               let lastRestart = 0;
               try { lastRestart = Number(fs.readFileSync(FREEZE_FILE, 'utf8')) || 0; } catch {}
               const since = lastRestart ? (Date.now() - lastRestart) : Infinity;

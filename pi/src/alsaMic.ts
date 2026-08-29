@@ -220,7 +220,13 @@ let _micPlaybackGate = false;
 let _stableRmsSince = 0;
 let _stableRmsValue = 0;
 const STABLE_RMS_MIN = 0.003;
+// RELATIVT fönster: lightRawRms är en 130 ms EMA — ett fast absolut tak på 2e-5
+// gav falsk "frys" på lugna, jämna partier (2e-5 vid nivå 0.003 = 0.7 %) →
+// onödiga reopen och till slut process-restart. En äkta DMA-wedge ger EXAKT
+// noll variation, så ett relativt golv fångar den ändå.
 const STABLE_RMS_DELTA = 0.00002;
+const STABLE_RMS_REL = 0.02;
+
 
 /** Matas från Sonos playback-state; freeze-diagnostik kör bara under PLAYING. */
 export function setMicPlaybackGate(playing: boolean): void {
@@ -1104,7 +1110,9 @@ function onAudioData(buf: Buffer): void {
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
     learnGainSample(blockRms, dt);   // FIX 4: lärd volym→gain (gate:ad, långsam)
     if (_micPlaybackGate && lightRawRms >= STABLE_RMS_MIN) {
-      if (_stableRmsSince === 0 || Math.abs(lightRawRms - _stableRmsValue) > STABLE_RMS_DELTA) {
+      const tol = Math.max(STABLE_RMS_DELTA, lightRawRms * STABLE_RMS_REL);
+      if (_stableRmsSince === 0 || Math.abs(lightRawRms - _stableRmsValue) > tol) {
+
         _stableRmsSince = performance.now();
         _stableRmsValue = lightRawRms;
       }
