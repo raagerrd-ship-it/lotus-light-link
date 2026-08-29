@@ -27,7 +27,7 @@ import { getLastSent } from './ble-driver/protocol.js';
 import { isControllerDrainAttached, getQueuedPackets } from './ble-driver/controllerDrain.js';
 import { getLifecycleState, isManualOverrideOff, getPendingShutdownInMs } from './engineLifecycle.js';
 
-import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
+import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, isLocalGatewayUrl, getSonosGatewayError, setSonosGatewayError, getSonosDataAgeMs, type SonosPollerConfig } from './sonosPoller.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
 
 
