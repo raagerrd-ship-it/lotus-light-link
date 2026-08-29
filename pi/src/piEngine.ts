@@ -1446,6 +1446,18 @@ export class PiLightEngine {
   getDiagnostics(): DiagSnapshot { return _diag; }
   getCalibration(): LightCalibration { return this.cal; }
 
+  // ── Mic-safe-mode (FIX 15) ──
+  // Sätts när mic-återställningens steg är uttömda: lampan låses på idle-färg
+  // och tickInner skriver inte längre från fruset mic-underlag.
+  private _micSafeMode = false;
+  setMicSafeMode(on: boolean): void {
+    if (this._micSafeMode === on) return;
+    this._micSafeMode = on;
+    if (on) this.forceIdleNow();
+  }
+  isMicSafeMode(): boolean { return this._micSafeMode; }
+
+
   // ── Auto-tune API ──
   /** Starta sampling av rå pct (post-slew, pre-deadband) i `durationMs`.
    *  Endast en session i taget — ny start avbryter pågående. */
@@ -1616,10 +1628,15 @@ export class PiLightEngine {
 
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
+    // Mic-safe-mode: stegen är uttömda och micen är död. Lampan står i idle-färg
+    // och får inte pulsa på fruset underlag.
+    if (this._micSafeMode) return;
+
     // Skip processing när engine inte spelar ELLER när vi inte är BLE-active-owner.
     // Sista guard mot sen FFT-frame som anländer efter setPlaying(false) → annars
     // kan en mic-write krocka med keep-alive som just tagit över.
     if (!this.playing || this._bleOwner !== 'active') return;
+
 
     // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
 

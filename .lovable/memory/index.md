@@ -21,6 +21,7 @@ Mic-start får aldrig gatas av BLE; starta mic-tasken före BLE-initiering och a
 - [Adaptivt tak + pre-drop](mem://pi/lighting/adaptive-ceiling-and-buildup) — inLow/inHigh från långsam EMA (~7s) per låt + buildUpGain-svällning; bryggeri-defaults
 - [BLE supervision timeout + ljus-frys-larm](mem://pi/ble/supervision-timeout-and-down-alarm) — 5 s supervision timeout i initial och re-assert-lecup; downForMs + engångslarm efter 15 s under MOTOR_ON
 - [Mic-start gating](mem://pi/runtime/mic-start-never-gated-by-ble) — starta mic oberoende av BLE; await:a mic-tasken vid tidig BLE-fail
+- [Mic-återställning (steg)](mem://pi/audio/mic-recovery-ladder) — I2S unbind/bind via lotus-i2s-rebind + process MÅSTE dö; 2 rebind → 2 reboot → idle-färg
 - [Statisk dynamik-expansion](mem://pi/lighting/static-dynamic-expansion) — level sträcks inLowFrac/inHighFrac × point1.gain → 0..1 ^ shapeExpand; floor 10, barAccent 1.8
 - [Två tappar: AGC vs ljus](mem://pi/audio/two-taps-agc-vs-light) — o-gainad ring; AGC (mål 0.8) bara till analysen, egen linjär RMS × micGain till ljuset
 - [En linjär gain](mem://pi/audio/single-linear-gain) — RAW_SCALE=5 borta; tvåpunkts Sonos-kurva enda gain-källan (5–300×)

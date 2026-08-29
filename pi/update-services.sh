@@ -225,6 +225,20 @@ else
     echo "$LOG_PREFIX hcitool saknar CAP_NET_ADMIN — sätter caps (för 20ms BLE-interval)..."
     sudo setcap 'cap_net_admin,cap_net_raw+eip' "$HCITOOL_BIN_VERIFY" 2>/dev/null || true
   fi
+  # Mic-återställning (FIX 15): I2S-ombindningsskriptet + smal sudoers-regel måste
+  # överleva varje update, annars kan motorn inte lösa en I2S-DMA-wedge utan reboot.
+  if [ -f "$PI_DIR/scripts/i2s_rebind.sh" ]; then
+    sudo install -m 0755 -o root -g root "$PI_DIR/scripts/i2s_rebind.sh" /usr/local/sbin/lotus-i2s-rebind 2>/dev/null || true
+    if [ ! -f /etc/sudoers.d/lotus-i2s-rebind ]; then
+      echo "$LOG_PREFIX sudoers-regel för mic-ombindning saknas — skriver..."
+      I2S_SUDO_TMP="$(mktemp)"
+      printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/lotus-i2s-rebind, /sbin/reboot\n' "$TARGET_USER_VERIFY" > "$I2S_SUDO_TMP"
+      sudo visudo -cqf "$I2S_SUDO_TMP" 2>/dev/null \
+        && sudo install -m 0440 -o root -g root "$I2S_SUDO_TMP" /etc/sudoers.d/lotus-i2s-rebind 2>/dev/null || true
+      rm -f "$I2S_SUDO_TMP"
+    fi
+  fi
+
   for GRP in netdev bluetooth audio; do
     if getent group "$GRP" >/dev/null 2>&1 && ! id -nG "$TARGET_USER_VERIFY" 2>/dev/null | tr ' ' '\n' | grep -qx "$GRP"; then
       echo "$LOG_PREFIX $TARGET_USER_VERIFY saknas i $GRP — lägger till (kräver service-restart för att aktiveras)..."

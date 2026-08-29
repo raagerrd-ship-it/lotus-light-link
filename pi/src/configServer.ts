@@ -21,6 +21,8 @@ import { getRuntimeHealth, getBleDownForMs } from './runtimeHealth.js';
 // moduler, ingen load-order-fara när servern lyssnar.
 import { getHardcodedConnected, getLastDisconnectReason } from './ble-driver/connect.js';
 import { getRestartHistory } from './restartLog.js';
+import { getMicRecoveryStatus } from './micRecovery.js';
+
 import { getLastSent } from './ble-driver/protocol.js';
 import { isControllerDrainAttached, getQueuedPackets } from './ble-driver/controllerDrain.js';
 import { getLifecycleState, isManualOverrideOff, getPendingShutdownInMs } from './engineLifecycle.js';
@@ -533,6 +535,8 @@ export function startConfigServer(port = 3050): void {
         buildUp: analyserFrame?.buildUp ?? 0,        // 0..1 pre-drop-tension
         micContentFrozenMs,                          // >0 = byte-identisk mic-buffert (I2S-wedge)
         micStableContentFrozenMs,                     // >0 = nästan konstant RMS under PLAYING
+        micRecovery: getMicRecoveryStatus(),          // stegen: försökslogg + gaveUp (mic död)
+
 
         // Färg-rader visar nu Sonos-paletten (nuvarande + nästa låt) — inte
         // den faktiska BLE-utskickade färgen. UI:t bryr sig om "vad spelas",
