@@ -1616,10 +1616,15 @@ export class PiLightEngine {
 
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
+    // Mic-safe-mode: stegen är uttömda och micen är död. Lampan står i idle-färg
+    // och får inte pulsa på fruset underlag.
+    if (this._micSafeMode) return;
+
     // Skip processing när engine inte spelar ELLER när vi inte är BLE-active-owner.
     // Sista guard mot sen FFT-frame som anländer efter setPlaying(false) → annars
     // kan en mic-write krocka med keep-alive som just tagit över.
     if (!this.playing || this._bleOwner !== 'active') return;
+
 
     // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
 
