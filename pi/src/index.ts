@@ -565,46 +565,89 @@ async function main() {
       console.log(`[Boot] Playback-Watchdog active (threshold ${STUCK_THRESHOLD_MS}ms, ${MAX_RECOVERY_ATTEMPTS} targeted soft recoveries first)`);
 
       // ── Content-Freeze-watchdog: tyst I2S-DMA-wedge matar byte-identisk buffert.
-      // Tiered + tmpfs-spärr så en wedge som kräver reboot inte blir restart-loop.
+      // FIX 15: eskalering sker via mic-återställningens steg (ombindning → reboot →
+      // ge upp), speglat från brew-control/spi_recovery.py. En intern reopen räcker
+      // aldrig efter en ombindning — processen håller handtag på gamla styrenheten.
       {
-        const fs = await import('node:fs');
-        const FREEZE_FILE = '/tmp/lotus-mic-freeze-restart-at';
+        const { escalateMicRecovery, clearMicRecovery } = await import('./micRecovery.js');
+        const { getSonosState } = await import('./sonosPoller.js');
         const CONTENT_FREEZE_MS = 4000;      // 4s byte-identiskt = otvetydig wedge
         const STABLE_CONTENT_FREEZE_MS = 15000; // heuristisk (EMA) → längre fönster
-        const RESTART_SUPPRESS_MS = 120000;  // rensade ej reopen+restart det <2min sen → churna inte
+        const WDB_STUCK_MS = 20000;          // wdb rör sig <0.5 dB på 20s under PLAYING
+        const WDB_TOLERANCE_DB = 0.5;
+        const HEALTHY_CLEAR_MS = 60000;      // 60s varierande data → glöm försöken
         let contentSteps = 0;
+        let wdbRefDb: number | null = null;
+        let wdbRefAt = 0;
+        let healthySince = 0;
+
+        const onGiveUp = () => { try { engineInstance?.setMicSafeMode?.(true); } catch {} };
+
         everySeconds(2, () => {
           try {
-            if (lc.getLifecycleState() !== 'MOTOR_ON') { contentSteps = 0; return; }
+            if (lc.getLifecycleState() !== 'MOTOR_ON') {
+              contentSteps = 0; wdbRefDb = null; healthySince = 0; return;
+            }
+            const now = Date.now();
             const frozenMs = alsaMic?.getMicContentFrozenMs?.() ?? 0;
             const stableFrozenMs = alsaMic?.getMicStableContentFrozenMs?.() ?? 0;
             const hardFreezeMs = frozenMs >= CONTENT_FREEZE_MS ? frozenMs : 0;
-            const freezeMs = Math.max(hardFreezeMs,
-              stableFrozenMs >= STABLE_CONTENT_FREEZE_MS ? stableFrozenMs : 0);
-            if (freezeMs === 0) { contentSteps = 0; return; }
+
+            // Andra villkoret: flera av nattens frysningar hade micContentFrozenMs=0
+            // medan micen var helt död — wdb låste sig på ett värde som varierade i
+            // sista decimalen. Mät wdb-rörelse under Sonos PLAYING.
+            const playing = /PLAYING/i.test(getSonosState().playbackState ?? '');
+            const wdb = engineInstance?.getDiagnostics?.().wdb;
+            let wdbStuckMs = 0;
+            if (playing && typeof wdb === 'number' && Number.isFinite(wdb)) {
+              if (wdbRefDb === null || Math.abs(wdb - wdbRefDb) > WDB_TOLERANCE_DB) {
+                wdbRefDb = wdb; wdbRefAt = now;
+              } else if (now - wdbRefAt >= WDB_STUCK_MS) {
+                wdbStuckMs = now - wdbRefAt;
+              }
+            } else {
+              wdbRefDb = null;
+            }
+
+            const freezeMs = Math.max(
+              hardFreezeMs,
+              stableFrozenMs >= STABLE_CONTENT_FREEZE_MS ? stableFrozenMs : 0,
+              wdbStuckMs,
+            );
+
+            if (freezeMs === 0) {
+              contentSteps = 0;
+              // Frisk mic i 60s → rensa försökslogg så en isolerad stall nästa
+              // vecka inte räknas mot dagens försök.
+              if (playing) {
+                if (!healthySince) healthySince = now;
+                else if (now - healthySince >= HEALTHY_CLEAR_MS) {
+                  clearMicRecovery();
+                  healthySince = now;
+                }
+              } else {
+                healthySince = 0;
+              }
+              return;
+            }
+            healthySince = 0;
             contentSteps++;
-            console.warn(`[Content-Freeze] mic-innehåll fruset ${freezeMs}ms — steg ${contentSteps}`);
+            const kind = hardFreezeMs > 0 ? 'byte-identisk' : (wdbStuckMs > 0 ? 'wdb-låst' : 'nästan-konstant RMS');
+            console.warn(`[Content-Freeze] mic-innehåll fruset ${freezeMs}ms (${kind}) — steg ${contentSteps}`);
             if (contentSteps === 1) {
               alsaMic?.restartCapture?.('content-freeze');       // steg 1: reopen ALSA (rör ej BLE)
-            } else if (contentSteps >= 3 && hardFreezeMs > 0) {   // process-restart BARA på byte-identisk wedge
-
-              let lastRestart = 0;
-              try { lastRestart = Number(fs.readFileSync(FREEZE_FILE, 'utf8')) || 0; } catch {}
-              const since = lastRestart ? (Date.now() - lastRestart) : Infinity;
-              if (since > RESTART_SUPPRESS_MS) {
-                try { fs.writeFileSync(FREEZE_FILE, String(Date.now())); } catch {}
-                recordRestart('mic-content-freeze', `frozen ${freezeMs}ms, reopen hjälpte ej`);
-                markGracefulShutdown();
-                process.exit(1);                                 // steg 2: ren process-restart en gång
-              } else {
-                console.error('[Content-Freeze] KVARSTÅR efter reopen+restart — I2S-DMA wedge under processen, ' +
-                  'KRÄVER REBOOT. Churnar inte BLE med fler restarts.');
-              }
+            } else if (contentSteps >= 3) {
+              // Reopen hjälpte inte → styrenheten, inte givaren. Stegen tar över.
+              recordRestart('mic-content-freeze', `frozen ${freezeMs}ms (${kind}), reopen hjälpte ej`);
+              markGracefulShutdown();
+              escalateMicRecovery(`${kind} ${freezeMs}ms`, onGiveUp);
+              contentSteps = 0;   // gav upp → sluta räkna, safe mode råder
             }
           } catch { /* watchdog must never crash */ }
         });
-        console.log(`[Boot] Content-Freeze-Watchdog active (${CONTENT_FREEZE_MS}ms byte-identisk buffert)`);
+        console.log('[Boot] Content-Freeze-Watchdog active (byte-identisk buffert, nästan-konstant RMS, wdb-låst 20s)');
       }
+
     } catch (e: any) {
       console.warn('[Boot] Playback-Watchdog failed to start:', e?.message ?? e);
     }
