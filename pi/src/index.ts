@@ -287,9 +287,18 @@ async function startSonosSubsystem(): Promise<void> {
         const saved = getItem('sonos-gateway');
         if (saved) {
           const parsed = JSON.parse(saved);
-          baseUrl = normalizeSonosBaseUrl(parsed?.baseUrl);
+          baseUrl = normalizeSonosBaseUrl(parsed?.baseUrl, sonos.isLocalGatewayUrl);
         }
       } catch {}
+
+      if (!baseUrl) {
+        const msg = 'Ingen Sonos-gateway-adress: sätt BRIDGE_URL till gatewayen (brew-Pi:n). Gatewayen körs inte längre lokalt.';
+        console.error(`[Sonos] ${msg}`);
+        sonos.setSonosGatewayError(msg);
+        markSubsystemError('sonos', msg);
+        return;
+      }
+      sonos.setSonosGatewayError(null);
 
       const cfg = { baseUrl, ssePath: SSE_PATH, statusPath: STATUS_PATH, pollIntervalMs: POLL_INTERVAL, disableSSE: DISABLE_SSE };
       await sonos.startSonosPoller(cfg);
