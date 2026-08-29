@@ -257,7 +257,7 @@ const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   disableSSE: false,
 };
 
-export async function startSonosPoller(configOrUrl: string | SonosPollerConfig = 'http://localhost:3000/api/sonos'): Promise<void> {
+export async function startSonosPoller(configOrUrl: string | SonosPollerConfig): Promise<void> {
   const cfg: SonosPollerConfig = typeof configOrUrl === 'string'
     ? { baseUrl: configOrUrl }
     : configOrUrl;
