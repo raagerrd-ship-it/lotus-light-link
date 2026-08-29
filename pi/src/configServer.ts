@@ -1152,17 +1152,17 @@ export function startConfigServer(port = 3050): void {
 
 
   // --- Sonos gateway config ---
+  // Gatewayen körs INTE på den här maskinen (flyttad 2026-08-29). En lokal adress
+  // ignoreras med varning istället för att tyst frysa playbackState på IDLE.
   const normalizeSonosGatewayConfig = (config: Partial<SonosPollerConfig> | null | undefined): SonosPollerConfig => {
     const rawBaseUrl = typeof config?.baseUrl === 'string' && config.baseUrl.trim().length > 0
       ? config.baseUrl.trim().replace(/\/$/, '')
-      : 'http://127.0.0.1:3053/api/sonos';
-    const baseUrl = [
-      'http://172.0.0.1:3003/api/sonos',
-      'http://127.0.0.1:3003/api/sonos',
-      'http://127.0.0.1:3002/api/sonos',
-    ].includes(rawBaseUrl)
-      ? 'http://127.0.0.1:3053/api/sonos'
-      : rawBaseUrl;
+      : '';
+    let baseUrl = rawBaseUrl;
+    if (isLocalGatewayUrl(baseUrl)) {
+      console.warn(`[Sonos] Gateway-adress ${baseUrl} pekar lokalt — ignoreras (gatewayen körs på en annan maskin)`);
+      baseUrl = '';
+    }
 
     return {
       baseUrl,
