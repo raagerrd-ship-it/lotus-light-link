@@ -3,8 +3,8 @@
  *
  *   IGNITION     — endast Sonos-poller + configServer. BLE/mic sover.
  *   MOTOR_ON     — Sonos = PLAYING. Sekventiellt:
- *                    1. await startBleEngineMinimal()  (race-fix mot getNoble)
- *                    2. parallellt: startMicSubsystem() + connectHardcoded()
+ *                    1. startMicSubsystem() (aldrig gatad av BLE)
+ *                    2. await startBleEngineMinimal() + connectHardcoded()
  *                    3. setState(MOTOR_ON); engine.setPlaying(true)
  *   IGNITION_OFF — manuell UI-disconnect. PLAYING ignoreras tills user reaktiverar.
  *
