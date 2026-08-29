@@ -32,3 +32,10 @@ gamla additiva skalan → fyrar sällan, ska omtrimmas.
 
 **Fälla:** `DROPPED_CAL_KEYS` raderar sina namn vid varje `loadCalibration()`.
 Återanvänd aldrig ett namn ur listan (`lightBassWeight` var död i tysthet FIX 3→FIX 12).
+
+**SLUTVÄRDEN 2026-08-29 (frisk mic, kalibrerade):** windowDb 10, anchorOffsetDb 6.9,
+shapeSmoothUpMs 0, shapeSmoothDownMs 150, energySubdiv **0** (½/1/2×-underdelningen är
+kvar i koden men AV som default — 2× gav 4–5 Hz fladder), beatDoubleBelowBpm **0**
+(körde över energibeslutet vid median-BPM 107). Puls går 1:1 med takten.
+Kalibreringsformel: windowDb=(p95−p05)/0.82, anchorOffsetDb=(p95−p50)+0.08×windowDb.
+Ingen `shapeKnee` — tanh-kompression åt 6.7× av kontrasten och implementeras inte.
