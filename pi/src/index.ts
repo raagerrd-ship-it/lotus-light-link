@@ -58,14 +58,12 @@ void (async () => {
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad, allt körs realtime.
 
 // --- Config ---
-const SONOS_BUDDY_API_URL = process.env.BRIDGE_URL ?? 'http://127.0.0.1:3053/api';
-const LEGACY_LOCAL_SONOS_URLS = new Set([
-  'http://172.0.0.1:3003/api/sonos',
-  'http://127.0.0.1:3003/api/sonos',
-  'http://127.0.0.1:3002/api/sonos',
-  'http://127.0.0.1:3053/api/sonos',
-  'http://127.0.0.1:3052/api/sonos',
-]);
+// Gatewayen flyttades till brew-Pi:n (2026-08-29) — den finns INTE lokalt.
+// Ingen fallback-gissning: saknas BRIDGE_URL ska det märkas, inte döljas.
+const SONOS_BUDDY_API_URL: string | null =
+  process.env.BRIDGE_URL && process.env.BRIDGE_URL.trim().length > 0
+    ? process.env.BRIDGE_URL.trim().replace(/\/$/, '')
+    : null;
 // PCC sätter PORT direkt på engine. Fallback: räkna från UI_PORT + 50
 // (samma offset som services.json portOffset). Sista fallback: 3050.
 const CONFIG_PORT = Number(
@@ -103,10 +101,15 @@ const _inflight: Partial<Record<SubsystemId, Promise<void>>> = {};
 let _sonosPlayingHandler: ((playing: boolean) => Promise<void> | void) | null = null;
 let _lastSonosPlaying: boolean | null = null;
 
-function normalizeSonosBaseUrl(raw: string | null | undefined): string {
+/** Sparad config får aldrig tyst peka lokalt — gatewayen körs på en annan maskin. */
+function normalizeSonosBaseUrl(raw: string | null | undefined, isLocal: (u: string | null) => boolean): string | null {
   const trimmed = (raw ?? '').trim().replace(/\/$/, '');
-  const base = trimmed.length > 0 ? trimmed : SONOS_BUDDY_API_URL;
-  return LEGACY_LOCAL_SONOS_URLS.has(base) ? SONOS_BUDDY_API_URL : base;
+  if (trimmed.length === 0) return SONOS_BUDDY_API_URL;
+  if (isLocal(trimmed)) {
+    console.warn(`[Sonos] Sparad gateway-adress ${trimmed} pekar lokalt — ignoreras (gatewayen körs inte på den här maskinen)`);
+    return SONOS_BUDDY_API_URL;
+  }
+  return trimmed;
 }
 
 // Profiler BORTTAGNA (2026-08-25): EN global inställnings-uppsättning.
@@ -284,9 +287,18 @@ async function startSonosSubsystem(): Promise<void> {
         const saved = getItem('sonos-gateway');
         if (saved) {
           const parsed = JSON.parse(saved);
-          baseUrl = normalizeSonosBaseUrl(parsed?.baseUrl);
+          baseUrl = normalizeSonosBaseUrl(parsed?.baseUrl, sonos.isLocalGatewayUrl);
         }
       } catch {}
+
+      if (!baseUrl) {
+        const msg = 'Ingen Sonos-gateway-adress: sätt BRIDGE_URL till gatewayen (brew-Pi:n). Gatewayen körs inte längre lokalt.';
+        console.error(`[Sonos] ${msg}`);
+        sonos.setSonosGatewayError(msg);
+        markSubsystemError('sonos', msg);
+        return;
+      }
+      sonos.setSonosGatewayError(null);
 
       const cfg = { baseUrl, ssePath: SSE_PATH, statusPath: STATUS_PATH, pollIntervalMs: POLL_INTERVAL, disableSSE: DISABLE_SSE };
       await sonos.startSonosPoller(cfg);

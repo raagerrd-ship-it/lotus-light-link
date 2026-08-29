@@ -27,7 +27,7 @@ import { getLastSent } from './ble-driver/protocol.js';
 import { isControllerDrainAttached, getQueuedPackets } from './ble-driver/controllerDrain.js';
 import { getLifecycleState, isManualOverrideOff, getPendingShutdownInMs } from './engineLifecycle.js';
 
-import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, type SonosPollerConfig } from './sonosPoller.js';
+import { getSonosState, getPollerConfig, stopSonosPoller, startSonosPoller, setAutoTvMode, getAutoTvMode, isLocalGatewayUrl, getSonosGatewayError, setSonosGatewayError, getSonosDataAgeMs, type SonosPollerConfig } from './sonosPoller.js';
 // lightRecorder borttaget (2026-06-02): inspelning/offline-playback avvecklad.
 
 
@@ -529,6 +529,14 @@ export function startConfigServer(port = 3050): void {
       uptime: Math.floor((Date.now() - START_TIME) / 1000),
       startedAt: new Date(START_TIME).toISOString(),
       sonos,
+      // Vilken gateway-adress motorn FAKTISKT använder + tydligt fel om den saknas.
+      // Under flytten 2026-08-29 gick det inte att se adressen utan att läsa disk.
+      sonosGateway: {
+        gatewayUrl: getPollerConfig()?.baseUrl ?? null,
+        error: getSonosGatewayError(),
+        dataAgeMs: getSonosDataAgeMs(),
+      },
+      sonosGatewayError: getSonosGatewayError(),
       live: {
         inputLevel,                                  // 0..1 (rå RMS×4, matchar VU-meter)
         outputBrightness,                            // 0..1 (engine brightnessPct/100)
@@ -599,8 +607,16 @@ export function startConfigServer(port = 3050): void {
       })(),
       // Subsystem-states — UI visar vad som är aktivt under tändning vs motor.
       subsystems: (() => {
-        try { return getAllSubsystemStates(); }
-        catch { return null; }
+        try {
+          const states: any = getAllSubsystemStates();
+          // "ready" ska betyda LEVERERAR. Under flytten stod sonos=ready i flera
+          // minuter medan noll data kom in → degraded efter 30 s utan data.
+          const age = getSonosDataAgeMs();
+          if (states?.sonos?.status === 'ready' && (age === null || age > 30_000)) {
+            states.sonos = { ...states.sonos, status: 'degraded', error: age === null ? 'ingen data mottagen' : `ingen data i ${Math.round(age / 1000)}s` };
+          }
+          return states;
+        } catch { return null; }
       })(),
     });
   });
@@ -1152,17 +1168,17 @@ export function startConfigServer(port = 3050): void {
 
 
   // --- Sonos gateway config ---
+  // Gatewayen körs INTE på den här maskinen (flyttad 2026-08-29). En lokal adress
+  // ignoreras med varning istället för att tyst frysa playbackState på IDLE.
   const normalizeSonosGatewayConfig = (config: Partial<SonosPollerConfig> | null | undefined): SonosPollerConfig => {
     const rawBaseUrl = typeof config?.baseUrl === 'string' && config.baseUrl.trim().length > 0
       ? config.baseUrl.trim().replace(/\/$/, '')
-      : 'http://127.0.0.1:3053/api/sonos';
-    const baseUrl = [
-      'http://172.0.0.1:3003/api/sonos',
-      'http://127.0.0.1:3003/api/sonos',
-      'http://127.0.0.1:3002/api/sonos',
-    ].includes(rawBaseUrl)
-      ? 'http://127.0.0.1:3053/api/sonos'
-      : rawBaseUrl;
+      : '';
+    let baseUrl = rawBaseUrl;
+    if (isLocalGatewayUrl(baseUrl)) {
+      console.warn(`[Sonos] Gateway-adress ${baseUrl} pekar lokalt — ignoreras (gatewayen körs på en annan maskin)`);
+      baseUrl = '';
+    }
 
     return {
       baseUrl,
@@ -1174,43 +1190,10 @@ export function startConfigServer(port = 3050): void {
     };
   };
 
-  app.get('/api/sonos-gateway/detect', async (_req, res) => {
-    const CORE_PORTS = [3050, 3051, 3052, 3053];
-    const probes = CORE_PORTS.map(async (port) => {
-      try {
-        const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1500) });
-        if (!r.ok) return null;
-        const data = await r.json();
-        const name = String(data?.service ?? '').toLowerCase();
-        if (!name.includes('sonos')) return null;
+  // /api/sonos-gateway/detect borttagen 2026-08-29: gatewayen (Sonos Buddy /
+  // Cast Away) flyttades till brew-Pi:n, så en localhost-scan kan bara ge
+  // felaktiga adresser. Adressen anges explicit i UI istället.
 
-        const candidates = [`/api/sonos`, `/api`];
-        let chosenBase: string | null = null;
-        for (const suffix of candidates) {
-          try {
-            const probe = await fetch(`http://127.0.0.1:${port}${suffix}/status`, { signal: AbortSignal.timeout(1000) });
-            if (probe.ok) { chosenBase = suffix; break; }
-          } catch {}
-        }
-        if (!chosenBase) return null;
-
-        return {
-          port,
-          url: `http://127.0.0.1:${port}${chosenBase}`,
-          name: data.service,
-          version: data.version ?? null,
-          core: port - 3050,
-        };
-      } catch { return null; }
-    });
-    const results = (await Promise.all(probes)).filter(Boolean);
-    if (results.length > 0) {
-      const best = results[0]!;
-      res.json({ found: true, url: best.url, name: best.name, version: best.version, core: best.core });
-    } else {
-      res.json({ found: false });
-    }
-  });
 
   app.get('/api/sonos-gateway', (_req, res) => {
     const savedRaw = getItem('sonos-gateway');
@@ -1232,10 +1215,11 @@ export function startConfigServer(port = 3050): void {
   app.put('/api/sonos-gateway', (req, res) => {
     const config = normalizeSonosGatewayConfig(req.body);
     if (!config.baseUrl) {
-      return res.status(400).json({ error: 'Need baseUrl' });
+      return res.status(400).json({ error: 'Need baseUrl (får inte peka på localhost/127.0.0.1 — gatewayen körs på en annan maskin)' });
     }
     setItem('sonos-gateway', JSON.stringify(config));
     stopSonosPoller();
+    setSonosGatewayError(null);
     startSonosPoller(config).catch((e: any) => console.warn('[Sonos] Restart failed:', e.message));
     res.json({ ok: true, config });
   });

@@ -3,7 +3,7 @@ import { Save, Check, Mic, Bluetooth, Loader2, Sliders } from "lucide-react";
 
 import { apiBase } from "@/lib/apiBase";
 import { PermissionsBanner } from "@/components/PermissionsBanner";
-import { Panel, Row, Stat, Slider, Segmented, Button, Toggle } from "@/components/piUi";
+import { Panel, Row, Stat, Slider, Button, Toggle } from "@/components/piUi";
 import { LightPreview } from "@/components/LightPreview";
 import { BeatMonitor } from "@/components/BeatMonitor";
 import { useLiveFeed, setLiveFeedFastUntil } from "@/lib/liveFeed";
@@ -650,15 +650,15 @@ function ConnectionSettingsSection({
   micGain, setMicGain,
   idleColor, setIdleColor,
   autoTvMode, setAutoTvMode,
-  sonosMode, setSonosMode, sonosLocalDetected,
+  activeGatewayUrl, gatewayError,
   piBase, sonosVolume,
 }: {
   sonosUrl: string; setSonosUrl: (v: string) => void;
   micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
   autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
-  sonosMode: 'auto' | 'local' | 'extern'; setSonosMode: (v: 'auto' | 'local' | 'extern') => void;
-  sonosLocalDetected: { found: boolean; url: string; name: string; version: string | null } | null;
+  activeGatewayUrl: string | null;
+  gatewayError: string | null;
   piBase: string;
   sonosVolume: number | null;
 }) {
@@ -669,51 +669,21 @@ function ConnectionSettingsSection({
         <GainCalibrationPanel piBase={piBase} micGain={micGain} setMicGain={setMicGain} sonosVolume={sonosVolume} />
       </Panel>
 
-      <Panel
-        title="Sonos gateway"
-        action={
-          sonosLocalDetected?.found ? (
-            <span className="flex items-center gap-1 text-[10px] font-semibold text-ok">
-              <Check size={11} /> Lokal
-            </span>
-          ) : undefined
-        }
-      >
+      {/* Gatewayen körs på en annan maskin (flyttad 2026-08-29) — adressen är
+          alltid explicit, inget "lokalt" läge finns kvar. */}
+      <Panel title="Sonos gateway">
         <div className="space-y-3">
-          {sonosLocalDetected?.found && (
-            <p className="text-[11px] text-muted-foreground">
-              {sonosLocalDetected.name}
-              {sonosLocalDetected.version && <span className="font-mono"> v{sonosLocalDetected.version}</span>}
-            </p>
+          <input
+            type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
+            placeholder="http://192.168.1.x:3053/api/sonos"
+            className="w-full rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-[12px] font-mono ring-1 ring-inset ring-border focus:outline-none focus:ring-primary/60"
+          />
+          {gatewayError && (
+            <p className="rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">{gatewayError}</p>
           )}
-
-          {sonosLocalDetected?.found && (
-            <Segmented
-              value={sonosMode === 'extern' ? 'extern' : 'local'}
-              onChange={(mode) => {
-                setSonosMode(mode);
-                if (mode === 'local' && sonosLocalDetected?.url) setSonosUrl(sonosLocalDetected.url);
-              }}
-              options={[
-                { value: 'local', label: 'Lokal' },
-                { value: 'extern', label: 'Extern' },
-              ]}
-            />
-          )}
-
-          {(sonosMode === 'extern' || !sonosLocalDetected?.found) && (
-            <input
-              type="url" value={sonosUrl} onChange={(e) => setSonosUrl(e.target.value)}
-              placeholder="http://192.168.1.x:3053/api/sonos"
-              className="w-full rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-[12px] font-mono ring-1 ring-inset ring-border focus:outline-none focus:ring-primary/60"
-            />
-          )}
-
-          {sonosMode === 'local' && sonosLocalDetected?.found && (
-            <div className="rounded-xl bg-foreground/[0.03] px-3 py-2 text-[10px] font-mono text-muted-foreground truncate">
-              {sonosUrl}
-            </div>
-          )}
+          <div className="rounded-xl bg-foreground/[0.03] px-3 py-2 text-[10px] font-mono text-muted-foreground truncate">
+            Aktiv: {activeGatewayUrl ?? '—'}
+          </div>
         </div>
       </Panel>
 
@@ -772,13 +742,11 @@ export default function PiMobile() {
   const [cal, setCal] = useState<Cal>({ ...DEFAULT_CAL });
 
   const [tickMs, setTickMs] = useState(25);
-  const [sonosUrl, setSonosUrl] = useState(() =>
-    typeof window !== 'undefined'
-      ? `http://${window.location.hostname}:3053/api/sonos`
-      : 'http://127.0.0.1:3053/api/sonos'
-  );
-  const [sonosMode, setSonosMode] = useState<'auto' | 'local' | 'extern'>('auto');
-  const [sonosLocalDetected, setSonosLocalDetected] = useState<{ found: boolean; url: string; name: string; version: string | null } | null>(null);
+  // Ingen lokal default — gatewayen körs på en annan maskin och adressen
+  // måste anges explicit (annars rapporterar motorn ett tydligt fel).
+  const [sonosUrl, setSonosUrl] = useState('');
+  const [activeGatewayUrl, setActiveGatewayUrl] = useState<string | null>(null);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
   const [autoTvMode, setAutoTvMode] = useState(false);
@@ -874,7 +842,7 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes, detectRes] = await Promise.all([
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes] = await Promise.all([
         safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
@@ -883,7 +851,6 @@ export default function PiMobile() {
         safeFetch(`${piBase}/api/sonos-gateway`),
         safeFetch(`${piBase}/api/auto-tv-mode`),
         safeFetch(`${piBase}/api/mic-gain`),
-        safeFetch(`${piBase}/api/sonos-gateway/detect`),
       ]);
 
       // Mappa lagrad kalibrering tillbaka till UI:ts Cal-form
@@ -920,24 +887,12 @@ export default function PiMobile() {
       if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
       if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
 
-      // Sonos gateway: detect local service or fall back to saved/extern
-      if (detectRes?.found) {
-        setSonosLocalDetected(detectRes);
-        // If saved URL matches local default, use local mode
-        const savedUrl = sonosRes?.active?.baseUrl ?? sonosRes?.saved?.baseUrl ?? '';
-        const isLocal = !savedUrl || savedUrl.includes('127.0.0.1:3053');
-        setSonosMode(isLocal ? 'local' : 'extern');
-        if (isLocal) {
-          setSonosUrl(detectRes.url);
-        } else {
-          setSonosUrl(savedUrl);
-        }
-      } else {
-        setSonosLocalDetected(detectRes ?? { found: false, url: '', name: '', version: null });
-        setSonosMode('extern');
-        if (sonosRes?.active?.baseUrl) setSonosUrl(sonosRes.active.baseUrl);
-        else if (sonosRes?.saved?.baseUrl) setSonosUrl(sonosRes.saved.baseUrl);
-      }
+      // Sonos gateway: alltid explicit adress (ingen lokal detektering).
+      const savedUrl = sonosRes?.active?.baseUrl ?? sonosRes?.saved?.baseUrl ?? '';
+      if (savedUrl) setSonosUrl(savedUrl);
+      setActiveGatewayUrl(statusRes?.sonosGateway?.gatewayUrl ?? null);
+      setGatewayError(statusRes?.sonosGateway?.error ?? null);
+
 
     };
     load();
@@ -1142,7 +1097,7 @@ export default function PiMobile() {
                 micGain={micGain} setMicGain={setMicGain}
                 idleColor={idleColor} setIdleColor={setIdleColor}
                 autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
-                sonosMode={sonosMode} setSonosMode={setSonosMode} sonosLocalDetected={sonosLocalDetected}
+                activeGatewayUrl={activeGatewayUrl} gatewayError={gatewayError}
                 piBase={piBase} sonosVolume={sonosVolume}
               />
 

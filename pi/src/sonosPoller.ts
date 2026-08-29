@@ -257,7 +257,7 @@ const DEFAULT_CONFIG: Required<Omit<SonosPollerConfig, 'baseUrl'>> = {
   disableSSE: false,
 };
 
-export async function startSonosPoller(configOrUrl: string | SonosPollerConfig = 'http://localhost:3000/api/sonos'): Promise<void> {
+export async function startSonosPoller(configOrUrl: string | SonosPollerConfig): Promise<void> {
   const cfg: SonosPollerConfig = typeof configOrUrl === 'string'
     ? { baseUrl: configOrUrl }
     : configOrUrl;
@@ -438,4 +438,30 @@ export function getPollerConfig(): SonosPollerConfig | null {
 
 export function getLastSuccessfulPollAt(): number | null {
   return lastSuccessfulPollAt;
+}
+
+// ── Gateway-adress & fel (2026-08-29) ──
+// Gatewayen (Sonos Buddy / Cast Away) körs INTE längre på lotus-Pi:n. En lokal
+// adress är därför alltid fel; tyst fallback till 127.0.0.1 gav en frusen
+// IDLE-state som såg ut som ett nätverksfel. Adressen och felet exponeras i
+// /api/status så det syns utan att läsa filer på disk.
+export function isLocalGatewayUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(url.trim());
+}
+
+let sonosGatewayError: string | null = null;
+
+export function setSonosGatewayError(msg: string | null): void {
+  sonosGatewayError = msg;
+}
+
+export function getSonosGatewayError(): string | null {
+  return sonosGatewayError;
+}
+
+/** Ms sedan senaste inkommande data (SSE-event eller lyckad poll). null = aldrig. */
+export function getSonosDataAgeMs(): number | null {
+  const newest = Math.max(lastResponseTime, lastSseEventAt, lastSuccessfulPollAt ?? 0);
+  return newest > 0 ? Date.now() - newest : null;
 }
