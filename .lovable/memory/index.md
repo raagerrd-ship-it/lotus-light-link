@@ -56,7 +56,7 @@ Mic-start får aldrig gatas av BLE; starta mic-tasken före BLE-initiering och a
 - [PCC alignment](mem://pi/runtime/pcc-alignment) — Pi Control Center integration and runInstallOnRelease
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
-- [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — hcitool for lescan, noble for GATT
+- [Hybrid discovery](mem://pi/ble/hybrid-discovery-strategy) — hcitool för lescan, noble för GATT
 - [BLE anti-churn](mem://pi/ble/anti-churn-connect-cooldown) — 4s cross-restart cooldown, 2s golv, churn-guard, bounded shutdown-disconnect
 - [BLE fast-fail restart](mem://pi/ble/fast-fail-self-restart) — Process restart after 4 consecutive failures; same-process retry banned
 - [Heap-tak & swappiness](mem://pi/runtime/heap-cap-and-swappiness) — heap 96MB + vm.swappiness=10 mot watchdog-frysningar vid RSS ~110MB
@@ -80,5 +80,5 @@ Mic-start får aldrig gatas av BLE; starta mic-tasken före BLE-initiering och a
 - [Silent logging](mem://pi/runtime/silent-by-default-logging) — Debug logging is opt-in
 - [Native ALSA install](mem://pi/audio/native-alsa-capture-install) — Native addon must rebuild on Pi with ALSA headers
 - [Native only capture](mem://pi/audio/native-only-no-arecord-fallback) — No arecord fallback in engine
-- [ALSА buffer sizing](mem://pi/audio/alsa-buffer-sizing) — 16× period buffer and explicit period count are required on current Pi evidence
+- [ALSA buffer sizing](mem://pi/audio/alsa-buffer-sizing) — 16× period buffer and explicit period count are required on current Pi evidence
 - [I2S initial DC wedge](mem://pi/audio/i2s-initial-dc-wedge) — No more ALSA hypothesis patches before strace ioctl diff from process start
