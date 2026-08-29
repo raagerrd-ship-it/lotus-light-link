@@ -71,6 +71,7 @@ Short input-EMA (`lightSmoothMs` ~35 ms) before dB-mapping denoises base level w
 - [Softness slider](mem://pi/ui/softness-slider-curve) — Exponential mapping for releaseAlpha
 - [Percentil-AGC](mem://pi/audio/percentile-agc) — analysator-AGC mot 95:e percentilen (mål 0.75 tak, maxGain 200) + persisterade ljus-defaults
 - [Native capture](mem://pi/audio/native-capture) — C++ alsa-capture binding with Int16Array
+- [Initial I2S DC-wedge](mem://pi/audio/i2s-initial-dc-wedge) — första motor-open ger konstant I2S-ord trots frisk arecord; invänta ioctl-diff, inga fler hypotespatchar
 - [PCC alignment](mem://pi/runtime/pcc-alignment) — Pi Control Center integration and runInstallOnRelease
 - [BLE permissions](mem://pi/ble/permissions-model) — AmbientCapabilities and NoNewPrivileges configuration
 - [BLE library rationale](mem://pi/ble/library-choice-rationale) — Noble chosen over D-Bus for HCI config
