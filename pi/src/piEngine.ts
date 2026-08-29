@@ -712,6 +712,18 @@ export class PiLightEngine {
       if (allowTrigger) this.onsetTarget = 0.45;
     }
 
+    // Targeten släpps exakt en gång per frame. I Mode B skalar tau med grid-intervallet
+    // så en halv-/dubbelpuls hinner tona ut lagom långt, utan att attacken fördröjs.
+    let decay = tc.onsetDecayFft;
+    if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
+      const tau = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(
+        this.cal.fadeTauMax ?? 1.2,
+        (this.cal.fadeIntervalK ?? 0.9) * this._pulseIntervalMs / 1000,
+      ));
+      decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
+    }
+    this.onsetTarget *= decay;
+
     if (this.onsetBoost < this.onsetTarget) {
       // INSTANT ATTACK: pulsen ska landa PÅ slaget, inte krypa dit. Samma princip som
       // attackAlpha=1.0 på ljus-vägen. Stigtiden var uppmätt ~79 ms = hela beat-latensen.
@@ -724,28 +736,7 @@ export class PiLightEngine {
         this.onsetBoost += a * (this.onsetTarget - this.onsetBoost);
       }
     } else {
-      let decay = tc.onsetDecayFft;
-      if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
-        const tau = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(
-          this.cal.fadeTauMax ?? 1.2,
-          (this.cal.fadeIntervalK ?? 0.9) * this._pulseIntervalMs / 1000,
-        ));
-        decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
-      }
       this.onsetBoost *= decay;
-      this.onsetTarget *= decay;
-    }
-    if (this.onsetBoost < this.onsetTarget) {
-      // targeten får samma intervallskalade release även under attack-grenen.
-      let decay = tc.onsetDecayFft;
-      if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
-        const tau = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(
-          this.cal.fadeTauMax ?? 1.2,
-          (this.cal.fadeIntervalK ?? 0.9) * this._pulseIntervalMs / 1000,
-        ));
-        decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
-      }
-      this.onsetTarget *= decay;
     }
 
 
