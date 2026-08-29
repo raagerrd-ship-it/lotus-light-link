@@ -607,8 +607,16 @@ export function startConfigServer(port = 3050): void {
       })(),
       // Subsystem-states — UI visar vad som är aktivt under tändning vs motor.
       subsystems: (() => {
-        try { return getAllSubsystemStates(); }
-        catch { return null; }
+        try {
+          const states: any = getAllSubsystemStates();
+          // "ready" ska betyda LEVERERAR. Under flytten stod sonos=ready i flera
+          // minuter medan noll data kom in → degraded efter 30 s utan data.
+          const age = getSonosDataAgeMs();
+          if (states?.sonos?.status === 'ready' && (age === null || age > 30_000)) {
+            states.sonos = { ...states.sonos, status: 'degraded', error: age === null ? 'ingen data mottagen' : `ingen data i ${Math.round(age / 1000)}s` };
+          }
+          return states;
+        } catch { return null; }
       })(),
     });
   });
