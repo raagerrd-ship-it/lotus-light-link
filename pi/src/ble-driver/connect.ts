@@ -172,11 +172,17 @@ export function scheduleAutoReconnect(): void {
   if (_connected && _connected.state === 'connected') return; // redan uppe
 
   if (_autoReconnectAttempt >= AUTO_RECONNECT_MAX_ATTEMPTS) {
-    console.error(`[auto-reconnect] ⚠ ${AUTO_RECONNECT_MAX_ATTEMPTS} försök misslyckade — pausar loop, kräver manuell trigger`);
-    _autoReconnectGivenUp = true;
-    _autoReconnectEnabled = false;
+    // GE ALDRIG UPP: tidigare parkerades loopen permanent och krävde manuell
+    // trigger — men den manuella vägen var trasig (userStartAll early-returnade
+    // när state === MOTOR_ON), så lampan blev mörk tills någon startade om
+    // tjänsten. Lugn retry en gång i minuten låter BLEDOM:en vara i fred men
+    // låter systemet läka av sig självt när lampan blir nåbar igen.
+    _autoReconnectAttempt = 0;
+    _autoReconnectTimer = setTimeout(() => { _autoReconnectTimer = null; scheduleAutoReconnect(); }, 60_000);
+    console.warn('[auto-reconnect] max försök uppnått — går över till lugn retry var 60:e sekund');
     return;
   }
+
 
   _autoReconnectAttempt++;
   const backoffs = [2000, 4000, 8000, 16000, 30000];
