@@ -1375,7 +1375,10 @@ export class PiLightEngine {
     // färskt. BLE-leveransen är frikopplad (1-plats-slot), så radions
     // conn-interval styr sändtakten, inte compute-takten.
     const now = performance.now();
-    noteTick(now, this.tickMs);
+    // noteTick flyttad in i tickInner (efter early-return-guarderna): här räknade
+    // den upp även när tickInner bailade på _bleOwner !== 'active', så
+    // Playback-Watchdog såg "engineTicks running" medan ljuset stod still.
+
     this._nextTickDeadline = now + this.tickMs;
     this._lastTickTime = now;
     this.tickInner();
