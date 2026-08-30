@@ -508,6 +508,9 @@ export class PiLightEngine {
   private _wdbSlow?: number;
   /** Takjämning före heartbeat-smoothing. */
   private _shapeSm?: number;
+  private _shapeSlow?: number;      // ~8 s energi-envelope (grind för pulsdelning)
+  private _shapeSlowMax?: number;   // låtens egen topp, 60 s minne
+  private _shapeRel = 1;            // _shapeSlow normaliserad mot topp → 0..1
 
 
   // Onset detection state — zero-alloc insertion-sort median
@@ -657,6 +660,9 @@ export class PiLightEngine {
     this._wlevelSm = undefined;
     this._wdbSlow = undefined;
     this._shapeSm = undefined;
+    this._shapeSlow = undefined;
+    this._shapeSlowMax = undefined;
+    this._shapeRel = 1;
     this._subdivLevel = 0;
     this._subdivChangedAt = 0;
     this._pulseIntervalMs = 0;
@@ -728,9 +734,15 @@ export class PiLightEngine {
     // så en halv-/dubbelpuls hinner tona ut lagom långt, utan att attacken fördröjs.
     let decay = tc.onsetDecayFft;
     if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
+      // Energiberoende fade: ett lugnt parti och ett drop i samma låt ska kunna få
+      // olika tau. Default 1.0/1.0 = neutral (bara tempot styr).
+      const _rel = Math.min(1, Math.max(0, this._shapeRel ?? 1));
+      const _fCalm = this.cal.fadeEnergyCalm ?? 1.0;
+      const _fInt = this.cal.fadeEnergyIntense ?? 1.0;
+      const _fE = _fCalm + (_fInt - _fCalm) * _rel;
       const tau = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(
         this.cal.fadeTauMax ?? 1.2,
-        (this.cal.fadeIntervalK ?? 0.9) * this._pulseIntervalMs / 1000,
+        (this.cal.fadeIntervalK ?? 0.35) * (this._pulseIntervalMs / 1000) * _fE,
       ));
       decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
     }
@@ -866,6 +878,7 @@ export class PiLightEngine {
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
+    subdivLevel: number; energySm: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
@@ -878,6 +891,11 @@ export class PiLightEngine {
       nextBeatMs: hasBeat(this._beat) ? nextBeatIn(this._beat, now, lead) : 0,
       beatErr: this._beatErr,
       gridPulses: this._gridPulseCount,
+      subdivLevel: this._subdivLevel,
+      energySm: this.smoothed,
+      shapeSm: this._shapeSm,
+      shapeSlow: this._shapeSlow,
+      shapeRel: this._shapeRel,
       leadMs: lead,
       dropSrc: this._dropSourceActive,
       coasting: this._beatWasLocked && (getLatestFrame()?.bpmConfidence ?? 0) < MIN_BEAT_CONFIDENCE,
@@ -1287,17 +1305,38 @@ export class PiLightEngine {
           const bpmNow = this._beat?.bpm ?? 0;
           const baseIntervalMs = bpmNow > 0 ? 60000 / bpmNow : 0;
           const energySubdiv = (this.cal.energySubdiv ?? 0) > 0;
-          const energy = this.smoothed;
+          // GRINDEN MÅSTE VARA RELATIV: this.smoothed är per-slag-enveloppen (faller
+          // mot noll MELLAN slagen) och _shapeSm är för snabb → grinden växlade i takt
+          // med slagen (4–5 Hz fladder). Egen ~8 s-envelope normaliserad mot låtens
+          // EGEN topp (60 s minne) — en fast tröskel kan aldrig fungera eftersom
+          // shapeSlow-medianen flyttar sig med materialet (0.480 → 0.232).
+          const _shRaw = (this._shapeSm ?? this.smoothed);
+          const _aSlow = Math.min(1, (this.tickMs || 18) / 8000);
+          this._shapeSlow = this._shapeSlow == null ? _shRaw : this._shapeSlow + (_shRaw - this._shapeSlow) * _aSlow;
+          const _decay = (this.tickMs || 18) / 60000;
+          this._shapeSlowMax = this._shapeSlowMax == null ? this._shapeSlow
+            : Math.max(this._shapeSlow, this._shapeSlowMax - this._shapeSlowMax * _decay);
+          // Under 0.02 finns ingen meningsfull topp (tystnad) → 1, så vi INTE halverar på brus.
+          const energy = this._shapeSlowMax > 0.02 ? Math.min(1, this._shapeSlow / this._shapeSlowMax) : 1;
+          this._shapeRel = energy;
           const current = this._subdivLevel;
 
           if (idx !== this._lastGridIdx) {
             let next = current;
+            // Takt-baserad halvering FÖRST: den energistyrda grinden fyrar bara i
+            // genuint lugna partier, så en 157-BPM-låt pulsade i 2.6 Hz utan detta.
+            const _halveAbove = this.cal.subdivHalveAboveBpm ?? 0;
+            if (_halveAbove > 0 && bpmNow > 0) {
+              const _back = _halveAbove - (this.cal.subdivHalveHystBpm ?? 15);
+              if (current >= 0 && bpmNow > _halveAbove) next = -1;
+              else if (current === -1 && bpmNow < _back) next = 0;
+            }
             if (energySubdiv) {
-              if (current <= 0 && energy > (this.cal.subdivHiOn ?? 0.88)) next = 1;
-              else if (current === 1 && energy < (this.cal.subdivHiOff ?? 0.70)) next = 0;
-              else if (current >= 0 && energy < (this.cal.subdivLoOn ?? 0.33)) next = -1;
-              else if (current === -1 && energy > (this.cal.subdivLoOff ?? 0.45)) next = 0;
-            } else next = 0;
+              if (current <= 0 && energy > (this.cal.subdivHiOn ?? 2)) next = 1;
+              else if (current === 1 && energy < (this.cal.subdivHiOff ?? 1.9)) next = 0;
+              else if (current >= 0 && energy < (this.cal.subdivLoOn ?? 0.42)) next = -1;
+              else if (current === -1 && energy > (this.cal.subdivLoOff ?? 0.60)) next = 0;
+            }
             if (next !== current) {
               const holdMs = this.cal.subdivMinHoldMs ?? 10000;
               if (this._subdivChangedAt > 0 && Date.now() - this._subdivChangedAt < holdMs) next = current;
