@@ -571,9 +571,22 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
     });
   })();
 
-  _connectInFlight = inflight;
+  // Vakthund: hänger något inuti inflight (t.ex. ett obundet stopScanningAsync)
+  // avgörs promisen aldrig. Då satt _connectInFlight kvar för alltid: scan
+  // blockerades, auto-reconnect returnerade tidigt, felräknaren ökade aldrig,
+  // process.exit fyrade aldrig. Uppmätt: 5 timmar nere utan ett enda försök.
+  const guarded: Promise<{ connected: boolean; error?: string }> = Promise.race([
+    inflight,
+    new Promise<{ connected: boolean; error?: string }>((res) => setTimeout(() => {
+      console.error('[connect-hardcoded] in-flight watchdog 30s — släpper låsningen');
+      res({ connected: false, error: 'connect in-flight watchdog (30s)' });
+    }, 30_000)),
+  ]);
+
+  _connectInFlight = guarded;
   try {
-    const r = await inflight;
+    const r = await guarded;
+
     if (r.connected) {
       // Lyckad connect → nollställ failure-räknaren + disconnect-tracking.
       if (_consecutiveFailures > 0) {
