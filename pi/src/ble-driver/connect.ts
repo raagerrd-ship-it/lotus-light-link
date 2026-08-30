@@ -172,11 +172,17 @@ export function scheduleAutoReconnect(): void {
   if (_connected && _connected.state === 'connected') return; // redan uppe
 
   if (_autoReconnectAttempt >= AUTO_RECONNECT_MAX_ATTEMPTS) {
-    console.error(`[auto-reconnect] ⚠ ${AUTO_RECONNECT_MAX_ATTEMPTS} försök misslyckade — pausar loop, kräver manuell trigger`);
-    _autoReconnectGivenUp = true;
-    _autoReconnectEnabled = false;
+    // GE ALDRIG UPP: tidigare parkerades loopen permanent och krävde manuell
+    // trigger — men den manuella vägen var trasig (userStartAll early-returnade
+    // när state === MOTOR_ON), så lampan blev mörk tills någon startade om
+    // tjänsten. Lugn retry en gång i minuten låter BLEDOM:en vara i fred men
+    // låter systemet läka av sig självt när lampan blir nåbar igen.
+    _autoReconnectAttempt = 0;
+    _autoReconnectTimer = setTimeout(() => { _autoReconnectTimer = null; scheduleAutoReconnect(); }, 60_000);
+    console.warn('[auto-reconnect] max försök uppnått — går över till lugn retry var 60:e sekund');
     return;
   }
+
 
   _autoReconnectAttempt++;
   const backoffs = [2000, 4000, 8000, 16000, 30000];
@@ -270,11 +276,27 @@ export async function triggerIdleDisconnect(): Promise<void> {
  *
  * Se mem://pi/ble/stale-peripheral-cache.
  */
+/**
+ * stopScanningAsync kan hänga. Ett obundet await på den kunde göra att
+ * connect-promisen aldrig avgjordes → _connectInFlight satt kvar för alltid.
+ */
+async function stopScanBounded(n: any, where: string): Promise<void> {
+  try {
+    await Promise.race([
+      n.stopScanningAsync(),
+      new Promise((res) => setTimeout(res, 2000)),
+    ]);
+  } catch (e: any) {
+    console.warn(`[connect-hardcoded] stopScanningAsync (${where}) fel: ${e?.message ?? e}`);
+  }
+}
+
 export async function forceCleanupStalePeripheral(reason: string): Promise<void> {
   const n: any = getNoble();
 
   // 1. Stoppa pågående scan (säkerhetsåtgärd om förra cyklen kraschade mitt i)
-  try { await n.stopScanningAsync(); } catch {}
+  await stopScanBounded(n, 'cleanup');
+
 
   // 2. Force-disconnect stale peripheral om den ligger kvar
   if (_connected) {
@@ -416,12 +438,8 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         const name = peripheral.advertisement?.localName ?? '(no name)';
         dlog(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi} ← MATCH`);
         dlog(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
-        try {
-          await n.stopScanningAsync();
-          dlog(`${ts()}    stopScanningAsync OK`);
-        } catch (e: any) {
-          console.warn(`${ts()}    stopScanningAsync warning: ${e?.message ?? e}`);
-        }
+        await stopScanBounded(n, 'match');
+
         dlog(`${ts()} 4. peripheral.connectAsync() (4s timeout)…`);
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
@@ -534,7 +552,8 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       // bounder connect-fasen).
       const timer = setTimeout(async () => {
         dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
-        try { await n.stopScanningAsync(); } catch {}
+        await stopScanBounded(n, 'scan-timeout');
+
         finish({
           connected: false,
           error: `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms (${discoverCount} discover-events)`,
@@ -552,9 +571,22 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
     });
   })();
 
-  _connectInFlight = inflight;
+  // Vakthund: hänger något inuti inflight (t.ex. ett obundet stopScanningAsync)
+  // avgörs promisen aldrig. Då satt _connectInFlight kvar för alltid: scan
+  // blockerades, auto-reconnect returnerade tidigt, felräknaren ökade aldrig,
+  // process.exit fyrade aldrig. Uppmätt: 5 timmar nere utan ett enda försök.
+  const guarded: Promise<{ connected: boolean; error?: string }> = Promise.race([
+    inflight,
+    new Promise<{ connected: boolean; error?: string }>((res) => setTimeout(() => {
+      console.error('[connect-hardcoded] in-flight watchdog 30s — släpper låsningen');
+      res({ connected: false, error: 'connect in-flight watchdog (30s)' });
+    }, 30_000)),
+  ]);
+
+  _connectInFlight = guarded;
   try {
-    const r = await inflight;
+    const r = await guarded;
+
     if (r.connected) {
       // Lyckad connect → nollställ failure-räknaren + disconnect-tracking.
       if (_consecutiveFailures > 0) {
@@ -636,7 +668,7 @@ export async function scanForDevices(
     await n.startScanningAsync([], true);
     await new Promise((r) => setTimeout(r, durationMs));
   } finally {
-    try { await n.stopScanningAsync(); } catch {}
+    await stopScanBounded(n, 'device-scan');
     try { n.removeListener('discover', onDiscover); } catch {}
   }
 

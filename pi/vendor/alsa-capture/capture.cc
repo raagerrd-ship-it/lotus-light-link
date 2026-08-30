@@ -246,11 +246,27 @@ class CaptureWorker : public Napi::ObjectWrap<CaptureWorker> {
 
 
     while (!closed_.load(std::memory_order_acquire)) {
+      // Efter recover/prepare står strömmen i PREPARED — snd_pcm_wait pollar då
+      // en icke-RUNNING ström och returnerar aldrig data (tyst mic-frys utan
+      // fel). Starta om strömmen explicit innan varje wait om den inte kör.
+      snd_pcm_state_t st = snd_pcm_state(handle);
+      if (st == SND_PCM_STATE_PREPARED || st == SND_PCM_STATE_SETUP) {
+        if (st == SND_PCM_STATE_SETUP) snd_pcm_prepare(handle);
+        if (snd_pcm_start(handle) < 0) { snd_pcm_prepare(handle); snd_pcm_start(handle); }
+      } else if (st == SND_PCM_STATE_XRUN || st == SND_PCM_STATE_SUSPENDED ||
+                 st == SND_PCM_STATE_DISCONNECTED) {
+        if (snd_pcm_recover(handle, -EPIPE, 1) < 0) {
+          EmitEvent("readError", "stream unrecoverable state");
+          break;
+        }
+        snd_pcm_start(handle);
+      }
       // Vänta max 100ms på data. Utan detta blockerar snd_pcm_readi tills en hel
       // period kommit → closed_ kan ej kollas → JoinBounded detachar en fastnad
       // tråd → snd_pcm_drop/close körs ALDRIG → I2S-strömmen halvt nedriven →
       // nästa open wedgar DMA:n (tyst mic-frys, kräver reboot). Med wait exitar
       // tråden rent inom ~100ms → ren teardown, ingen detach.
+
       int wr = snd_pcm_wait(handle, 100);
       if (wr == 0) continue;  // timeout → kolla closed_ igen
       if (wr < 0) {           // -EPIPE (overrun) m.fl.

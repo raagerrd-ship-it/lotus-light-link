@@ -662,13 +662,14 @@ export function startConfigServer(port = 3050): void {
       const { userStartAll } = await import('./engineLifecycle.js');
       const { HARDCODED_DEVICE } = await import('./ble-driver/device-config.js');
       const { getHardcodedConnected } = await import('./ble-driver/connect.js');
-      await userStartAll();
+      const started = await userStartAll();
       const c = getHardcodedConnected();
       if (c.connected) {
         res.json({ connected: true, name: HARDCODED_DEVICE.name, mac: HARDCODED_DEVICE.mac });
       } else {
-        res.status(500).json({ connected: false, error: 'lifecycle.userStartAll did not yield BLE connection' });
+        res.status(500).json({ connected: false, error: started.error ?? 'BLE-anslutning misslyckades (okänt drivrutinsfel)' });
       }
+
     } catch (e: any) {
       res.status(500).json({ connected: false, error: e?.message ?? String(e) });
     }

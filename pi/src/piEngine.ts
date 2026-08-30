@@ -21,7 +21,7 @@ import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Be
 import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
-import { triggerIdleDisconnect } from './ble-driver/connect.js';
+import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { getItem, setItem } from './storage.js';
 import { dlog } from "./debugLog.js";
@@ -547,6 +547,8 @@ export class PiLightEngine {
 
   private _running = false;
   private saveTimer: NodeJS.Timeout | null = null;
+  private ownerTimer: NodeJS.Timeout | null = null;
+
   private callbacks: TickCallback[] = [];
 
   // Palette state — endast lagring för API/UI; färgen sätts via setColor vid låtbyte
@@ -1351,6 +1353,24 @@ export class PiLightEngine {
       }
     }, 10_000);
 
+    // _bleOwner sattes bara på flanker (onBleConnected/onBleDisconnected). Missas
+    // en flank låser owner sig i 'none' medan länken är uppe → tickInner bailar
+    // och lampan står mörk trots ansluten lampa. Härled om 1 ggr/s.
+    this.ownerTimer = setInterval(() => {
+      try {
+        const connected = getHardcodedConnected().connected;
+        if (connected && this._bleOwner === 'none') {
+          console.warn('[Engine] owner-repair: BLE ansluten men owner=none → onBleConnected()');
+          this.onBleConnected();
+        } else if (!connected && this._bleOwner !== 'none') {
+          console.warn('[Engine] owner-repair: BLE nere men owner≠none → onBleDisconnected()');
+          this.onBleDisconnected();
+        }
+      } catch {}
+    }, 1000);
+
+
+
     dlog(`[Engine] Initialized (${this.tickMs}ms, loop always active, idle heartbeat until playback)`);
   }
 
@@ -1375,7 +1395,10 @@ export class PiLightEngine {
     // färskt. BLE-leveransen är frikopplad (1-plats-slot), så radions
     // conn-interval styr sändtakten, inte compute-takten.
     const now = performance.now();
-    noteTick(now, this.tickMs);
+    // noteTick flyttad in i tickInner (efter early-return-guarderna): här räknade
+    // den upp även när tickInner bailade på _bleOwner !== 'active', så
+    // Playback-Watchdog såg "engineTicks running" medan ljuset stod still.
+
     this._nextTickDeadline = now + this.tickMs;
     this._lastTickTime = now;
     this.tickInner();
@@ -1401,6 +1424,8 @@ export class PiLightEngine {
     onFFTReady(null); // unregister callback
     onFluxReady(null);
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
+    if (this.ownerTimer) { clearInterval(this.ownerTimer); this.ownerTimer = null; }
+
     dlog('[Engine] Stopped');
   }
 
@@ -1643,6 +1668,9 @@ export class PiLightEngine {
 
 
     const _tickStart = performance.now();
+    // Räkna ticken HÄR — bara när ljusberäkningen faktiskt körs.
+    noteTick(_tickStart, this.tickMs);
+
     try {
       const cal = this.cal;
       const tc = this.tc;
