@@ -7,7 +7,7 @@ type: feature
 
 **Aktiveras** när full connect lyckats (efter anchor write + setDevice) — då sätts `_autoReconnectEnabled = true`. Manuella connect-fel triggar därför INTE loopen (annars skulle "Anslut" + fel = oändlig bakgrunds-reconnect även om användaren inte vill).
 
-**Backoff:** 2s → 4s → 8s → 16s → max 30s, oändligt tills `disconnectHardcoded()` anropas (manuell knapp i UI).
+**Backoff:** 2s → 4s → 8s → 16s → max 30s. Efter MAX_ATTEMPTS ges loopen ALDRIG upp permanent — den går över till lugn retry var 60:e sekund (tidigare parkerades den och krävde manuell trigger, vilket lämnade lampan mörk i timmar). Stoppas bara av `disconnectHardcoded()`.
 
 **Stoppas av:**
 - `disconnectHardcoded()` — manuell frånkoppling
