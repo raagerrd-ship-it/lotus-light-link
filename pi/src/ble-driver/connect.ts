@@ -668,7 +668,7 @@ export async function scanForDevices(
     await n.startScanningAsync([], true);
     await new Promise((r) => setTimeout(r, durationMs));
   } finally {
-    try { await n.stopScanningAsync(); } catch {}
+    await stopScanBounded(n, 'device-scan');
     try { n.removeListener('discover', onDiscover); } catch {}
   }
 
