@@ -276,11 +276,27 @@ export async function triggerIdleDisconnect(): Promise<void> {
  *
  * Se mem://pi/ble/stale-peripheral-cache.
  */
+/**
+ * stopScanningAsync kan hänga. Ett obundet await på den kunde göra att
+ * connect-promisen aldrig avgjordes → _connectInFlight satt kvar för alltid.
+ */
+async function stopScanBounded(n: any, where: string): Promise<void> {
+  try {
+    await Promise.race([
+      n.stopScanningAsync(),
+      new Promise((res) => setTimeout(res, 2000)),
+    ]);
+  } catch (e: any) {
+    console.warn(`[connect-hardcoded] stopScanningAsync (${where}) fel: ${e?.message ?? e}`);
+  }
+}
+
 export async function forceCleanupStalePeripheral(reason: string): Promise<void> {
   const n: any = getNoble();
 
   // 1. Stoppa pågående scan (säkerhetsåtgärd om förra cyklen kraschade mitt i)
-  try { await n.stopScanningAsync(); } catch {}
+  await stopScanBounded(n, 'cleanup');
+
 
   // 2. Force-disconnect stale peripheral om den ligger kvar
   if (_connected) {
