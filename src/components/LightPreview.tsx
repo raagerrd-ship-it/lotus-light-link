@@ -2,20 +2,25 @@ import { useEffect, useRef } from "react";
 
 /**
  * Live-simulering av ljusomvandlingen — visar hur reglagen påverkar utsignalen.
- * Ren presentation: ingen kontakt med motorn, ett syntetiskt beat matas genom
- * samma kedja (attack/release → dynamik → golv) som piEngine använder.
+ * Speglar piEngine.tickInner: onsetTarget 0.45 på slaget med INSTANT attack,
+ * exponentiell release med tau = clamp(fadeTauMin, fadeTauMax, fadeIntervalK ×
+ * beatMs), pulsen modulerar taket med beatDepth, golvet läggs sist.
  */
+const FRAME_MS = (128 * 7 / 48000) * 1000;   // ANALYSER_HOP × BAND_EVERY_HOPS
+const BEAT_MS = 500;                         // 120 BPM referens
+const ONSET_PEAK = 0.45;
+
 export function LightPreview({
-  softness, brightnessFloor, beatCutoffHz,
+  brightnessFloor, beatDepth, fadeIntervalK,
 }: {
-  softness: number;
   brightnessFloor: number;
-  beatCutoffHz: number;
+  beatDepth: number;
+  fadeIntervalK: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const orbRef = useRef<HTMLDivElement>(null);
-  const params = useRef({ softness, brightnessFloor, beatCutoffHz });
-  params.current = { softness, brightnessFloor, beatCutoffHz };
+  const params = useRef({ brightnessFloor, beatDepth, fadeIntervalK });
+  params.current = { brightnessFloor, beatDepth, fadeIntervalK };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -48,36 +53,34 @@ export function LightPreview({
     const N = 140;
     const hist = new Float32Array(N);
     const raw = new Float32Array(N);
-    let intensitySm = 0.5;
+    let onsetBoost = 0;
+    let lastBeat = -1;
     let raf = 0;
     const t0 = performance.now();
-    const BEAT_MS = 500;
 
     const tick = () => {
       const p = params.current;
       const t = performance.now() - t0;
 
-      // Syntetisk källa: intensity-swell + kick-transient, loudness nästan konstant.
-      const phase = t % BEAT_MS;
-      const kick = Math.exp(-phase / 90);
-      const mid = 0.35 * (0.5 + 0.5 * Math.sin(t / 130)) * Math.exp(-(phase % 250) / 160);
-      const melodyMix = Math.min(1, Math.max(0, (p.beatCutoffHz - 60) / 1940));
-      let x = (1 - melodyMix * 0.55) * kick + melodyMix * mid;
-      const swell = 0.5 + 0.5 * Math.sin(t / 6200 - 1.2);
-      const intensity = Math.min(1, Math.max(0, 0.22 + swell * 0.72 + kick * 0.08));
+      // Slaget: onsetTarget sätts till 0.45 med instant attack, sedan exponentiell
+      // release med samma tau-formel som motorn.
+      const beatIdx = Math.floor(t / BEAT_MS);
+      if (beatIdx !== lastBeat) { lastBeat = beatIdx; onsetBoost = ONSET_PEAK; }
+      const tau = Math.max(0.12, Math.min(1.2, p.fadeIntervalK * (BEAT_MS / 1000)));
+      onsetBoost *= Math.exp(-(FRAME_MS / 1000) / tau);
+      const pn = Math.min(1, onsetBoost / ONSET_PEAK);
 
-      // Attack direkt, release mjuknar exponentiellt med softness.
-      const release = 0.6 * Math.pow(0.04, p.softness / 100);
-      intensitySm = intensity > intensitySm ? intensity : intensitySm + (intensity - intensitySm) * release;
+      // Taket är den långsamma loudness-envelopen (sektionsdynamik).
+      const ceil = Math.min(1, Math.max(0, 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t / 6200 - 1.2))));
+      const depth = p.beatDepth;
+      const energyForm = ceil * ((1 - depth) + depth * pn);
 
-      // Input-sync: formen ÄR den gain-satta inputen — ingen loudness-faktor.
       const floor = p.brightnessFloor / 100;
-      const energyForm = Math.min(1, intensitySm + kick * 0.08);
       let out = floor + energyForm * (1 - floor);
       out = out <= 0 ? 0 : out >= 1 ? 1 : out;
 
       hist.copyWithin(0, 1); hist[N - 1] = out;
-      raw.copyWithin(0, 1); raw[N - 1] = Math.min(1, x);
+      raw.copyWithin(0, 1); raw[N - 1] = ceil;
 
       ctx.clearRect(0, 0, w, h);
 
@@ -89,7 +92,7 @@ export function LightPreview({
       ctx.beginPath(); ctx.moveTo(0, floorY); ctx.lineTo(w, floorY); ctx.stroke();
       ctx.setLineDash([]);
 
-      // Insignal (svag)
+      // Taket (svag)
       ctx.strokeStyle = col(muted, 0.5);
       ctx.beginPath();
       for (let i = 0; i < N; i++) {
@@ -142,7 +145,7 @@ export function LightPreview({
         <canvas ref={canvasRef} className="h-14 flex-1 min-w-0 block" />
       </div>
       <p className="mt-1.5 text-[9px] uppercase tracking-[0.18em] text-muted-foreground/50">
-        Simulerat beat · grå = insignal, rosa = lampan
+        Simulerat slag (120 BPM) · grå = tak, rosa = lampan
       </p>
     </div>
   );
