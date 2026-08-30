@@ -547,6 +547,8 @@ export class PiLightEngine {
 
   private _running = false;
   private saveTimer: NodeJS.Timeout | null = null;
+  private ownerTimer: NodeJS.Timeout | null = null;
+
   private callbacks: TickCallback[] = [];
 
   // Palette state — endast lagring för API/UI; färgen sätts via setColor vid låtbyte
