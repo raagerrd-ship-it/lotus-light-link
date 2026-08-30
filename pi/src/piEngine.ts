@@ -1646,6 +1646,9 @@ export class PiLightEngine {
 
 
     const _tickStart = performance.now();
+    // Räkna ticken HÄR — bara när ljusberäkningen faktiskt körs.
+    noteTick(_tickStart, this.tickMs);
+
     try {
       const cal = this.cal;
       const tc = this.tc;
