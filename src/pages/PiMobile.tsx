@@ -24,6 +24,8 @@ type Cal = {
   dropFlashMs: number; beatLeadMs: number;
   shapeExpand: number;
   windowDb: number; lightBassWeight: number;
+  anchorOffsetDb: number; beatDepth: number; fadeIntervalK: number;
+  subdivHalveAboveBpm: number;
 };
 
 const DEFAULT_CAL: Cal = {
@@ -36,7 +38,10 @@ const DEFAULT_CAL: Cal = {
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
   dropFlashMs: 320, beatLeadMs: 45,
   shapeExpand: 1.0,
-  windowDb: 18, lightBassWeight: 0,
+  // windowDb är LÅST på 9 — inget reglage (ett svep hade förstört tuningen).
+  windowDb: 9, lightBassWeight: 0.25,
+  anchorOffsetDb: 5.8, beatDepth: 0.62, fadeIntervalK: 0.35,
+  subdivHalveAboveBpm: 135,
 };
 
 
@@ -649,14 +654,12 @@ function ConnectionSettingsSection({
   sonosUrl, setSonosUrl,
   micGain, setMicGain,
   idleColor, setIdleColor,
-  autoTvMode, setAutoTvMode,
   activeGatewayUrl, gatewayError,
   piBase, sonosVolume,
 }: {
   sonosUrl: string; setSonosUrl: (v: string) => void;
   micGain: number; setMicGain: (v: number) => void;
   idleColor: number[]; setIdleColor: (c: number[]) => void;
-  autoTvMode: boolean; setAutoTvMode: (v: boolean) => void;
   activeGatewayUrl: string | null;
   gatewayError: string | null;
   piBase: string;
@@ -713,17 +716,6 @@ function ConnectionSettingsSection({
         </div>
       </Panel>
 
-      <Panel title="Automatik">
-        <Row>
-          <div className="min-w-0">
-            <div className="text-[13px]">Auto TV-läge</div>
-            <p className="text-[10px] leading-snug text-muted-foreground">
-              Mikrofon-reaktivt ljus när Sonos spelar från TV/SPDIF.
-            </p>
-          </div>
-          <Toggle checked={autoTvMode} onChange={setAutoTvMode} />
-        </Row>
-      </Panel>
     </>
   );
 
@@ -749,7 +741,6 @@ export default function PiMobile() {
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [alsaDevice, setAlsaDevice] = useState("plughw:0,0");
   const [dimmingGamma, setDimmingGamma] = useState(1.8);
-  const [autoTvMode, setAutoTvMode] = useState(false);
   const [micGain, setMicGain] = useState(1.0);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -800,6 +791,10 @@ export default function PiMobile() {
         shapeExpand: cal.shapeExpand,
         windowDb: cal.windowDb,
         lightBassWeight: cal.lightBassWeight,
+        anchorOffsetDb: cal.anchorOffsetDb,
+        beatDepth: cal.beatDepth,
+        fadeIntervalK: cal.fadeIntervalK,
+        subdivHalveAboveBpm: cal.subdivHalveAboveBpm,
       };
       const results = await Promise.allSettled([
         putJson('/api/calibration', calPayload),
@@ -809,7 +804,6 @@ export default function PiMobile() {
         putJson('/api/dimming-gamma', { gamma: dimmingGamma }),
         putJson('/api/idle-color', { color: idleColor }),
         ...(sonosUrl ? [putJson('/api/sonos-gateway', { baseUrl: sonosUrl })] : []),
-        putJson('/api/auto-tv-mode', { enabled: autoTvMode }),
         putJson('/api/mic-gain', { gain: micGain }),
       ]);
       const failed = results.filter(r => r.status === 'rejected');
@@ -842,14 +836,13 @@ export default function PiMobile() {
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
 
-      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, tvModeRes, micGainRes] = await Promise.all([
+      const [calRes, statusRes, micRes, gammaRes, idleRes, sonosRes, micGainRes] = await Promise.all([
         safeFetch(`${piBase}/api/calibration`),
         safeFetch(`${piBase}/api/status`),
         safeFetch(`${piBase}/api/mic-device`),
         safeFetch(`${piBase}/api/dimming-gamma`),
         safeFetch(`${piBase}/api/idle-color`),
         safeFetch(`${piBase}/api/sonos-gateway`),
-        safeFetch(`${piBase}/api/auto-tv-mode`),
         safeFetch(`${piBase}/api/mic-gain`),
       ]);
 
@@ -876,6 +869,10 @@ export default function PiMobile() {
         shapeExpand: c?.shapeExpand ?? DEFAULT_CAL.shapeExpand,
         windowDb: c?.windowDb ?? DEFAULT_CAL.windowDb,
         lightBassWeight: c?.lightBassWeight ?? DEFAULT_CAL.lightBassWeight,
+        anchorOffsetDb: c?.anchorOffsetDb ?? DEFAULT_CAL.anchorOffsetDb,
+        beatDepth: c?.beatDepth ?? DEFAULT_CAL.beatDepth,
+        fadeIntervalK: c?.fadeIntervalK ?? DEFAULT_CAL.fadeIntervalK,
+        subdivHalveAboveBpm: c?.subdivHalveAboveBpm ?? DEFAULT_CAL.subdivHalveAboveBpm,
       });
 
       if (calRes && typeof calRes === 'object') setCal(mapStoredToCal(calRes));
@@ -884,7 +881,6 @@ export default function PiMobile() {
       if (gammaRes?.gamma != null) setDimmingGamma(gammaRes.gamma);
       if (statusRes?.engine?.tickMs) setTickMs(statusRes.engine.tickMs);
       if (Array.isArray(idleRes) && idleRes.length === 3) setIdleColor(idleRes);
-      if (tvModeRes?.enabled != null) setAutoTvMode(tvModeRes.enabled);
       if (micGainRes?.gain != null) setMicGain(micGainRes.gain);
 
       // Sonos gateway: alltid explicit adress (ingen lokal detektering).
@@ -1022,19 +1018,34 @@ export default function PiMobile() {
               <Panel title="Ljus" icon={<Sliders size={12} />} className="space-y-5">
                 <BeatMonitor />
                 <LightPreview
-                  softness={cal.softness}
                   brightnessFloor={cal.brightnessFloor}
-                  beatCutoffHz={cal.beatCutoffHz}
+                  beatDepth={cal.beatDepth}
+                  fadeIntervalK={cal.fadeIntervalK}
                 />
 
                 <Slider
-
-                  label="Softness"
-                  value={cal.softness}
-                  display={`${cal.softness}`}
-                  min={0} max={100}
-                  onChange={(v) => setCal({ ...cal, softness: Math.round(v) })}
-                  hint="0 = rått fall, 100 = mycket mjuk fade-out."
+                  label="Ljusstyrka"
+                  value={12 - cal.anchorOffsetDb}
+                  display={`${(12 - cal.anchorOffsetDb).toFixed(1)}`}
+                  min={0} max={10} step={0.5}
+                  onChange={(v) => setCal({ ...cal, anchorOffsetDb: Math.round((12 - v) * 10) / 10 })}
+                  hint="Flyttar dB-ankaret: högre värde = ljusare överallt."
+                />
+                <Slider
+                  label="Pulsdjup"
+                  value={cal.beatDepth}
+                  display={cal.beatDepth.toFixed(2)}
+                  min={0.2} max={0.8} step={0.02}
+                  onChange={(v) => setCal({ ...cal, beatDepth: Math.round(v * 100) / 100 })}
+                  hint="Hur djupt takten modulerar inom taket. Högt = mer strobe-känsla."
+                />
+                <Slider
+                  label="Efterklang"
+                  value={cal.fadeIntervalK}
+                  display={cal.fadeIntervalK.toFixed(2)}
+                  min={0.15} max={0.9} step={0.05}
+                  onChange={(v) => setCal({ ...cal, fadeIntervalK: Math.round(v * 100) / 100 })}
+                  hint="Fade-ut-tiden som andel av takt-intervallet. Lågt = kortare slag."
                 />
                 <Slider
                   label="Loudness-golv (min ljus)"
@@ -1042,61 +1053,26 @@ export default function PiMobile() {
                   display={`${cal.brightnessFloor} %`}
                   min={0} max={100}
                   onChange={(v) => setCal({ ...cal, brightnessFloor: Math.round(v) })}
-                  hint="Insignalen 0–100 % mappas mellan detta golv och fullt ljus. 0 = släck helt i tystnad."
+                  hint="Insignalen mappas mellan detta golv och fullt ljus. 0 = släck helt i tystnad."
                 />
-                <Slider
-                  label="Dynamik (kontrast)"
-                  value={cal.windowDb}
-                  display={`${cal.windowDb} dB`}
-                  min={12} max={30} step={1}
-                  onChange={(v) => setCal({ ...cal, windowDb: Math.round(v) })}
-                  hint="dB-fönstret från golv till fullt ljus. 12 = mer kontrast, 30 = mjukare."
-                />
-                <Slider
-                  label="Bas-närvaro"
-                  value={cal.lightBassWeight}
-                  display={cal.lightBassWeight.toFixed(2)}
-                  min={0} max={0.5} step={0.05}
-                  onChange={(v) => setCal({ ...cal, lightBassWeight: Math.round(v * 100) / 100 })}
-                  hint="Hur mycket basen väger in i ljusnivån. 0 = ren mid/diskant, högre = mer kropp."
-                />
-                <Slider
-                  label="Beat-källa (lyssnar under)"
-                  value={cal.beatCutoffHz}
-                  display={`${cal.beatCutoffHz} Hz`}
-                  min={60} max={2000} step={10}
-                  onChange={(v) => setCal({ ...cal, beatCutoffHz: Math.round(v) })}
-                  hint="Lågt (~120 Hz) = enbart kick/bas, högre = mer trummor och melodi. Spara för att tillämpa."
-                />
-                <Slider
-                  label="Färg-tilt (bas ↔ diskant)"
-                  value={cal.colorSpectralTilt}
-                  display={`${Math.round(cal.colorSpectralTilt * 100)} %`}
-                  min={0} max={0.6} step={0.05}
-                  onChange={(v) => setCal({ ...cal, colorSpectralTilt: v })}
-                  hint="Basrik mix drar färgen varmare, diskantrik svalare. 0 = ren palett."
-                />
-
-
-                <Slider
-                  label="Beat-lead (försprång)"
-                  value={cal.beatLeadMs}
-                  display={`${cal.beatLeadMs} ms`}
-                  min={0} max={150} step={5}
-                  onChange={(v) => setCal({ ...cal, beatLeadMs: Math.round(v) })}
-                  hint="Med input-sync ligger 0 rätt: punchen staplas på input-pulsen i stället för att smeta ut."
-                />
-
-
-
-
+                <Row>
+                  <div className="min-w-0">
+                    <div className="text-[13px]">Halvera snabba låtar</div>
+                    <p className="text-[10px] leading-snug text-muted-foreground">
+                      Över 135 BPM pulsar lampan i halva takten.
+                    </p>
+                  </div>
+                  <Toggle
+                    checked={cal.subdivHalveAboveBpm > 0}
+                    onChange={(v) => setCal({ ...cal, subdivHalveAboveBpm: v ? 135 : 0 })}
+                  />
+                </Row>
               </Panel>
 
               <ConnectionSettingsSection
                 sonosUrl={sonosUrl} setSonosUrl={setSonosUrl}
                 micGain={micGain} setMicGain={setMicGain}
                 idleColor={idleColor} setIdleColor={setIdleColor}
-                autoTvMode={autoTvMode} setAutoTvMode={setAutoTvMode}
                 activeGatewayUrl={activeGatewayUrl} gatewayError={gatewayError}
                 piBase={piBase} sonosVolume={sonosVolume}
               />
