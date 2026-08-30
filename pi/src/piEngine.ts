@@ -21,7 +21,7 @@ import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Be
 import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
 import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
-import { triggerIdleDisconnect } from './ble-driver/connect.js';
+import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { getItem, setItem } from './storage.js';
 import { dlog } from "./debugLog.js";
