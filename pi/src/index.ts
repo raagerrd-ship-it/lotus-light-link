@@ -592,15 +592,26 @@ async function main() {
         let wdbRefDb: number | null = null;
         let wdbRefAt = 0;
         let healthySince = 0;
+        let lastContentTick = getEngineTickTotal();
+        let lastContentAudioCb = alsaMic?.getAudioCbStats?.().count ?? 0;
 
         const onGiveUp = () => { try { engineInstance?.setMicSafeMode?.(true); } catch {} };
 
         everySeconds(2, () => {
           try {
             if (lc.getLifecycleState() !== 'MOTOR_ON') {
-              contentSteps = 0; wdbRefDb = null; healthySince = 0; return;
+              contentSteps = 0; wdbRefDb = null; healthySince = 0;
+              lastContentTick = getEngineTickTotal();
+              lastContentAudioCb = alsaMic?.getAudioCbStats?.().count ?? 0;
+              return;
             }
             const now = Date.now();
+            const currentContentTick = getEngineTickTotal();
+            const currentContentAudioCb = alsaMic?.getAudioCbStats?.().count ?? 0;
+            const tickAdvancing = currentContentTick > lastContentTick;
+            const audioAdvancing = currentContentAudioCb > lastContentAudioCb;
+            lastContentTick = currentContentTick;
+            lastContentAudioCb = currentContentAudioCb;
             const frozenMs = alsaMic?.getMicContentFrozenMs?.() ?? 0;
             const stableFrozenMs = alsaMic?.getMicStableContentFrozenMs?.() ?? 0;
             const hardFreezeMs = frozenMs >= CONTENT_FREEZE_MS ? frozenMs : 0;
@@ -611,7 +622,7 @@ async function main() {
             const playing = /PLAYING/i.test(getSonosState().playbackState ?? '');
             const wdb = engineInstance?.getDiagnostics?.().wdb;
             let wdbStuckMs = 0;
-            if (playing && typeof wdb === 'number' && Number.isFinite(wdb)) {
+            if (playing && tickAdvancing && audioAdvancing && typeof wdb === 'number' && Number.isFinite(wdb)) {
               if (wdbRefDb === null || Math.abs(wdb - wdbRefDb) > WDB_TOLERANCE_DB) {
                 wdbRefDb = wdb; wdbRefAt = now;
               } else if (now - wdbRefAt >= WDB_STUCK_MS) {
@@ -657,7 +668,7 @@ async function main() {
             }
           } catch { /* watchdog must never crash */ }
         });
-        console.log('[Boot] Content-Freeze-Watchdog active (byte-identisk buffert, nästan-konstant RMS, wdb-låst 20s)');
+        console.log('[Boot] Content-Freeze-Watchdog active (byte-identisk buffert, nästan-konstant RMS, wdb-låst 20s med tick+audio-liveness)');
       }
 
     } catch (e: any) {
