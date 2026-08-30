@@ -1353,16 +1353,33 @@ export class PiLightEngine {
       }
     }, 10_000);
 
-    // _bleOwner sattes bara på flanker (onBleConnected/onBleDisconnected). Missas
-    // en flank låser owner sig i 'none' medan länken är uppe → tickInner bailar
-    // och lampan står mörk trots ansluten lampa. Härled om 1 ggr/s.
+    // _bleOwner sätts normalt på flanker. Reparera bara när avvikelsen varit
+    // stabil i 3s — BLE-status kan pendla legitimt under ett connect-försök.
+    let ownerMismatch: 'connected' | 'disconnected' | null = null;
+    let ownerMismatchSince = 0;
     this.ownerTimer = setInterval(() => {
       try {
         const connected = getHardcodedConnected().connected;
-        if (connected && this._bleOwner === 'none') {
+        const mismatch = connected && this._bleOwner === 'none'
+          ? 'connected'
+          : (!connected && this._bleOwner !== 'none' ? 'disconnected' : null);
+        if (!mismatch) {
+          ownerMismatch = null;
+          ownerMismatchSince = 0;
+          return;
+        }
+        if (mismatch !== ownerMismatch) {
+          ownerMismatch = mismatch;
+          ownerMismatchSince = Date.now();
+          return;
+        }
+        if (Date.now() - ownerMismatchSince < 3000) return;
+        ownerMismatch = null;
+        ownerMismatchSince = 0;
+        if (mismatch === 'connected') {
           console.warn('[Engine] owner-repair: BLE ansluten men owner=none → onBleConnected()');
           this.onBleConnected();
-        } else if (!connected && this._bleOwner !== 'none') {
+        } else {
           console.warn('[Engine] owner-repair: BLE nere men owner≠none → onBleDisconnected()');
           this.onBleDisconnected();
         }
@@ -1395,10 +1412,6 @@ export class PiLightEngine {
     // färskt. BLE-leveransen är frikopplad (1-plats-slot), så radions
     // conn-interval styr sändtakten, inte compute-takten.
     const now = performance.now();
-    // noteTick flyttad in i tickInner (efter early-return-guarderna): här räknade
-    // den upp även när tickInner bailade på _bleOwner !== 'active', så
-    // Playback-Watchdog såg "engineTicks running" medan ljuset stod still.
-
     this._nextTickDeadline = now + this.tickMs;
     this._lastTickTime = now;
     this.tickInner();
@@ -1653,6 +1666,11 @@ export class PiLightEngine {
 
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
   tickInner(): void {
+    // Liveness, inte leverans: en stängd playing/BLE-grind är korrekt vila och
+    // får inte tolkas som en wedgad motor av Playback-Watchdog.
+    const _tickStart = performance.now();
+    noteTick(_tickStart, this.tickMs);
+
     // Mic-safe-mode: stegen är uttömda och micen är död. Lampan står i idle-färg
     // och får inte pulsa på fruset underlag.
     if (this._micSafeMode) return;
@@ -1666,10 +1684,6 @@ export class PiLightEngine {
     // Offline-playback borttaget (2026-06-02): allt körs reaktivt/realtime.
 
 
-
-    const _tickStart = performance.now();
-    // Räkna ticken HÄR — bara när ljusberäkningen faktiskt körs.
-    noteTick(_tickStart, this.tickMs);
 
     try {
       const cal = this.cal;

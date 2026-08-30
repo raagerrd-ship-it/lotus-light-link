@@ -1,6 +1,6 @@
 ---
 name: Tick-frysning — instrumentering + per-delsystem soft recovery
-description: v1.0.750: playback-watchdogen diagnostiserar mic vs BLE (audioCbs/engineTicks/tickOk) och återställer just det stallade delsystemet. Mic-stall → restartCapture(), BLE-stall → reconnect. Exit(1) först efter 3 riktade försök.
+description: engineTickTotal mäter motor-liveness även bakom legitim playing/BLE-grind; wdb-frys får bara agera när både tick och audio-callbacks avancerar.
 type: feature
 ---
 **Problem (v1.0.749):** hard-restart ~1×/10h med `playback-watchdog-stuck: tickOk frozen 8000ms after soft recovery` (~5 s nere + UI-reload). Inte minne, inte CPU. Gamla watchdogen tittade BARA på `bleStats.tickOkCount` och "soft recovery" var alltid BLE-reconnect — hjälpte inte när ALSA-capturen slutade leverera audio-callbacks (utan att fyra `error`/`close`).
@@ -17,4 +17,12 @@ type: feature
 
 **Watchdog (`index.ts`):** vid 8 s frusen `tickOk` dumpas hela kontexten (engineTicks, audioCbs, lastTickAge, writePending+age, slotLocked, bleBusySkips, writeSyncMax, maxNativeCall). Sedan riktad recovery: mic frusen → `restartCapture()`, annars → `scheduleAutoReconnect()`. `exit(1)` först efter 3 misslyckade riktade försök.
 
-Aldrig återinföra: await på BLE-write i tick-loopen, eller en generisk "soft recovery" som bara reconnectar BLE.
+**FIX 17 (v1.0.792):** `noteTick()` körs vid varje `tickInner()`-anrop före
+playing/BLE/mic-safe-grindarna. `engineTickTotal` betyder att motorn lever, inte att
+en ljusframe levererades; `_diag.tickCount` är fortsatt den produktiva mätaren.
+`wdb-låst` får endast byggas upp när både engine-ticks och ALSA audio-callbacks
+har avancerat sedan föregående 2 s-prov. En detektor får aldrig gata på en signal
+som dess egen åtgärd eller legitim vila stoppar. Owner-repair kräver dessutom 3 s
+stabil BLE/owner-avvikelse för att inte flappa under anslutningsförsök.
+
+Aldrig återinföra: `noteTick` bakom output-grinden, wdb-recovery utan tick+audio-liveness, await på BLE-write i tick-loopen, eller en generisk "soft recovery" som bara reconnectar BLE.
