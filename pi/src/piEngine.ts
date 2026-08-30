@@ -1353,6 +1353,24 @@ export class PiLightEngine {
       }
     }, 10_000);
 
+    // _bleOwner sattes bara på flanker (onBleConnected/onBleDisconnected). Missas
+    // en flank låser owner sig i 'none' medan länken är uppe → tickInner bailar
+    // och lampan står mörk trots ansluten lampa. Härled om 1 ggr/s.
+    this.ownerTimer = setInterval(() => {
+      try {
+        const connected = getHardcodedConnected().connected;
+        if (connected && this._bleOwner === 'none') {
+          console.warn('[Engine] owner-repair: BLE ansluten men owner=none → onBleConnected()');
+          this.onBleConnected();
+        } else if (!connected && this._bleOwner !== 'none') {
+          console.warn('[Engine] owner-repair: BLE nere men owner≠none → onBleDisconnected()');
+          this.onBleDisconnected();
+        }
+      } catch {}
+    }, 1000);
+
+
+
     dlog(`[Engine] Initialized (${this.tickMs}ms, loop always active, idle heartbeat until playback)`);
   }
 
