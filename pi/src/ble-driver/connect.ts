@@ -552,7 +552,8 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       // bounder connect-fasen).
       const timer = setTimeout(async () => {
         dlog(`${ts()} TIMEOUT efter ${timeoutMs}ms — ${discoverCount} discover-events totalt, ingen matchade`);
-        try { await n.stopScanningAsync(); } catch {}
+        await stopScanBounded(n, 'scan-timeout');
+
         finish({
           connected: false,
           error: `Hittade inte ${HARDCODED_DEVICE.mac} efter ${timeoutMs}ms (${discoverCount} discover-events)`,
