@@ -77,7 +77,7 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 10;   // 100 Hz — EN tick för hela compute-kedjan (samma takt som
+const TICK_MS = 18;   // 100 Hz — EN tick för hela compute-kedjan (samma takt som
                       // FFT:n). tickInner körs på varje FFT-frame; BLE-leveransen
                       // är frikopplad via 1-plats-slot (senaste vinner).
 
@@ -187,7 +187,7 @@ async function ensureEngineInstance(): Promise<void> {
   // Compute-ticken är låst till FFT-takten (TICK_MS). Ett gammalt sparat
   // tick-ms (t.ex. 25 från nedsamplings-eran) får inte sätta smoothing-basen.
   const savedTickMs = Number(getItem('tick-ms'));
-  const tick = savedTickMs >= 5 && savedTickMs <= TICK_MS ? savedTickMs : TICK_MS;
+  const tick = savedTickMs >= TICK_MS && savedTickMs <= 50 ? savedTickMs : TICK_MS;
   engineInstance = new engineMod.PiLightEngine(tick);
   
 
@@ -592,7 +592,7 @@ async function main() {
         let wdbRefDb: number | null = null;
         let wdbRefAt = 0;
         let healthySince = 0;
-        let lastContentTick = getEngineTickTotal();
+        let lastContentTick = engineInstance?.getDiagnostics?.().tickCount ?? 0;
         let lastContentAudioCb = alsaMic?.getAudioCbStats?.().count ?? 0;
 
         const onGiveUp = () => { try { engineInstance?.setMicSafeMode?.(true); } catch {} };
@@ -601,12 +601,12 @@ async function main() {
           try {
             if (lc.getLifecycleState() !== 'MOTOR_ON') {
               contentSteps = 0; wdbRefDb = null; healthySince = 0;
-              lastContentTick = getEngineTickTotal();
+              lastContentTick = engineInstance?.getDiagnostics?.().tickCount ?? 0;
               lastContentAudioCb = alsaMic?.getAudioCbStats?.().count ?? 0;
               return;
             }
             const now = Date.now();
-            const currentContentTick = getEngineTickTotal();
+            const currentContentTick = engineInstance?.getDiagnostics?.().tickCount ?? 0;
             const currentContentAudioCb = alsaMic?.getAudioCbStats?.().count ?? 0;
             const tickAdvancing = currentContentTick > lastContentTick;
             const audioAdvancing = currentContentAudioCb > lastContentAudioCb;
