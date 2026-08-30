@@ -438,12 +438,8 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         const name = peripheral.advertisement?.localName ?? '(no name)';
         dlog(`${ts()} [event:discover] ${peripheral.address} ${name} rssi=${peripheral.rssi} ← MATCH`);
         dlog(`${ts()} 3. MATCH efter ${discoverCount} discover-events — stopScanningAsync…`);
-        try {
-          await n.stopScanningAsync();
-          dlog(`${ts()}    stopScanningAsync OK`);
-        } catch (e: any) {
-          console.warn(`${ts()}    stopScanningAsync warning: ${e?.message ?? e}`);
-        }
+        await stopScanBounded(n, 'match');
+
         dlog(`${ts()} 4. peripheral.connectAsync() (4s timeout)…`);
         try {
           await withTimeout(peripheral.connectAsync(), 'connectAsync', 4000);
