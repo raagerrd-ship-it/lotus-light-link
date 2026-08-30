@@ -77,7 +77,7 @@ const SSE_PATH = process.env.SSE_PATH ?? '/events';
 const STATUS_PATH = process.env.STATUS_PATH ?? '/status';
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 2000);
 const DISABLE_SSE = process.env.DISABLE_SSE === 'true';
-const TICK_MS = 18;   // 100 Hz — EN tick för hela compute-kedjan (samma takt som
+const TICK_MS = 18;   // BLE-slot-lease strax UNDER ramtiden (18.67 ms) — varje ram levereras
                       // FFT:n). tickInner körs på varje FFT-frame; BLE-leveransen
                       // är frikopplad via 1-plats-slot (senaste vinner).
 

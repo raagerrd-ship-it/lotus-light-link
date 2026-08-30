@@ -209,6 +209,12 @@ export interface LightCalibration {
   subdivHiOn: number; subdivHiOff: number;
   subdivLoOn: number; subdivLoOff: number;
   subdivMinHoldMs: number;
+  /** Takt-baserad halvering: pulsa halva takten över detta BPM (0 = av). */
+  subdivHalveAboveBpm: number;
+  subdivHalveHystBpm: number;
+  /** Energiberoende fade-skalning (1.0 = neutral/av). */
+  fadeEnergyCalm: number;
+  fadeEnergyIntense: number;
   /** Mode B: release-tau skalas med effektivt grid-intervall. */
   fadeMode: number;
   fadeIntervalK: number;
@@ -233,14 +239,14 @@ const DEFAULT_CAL: LightCalibration = {
   gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
   offsetR: 0, offsetG: 0, offsetB: 0,
   attackAlpha: 1.0,          // SNABB attack — beats får inte missas
-  releaseAlpha: 0.4,         // mjuk fade-out
+  releaseAlpha: 0.396,       // mjuk fade-out
   bassWeight: 0.95,
   punchWhiteThreshold: 100,
   brightnessFloor: 18,       // verifierat ljusgolv — håller strobe-dalar synliga
   transientGain: 0.45,       // beat-punch (0.2 gav osynlig modulation) — parad med windowDb 18
   onsetThreshold: 2.0,
   onsetRefractoryMs: 200,
-  flickerDeadband: 0.020,    // HÖJ INTE — vid 0.06 ökar icke-rytmisk jitter (staircase)
+  flickerDeadband: 0,        // >0 kvantiserar fade:n till procentsteg = hackigt
   lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
   tickEnergyFloor: 0.01,
@@ -267,29 +273,33 @@ const DEFAULT_CAL: LightCalibration = {
   lightHiWeight: 1.3,       // mer dynamiskt mid/hi-band utan att ändra beat-vägen
   lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
   anchorDb: -4,
-  windowDb: 10,              // kalibrerat 2026-08-29: (p95−p05)/0.82 på frisk mic
-  lightSmoothMs: 60,         // release-avbrusning på energivägen
+  windowDb: 9,               // LÅST — ett reglage här förstör hela tuningen
+  lightSmoothMs: 70,         // release-avbrusning på energivägen
 
   buildUpGain: 0.25,
-  beatDepth: 0.45,           // 0.70 = strobe (2.7× luminanspuls 2.2 ggr/s)
+  beatDepth: 0.62,           // intrimmat 2026-08-30
   barAccentLift: 0.30,
   beatDoubleBelowBpm: 0,     // AV: dubblade i lugna partier kring 105-tröskeln
   beatMultiplier: 1,
-  energySubdiv: 0,           // AV som default: 2× gav 4–5 Hz fladder i lugna partier
-  subdivHiOn: 0.88,
-  subdivHiOff: 0.70,
-  subdivLoOn: 0.33,
-  subdivLoOff: 0.45,
-  subdivMinHoldMs: 10000,
+  energySubdiv: 1,           // grinden är RELATIV (shapeRel) → ingen fladder
+  subdivHiOn: 2,             // utom räckhåll: dubblering AV (2×-grenen fladdrade)
+  subdivHiOff: 1.9,
+  subdivLoOn: 0.42,
+  subdivLoOff: 0.60,
+  subdivMinHoldMs: 12000,
+  subdivHalveAboveBpm: 135,  // dirigenten väljer presentationstakt, analysen ger tempot
+  subdivHalveHystBpm: 15,
+  fadeEnergyCalm: 1.0,       // 1.0/1.0 = neutral; aggressivare värden backades av användaren
+  fadeEnergyIntense: 1.0,
   fadeMode: 2,
-  fadeIntervalK: 0.9,
+  fadeIntervalK: 0.35,
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
   autoAnchor: 1,
   autoAnchorSec: 60,
-  anchorOffsetDb: 6.9,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
+  anchorOffsetDb: 5.8,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
   lightRiseMs: 0,
-  shapeSmoothUpMs: 0,        // uppåt: ingen jämning — refrängen ska synas direkt
+  shapeSmoothUpMs: 50,       // känsligaste ratten: 250 kväver dynamiken, 0 ger fladder
   shapeSmoothDownMs: 150,
   colorSpectralTilt: 0.25,
 };
