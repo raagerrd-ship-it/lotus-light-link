@@ -183,7 +183,7 @@ const RING_MASK = RING_SIZE - 1;
 // sample (2.67 ms). Vi fyrar band-eventet var 5:e hop ≈ 640 samples ≈ 13.3 ms
 // (~75 Hz) → ungefär 2 band-events per tick, precis som den gamla 600-hoppen,
 // men UTAN en andra FFT.
-const BAND_EVERY_HOPS = 5;
+const BAND_EVERY_HOPS = 7;
 let bandHopCounter = 0;
 
 // ── BandResult ur analysatorns oktavband ──

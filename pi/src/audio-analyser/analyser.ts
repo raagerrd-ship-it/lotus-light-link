@@ -187,8 +187,8 @@ export class Analyser {
   // 90..180 = EXAKT en oktav → vikningen är entydig. (80..180 gav 2.25× och
   // tvetydighet i 80–90.) Snabba låtar presenteras dubbelt av dirigentens
   // auto-dubbel (beatDoubleBelowBpm), inte genom att vidga spannet.
-  private static readonly BPM_MIN = 90;    // festintervall; MAX maste vara exakt 2x MIN
-  private static readonly BPM_MAX = 180;
+  private static readonly BPM_MIN = 80;    // festintervall; MAX maste vara exakt 2x MIN
+  private static readonly BPM_MAX = 160;
   private octaveVote = 0;   // ackumulerat bevis för att byta oktav (självrättande lås)
   private nearVote = 0;     // bevis för GRANN-fel (t.ex. 122 låst mot 136): bara före commit
   private nearChallenger = 0;  // tempot grann-rösterna pekar på (måste hålla ihop, som challengerBpm)
@@ -654,7 +654,7 @@ export class Analyser {
       //      ackumulerade tempogrammet? Ett breakdown gör låset svagare men ger ingen
       //      dominant rival — en ny låt gör det.
       // Rösterna räknas i TID, inte i anrop: stride växlar 100→20 Hz med låset.
-      const committedNow = this.bpmStable >= 60;   // LÅTBYTES-VAKT: konservativ, ~15 s
+      const committedNow = this.bpmStable >= 24;   // SAMMA tröskel som oktav-låset: 60 gav dödläge
       const rawOff = Math.abs(bpm / this.localBpm - 1) > 0.11;
       const sameChallenger = this.challengerBpm > 0 && Math.abs(bpm / this.challengerBpm - 1) <= 0.04;
       // 4. FRISK TAKT. Ett breakdown ser ut som ett låtbyte i allt utom kvaliteten:
