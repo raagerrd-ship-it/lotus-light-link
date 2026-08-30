@@ -194,12 +194,27 @@ async function toMotorOn(): Promise<void> {
 }
 
 /** Manuellt UI: "Starta allt". Rensar override och tvingar motor-start. */
-export async function userStartAll(): Promise<void> {
+export async function userStartAll(): Promise<{ connected: boolean; error?: string }> {
   persistOverride(false);
   if (state === 'IGNITION_OFF') setState('IGNITION');
   cancelScheduledShutdown();
   await toMotorOn();
+
+  // toMotorOn() early-returnar när state redan är MOTOR_ON. Var motorn igång men
+  // lampan nere gjorde den manuella knappen därför ingenting alls. Tvinga ett
+  // riktigt connect-försök här och returnera driverns faktiska fel.
+  if (!_deps) return { connected: false, error: 'lifecycle not ignited' };
+  if (_deps.getHardcodedConnected().connected) return { connected: true };
+  try {
+    const r = await _deps.connectHardcoded();
+    if (!r.connected) _deps.requestAutoReconnect();
+    return { connected: r.connected, error: r.error };
+  } catch (e: any) {
+    _deps.requestAutoReconnect();
+    return { connected: false, error: e?.message ?? String(e) };
+  }
 }
+
 
 /** Manuellt UI: "Stoppa allt"/disconnect. Sätter override + river ner direkt. */
 export async function userStopAll(): Promise<void> {
