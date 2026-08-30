@@ -73,7 +73,7 @@ interface IgniteDeps {
   startBleEngineMinimal: () => Promise<{ ready: boolean }>;
   startSonosSubsystem: () => Promise<void>;
   startMicSubsystem: () => Promise<void>;
-  connectHardcoded: () => Promise<{ connected: boolean }>;
+  connectHardcoded: () => Promise<{ connected: boolean; error?: string }>;
   getHardcodedConnected: () => { connected: boolean };
   /** Aktivera driverns auto-reconnect-loop (backoff 2/4/8/16/30s). */
   requestAutoReconnect: () => void;
