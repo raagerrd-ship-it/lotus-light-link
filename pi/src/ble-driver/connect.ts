@@ -607,6 +607,22 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       _consecutiveFailures++;
       const errStr = r.error ?? 'okänt fel';
       console.warn(`[connect-hardcoded] ✗ connect misslyckades (${_consecutiveFailures}/${CONSECUTIVE_FAIL_LIMIT} consecutive failures): ${errStr}`);
+      // HALVÖPPEN ACL: HCI tror länken lever → noble vägrar återansluta → GATT dör.
+      // Motorn får inte riva länken själv (sudo → "unable to change to root gid",
+      // ambient caps rapporterar CapAmb=0). Path-aktivering gör jobbet: en begärandefil
+      // triggar lotus-ble-drop.path → lotus-ble-drop.service (root) som river bara
+      // länkar mot vår MAC. Villkoret får INTE vara smartare än "vid varje
+      // misslyckande" — errorsträngen är lika ofta "connect in-flight watchdog (30s)"
+      // som "already connected". Finns ingen länk är skriptet en no-op.
+      try {
+        const fsp = await import('node:fs/promises');
+        const dir = process.env.PCC_DATA_DIR || '/var/lib/pi-control-center/apps/lotus-light';
+        await fsp.writeFile(`${dir}/ble-drop.req`, `${HARDCODED_DEVICE.mac || ''}\n`, 'utf8');
+        dlog('[connect-hardcoded] begärde ACL-rivning (ble-drop.req)');
+      } catch (e: any) {
+        dlog(`[connect-hardcoded] kunde inte skriva ble-drop.req: ${e?.message ?? e}`);
+      }
+
       if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
         // systemd restart → boot → IGNITION → Sonos-poller avgör om motorn
         // ska igång igen (mem://pi/runtime/sonos-driven-lifecycle).
