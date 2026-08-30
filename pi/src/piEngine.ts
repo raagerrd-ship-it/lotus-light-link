@@ -1424,6 +1424,8 @@ export class PiLightEngine {
     onFFTReady(null); // unregister callback
     onFluxReady(null);
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
+    if (this.ownerTimer) { clearInterval(this.ownerTimer); this.ownerTimer = null; }
+
     dlog('[Engine] Stopped');
   }
 
