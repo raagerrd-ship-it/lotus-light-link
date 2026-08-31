@@ -1405,6 +1405,9 @@ export class Analyser {
         if (d > 0) fl += d;
       }
       const avg = sum / nb;
+      // Lotus-adaptern använder rå bandmagnitud som spektral andel för ljuset.
+      // Den får inte ersättas av bandLvl, som är per-band AGC-normaliserad.
+      this.bandAbs[b] = avg;
       // Obehandlad nivå i dB, normaliserad till 0..1 över ett 60 dB-spann.
       // Ingen AGC, inget tak som följer med uppåt → en stigning syns som stigning.
       const db = 20 * Math.log10(avg + 1e-7);
