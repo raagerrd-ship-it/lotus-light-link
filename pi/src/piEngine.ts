@@ -2031,9 +2031,11 @@ export class PiLightEngine {
       this._lastTickAtForFade = _tickStart;
       if (k < 1) {
         const c = this.color; const t = this.colorTarget;
-        c[0] += (t[0] - c[0]) * k;
-        c[1] += (t[1] - c[1]) * k;
-        c[2] += (t[2] - c[2]) * k;
+        // Energibevarande tween: linjär sRGB-lerp går rött → grönt via smutsgult.
+        const ik = 1 - k;
+        c[0] = Math.sqrt(ik * c[0] * c[0] + k * t[0] * t[0]);
+        c[1] = Math.sqrt(ik * c[1] * c[1] + k * t[1] * t[1]);
+        c[2] = Math.sqrt(ik * c[2] * c[2] + k * t[2] * t[2]);
       } else {
         this.color[0] = this.colorTarget[0];
         this.color[1] = this.colorTarget[1];
