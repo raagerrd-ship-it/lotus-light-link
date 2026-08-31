@@ -13,3 +13,12 @@ enbart länkar mot den MAC:en. Finns ingen länk → no-op.
 
 **Villkoret får ALDRIG bli "smartare"** än varje misslyckande: felsträngen är lika ofta
 `connect in-flight watchdog (30s)` som `already connected`. Matcha inte på errorsträng.
+
+**RÄTTELSE (2026-08-31):** ACL-rivningen botar INTE det vanliga felet. Skarpt: 7 anrop, 7× "ingen
+länk", 0 faktiska rivningar — medan `Peripheral already connected` kom 17 gånger. Verkliga felet sitter
+i nobles JS-cache (se mem://pi/ble/stale-peripheral-cache). Begäran är kvar som billig no-op.
+
+**Eskalering (process-restart) endast när radion inte såg NÅGOT:** `/\(0 discover-events\)/` i felsträngen
++ ≥ CONSECUTIVE_FAIL_LIMIT. N > 0 = lampan är frånvarande; en omstart botar inte en urkopplad lampa.
+`hcitool lescan` duger ALDRIG som hälsotest: den ger `Set scan parameters failed: Input/output error`
+så fort bluetoothd håller adaptern (uppmätt: 0 enheter medan noble såg 85 discover-events).
