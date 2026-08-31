@@ -158,8 +158,25 @@ export interface LightCalibration {
   dropSource: 'analyser' | 'bass';
   /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
   barAccent: number;
-  /** Onset-envelopens stigtid i ms. 0 = instant attack (default), >0 = EMA. */
+  /** Onset-envelopens stigtid i ms. 0 = instant attack, >0 = EMA (default 40). */
   onsetRiseMs: number;
+  /** RISE_HOLD: håll onsetTarget stilla i onsetRiseMs × denna faktor medan boosten
+   *  klättrar. Utan hållet jagar boosten ett fallande mål och når bara ~22 % av
+   *  full puls — vilket i den multiplikativa kedjan strypte energikopplingen. */
+  onsetRiseHoldK: number;
+  /** TRUST-RAMP: confidence under detta ger trust 0 (ingen grid-modulation). */
+  beatTrustLoConf: number;
+  /** TRUST-RAMP: confidence över detta ger trust 1 (fullt pulsdjup). */
+  beatTrustHiConf: number;
+  /** Tidskonstant (ms) på trust-EMA:n — conf kan falla 0.79 → 0.00 mellan två ramar. */
+  beatTrustSmoothMs: number;
+  /** Golv på trust: låter modulationen leva på FAKTISKA transienter när takten är
+   *  otydlig. Utan golv blir energyForm = ceil rakt av — lugnt men dött. */
+  beatTrustFloor: number;
+  /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
+   *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
+  recordFrames: number;
+
 
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
    *  inLowFrac × point1.gain → golv. Används BARA i fast-läge (adaptiveCeiling=false). */
