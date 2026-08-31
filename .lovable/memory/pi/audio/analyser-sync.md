@@ -7,11 +7,10 @@ type: feature
 DMX Control → `pi-dmx/engine/src/analyser.ts`. Ändra aldrig här utan att först
 ändra i DMX-projektet.
 
-**Senaste synk: commit `e5a72e88` (2026-08-23).** Nytt i denna synk: väggklocka i
-kick-grindningen (`wallNow()`, tidigare fel tidsbas), grann-rättning av BPM-lås
-(nearVote, före commit), löpande RMS-summa, effektviktat centroid ×1.47,
-`PEAK_DECAY` skalad med BIG_EVERY, `envelope` seedas till autoGainTarget, samt
-`setVirtualClock()` för deterministisk offline-uppspelning. Tidigare från mastern:
+**Senaste synk: commit `b48456cf` (2026-08-31).** Denna synk tar in masterändringarna
+för robustare tempo-/onsetanalys, procentil-AGC, dB-baserad riser-detektion,
+prestandaoptimeringar och säkrare virtuell klocka. Lotus-adaptern behåller
+`specAbs` för den linjära ljusvägen samt `AnalyserConfig`/`setBeatGrid()`. Tidigare från mastern:
 - BPM via ackumulerat **tempogram** (EMA över lag-kurvan) + comb/pulse-xcorr,
   lokal whitening (1 s glidande medel) och förberäknad prior-LUT.
 - Separat **bas-onset-envelope** (`envBassRing`) röstar ihop med helbandet.
