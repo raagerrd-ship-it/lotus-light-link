@@ -273,7 +273,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightHiWeight: 1.3,       // mer dynamiskt mid/hi-band utan att ändra beat-vägen
   lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
   anchorDb: -4,
-  windowDb: 9,               // LÅST — ett reglage här förstör hela tuningen
+  windowDb: 10,              // LÅST — ett reglage här förstör hela tuningen
   lightSmoothMs: 70,         // release-avbrusning på energivägen
 
   buildUpGain: 0.25,
@@ -287,7 +287,7 @@ const DEFAULT_CAL: LightCalibration = {
   subdivLoOn: 0.42,
   subdivLoOff: 0.60,
   subdivMinHoldMs: 12000,
-  subdivHalveAboveBpm: 135,  // dirigenten väljer presentationstakt, analysen ger tempot
+  subdivHalveAboveBpm: 145,  // dirigenten väljer presentationstakt, analysen ger tempot
   subdivHalveHystBpm: 15,
   fadeEnergyCalm: 1.0,       // 1.0/1.0 = neutral; aggressivare värden backades av användaren
   fadeEnergyIntense: 1.0,
@@ -297,7 +297,7 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMax: 1.2,
   autoAnchor: 1,
   autoAnchorSec: 60,
-  anchorOffsetDb: 5.8,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
+  anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
   lightRiseMs: 0,
   shapeSmoothUpMs: 50,       // känsligaste ratten: 250 kväver dynamiken, 0 ger fladder
   shapeSmoothDownMs: 150,
@@ -430,6 +430,10 @@ export interface DiagSnapshot {
   wlevel?: number;
   /** 20·log10(wlevel) — mät detta live för att sätta anchorDb */
   wdb?: number;
+  /** Långsam EMA av wdb — ankarets underlag (mät wdb/wdbSlow/anchorDb i 2 Hz) */
+  wdbSlow?: number;
+  /** wdbSlow + anchorOffsetDb — fönstrets ÖVERKANT */
+  anchorDb?: number;
 }
 
 const _diag: DiagSnapshot = {
@@ -1325,18 +1329,26 @@ export class PiLightEngine {
             let next = current;
             // Takt-baserad halvering FÖRST: den energistyrda grinden fyrar bara i
             // genuint lugna partier, så en 157-BPM-låt pulsade i 2.6 Hz utan detta.
+            // FÖRETRÄDE: takt-regeln är auktoritativ. Två separata if-block utan
+            // else lät energiblocket skriva över takt-beslutet → fyrkantsvåg
+            // (2.30 ↔ 1.15 Hz var 12:e sekund).
             const _halveAbove = this.cal.subdivHalveAboveBpm ?? 0;
+            let _bpmWants: number | null = null;
             if (_halveAbove > 0 && bpmNow > 0) {
               const _back = _halveAbove - (this.cal.subdivHalveHystBpm ?? 15);
-              if (current >= 0 && bpmNow > _halveAbove) next = -1;
-              else if (current === -1 && bpmNow < _back) next = 0;
+              if (bpmNow > _halveAbove) _bpmWants = -1;
+              else if (bpmNow < _back) _bpmWants = 0;
             }
-            if (energySubdiv) {
+            if (_bpmWants !== null) next = _bpmWants;
+            else if (energySubdiv) {
               if (current <= 0 && energy > (this.cal.subdivHiOn ?? 2)) next = 1;
               else if (current === 1 && energy < (this.cal.subdivHiOff ?? 1.9)) next = 0;
               else if (current >= 0 && energy < (this.cal.subdivLoOn ?? 0.42)) next = -1;
               else if (current === -1 && energy > (this.cal.subdivLoOff ?? 0.60)) next = 0;
             }
+            // Villkoret är NÖDVÄNDIGT: ett obetingat "else next = 0" slog ut
+            // takthalveringen så fort energySubdiv var 0.
+            else if (_halveAbove <= 0) next = 0;
             if (next !== current) {
               const holdMs = this.cal.subdivMinHoldMs ?? 10000;
               if (this._subdivChangedAt > 0 && Date.now() - this._subdivChangedAt < holdMs) next = current;
@@ -1775,6 +1787,8 @@ export class PiLightEngine {
           const anchorAlpha = 1 - Math.exp(-FRAME_MS / (anchorUp ? tauMs * 3 : tauMs));
           this._wdbSlow = this._wdbSlow === undefined ? wdb : this._wdbSlow + anchorAlpha * (wdb - this._wdbSlow);
           anchorDb = this._wdbSlow + (cal.anchorOffsetDb ?? 4);
+          _diag.wdbSlow = this._wdbSlow;
+          _diag.anchorDb = anchorDb;
         }
         // FAST dB-fönster; auto-ankaret följer långsamt så sektionsdynamiken bevaras.
         const windowDb = Math.max(1, cal.windowDb ?? 18);

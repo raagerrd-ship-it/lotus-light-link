@@ -218,7 +218,10 @@ async function ensureEngineInstance(): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 async function startMicSubsystem(): Promise<void> {
   if (_inflight.mic) return _inflight.mic;
-  if (getSubsystemState('mic').status === 'ready') return;
+  // Statusen lämnar aldrig 'ready' (ingen markSubsystemIdle finns), så efter
+  // stopMic() vid idle returnerade vi tidigt medan capture === null → micen
+  // vaknade aldrig (45–60 s mörk lampa). isMicActive() = capture !== null.
+  if (getSubsystemState('mic').status === 'ready' && (alsaMic as any)?.isMicActive?.() !== false) return;
 
   _inflight.mic = (async () => {
     markSubsystemStarting('mic');
