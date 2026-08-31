@@ -786,7 +786,32 @@ export class Analyser {
         const dtVote = this.lastSongVoteMs > 0 ? Math.min(200, voteNow - this.lastSongVoteMs) : 0;
         this.lastSongVoteMs = voteNow;
         this.newSongVote += dtVote;
-        if (this.newSongVote >= needMs) {
+        // ── RÅ-AC-VETO MOT SUBHARMONIKER ────────────────────────────────────────
+        // MEKANISMEN: `rival` mäts i tempoGram, som är comb-filtrerat
+        // (ac[L] + ½·ac[2L] + ⅓·ac[3L]). En 2/3-kandidat ligger på lag 1.5P där den
+        // RÅA autokorrelationen är svag — slagen möts inte — men ac[3P] träffar
+        // perfekt och comb-filtret adderar den med vikt 0,5. Comb-filtret är alltså
+        // självt orsaken: subharmoniken har ingen egen självlikhet, den lånar sin
+        // styrka från sin egen tredje harmonisk. Därför duger INTE `scoreBass` som
+        // diskriminator (samma out[]-formel ⇒ ärver exakt samma fel) — bara den råa
+        // `acScratch` (helbandet, scoreEnv körde sist) skiljer dem.
+        // ASYMMETRI: en subharmonisk är alltid LÅNGSAMMARE än låset. Åt det hållet
+        // krävs egen självlikhet i nivå med låsets; uppåt (äkta snabbare låt, eller
+        // ett lås som fastnat på en subharmonisk) hålls kravet lågt så omlåsningen
+        // inte bromsas. Noll ny kostnad: två array-uppslagningar.
+        const chLag = Math.round((HZ * 60) / this.challengerBpm);
+        let vetoed = false;
+        if (chLag >= lagMin && chLag <= lagMax && lockLag >= lagMin && lockLag <= lagMax) {
+          const rawCh = this.acScratch[chLag];
+          const rawLock = this.acScratch[lockLag];
+          const slower = this.challengerBpm < this.localBpm;
+          const need = slower ? 0.95 : 0.55;
+          vetoed = rawLock > 0 && rawCh < rawLock * need;
+        }
+        if (vetoed) {
+          this.newSongVote *= 0.7;   // vädra ut beviset, precis som en osund ruta
+          if (this.newSongVote < 0.5) { this.newSongVote = 0; this.challengerBpm = 0; }
+        } else if (this.newSongVote >= needMs) {
           // Lås på UTMANAREN, inte medianen, och kasta historiken: ett medianfönster
           // halvfullt av förra låtens tempo kostade flera sekunder till rätt takt.
           this.localBpm = Math.round(this.challengerBpm);
@@ -798,6 +823,7 @@ export class Analyser {
           this.lockPeak = 0;
         }
       }
+
     }
     // Smooth confidence (undvik hoppig UI); attack snabbt, release långsamt.
     // TIDSBASERAD alpha: computeBpm() körs 100 Hz olåst men 4 Hz låst (adaptiv
