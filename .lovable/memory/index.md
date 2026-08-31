@@ -16,6 +16,8 @@ Short input-EMA (`lightSmoothMs` ~35 ms) before dB-mapping denoises base level w
 Mic-start får aldrig gatas av BLE; starta mic-tasken före BLE-initiering och await:a den vid tidiga BLE-returer.
 
 ## Memories
+- [dB-fönstret](mem://pi/lighting/db-window-measurement) — anchorOffsetDb=tak 4.5, windowDb=golv 10, efterhandsräknad shape i 2 Hz
+- [Mic-uppvaknande](mem://pi/audio/mic-wake-from-idle) — isMicActive()-grind + privilegierade åtgärder via path-aktivering
 - [Halvöppen ACL-rivning](mem://pi/ble/half-open-acl-drop-request) — ble-drop.req vid varje connect-failure; path-aktiverad root-service river länken
 - [Input-sync (form)](mem://pi/lighting/input-sync-form) — formen = bands.totalRms; intensity BARA topp-boost >90%; ingen loudness-faktor; beatLeadMs 0
 - [Lärd volym→gain](mem://pi/audio/learned-volume-gain) — per-volym aggregat (4s-p90 medel) → LÅS efter 20 min → persisterat; relearnGain för omlärning
