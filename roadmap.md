@@ -1,0 +1,2 @@
+- [x] Etapp A: log-kompression, per-bin-whitening och novelty-normalisering
+- [x] Verifiera build och analyssignalens mätväg

@@ -21,6 +21,8 @@ export interface AnalyserConfig {
   noiseFloor?: number;
   /** Upper clamp for analyser gain. */
   maxGain?: number;
+  /** Enable log-compressed, adaptively whitened and normalized onset features. */
+  onsetEnhancements?: boolean;
 }
 
 /** Rikt log-spektrum (8 band) från den parallella 2048-FFT:n. Varje band är
@@ -99,7 +101,11 @@ export class Analyser {
   private fft: FFT;
   private window: Float32Array;
   private buffer: Float32Array;      // sliding FFT window
-  private prevMag: Float32Array;     // for flux
+  private prevMag: Float32Array;     // transformed magnitude from the previous hop
+  private onsetPeak!: Float32Array;  // per-bin whitening peak history
+  private onsetPrev!: Float32Array;  // previous raw magnitude for onset differencing
+  private onsetPeakReady = false;
+  private onsetPeakDecay = 0;
   // --- Pre-allokerade scratchpads för 512-FFT + utdata (GC-skydd: process()
   //     allokerade ~7KB/hop → ~2.6 MB/s skräp @375Hz. Nu 0 alloc/hop). ---
   private windowed512!: Float32Array;   // fönstrad tidssignal (scratch)
@@ -158,6 +164,8 @@ export class Analyser {
   private kickWasAbove = false;      // stigande-flank-detektion
   private kickPrimed = false;        // false på första framen (skräp-flux) → ingen falsk kick
   private static readonly ENV_HZ = 100;
+  private static readonly ONSET_PEAK_TAU_S = 1.5;
+  private static readonly ONSET_PEAK_FLOOR = 0.05;
   private static readonly ENV_LEN = 100 * 5;
   private envRing = new Float32Array(Analyser.ENV_LEN);
   private envPos = 0;
@@ -231,6 +239,7 @@ export class Analyser {
   private pulseScratch = new Float32Array(Analyser.ENV_LEN);
   private combScratch = new Float32Array(Analyser.ENV_LEN);
   private prefScratch = new Float64Array(Analyser.ENV_LEN + 1);   // prefix-summa → lokalt medel (whitening)
+  private prefSqScratch = new Float64Array(Analyser.ENV_LEN + 1);  // prefix-summa → lokal varians
   /** BASBANDETS onset-envelope (kick-flux), samma raster och position som envRing. */
   private envBassRing = new Float32Array(Analyser.ENV_LEN);
   private envBassAccum = 0;
@@ -432,19 +441,21 @@ export class Analyser {
     const L = Analyser.ENV_LEN;
     const env = this.envScratch;
     const pre = this.prefScratch;
+    const preSq = this.prefSqScratch;
     const start = (this.envPos - N + L) % L;
     let energy = 0;
     pre[0] = 0;
+    preSq[0] = 0;
     // Ringen läses i TVÅ RAKA BLOCK. `% L` i den inre loopen kostade en modulo per
     // sampel (N upp till 500, två anrop per computeBpm) helt i onödan.
     const n1 = Math.min(N, L - start);
     for (let i = 0; i < n1; i++) {
       const v = ring[start + i];
-      env[i] = v; energy += v; pre[i + 1] = pre[i] + v;
+      env[i] = v; energy += v; pre[i + 1] = pre[i] + v; preSq[i + 1] = preSq[i] + v * v;
     }
     for (let i = n1; i < N; i++) {
       const v = ring[i - n1];
-      env[i] = v; energy += v; pre[i + 1] = pre[i] + v;
+      env[i] = v; energy += v; pre[i + 1] = pre[i] + v; preSq[i + 1] = preSq[i] + v * v;
     }
 
     // WHITENING: subtrahera ett LOKALT medel (1 s glidande) i stället för det
@@ -454,7 +465,17 @@ export class Analyser {
     for (let i = 0; i < N; i++) {
       const lo = i - half > 0 ? i - half : 0;
       const hi = i + half + 1 < N ? i + half + 1 : N;
-      env[i] -= (pre[hi] - pre[lo]) / (hi - lo);
+      const width = hi - lo;
+      const mean = (pre[hi] - pre[lo]) / width;
+      const centered = env[i] - mean;
+      if (this.cfg.onset.enhancements) {
+        const variance = Math.max(0, (preSq[hi] - preSq[lo]) / width - mean * mean);
+        // Lokal standardisering håller tempogrammets novelty-kontrast användbar
+        // genom både breakdowns och uppbyggnader utan att ändra rå ljudnivå.
+        env[i] = centered / Math.max(0.01, Math.sqrt(variance));
+      } else {
+        env[i] = centered;
+      }
     }
     // 1) Rå autokorrelation, LENGTH-NORMALISERAD: /(N-lag) tar bort biasen mot
     //    korta lag (annars vinner alltid snabb takt eftersom fler termer bidrar).
@@ -948,6 +969,7 @@ export class Analyser {
     audio: { rate: number };
     fft: { size: number; hop: number };
     detection: { autoGainTarget: number; tauUp: number; tauDown: number; noiseFloor: number; maxGain: number };
+    onset: { enhancements: boolean };
     beat: BeatGrid | null;
   };
 
@@ -964,12 +986,15 @@ export class Analyser {
         noiseFloor: cfgIn.noiseFloor ?? 0.002,
         maxGain: cfgIn.maxGain ?? 20,
       },
+      onset: { enhancements: cfgIn.onsetEnhancements ?? false },
       beat: null,
     };
     this.fft = new FFT(cfg.fft.size);
     this.window = hannWindow(cfg.fft.size);
     this.buffer = new Float32Array(cfg.fft.size);
     this.prevMag = new Float32Array(cfg.fft.size / 2);
+    this.onsetPeak = new Float32Array(cfg.fft.size / 2);
+    this.onsetPrev = new Float32Array(cfg.fft.size / 2);
     this.windowed512 = new Float32Array(cfg.fft.size);
     this.spectrum512 = this.fft.createComplexArray();
     this.mag512 = new Float32Array(cfg.fft.size / 2);
@@ -1066,24 +1091,40 @@ export class Analyser {
     let powSum = 0, powW = 0;                       // för spektralt centroid (EFFEKT-viktat)
     const bassBins = Math.min(16, half);                            // ~0–1.5 kHz
     const kickBins = Math.min(1, half);                             // ENBART bin 0 ≈ 0–94 Hz (bastrummans transient, inte basgången)
+    const enhancedOnset = this.cfg.onset.enhancements;
 
-    // MAGNITUD (sqrt) räknas bara i basbanden — det är de enda bin som läses. Övriga
-    // 240 sqrt/hop (~90 000/s) fanns bara för centroiden, som nu viktar på EFFEKT
-    // (re²+im²) i stället: samma spektrala tyngdpunkt, ingen rot.
+    // Ljusets nivå använder fortfarande rå magnitud. Onset-vägen kan däremot
+    // komprimeras och vitbalanseras per FFT-bin, så en högljudd/tonal källa inte
+    // sväljer svagare transienter i tempogrammet.
     for (let i = 0; i < half; i++) {
       const re = spectrum[2 * i];
       const im = spectrum[2 * i + 1];
       const p = re * re + im * im;
       if (i < bassBins) {
         const m = Math.sqrt(p);
-        mag[i] = m;
         bassEnergy += m;
-        const dd = m - this.prevMag[i];
+        let onsetMag = m;
+        if (enhancedOnset) {
+          // Log-kompression före differensen + SuperFlux-liknande långsam
+          // per-bin-whitening. Peak uppdateras före division så varje bin börjar
+          // på en stabil skala även när signalen startar från tystnad.
+          const compressed = Math.log1p(m);
+          let peak = this.onsetPeak[i] * this.onsetPeakDecay;
+          if (compressed > peak) peak = compressed;
+          this.onsetPeak[i] = peak;
+          onsetMag = this.onsetPeakReady ? compressed / Math.max(Analyser.ONSET_PEAK_FLOOR, peak) : 0;
+        }
+        mag[i] = m;
+        const dd = onsetMag - this.onsetPrev[i];
+        this.onsetPrev[i] = onsetMag;
         if (dd > 0) { flux += dd; if (i < kickBins) kickFlux += dd; }   // half-wave rectified
       }
       powSum += p; powW += i * p;
     }
-
+    this.onsetPeakReady = true;
+    if (enhancedOnset) {
+      for (let i = 0; i < bassBins; i++) this.prevMag[i] = this.onsetPrev[i];
+    }
 
     // Swap: denna hops magnitud blir nästa hops prevMag (zero-copy, ingen alloc).
     { const t = this.prevMag; this.prevMag = this.mag512; this.mag512 = t; }
@@ -1107,7 +1148,7 @@ export class Analyser {
     // relativ och tål det; färgtemperaturen är absolut och märks först. Ser lamporna
     // ovanligt varma ut på ett spår utanför sviten är det här konstanten sitter.
     const centroid = powSum > 1e-12 ? Math.min(1, Math.sqrt(1.47 * (powW / powSum) / half)) : 0;
-    const fluxNorm = Math.min(1, flux * 0.005);
+    const fluxNorm = Math.min(1, flux * (enhancedOnset ? 0.08 : 0.005));
 
 
     // Auto-gain (slow: seconds-to-minute timescales)
@@ -1244,7 +1285,7 @@ export class Analyser {
 
     this.envAccum = Math.max(this.envAccum, fluxNorm);
     // Basbandets egen envelope (kick-flux) — samma raster, oberoende signal.
-    const bassFluxNorm = Math.min(1, kickFlux * 0.02);
+    const bassFluxNorm = Math.min(1, kickFlux * (this.cfg.onset.enhancements ? 0.5 : 0.02));
     if (bassFluxNorm > this.envBassAccum) this.envBassAccum = bassFluxNorm;
     this.envAccumT += hopMs;
     if (this.envAccumT >= 1000 / Analyser.ENV_HZ) {

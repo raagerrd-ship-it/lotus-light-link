@@ -312,6 +312,8 @@ const analyser = createAnalyser({
   autoGainTarget: 0.75,
   maxGain: 200,
   noiseFloor: 0.0015,
+  // A/B-kontrollerad DSP: log-kompression, per-bin-whitening och novelty-normalisering.
+  onsetEnhancements: true,
 });
 analyser.setGainLock(false);
 const analyserScratch = new Float32Array(ANALYSER_HOP);
