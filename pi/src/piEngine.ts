@@ -273,7 +273,7 @@ const DEFAULT_CAL: LightCalibration = {
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 45,            // med instant onset-attack (onsetRiseMs 0) försvinner ~79 ms lag
+  beatLeadMs: 132,           // 87 ms uppmätt toppfördröjning (rise) + ~45 ms utsignalslatens
   beatSyncStrength: 0.10,    // PLL:ens fas-ankarknuff, INTE ljus-modulation
   dropSource: 'analyser',
   barAccent: 1.6,            // ettans accent
