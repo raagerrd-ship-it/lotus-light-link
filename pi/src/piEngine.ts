@@ -277,7 +277,14 @@ const DEFAULT_CAL: LightCalibration = {
   beatSyncStrength: 0.10,    // PLL:ens fas-ankarknuff, INTE ljus-modulation
   dropSource: 'analyser',
   barAccent: 1.6,            // ettans accent
-  onsetRiseMs: 0,            // 0 = instant attack; >0 = gammalt EMA-beteende i ms
+  onsetRiseMs: 40,           // 0 gav uppsteg median 26 enheter = strobe; 40 → median 2
+  onsetRiseHoldK: 2.0,       // håll målet stilla medan boosten klättrar (bunden hålltid)
+  beatTrustLoConf: 0.30,
+  beatTrustHiConf: 0.70,
+  beatTrustSmoothMs: 400,
+  beatTrustFloor: 0.35,      // golvet är den viktiga halvan: modulation på transienter
+  recordFrames: 0,
+
   inLowFrac: 0.022,
   inHighFrac: 0.075,
   shapeExpand: 2.0,
