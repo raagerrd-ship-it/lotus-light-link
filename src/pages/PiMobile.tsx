@@ -30,17 +30,17 @@ type Cal = {
 
 const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 43,
-  brightnessFloor: 20, punchWhiteThreshold: 100, transientGain: 0.45,
+  brightnessFloor: 18, punchWhiteThreshold: 100, transientGain: 0.45,
   colorSpectralTilt: 0.25,
   onsetThreshold: 2.0, onsetRefractoryMs: 200,
 
-  onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
+  onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0,
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
   dropFlashMs: 320, beatLeadMs: 132,
   shapeExpand: 1.0,
-  // windowDb är LÅST på 9 — inget reglage (ett svep hade förstört tuningen).
-  windowDb: 9, lightBassWeight: 0.25,
-  anchorOffsetDb: 5.8, beatDepth: 0.62, fadeIntervalK: 0.35,
+  // windowDb är LÅST på 10 — inget reglage (ett svep hade förstört tuningen).
+  windowDb: 10, lightBassWeight: 0.25,
+  anchorOffsetDb: 4.5, beatDepth: 0.62, fadeIntervalK: 0.35,
   subdivHalveAboveBpm: 145,
 };
 
