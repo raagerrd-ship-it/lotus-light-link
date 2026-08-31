@@ -58,6 +58,8 @@ export function LightPreview({
     const hist = new Float32Array(N);
     const raw = new Float32Array(N);
     let onsetBoost = 0;
+    let onsetTarget = 0;
+    let riseHold = 0;
     let lastBeat = -1;
     let raf = 0;
     const t0 = performance.now();
@@ -66,13 +68,25 @@ export function LightPreview({
       const p = params.current;
       const t = performance.now() - t0;
 
-      // Slaget: onsetTarget sätts till 0.45 med instant attack, sedan exponentiell
-      // release med samma tau-formel som motorn.
+      // Slaget: onsetTarget 0.45, hållet i RISE_HOLD-ramar medan boosten klättrar
+      // mot det — utan hållet jagar boosten ett fallande mål och når ~22 %.
       const beatIdx = Math.floor(t / BEAT_MS);
-      if (beatIdx !== lastBeat) { lastBeat = beatIdx; onsetBoost = ONSET_PEAK; }
+      if (beatIdx !== lastBeat) {
+        lastBeat = beatIdx;
+        onsetTarget = ONSET_PEAK;
+        riseHold = Math.ceil((RISE_MS * HOLD_K) / FRAME_MS);
+      }
       const tau = Math.max(0.12, Math.min(1.2, p.fadeIntervalK * (BEAT_MS / 1000)));
-      onsetBoost *= Math.exp(-(FRAME_MS / 1000) / tau);
+      const decay = Math.exp(-(FRAME_MS / 1000) / tau);
+      if (riseHold > 0) riseHold--; else onsetTarget *= decay;
+      if (onsetBoost < onsetTarget) {
+        const a = 1 - Math.exp(-FRAME_MS / RISE_MS);
+        onsetBoost += a * (onsetTarget - onsetBoost);
+      } else {
+        onsetBoost *= decay;
+      }
       const pn = Math.min(1, onsetBoost / ONSET_PEAK);
+
 
       // Taket är den långsamma loudness-envelopen (sektionsdynamik).
       const ceil = Math.min(1, Math.max(0, 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t / 6200 - 1.2))));
