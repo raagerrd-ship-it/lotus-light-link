@@ -328,6 +328,22 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
         const p = peripherals[key];
         const pid = (p?.id ?? key).toLowerCase().replace(/[^0-9a-f]/g, '');
         const paddr = (p?.address ?? '').toLowerCase();
+        // DET VANLIGA BLE-FELET: noble gatar på sin EGEN JS-cache
+        // (peripheral.state === 'connected'). Dör länken utan att noble ser
+        // disconnect-eventet står flaggan kvar för alltid → "Peripheral already
+        // connected". Guarden måste fyra ALLTID (inte "&& !_connected") —
+        // vanligaste fallet är connect OK → GATT-fel → _connected nollat.
+        if ((pid === HARDCODED_DEVICE.idNoColon || paddr === HARDCODED_DEVICE.addressLower)
+            && p?.state === 'connected') {
+          try {
+            await Promise.race([
+              p.disconnectAsync?.(),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('stale-disconnect timeout')), 2000)),
+            ]);
+          } catch {}
+          if (p.state === 'connected') p.state = 'disconnected';
+          dlog(`[connect-hardcoded] cleanup (${reason}): stale noble-cache-flagga nollställd (${key})`);
+        }
         if (pid === targetId || paddr === targetAddr) {
           delete peripherals[key];
           dlog(`[connect-hardcoded] cleanup: noble._peripherals[${key}] purged`);
@@ -498,6 +514,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
 
               console.warn(`${ts()}    anchor write FEL: ${e?.message ?? e} — disconnectar`);
               try { await peripheral.disconnectAsync(); } catch {}
+              if (_connected === peripheral) _connected = null;
               finish({ connected: false, error: `Anchor write failed: ${e?.message ?? e}` });
               return;
             }
@@ -535,6 +552,9 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
 
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
             try { await peripheral.disconnectAsync(); } catch {}
+            // MÅSTE nollställas här: annars står _connected kvar medan länken är
+            // död → nästa cleanup hoppar över noble-cachen.
+            if (_connected === peripheral) _connected = null;
             finish({ connected: false, error: `GATT discovery failed: ${e?.message ?? e}` });
           }
         } catch (e: any) {
@@ -623,7 +643,11 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         dlog(`[connect-hardcoded] kunde inte skriva ble-drop.req: ${e?.message ?? e}`);
       }
 
-      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
+      // ESKALERA BARA PÅ RÄTT SIGNAL: nobles discover-räknare är den enda
+      // pålitliga. N > 0 → radion skannar, lampan är frånvarande (en omstart
+      // botar inte en urkopplad lampa). N = 0 → adaptern misstänkt wedgad.
+      const _sawNothing = /\(0 discover-events\)/.test(String(errStr));
+      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT && _sawNothing) {
         // systemd restart → boot → IGNITION → Sonos-poller avgör om motorn
         // ska igång igen (mem://pi/runtime/sonos-driven-lifecycle).
         console.error(
