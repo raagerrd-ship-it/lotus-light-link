@@ -549,6 +549,15 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
+  private _prevTarget = 0;
+  private _riseHold = 0;
+  /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
+  private _trustSm?: number;
+  // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
+  private _recBuf: string[] = [];
+  private _recTarget = 0;
+  private _recT0 = 0;
+
   // Refractory period — minimum gap between onsets, räknat i frames (FRAME_MS ≈ 13.33 ms)
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
