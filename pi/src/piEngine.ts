@@ -1954,11 +1954,19 @@ export class PiLightEngine {
       ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.30);
       if (ceil > 1) ceil = 1;
 
-      // Luta inte på ett beat som inte finns: taktlös musik/TV/pauser dimmades
-      // annars 70 %. Fixar även raw-läget (transientGain 0 → puls 0 → 30 % ljus).
-      // `locked` är trubbigt men ÄRLIGT. Använd INTE confidence — den är
-      // anti-diagnostisk (AUC 0.355; 34 % av fel-tempo-sampel har conf = 1.000).
-      const trust = hasBeat(this._beat) ? 1 : 0;   // samma "locked" som /api/status
+      // TRUST — mjuk ramp i stället för binärt. MIN_BEAT_CONFIDENCE är bara 0.20,
+      // så det binära beslutet gav FULLT pulsdjup på mycket svag takt, och snäppte
+      // av/på när konfidensen vandrade kring tröskeln (locked flippade 4×/3 min).
+      // Golvet låter modulationen leva på FAKTISKA transienter när takten är otydlig.
+      const _c = this._beat?.confidence ?? 0;
+      const _lo = this.cal.beatTrustLoConf ?? 0.30;
+      const _hi = this.cal.beatTrustHiConf ?? 0.70;
+      const _tRaw = hasBeat(this._beat) ? Math.min(1, Math.max(0, (_c - _lo) / Math.max(1e-6, _hi - _lo))) : 0;
+      // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
+      const _tA = Math.min(1, (this.tickMs || 18) / (this.cal.beatTrustSmoothMs ?? 400));
+      this._trustSm = (this._trustSm == null) ? _tRaw : this._trustSm + (_tRaw - this._trustSm) * _tA;
+      const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm);
+
       const bd    = tc.beatDepth * trust;
 
       let energyForm = ceil * ((1 - bd) + bd * pn);
