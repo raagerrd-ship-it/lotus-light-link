@@ -41,7 +41,7 @@ const DEFAULT_CAL: Cal = {
   // windowDb är LÅST på 9 — inget reglage (ett svep hade förstört tuningen).
   windowDb: 9, lightBassWeight: 0.25,
   anchorOffsetDb: 5.8, beatDepth: 0.62, fadeIntervalK: 0.35,
-  subdivHalveAboveBpm: 135,
+  subdivHalveAboveBpm: 145,
 };
 
 
@@ -1064,7 +1064,7 @@ export default function PiMobile() {
                   </div>
                   <Toggle
                     checked={cal.subdivHalveAboveBpm > 0}
-                    onChange={(v) => setCal({ ...cal, subdivHalveAboveBpm: v ? 135 : 0 })}
+                    onChange={(v) => setCal({ ...cal, subdivHalveAboveBpm: v ? 145 : 0 })}
                   />
                 </Row>
               </Panel>
