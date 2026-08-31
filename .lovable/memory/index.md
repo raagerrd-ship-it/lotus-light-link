@@ -17,6 +17,7 @@ Short input-EMA (`lightSmoothMs` ~35 ms) before dB-mapping denoises base level w
 Mic-start får aldrig gatas av BLE; starta mic-tasken före BLE-initiering och await:a den vid tidiga BLE-returer.
 
 ## Memories
+- [Rå-AC-veto mot subharmoniker](mem://pi/audio/raw-ac-subharmonic-veto) — comb-filtret orsakar 2/3-excursionerna; rå acScratch-test, 0.95 nedåt / 0.55 uppåt
 - [Energibevarande färg-tween](mem://pi/lighting/energy-preserving-color-tween) — palett-tween i ljusenergi (sqrt-lerp), inte linjär sRGB; colorFadeMs 3000
 - [Pulsform & trust (FIX 21)](mem://pi/lighting/pulse-shape-trust-ramp) — onsetRiseMs 40 + RISE_HOLD, beatLeadMs 132, shapeSmoothUpMs 25, trust-ramp med golv 0.35, FRAME_RECORDER
 - [dB-fönstret](mem://pi/lighting/db-window-measurement) — anchorOffsetDb=tak 4.5, windowDb=golv 10, efterhandsräknad shape i 2 Hz
