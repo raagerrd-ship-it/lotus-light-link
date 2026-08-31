@@ -36,7 +36,7 @@ const DEFAULT_CAL: Cal = {
 
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0.01,
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
-  dropFlashMs: 320, beatLeadMs: 45,
+  dropFlashMs: 320, beatLeadMs: 132,
   shapeExpand: 1.0,
   // windowDb är LÅST på 9 — inget reglage (ett svep hade förstört tuningen).
   windowDb: 9, lightBassWeight: 0.25,

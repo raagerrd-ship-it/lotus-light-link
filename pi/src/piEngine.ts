@@ -23,7 +23,9 @@ import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
-import { getItem, setItem } from './storage.js';
+import { getItem, setItem, DATA_DIR } from './storage.js';
+import { writeFile } from 'node:fs';
+import { join } from 'node:path';
 import { dlog } from "./debugLog.js";
 import { noteTick } from './runtimeHealth.js';
 
@@ -158,8 +160,25 @@ export interface LightCalibration {
   dropSource: 'analyser' | 'bass';
   /** Extra pulsstyrka på ettan när taktfasen (barShift) är känd. 1.0 = av. */
   barAccent: number;
-  /** Onset-envelopens stigtid i ms. 0 = instant attack (default), >0 = EMA. */
+  /** Onset-envelopens stigtid i ms. 0 = instant attack, >0 = EMA (default 40). */
   onsetRiseMs: number;
+  /** RISE_HOLD: håll onsetTarget stilla i onsetRiseMs × denna faktor medan boosten
+   *  klättrar. Utan hållet jagar boosten ett fallande mål och når bara ~22 % av
+   *  full puls — vilket i den multiplikativa kedjan strypte energikopplingen. */
+  onsetRiseHoldK: number;
+  /** TRUST-RAMP: confidence under detta ger trust 0 (ingen grid-modulation). */
+  beatTrustLoConf: number;
+  /** TRUST-RAMP: confidence över detta ger trust 1 (fullt pulsdjup). */
+  beatTrustHiConf: number;
+  /** Tidskonstant (ms) på trust-EMA:n — conf kan falla 0.79 → 0.00 mellan två ramar. */
+  beatTrustSmoothMs: number;
+  /** Golv på trust: låter modulationen leva på FAKTISKA transienter när takten är
+   *  otydlig. Utan golv blir energyForm = ceil rakt av — lugnt men dött. */
+  beatTrustFloor: number;
+  /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
+   *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
+  recordFrames: number;
+
 
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
    *  inLowFrac × point1.gain → golv. Används BARA i fast-läge (adaptiveCeiling=false). */
@@ -256,11 +275,18 @@ const DEFAULT_CAL: LightCalibration = {
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 45,            // med instant onset-attack (onsetRiseMs 0) försvinner ~79 ms lag
+  beatLeadMs: 132,           // 87 ms uppmätt toppfördröjning (rise) + ~45 ms utsignalslatens
   beatSyncStrength: 0.10,    // PLL:ens fas-ankarknuff, INTE ljus-modulation
   dropSource: 'analyser',
   barAccent: 1.6,            // ettans accent
-  onsetRiseMs: 0,            // 0 = instant attack; >0 = gammalt EMA-beteende i ms
+  onsetRiseMs: 40,           // 0 gav uppsteg median 26 enheter = strobe; 40 → median 2
+  onsetRiseHoldK: 2.0,       // håll målet stilla medan boosten klättrar (bunden hålltid)
+  beatTrustLoConf: 0.30,
+  beatTrustHiConf: 0.70,
+  beatTrustSmoothMs: 400,
+  beatTrustFloor: 0.35,      // golvet är den viktiga halvan: modulation på transienter
+  recordFrames: 0,
+
   inLowFrac: 0.022,
   inHighFrac: 0.075,
   shapeExpand: 2.0,
@@ -274,7 +300,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
   anchorDb: -4,
   windowDb: 10,              // LÅST — ett reglage här förstör hela tuningen
-  lightSmoothMs: 70,         // release-avbrusning på energivägen
+  lightSmoothMs: 55,         // release-avbrusning på energivägen
 
   buildUpGain: 0.25,
   beatDepth: 0.62,           // intrimmat 2026-08-30
@@ -299,7 +325,7 @@ const DEFAULT_CAL: LightCalibration = {
   autoAnchorSec: 60,
   anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
   lightRiseMs: 0,
-  shapeSmoothUpMs: 50,       // känsligaste ratten: 250 kväver dynamiken, 0 ger fladder
+  shapeSmoothUpMs: 25,       // känsligaste ratten: 250 kväver allt, 15 → strobe, 0 → fladder
   shapeSmoothDownMs: 150,
   colorSpectralTilt: 0.25,
 };
@@ -525,6 +551,15 @@ export class PiLightEngine {
   private onsetPrevFlux = 0;
   private onsetBoost = 0;
   private onsetTarget = 0;
+  private _prevTarget = 0;
+  private _riseHold = 0;
+  /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
+  private _trustSm?: number;
+  // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
+  private _recBuf: string[] = [];
+  private _recTarget = 0;
+  private _recT0 = 0;
+
   // Refractory period — minimum gap between onsets, räknat i frames (FRAME_MS ≈ 13.33 ms)
   private onsetFrameCounter = 0;
   private onsetLastFrameIdx = -1000;
@@ -750,7 +785,20 @@ export class PiLightEngine {
       ));
       decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
     }
-    this.onsetTarget *= decay;
+    // RISE_HOLD: med en rise jagade boosten ett FALLANDE mål (decay kördes i samma
+    // ram som uppgången) → boost p50 0.10 av 0.45. Håll målet stilla medan boosten
+    // klättrar. Hålltiden MÅSTE vara bunden — en EMA når aldrig riktigt fram.
+    const _riseMs = this.cal.onsetRiseMs ?? 0;
+    if (_riseMs > 0) {
+      if (this.onsetTarget > (this._prevTarget ?? 0) + 1e-6)
+        this._riseHold = Math.ceil((_riseMs * (this.cal.onsetRiseHoldK ?? 2.0)) / FRAME_MS);
+      if (this._riseHold > 0) this._riseHold--;
+      else this.onsetTarget *= decay;
+    } else {
+      this.onsetTarget *= decay;
+    }
+    this._prevTarget = this.onsetTarget;
+
 
     if (this.onsetBoost < this.onsetTarget) {
       // INSTANT ATTACK: pulsen ska landa PÅ slaget, inte krypa dit. Samma princip som
@@ -882,7 +930,7 @@ export class PiLightEngine {
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
-    subdivLevel: number; energySm: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
+    subdivLevel: number; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
@@ -896,6 +944,7 @@ export class PiLightEngine {
       beatErr: this._beatErr,
       gridPulses: this._gridPulseCount,
       subdivLevel: this._subdivLevel,
+      trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -1908,11 +1957,19 @@ export class PiLightEngine {
       ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.30);
       if (ceil > 1) ceil = 1;
 
-      // Luta inte på ett beat som inte finns: taktlös musik/TV/pauser dimmades
-      // annars 70 %. Fixar även raw-läget (transientGain 0 → puls 0 → 30 % ljus).
-      // `locked` är trubbigt men ÄRLIGT. Använd INTE confidence — den är
-      // anti-diagnostisk (AUC 0.355; 34 % av fel-tempo-sampel har conf = 1.000).
-      const trust = hasBeat(this._beat) ? 1 : 0;   // samma "locked" som /api/status
+      // TRUST — mjuk ramp i stället för binärt. MIN_BEAT_CONFIDENCE är bara 0.20,
+      // så det binära beslutet gav FULLT pulsdjup på mycket svag takt, och snäppte
+      // av/på när konfidensen vandrade kring tröskeln (locked flippade 4×/3 min).
+      // Golvet låter modulationen leva på FAKTISKA transienter när takten är otydlig.
+      const _c = this._beat?.confidence ?? 0;
+      const _lo = this.cal.beatTrustLoConf ?? 0.30;
+      const _hi = this.cal.beatTrustHiConf ?? 0.70;
+      const _tRaw = hasBeat(this._beat) ? Math.min(1, Math.max(0, (_c - _lo) / Math.max(1e-6, _hi - _lo))) : 0;
+      // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
+      const _tA = Math.min(1, (this.tickMs || 18) / (this.cal.beatTrustSmoothMs ?? 400));
+      this._trustSm = (this._trustSm == null) ? _tRaw : this._trustSm + (_tRaw - this._trustSm) * _tA;
+      const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm);
+
       const bd    = tc.beatDepth * trust;
 
       let energyForm = ceil * ((1 - bd) + bd * pn);
@@ -2026,6 +2083,29 @@ export class PiLightEngine {
         if (isPunch) this._frameTap(pct, 255, 255, 255);
         else this._frameTap(pct, _finalColor[0], _finalColor[1], _finalColor[2]);
       }
+
+      // ── FRAME_RECORDER — sann utsignal, en rad per faktiskt skickad ram (~53 Hz).
+      // HTTP-pollning duger inte: för glest samplat för pulsformen, OCH 33 Hz-polling
+      // belastar Zero 2W:n så mycket att den försämrar det den mäter.
+      if (writeResult === 'sent') {
+        const _rf = this.cal.recordFrames ?? 0;
+        if (_rf > 0) {
+          if (this._recTarget !== _rf) { this._recTarget = _rf; this._recBuf = []; this._recT0 = performance.now(); }
+          if (this._recBuf.length < _rf) {
+            const _hb = hasBeat(this._beat);
+            const _ph = _hb ? beatPhase(this._beat, Date.now() + (this.cal.beatLeadMs ?? 0)) : -1;
+            this._recBuf.push([Math.round(performance.now() - this._recT0), pct, _ph,
+                               this._beat?.bpm ?? 0, this._trustSm ?? 0, this._shapeSm ?? 0,
+                               this.onsetBoost ?? 0].join(','));
+            if (this._recBuf.length === _rf) {
+              const _csv = 'tms,pct,phase,bpm,trust,shape,boost\n' + this._recBuf.join('\n') + '\n';
+              writeFile(join(DATA_DIR, 'frames.csv'), _csv, () => {});
+            }
+          }
+        }
+      }
+
+
 
       // ── Diagnostics ──
       _diag.rawRms = bands.totalRms;
