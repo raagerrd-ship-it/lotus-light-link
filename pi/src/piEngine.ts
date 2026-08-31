@@ -2081,6 +2081,29 @@ export class PiLightEngine {
         else this._frameTap(pct, _finalColor[0], _finalColor[1], _finalColor[2]);
       }
 
+      // ── FRAME_RECORDER — sann utsignal, en rad per faktiskt skickad ram (~53 Hz).
+      // HTTP-pollning duger inte: för glest samplat för pulsformen, OCH 33 Hz-polling
+      // belastar Zero 2W:n så mycket att den försämrar det den mäter.
+      if (writeResult === 'sent') {
+        const _rf = this.cal.recordFrames ?? 0;
+        if (_rf > 0) {
+          if (this._recTarget !== _rf) { this._recTarget = _rf; this._recBuf = []; this._recT0 = performance.now(); }
+          if (this._recBuf.length < _rf) {
+            const _hb = hasBeat(this._beat);
+            const _ph = _hb ? beatPhase(this._beat, Date.now() + (this.cal.beatLeadMs ?? 0)) : -1;
+            this._recBuf.push([Math.round(performance.now() - this._recT0), pct, _ph,
+                               this._beat?.bpm ?? 0, this._trustSm ?? 0, this._shapeSm ?? 0,
+                               this.onsetBoost ?? 0].join(','));
+            if (this._recBuf.length === _rf) {
+              const _csv = 'tms,pct,phase,bpm,trust,shape,boost\n' + this._recBuf.join('\n') + '\n';
+              writeFile(join(DATA_DIR, 'frames.csv'), _csv, () => {});
+            }
+          }
+        }
+      }
+
+
+
       // ── Diagnostics ──
       _diag.rawRms = bands.totalRms;
       _diag.bassRms = bands.bassRms;
