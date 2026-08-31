@@ -298,7 +298,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
   anchorDb: -4,
   windowDb: 10,              // LÅST — ett reglage här förstör hela tuningen
-  lightSmoothMs: 70,         // release-avbrusning på energivägen
+  lightSmoothMs: 55,         // release-avbrusning på energivägen
 
   buildUpGain: 0.25,
   beatDepth: 0.62,           // intrimmat 2026-08-30
