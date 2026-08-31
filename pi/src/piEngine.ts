@@ -774,7 +774,20 @@ export class PiLightEngine {
       ));
       decay = Math.exp(-(Math.log(tc.onsetDecayFft) / Math.log(0.04)) / tau);
     }
-    this.onsetTarget *= decay;
+    // RISE_HOLD: med en rise jagade boosten ett FALLANDE mål (decay kördes i samma
+    // ram som uppgången) → boost p50 0.10 av 0.45. Håll målet stilla medan boosten
+    // klättrar. Hålltiden MÅSTE vara bunden — en EMA når aldrig riktigt fram.
+    const _riseMs = this.cal.onsetRiseMs ?? 0;
+    if (_riseMs > 0) {
+      if (this.onsetTarget > (this._prevTarget ?? 0) + 1e-6)
+        this._riseHold = Math.ceil((_riseMs * (this.cal.onsetRiseHoldK ?? 2.0)) / FRAME_MS);
+      if (this._riseHold > 0) this._riseHold--;
+      else this.onsetTarget *= decay;
+    } else {
+      this.onsetTarget *= decay;
+    }
+    this._prevTarget = this.onsetTarget;
+
 
     if (this.onsetBoost < this.onsetTarget) {
       // INSTANT ATTACK: pulsen ska landa PÅ slaget, inte krypa dit. Samma princip som
