@@ -323,7 +323,7 @@ const DEFAULT_CAL: LightCalibration = {
   autoAnchorSec: 60,
   anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
   lightRiseMs: 0,
-  shapeSmoothUpMs: 50,       // känsligaste ratten: 250 kväver dynamiken, 0 ger fladder
+  shapeSmoothUpMs: 25,       // känsligaste ratten: 250 kväver allt, 15 → strobe, 0 → fladder
   shapeSmoothDownMs: 150,
   colorSpectralTilt: 0.25,
 };
