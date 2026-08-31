@@ -103,6 +103,7 @@ export class Analyser {
   private buffer: Float32Array;      // sliding FFT window
   private prevMag: Float32Array;     // transformed magnitude from the previous hop
   private onsetPeak!: Float32Array;  // per-bin whitening peak history
+  private onsetPrev!: Float32Array;  // previous raw magnitude for onset differencing
   private onsetPeakDecay = 0;
   // --- Pre-allokerade scratchpads för 512-FFT + utdata (GC-skydd: process()
   //     allokerade ~7KB/hop → ~2.6 MB/s skräp @375Hz. Nu 0 alloc/hop). ---
@@ -992,6 +993,7 @@ export class Analyser {
     this.buffer = new Float32Array(cfg.fft.size);
     this.prevMag = new Float32Array(cfg.fft.size / 2);
     this.onsetPeak = new Float32Array(cfg.fft.size / 2);
+    this.onsetPrev = new Float32Array(cfg.fft.size / 2);
     this.windowed512 = new Float32Array(cfg.fft.size);
     this.spectrum512 = this.fft.createComplexArray();
     this.mag512 = new Float32Array(cfg.fft.size / 2);
@@ -1111,8 +1113,9 @@ export class Analyser {
           this.onsetPeak[i] = peak;
           onsetMag = compressed / Math.max(Analyser.ONSET_PEAK_FLOOR, peak);
         }
-        mag[i] = onsetMag;
-        const dd = onsetMag - this.prevMag[i];
+        mag[i] = m;
+        const dd = onsetMag - this.onsetPrev[i];
+        this.onsetPrev[i] = onsetMag;
         if (dd > 0) { flux += dd; if (i < kickBins) kickFlux += dd; }   // half-wave rectified
       }
       powSum += p; powW += i * p;
