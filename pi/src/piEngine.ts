@@ -23,7 +23,9 @@ import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
-import { getItem, setItem } from './storage.js';
+import { getItem, setItem, DATA_DIR } from './storage.js';
+import { writeFile } from 'node:fs';
+import { join } from 'node:path';
 import { dlog } from "./debugLog.js";
 import { noteTick } from './runtimeHealth.js';
 
@@ -928,7 +930,7 @@ export class PiLightEngine {
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
-    subdivLevel: number; energySm: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
+    subdivLevel: number; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
@@ -942,6 +944,7 @@ export class PiLightEngine {
       beatErr: this._beatErr,
       gridPulses: this._gridPulseCount,
       subdivLevel: this._subdivLevel,
+      trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
