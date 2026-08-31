@@ -1122,6 +1122,9 @@ export class Analyser {
       powSum += p; powW += i * p;
     }
     this.onsetPeakReady = true;
+    if (enhancedOnset) {
+      for (let i = 0; i < bassBins; i++) this.prevMag[i] = this.onsetPrev[i];
+    }
 
     // Swap: denna hops magnitud blir nästa hops prevMag (zero-copy, ingen alloc).
     { const t = this.prevMag; this.prevMag = this.mag512; this.mag512 = t; }
