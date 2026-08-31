@@ -15,11 +15,18 @@
  * räkna ihop dem gav en reboot för mycket i förlagan.
  */
 
-import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { getJson, setItem, removeItem } from './storage.js';
+import { DATA_DIR } from './storage.js';
 
 const KEY = 'mic-recovery';
-const REBIND_BIN = '/usr/local/sbin/lotus-i2s-rebind';
+// Motorn kan ALDRIG köra sudo (CapabilityBoundingSet saknar CAP_SETUID/SETGID →
+// "unable to change to root gid"). Varje privilegierad åtgärd går via
+// path-aktivering: vi skriver en begäran i vår egen ReadWritePaths-katalog,
+// lotus-i2s-rebind.path triggar root-tjänsten som binder om bussen och startar
+// om motorn EFTER ombindningen.
+const REQ_FILE = join(DATA_DIR, 'i2s-rebind.req');
 const GIVE_UP_WINDOW_S = 3600;
 const MAX_REBINDS = 2;
 const MAX_REBOOTS = 2;
@@ -66,14 +73,13 @@ export function escalateMicRecovery(reason: string, onGiveUp: () => void): void 
   if (rebinds < MAX_REBINDS) {
     const n = rebinds + 1;
     console.error(`[MicRecovery] frysning (${reason}) — ombindning ${n}/${MAX_REBINDS}`);
-    save([...attempts, { ts: Math.round(Date.now() / 1000), action: 'rebind' }]);
-    let out = '';
-    try {
-      out = execFileSync('sudo', ['-n', REBIND_BIN], { encoding: 'utf8', timeout: 20000 }).trim();
-      console.error(`[MicRecovery] ${out}`);
-    } catch (e: any) {
-      console.error(`[MicRecovery] ombindning misslyckades: ${e?.message ?? e}`);
+    if (!requestPrivileged('rebind')) {
+      // Kunde inte lämna begäran → ingen åtgärd skedde. Räkna INTE försöket
+      // (låtsas-försök gav gaveUp → lampan parkerad i idle-färg permanent).
+      save(attempts);
+      return;
     }
+    save([...attempts, { ts: Math.round(Date.now() / 1000), action: 'rebind' }]);
     // Exit oavsett om ombindningen rapporterade framgång: den här processen
     // håller filhandtag på den GAMLA styrenheten och kan inte använda den nya.
     // Låt systemd starta en färsk som öppnar enheten från noll.
@@ -84,12 +90,11 @@ export function escalateMicRecovery(reason: string, onGiveUp: () => void): void 
   if (reboots < MAX_REBOOTS) {
     const n = reboots + 1;
     console.error(`[MicRecovery] ombindning hjälpte ej (${reason}) — omstart av maskinen ${n}/${MAX_REBOOTS}`);
-    save([...attempts, { ts: Math.round(Date.now() / 1000), action: 'reboot' }]);
-    try {
-      execFileSync('sudo', ['-n', '/sbin/reboot'], { timeout: 10000 });
-    } catch (e: any) {
-      console.error(`[MicRecovery] reboot misslyckades: ${e?.message ?? e}`);
+    if (!requestPrivileged('reboot')) {
+      save(attempts);
+      return;
     }
+    save([...attempts, { ts: Math.round(Date.now() / 1000), action: 'reboot' }]);
     hardExit();
     return;
   }
@@ -101,6 +106,18 @@ export function escalateMicRecovery(reason: string, onGiveUp: () => void): void 
     'idle-färg och stannar där — ingen pulsning på fruset underlag.'
   );
   try { onGiveUp(); } catch {}
+}
+
+/** Lämna en begäran till root-tjänsten. False = inget hände (räkna inte försöket). */
+function requestPrivileged(what: 'rebind' | 'reboot'): boolean {
+  try {
+    writeFileSync(REQ_FILE, `${what}\n`, 'utf8');
+    console.error(`[MicRecovery] begäran lämnad: ${what} (${REQ_FILE})`);
+    return true;
+  } catch (e: any) {
+    console.error(`[MicRecovery] kunde inte skriva begäran (${what}): ${e?.message ?? e} — ingen åtgärd, försöket räknas ej`);
+    return false;
+  }
 }
 
 // process.exit väntar inte på trådar, men en native addon som blockerar i ALSA
