@@ -2,13 +2,17 @@ import { useEffect, useRef } from "react";
 
 /**
  * Live-simulering av ljusomvandlingen — visar hur reglagen påverkar utsignalen.
- * Speglar piEngine.tickInner: onsetTarget 0.45 på slaget med INSTANT attack,
- * exponentiell release med tau = clamp(fadeTauMin, fadeTauMax, fadeIntervalK ×
- * beatMs), pulsen modulerar taket med beatDepth, golvet läggs sist.
+ * Speglar piEngine.tickInner: onsetTarget 0.45 på slaget, målet HÅLLS i
+ * ceil(onsetRiseMs × onsetRiseHoldK / FRAME_MS) ramar medan boosten klättrar
+ * (RISE_HOLD), därefter decayar både mål och boost exponentiellt med
+ * tau = clamp(fadeTauMin, fadeTauMax, fadeIntervalK × beatMs). Pulsen modulerar
+ * taket med beatDepth, golvet läggs sist.
  */
 const FRAME_MS = (128 * 7 / 48000) * 1000;   // ANALYSER_HOP × BAND_EVERY_HOPS
 const BEAT_MS = 500;                         // 120 BPM referens
 const ONSET_PEAK = 0.45;
+const RISE_MS = 40, HOLD_K = 2.0;            // = motorns DEFAULT_CAL
+
 
 export function LightPreview({
   brightnessFloor, beatDepth, fadeIntervalK,
