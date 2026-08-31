@@ -104,6 +104,7 @@ export class Analyser {
   private prevMag: Float32Array;     // transformed magnitude from the previous hop
   private onsetPeak!: Float32Array;  // per-bin whitening peak history
   private onsetPrev!: Float32Array;  // previous raw magnitude for onset differencing
+  private onsetPeakReady = false;
   private onsetPeakDecay = 0;
   // --- Pre-allokerade scratchpads för 512-FFT + utdata (GC-skydd: process()
   //     allokerade ~7KB/hop → ~2.6 MB/s skräp @375Hz. Nu 0 alloc/hop). ---
@@ -1111,7 +1112,7 @@ export class Analyser {
           let peak = this.onsetPeak[i] * this.onsetPeakDecay;
           if (compressed > peak) peak = compressed;
           this.onsetPeak[i] = peak;
-          onsetMag = compressed / Math.max(Analyser.ONSET_PEAK_FLOOR, peak);
+          onsetMag = this.onsetPeakReady ? compressed / Math.max(Analyser.ONSET_PEAK_FLOOR, peak) : 0;
         }
         mag[i] = m;
         const dd = onsetMag - this.onsetPrev[i];
@@ -1120,7 +1121,7 @@ export class Analyser {
       }
       powSum += p; powW += i * p;
     }
-
+    this.onsetPeakReady = true;
 
     // Swap: denna hops magnitud blir nästa hops prevMag (zero-copy, ingen alloc).
     { const t = this.prevMag; this.prevMag = this.mag512; this.mag512 = t; }
