@@ -35,6 +35,8 @@ type AlsaMicModule = typeof import('./alsaMic.js');
 
 let attachedEngine: PiLightEngine | null = null;
 let attachedMic: AlsaMicModule | null = null;
+/** Latminnet. Valfritt: saknas det svarar endpointsen tomt i stallet for att fela. */
+let attachedSongStore: { list(): any[]; forget(k: string): boolean; save(): Promise<void>; size: number } | null = null;
 let invalidateIdleColorCacheFn: (() => void) | null = null;
 
 export interface SubsystemStarters {
@@ -55,10 +57,12 @@ export function attachSubsystemStarters(s: SubsystemStarters): void {
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
   mic: AlsaMicModule;
+  songStore?: { list(): any[]; forget(k: string): boolean; save(): Promise<void>; size: number } | null;
   invalidateIdleColorCache?: () => void;
 }): void {
   attachedEngine = runtime.engine;
   attachedMic = runtime.mic;
+  attachedSongStore = runtime.songStore ?? null;
   invalidateIdleColorCacheFn = runtime.invalidateIdleColorCache ?? null;
 
   // A2: cal-punkter laddas ENBART ur mic-state.json (alsaMic:s restoreMicState).
@@ -386,6 +390,100 @@ export function startConfigServer(port = 3050): void {
     }
   };
 
+  // RAW_CAPTURE: full-rate ljudinspelning for offline-uppspelning i bänken.
+  // Poängen är att kunna A/B:a analysator-ändringar mot IDENTISK insignal —
+  // syntetiska scenarier reproducerar inte de verkliga tempo-felen.
+  // ── LATMINNET ────────────────────────────────────────────────────────────
+  // Listan finns for att agaren ska kunna SLANGA ett varde. Ett felaktigt tempo
+  // i minnet ar VARRE an inget varde: det anvands med hog konfidens och rattas
+  // darfor inte av realtidsanalysen. Analysen kan sla fel pa en enskild
+  // inspelning -- kort klipp, tyst intro, en lat utan stabil puls.
+  app.get('/api/songs', (_req, res) => {
+    const st = attachedSongStore;
+    if (!st) { res.json({ songs: [], size: 0, available: false }); return; }
+    res.json({
+      available: true,
+      size: st.size,
+      songs: st.list().map((e: any) => ({
+        key: e.key, artist: e.artist, title: e.title,
+        bpm: e.bpm, bpmSource: e.bpmSource,
+        analysedSeconds: e.analysedSeconds, analysedAt: e.analysedAt,
+        beats: e.beats ? e.beats.length : 0,
+        drops: e.drops ? e.drops.length : 0,
+        // Uppmatt synkkorrigering: hur langt inspelningens tidslinje lag fel.
+        syncOffsetMs: e.syncOffsetMs ?? null,
+        downbeats: e.downbeats ? e.downbeats.length : 0,
+        parts: e.parts ? e.parts.map((p: any) => p.label) : [],
+      })),
+    });
+  });
+  app.post('/api/songs/forget', async (req, res) => {
+    const st = attachedSongStore;
+    const key = String(req.body?.key ?? '');
+    if (!st) { res.status(503).json({ error: 'inget latminne' }); return; }
+    if (!key) { res.status(400).json({ error: 'key saknas' }); return; }
+    const had = st.forget(key);
+    if (had) await st.save();
+    res.json({ ok: true, forgotten: had, size: st.size });
+  });
+
+  app.post('/api/raw-capture/start', (req, res) => {
+    const mic: any = attachedMic;
+    if (!mic?.startRawCapture) { res.status(503).json({ error: 'mic ej attachad' }); return; }
+    // `label` = latnamn + facit-BPM, t.ex. "Ricky Rose - Utan Dig 90". Foljer med
+    // ut i filnamnet sa klippet inte blir facit-lost nar det hamnar i testbanken.
+    const sec = mic.startRawCapture(Number(req.body?.seconds) || 30, String(req.body?.label ?? ''));
+    // LATPOSITIONEN VID FORSTA SAMPLET, fran latklockan.
+    //
+    // Insamlaren laste den sjalv INNAN den bad om start, och plockade dessutom
+    // vardet med en generisk sokning genom statusen som lika garna hittar Sonos
+    // nedrundade sekundvarde som klockans exakta. Bada felen gor offseten for
+    // LITEN, vilket far hela den lagrade tidslinjen -- slag, delar, drops -- att
+    // pasta att allt hander tidigare an det gor. Showen gick darfor FORE musiken:
+    // uppmatt 500-1700 ms, olika for varje inspelning.
+    //
+    // Motorn ager bade micen och klockan och ar den enda som kan svara pa var i
+    // laten det forsta samplet togs.
+    const posMs = (attachedEngine as any)?.songPositionMs ?? null;
+    // Motorn samlar landmarken parallellt med ljudet — samma FFT som sedan
+    // matchar dem, sa de tva sidorna ar symmetriska.
+    try { (attachedEngine as any)?.notifyCaptureStart?.(sec, String(req.body?.label ?? '')); } catch { /* diagnostik */ }
+    res.json({ ok: true, seconds: sec, label: String(req.body?.label ?? ''), positionMs: posMs });
+  });
+  /** Landmarkesvagens takt — for att kunna se att den lever och hur tat den ar. */
+  /**
+   * De tva reglagen, som ren text — for `lotus-corpus.sh`, som ar ett skalskript
+   * och inte ska behova tolka hela statusen for att veta om den far spela in.
+   */
+  app.get('/api/toggles', (_req, res) => {
+    const c: any = (getEngine() as any)?.cal ?? {};
+    res.type('text/plain').send(
+      `recordEnabled=${c.recordEnabled !== false ? 1 : 0}
+` +
+      `useRecording=${c.useRecording !== false ? 1 : 0}
+`);
+  });
+  app.get('/api/landmarks', async (_req, res) => {
+    try {
+      const mic: any = await import('./alsaMic.js');
+      res.json(mic.getLandmarkStats ? mic.getLandmarkStats() : { frames: 0, emitted: 0 });
+    } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
+  });
+  app.get('/api/raw-capture/status', (_req, res) => {
+    const mic: any = attachedMic;
+    if (!mic?.getRawCaptureStatus) { res.status(503).json({ error: 'mic ej attachad' }); return; }
+    res.json(mic.getRawCaptureStatus());
+  });
+  app.get('/api/raw-capture/wav', (_req, res) => {
+    const mic: any = attachedMic;
+    const wav = (attachedMic as any)?.getRawCaptureWav?.();
+    if (!wav) { res.status(404).json({ error: 'ingen inspelning klar' }); return; }
+    const slug = (attachedMic as any)?.getRawCaptureLabel?.() || 'capture';
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + slug + '.wav"');
+    res.send(wav);
+  });
+
   app.post('/api/subsystem/mic/start',   (_req, res) => startSubsystem('mic', res));
   app.post('/api/subsystem/sonos/start', (_req, res) => startSubsystem('sonos', res));
 
@@ -483,6 +581,16 @@ export function startConfigServer(port = 3050): void {
       if (f) {
         analyserFrame = {
           bpm: f.bpm, bpmConfidence: f.bpmConfidence,
+          // Vad LATMINNET gav for den lat som spelas, eller 0 om okand. Gor det
+          // synligt om motorn kor pa ett KANT tempo eller pa realtidsgissningen.
+          songBpm: (getEngine() as any)?.songBpm ?? 0,
+          // 'minne'  = kort tempo fran latminnet (kand lat)
+          // 'analys' = realtidsanalysen (okand lat) -- samma vag som forr
+          // Reglaget maste synas har ocksa: star det pa "analys" nar inspelningen
+          // ar avstangd sager UI:t sanningen om vad som faktiskt driver ljuset.
+          beatMode: (((getEngine() as any)?.songBpm ?? 0) > 0
+            && (getEngine() as any)?.cal?.useRecording !== false) ? 'minne' : 'analys',
+          memory: (getEngine() as any)?.memoryStatus ?? null,
           intensity: f.intensity, buildUp: f.buildUp, inRiser: f.inRiser,
           dropCount: f.dropCount, inZone: f.inZone, breaking: f.breaking,
           level: f.level, kick: f.kick,
