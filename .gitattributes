@@ -1,0 +1,6 @@
+# Pi-sidans filer MASTE ha LF. Checkas de ut med CRLF pa Windows och kopieras
+# till Pi:n faller bash pa vagnreturerna: ett fortsattnings-snedstreck escapar
+# da vagnreturen i stallet for radbrytningen. Uppmatt 2026-09-02 — skriptet gick
+# igenom `bash -n` lokalt men gav syntaxfel pa Pi:n.
+pi/system/** text eol=lf
+*.sh text eol=lf
