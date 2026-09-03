@@ -15,7 +15,9 @@
 
  */
 
-import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS } from './alsaMic.js';
+import { SongClock } from './songClock.js';
+import { renderShow, lastRenderedColors, DEFAULT_SHOW, SHOW_STEP_MS } from './showRenderer.js';
+import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
@@ -24,7 +26,98 @@ import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { getItem, setItem, DATA_DIR } from './storage.js';
-import { writeFile } from 'node:fs';
+import { writeFile, appendFileSync, writeFileSync } from 'node:fs';
+import type { Landmark } from './fingerprint.js';
+import { SongLock } from './songLock.js';
+
+/** Synkprovets logg. En rad per 100 ms: latposition <TAB> ra mic-RMS. */
+/**
+ * Matkedjans egen fordrojning, ms.
+ *
+ * Mic-RMS:et som jamfors ar en ~130 ms EMA, och till det kommer ALSA-buffert
+ * och ljudets gang genom rummet. Signalen vi laser BESKRIVER darfor ljud som
+ * lat en stund sedan. Utan den har kompensationen skulle motorn kalibrera bort
+ * sin egen matfordrojning och lagga ljuset lika mycket FOR SENT.
+ *
+ * Konstanten gar inte att mata isar fran synkfelet med den har metoden -- den
+ * ar en skattning, och den ar samma for alla latar.
+ */
+const MIC_PIPELINE_MS = 150;
+/**
+ * Hur mycket battre toppen maste vara an basta varde UTANFOR sin narhet.
+ *
+ * Musik upprepar sig. En lat i 136 BPM har en tvataktsfras var 3,5:e sekund, och
+ * korskorrelationen kan da hitta en nastan lika bra topp en hel fras fel -- inom
+ * sokfonstret pa +/-3 s. En sadan matning ser overtygande ut (hog r) men ar en
+ * hel fras bredvid.
+ *
+ * Misstanken vacktes av att "Mary Lou" matte +570 ms nar alla andra latar lag
+ * negativt. Alla inspelningar arver sitt fel fran samma mekanism och borde luta
+ * at samma hall.
+ *
+ * Ar toppen inte tydligt bast kastas matningen hellre an skrivs till fil -- den
+ * hamnar i latminnet och anvands vid varje framtida uppspelning.
+ */
+const SYNC_PEAK_MARGIN = 0.08;
+/** Hur nara toppen som raknas som samma topp. */
+const SYNC_PEAK_NEAR_MS = 400;
+/** Under sa svag korrelation ar toppen brus och matningen kastas. */
+const SYNC_MIN_R = 0.40;
+/**
+ * Sa manga par kravs innan en matning gors (10 Hz -> 40 s).
+ *
+ * Var 600 (60 s) forst, men da hann matningen sallan lo sut: uppmatt fick
+ * latarna bara 373-486 par innan de tog slut, eftersom klockan behover nagra
+ * sekunder pa sig och latbytet nollstaller. Den oberoende matningen gav r=0.73
+ * pa 373 par, sa 400 racker gott.
+ */
+const SYNC_MIN_SAMPLES = 400;
+/** Vanta pa sa manga par till innan nasta matning. */
+const SYNC_RETRY_STEP = 400;
+/**
+ * Hur manga matningar per uppspelning.
+ *
+ * En matning pa 40 s ljud raknar fram ett trovardigt varde (r=0.78) men
+ * spridningen mellan tva sadana matningar pa SAMMA lat blev ett par hundra ms:
+ * "Vad gor du med mig" gav -670 ms en gang och -170 ms nasta. Mer ljud ger
+ * stadigare svar, sa matningen gors om medan laten fortsatter och det svar med
+ * STARKAST korrelation far galla.
+ */
+const SYNC_MAX_TRIES = 3;
+/** Storsta korrigering vi tror pa. Mer an sa ar nagot annat fel. */
+const SYNC_MAX_MS = 3000;
+
+/**
+ * Synkprovets logg ar AVSTANGD SOM STANDARD.
+ *
+ * Motorn kalibrerar sig sjalv ur minnesbufferten och behover inte filen; den
+ * finns bara for att kunna kontrollera kalibreringen utifran med ett fristaende
+ * skript.
+ *
+ * `appendFileSync` ar en BLOCKERANDE skrivning, och den lag i ljudslingan tio
+ * ganger i sekunden. Diagnostik far aldrig sta i vagen for uppspelningen --
+ * satt LOTUS_SYNC_PROBE=1 nar den behovs.
+ */
+const SYNC_PROBE_ON = process.env.LOTUS_SYNC_PROBE === '1';
+
+/**
+ * Var landmarkena for en pagaende inspelning laggs.
+ *
+ * Motorn ager bade micen och FFT:n, sa den kan producera landmarkena med EXAKT
+ * samma kod som sedan matchar dem. Den symmetrin ar viktigare an den ser ut:
+ * en offline-berakning ur WAV-filen hade anvant en annan FFT, andra bandgranser
+ * och en annan forstarkning, och da matchar inte hasharna.
+ *
+ * Filen plockas upp av refinern, som lagger till samma inspelningsoffset som den
+ * redan lagger pa slag, delar och drops — sa landmarkena hamnar i SAMMA
+ * tidslinje som showen renderas i.
+ */
+// Motorns systemd-sandlada gor /home/pi SKRIVSKYDDAT: forsta forsoket gav
+// "EROFS: read-only file system". Landmarkena laggs darfor i motorns egen
+// datakatalog — samma som latminnet, dit den bevisligen far skriva, och dit
+// refinern redan har vagen.
+const LM_DIR = process.env.LOTUS_LM_DIR || '/var/lib/pi-control-center/apps/lotus-light';
+const SYNC_PROBE_FILE = (process.env.PCC_LOG_DIR || '/tmp') + '/syncprobe.tsv';
 import { join } from 'node:path';
 import { dlog } from "./debugLog.js";
 import { noteTick } from './runtimeHealth.js';
@@ -178,6 +271,19 @@ export interface LightCalibration {
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
+  /**
+   * Ska nya latar spelas in? AV = insamlaren later bli, minnet vaxer inte.
+   * Redan lagrade latar paverkas inte.
+   */
+  recordEnabled: boolean;
+  /**
+   * Ska en lagrad inspelning anvandas for uppspelning? AV = motorn kor
+   * realtidsvagen aven for latar den kanner igen.
+   *
+   * Verkar DIREKT, utan att invanta ett latbyte — den finns for att kunna
+   * jamfora de tva vagarna mot samma lat.
+   */
+  useRecording: boolean;
 
 
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
@@ -286,6 +392,8 @@ const DEFAULT_CAL: LightCalibration = {
   beatTrustSmoothMs: 400,
   beatTrustFloor: 0.35,      // golvet är den viktiga halvan: modulation på transienter
   recordFrames: 0,
+  recordEnabled: true,
+  useRecording: true,
 
   inLowFrac: 0.022,
   inHighFrac: 0.075,
@@ -313,7 +421,11 @@ const DEFAULT_CAL: LightCalibration = {
   subdivLoOn: 0.42,
   subdivLoOff: 0.60,
   subdivMinHoldMs: 12000,
-  subdivHalveAboveBpm: 145,  // dirigenten väljer presentationstakt, analysen ger tempot
+  // AV som default (2026-08-31). En hard BPM-grans ger ett KLIPP: 144 BPM pulsade
+  // pa 144, 146 pa 73 -- samma latmaterial, halva takten, for en skillnad pa 2 BPM.
+  // Anvandaren: "varfor halveras alla med bpm over en viss grans?" Reglaget finns
+  // kvar for den som vill ha lugnare puls i snabb musik, men ska inte vara pafors.
+  subdivHalveAboveBpm: 0,    // dirigenten väljer presentationstakt, analysen ger tempot
   subdivHalveHystBpm: 15,
   fadeEnergyCalm: 1.0,       // 1.0/1.0 = neutral; aggressivare värden backades av användaren
   fadeEnergyIntense: 1.0,
@@ -534,6 +646,34 @@ export class PiLightEngine {
   private _slowMean?: number;
   /** BAS-AVBRUS: asymmetrisk EMA av frekvensviktad nivå före dB-mappning. */
   private _wlevelSm?: number;
+  /** Synkprov: nar vi senast skrev en rad (throttlas till 10 Hz). */
+  private _syncLogAt = 0;
+  /** Parade matpunkter for synkkalibreringen: latposition + ra mic-RMS. */
+  private _syncPos: number[] = [];
+  private _syncRms: number[] = [];
+  /** Uppmatt korrigering som laggs pa showuppslaget, ms. */
+  private _showOffsetMs = 0;
+  private _syncR = 0;
+  private _syncDone = false;
+  /** Antal par da nasta matningsforsok far goras. */
+  private _syncNextAt = SYNC_MIN_SAMPLES;
+  /** Antal gjorda matningar och basta korrelation hittills for den har uppspelningen. */
+  private _syncTries = 0;
+  private _syncBestR = 0;
+  private _songArtist = '';
+  private _songTitle = '';
+  private _songSaveOffset: ((artist: string, title: string, ms: number) => void) | null = null;
+  /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
+  private _capBaseMs = -1;
+  private _capUntilMs = -1;
+  private _capLabel = '';
+  /** Landmarkeslaset — exakt position i den lagrade tidslinjen. */
+  private _lock = new SongLock();
+  private _lockResolveAt = 0;
+  /** Drev showen ljuset den senaste ticken? Utan detta gar det inte att se. */
+  private _showDrove = false;
+  private _capHash: number[] = [];
+  private _capTime: number[] = [];
   /** Långsamt dB-ankare; följer uppåt tre gånger långsammare. */
   private _wdbSlow?: number;
   /** Takjämning före heartbeat-smoothing. */
@@ -607,6 +747,7 @@ export class PiLightEngine {
   private _palette: [number, number, number][] = [];
   private _paletteVersion = 0;
   private _lastSeenPaletteVersion = -1;
+  private _lastColorIdx = -1;
 
   // Raw mode — disables all processors for gain calibration
   private _rawMode = false;
@@ -836,7 +977,438 @@ export class PiLightEngine {
    * medan tempo-sökningen vidgas i ~5 s, och lås-hållningen (coast) släpps så
    * en verkligt ny takt får ta över direkt.
    */
-  notifyTrackChange(): void {
+  /**
+   * Slår upp en låt i minnet. Sätts av index.ts; utan den beter sig motorn
+   * exakt som förr. Minnet är ett TILLÄGG, aldrig ett krav.
+   */
+  private _songLookup: ((artist: string, title: string) => any | null) | null = null;
+  /**
+   * SEKTIONSBETEENDE. Vilket ljus varje del av en lat ska ha.
+   *
+   * Tabellen kommer fran agarens egen tidigare kod (sectionLighting.ts) och ar
+   * konsumentsidan av det strukturmodellen producerar: modellen sager VAD som
+   * borjar, tabellen sager vad ljuset ska gora at det.
+   *
+   * Modellens vokabular ar intro/verse/chorus/bridge/break/inst/solo/outro.
+   * `drop` och `build_up` finns INTE dar — de kommer fran dropslistan, som
+   * raknas ur ljudets egen energikurva.
+   *
+   * scale = tak pa ljusstyrkan, pulse = hur djupt takten far modulera.
+   */
+  private static readonly SECTION: Record<string, { scale: number; pulse: number }> = {
+    intro:  { scale: 0.55, pulse: 0.45 },
+    verse:  { scale: 0.75, pulse: 0.70 },
+    chorus: { scale: 1.00, pulse: 1.00 },
+    bridge: { scale: 0.65, pulse: 0.55 },
+    break:  { scale: 0.40, pulse: 0.25 },
+    inst:   { scale: 0.85, pulse: 0.85 },
+    solo:   { scale: 0.90, pulse: 0.90 },
+    outro:  { scale: 0.55, pulse: 0.45 },
+  };
+  /**
+   * Hur snabbt sektionsbytet far slaa igenom. Ett hopp i ljusstyrka vid en
+   * sektionsgrans syns som ett fel aven nar tidpunkten ar ratt — darfor glidning.
+   * 2 s ar ungefar en fras och kanns som en medveten overgang.
+   */
+  private _secScale = 1;
+  private _secPulse = 1;
+  /** Normalisering sa latens starkaste sektion ger 1.0. Se notisen i notifyTrackChange. */
+  private _secNormS = 1;
+  private _secNormP = 1;
+
+  /**
+   * UPPSPELNING: latens EGEN energikurva driver ljuset.
+   *
+   * Utan det har ar minnet bara ett utbytt tempo — ljusstyrkan, formen och
+   * dynamiken kommer fortfarande fran micen, och da ar resultatet per definition
+   * inte battre an realtidslaget. Anvandaren: "vid inspelning borde ENBART
+   * inspelningen atergе ljuset, annars ar det ju meningslost". Precis sa.
+   *
+   * OCH DET AR BATTRE AN MICEN, inte bara annorlunda: offline ar HELA latens
+   * dynamik kand. Realtidsvagen maste gissa var taket ligger utifran de senaste
+   * sekunderna (`anchorOffsetDb`/`windowDb` som glider), medan uppspelningen kan
+   * satta fonstret exakt mot latens egen 95-percentil — en gang, korrekt.
+   */
+  /**
+   * DEN FARDIGRENDERADE SHOWEN. Ljusstyrka i procent per SHOW_STEP_MS.
+   *
+   * Nar den finns SLAR motorn bara upp positionen och laser ett tal. Ingen
+   * berakning per ram, alltsa ingenting for micens grindar, PLL-drift eller
+   * dubbelraknad uppbyggnad att forstora — de kodvagarna kors inte alls.
+   *
+   * Renderas vid latstart ur den LAGRADE analysen, inte vid inspelning: analysen
+   * ar ravara och dyr, renderingen ar presentation och gratis. Sa kan showens
+   * uttryck andras utan att en enda lat behover spelas in pa nytt.
+   */
+  private _show: Uint8Array | null = null;
+  /** Palettindex per showsteg. Samma langd som `_show`. */
+  private _showColor: Uint8Array | null = null;
+
+  private _pbEnergy: number[] | null = null;   // 0..255, 100 ms-raster
+  private _pbRef = 0;                          // latens 95-percentil, 0..255
+  private _pbShape = 0;                        // utjamnad form, 0..1
+
+  /**
+   * DROPS UR MINNET, FYRADE I FORVAG.
+   *
+   * Det har ar det enda realtidsanalysen ALDRIG kan gora. Den upptacker en drop
+   * forst nar energin redan stigit, och da ar lampan sen — plus BLE-latensen.
+   * Med en tidslinje ar dropen kand i forvag och kan fyras FORE.
+   *
+   * 120 ms ar samma varde systerprojektet pi-dmx kommit fram till for samma sak.
+   */
+  private static readonly DROP_PRE_MS = 120;
+  /**
+   * FORVANTAN — det ENDA realtidsanalysen aldrig kan gora.
+   *
+   * En realtidsmotor upptacker en drop nar energin redan stigit; da ar lampan
+   * per definition sen. Med en tidslinje ar dropen kand i forvag, och ljuset kan
+   * BYGGA UPP mot den — vilket ar skillnaden mellan att folja musiken och att
+   * gestalta den. Det ar hela poangen med att spela in laten.
+   *
+   * Formen ar den klassiska: en DIPP forst, sedan en stigning. Utan dippen
+   * marks inte uppbyggnaden — ljuset maste ge plats at det som ska komma.
+   */
+  private static readonly BUILD_MS = 5000;   // ~4 takter i 120 BPM
+  private static readonly BUILD_DIP = 0.45;  // hur djupt det sjunker vid start
+  private static readonly BUILD_TOP = 0.35;  // hur hogt det ar precis fore dropen
+
+  /**
+   * PROVAT OCH BORTTAGET 2026-09-02: dubbla presentationstakten nar det lagrade
+   * tempot var langsamt (78.9 -> 158).
+   *
+   * Infordes for att laga "blinkar inte" — men den VERKLIGA orsaken till det var
+   * sektionsbuggen: en lat vars enda sektion hette `intro` dampades permanent
+   * till 0.55 ljus och 0.45 pulsdjup. Dubblingen var alltsa en fix ovanpa en
+   * feldiagnos.
+   *
+   * Och den gjorde AKTIV SKADA: modellens slaglista for "Stora tuttar" ligger pa
+   * 760 ms mellanrum (79 BPM). Pulsas det pa 158 hamnar VARANNAN puls MELLAN
+   * slagen, utan musikaliskt stod. Anvandaren: "bara fladdrig, inte alls trevlig
+   * att titta pa" — vilket ar precis vad off-beat-pulser ser ut som.
+   *
+   * LAXA: minnet lagrar det tempo modellen faktiskt hittade slagen pa. Att
+   * presentera i ett annat tempo an slagen ligger pa ar att kasta bort det enda
+   * minnet vet sakert.
+   */
+
+  private _dropIdx = 0;
+  private _dropBoost = 0;
+
+  /** Latklockan: var i laten vi ar, pa millisekunden. Se songClock.ts. */
+  private _clock = new SongClock();
+  /** Hela minnesposten for laten som spelas — sektioner, drops, slag. */
+  private _songEntry: any = null;
+  /** Tempot vi VET att låten går i, eller 0 om låten är okänd. */
+  private _songBpm = 0;
+
+  setSongLookup(fn: ((artist: string, title: string) => { bpm: number } | null) | null): void {
+    this._songLookup = fn;
+  }
+
+  /**
+   * En rainspelning har just borjat. Landmarkena samlas parallellt med ljudet
+   * och skrivs till en sidofil nar fonstret stangs.
+   */
+  notifyCaptureStart(seconds: number, label: string): void {
+    const now = audioClockMs();
+    this._capBaseMs = now;
+    this._capUntilMs = now + Math.max(1, seconds) * 1000;
+    this._capLabel = label || '';
+    this._capHash = [];
+    this._capTime = [];
+    startFineEnergy();          // energikurvan i showens egen takt
+    dlog('beat', `Landmarken: samlar ${seconds} s for "${label}"`);
+  }
+
+  /**
+   * Landmarken fran micen. Tva mottagare:
+   *   under inspelning  -> samlas till sidofilen (tid RELATIVT inspelningsstart)
+   *   alltid            -> matchas mot den spelande latens lagrade landmarken
+   */
+  private onLandmarks(lms: Landmark[]): void {
+    const now = audioClockMs();
+    if (this._lock.loaded) {
+      for (const lm of lms) this._lock.feed(lm.hash, lm.t);
+      // `feed` ar het (en binarsokning per landmarke), `resolve` ar det inte —
+      // rakna ihop rosterna en gang i sekunden i stallet for tjugo.
+      if (now - this._lockResolveAt >= 1000) { this._lockResolveAt = now; this._lock.resolve(now); }
+    }
+    if (this._capBaseMs >= 0) {
+      if (now > this._capUntilMs) { this.flushCapture(); }
+      else {
+        for (const lm of lms) {
+          if (!lm.store) continue;
+          this._capHash.push(lm.hash);
+          this._capTime.push(Math.round(lm.t - this._capBaseMs));
+        }
+      }
+    }
+  }
+
+  /** Skriv det insamlade och sluta samla. */
+  private flushCapture(): void {
+    const n = this._capHash.length;
+    const label = this._capLabel;
+    this._capBaseMs = -1; this._capUntilMs = -1; this._capLabel = '';
+    const hash = this._capHash, time = this._capTime;
+    this._capHash = []; this._capTime = [];
+    const fine = stopFineEnergy();
+    if (n < 100 || !label) { dlog('beat', `Landmarken: for fa (${n}) — skippar`); return; }
+    // Samma slug-regel som insamlarskriptet ger WAV-filen, sa refinern hittar paret.
+    const slug = label.toLowerCase()
+      .replace(/[åä]/g, 'a').replace(/ö/g, 'o')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 58);
+    try {
+      // Energikurvan foljer med i samma fil: bada kommer ur SAMMA inspelning och
+      // maste dela tidslinje, annars beskriver de olika ogonblick.
+      writeFileSync(`${LM_DIR}/${slug}.lm.json`, JSON.stringify({
+        label, hash, time,
+        energy: fine ? fine.energy : undefined,
+        energyStepMs: fine ? fine.stepMs : undefined,
+      }));
+      dlog('beat', `Landmarken: ${n} skrivna till ${slug}.lm.json`);
+    } catch (e: any) { console.warn('[landmarks] kunde inte skriva:', e?.message ?? e); }
+  }
+
+  /** Dar en uppmatt synkkorrigering ska sparas. */
+  setSongOffsetSaver(fn: ((artist: string, title: string, ms: number) => void) | null): void {
+    this._songSaveOffset = fn;
+  }
+
+  /** Koppla in landmarkesvagen. Utan detta anrop kostar den ingenting alls. */
+  enableLandmarks(on: boolean): void {
+    micOnLandmarks(on ? (lms: Landmark[]) => this.onLandmarks(lms) : null);
+  }
+
+  /** Vad minnet gav för den låt som spelas nu — för status/UI. */
+  get songBpm(): number { return this._songBpm; }
+
+  /**
+   * Sonos rapporterade position. Matas sa ofta det gar — klockan anvander bara
+   * FORANDRINGAR (flankarna), for vardet sjalvt ar kvantiserat till hela
+   * sekunder och darmed ±500 ms. Flanken daremot ar skarp.
+   */
+  onSonosPosition(posMs: number | null): void {
+    this._clock.onPosition(posMs, Date.now());
+  }
+
+  /**
+   * MAT DET EGNA SYNKFELET och rakna ut korrigeringen.
+   *
+   * `clockErrorMs` duger inte till detta: den mater forutsagd mot rapporterad
+   * position vid varje flank, alltsa klockans KONSEKVENS med sig sjalv. Ligger
+   * bade forutsagelsen och referensen en sekund fel blir det mattet noll.
+   *
+   * Har jamfors i stallet den LAGRADE energikurvan mot vad micen FAKTISKT hor.
+   * Toppen i korskorrelationen ar den verkliga forskjutningen. Grov svepning
+   * forst, sedan fin kring toppen -- 72 utvarderingar i stallet for 301.
+   */
+  private _calibrateSync(): void {
+    // Matningen gors om nar mer ljud hunnit passera — bade for att ett tyst
+    // parti i borjan inte ska doma ut hela laten, och for att mer ljud ger ett
+    // stadigare svar. Se SYNC_MAX_TRIES.
+    this._syncNextAt = this._syncPos.length + SYNC_RETRY_STEP;
+    if (++this._syncTries >= SYNC_MAX_TRIES) this._syncDone = true;
+    const ent: any = this._songEntry;
+    const e: number[] | undefined = ent?.energy;
+    if (!e || e.length < 50) return;
+    const rec: number = ent.recordedFromMs || 0;
+    const pos = this._syncPos, rms = this._syncRms;
+
+    let mn = Infinity, mx = -Infinity;
+    for (const v of rms) { if (v < mn) mn = v; if (v > mx) mx = v; }
+    if (!(mx - mn > 1e-9)) return;
+    const span = mx - mn;
+
+    const corrAt = (lag: number): number => {
+      let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+      for (let i = 0; i < pos.length; i++) {
+        const k = Math.floor((pos[i] + lag - rec) / 100);
+        if (k < 0 || k >= e.length) continue;
+        const x = e[k] / 255, y = (rms[i] - mn) / span;
+        n++; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+      }
+      if (n < 200) return -2;
+      const cx = sxx - sx * sx / n, cy = syy - sy * sy / n;
+      if (cx <= 0 || cy <= 0) return -2;
+      return (sxy - sx * sy / n) / Math.sqrt(cx * cy);
+    };
+
+    // Grov svepning, sedan fin kring toppen — 72 utvarderingar i stallet for 301.
+    const coarse: Array<[number, number]> = [];
+    let bestLag = 0, bestR = -2;
+    for (let lag = -SYNC_MAX_MS; lag <= SYNC_MAX_MS; lag += 100) {
+      const r = corrAt(lag);
+      coarse.push([lag, r]);
+      if (r > bestR) { bestR = r; bestLag = lag; }
+    }
+    for (let lag = bestLag - 100; lag <= bestLag + 100; lag += 20) {
+      const r = corrAt(lag); if (r > bestR) { bestR = r; bestLag = lag; }
+    }
+    this._syncR = bestR;
+    // Bara ett BATTRE svar an det vi redan har far ersatta det.
+    if (bestR <= this._syncBestR) {
+      dlog('beat', `Synkmatning kastad: r=${bestR.toFixed(2)} inte battre an ${this._syncBestR.toFixed(2)}`);
+      return;
+    }
+    if (bestR < SYNC_MIN_R) {
+      dlog('beat', `Synkmatning kastad: r=${bestR.toFixed(2)} for svag — forsoker igen`);
+      return;
+    }
+    // Ar toppen entydig? Se SYNC_PEAK_MARGIN.
+    let rival = -2;
+    for (const [lag, r] of coarse) {
+      if (Math.abs(lag - bestLag) <= SYNC_PEAK_NEAR_MS) continue;
+      if (r > rival) rival = r;
+    }
+    if (bestR - rival < SYNC_PEAK_MARGIN) {
+      dlog('beat', `Synkmatning kastad: toppen otydlig (${bestR.toFixed(2)} mot ${rival.toFixed(2)}) — forsoker igen`);
+      return;
+    }
+    this._syncBestR = bestR;
+    // Matpunkterna ar tagna mot RA klockposition, sa svaret ar den ABSOLUTA
+    // korrigeringen -- oberoende av vad som redan lag pastalld.
+    let want = bestLag + MIC_PIPELINE_MS;
+    if (want > SYNC_MAX_MS) want = SYNC_MAX_MS;
+    if (want < -SYNC_MAX_MS) want = -SYNC_MAX_MS;
+    this._showOffsetMs = want;
+    dlog('beat', `Synk kalibrerad: ${want > 0 ? '+' : ''}${want} ms (r=${bestR.toFixed(2)})`);
+    try { this._songSaveOffset?.(this._songArtist, this._songTitle, want); } catch { /* minnet far aldrig falla motorn */ }
+  }
+
+  /** Latklockans tillstand — for status/UI och for sektionsuppslag. */
+  songClockState() { return this._clock.state(Date.now()); }
+
+  /** Var i laten vi ar just nu, ms. null = klockan vet inte an. */
+  get songPositionMs(): number | null { return this._clock.state(Date.now()).positionMs; }
+
+  /** Vilken sektion vi ar i just nu, eller '' om okand. For status/UI. */
+  get songSection(): string {
+    const parts = this._songEntry?.parts;
+    if (!parts || !parts.length) return '';
+    const pos = this._clock.state(Date.now()).positionMs;
+    if (pos == null) return '';
+    for (let i = parts.length - 1; i >= 0; i--) if (pos >= parts[i].t) return parts[i].label;
+    return '';
+  }
+
+  /** Diagnostik for UI: hela minnes-/klocktillstandet i ett svep. */
+  get memoryStatus() {
+    const c = this._clock.state(Date.now());
+    const _lkSt = this._lock.state(audioClockMs());
+    return {
+      bpm: this._songBpm,
+      positionMs: c.positionMs == null ? null : Math.round(c.positionMs),
+      /** Uppmatt synkkorrigering och hur stark matningen var. */
+      syncOffsetMs: Math.round(this._showOffsetMs),
+      syncR: Math.round(this._syncR * 100) / 100,
+      /** Landmarkeslaset: roster, hur tydlig toppen ar, och om det haller. */
+      /** Finns en renderad show, och drev den ljuset? Utan detta gick det inte
+       *  att skilja "kor pa minne" (bara tempot) fran "kor showen". */
+      showSteps: this._show ? this._show.length : 0,
+      showDrove: this._showDrove,
+      lockVotes: _lkSt.votes,
+      lockMargin: _lkSt.margin,
+      locked: _lkSt.showMs != null,
+      clockEdges: c.edges,
+      clockDriftPpm: c.driftPpm,
+      clockErrorMs: c.lastErrorMs,
+      section: this.songSection,
+      sectionScale: Math.round(this._secScale * 100) / 100,
+      dropsTotal: this._songEntry?.drops?.length ?? 0,
+      dropsFired: this._dropIdx,
+      dropBoost: Math.round(this._dropBoost * 100) / 100,
+    };
+  }
+
+  notifyTrackChange(artist?: string | null, title?: string | null): void {
+    // Synkprovet galler EN lat. Nollstall, annars korskorreleras nasta lat mot
+    // slutet av den forra och svaret blir brus.
+    if (SYNC_PROBE_ON) {
+      try {
+      writeFileSync(SYNC_PROBE_FILE, '# ' + (artist || '?') + ' - ' + (title || '?') + '\n');
+      } catch { /* diagnostik far aldrig stora uppspelningen */ }
+    }
+    // KÄNT TEMPO SLÅR GISSAT. Realtidsanalysen är kausal och måste prediktera
+    // nästa slag; en analys i efterhand har sett hela låten. UPPMÄTT mot
+    // Spotify-oberoende facit: LINEDANCE 145 (motorn 96, minnet 146),
+    // I'm In a Hurry 129 (motorn 86, minnet 129).
+    // OCH minnet har ingen vikning: "Snart tystnar musiken" går i 76 BPM, vilket
+    // motorn MÅSTE rapportera som 152 eftersom fönstret är [80,160). Lampan kan
+    // därmed äntligen pulsa i låtens eget tempo i stället för dubbelt.
+    this._songBpm = 0;
+    this._songEntry = null;
+    // Klockan nollas: ingenting fran forra laten galler. Driften behalls dock —
+    // klockfelet tillhor hardvaran, inte laten.
+    this._clock.reset();
+    this._secScale = 1; this._secPulse = 1;
+    this._secNormS = 1; this._secNormP = 1;
+    this._pbEnergy = null; this._pbRef = 0; this._pbShape = 0;
+    this._show = null; this._showColor = null; this._lastColorIdx = -1;
+    this._dropIdx = 0; this._dropBoost = 0;
+    this._syncPos = []; this._syncRms = []; this._syncDone = false; this._syncR = 0;
+    this._syncNextAt = SYNC_MIN_SAMPLES; this._syncTries = 0; this._syncBestR = 0;
+    this._lock.clear(); this._lockResolveAt = 0;
+    resetLandmarks();                       // inga par over latgransen
+    this._showOffsetMs = 0;
+    this._songArtist = artist || ''; this._songTitle = title || '';
+    if (this._songLookup && artist && title) {
+      try {
+        const hit = this._songLookup(artist, title);
+        if (hit && hit.bpm > 0) {
+          this._songBpm = hit.bpm;
+          this._songEntry = hit;
+          // Redan uppmatt for den har laten? Da ar den ratt fran forsta sekunden.
+          if (typeof hit.syncOffsetMs === 'number') this._showOffsetMs = hit.syncOffsetMs;
+          // Landmarken, om laten har nagra. De ar bade skarpare an energikurvan och
+          // oberoende av Sonos-positionen — se songLock.ts.
+          this._lock.load(hit.lmHash, hit.lmTime,
+                          (hit.recordedFromMs || 0) + (hit.analysedSeconds || 0) * 1000);
+          // NORMALISERA SEKTIONERNA MOT LATENS EGEN TOPP.
+          // Varden ur tabellen ar RELATIVA, inte absoluta nivaer. "Status behov"
+          // har EN sektion och den heter `intro` -> hela laten hamnade pa 0.55
+          // ljus och 0.45 pulsdjup, alltsa permanent dampad. Anvandaren:
+          // "mindre show an nar vi kor live... mycket besviken". Helt riktigt.
+          // Den STARKASTE sektion en lat har ska alltid ge fullt ljus; tabellen
+          // beskriver bara forhallandet MELLAN delarna.
+          let mS = 0, mP = 0;
+          for (const p of (hit.parts ?? [])) {
+            const sp = PiLightEngine.SECTION[p.label];
+            if (sp) { if (sp.scale > mS) mS = sp.scale; if (sp.pulse > mP) mP = sp.pulse; }
+          }
+          this._secNormS = mS > 0 ? 1 / mS : 1;
+          this._secNormP = mP > 0 ? 1 / mP : 1;
+          // Referensniva ur latens EGEN fordelning. 95-percentilen och inte
+          // maxvardet: ett enda anslag ska inte definiera vad "fullt" betyder.
+          const e: number[] | undefined = hit.energy;
+          if (e && e.length > 50) {
+            const srt = [...e].sort((x, y) => x - y);
+            this._pbRef = srt[Math.floor(srt.length * 0.95)] || 0;
+            this._pbEnergy = this._pbRef > 0 ? e : null;
+          } else { this._pbEnergy = null; this._pbRef = 0; }
+          // Rendera hela showen en gang. Kraver slag ELLER energikurva — utan
+          // nagot av dem finns inget att gestalta och realtidsvagen far ta over.
+          this._show = null; this._showColor = null;
+          try {
+            if ((hit.beats && hit.beats.length > 4) || (hit.energy && hit.energy.length > 20)) {
+              this._show = renderShow({
+                bpm: hit.bpm, beats: hit.beats, beatPositions: hit.beatPositions,
+                downbeats: hit.downbeats, parts: hit.parts, drops: hit.drops,
+                energy: hit.energy, analysedSeconds: hit.analysedSeconds,
+                recordedFromMs: hit.recordedFromMs,
+              }, { ...DEFAULT_SHOW, floorPct: this.cal.brightnessFloor ?? 18,
+                    beatDepth: this.cal.beatDepth ?? 0.62 });
+              this._showColor = lastRenderedColors();
+              dlog('beat', `Show renderad: ${this._show.length} steg (${Math.round(this._show.length * SHOW_STEP_MS / 1000)} s)`);
+            }
+          } catch { this._show = null; }
+          dlog('beat', `Låtminne: ${artist} – ${title} = ${hit.bpm} BPM` +
+' (känt)');
+        }
+      } catch { /* minnet får aldrig fälla motorn */ }
+    }
+
     const now = Date.now();
     this._reacqUntil = now + 5000;
     this._beatWasLocked = false;      // coast gäller inom EN låt
@@ -848,8 +1420,17 @@ export class PiLightEngine {
 
   private updateBeatClock(kick: boolean): void {
     const frame = getLatestFrame();
-    const bpm = frame?.bpm ?? 0;
-    const conf = frame?.bpmConfidence ?? 0;
+    // KÄNT TEMPO SLÅR ANALYSATORNS. Fasen kommer fortfarande från micen — den är
+    // BRA på fas (uppmätt −8 ms) och dålig på tempo, och det är precis tempot
+    // minnet tar över. Sonos egen position duger inte till fas: den är
+    // kvantiserad till hela sekunder (uppmätt), alltså ±500 ms = ett helt slag.
+    // Samma reglage galler tempot: ar inspelningen avstangd ska INGET komma ur
+    // minnet, annars vore jamforelsen mot realtid inte arlig.
+    const _useRec = this.cal.useRecording !== false;
+    const _memBpm = _useRec ? this._songBpm : 0;
+    const bpm = _memBpm > 0 ? _memBpm : (frame?.bpm ?? 0);
+    // Ett känt tempo är inte en gissning — låt inte en svag mic sänka förtroendet.
+    const conf = _memBpm > 0 ? Math.max(frame?.bpmConfidence ?? 0, 0.9) : (frame?.bpmConfidence ?? 0);
     const nowMs = Date.now();
     const reacq = nowMs < this._reacqUntil;
 
@@ -918,6 +1499,10 @@ export class PiLightEngine {
     let k = k0 * (0.3 + 1.4 * conf);       // tydlig takt → snabbare inlåsning
     if (k > 0.4) k = 0.4; else if (k < 0.03) k = 0.03;
     this._beat.anchorMs += err * beatMsNow * k;
+    // SISTA TRIMNINGEN. PLL:ens fasfel ar redan uppmatt har — mata in det i
+    // latklockan sa den far millisekundsupplosning ur micen. Klockan begransar
+    // sjalv till ett halvt slag, sa en granne-beat kan aldrig dra den en hel takt.
+    this._clock.trimToBeat(-err * beatMsNow, beatMsNow);
     if (conf > 0.4) {
       this._beat.bpm += err * 0.35 * conf;
       const lo = this._beatDetBpm - 4, hi = this._beatDetBpm + 4;
@@ -964,6 +1549,22 @@ export class PiLightEngine {
    */
   private processDrop(bassRms: number, frame: Frame | null): void {
     if (!this.cal.dropEnabled) return;
+    // KOR EN FORINSPELAD SHOW? Da ager showen ljuset, hela vagen.
+    //
+    // Livedetektorn gjorde en EXPRESS-SKRIVNING till BLE med full styrka sa
+    // fort micen horde en drop, och tvingade sedan pct=100 i dropFlashMs —
+    // forbi showen, som satts EFTERAT i tickInner och alltsa forlorade.
+    //
+    // Resultatet var precis vad agaren rapporterade: showen svartar ner strax
+    // FORE dropen, och landar livedetektorns blixt i den svartningen far man en
+    // full ljuspuff nagra hundra ms for tidigt. Det lases som "dropen kom for
+    // tidigt", och morkret som blir ljust lases som "ljusstyrkan ar inverterad".
+    //
+    // Tva sanningar om samma dropp kan inte bada galla. Den inspelade ar den
+    // battre: den VET nar dropen kommer och kan bygga upp mot den, medan
+    // livedetektorn per definition upptacker den forst efterat.
+    // (grindas nedan vid AVFYRNINGEN, inte har — detektorns glidande medel
+    //  maste halla sig varma sa den inte fyrar falskt nar en OKAND lat tar vid.)
     this.dropFrameCounter++;
 
     // Tidsbaserade EMA:er (dt-konstanterna är 100 Hz-kalibrerade, se M4): fast ~150ms, slow ~2.5s.
@@ -1016,7 +1617,7 @@ export class PiLightEngine {
     }
     this._dropSourceActive = analyserOwns ? 'analyser' : 'bass';
 
-    if (isDrop) {
+    if (isDrop && !this._show) {
       this.dropLastFrameIdx = this.dropFrameCounter;
       this.breakdownFrames = 0;
       const _now = performance.now();
@@ -1953,7 +2554,39 @@ export class PiLightEngine {
       // buildUp OCH ettan höjer TAKET (adderas inte ovanpå — då klampar de bort pulsen)
       const _f = getLatestFrame();
       const bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
-      let ceil = shapeSm * (1 + bu * (cal.buildUpGain ?? 0));
+      // ── UPPSPELNING: taket ur latens egen energikurva ────────────────────
+      // Ersatter micens `shapeSm` helt nar bade kurvan och positionen finns.
+      // Faller tillbaka pa micen sa fort klockan tappar — aldrig ett svart hopp.
+      let shapeUse = shapeSm;
+      if (this._pbEnergy) {
+        const _p = this._clock.state(Date.now()).positionMs;
+        if (_p != null && _p >= 0) {
+          // INTERPOLERA MELLAN FACKEN. Kurvan har 100 ms upplosning; utan
+          // interpolation hoppar ljuset i TRAPPSTEG tio ganger i sekunden, och
+          // genom ett 10 dB-fonster syns varje steg. Det var fladdret.
+          // (Utjamningen ensam raddade det inte: med tickMs 18 och
+          // shapeSmoothUpMs 25 blir EMA-alfan 0.72, alltsa nastan ingen
+          // utjamning alls — den slapper igenom hela steget pa en ram.)
+          const fi = _p / 100;
+          const i = Math.floor(fi);
+          if (i >= 0 && i + 1 < this._pbEnergy.length) {
+            const fr = fi - i;
+            const e0 = this._pbEnergy[i], e1 = this._pbEnergy[i + 1];
+            const v = (e0 + (e1 - e0) * fr) / this._pbRef;
+            const db = 20 * Math.log10(Math.max(v, 1e-4));
+            const win = Math.max(1, cal.windowDb ?? 10);
+            let sh = (db + win) / win;
+            if (sh < 0) sh = 0; else if (sh > 1) sh = 1;
+            // Egen tidskonstant, inte micens. Micens 25 ms ar satt for att folja
+            // en RA signal snabbt; har ar signalen redan slat och interpolerad,
+            // sa 80 ms tar bort resterande kantighet utan att gora ljuset trogt.
+            const a2 = Math.min(1, (this.tickMs || 18) / 80);
+            this._pbShape += (sh - this._pbShape) * a2;
+            shapeUse = this._pbShape;
+          }
+        }
+      }
+      let ceil = shapeUse * (1 + bu * (cal.buildUpGain ?? 0));
       ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.30);
       if (ceil > 1) ceil = 1;
 
@@ -1970,9 +2603,83 @@ export class PiLightEngine {
       this._trustSm = (this._trustSm == null) ? _tRaw : this._trustSm + (_tRaw - this._trustSm) * _tA;
       const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm);
 
-      const bd    = tc.beatDepth * trust;
+      // ── SEKTIONSBETEENDE ────────────────────────────────────────────────
+      // Kraver att vi VET var i laten vi ar. Klockan sager null tills den har
+      // underlag (tre Sonos-flankar), och da galler tabellens neutrala 1/1 —
+      // alltsa exakt samma ljus som forr. Sektioner ar ett TILLAGG.
+      let _tgtScale = 1, _tgtPulse = 1;
+      const _parts = this._songEntry?.parts;
+      if (_parts && _parts.length) {
+        const _pos = this._clock.state(Date.now()).positionMs;
+        if (_pos != null) {
+          let _lab = '';
+          for (let i = _parts.length - 1; i >= 0; i--) {
+            if (_pos >= _parts[i].t) { _lab = _parts[i].label; break; }
+          }
+          const _sp = PiLightEngine.SECTION[_lab];
+          if (_sp) {
+            _tgtScale = Math.min(1, _sp.scale * this._secNormS);
+            _tgtPulse = Math.min(1, _sp.pulse * this._secNormP);
+          }
+        }
+      }
+      // Glid, hoppa inte: ett steg i ljusstyrka vid en sektionsgrans laser som
+      // ett fel aven nar tidpunkten ar ratt. ~2 s = ungefar en fras.
+      const _secA = Math.min(1, (this.tickMs || 18) / 2000);
+      this._secScale += (_tgtScale - this._secScale) * _secA;
+      this._secPulse += (_tgtPulse - this._secPulse) * _secA;
 
-      let energyForm = ceil * ((1 - bd) + bd * pn);
+      // ── DROPS UR MINNET ─────────────────────────────────────────────────
+      // Fyras DROP_PRE_MS fore sin tidpunkt. Index gar bara framat; hoppar
+      // positionen bakat (seek) sokas det om, annars skulle en spolning
+      // antingen missa alla drops eller fyra dem i klump.
+      const _drops = this._songEntry?.drops;
+      if (_drops && _drops.length) {
+        const _pos = this._clock.state(Date.now()).positionMs;
+        if (_pos != null) {
+          if (this._dropIdx > 0 && _drops[this._dropIdx - 1] && _pos < _drops[this._dropIdx - 1].t - 2000) {
+            this._dropIdx = 0;                       // spolat bakat
+            while (this._dropIdx < _drops.length && _drops[this._dropIdx].t + PiLightEngine.DROP_PRE_MS < _pos) this._dropIdx++;
+          }
+          while (this._dropIdx < _drops.length && _pos >= _drops[this._dropIdx].t - PiLightEngine.DROP_PRE_MS) {
+            const _d = _drops[this._dropIdx++];
+            // Bara om vi ar NARA i tiden. En klocka som just hittat ratt far
+            // inte spela upp hela latens drops pa en gang.
+            if (Math.abs(_pos - _d.t) < 1500) this._dropBoost = Math.max(this._dropBoost, _d.s ?? 0.5);
+          }
+        }
+      }
+      // ── FORVANTAN: bygg upp mot nasta drop ──────────────────────────────
+      // Kraver inget nytt tillstand — nasta drop ar helt enkelt `_dropIdx`.
+      let _build = 1;
+      if (_drops && this._dropIdx < _drops.length) {
+        const _p2 = this._clock.state(Date.now()).positionMs;
+        if (_p2 != null) {
+          const _dt = _drops[this._dropIdx].t - _p2;
+          if (_dt > 0 && _dt < PiLightEngine.BUILD_MS) {
+            const _u = 1 - _dt / PiLightEngine.BUILD_MS;      // 0 vid start, 1 vid dropen
+            // Dipp forst, stigning sedan: ljuset ger plats at det som kommer.
+            const _sh = _drops[this._dropIdx].s ?? 0.5;
+            _build = 1 - PiLightEngine.BUILD_DIP * _sh * (1 - _u)
+                       + PiLightEngine.BUILD_TOP * _sh * (_u * _u);
+          }
+        }
+      }
+
+      // Avklingning: ~350 ms till halva. Kort nog att kannas som en traff,
+      // langt nog att inte bli ett flimmer.
+      if (this._dropBoost > 0) {
+        this._dropBoost *= Math.exp(-(this.tickMs || 18) / 500);
+        if (this._dropBoost < 0.01) this._dropBoost = 0;
+      }
+
+      const bd    = tc.beatDepth * trust * this._secPulse;
+
+      let energyForm = ceil * this._secScale * _build * ((1 - bd) + bd * pn);
+      // Dropen lyfter MOT taket i stallet for att adderas — sa den aldrig kan
+      // klippa, och sa den betyder mest nar ljuset ar lagt (vilket ar precis
+      // dar en drop gor storst intryck).
+      if (this._dropBoost > 0) energyForm += this._dropBoost * (1 - energyForm);
       if (energyForm > 1) energyForm = 1;
       let outN = floorN + energyForm * (1 - floorN);
       if (outN < floorN) outN = floorN;
@@ -1980,6 +2687,69 @@ export class PiLightEngine {
 
       _diag.energyNorm = outN;
       let pct = outN * 100;
+
+      // ── FARDIG SHOW: bara slaa upp ────────────────────────────────────────
+      // Allt ovanfor har raknats men kastas nar showen finns. Det ar med flit:
+      // de raderna ar realtidsvagen, och den ska vara orord som fallback nar
+      // laten ar okand eller klockan tappar. Uppspelningen far INTE bero pa dem.
+      // Reglaget "Anvand inspelning" — gallret ligger HAR och inte vid latbytet,
+      // sa det gar att sla om mitt i en lat och se skillnaden direkt.
+      if (this._show && this.cal.useRecording !== false) {
+        // VAR I SHOWEN AR VI? Tva kallor, och landmarkena gar fore.
+        //
+        //   laset    matchar det micen HOR mot inspelningens landmarken. Ligger
+        //            redan i showens tidslinje, sa ingen korrigering behovs.
+        //   klockan  Sonos-position plus uppmatt korrigering. Reserv nar laset inte
+        //            hunnit greppa, eller nar laten saknar landmarken.
+        const _lk = this._lock.state(audioClockMs());
+        let _sp: number | null = _lk.showMs;
+        if (_sp == null) {
+          const _cp0 = this._clock.state(Date.now()).positionMs;
+          _sp = _cp0 == null ? null : _cp0 + this._showOffsetMs;
+        }
+        if (_sp != null && _sp >= 0) {
+          // TRE termer, och de tacker tre OLIKA saker:
+          //   _sp              var klockan tror att vi ar i laten
+          //   _showOffsetMs    uppmatt fel i den lagrade tidslinjen (MATNINGEN)
+          //   beatLeadMs       hur sent ljuset faktiskt kommer (UTGANGEN)
+          //
+          // Den sista saknades. Det ar latt att tro att en forinspelad show inte
+          // behover nagot forsprang — ingen forutsagelse kravs ju nar framtiden
+          // redan ar kand. Men beatLeadMs ar inte forutsagelse: 87 ms av det ar
+          // remsans uppmatta STIGTID och ~45 ms utsignalslatens. Lampan lyser lika
+          // sent oavsett om vardet raknades fram nyss eller for en timme sedan.
+          // Skillnaden ar att kompensationen HAR blir trivial: vi laser langre fram
+          // i arrayen i stallet for att extrapolera.
+          const _lead = this.cal.beatLeadMs ?? 0;
+          // _sp ar redan korrigerad i bada grenarna — bara utgangslatensen aterstar.
+          const _k = Math.round((_sp + _lead) / SHOW_STEP_MS);
+          if (_k >= 0 && _k < this._show.length) { pct = this._show[_k]; this._showDrove = true; }
+          else this._showDrove = false;
+
+          // SYNKPROV. Klockan sager var i laten vi tror att vi ar; micen sager
+          // vad som faktiskt later just da. Loggas parat -- utan HTTP mellan sig
+          // -- sa att korskorrelationen mater showens tidsforskjutning och inte
+          // natverkets jitter. 10 Hz, samma raster som energikurvan.
+          const _now = Date.now();
+          if (_now - this._syncLogAt >= 100) {
+            this._syncLogAt = _now;
+            // Matpunkterna tas mot RA klockposition, utan korrigeringen — annars
+            // skulle matningen jaga sin egen svans.
+            // Sluta samla nar matningarna ar gjorda — bufferten fyller annars
+            // pa hela laten utan att nagon laser den.
+            if (!this._syncDone) {
+              this._syncPos.push(_sp);
+              this._syncRms.push(getLightRawRms());
+              if (this._syncPos.length >= this._syncNextAt) this._calibrateSync();
+            }
+            if (SYNC_PROBE_ON) {
+              try {
+              appendFileSync(SYNC_PROBE_FILE, Math.round(_sp) + '\t' + getLightRawRms().toFixed(6) + '\n');
+              } catch { /* diagnostik far aldrig stora uppspelningen */ }
+            }
+          }
+        }
+      }
 
       // Fast round + clamp
       pct = (pct + 0.5) | 0;
@@ -2014,12 +2784,44 @@ export class PiLightEngine {
       // ── Color fade-tween (mjuk övergång till nytt palette-mål) ──
       // Läs alltid palette[0] löpande som mål — så att sena palette-uppdateringar
       // från gateway syns direkt utan att kräva setPalette-call varje gång.
-      if (this._paletteVersion !== this._lastSeenPaletteVersion && this._palette.length > 0) {
+      // ── SHOWEN VALJER FARG ────────────────────────────────────────────────
+      // Motorn anvande bara palette[0]; tre av albumets fyra farger lag oanvanda.
+      // Nu bestammer showen vilken plats som galler: refrangen far omslagets
+      // dominerande farg, verserna en annan, lugna delar en tredje, och dropen
+      // en kontrastfarg som utropstecken.
+      // Bytet sker BARA vid sektionsgranser och den befintliga 3-sekundersfaden
+      // gor overgangen mjuk — aldrig ett hopp mitt i en fras.
+      // Showen sager hur mycket fargen ska dras MOT VITT. Huen behalls fran
+      // paletten — ett hue-byte per sektion blev disko, och albumpaletterna har
+      // ofta bara en distinkt farg anda.
+      let _wash = -1;
+      if (this._showColor) {
+        const _lc = this._lock.state(audioClockMs());
+        let _cp: number | null = _lc.showMs;
+        if (_cp == null) {
+          const _p0 = this._clock.state(Date.now()).positionMs;
+          _cp = _p0 == null ? null : _p0 + this._showOffsetMs;
+        }
+        if (_cp != null && _cp >= 0) {
+          // SAMMA tre termer som ljuset. Farg och ljus far aldrig lasa ur olika
+          // punkter i showen — da beskriver de olika ogonblick av samma lat.
+          const _ck = Math.round((_cp + (this.cal.beatLeadMs ?? 0)) / SHOW_STEP_MS);
+          if (_ck >= 0 && _ck < this._showColor.length) _wash = this._showColor[_ck] / 255;
+        }
+      }
+      if (_wash >= 0 && this._palette.length > 0) {
+        const pc = this._palette[0];
+        this.colorTarget[0] = pc[0] + (255 - pc[0]) * _wash;
+        this.colorTarget[1] = pc[1] + (255 - pc[1]) * _wash;
+        this.colorTarget[2] = pc[2] + (255 - pc[2]) * _wash;
+        this._lastSeenPaletteVersion = this._paletteVersion;
+      } else if (this._paletteVersion !== this._lastSeenPaletteVersion && this._palette.length > 0) {
         const p0 = this._palette[0];
         this.colorTarget[0] = p0[0];
         this.colorTarget[1] = p0[1];
         this.colorTarget[2] = p0[2];
         this._lastSeenPaletteVersion = this._paletteVersion;
+        this._lastColorIdx = 0;
       }
       // Time-based fade: använd faktisk elapsed sedan förra tick istället för
       // precomputed alpha (som antog exakt tickMs-intervall). Skyddar mot
@@ -2045,7 +2847,9 @@ export class PiLightEngine {
       // ── Color calibration ──
       // Drop-flash: medan dropFlashUntil är aktiv forceras full vit punch (pct=100)
       // som overridar normal output, sen decay tillbaka till grund nästa tick.
-      const dropFlash = this.dropFlashUntil > _tickStart;
+      // Samma regel har: en blixt som hann sattas innan showen laddades far inte
+      // overrida den efterat.
+      const dropFlash = !this._show && this.dropFlashUntil > _tickStart;
       if (dropFlash) {
         pct = 100;
         this.lastSentPct = 100; // bypassa deadband så blixten alltid skickas

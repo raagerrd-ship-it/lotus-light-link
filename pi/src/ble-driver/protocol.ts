@@ -7,7 +7,8 @@
  * lease + ACL-outstanding-gate är fria. BLE-stall droppar alltså frames utan
  * att engine-ticken/smoothing/beat kan frysa.
  *
- * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
+ * Stuck-detektion: >1000 ms outstanding → räkna + warn, INGEN force-disconnect.
+ * (Force-disconnect provades 2026-09-02 och återtogs — se leaseAndDrainState.)
  *
  * Conn-interval: 16 units = 20 ms (se forceConnInterval.ts — 7.5 ms hängde Pi:n).
  */
@@ -211,6 +212,15 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
         lastStuckWarnAt = now;
       }
     }
+    // INGEN FORCE-DISCONNECT. Provat 2026-09-02 och ATERTAGET.
+    //
+    // Resonemanget var att `controllerStuckCount` och `disconnectCount` foljts
+    // at i alla observerade fall, sa frankopplingen kom anda — att riva lanken
+    // tidigare skulle bara korta frysningen. Det holl inte i drift: rivningen
+    // loste ut EN gang och lampan kom sedan inte tillbaka pa tre minuter.
+    //
+    // Att vanta ut supervision-timeouten ar langsammare men aterhamtar sig.
+    // En snabbare rivning ar inte battre an en som faktiskt kommer tillbaka.
   } else {
     bleStats.outstandingAgeMs = 0;
     if (lastSendStartedAt > 0 && outstanding === 0) {
