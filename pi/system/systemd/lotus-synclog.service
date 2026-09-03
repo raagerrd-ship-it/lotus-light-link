@@ -1,0 +1,14 @@
+[Unit]
+Description=Lotus: synklogg for efterhandsanalys
+After=lotus-light-engine.service
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/local/bin/lotus-synclog.sh
+Restart=always
+RestartSec=15
+Nice=19
+
+[Install]
+WantedBy=multi-user.target

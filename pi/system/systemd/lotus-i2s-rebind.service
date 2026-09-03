@@ -1,0 +1,6 @@
+[Unit]
+Description=Rebind the lotus I2S controller on request
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lotus-i2s-rebind-req

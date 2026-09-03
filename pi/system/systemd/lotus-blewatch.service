@@ -1,0 +1,14 @@
+[Unit]
+Description=Lotus: BLE-vakthund, cyklar adaptern om lampan blir mork
+After=lotus-light-engine.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/lotus-blewatch.sh
+Restart=always
+RestartSec=30
+Nice=19
+
+[Install]
+WantedBy=multi-user.target
