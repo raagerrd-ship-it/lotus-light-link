@@ -97,6 +97,20 @@ export interface Frame {
 }
 
 
+// ── DROP-DETEKTOR (synk fran DMX-master, ladan-facit 2026-09-03) ─────────────
+// Kroppen ar RA dB → alla grindar ar dB-SKILLNADER (gain-oberoende: portar rent
+// fran aux till mic). underPeak-kvalitetsgrinden skiljer riktiga slam (landar pa
+// toppen) fran falska partiella aterhamtningar. env-tunbart for offline-svep.
+const BODY_RISE_DB = 17;
+const BODY_GONE_DB = 5;
+const BODY_GONE_MIN_MS = Number(process.env.BODY_GONE_MIN_MS ?? 2000);
+const BODY_PEAK_DB = Number(process.env.BODY_PEAK_DB ?? 10);
+const DROP_QUALITY_DB = Number(process.env.DROP_QUALITY_DB ?? 3.5);
+const DROP_SHORT_MS = 4000;
+const DROP_LONG_MS = 20000;
+const DROP_ESCALATE_DB = 3;
+const BODY_CEIL_DB_S = 0.15;
+
 export class Analyser {
   private fft: FFT;
   private window: Float32Array;
@@ -298,12 +312,16 @@ export class Analyser {
    *  SLÅR TILLBAKA i dropen är basen.
    *  Nivå-baserad zon gav 172 flanker på 15 min (en var 5:e sekund) för ~19 drops.
    *  Baskropps-zonen ger 46 (en var 20:e sekund) — rätt storleksordning. */
-  private bodyEnv = 0;
+  private bodyEnv = -120;
   /** Snabb envelopp (0.12 s) ENBART for stigningstakten. Den langsammare
    *  bodyEnv (0.35 s) styr tak och franvaro. Blandar man ihop dem dampas
    *  stigningen och trosklarna slutar motsvara det som mattes i banken. */
-  private bodyFast = 0;
-  private bodyCeil = 0.2;
+  private bodyFast = -120;
+  private bodyCeil = -300;   // dB
+  private bodyPeak = -300;   // SEG topp (loud-referens i minuter) for landa-hogt
+  private lastGoneSpanMs = 0;
+  private lastDropRise = 0;
+  private wasBodyOnset = false;
   /** ANSLAGSDETEKTION. En tröskel som ska NÅS korsas först när basen redan
    *  kommit — uppmätt 2.5 s efter anslaget. STIGNINGSTAKTEN fyrar när den
    *  börjar: uppmätt 0.1 s. Ringbuffert med 0.5 s historik (förallokerad). */
@@ -335,6 +353,7 @@ export class Analyser {
    * novelty läser i stället den här, i dB, där en ramp är en ramp oavsett nivå.
    */
   private bandDb = new Float32Array(8);
+  private bandDbRaw = new Float32Array(8);   // RA dB per band (drop-detektorns kropp) — synk fran DMX-master 2026-09-03
   /** Stor-FFT-rutor med signal i rad. Onsets hålls tysta tills MAD hunnit byggas
    *  upp — se `ONSET_WARM` och kommentaren vid bandOn. */
   private onsetWarm = 0;
@@ -1478,6 +1497,7 @@ export class Analyser {
       // Obehandlad nivå i dB, normaliserad till 0..1 över ett 60 dB-spann.
       // Ingen AGC, inget tak som följer med uppåt → en stigning syns som stigning.
       const db = 20 * Math.log10(avg + 1e-7);
+      this.bandDbRaw[b] = db;   // RA dB (drop-kropp)
       this.bandDb[b] = Math.max(0, Math.min(1, (db + 70) / 60));
       // Per-band AGC: skala mot egen långsamt sjunkande peak → varje band nyttjar
       // full range oavsett mix (bas dominerar annars alltid rå-magnituden).
@@ -1573,16 +1593,26 @@ export class Analyser {
     // BASKROPPEN — drop-detektionens egen signal (tak + frånvaro + stigningstakt).
     // `inZone` lämnas orörd: effektlagret använder den som "musiken ligger högt".
 
-    const bodyNow = (this.bandLvl[0] + this.bandLvl[1] + this.bandLvl[2]) / 3;   // sub + kick + bas
+    const bodyNow = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;   // ra dB
     this.bodyEnv += (bodyNow - this.bodyEnv) * Math.min(1, dtHop / 0.35);
-    this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / 0.12);
-    this.bodyCeil = Math.max(this.bodyEnv, this.bodyCeil - dtHop * 0.015 * this.bodyCeil);
+    this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / 0.12);   // 0.06 testat men gav falsklarm live utan att fixa beat-lagget (det sitter i lamp-vagen/energin, inte har)
+    // TAKET SJUNKER I dB PER SEKUND, inte i procent. Kroppen ar nu ett dB-tal
+    // (negativt), och "1,5 % av ett negativt tal" gor taket STORRE, inte mindre —
+    // den gamla raden var matematiskt omvand sa fort skalan blev logaritmisk.
+    this.bodyCeil = Math.max(this.bodyEnv, this.bodyCeil - dtHop * BODY_CEIL_DB_S);
+    this.bodyPeak = Math.max(this.bodyEnv, this.bodyPeak - dtHop * 0.04);   // ~0.04 dB/s ≈ haller loud-referensen i minuter
 
     // BAS-FRÅNVARO med VARAKTIGHETSKRAV: under 40 % av taket i ≥2 s i sträck.
-    if (this.bodyEnv < this.bodyCeil * 0.40) {
+    // FRANVARO = ETT AVSTAND I dB, inte en kvot. En kvot mellan tva logaritmer
+    // betyder ingenting fysiskt.
+    if (this.bodyEnv < this.bodyCeil - BODY_GONE_DB) {
       this.bodyGoneMs += dtHop * 1000;
-      if (this.bodyGoneMs >= 2000) this.lastBodyGoneMs = nowWallA;
-    } else this.bodyGoneMs = 0;
+      // BODY_GONE_MIN_MS: hur LÄNGE kroppen måste ha varit borta för att räknas
+      // som en riktig breakdown. En 2s sidechain-dipp i en megamix är inte en
+      // drop-förberedelse; en riktig breakdown varar flera sekunder. Env-tunbar
+      // så den kan svepas mot facit offline.
+      if (this.bodyGoneMs >= BODY_GONE_MIN_MS) this.lastBodyGoneMs = nowWallA;
+    } else { if (this.bodyGoneMs > 0) this.lastGoneSpanMs = this.bodyGoneMs; this.bodyGoneMs = 0; }
     // STIGNINGSTAKT över 0.5 s (ringbuffert, ingen allokering).
     const hist = this.bodyHist, HL = hist.length;
     const oldest = hist[(this.bodyHistPos + HL - this.bodyHistLen) % HL];
@@ -1598,7 +1628,17 @@ export class Analyser {
     // 40 %/2 s slar 30 %/3 s: verkliga drops kommer ofta efter en DELVIS
     // nedgang, inte total tystnad — 10 av 11 missade drops foll pa just det.
     // Precision 46 -> 56 %, recall 35 -> 53 %.
-    const bodyOnset = bodyRise > 0.15 && nowWallA - this.lastBodyGoneMs < 6000;
+    // MÅSTE LANDA HÖGT, inte bara stiga. bodyRise är i dB, så en liten uppgång från
+    // nära-tystnad (en djup breakdown) ger ett STORT dB-lyft trots att den landar på
+    // en fortfarande LÅG nivå → falsk drop "där energin knappt gått upp" (ägaren i
+    // ladan 2026-09-03). Kräv att kroppen landar inom BODY_PEAK_DB av den senaste
+    // toppen (bodyCeil) — en riktig drop når nästan sitt eget tak; en uppgång i ett
+    // tyst parti gör det inte.
+    // Mot SEGA toppen (bodyPeak), inte snabba taket: en falsk drop i ett tyst parti
+    // landar lagt (fast ~10) medan riktiga landar hogt (fast ~34+); den sega toppen
+    // haller loud-referensen (~44) sa den laga landningen avvisas aven om taket tillf. sjunkit.
+    const landsHigh = this.bodyFast > this.bodyPeak - BODY_PEAK_DB;
+    const bodyOnset = bodyRise > BODY_RISE_DB && landsHigh && nowWallA - this.lastBodyGoneMs < 6000;
     // EN DROP MASTE LANDA I HOG ENERGI. Villkoren ovan tittar bara pa LOKALA
     // nivasprang (svacka -> topp-zon) och vet inget om var i laten vi ar, sa varje
     // liten variation i ett tyst parti raknades som en drop.
@@ -1633,8 +1673,24 @@ export class Analyser {
     // dar 8 var det kortaste. En drop kan alltsa omojligt folja pa en annan inom
     // 8 takter (32 taktslag). Gransen skalar nu med tempot: ~13s vid 150 BPM,
     // ~21s vid 90 BPM.
-    const minGapMs = this.localBpm > 40 ? (32 * 60000 / this.localBpm) : 13000;
-    const dropSpacingOk = nowWallA - this.lastDropMs > minGapMs;
+    // REFRAKTAR = 32 taktslag (8 takter). MATT: verkliga drop-avstand 8-40 takter.
+    // TESTAT 2026-09-02 att korta till 16: F1 45 -> 33, +50 falsklarm (modern-spar
+    // fyrar flera ggr per drop utan spärren). "Kroppen-var-borta"-kravet racker INTE
+    // som ensamt skydd → spärren behalls. En falsk drop som lasar ute en riktig loses
+    // med BATTRE PRECISION eller energi-gasen, inte med kortare spärr.
+    // DROP-REFRAKTÄR 4 s (ägaren i ladan 2026-09-03: vill ha tätare lamp-drops).
+    // Var 32 taktslag (~15 s). Röken översprutar INTE av detta — den har egen
+    // cooldown (fog.cooldownMs = 30 s) som gatar den oberoende av lampornas drop.
+    // OBS: kortare spärr → fler drops (och fler falska); medvetet val, agaren dömer
+    // live. testDrops-F1 sjunker (spärren gjorde jobb där) men det är sekundärt här.
+    // ESKALERINGS-REFRAKTÄR (ägaren i ladan 2026-09-03, mot falska drops): en drop
+    // strax efter en annan får BARA fyra om den är TYDLIGT STARKARE (större bas-lyft)
+    // än den förra — annars måste 20 s gå. Riktiga drops eskalerar (varje större);
+    // falska är svagare upprepningar och sållas bort. En eskalerande drop (kvällens
+    // stora ögonblick) släpps ändå igenom direkt (ned till 4 s).
+    const sinceDrop = nowWallA - this.lastDropMs;
+    const stronger = bodyRise > this.lastDropRise + DROP_ESCALATE_DB;
+    const dropSpacingOk = sinceDrop > DROP_LONG_MS || (sinceDrop > DROP_SHORT_MS && stronger);
     // RISER-KRAVET AR AVSTANGT — men INTE for att signalen ar dod. Den gamla
     // motiveringen ("inRiser 0% av tiden, buildUp p99=0.31") mattes mot en
     // aldre riser-detektor och ar RADERAD som falsk.
@@ -1652,8 +1708,17 @@ export class Analyser {
     // i ägarens musik → dess flanker låg godtyckligt, och 8-takters-spärren blev
     // i praktiken den som VALDE när en drop fyrade (första flanken efter att
     // fönstret löpt ut). Uppmätt resultat: 3 träffar av 19, 16 falsklarm.
-    if (dropSpacingOk && bodyOnset && this.activeMs > 2000) {
-      this.dropCount++; this.lastDropMs = nowWallA;
+    // STIGANDE FLANK: `bodyOnset` är sann KONTINUERLIGT i höga/pumpande partier (basen
+    // dippar och återhämtar ~17 dB varje takt via sidechain → bodyRise ligger konstant
+    // över tröskeln). MÄTT 2026-09-03: många kandidater/sekund. Fyra bara på den FÖRSTA
+    // framen lyftet passerar tröskeln → ett kandidat-event per verkligt lyft, inte per
+    // frame. Då blir eskalerings-/spärr-kravet meningsfullt (jämför distinkta lyft).
+    const bodyOnsetEdge = bodyOnset && !this.wasBodyOnset;
+    this.wasBodyOnset = bodyOnset;
+    const fullSlam = this.bodyPeak - this.bodyFast < DROP_QUALITY_DB;
+    if (dropSpacingOk && bodyOnsetEdge && this.activeMs > 2000 && fullSlam) {
+      this.dropCount++; this.lastDropMs = nowWallA; this.lastDropRise = bodyRise;
+      console.log(`[dropfire] wall ${this.wallNow()} rise ${bodyRise.toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} ceil ${this.bodyCeil.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} sinceDrop ${(sinceDrop/1000).toFixed(1)}s goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s goneSpan ${(this.lastGoneSpanMs/1000).toFixed(1)}s`);
     }
 
 
