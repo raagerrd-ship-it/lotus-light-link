@@ -1067,6 +1067,8 @@ export class Analyser {
     // Tidskonstant ~5 s vid 375 Hz: foljer klockdrift, slatar ut leveransjitter.
     this.audioToWallOffset += (raw - this.audioToWallOffset) * 0.0005;
   }
+  /** Tillbaka till Date.now(). Nasta setAudioClockMs sar om offseten. */
+  clearAudioClock(): void { this.audioClockMs = -1; this.audioOffsetSeeded = false; this.audioToWallOffset = 0; }
   private wallNow(): number {
     if (this.virtualMs !== null) return this.virtualEpoch + this.virtualMs;
     return this.audioClockMs >= 0 ? this.audioClockMs + this.audioToWallOffset : Date.now();

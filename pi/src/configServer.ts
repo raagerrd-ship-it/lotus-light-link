@@ -880,6 +880,10 @@ export function startConfigServer(port = 3050): void {
     const merged = { ...getJson<Record<string, unknown>>('light-calibration', {}), ...req.body };
     setItem('light-calibration', JSON.stringify(merged));
     engine.reloadCalibration();
+    // `audioClock` i kalibreringen styr ljudklockan i REALTID (A/B utan omstart).
+    if ('audioClock' in req.body) {
+      import('./alsaMic.js').then((m) => m.setAudioClockEnabled(!!(merged as any).audioClock)).catch(() => {});
+    }
     res.json({ ok: true });
   });
 

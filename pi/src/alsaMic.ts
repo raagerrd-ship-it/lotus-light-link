@@ -385,7 +385,19 @@ const HOP_MS = (ANALYSER_HOP / SAMPLE_RATE) * 1000;
  * isolerar stampeln: variansen i intervallet mellan pafoljande kicks pa en
  * lat med stadig takt. Tills dess: av.
  */
-const AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK === '1';
+let AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK === '1';
+/**
+ * Runtime-brytare (fran kalibreringen `audioClock`). Kravdes for en arlig A/B:
+ * miljovariabeln kraver omstart, och omstarten korsade en latgrans — darav
+ * "olika latar" i forsta forsoket. Med den har kan villkoret vaxlas INUTI samma
+ * lat utan att rora BLE-lanken. AV nollstaller analysatorns ljudklocka, annars
+ * hade wallNow() fortsatt pa en stillastaende audioClockMs.
+ */
+export function setAudioClockEnabled(on: boolean): void {
+  if (on === AUDIO_CLOCK_ON) return;
+  AUDIO_CLOCK_ON = on;
+  if (!on) analyser.clearAudioClock();
+}
 export function audioClockMs(): number { return fpHopCount * HOP_MS; }
 
 /** Rakneverk for att kunna mata att vagen lever och hur tat den ar. */
@@ -436,6 +448,13 @@ let analyserHopCount = 0;
  * matchning och lasningen falla isar.
  */
 let fpHopCount = 0;
+/** Senaste slagens ra kickAtMs — fylls per FRAME, sa inget slag missas. */
+const KICK_RING = 64;
+const _kickRing = new Float64Array(KICK_RING);
+let _kickPos = 0, _kickLast = 0;
+export function getRecentKicks(): number[] {
+  return Array.from(_kickRing).filter((v) => v > 0).sort((x, y) => x - y);
+}
 
 // ── FIN ENERGIKURVA under inspelning ───────────────────────────────────────
 //
@@ -1409,6 +1428,14 @@ function onAudioData(buf: Buffer): void {
     // replay-banken kan inte mata den (den kor redan pa sampelklockan).
     if (AUDIO_CLOCK_ON) analyser.setAudioClockMs(fpHopCount * HOP_MS);
     latestFrame = analyser.process(analyserScratch);
+    // KICK-RING HAR, inte i motorn: ticken (~53 Hz) ser bara var ~7:e av
+    // analysatorns 375 frames/s, och kickAtMs ar nollskild pa EN hop per slag.
+    // Uppmatt: 2 slag fangade pa 12 s vid 130 BPM (~26 verkliga). Har passerar
+    // alla. (Samma aliasering drabbar PLL:ens "farska kickAtMs" — se piEngine.)
+    if (latestFrame && latestFrame.kickAtMs > 0 && latestFrame.kickAtMs !== _kickLast) {
+      _kickLast = latestFrame.kickAtMs;
+      _kickRing[_kickPos] = _kickLast; _kickPos = (_kickPos + 1) % KICK_RING;
+    }
     latestFrameAt = Date.now();
     const dt = performance.now() - t0;
     // EMA (α=0.02 ≈ 50-hop tidskonstant) + max sedan senaste läsning
