@@ -46,6 +46,24 @@ import { dlog } from "./log.js";
 // vid initial-connect-misslyckanden där 2 var för känsligt.
 const CONSECUTIVE_FAIL_LIMIT = 4;
 let _consecutiveFailures = 0;
+/**
+ * IN-FLIGHT-HANGNINGAR I RAD — den signal som faktiskt betyder "socketen ar
+ * wedgad", och den som forut ALDRIG kunde eskalera.
+ *
+ * UPPMATT i engine.log: 1467 x "in-flight watchdog (30s)" mot 205 x process.exit.
+ * Eskaleringen kravde `_sawNothing` (0 discover-events), men watchdog-strangen
+ * bar ingen discover-siffra alls — regexen kunde inte matcha den — och i de
+ * flesta scan-timeouter SAG radion lampan (112x1, 68x4, 58x11, 57x13 annonser).
+ * Sa nar socketen hangde men radion skannade loopade motorn 30 s-hangning efter
+ * 30 s-hangning utan slut. Det ar "laser sig". Exit fyrade bara nar det rakade
+ * vara noll annonser. Det ar "startar om".
+ *
+ * Retry-forbudet hogst upp sager att exit ar ENDA boten for en wedgad socket.
+ * `_sawNothing` stangde den vagen i det vanligaste fallet. En hangning MED lampan
+ * synlig ar precis det tillstand forbudet beskriver.
+ */
+const INFLIGHT_HANG_LIMIT = 3;
+let _consecutiveInflightHangs = 0;
 
 // Engine-callbacks — ADDITIVA: varje setEngineBleCallbacks()-anrop lägger till
 // i listan (engine-registrering i ensureEngineInstance + app-hook i main
@@ -613,6 +631,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         dlog(`[connect-hardcoded] ✓ connect lyckades efter ${_consecutiveFailures} failures — räknaren nollställd`);
       }
       _consecutiveFailures = 0;
+      _consecutiveInflightHangs = 0;
       _lastDisconnectReason = 'unknown';
       // Auto-wake the lamp's LED driver. Idempotent — sending power-on to
       // an already-on lamp is a no-op. Fire-and-forget; even if det failar
@@ -647,13 +666,15 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       // pålitliga. N > 0 → radion skannar, lampan är frånvarande (en omstart
       // botar inte en urkopplad lampa). N = 0 → adaptern misstänkt wedgad.
       const _sawNothing = /\(0 discover-events\)/.test(String(errStr));
-      if (_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT && _sawNothing) {
+      const _hung = /in-flight watchdog/.test(String(errStr));
+      _consecutiveInflightHangs = _hung ? _consecutiveInflightHangs + 1 : 0;
+      const _hungOut = _consecutiveInflightHangs >= INFLIGHT_HANG_LIMIT;
+      if ((_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT && _sawNothing) || _hungOut) {
         // systemd restart → boot → IGNITION → Sonos-poller avgör om motorn
         // ska igång igen (mem://pi/runtime/sonos-driven-lifecycle).
-        console.error(
-          `[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures` +
-          ` — process.exit(0) för systemd restart`
-        );
+        console.error(_hungOut
+          ? `[connect-hardcoded] ⚠ ${_consecutiveInflightHangs} in-flight-hangningar i rad — socketen ar wedgad, process.exit(0) for systemd restart`
+          : `[connect-hardcoded] ⚠ ${CONSECUTIVE_FAIL_LIMIT} consecutive failures — process.exit(0) för systemd restart`);
         try {
           _restartHook?.({ count: _consecutiveFailures, error: errStr });
         } catch (e: any) {

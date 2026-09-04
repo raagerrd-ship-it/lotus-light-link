@@ -1382,6 +1382,9 @@ function onAudioData(buf: Buffer): void {
       for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
     }
     const t0 = performance.now();
+    // Ljudklockan FORE process(): slagtiden stamplas da ur sampelraknaren, inte
+    // ur vaggklockan vid leverans. Se Analyser.setAudioClockMs.
+    analyser.setAudioClockMs(fpHopCount * HOP_MS);
     latestFrame = analyser.process(analyserScratch);
     latestFrameAt = Date.now();
     const dt = performance.now() - t0;

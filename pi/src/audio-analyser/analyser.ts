@@ -1040,7 +1040,37 @@ export class Analyser {
     this.lastT = 0;
   }
   private perfNow(): number { return this.virtualMs ?? performance.now(); }
-  private wallNow(): number { return this.virtualMs === null ? Date.now() : this.virtualEpoch + this.virtualMs; }
+  /**
+   * LJUDKLOCKAN — ms sedan start raknat ur ANTALET BEARBETADE SAMPEL, satt av
+   * matningen strax fore varje process(). -1 = inte satt (aldre anropare).
+   *
+   * VARFOR: slagtiden (`beatAnchorMs` -> `kickAtMs`) forfinas sub-hop med en
+   * parabel och PLL:en litar pa den som "+-1,3 ms". Men stampeln som parabeln
+   * forfinar RELATIVT var `Date.now()` vid den hop som sag slaget — alltsa
+   * exakt den ALSA-leveransjitter PLL-kommentaren tror sig ha undvikit.
+   * Perioden ar 5,3 ms, callbacks kommer i klumpar om 1-3 hop, plus
+   * handelseloopens fordrojning: verklig fasnoise +-5-8 ms per slag, och
+   * systematiskt sen. Sub-hop-precisionen var alltsa illusorisk.
+   *
+   * Ljudklockan bar ingen leveransjitter alls. Den mappas till vaggtid via en
+   * LANGSAMT filtrerad offset, sa PLL:ens vaggklocke-ram behalls men jittret
+   * forsvinner. Det tar ocksa bort analyslatensen ur fasen: slaget stamplas
+   * nar det VAR i ljudet, inte nar det rapporterades.
+   */
+  private audioClockMs = -1;
+  private audioToWallOffset = 0;
+  private audioOffsetSeeded = false;
+  setAudioClockMs(ms: number): void {
+    this.audioClockMs = ms;
+    const raw = Date.now() - ms;
+    if (!this.audioOffsetSeeded) { this.audioToWallOffset = raw; this.audioOffsetSeeded = true; return; }
+    // Tidskonstant ~5 s vid 375 Hz: foljer klockdrift, slatar ut leveransjitter.
+    this.audioToWallOffset += (raw - this.audioToWallOffset) * 0.0005;
+  }
+  private wallNow(): number {
+    if (this.virtualMs !== null) return this.virtualEpoch + this.virtualMs;
+    return this.audioClockMs >= 0 ? this.audioClockMs + this.audioToWallOffset : Date.now();
+  }
   private virtualEpoch = 1700000000000;
 
   private cfg: {

@@ -25,6 +25,15 @@ borta därifrån. `bluetooth` har **medvetet inget fält** — att pinna bluetoo
 till en egen kärna tredubblade loopens fördröjning och fördubblade BLE:s
 skrivlatens. Se `pi/src/ble-driver/protocol.ts` och projektminnet.
 
+## Miljövariabler motorn läser (drop-ins under `lotus-light-engine.service.d/`)
+
+| Variabel | Default | Betydelse |
+|---|---|---|
+| `LOTUS_FP=1` | av | Landmärkesgenerering (125 Hz). På sedan 2026-09-02. |
+| `LOTUS_SYNC_PROBE=1` | av | Skriver (position, rå-RMS) till `syncprobe.tsv` — blockerande, bara vid felsökning. |
+| `LOTUS_BLE_INTERVAL_UNITS` | 12 (=15 ms) | BLE-anslutningsintervall i 1,25 ms-enheter. Finns för mätt A/B mot WiFi-samexistens. |
+| `LOTUS_BLE_LATENCY` | 0 | Slave latency. Frigör periferins radio, inte Pi:ns — intervallet är det som spelar roll. |
+
 ## Skrivs INTE hit
 
 `replicate.token` och `songs.json` ligger under

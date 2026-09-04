@@ -34,6 +34,19 @@ import {
   getSubsystemState, type SubsystemId,
 } from './ble/subsystem-state.js';
 
+// ── ISO-TIDSSTAMPEL PA VARJE LOGGRAD ────────────────────────────────────────
+// systemd skriver stdout/stderr rakt till engine.log (StandardOutput=append:),
+// utan journald och darmed utan tidsstamplar. Raderna bar bara "+NNNNms"
+// relativt nagot som inte gar att aterskapa. Det gjorde det OMOJLIGT att
+// korrelera BLE-tapp med refinerns uppladdningar — alltsa att avgora om WiFi
+// faktiskt svalter BLE. Prefixet gor den fragan matbar.
+{
+  const _stamp = (fn: (...a: any[]) => void) => (...a: any[]) => fn(new Date().toISOString(), ...a);
+  console.log = _stamp(console.log.bind(console));
+  console.warn = _stamp(console.warn.bind(console));
+  console.error = _stamp(console.error.bind(console));
+}
+
 // Applicera ev. tidigare vald BLE-lampa (annars seed:a BLEDOM01 default).
 // Måste ske före första connect så connect.ts läser rätt target.
 void (async () => {
