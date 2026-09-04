@@ -366,7 +366,26 @@ export function resetLandmarks(): void { fingerprinter.reset(); }
  * blev fardig.
  */
 const HOP_MS = (ANALYSER_HOP / SAMPLE_RATE) * 1000;
-const AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK !== '0';
+/**
+ * LJUDKLOCKAN AR OPT-IN (LOTUS_AUDIO_CLOCK=1), INTE DEFAULT.
+ *
+ * Teorin haller: Date.now() vid leverans bar ALSA:s burst-jitter, och koden
+ * sjalv sager det. Men A/B 2026-09-04, 4 min vardera pa spellistan:
+ *   AV  |err| p50 12,3 ms  p95 28,0 ms  medel -0,8 ms
+ *   PA  |err| p50 14,2 ms  p95 48,3 ms  medel -2,5 ms
+ * Olika latar i de tva korningarna, sa det ar inte avgort — men det ar NOLL
+ * bevis for vinst och en datapunkt at fel hall. beatErr domineras av musikens
+ * egen fasspridning, sa mattet kan inte se en stampelforbattring pa nagra ms.
+ *
+ * Dessutom en risk: vid mic-omstart star ljudklockan still medan vaggklockan
+ * gar, och offset-filtret (tau ~5 s) hinner inte med — slagen stamplas fel i
+ * sekunder. Den gamla vagen har inte det.
+ *
+ * En avgorande matning kraver samma lat i bada villkoren och ett matt som
+ * isolerar stampeln: variansen i intervallet mellan pafoljande kicks pa en
+ * lat med stadig takt. Tills dess: av.
+ */
+const AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK === '1';
 export function audioClockMs(): number { return fpHopCount * HOP_MS; }
 
 /** Rakneverk for att kunna mata att vagen lever och hur tat den ar. */
