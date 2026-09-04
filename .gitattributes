@@ -4,3 +4,4 @@
 # igenom `bash -n` lokalt men gav syntaxfel pa Pi:n.
 pi/system/** text eol=lf
 *.sh text eol=lf
+*.py text eol=lf
