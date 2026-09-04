@@ -367,25 +367,23 @@ export function resetLandmarks(): void { fingerprinter.reset(); }
  */
 const HOP_MS = (ANALYSER_HOP / SAMPLE_RATE) * 1000;
 /**
- * LJUDKLOCKAN AR OPT-IN (LOTUS_AUDIO_CLOCK=1), INTE DEFAULT.
+ * LJUDKLOCKAN AR PA SOM DEFAULT (LOTUS_AUDIO_CLOCK=0 stanger av).
  *
- * Teorin haller: Date.now() vid leverans bar ALSA:s burst-jitter, och koden
- * sjalv sager det. Men A/B 2026-09-04, 4 min vardera pa spellistan:
- *   AV  |err| p50 12,3 ms  p95 28,0 ms  medel -0,8 ms
- *   PA  |err| p50 14,2 ms  p95 48,3 ms  medel -2,5 ms
- * Olika latar i de tva korningarna, sa det ar inte avgort — men det ar NOLL
- * bevis for vinst och en datapunkt at fel hall. beatErr domineras av musikens
- * egen fasspridning, sa mattet kan inte se en stampelforbattring pa nagra ms.
+ * MATT 2026-09-04, samma lat pa bada sidor, AV/PA vaxlat var 90:e s inuti
+ * laten, 17 segment, ~2300 onset-intervall per villkor (tools/kick-ab.py):
+ *   ALLA          AV  MAD 5,67 ms  p90 22,7    PA  MAD 4,63 ms  p90 21,1
+ *   NEW CLUB MIX  AV  MAD 5,67     p90 21,4    PA  MAD 4,30     p90 20,5
+ * Battre pa varje rad, -18 % samlad median-jitter. Effekten ar verklig men
+ * liten (~1 ms) — taktslaget ar ~450 ms och BLE-latensen 132.
  *
- * Dessutom en risk: vid mic-omstart star ljudklockan still medan vaggklockan
- * gar, och offset-filtret (tau ~5 s) hinner inte med — slagen stamplas fel i
- * sekunder. Den gamla vagen har inte det.
+ * Tva tidigare A/B sade "ingen vinst" — de matte beatErr (musikens egen
+ * fasspridning) pa OLIKA latar, och en 200 s korning var for kort. Lardomen:
+ * matt som isolerar det man andrar, samma lat, nog med data.
  *
- * En avgorande matning kraver samma lat i bada villkoren och ett matt som
- * isolerar stampeln: variansen i intervallet mellan pafoljande kicks pa en
- * lat med stadig takt. Tills dess: av.
+ * Mic-omstartsrisken (ljudklockan star still medan offset-filtret slapar) ar
+ * stangd med en diskontinuitetsvakt i Analyser.setAudioClockMs.
  */
-let AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK === '1';
+let AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK !== '0';
 /**
  * Runtime-brytare (fran kalibreringen `audioClock`). Kravdes for en arlig A/B:
  * miljovariabeln kraver omstart, och omstarten korsade en latgrans — darav

@@ -1064,6 +1064,10 @@ export class Analyser {
     this.audioClockMs = ms;
     const raw = Date.now() - ms;
     if (!this.audioOffsetSeeded) { this.audioToWallOffset = raw; this.audioOffsetSeeded = true; return; }
+    // DISKONTINUITET (mic-omstart, stall): ljudklockan star still medan
+    // vaggklockan gar, och en EMA med tau ~5 s skulle lamna slagen felstamplade i
+    // sekunder. Ett hopp storre an ett taktslag ar aldrig drift — sa om direkt.
+    if (Math.abs(raw - this.audioToWallOffset) > 250) { this.audioToWallOffset = raw; return; }
     // Tidskonstant ~5 s vid 375 Hz: foljer klockdrift, slatar ut leveransjitter.
     this.audioToWallOffset += (raw - this.audioToWallOffset) * 0.0005;
   }
