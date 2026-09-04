@@ -366,6 +366,7 @@ export function resetLandmarks(): void { fingerprinter.reset(); }
  * blev fardig.
  */
 const HOP_MS = (ANALYSER_HOP / SAMPLE_RATE) * 1000;
+const AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK !== '0';
 export function audioClockMs(): number { return fpHopCount * HOP_MS; }
 
 /** Rakneverk for att kunna mata att vagen lever och hur tat den ar. */
@@ -1384,7 +1385,10 @@ function onAudioData(buf: Buffer): void {
     const t0 = performance.now();
     // Ljudklockan FORE process(): slagtiden stamplas da ur sampelraknaren, inte
     // ur vaggklockan vid leverans. Se Analyser.setAudioClockMs.
-    analyser.setAudioClockMs(fpHopCount * HOP_MS);
+    // LOTUS_AUDIO_CLOCK=0 stanger av matningen -> analysatorn faller tillbaka pa
+    // Date.now(), alltsa exakt det gamla beteendet. Finns for A/B av fixen live;
+    // replay-banken kan inte mata den (den kor redan pa sampelklockan).
+    if (AUDIO_CLOCK_ON) analyser.setAudioClockMs(fpHopCount * HOP_MS);
     latestFrame = analyser.process(analyserScratch);
     latestFrameAt = Date.now();
     const dt = performance.now() - t0;
