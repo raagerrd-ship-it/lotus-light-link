@@ -6,6 +6,7 @@ import { PermissionsBanner } from "@/components/PermissionsBanner";
 import { Panel, Row, Stat, Slider, Button, Toggle } from "@/components/piUi";
 import { LightPreview } from "@/components/LightPreview";
 import { BeatMonitor } from "@/components/BeatMonitor";
+import { SongMemorySection } from "@/components/SongMemorySection";
 import { useLiveFeed, setLiveFeedFastUntil } from "@/lib/liveFeed";
 
 
@@ -41,7 +42,7 @@ const DEFAULT_CAL: Cal = {
   // windowDb är LÅST på 10 — inget reglage (ett svep hade förstört tuningen).
   windowDb: 10, lightBassWeight: 0.25,
   anchorOffsetDb: 4.5, beatDepth: 0.62, fadeIntervalK: 0.35,
-  subdivHalveAboveBpm: 145,
+  subdivHalveAboveBpm: 0,   // AV som default — hard grans gav klipp 144→144 / 146→73
 };
 
 
@@ -1000,6 +1001,8 @@ export default function PiMobile() {
             Sparning misslyckades: {saveError}
           </div>
         )}
+
+        <SongMemorySection piBase={piBase} />
 
         <BleDeviceSection piBase={piBase} />
 

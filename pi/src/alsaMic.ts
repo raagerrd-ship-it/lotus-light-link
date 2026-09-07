@@ -16,6 +16,7 @@
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame } from './audio-analyser/index.js';
+import { Fingerprinter, type Landmark } from './fingerprint.js';
 import { noteOverrun, noteNativeCall } from './runtimeHealth.js';
 
 
@@ -211,6 +212,14 @@ let hsState = 0;
 // LJUS-TAPP: ~130 ms EMA av RÅ (o-gainad) block-RMS. micGain appliceras i
 // emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
 let lightRawRms = 0;
+/**
+ * RA, O-GAINAD block-RMS -- samma storhet som refinern lagrar i energikurvan.
+ *
+ * Exporteras enbart for synkmatning. `level` i status duger INTE till det: den
+ * har passerat gain, AGC och utjamning, och korrelerade darfor bara r=0.08 mot
+ * den lagrade kurvan. Det sag ut som daligt synk men var fel matsticka.
+ */
+export function getLightRawRms(): number { return lightRawRms; }
 let _lastLightSum = -1;
 let _lastFrameCount = -1;
 let _contentFreezeStreak = 0;
@@ -316,6 +325,94 @@ const analyser = createAnalyser({
   onsetEnhancements: true,
 });
 analyser.setGainLock(false);
+
+// ── LANDMARKEN: var i inspelningen ar vi? ──────────────────────────────────
+//
+// Analysatorn har redan en krok pa 2048-magnituden (setSpectrumSink, 125 Hz).
+// Ingen extra FFT behovs — landmarkena faller ut ur spektrum som anda raknas.
+//
+// TIDSBASEN KOMMER FRAN LJUDET, inte fran vaggklockan. Antalet mottagna sampel
+// delat med samplingsfrekvensen ar exakt samma tidslinje vid inspelning som vid
+// uppspelning; en vaggklocka hade drivit isar dem och gjort matchningen suddig.
+//
+// KOSTNADSSPARR: ingen lyssnare -> fingeravtrycket rors inte alls. pi-dmx matte
+// att for manga par per ruta drev motorn fran 42 % till 98 % CPU och gav
+// SYNLIGT FLIMMER i render-loopen. Har ska kostnaden vara noll nar ingen bryr
+// sig, och matas innan den far vara pa.
+const fingerprinter = new Fingerprinter();
+const fpScratch: Landmark[] = [];
+let _onLandmarks: ((lm: Landmark[]) => void) | null = null;
+let _fpFrames = 0;
+let _fpEmitted = 0;
+
+/** Lyssna pa landmarken. null stanger av hela vagen. */
+export function onLandmarks(fn: ((lm: Landmark[]) => void) | null): void {
+  _onLandmarks = fn;
+  if (!fn) fingerprinter.reset();
+  analyser.setSpectrumSink(fn ? spectrumSink : null);
+}
+
+/** Latbyte -> ingen parbildning over latgransen. */
+export function resetLandmarks(): void { fingerprinter.reset(); }
+
+/**
+ * LJUDHARDAD TID, ms sedan motorstart.
+ *
+ * Rakas ur ANTALET BEARBETADE HOP, inte ur vaggklockan: samma tidslinje galler
+ * da vid inspelning och vid uppspelning, och den driver aldrig mot ljudet.
+ *
+ * FALLGROP: `analyserSamplesReceived` ser ut som en samplingsraknare men ar en
+ * BUFFERTNIVA — den rakas upp och dras sedan ner for varje uttagen hop, sa den
+ * pendlar mellan 0 och 127. Anvands den som klocka star tiden still: uppmatt gav
+ * det 7390 spektrumrutor och NOLL landmarken, eftersom fingerprint-rutan aldrig
+ * blev fardig.
+ */
+const HOP_MS = (ANALYSER_HOP / SAMPLE_RATE) * 1000;
+/**
+ * LJUDKLOCKAN AR PA SOM DEFAULT (LOTUS_AUDIO_CLOCK=0 stanger av).
+ *
+ * MATT 2026-09-04, samma lat pa bada sidor, AV/PA vaxlat var 90:e s inuti
+ * laten, 17 segment, ~2300 onset-intervall per villkor (tools/kick-ab.py):
+ *   ALLA          AV  MAD 5,67 ms  p90 22,7    PA  MAD 4,63 ms  p90 21,1
+ *   NEW CLUB MIX  AV  MAD 5,67     p90 21,4    PA  MAD 4,30     p90 20,5
+ * Battre pa varje rad, -18 % samlad median-jitter. Effekten ar verklig men
+ * liten (~1 ms) — taktslaget ar ~450 ms och BLE-latensen 132.
+ *
+ * Tva tidigare A/B sade "ingen vinst" — de matte beatErr (musikens egen
+ * fasspridning) pa OLIKA latar, och en 200 s korning var for kort. Lardomen:
+ * matt som isolerar det man andrar, samma lat, nog med data.
+ *
+ * Mic-omstartsrisken (ljudklockan star still medan offset-filtret slapar) ar
+ * stangd med en diskontinuitetsvakt i Analyser.setAudioClockMs.
+ */
+let AUDIO_CLOCK_ON = process.env.LOTUS_AUDIO_CLOCK !== '0';
+/**
+ * Runtime-brytare (fran kalibreringen `audioClock`). Kravdes for en arlig A/B:
+ * miljovariabeln kraver omstart, och omstarten korsade en latgrans — darav
+ * "olika latar" i forsta forsoket. Med den har kan villkoret vaxlas INUTI samma
+ * lat utan att rora BLE-lanken. AV nollstaller analysatorns ljudklocka, annars
+ * hade wallNow() fortsatt pa en stillastaende audioClockMs.
+ */
+export function setAudioClockEnabled(on: boolean): void {
+  if (on === AUDIO_CLOCK_ON) return;
+  AUDIO_CLOCK_ON = on;
+  if (!on) analyser.clearAudioClock();
+}
+export function audioClockMs(): number { return fpHopCount * HOP_MS; }
+
+/** Rakneverk for att kunna mata att vagen lever och hur tat den ar. */
+export function getLandmarkStats(): { frames: number; emitted: number } {
+  return { frames: _fpFrames, emitted: _fpEmitted };
+}
+
+function spectrumSink(mag: Float32Array, binHz: number): void {
+  const cb = _onLandmarks;
+  if (!cb) return;
+  _fpFrames++;
+  fpScratch.length = 0;
+  fingerprinter.push(mag, binHz, fpHopCount * HOP_MS, fpScratch);
+  if (fpScratch.length) { _fpEmitted += fpScratch.length; cb(fpScratch); }
+}
 const analyserScratch = new Float32Array(ANALYSER_HOP);
 
 let analyserSamplesReceived = 0;
@@ -343,6 +440,46 @@ const ANALYSER_BUDGET_MS = 1000 / 375; // ≈2.667
 let analyserMsEMA = 0;                 // α=0.02 → ~50-hop tidskonstant
 let analyserMsMax = 0;                 // sedan senaste getAnalyserCost()-läsning
 let analyserHopCount = 0;
+/**
+ * EGEN, ALDRIG NOLLSTALLD hop-raknare — landmarkenas tidsbas.
+ *
+ * `analyserHopCount` duger inte: `resetFluxState()` nollstaller den, och den
+ * anropas bland annat vid latbyte. Tiden skulle da hoppa bakat mitt i en
+ * matchning och lasningen falla isar.
+ */
+let fpHopCount = 0;
+/** Senaste slagens ra kickAtMs — fylls per FRAME, sa inget slag missas. */
+const KICK_RING = 64;
+const _kickRing = new Float64Array(KICK_RING);
+let _kickPos = 0, _kickLast = 0;
+export function getRecentKicks(): number[] {
+  return Array.from(_kickRing).filter((v) => v > 0).sort((x, y) => x - y);
+}
+
+// ── FIN ENERGIKURVA under inspelning ───────────────────────────────────────
+//
+// Refinern raknade den forr ur WAV-filen i 100 ms-steg. Det ar bara 10 Hz, och
+// showen laser den 50 ganger i sekunden — sa varje trumslags ATTACK smetades ut
+// over ett helt hundradels-fonster. Uppmatt borjade ljuset stiga 120 ms FORE
+// slaget, medan realtidsvagen (som ser 375 Hz) stiger pa slaget.
+//
+// Motorn har ljudet i full upplosning under inspelningen anda, sa den bygger
+// kurvan sjalv i showens egen takt. Da ar det ocksa SAMMA signalvag som realtid,
+// en annan berakning pa en fil.
+// EXAKT showens steg. En energipunkt per showsteg gor uppspelningen till en
+// aterGIVNING och inte en interpolation: det som lagrades ar det som spelas.
+const FINE_STEP_MS = 20;
+const FINE_SAMPLES = Math.round(SAMPLE_RATE * FINE_STEP_MS / 1000);
+let _fine: number[] | null = null;
+let _fineSum = 0, _fineN = 0;
+
+/** Borja samla fin energi (vid inspelningsstart). */
+export function startFineEnergy(): void { _fine = []; _fineSum = 0; _fineN = 0; }
+/** Avsluta och lamna kurvan. null om ingen samling pagick. */
+export function stopFineEnergy(): { energy: number[]; stepMs: number } | null {
+  const e = _fine; _fine = null;
+  return e && e.length > 20 ? { energy: e, stepMs: FINE_STEP_MS } : null;
+}
 let analyserOverBudgetCount = 0;       // hops > budget sedan senaste läsning
 export function getAnalyserCost(): { msEMA: number; msMax: number; hops: number; overBudget: number; budgetMs: number } {
   const out = { msEMA: analyserMsEMA, msMax: analyserMsMax, hops: analyserHopCount, overBudget: analyserOverBudgetCount, budgetMs: ANALYSER_BUDGET_MS };
@@ -367,6 +504,96 @@ let acrCaptureActive = false;
 let acrBuf = new Int16Array(ACR_MAX_SAMPLES);
 let acrLen = 0;
 let acrDecimCount = 0;
+
+// ── RAW_CAPTURE (2026-08-31) ────────────────────────────────────────────
+// FULL-RATE rå-PCM (48 kHz), till skillnad från ACR-buffern ovan som decimerar
+// till 8 kHz för fingerprinting. Syftet är ett annat: att kunna spela upp EXAKT
+// det ljud som orsakade ett fel genom analysatorn i offline-bänken, om och om
+// igen, och A/B:a kodändringar mot identisk insignal.
+//
+// VARFÖR: bänken (pi-dmx/engine/tools/testBpmHard.mjs) har bara syntetiska
+// scenarier. Uppmätt 2026-08-31: inget av dem — inte ens en medvetet skärpt
+// subharmonisk fälla — reproducerar det verkliga 2/3-felet (137 → 93 BPM i 43 s).
+// Utan riktigt ljud går det inte att skilja "fixen fungerar" från "materialet
+// råkade vara snällare", vilket är den fälla som kostat mest tid i projektet.
+//
+// HELA LÅTAR, INTE UTDRAG (2026-09-01).
+// Ett 40-sekundersklipp duger till TEMPO men inte till STRUKTUR: klippet ÄR
+// introt, och strukturmodellen svarar då helt riktigt "intro/intro" (uppmätt).
+// Sektioner, taktettor och drops kräver hela låten.
+//
+// Därför decimeras rå-capturen till 16 kHz — samma takt som systerprojektet
+// pi-dmx skickar till samma modell, alltså en beprövad kvalitet för ändamålet.
+// Minnet är det som styr: motorn har MemoryMax 300 MB och Pi:n 416 MB TOTALT.
+//   48 kHz, 7 min = 40 MB   → oacceptabelt
+//   16 kHz, 7 min = 13,4 MB → ryms
+const RAW_RATE = 16000;
+const RAW_DECIM = SAMPLE_RATE / RAW_RATE;   // 3
+const RAW_MAX_SECONDS = 420;                // 7 min täcker praktiskt taget allt
+const RAW_MAX_SAMPLES = RAW_RATE * RAW_MAX_SECONDS;
+let rawCaptureActive = false;
+let rawBuf: Int16Array | null = null;
+let rawLen = 0;
+let rawTarget = 0;
+// Latnamn + facit-BPM foljer med inspelningen. UTAN detta ar en inspelad WAV ett
+// klipp UTAN facit, och tempot maste gissas i efterhand -- vilket 2026-08-30/31
+// kostade en hel kvall: mina egna autokorrelationer sa 137.5 och 60.0 om samma
+// ~90 BPM-lat (3/2- respektive 2/3-fallan), och forst nar anvandaren gav
+// Songstats-varden gick regressionerna att mata alls.
+let rawLabel = '';
+// Decimering 48 -> 16 kHz: MEDELVÄRDE av tre samples, inte var tredje. Att bara
+// plocka var tredje är osamplad nedsampling och viker in allt över 8 kHz som
+// alias — och det är onset-transienterna som skadas mest av det, alltså exakt
+// det strukturmodellen ska läsa.
+let rawDecim = 0;
+let rawAcc = 0;
+
+/** Starta full-rate rå-capture. Allokerar först vid anrop — annars ligger 8,6 MB
+ *  och skräpar i en process med MemoryMax 300 MB. */
+export function startRawCapture(seconds: number, label?: string): number {
+  const sec = Math.max(1, Math.min(RAW_MAX_SECONDS, Math.round(seconds)));
+  rawLabel = (label ?? '').slice(0, 120);
+  rawTarget = RAW_RATE * sec;
+  rawDecim = 0; rawAcc = 0;
+  if (!rawBuf || rawBuf.length < rawTarget) rawBuf = new Int16Array(rawTarget);
+  rawLen = 0;
+  rawCaptureActive = true;
+  return sec;
+}
+
+export function getRawCaptureStatus(): { active: boolean; seconds: number; done: boolean; label: string } {
+  return { active: rawCaptureActive, seconds: rawLen / RAW_RATE, done: rawLen >= rawTarget && rawTarget > 0, label: rawLabel };
+}
+
+/** Filnamnsvanligt latnamn, t.ex. "ricky-rose-utan-dig-90". Tomt om inget angavs. */
+export function getRawCaptureLabel(): string {
+  return rawLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/** WAV av det som samlats. Frigör bufferten — den behövs inte i drift. */
+export function getRawCaptureWav(): Buffer | null {
+  if (!rawBuf || rawLen < RAW_RATE) return null;   // minst 1 s
+  rawCaptureActive = false;
+  const dataBytes = rawLen * 2;
+  const buf = Buffer.alloc(44 + dataBytes);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataBytes, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(RAW_RATE, 24);
+  buf.writeUInt32LE(RAW_RATE * 2, 28);
+  buf.writeUInt16LE(2, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataBytes, 40);
+  for (let i = 0; i < rawLen; i++) buf.writeInt16LE(rawBuf[i], 44 + i * 2);
+  rawBuf = null;
+  rawLen = 0;
+  return buf;
+}
 
 /** Starta en ~10s rå-PCM-capture (8kHz mono) för ACR-identifiering. */
 export function startAcrCapture(): void {
@@ -1061,6 +1288,16 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
       lightSumLocal += rawPre * rawPre;
+      if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
+        rawAcc += rawPre;
+        if (++rawDecim >= RAW_DECIM) {
+          let r = (rawAcc / RAW_DECIM) * 32767;
+          if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
+          rawBuf[rawLen++] = r;
+          rawDecim = 0; rawAcc = 0;
+          if (rawLen >= rawTarget) rawCaptureActive = false;
+        }
+      }
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -1082,6 +1319,16 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
       lightSumLocal += rawPre * rawPre;
+      if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
+        rawAcc += rawPre;
+        if (++rawDecim >= RAW_DECIM) {
+          let r = (rawAcc / RAW_DECIM) * 32767;
+          if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
+          rawBuf[rawLen++] = r;
+          rawDecim = 0; rawAcc = 0;
+          if (rawLen >= rawTarget) rawCaptureActive = false;
+        }
+      }
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -1111,6 +1358,15 @@ function onAudioData(buf: Buffer): void {
     const a = 1 - Math.exp(-dt / 0.13);
     lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
     learnGainSample(blockRms, dt);   // FIX 4: lärd volym→gain (gate:ad, långsam)
+    if (_fine) {
+      // Energisumma, inte RMS-medel: en RMS av RMS:er viktar korta block fel.
+      _fineSum += blockRms * blockRms * frameCount;
+      _fineN += frameCount;
+      while (_fineN >= FINE_SAMPLES) {
+        _fine.push(Math.sqrt(_fineSum / _fineN));
+        _fineSum = 0; _fineN = 0;
+      }
+    }
     if (_micPlaybackGate && lightRawRms >= STABLE_RMS_MIN) {
       const tol = Math.max(STABLE_RMS_DELTA, lightRawRms * STABLE_RMS_REL);
       if (_stableRmsSince === 0 || Math.abs(lightRawRms - _stableRmsValue) > tol) {
@@ -1165,7 +1421,21 @@ function onAudioData(buf: Buffer): void {
       for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
     }
     const t0 = performance.now();
+    // Ljudklockan FORE process(): slagtiden stamplas da ur sampelraknaren, inte
+    // ur vaggklockan vid leverans. Se Analyser.setAudioClockMs.
+    // LOTUS_AUDIO_CLOCK=0 stanger av matningen -> analysatorn faller tillbaka pa
+    // Date.now(), alltsa exakt det gamla beteendet. Finns for A/B av fixen live;
+    // replay-banken kan inte mata den (den kor redan pa sampelklockan).
+    if (AUDIO_CLOCK_ON) analyser.setAudioClockMs(fpHopCount * HOP_MS);
     latestFrame = analyser.process(analyserScratch);
+    // KICK-RING HAR, inte i motorn: ticken (~53 Hz) ser bara var ~7:e av
+    // analysatorns 375 frames/s, och kickAtMs ar nollskild pa EN hop per slag.
+    // Uppmatt: 2 slag fangade pa 12 s vid 130 BPM (~26 verkliga). Har passerar
+    // alla. (Samma aliasering drabbar PLL:ens "farska kickAtMs" — se piEngine.)
+    if (latestFrame && latestFrame.kickAtMs > 0 && latestFrame.kickAtMs !== _kickLast) {
+      _kickLast = latestFrame.kickAtMs;
+      _kickRing[_kickPos] = _kickLast; _kickPos = (_kickPos + 1) % KICK_RING;
+    }
     latestFrameAt = Date.now();
     const dt = performance.now() - t0;
     // EMA (α=0.02 ≈ 50-hop tidskonstant) + max sedan senaste läsning
@@ -1173,6 +1443,7 @@ function onAudioData(buf: Buffer): void {
     if (dt > analyserMsMax) analyserMsMax = dt;
     if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
     analyserHopCount++;
+    fpHopCount++;
     analyserSamplesReceived -= ANALYSER_HOP;
     // Band-event mot motorn var BAND_EVERY_HOPS:e analysator-hop (~75 Hz).
     if (++bandHopCounter >= BAND_EVERY_HOPS) {

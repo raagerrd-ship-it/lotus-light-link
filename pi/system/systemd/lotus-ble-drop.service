@@ -1,0 +1,6 @@
+[Unit]
+Description=Drop a half-open lotus BLE ACL on request
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lotus-ble-drop-req

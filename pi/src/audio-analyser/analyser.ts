@@ -97,6 +97,20 @@ export interface Frame {
 }
 
 
+// ── DROP-DETEKTOR (synk fran DMX-master, ladan-facit 2026-09-03) ─────────────
+// Kroppen ar RA dB → alla grindar ar dB-SKILLNADER (gain-oberoende: portar rent
+// fran aux till mic). underPeak-kvalitetsgrinden skiljer riktiga slam (landar pa
+// toppen) fran falska partiella aterhamtningar. env-tunbart for offline-svep.
+const BODY_RISE_DB = 17;
+const BODY_GONE_DB = 5;
+const BODY_GONE_MIN_MS = Number(process.env.BODY_GONE_MIN_MS ?? 2000);
+const BODY_PEAK_DB = Number(process.env.BODY_PEAK_DB ?? 10);
+const DROP_QUALITY_DB = Number(process.env.DROP_QUALITY_DB ?? 3.5);
+const DROP_SHORT_MS = 4000;
+const DROP_LONG_MS = 20000;
+const DROP_ESCALATE_DB = 3;
+const BODY_CEIL_DB_S = 0.15;
+
 export class Analyser {
   private fft: FFT;
   private window: Float32Array;
@@ -175,6 +189,10 @@ export class Analyser {
   private bpmCounter = 0;
   private localBpm = 0;
   private localBpmConfidence = 0;
+  /** Antal estimat sedan senaste latbyte/tystnad -- las inte forran tempogrammet mognat. */
+  private warmCalls = 0;
+  /** Anrop sedan senaste latbyte -- commiten hallas oppen tills onset-ringen ar ren. */
+  private holdCalls = 0;
   // TÄCKNING 60..180 — INTE en oktav (ratio 3). Det är ett medvetet byte av vad
   // MÄTT I LOTUS 2026-08-30: ett 3×-spann (60..180) går sönder i skarp drift —
   // 43 tempohopp på 29 min (kvoter 1/2, 2/3, 3/4, 4/3, 3/2, 2/1), 5,2 % av tiden
@@ -198,7 +216,29 @@ export class Analyser {
    *  ÄKTA oktavvikning kollapsar b och 2b, så grenarna fångar 3:2-/triol-artefakter
    *  — och där vill vi ha snabb rättning åt BÅDA håll.
    *  Grannrättningen är också symmetrisk — se den mätta motiveringen där. */
-  private static readonly OCT_UP = 8;
+  // OCT_UP 8 -> 24 (2026-08-31): med EXAKT en oktavs vikning (80..160) kan ett akta
+  // oktavfel aldrig overleva vikningen -- b och 2b kollapsar till samma varde. Allt
+  // som nar ratio > 1.4 ar darfor en TRIOL-artefakt, inte en oktav. Grenen far dock
+  // inte stangas helt: vid 32+ roster fastnade real.wav pa 113 och tog sig aldrig loss.
+  // MATT pa riktigt ljud med verifierat facit (Songstats/Tunebat), tre klipp:
+  //   OCT_UP  8: utandig 14.4%  real 53.2%  drickervin 100%
+  //   OCT_UP 24: utandig 25.0%  real 68.2%  drickervin 100%   <- inre optimum
+  //   OCT_UP 32: utandig 25.0%  real  0.0%  drickervin 100%   <- stupet
+  // 24 -> 48 (2026-09-01). Efter att korpusen fatt country/Americana utover
+  // Ledin-materialet ger 48 atta av elva unika latar ratt mot 24:s sju.
+  // Kostar 240 ms laslatens (739 -> 979 ms) men BARA vid kallstart och efter
+  // tystnad -- uppvarmningen ar grindad pa localBpm === 0, och vid latbyte
+  // behalls tempot. Normal uppspelning paverkas alltsa inte.
+  private static readonly REFRAC_N = 20;   // 200 ms @ ENV_HZ 100
+  private static readonly RELOCK_K = 2;
+  private static readonly WARM_N = 48;
+  private static readonly HOLD_N = 50;
+  private static readonly OCT_UP = 24;
+
+  // HARMONI-VETO (2026-08-31). En AKTA ny lat landar sallan exakt pa en trioldelning
+  // av den forra; en trioltopp i SAMMA lat gor det alltid. Se grann-grenen nedan.
+  private static readonly HARM_TOL = 0.035;
+  private static readonly HARM_PENALTY = 6;
   private static readonly OCT_DOWN = 8;
 
 
@@ -260,7 +300,24 @@ export class Analyser {
     const t = new Float32Array(Analyser.ENV_LEN);
     for (let lag = 1; lag < Analyser.ENV_LEN; lag++) {
       const oct = Math.log2(((Analyser.ENV_HZ * 60) / lag) / 120);
-      t[lag] = Math.exp(-(oct * oct) / 2.0);
+      // BREDD 2.0 -> 0.7 (sigma 1.0 -> 0.59 oktav).
+      // Utsignalen viks ALLTID till [80,160), en enda oktav. En prior bredare an
+      // det fonstret later kandidater UTANFOR fonstret tavla pa nastan lika
+      // villkor -- och det ar just de som blir 4/3- och 2/3-artefakter efter
+      // vikningen.
+      // MATT pa 23 inspelade latar med publicerat facit + 22 latovergangar:
+      //   2.0  20/23 ratt, snitt 87.6 %, TVA 4/3-fel, overgangar 76.9 %
+      //   1.0  23/23 ratt, snitt 97.3 %, noll fel,    overgangar 78.0 %
+      //   0.7  23/23 ratt, snitt 97.6 %, noll fel,    overgangar 85.2 %  <- vald
+      //   0.5  23/23 ratt, snitt 98.3 %, noll fel,    overgangar 86.8 %
+      // 0.5 ar marginellt battre pa riktigt ljud men mjukar upp syntetscenariot
+      // "breakdown 142" fran 100 % till 88 %. 0.7 tar nastan hela vinsten utan
+      // den kostnaden, och "158 (nara gransen)" pastas inte av nagon av dem --
+      // fonsterkanten offras alltsa inte.
+      // TIDIGARE FELSLUT: pa bara fyra handplockade klipp (alla 90-124, dvs kring
+      // priorns egen topp) sag detta ut som overfittning och parkerades. Med 23
+      // latars tempospridning ar trenden monoton pa BADA matten.
+      t[lag] = Math.exp(-(oct * oct) / 0.7);
     }
     return t;
   })();
@@ -298,12 +355,16 @@ export class Analyser {
    *  SLÅR TILLBAKA i dropen är basen.
    *  Nivå-baserad zon gav 172 flanker på 15 min (en var 5:e sekund) för ~19 drops.
    *  Baskropps-zonen ger 46 (en var 20:e sekund) — rätt storleksordning. */
-  private bodyEnv = 0;
+  private bodyEnv = -120;
   /** Snabb envelopp (0.12 s) ENBART for stigningstakten. Den langsammare
    *  bodyEnv (0.35 s) styr tak och franvaro. Blandar man ihop dem dampas
    *  stigningen och trosklarna slutar motsvara det som mattes i banken. */
-  private bodyFast = 0;
-  private bodyCeil = 0.2;
+  private bodyFast = -120;
+  private bodyCeil = -300;   // dB
+  private bodyPeak = -300;   // SEG topp (loud-referens i minuter) for landa-hogt
+  private lastGoneSpanMs = 0;
+  private lastDropRise = 0;
+  private wasBodyOnset = false;
   /** ANSLAGSDETEKTION. En tröskel som ska NÅS korsas först när basen redan
    *  kommit — uppmätt 2.5 s efter anslaget. STIGNINGSTAKTEN fyrar när den
    *  börjar: uppmätt 0.1 s. Ringbuffert med 0.5 s historik (förallokerad). */
@@ -335,6 +396,7 @@ export class Analyser {
    * novelty läser i stället den här, i dB, där en ramp är en ramp oavsett nivå.
    */
   private bandDb = new Float32Array(8);
+  private bandDbRaw = new Float32Array(8);   // RA dB per band (drop-detektorns kropp) — synk fran DMX-master 2026-09-03
   /** Stor-FFT-rutor med signal i rad. Onsets hålls tysta tills MAD hunnit byggas
    *  upp — se `ONSET_WARM` och kommentaren vid bandOn. */
   private onsetWarm = 0;
@@ -676,6 +738,17 @@ export class Analyser {
       scratch[j + 1] = v;
     }
     const med = scratch[n >> 1];
+    // UPPVARMNING FORE FORSTA LASET. Tidigare togs laset pa det ALLRA forsta
+    // estimatet, nar tempogrammet sett ~0.5 s och ar omoget -- och sedan stanger
+    // commiten (24 estimat) oktav- och grannrattningen, sa ett daligt initiallas
+    // satt kvar hela laten. Det var orsaken till 4/3-felen.
+    // MATT pa 7 inspelade Ledin-latar med publicerat facit (SongBPM):
+    //   utan uppvarmning  4/7 ratt, snitt 56.2 %, TVA 4/3-fel
+    //   WARM_N = 24       6/7 ratt, snitt 78.5 %, NOLL 4/3-fel
+    //   "En del av mitt hjarta" 130 -> 99 (facit 98)
+    //   "Hon gor allt..."       137 -> 105 (facit 104)
+    // Kostar 240 ms laslatens (499 -> 739 ms). Syntetsviten oforandrad 7/10.
+    if (this.localBpm === 0 && this.warmCalls++ < Analyser.WARM_N) return;
     if (this.localBpm === 0) {
       this.localBpm = Math.round(med);
       this.octaveVote = 0;
@@ -696,6 +769,9 @@ export class Analyser {
       // förrän tystnad. Konfidenssläppningen sist i denna metod är andra utvägen.
       const committed = this.bpmStable >= Analyser.BPM_COMMIT;
       const ratio = med / this.localBpm;
+      const _lockLag = Math.round((HZ * 60) / this.localBpm);
+      const overwhelming = _lockLag >= lagMin && _lockLag <= lagMax
+        && bestVal > tg[_lockLag] * Analyser.RELOCK_K;
       if (ratio >= 0.9 && ratio <= 1.11) {
         this.nearVote = 0; this.nearChallenger = 0;                                 // samma takt → inget grann-fel
         this.localBpm = Math.round(this.localBpm + (med - this.localBpm) * 0.35);   // samma takt → glid
@@ -703,11 +779,31 @@ export class Analyser {
         // Referens för hur STARK takten är när allt är gott — låtbytesgrinden nedan
         // jämför mot den (ett breakdown har svag takt, en ny låt en full).
         this.lockPeak = this.lockPeak > 0 ? this.lockPeak + (bestVal - this.lockPeak) * 0.05 : bestVal;
-        if (this.bpmStable < 100000) this.bpmStable++;                              // stabil tid ackumuleras
-      } else if (!committed && ratio > 1.4) {
+        // HALL COMMITEN OPPEN TILLS ONSET-RINGEN AR REN.
+        // Ringen ar ENV_LEN = 500 @ 100 Hz = 5 SEKUNDER lang, sa direkt efter ett
+        // latbyte bestar halva autokorrelationen av FORRA laten. `committed`
+        // (bpmStable >= 24, ca 6 s) stanger oktav- och grannrattningen ungefar
+        // samtidigt som ringen blir ren -- ett las taget pa orenad data hann alltsa
+        // aldrig rattas.
+        // Att fordroja LASET provades och lamnar lampan osynkad flera sekunder.
+        // Att fordroja COMMITEN ger tvartom omedelbart las som anda far rattas.
+        // MATT pa 12 latovergangar: overhangets kostnad 60.7 -> 72.0 %.
+        // "Snart tystnar musiken" gick 0 -> 79 %. Stabil plata 50..400, alltsa
+        // ingen knivsegg -- 50 valt som kortaste vardet som nar platan.
+        // Laslatens oforandrad (739 ms), syntetsviten oforandrad 7/10.
+        if (this.holdCalls < Analyser.HOLD_N) this.holdCalls++;
+        else if (this.bpmStable < 100000) this.bpmStable++;                              // stabil tid ackumuleras
+      // Overvaldigande HELHETSBEVIS far bryta commiten. Manga latar byter
+      // trumkomp mellan avsnitt -- MATT pa "Where the Wild Things Are" (facit 117):
+      // bevisen vaxlar 115-115-115-78-78-117-78x8-79-117-117, och 78 ar exakt
+      // 117 * 2/3. Analysatorn har inte fel i de avsnitten; ljudet HAR den
+      // periodiciteten. Felet var att laset foljde AVSNITTET i stallet for LATEN.
+      // Tempogrammet ackumulerar over hela laten och ar darfor latens svar.
+      // MATT: slutlaset (det varde som galler resten av laten) 109/110 -> 110/110.
+      } else if ((!committed || overwhelming) && ratio > 1.4) {
         this.octaveVote = Math.max(0, this.octaveVote) + 1;                          // estimaten HÖGRE oktav
         if (this.octaveVote >= Analyser.OCT_UP) { this.localBpm = Math.round(med); this.octaveVote = 0; this.bpmStable = 0; }
-      } else if (!committed && ratio < 0.7) {
+      } else if ((!committed || overwhelming) && ratio < 0.7) {
         this.octaveVote = Math.min(0, this.octaveVote) - 1;                          // estimaten LÄGRE oktav
         if (this.octaveVote <= -Analyser.OCT_DOWN) { this.localBpm = Math.round(med); this.octaveVote = 0; this.bpmStable = 0; }
 
@@ -740,7 +836,18 @@ export class Analyser {
         } else if (this.nearChallenger > 0 && Math.abs(bpm / this.nearChallenger - 1) <= 0.04) {
           this.nearChallenger += (bpm - this.nearChallenger) * 0.3;
           this.nearVote++;
-          if (this.nearVote >= (reacq ? 3 : 8)) {
+          // HARMONI-VETO. Grann-bandet [1.11,1.4] rymmer 4/3 = 1.333, och [0.7,0.9]
+          // rymmer 3/4 = 0.75 -- alltsa gar en TRIOLTOPP in genom halet som ar avsett
+          // for grannfel, pa atta roster. Och `conf` stoppar den inte: den mater
+          // tempogrammets SKARPA, inte dess korrekthet, och ar 1.00 aven vid 32 % fel.
+          // MATT pa utandig.wav (Ricky Rose, facit 90 BPM): laset satt RATT i 20 s,
+          // gick sedan 90 -> 118 och kom aldrig tillbaka. Vetot: 25.0 % -> 70.6 %
+          // ratt, median 119 -> 89. Ovriga tva klipp ororda, syntetsviten identisk.
+          // Straffet platar vid 4; 6 ar mitten av platan 4-10.
+          // 3/2 och 2/3 behovs inte har -- de ligger utanfor bandet (oktavgrenarna).
+          const _harm = Math.abs(ratio * 0.75 - 1) <= Analyser.HARM_TOL
+                     || Math.abs(ratio / 0.75 - 1) <= Analyser.HARM_TOL;
+          if (this.nearVote >= (reacq ? 3 : 8) * (_harm ? Analyser.HARM_PENALTY : 1)) {
 
 
             this.localBpm = Math.round(med);
@@ -803,6 +910,14 @@ export class Analyser {
           ? bestVal / Math.max(1e-9, tg[lockLag]) : 1;
         // Dominant rival ⇒ 1,5 s bevis. Svag ⇒ 25 s, som förr: MÄTT tidigare att 6 s
         // halverade BPM 145→73→144 mitt i en låt när ett breakdown nådde tröskeln.
+        // HAR SATT TIDIGARE ETT HARMONI-VETO. BORTTAGET 2026-09-01.
+        // Det mattes till NOLL effekt nar det lades in, och visade sig sedan vara
+        // aktivt skadligt: "LINEDANCE" (facit 145) har 26 s tvetydigt intro dar
+        // bevisen pekar pa 90-100 och laset committar pa 96; forst vid 28 s
+        // framtrader ratt tempo (146.3 @0.77, 3.5x starkare an 96.8). Kvoten
+        // 146/96 = 1.52 ligger 1.3 % fran 3/2, sa vetot hojde beviskravet fran
+        // 4 s till 24 s -- omojligt att na. Vetot i GRANNRATTNINGEN ar validerat
+        // (+45 procentenheter) och star kvar; bara den har vagen tas bort.
         const needMs = rival > 2.5 ? 1500 : rival > 1.6 ? 4000 : 25000;
         const dtVote = this.lastSongVoteMs > 0 ? Math.min(200, voteNow - this.lastSongVoteMs) : 0;
         this.lastSongVoteMs = voteNow;
@@ -858,7 +973,6 @@ export class Analyser {
     const cA = this.localBpmConfidence;
     const aC = 1 - Math.exp(-dt / (conf > cA ? 0.025 : 0.120));
     this.localBpmConfidence = cA + (conf - cA) * aC;
-
     // ── KONFIDENSBASERAD LÅSSLÄPPNING ─────────────────────────────────────────
     // Sista utvägen ur ett fel lås. Oktav- och grannrättning stänger vid
     // BPM_COMMIT, och låtbytesvakten kräver FRISK takt (conf ≥ 0.9) — ett lås som
@@ -904,6 +1018,16 @@ export class Analyser {
     // Date.now() gjorde `voteNow < reacqUntilMs` alltid falskt → hinten var död.
     this.reacqUntilMs = this.perfNow() + windowMs;
     this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
+    // TEMPOGRAMMET MASTE NOLLAS HAR. Det ar EMA-ackumulerat (a = 0.15 nar last)
+    // och overlevde tidigare latbytet, sa forra latens toppar lag kvar och
+    // konkurrerade med den nya latens bevis under de forsta avgorande sekunderna.
+    // MATT offline pa inspelade latpar (tools/carryOver.mjs i pi-dmx): samma ljud
+    // gav "En dag pa stranden" 97 % ratt med FARSK analysator men 0 % (median 151)
+    // nar den kordes efter foregaende lat -- exakt det fel anvandaren sag live.
+    // Overhanget kostade 14.8 procentenheter i snitt; med nollning -0.2.
+    // ATT SKALA arrayen racker INTE (provat 0.5 / 0.3 / 0.15: noll effekt) --
+    // en konstant faktor andrar inte vilken bin som ar storst. Bara nollning biter.
+    this.tempoGram.fill(0);
     this.clearLockVotes();
     this.barAcc.fill(0); this.barCount = 0;
   }
@@ -911,6 +1035,7 @@ export class Analyser {
   /** Nollställ lås-/röst-ackumulatorerna — gemensam kärna för resetTempo/hintTrackChange/
    *  silens, så de tre inte kan divergera (jfr A5-buggen som var just en divergens). */
   private clearLockVotes(): void {
+    this.warmCalls = 0; this.holdCalls = 0;
     this.octaveVote = 0; this.nearVote = 0; this.nearChallenger = 0; this.bpmStable = 0;
     this.newSongVote = 0; this.challengerBpm = 0; this.lastSongVoteMs = 0; this.lockPeak = 0;
   }
@@ -962,7 +1087,43 @@ export class Analyser {
     this.lastT = 0;
   }
   private perfNow(): number { return this.virtualMs ?? performance.now(); }
-  private wallNow(): number { return this.virtualMs === null ? Date.now() : this.virtualEpoch + this.virtualMs; }
+  /**
+   * LJUDKLOCKAN — ms sedan start raknat ur ANTALET BEARBETADE SAMPEL, satt av
+   * matningen strax fore varje process(). -1 = inte satt (aldre anropare).
+   *
+   * VARFOR: slagtiden (`beatAnchorMs` -> `kickAtMs`) forfinas sub-hop med en
+   * parabel och PLL:en litar pa den som "+-1,3 ms". Men stampeln som parabeln
+   * forfinar RELATIVT var `Date.now()` vid den hop som sag slaget — alltsa
+   * exakt den ALSA-leveransjitter PLL-kommentaren tror sig ha undvikit.
+   * Perioden ar 5,3 ms, callbacks kommer i klumpar om 1-3 hop, plus
+   * handelseloopens fordrojning: verklig fasnoise +-5-8 ms per slag, och
+   * systematiskt sen. Sub-hop-precisionen var alltsa illusorisk.
+   *
+   * Ljudklockan bar ingen leveransjitter alls. Den mappas till vaggtid via en
+   * LANGSAMT filtrerad offset, sa PLL:ens vaggklocke-ram behalls men jittret
+   * forsvinner. Det tar ocksa bort analyslatensen ur fasen: slaget stamplas
+   * nar det VAR i ljudet, inte nar det rapporterades.
+   */
+  private audioClockMs = -1;
+  private audioToWallOffset = 0;
+  private audioOffsetSeeded = false;
+  setAudioClockMs(ms: number): void {
+    this.audioClockMs = ms;
+    const raw = Date.now() - ms;
+    if (!this.audioOffsetSeeded) { this.audioToWallOffset = raw; this.audioOffsetSeeded = true; return; }
+    // DISKONTINUITET (mic-omstart, stall): ljudklockan star still medan
+    // vaggklockan gar, och en EMA med tau ~5 s skulle lamna slagen felstamplade i
+    // sekunder. Ett hopp storre an ett taktslag ar aldrig drift — sa om direkt.
+    if (Math.abs(raw - this.audioToWallOffset) > 250) { this.audioToWallOffset = raw; return; }
+    // Tidskonstant ~5 s vid 375 Hz: foljer klockdrift, slatar ut leveransjitter.
+    this.audioToWallOffset += (raw - this.audioToWallOffset) * 0.0005;
+  }
+  /** Tillbaka till Date.now(). Nasta setAudioClockMs sar om offseten. */
+  clearAudioClock(): void { this.audioClockMs = -1; this.audioOffsetSeeded = false; this.audioToWallOffset = 0; }
+  private wallNow(): number {
+    if (this.virtualMs !== null) return this.virtualEpoch + this.virtualMs;
+    return this.audioClockMs >= 0 ? this.audioClockMs + this.audioToWallOffset : Date.now();
+  }
   private virtualEpoch = 1700000000000;
 
   private cfg: {
@@ -1290,7 +1451,30 @@ export class Analyser {
     this.envAccumT += hopMs;
     if (this.envAccumT >= 1000 / Analyser.ENV_HZ) {
       this.envAccumT -= 1000 / Analyser.ENV_HZ;
-      this.envRing[this.envPos] = this.envAccum;
+      // DUBBELSLAG: tva anslag narmare an REFRAC_N sampel ar SAMMA handelse.
+      // Anvandarens regel: "om det ar mindre an X ms mellan slag ar det ett
+      // dubbelslag och 1a ska raknas till bpm". Implementerad som icke-max-
+      // undertryckning (standard onset-peakplockning): ett sampel som foregas av
+      // ett STORRE inom fonstret dampas bort.
+      // 200 ms (20 sampel @ ENV_HZ 100) UPPMATT som optimum pa 110 inspelningar
+      // ur tva genrer: unika latar ratt 13/18 -> 15/18, snitt 89.7 -> 91.7 %.
+      //   100 ms 13/18 · 150 ms 15/18 (90.8) · 200 ms 15/18 (91.7) · 250 ms 12/18
+      //   300 ms 14/18 · 400 ms 13/18
+      // Att 200 slar 300 ar logiskt: vid 150 BPM ar en attondel exakt 200 ms, sa
+      // ett bredare fonster borjar ata genuina attondelar i stallet for prydnadsslag.
+      // Loste dessutom syntetscenariot "svag bas + pad 132" som legat pa 0 % sedan
+      // lange -- just utsmetade anslag ar dar dubbelslagen gor mest skada.
+      let _e = this.envAccum;
+      const _R = Analyser.REFRAC_N;
+      if (_R > 0 && _e > 0) {
+        let _big = false;
+        for (let _k = 1; _k <= _R; _k++) {
+          const _i = (this.envPos - _k + Analyser.ENV_LEN * 2) % Analyser.ENV_LEN;
+          if (this.envRing[_i] >= _e) { _big = true; break; }
+        }
+        if (_big) _e = 0;
+      }
+      this.envRing[this.envPos] = _e;
       this.envBassRing[this.envPos] = this.envBassAccum;
       this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
       this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
@@ -1478,6 +1662,7 @@ export class Analyser {
       // Obehandlad nivå i dB, normaliserad till 0..1 över ett 60 dB-spann.
       // Ingen AGC, inget tak som följer med uppåt → en stigning syns som stigning.
       const db = 20 * Math.log10(avg + 1e-7);
+      this.bandDbRaw[b] = db;   // RA dB (drop-kropp)
       this.bandDb[b] = Math.max(0, Math.min(1, (db + 70) / 60));
       // Per-band AGC: skala mot egen långsamt sjunkande peak → varje band nyttjar
       // full range oavsett mix (bas dominerar annars alltid rå-magnituden).
@@ -1573,16 +1758,26 @@ export class Analyser {
     // BASKROPPEN — drop-detektionens egen signal (tak + frånvaro + stigningstakt).
     // `inZone` lämnas orörd: effektlagret använder den som "musiken ligger högt".
 
-    const bodyNow = (this.bandLvl[0] + this.bandLvl[1] + this.bandLvl[2]) / 3;   // sub + kick + bas
+    const bodyNow = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;   // ra dB
     this.bodyEnv += (bodyNow - this.bodyEnv) * Math.min(1, dtHop / 0.35);
-    this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / 0.12);
-    this.bodyCeil = Math.max(this.bodyEnv, this.bodyCeil - dtHop * 0.015 * this.bodyCeil);
+    this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / 0.12);   // 0.06 testat men gav falsklarm live utan att fixa beat-lagget (det sitter i lamp-vagen/energin, inte har)
+    // TAKET SJUNKER I dB PER SEKUND, inte i procent. Kroppen ar nu ett dB-tal
+    // (negativt), och "1,5 % av ett negativt tal" gor taket STORRE, inte mindre —
+    // den gamla raden var matematiskt omvand sa fort skalan blev logaritmisk.
+    this.bodyCeil = Math.max(this.bodyEnv, this.bodyCeil - dtHop * BODY_CEIL_DB_S);
+    this.bodyPeak = Math.max(this.bodyEnv, this.bodyPeak - dtHop * 0.04);   // ~0.04 dB/s ≈ haller loud-referensen i minuter
 
     // BAS-FRÅNVARO med VARAKTIGHETSKRAV: under 40 % av taket i ≥2 s i sträck.
-    if (this.bodyEnv < this.bodyCeil * 0.40) {
+    // FRANVARO = ETT AVSTAND I dB, inte en kvot. En kvot mellan tva logaritmer
+    // betyder ingenting fysiskt.
+    if (this.bodyEnv < this.bodyCeil - BODY_GONE_DB) {
       this.bodyGoneMs += dtHop * 1000;
-      if (this.bodyGoneMs >= 2000) this.lastBodyGoneMs = nowWallA;
-    } else this.bodyGoneMs = 0;
+      // BODY_GONE_MIN_MS: hur LÄNGE kroppen måste ha varit borta för att räknas
+      // som en riktig breakdown. En 2s sidechain-dipp i en megamix är inte en
+      // drop-förberedelse; en riktig breakdown varar flera sekunder. Env-tunbar
+      // så den kan svepas mot facit offline.
+      if (this.bodyGoneMs >= BODY_GONE_MIN_MS) this.lastBodyGoneMs = nowWallA;
+    } else { if (this.bodyGoneMs > 0) this.lastGoneSpanMs = this.bodyGoneMs; this.bodyGoneMs = 0; }
     // STIGNINGSTAKT över 0.5 s (ringbuffert, ingen allokering).
     const hist = this.bodyHist, HL = hist.length;
     const oldest = hist[(this.bodyHistPos + HL - this.bodyHistLen) % HL];
@@ -1598,7 +1793,17 @@ export class Analyser {
     // 40 %/2 s slar 30 %/3 s: verkliga drops kommer ofta efter en DELVIS
     // nedgang, inte total tystnad — 10 av 11 missade drops foll pa just det.
     // Precision 46 -> 56 %, recall 35 -> 53 %.
-    const bodyOnset = bodyRise > 0.15 && nowWallA - this.lastBodyGoneMs < 6000;
+    // MÅSTE LANDA HÖGT, inte bara stiga. bodyRise är i dB, så en liten uppgång från
+    // nära-tystnad (en djup breakdown) ger ett STORT dB-lyft trots att den landar på
+    // en fortfarande LÅG nivå → falsk drop "där energin knappt gått upp" (ägaren i
+    // ladan 2026-09-03). Kräv att kroppen landar inom BODY_PEAK_DB av den senaste
+    // toppen (bodyCeil) — en riktig drop når nästan sitt eget tak; en uppgång i ett
+    // tyst parti gör det inte.
+    // Mot SEGA toppen (bodyPeak), inte snabba taket: en falsk drop i ett tyst parti
+    // landar lagt (fast ~10) medan riktiga landar hogt (fast ~34+); den sega toppen
+    // haller loud-referensen (~44) sa den laga landningen avvisas aven om taket tillf. sjunkit.
+    const landsHigh = this.bodyFast > this.bodyPeak - BODY_PEAK_DB;
+    const bodyOnset = bodyRise > BODY_RISE_DB && landsHigh && nowWallA - this.lastBodyGoneMs < 6000;
     // EN DROP MASTE LANDA I HOG ENERGI. Villkoren ovan tittar bara pa LOKALA
     // nivasprang (svacka -> topp-zon) och vet inget om var i laten vi ar, sa varje
     // liten variation i ett tyst parti raknades som en drop.
@@ -1633,8 +1838,24 @@ export class Analyser {
     // dar 8 var det kortaste. En drop kan alltsa omojligt folja pa en annan inom
     // 8 takter (32 taktslag). Gransen skalar nu med tempot: ~13s vid 150 BPM,
     // ~21s vid 90 BPM.
-    const minGapMs = this.localBpm > 40 ? (32 * 60000 / this.localBpm) : 13000;
-    const dropSpacingOk = nowWallA - this.lastDropMs > minGapMs;
+    // REFRAKTAR = 32 taktslag (8 takter). MATT: verkliga drop-avstand 8-40 takter.
+    // TESTAT 2026-09-02 att korta till 16: F1 45 -> 33, +50 falsklarm (modern-spar
+    // fyrar flera ggr per drop utan spärren). "Kroppen-var-borta"-kravet racker INTE
+    // som ensamt skydd → spärren behalls. En falsk drop som lasar ute en riktig loses
+    // med BATTRE PRECISION eller energi-gasen, inte med kortare spärr.
+    // DROP-REFRAKTÄR 4 s (ägaren i ladan 2026-09-03: vill ha tätare lamp-drops).
+    // Var 32 taktslag (~15 s). Röken översprutar INTE av detta — den har egen
+    // cooldown (fog.cooldownMs = 30 s) som gatar den oberoende av lampornas drop.
+    // OBS: kortare spärr → fler drops (och fler falska); medvetet val, agaren dömer
+    // live. testDrops-F1 sjunker (spärren gjorde jobb där) men det är sekundärt här.
+    // ESKALERINGS-REFRAKTÄR (ägaren i ladan 2026-09-03, mot falska drops): en drop
+    // strax efter en annan får BARA fyra om den är TYDLIGT STARKARE (större bas-lyft)
+    // än den förra — annars måste 20 s gå. Riktiga drops eskalerar (varje större);
+    // falska är svagare upprepningar och sållas bort. En eskalerande drop (kvällens
+    // stora ögonblick) släpps ändå igenom direkt (ned till 4 s).
+    const sinceDrop = nowWallA - this.lastDropMs;
+    const stronger = bodyRise > this.lastDropRise + DROP_ESCALATE_DB;
+    const dropSpacingOk = sinceDrop > DROP_LONG_MS || (sinceDrop > DROP_SHORT_MS && stronger);
     // RISER-KRAVET AR AVSTANGT — men INTE for att signalen ar dod. Den gamla
     // motiveringen ("inRiser 0% av tiden, buildUp p99=0.31") mattes mot en
     // aldre riser-detektor och ar RADERAD som falsk.
@@ -1652,8 +1873,17 @@ export class Analyser {
     // i ägarens musik → dess flanker låg godtyckligt, och 8-takters-spärren blev
     // i praktiken den som VALDE när en drop fyrade (första flanken efter att
     // fönstret löpt ut). Uppmätt resultat: 3 träffar av 19, 16 falsklarm.
-    if (dropSpacingOk && bodyOnset && this.activeMs > 2000) {
-      this.dropCount++; this.lastDropMs = nowWallA;
+    // STIGANDE FLANK: `bodyOnset` är sann KONTINUERLIGT i höga/pumpande partier (basen
+    // dippar och återhämtar ~17 dB varje takt via sidechain → bodyRise ligger konstant
+    // över tröskeln). MÄTT 2026-09-03: många kandidater/sekund. Fyra bara på den FÖRSTA
+    // framen lyftet passerar tröskeln → ett kandidat-event per verkligt lyft, inte per
+    // frame. Då blir eskalerings-/spärr-kravet meningsfullt (jämför distinkta lyft).
+    const bodyOnsetEdge = bodyOnset && !this.wasBodyOnset;
+    this.wasBodyOnset = bodyOnset;
+    const fullSlam = this.bodyPeak - this.bodyFast < DROP_QUALITY_DB;
+    if (dropSpacingOk && bodyOnsetEdge && this.activeMs > 2000 && fullSlam) {
+      this.dropCount++; this.lastDropMs = nowWallA; this.lastDropRise = bodyRise;
+      console.log(`[dropfire] wall ${this.wallNow()} rise ${bodyRise.toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} ceil ${this.bodyCeil.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} sinceDrop ${(sinceDrop/1000).toFixed(1)}s goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s goneSpan ${(this.lastGoneSpanMs/1000).toFixed(1)}s`);
     }
 
 

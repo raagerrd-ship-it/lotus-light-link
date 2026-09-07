@@ -96,7 +96,7 @@ export async function applyConnInterval(
   bleStats: { requestedIntervalMs: string; intervalSource: string; connIntervalReassertCount: number; outstandingAgeMs: number },
   log: (msg: string) => void,
 ): Promise<void> {
-  const targetUnits = 12;                 // 15 ms
+  const targetUnits = CONN_INTERVAL_UNITS;   // default 12 = 15 ms, se CONN_INTERVAL_UNITS
   const targetMs = (targetUnits * 1.25).toFixed(2);
   for (let attempt = 1; attempt <= 3; attempt++) {
     const handle = getHandle();
@@ -104,7 +104,7 @@ export async function applyConnInterval(
       await new Promise((r) => setTimeout(r, 500 * attempt));
       continue;
     }
-    const r = await forceConnInterval(handle, { min: targetUnits, max: targetUnits, timeoutUnits: SUPERVISION_UNITS });
+    const r = await forceConnInterval(handle, { min: targetUnits, max: targetUnits, latency: CONN_LATENCY, timeoutUnits: SUPERVISION_UNITS });
     if (r.ok) {
       bleStats.requestedIntervalMs = targetMs;
       bleStats.intervalSource = 'hcitool';
@@ -123,6 +123,26 @@ export async function applyConnInterval(
 // re-forcera var 25:e sekund och VERIFIERA mot faktisk leveranstid
 // (outstandingAgeMs): >60ms betyder att intervallet tappats → forcera direkt igen.
 const REASSERT_MS = 25_000;
+/**
+ * LANKPARAMETRAR SOM MILJOVARIABLER — for att kunna A/B-testa utan ombygge.
+ *
+ *   LOTUS_BLE_INTERVAL_UNITS  anslutningsintervall i 1,25 ms-enheter (12 = 15 ms)
+ *   LOTUS_BLE_LATENCY         slave latency: hur manga tomma handelser periferin
+ *                             far hoppa over (0 = svara pa varje)
+ *
+ * VARFOR DETTA AR EN A/B OCH INTE EN ANDRING: 15 ms med latency 0 ar den mest
+ * radiohungriga installning som gar pa ett chip som delar antenn med WiFi —
+ * ~67 handelser/s med coex-skyddstid runt varje. Men projektminnet sager att
+ * intervallet var den dolda ljuslatensen (7,5 ms hangde Pi:n, default ~200 ms gav
+ * hackigt ljus). Ratt varde ar alltsa MATT, inte antaget. Standardvardena har ar
+ * exakt de som gallde fore — ingen beteendeandring utan att nagon satt variabeln.
+ *
+ * OBS om slave latency: den later PERIFERIN sova, inte centralen. Pi:n som
+ * central oppnar anda varje handelse. Den frigor darfor lite pa Pi:ns radio;
+ * det ar INTERVALLET som gor det. Latency finns med for att kunna utesluta den.
+ */
+export const CONN_INTERVAL_UNITS = Math.max(6, Math.min(3200, Number(process.env.LOTUS_BLE_INTERVAL_UNITS) || 12));
+export const CONN_LATENCY = Math.max(0, Math.min(50, Number(process.env.LOTUS_BLE_LATENCY) || 0));
 /** 500 × 10 ms = 5 s supervision timeout — måste skickas med i BÅDA anropen. */
 export const SUPERVISION_UNITS = 500;
 const AGE_ALARM_MS = 60;
@@ -137,7 +157,7 @@ function startConnIntervalReassert(
     const handle = getHandle();
     if (handle == null) { stopConnIntervalReassert(); return; }
     const ageBefore = bleStats.outstandingAgeMs;
-    void forceConnInterval(handle, { min: 12, max: 12, timeoutUnits: SUPERVISION_UNITS }).then((r) => {
+    void forceConnInterval(handle, { min: CONN_INTERVAL_UNITS, max: CONN_INTERVAL_UNITS, latency: CONN_LATENCY, timeoutUnits: SUPERVISION_UNITS }).then((r) => {
       bleStats.connIntervalReassertCount++;
       if (!r.ok) {
         log(`[forceConnInterval] re-assert FAIL exit=${r.exitCode} stderr="${r.stderr}"`);

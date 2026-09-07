@@ -7,9 +7,10 @@
  * lease + ACL-outstanding-gate är fria. BLE-stall droppar alltså frames utan
  * att engine-ticken/smoothing/beat kan frysa.
  *
- * Stuck-detektion behålls (>1000ms outstanding → räkna + warn, ingen force-disconnect).
+ * Stuck-detektion: >1000 ms outstanding → räkna + warn, INGEN force-disconnect.
+ * (Force-disconnect provades 2026-09-02 och återtogs — se leaseAndDrainState.)
  *
- * Conn-interval: 16 units = 20 ms (se forceConnInterval.ts — 7.5 ms hängde Pi:n).
+ * Conn-interval: 12 units = 15 ms (se forceConnInterval.ts — 7.5 ms hängde Pi:n).
  */
 
 import { getDevice, bleStats } from './state.js';
@@ -109,6 +110,21 @@ let writeSeq = 0;
 // När senaste accepterade write skickades till noble (för drain-diagnostik).
 let lastSendStartedAt = 0;
 const STUCK_THRESHOLD_MS = 1000;
+/**
+ * Fastnad styrenhet -> begar ACL-rivning via KARNAN (rot-tjansten lotus-ble-drop).
+ *
+ * Vad som inte fungerade (2026-09-02): att riva lanken fran nobles sida
+ * (disconnectAsync + scheduleAutoReconnect i samma process). Lampan kom inte
+ * tillbaka pa tre minuter. Nobles egen nedrivning wedgar dess tillstand.
+ *
+ * Det har ar en ANNAN vag: `hcitool ledc` fran rot, via ble-drop.req. Kärnan
+ * slapper lanken -> noble far ett akta disconnect-event -> samma
+ * ateranslutning som efter en supervision-timeout. Alltsa den naturliga
+ * aterhamtningen, bara 3 s tidigare i stallet for efter 5. Projektminnet:
+ * "hcitool ledc botar" — det ar den dokumenterade boten, inte nobles.
+ */
+const STUCK_DROP_MS = 2000;
+let stuckDropRequested = false;
 
 // Diagnostisk latch: räknar stuck-events en gång per episod, men river inte länk.
 let stuckRecoveryInFlight = false;
@@ -211,6 +227,25 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
         lastStuckWarnAt = now;
       }
     }
+    if (ageMs >= STUCK_DROP_MS && !stuckDropRequested) {
+      stuckDropRequested = true;
+      console.warn(`[BLE] controller hangde ${ageMs}ms — begar ACL-rivning via karnan (ble-drop.req)`);
+      import('node:fs/promises').then(async (fsp) => {
+        const dir = process.env.PCC_DATA_DIR || '/var/lib/pi-control-center/apps/lotus-light';
+        const mac = (getDevice() as any)?.peripheral?.address ?? '';
+        await fsp.writeFile(`${dir}/ble-drop.req`, `${String(mac).toUpperCase()}
+`, 'utf8');
+      }).catch((e: any) => console.warn(`[BLE] kunde inte begara rivning: ${e?.message ?? e}`));
+    }
+    // INGEN FORCE-DISCONNECT FRAN NOBLES SIDA. Provat 2026-09-02 och ATERTAGET.
+    //
+    // Resonemanget var att `controllerStuckCount` och `disconnectCount` foljts
+    // at i alla observerade fall, sa frankopplingen kom anda — att riva lanken
+    // tidigare skulle bara korta frysningen. Det holl inte i drift: rivningen
+    // loste ut EN gang och lampan kom sedan inte tillbaka pa tre minuter.
+    //
+    // Att vanta ut supervision-timeouten ar langsammare men aterhamtar sig.
+    // En snabbare rivning ar inte battre an en som faktiskt kommer tillbaka.
   } else {
     bleStats.outstandingAgeMs = 0;
     if (lastSendStartedAt > 0 && outstanding === 0) {
@@ -219,6 +254,7 @@ function leaseAndDrainState(now: number): 'ready' | 'busy' {
     }
     if (outstanding === 0) {
       stuckRecoveryInFlight = false;
+      stuckDropRequested = false;
     }
   }
 

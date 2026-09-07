@@ -14,6 +14,7 @@ import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
 import { logDebugBanner } from './debugLog.js';
+import { orderPaletteByContrast } from './colorPick.js';
 logDebugBanner();
 
 // B2: minimal crash-handler REDAN här. main() installerar de fullständiga
@@ -33,6 +34,19 @@ import {
   markSubsystemStarting, markSubsystemReady, markSubsystemError,
   getSubsystemState, type SubsystemId,
 } from './ble/subsystem-state.js';
+
+// ── ISO-TIDSSTAMPEL PA VARJE LOGGRAD ────────────────────────────────────────
+// systemd skriver stdout/stderr rakt till engine.log (StandardOutput=append:),
+// utan journald och darmed utan tidsstamplar. Raderna bar bara "+NNNNms"
+// relativt nagot som inte gar att aterskapa. Det gjorde det OMOJLIGT att
+// korrelera BLE-tapp med refinerns uppladdningar — alltsa att avgora om WiFi
+// faktiskt svalter BLE. Prefixet gor den fragan matbar.
+{
+  const _stamp = (fn: (...a: any[]) => void) => (...a: any[]) => fn(new Date().toISOString(), ...a);
+  console.log = _stamp(console.log.bind(console));
+  console.warn = _stamp(console.warn.bind(console));
+  console.error = _stamp(console.error.bind(console));
+}
 
 // Applicera ev. tidigare vald BLE-lampa (annars seed:a BLEDOM01 default).
 // Måste ske före första connect så connect.ts läser rätt target.
@@ -89,6 +103,8 @@ type EngineModule = typeof import('./piEngine.js');
 let alsaMic: AlsaMicModule | null = null;
 let sonos: SonosModule | null = null;
 let engineMod: EngineModule | null = null;
+/** Latminnet, satt vid boot. null = minnet kunde inte lasas -> motorn kor som forr. */
+let songStoreRef: import('./songStore.js').SongStore | null = null;
 let engineInstance: import('./piEngine.js').PiLightEngine | null = null;
 let configServer: typeof import('./configServer.js') | null = null;
 
@@ -121,7 +137,7 @@ function applySonosStateToEngine(state: {
   volume: number | null;
   palette: [number, number, number][] | null;
   albumArtUrl: string | null;
-}, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }, lastPaletteSigRef?: { current: string | null }): void {
+}, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }, lastPaletteSigRef?: { current: string | null }, lastChosenRef?: { current: [number, number, number] | null }): void {
   if (!engineInstance) return;
 
   // OBS: engine.setPlaying(...) styrs nu UTESLUTANDE av engineLifecycle.ts.
@@ -167,9 +183,18 @@ function applySonosStateToEngine(state: {
       const paletteChanged = !lastPaletteSigRef || paletteSig !== lastPaletteSigRef.current;
       if (paletteChanged) {
         if (lastPaletteSigRef) lastPaletteSigRef.current = paletteSig;
-        engineInstance.setColor(state.palette[0]);
-        engineInstance.setPalette(state.palette);
-        console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
+        // Gatewayen skickar fyra PLATSER men sallan fyra farger (den fyller ut
+        // genom att upprepa huvudfargen). Valj den kandidat som star langst
+        // fran foregaende lats farg, men bara bland dem som har kulor kvar --
+        // se colorPick.ts. Faller alla bort blir det [0] precis som forut.
+        const pick = orderPaletteByContrast(state.palette, lastChosenRef?.current ?? null);
+        if (lastChosenRef) lastChosenRef.current = pick.ordered[0];
+        engineInstance.setColor(pick.ordered[0]);
+        engineInstance.setPalette(pick.ordered);
+        const _why = pick.swapped
+          ? ` → valde rgb(${pick.ordered[0]}) (dE ${pick.chosenDe?.toFixed(0)} mot dominantens ${pick.primaryDe?.toFixed(0)})`
+          : '';
+        console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}${_why}`);
       }
     }
   }
@@ -189,6 +214,55 @@ async function ensureEngineInstance(): Promise<void> {
   const savedTickMs = Number(getItem('tick-ms'));
   const tick = savedTickMs >= TICK_MS && savedTickMs <= 50 ? savedTickMs : TICK_MS;
   engineInstance = new engineMod.PiLightEngine(tick);
+
+  // ── LÅTMINNE ──────────────────────────────────────────────────────────────
+  // Sonos ger artist och titel vid varje låtbyte, så identiteten är gratis och
+  // en uppslagstabell räcker — inget ljudfingeravtryck behövs.
+  // Minnet är ett TILLÄGG: saknas filen eller låten beter sig motorn precis som
+  // förr. Laddas en gång; en låt analyseras en gång i sitt liv.
+  try {
+    const { SongStore } = await import('./songStore.js');
+    const store = new SongStore(process.env.SONG_STORE || ((await import('./storage.js')).DATA_DIR + '/songs.json'));
+    await store.load();
+    // LADDA OM NAR REFINERN SKRIVIT. Motorn laste minnet EN gang vid start medan
+    // refinern skriver till samma fil lopande -- nya latar syntes aldrig utan
+    // omstart. Kollar filens mtime vid varje uppslag (alltsa vid latbyte, ett par
+    // ganger per minut) och laser om bara nar den faktiskt andrats.
+    const storePath = process.env.SONG_STORE || ((await import('./storage.js')).DATA_DIR + '/songs.json');
+    const { statSync } = await import('node:fs');
+    let lastMtime = 0;
+    try { lastMtime = statSync(storePath).mtimeMs; } catch { /* saknas an */ }
+    // MATNING av landmarkesvagens kostnad. pi-dmx matte att for manga par per
+    // ruta drev motorn till 98 % CPU och gav synligt flimmer, sa vagen far vara
+    // pa forst nar den ar matt pa den har hardvaran.
+    if (process.env.LOTUS_FP === '1') {
+      engineInstance.enableLandmarks(true);
+      console.log('[fingerprint] landmarkesvagen PA');
+    }
+
+    // Motorn mater sitt eget synkfel per lat och sparar svaret. `store.save()`
+    // skriver om filen, vilket bumpar mtime och far uppslaget nedan att ladda
+    // om -- helt ofarligt, det ar samma data plus korrigeringen.
+    engineInstance.setSongOffsetSaver((a: string, t: string, ms: number) => {
+      void store.setSyncOffset(a, t, ms).catch(() => { /* minnet far aldrig falla motorn */ });
+    });
+    engineInstance.setSongLookup((a: string, t: string) => {
+      try {
+        const m = statSync(storePath).mtimeMs;
+        if (m !== lastMtime) {
+          lastMtime = m;
+          // load() ar async; uppslaget maste svara nu. Nasta latbyte far den
+          // uppdaterade tabellen — en lats fordrojning ar helt oproblematisk.
+          void store.load().then(() => console.log(`[songStore] omladdat, ${store.size} låtar`));
+        }
+      } catch { /* minnet far aldrig falla motorn */ }
+      return store.lookup(a, t);
+    });
+    songStoreRef = store;
+    console.log(`[songStore] ${store.size} kända låtar`);
+  } catch (e) {
+    console.log(`[songStore] kunde inte läsas (${(e as Error).message}) — kör utan minne`);
+  }
   
 
 
@@ -241,6 +315,7 @@ async function startMicSubsystem(): Promise<void> {
       configServer?.attachConfigRuntime?.({
         engine: eng,
         mic: alsaMic,
+        songStore: songStoreRef,
         invalidateIdleColorCache: engineMod?.invalidateIdleColorCache,
       });
 
@@ -309,13 +384,18 @@ async function startSonosSubsystem(): Promise<void> {
       const lastArtUrl = { current: null as string | null };
       const wasTvMode = { current: false };
       const lastPaletteSig = { current: null as string | null };
+      // Fargen lampan lyser med nu. Overlever setPalette([])-clearen vid
+      // latbyte, sa nasta lat har nagot att stalla sin kontrast mot.
+      const lastChosen = { current: null as [number, number, number] | null };
       // ── Låtbyte → hint till beat-trackern ──
       // Gatewayen kan glitcha trackName (tom sträng mitt i en låt, dubbel-event),
       // så bytet debouncas ~1.5 s innan motorn får sin hint. Hinten är mjuk:
       // tempot behålls som startgissning, sökningen vidgas tillfälligt.
       let lastTrackName: string | null = null;
       let trackDebounce: NodeJS.Timeout | null = null;
-      const noteTrackName = (name: string | null) => {
+      let lastArtist: string | null = null;
+      const noteTrackName = (name: string | null, artist?: string | null) => {
+        if (artist !== undefined) lastArtist = artist;
         if (name === lastTrackName) return;
         lastTrackName = name;
         if (trackDebounce) clearTimeout(trackDebounce);
@@ -323,7 +403,7 @@ async function startSonosSubsystem(): Promise<void> {
         trackDebounce = setTimeout(() => {
           trackDebounce = null;
           if (name !== lastTrackName) return;    // hann ändras igen → glitch
-          engineInstance?.notifyTrackChange();
+          engineInstance?.notifyTrackChange(lastArtist, name);
         }, 1500);
       };
       // await så fresh-status race (≤1500ms) hinner trigga setPlaying(true)
@@ -331,9 +411,16 @@ async function startSonosSubsystem(): Promise<void> {
       // även om Sonos redan spelar.
       // EN prenumeration (A3): dispatchar till både engine-side-effects och
       // lifecycle:s playing-handler.
+      // Latklockan far HELA positionsflodet (1 Hz), inte bara de uppdateringar
+      // som rakar passera significant-change-grinden (0,1 Hz). Klockan plockar
+      // sjalv ut flankarna och ignorerar upprepade varden.
+      sonos.onSonosPositionTick((posMs) => engineInstance?.onSonosPosition(posMs));
+
       await sonos.onSonosChange((state) => {
-        applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
-        noteTrackName(state.trackName ?? null);
+        applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig, lastChosen);
+        noteTrackName(state.trackName ?? null, state.artistName ?? null);
+        // Latklockan: mata varje uppdatering. Den plockar sjalv ut flankarna.
+        engineInstance?.onSonosPosition(state.positionMs ?? null);
         // TV-läge håller motorn IGÅNG så den reaktiva TV-profilen tickar.
         // Idle gäller enbart äkta "spelar inte".
         const playing = typeof state.playbackState === 'string'

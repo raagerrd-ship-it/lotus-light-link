@@ -1,0 +1,14 @@
+[Unit]
+Description=Lotus: nattlig korpusinsamling (en inspelning per lat, fran borjan)
+After=lotus-light-engine.service
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/local/bin/lotus-corpus.sh
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

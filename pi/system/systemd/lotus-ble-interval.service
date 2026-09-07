@@ -1,0 +1,8 @@
+[Unit]
+Description=Force low BLE conn interval (lotus)
+After=lotus-light-engine.service
+[Service]
+ExecStart=/usr/local/bin/lotus-ble-interval.sh
+Restart=always
+[Install]
+WantedBy=multi-user.target

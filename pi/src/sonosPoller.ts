@@ -149,6 +149,25 @@ function hasPaletteChanged(next: [number, number, number][] | null, prev: [numbe
   return paletteSig(next) !== paletteSig(prev);
 }
 
+/**
+ * POSITIONSFLODET -- separat fran onSonosChange, med flit.
+ *
+ * UPPMATT 2026-09-02: gatewayen pushar `position-tick` over SSE EN GANG PER
+ * SEKUND (79000, 80000, 81000, ...). Men `apply()` notifierar bara lyssnare vid
+ * "significant change" eller vid byte av 10-SEKUNDERSHINK -- sa latklockan fick
+ * en flank var tionde sekund i stallet for varje sekund. Nio av tio flankar
+ * kastades innan de nadde klockan.
+ *
+ * En show kan inte halla takten pa 0,1 Hz. Klockan ar redan byggd for att matas
+ * sa ofta det gar (den plockar sjalv ut forandringarna och ignorerar upprepade
+ * varden), sa den ska ha hela flodet. Den har kanalen ar avsiktligt skild fran
+ * significant-change-grinden, som styr uppspelning och palett och INTE ska
+ * fyra av en gang i sekunden.
+ */
+type PositionListener = (posMs: number | null) => void;
+const positionListeners: PositionListener[] = [];
+export function onSonosPositionTick(fn: PositionListener): void { positionListeners.push(fn); }
+
 function apply(next: SonosState): void {
   const significantChanged =
     next.playbackState !== currentState.playbackState ||
@@ -165,7 +184,12 @@ function apply(next: SonosState): void {
     next.positionMs != null &&
     currentState.positionMs != null &&
     Math.floor(next.positionMs / 10000) !== Math.floor(currentState.positionMs / 10000);
+  const prevPos = currentState.positionMs;
   currentState = next;
+  // Varje forandrad position vidare till klockan — oberoende av grinden nedan.
+  if (next.positionMs != null && next.positionMs !== prevPos) {
+    for (const fn of positionListeners) { try { fn(next.positionMs); } catch { /* en trasig lyssnare far inte stoppa resten */ } }
+  }
   if (significantChanged || positionHeartbeat) listeners.forEach(fn => fn(next));
 }
 

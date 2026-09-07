@@ -1,0 +1,16 @@
+[Unit]
+Description=Lotus: analyserar inspelade latar en gang, offline
+After=network-online.target lotus-light-engine.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/lotus-light/pi
+ExecStart=/usr/bin/node tools/refineDaemon.mjs
+Restart=always
+RestartSec=30
+Nice=19
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
