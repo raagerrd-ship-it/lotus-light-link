@@ -14,6 +14,7 @@ import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
 import { logDebugBanner } from './debugLog.js';
+import { orderPaletteByContrast } from './colorPick.js';
 logDebugBanner();
 
 // B2: minimal crash-handler REDAN här. main() installerar de fullständiga
@@ -136,7 +137,7 @@ function applySonosStateToEngine(state: {
   volume: number | null;
   palette: [number, number, number][] | null;
   albumArtUrl: string | null;
-}, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }, lastPaletteSigRef?: { current: string | null }): void {
+}, lastArtUrlRef?: { current: string | null }, wasTvModeRef?: { current: boolean }, lastPaletteSigRef?: { current: string | null }, lastChosenRef?: { current: [number, number, number] | null }): void {
   if (!engineInstance) return;
 
   // OBS: engine.setPlaying(...) styrs nu UTESLUTANDE av engineLifecycle.ts.
@@ -182,9 +183,18 @@ function applySonosStateToEngine(state: {
       const paletteChanged = !lastPaletteSigRef || paletteSig !== lastPaletteSigRef.current;
       if (paletteChanged) {
         if (lastPaletteSigRef) lastPaletteSigRef.current = paletteSig;
-        engineInstance.setColor(state.palette[0]);
-        engineInstance.setPalette(state.palette);
-        console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}`);
+        // Gatewayen skickar fyra PLATSER men sallan fyra farger (den fyller ut
+        // genom att upprepa huvudfargen). Valj den kandidat som star langst
+        // fran foregaende lats farg, men bara bland dem som har kulor kvar --
+        // se colorPick.ts. Faller alla bort blir det [0] precis som forut.
+        const pick = orderPaletteByContrast(state.palette, lastChosenRef?.current ?? null);
+        if (lastChosenRef) lastChosenRef.current = pick.ordered[0];
+        engineInstance.setColor(pick.ordered[0]);
+        engineInstance.setPalette(pick.ordered);
+        const _why = pick.swapped
+          ? ` → valde rgb(${pick.ordered[0]}) (dE ${pick.chosenDe?.toFixed(0)} mot dominantens ${pick.primaryDe?.toFixed(0)})`
+          : '';
+        console.log(`[Color] Palette from gateway: ${state.palette.map(c => `rgb(${c})`).join(', ')}${_why}`);
       }
     }
   }
@@ -374,6 +384,9 @@ async function startSonosSubsystem(): Promise<void> {
       const lastArtUrl = { current: null as string | null };
       const wasTvMode = { current: false };
       const lastPaletteSig = { current: null as string | null };
+      // Fargen lampan lyser med nu. Overlever setPalette([])-clearen vid
+      // latbyte, sa nasta lat har nagot att stalla sin kontrast mot.
+      const lastChosen = { current: null as [number, number, number] | null };
       // ── Låtbyte → hint till beat-trackern ──
       // Gatewayen kan glitcha trackName (tom sträng mitt i en låt, dubbel-event),
       // så bytet debouncas ~1.5 s innan motorn får sin hint. Hinten är mjuk:
@@ -404,7 +417,7 @@ async function startSonosSubsystem(): Promise<void> {
       sonos.onSonosPositionTick((posMs) => engineInstance?.onSonosPosition(posMs));
 
       await sonos.onSonosChange((state) => {
-        applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig);
+        applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig, lastChosen);
         noteTrackName(state.trackName ?? null, state.artistName ?? null);
         // Latklockan: mata varje uppdatering. Den plockar sjalv ut flankarna.
         engineInstance?.onSonosPosition(state.positionMs ?? null);
