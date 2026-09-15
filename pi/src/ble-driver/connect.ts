@@ -106,6 +106,11 @@ const MIN_CONNECT_GAP_MS = 2000;
 // trigger via /api/ble/connect. Räknaren nollställs vid lyckad reconnect.
 const AUTO_RECONNECT_MAX_ATTEMPTS = 20;
 let _autoReconnectEnabled = false;
+// Spärr satt av AVSIKTLIGA nedkopplingar (idle/manuell/cancel). Släpps BARA
+// av lifecycle:s requestAutoReconnect() eller en lyckad connect — aldrig av
+// scheduleAutoReconnects självpåslag via disconnectCount. Utan denna
+// återanslöt IGNITION till lampan hela natten (728 re-asserts 2026-09-13).
+let _reconnectSuppressed = false;
 let _autoReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _autoReconnectAttempt = 0;
 let _autoReconnectGivenUp = false;
@@ -126,6 +131,11 @@ export function getLastDisconnectReason(): string { return _lastDisconnectReason
  * last-sent-cache). Cold path — anropas från alla disconnect-vägar.
  */
 function teardownDeviceState(): void {
+  // Re-assert-timern hamrade hcitool lecup på handle 64 var 25:e sekund i
+  // tio timmar efter idle-disconnect (728 ggr, 2026-09-13) och höll länken
+  // vid liv så remsan aldrig nådde supervision-timeout. Alla disconnect-
+  // vägar går genom här; connect-vägen startar om den själv.
+  stopConnIntervalReassert();
   for (const fn of _onDisconnectedCbs) { try { fn(); } catch {} }
   detachControllerDrain();
   setDevice(null);
@@ -148,12 +158,14 @@ function clearAutoReconnect(): void {
  */
 export function requestAutoReconnect(): void {
   _autoReconnectGivenUp = false;
+  _reconnectSuppressed = false;
   _autoReconnectEnabled = true;
   scheduleAutoReconnect();
 }
 
 /** Stäng av auto-reconnect-loopen helt (PAUSED-shutdown / manuell stop). */
 export function cancelAutoReconnect(): void {
+  _reconnectSuppressed = true;
   _autoReconnectEnabled = false;
   clearAutoReconnect();
 }
@@ -174,6 +186,9 @@ export function scheduleAutoReconnect(): void {
 
   if (_autoReconnectGivenUp) {
     return; // pausad efter MAX_ATTEMPTS — kräv manuell /api/ble/connect
+  }
+  if (_reconnectSuppressed) {
+    return; // avsiktligt av — självpåslaget nedan får inte åsidosätta det
   }
   if (!_autoReconnectEnabled) {
     // Aktivera loopen om vi någon gång har varit anslutna — annars triggas
@@ -240,6 +255,7 @@ export function getHardcodedConnected(): { connected: boolean; name: string; mac
 export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> {
   // Manuell disconnect → stoppa auto-reconnect-loopen så vi inte kämpar mot användaren.
   _lastDisconnectReason = 'manual';
+  _reconnectSuppressed = true;
   _autoReconnectEnabled = false;
   clearAutoReconnect();
   // Nollställ alltid räknaren vid manuell disconnect så nästa
@@ -262,6 +278,7 @@ export async function disconnectHardcoded(): Promise<{ disconnected: boolean }> 
 export async function triggerIdleDisconnect(): Promise<void> {
   console.log('[connect-hardcoded] Idle-timeout disconnect — markerar som auto');
   _lastDisconnectReason = 'idle-timeout';
+  _reconnectSuppressed = true;
   _autoReconnectEnabled = false;
   clearAutoReconnect();
   // Nollställ failure-räknaren så ev. partial-fails från förra cykeln inte
@@ -558,6 +575,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             }, 500);
             // Aktivera auto-reconnect-loopen — från och med nu räknas varje
             // disconnect som "tappad länk vi vill ha tillbaka".
+            _reconnectSuppressed = false;
             _autoReconnectEnabled = true;
             clearAutoReconnect();
             // Notifiera engine — den startar keep-alive + idle-heartbeat
