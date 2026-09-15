@@ -631,13 +631,20 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   // avgörs promisen aldrig. Då satt _connectInFlight kvar för alltid: scan
   // blockerades, auto-reconnect returnerade tidigt, felräknaren ökade aldrig,
   // process.exit fyrade aldrig. Uppmätt: 5 timmar nere utan ett enda försök.
+  // Timern MASTE rensas nar inflight avgors. Forut lag den kvar och fyrade
+  // 30 s efter VARJE forsok, lyckat eller ej — en spokrad mitt i nasta forsok.
+  // 1 025 sadana rader i loggen; resultatraderna sa "connectAsync timed out
+  // after 4000ms", inte "in-flight watchdog". Racen var aldrig forlorad.
+  let _wdTimer: ReturnType<typeof setTimeout> | null = null;
   const guarded: Promise<{ connected: boolean; error?: string }> = Promise.race([
     inflight,
-    new Promise<{ connected: boolean; error?: string }>((res) => setTimeout(() => {
+    new Promise<{ connected: boolean; error?: string }>((res) => { _wdTimer = setTimeout(() => {
+      _wdTimer = null;
       console.error('[connect-hardcoded] in-flight watchdog 30s — släpper låsningen');
       res({ connected: false, error: 'connect in-flight watchdog (30s)' });
-    }, 30_000)),
+    }, 30_000); }),
   ]);
+  void inflight.finally(() => { if (_wdTimer) { clearTimeout(_wdTimer); _wdTimer = null; } }).catch(() => {});
 
   _connectInFlight = guarded;
   try {
