@@ -548,7 +548,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             } catch (e: any) {
 
               console.warn(`${ts()}    anchor write FEL: ${e?.message ?? e} — disconnectar`);
-              try { await peripheral.disconnectAsync(); } catch {}
+              try { await withTimeout(peripheral.disconnectAsync(), 'cleanup disconnect', 2500); } catch {}  // MATT: obegransad har hangde 27-62 s pa halvoppen perifer tills 30 s-vakthunden slappte
               if (_connected === peripheral) _connected = null;
               finish({ connected: false, error: `Anchor write failed: ${e?.message ?? e}` });
               return;
@@ -587,7 +587,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           } catch (e: any) {
 
             console.warn(`${ts()}    GATT discovery FEL: ${e?.message ?? e} — försöker disconnecta`);
-            try { await peripheral.disconnectAsync(); } catch {}
+            try { await withTimeout(peripheral.disconnectAsync(), 'cleanup disconnect', 2500); } catch {}  // MATT: obegransad har hangde 27-62 s pa halvoppen perifer tills 30 s-vakthunden slappte
             // MÅSTE nollställas här: annars står _connected kvar medan länken är
             // död → nästa cleanup hoppar över noble-cachen.
             if (_connected === peripheral) _connected = null;
@@ -595,7 +595,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
           }
         } catch (e: any) {
           dlog(`${ts()}    connectAsync FEL: ${e?.message ?? e} — disconnectar och ger upp`);
-          try { await peripheral.disconnectAsync(); } catch {}
+          try { await withTimeout(peripheral.disconnectAsync(), 'cleanup disconnect', 2500); } catch {}  // MATT: obegransad har hangde 27-62 s pa halvoppen perifer tills 30 s-vakthunden slappte
           finish({ connected: false, error: `connectAsync failed: ${e?.message ?? e}` });
         }
 
