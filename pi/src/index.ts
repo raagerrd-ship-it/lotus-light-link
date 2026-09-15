@@ -146,10 +146,12 @@ function applySonosStateToEngine(state: {
     if (wasTvModeRef && !wasTvModeRef.current) {
       console.log('[Engine] → TV-läge');
       wasTvModeRef.current = true;
+      engineInstance.setTvMode(true);
     }
   } else if (wasTvModeRef?.current) {
     console.log('[Engine] TV-läge → Normal');
     wasTvModeRef.current = false;
+    engineInstance.setTvMode(false);
   }
 
   // FIX 4: lärd volym→gain lär BARA när musik spelar och inte i TV-läge

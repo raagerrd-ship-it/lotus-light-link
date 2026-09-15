@@ -494,6 +494,20 @@ function saveCalibration(cal: LightCalibration): void {
   setItem('light-calibration', JSON.stringify(cal));
 }
 
+/** TV-kalibrering: overlay pa bas-kalibreringen nar Sonos spelar TV (htastream).
+ *  Defaults = augusti-trimningen (tight-follow v7/v8: bas 0.5 sa dialog syns,
+ *  tystnadsgolv under lugn TV, snabb release, inga drops). Persisteras separat
+ *  under 'tv-calibration' sa musikens 'light-calibration' aldrig fororenas. */
+export const TV_CAL_DEFAULTS: Partial<LightCalibration> = {
+  bassWeight: 0.5, releaseAlpha: 0.85, attackAlpha: 1.0, tickEnergyFloor: 0.0008,
+  transientGain: 1.0, flickerDeadband: 0.004, dropEnabled: false,
+  punchWhiteThreshold: 100, brightnessFloor: 40,
+};
+export function loadTvCalibration(): Partial<LightCalibration> {
+  try { const raw = getItem('tv-calibration'); if (raw) return { ...TV_CAL_DEFAULTS, ...JSON.parse(raw) }; } catch {}
+  return { ...TV_CAL_DEFAULTS };
+}
+
 // Cached idle color — only re-parsed when changed via API
 let _cachedIdleColor: [number, number, number] = [255, 60, 0];
 let _idleColorLoaded = false;
@@ -755,6 +769,8 @@ export class PiLightEngine {
   // TV-soft mode — bright, gentle band profile for TV/SPDIF playback
   // Dirty-flag for calibration save — avoids unnecessary disk writes
   private _calDirty = false;
+  // TV-lage: this.cal ar da bas + TV-overlay. Persisteras ALDRIG som musik.
+  private _tvMode = false;
 
   // ── Frame/analys-taps (valfria observatörer) ──
   // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som accepterats
@@ -1882,15 +1898,30 @@ export class PiLightEngine {
   }
 
   reloadCalibration(): void {
-    this.cal = loadCalibration();
-    setBeatCutoffHz(this.cal.beatCutoffHz);
+    this.applyCal();
     this._calDirty = true; // mark for next save cycle
-    // Re-apply raw mode overrides if active
-    if (this._rawMode) {
-      this.cal.transientGain = 0;
-    }
+  }
+
+  /** Bas-kalibrering + ev. TV-overlay + ev. raw-override -> this.cal + tc.
+   *  Enda vagen som satter this.cal, sa alla lagen komponeras pa samma satt. */
+  private applyCal(): void {
+    const base = loadCalibration();
+    this.cal = this._tvMode ? ({ ...base, ...loadTvCalibration() } as LightCalibration) : base;
+    setBeatCutoffHz(this.cal.beatCutoffHz);
+    if (this._rawMode) this.cal.transientGain = 0;
     this.tc = computeTickConstants(this.tickMs, this.cal);
   }
+
+  /** TV-lage pa/av (Sonos spelar htastream). Aterstallning = samma reload fran persisterat. */
+  setTvMode(on: boolean): void {
+    if (on === this._tvMode) return;
+    this._tvMode = on;
+    this.applyCal();
+    console.log(`[Engine] TV-kalibrering ${on ? 'PA' : 'AV'} (bassWeight=${this.cal.bassWeight}, tickEnergyFloor=${this.cal.tickEnergyFloor}, floor=${this.cal.brightnessFloor})`);
+  }
+  isTvMode(): boolean { return this._tvMode; }
+  /** PUT /api/tv-calibration: aterapplicera om TV-laget ar aktivt. */
+  reloadTvCalibration(): void { if (this._tvMode) this.applyCal(); }
 
   /** Enable raw mode — disables all processors for gain calibration */
   setRawMode(on: boolean): void {
@@ -2060,7 +2091,8 @@ export class PiLightEngine {
     // Annars spammar writeAsync mot null-device innan användaren tryckt connect.
 
     this.saveTimer = setInterval(() => {
-      if (this._calDirty) {
+      // I TV-lage ar this.cal bas+overlay — persistera det ALDRIG som musik.
+      if (this._calDirty && !this._tvMode) {
         saveCalibration(this.cal);
         this._calDirty = false;
       }

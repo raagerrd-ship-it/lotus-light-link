@@ -38,6 +38,8 @@ export interface SonosState {
   positionMs: number | null;
   durationMs: number | null;
   isTvMode: boolean;
+  /** Sonos CurrentURI. x-sonos-htastream: = TV/hemmabio. null = gatewayen har inte skickat nagon. */
+  currentUri: string | null;
   palette: [number, number, number][] | null;
   /** Pre-cached palette för nästa låt — gör att vi kan börja fade direkt vid trackbyte */
   nextPalette: [number, number, number][] | null;
@@ -51,12 +53,20 @@ type Listener = (state: SonosState) => void;
 const listeners = new Set<Listener>();
 let autoTvModeEnabled = false;
 
+/** TV-lage = spelar + inget latnamn, OCH om URI:n ar kand maste den vara hemmabio-
+ *  strommen. URI:n kan bara TA BORT falska TV (strom utan titel), aldrig lagga till.
+ *  Pollen kor parallellt med SSE, sa URI:n ar aldrig aldre an ett poll-intervall. */
+function computeTvMode(playbackState: string | null | undefined, trackName: string | null | undefined, uri: string | null | undefined): boolean {
+  if (!autoTvModeEnabled || !isPlaying(playbackState ?? '') || trackName) return false;
+  return uri ? /^x-sonos-htastream:/i.test(uri) : true;
+}
+
 export function setAutoTvMode(enabled: boolean): void {
   autoTvModeEnabled = enabled;
   dlog(`[Sonos] Auto TV-mode: ${enabled ? 'ON' : 'OFF'}`);
   // Re-evaluate immediately so toggling the flag mid-playback flips isTvMode
   // without waiting for a full status update.
-  const _tv = enabled && isPlaying(currentState.playbackState ?? '') && !currentState.trackName;
+  const _tv = computeTvMode(currentState.playbackState, currentState.trackName, currentState.currentUri);
   if (_tv !== currentState.isTvMode) apply({ ...currentState, isTvMode: _tv });
 }
 
@@ -73,6 +83,7 @@ let currentState: SonosState = {
   positionMs: null,
   durationMs: null,
   isTvMode: false,
+  currentUri: null,
   palette: null,
   nextPalette: null,
   nextTrackName: null,
@@ -212,7 +223,7 @@ function parseStatus(s: any): void {
       durationMs: s.durationMillis ?? currentState.durationMs,
       volume: s.volume ?? currentState.volume,
       playbackState: _pbs,
-      isTvMode: autoTvModeEnabled && isPlaying(_pbs ?? '') && !currentState.trackName,
+      isTvMode: computeTvMode(_pbs, currentState.trackName, currentState.currentUri),
     });
     return;
   }
@@ -226,7 +237,9 @@ function parseStatus(s: any): void {
 
   // Auto TV-mode: PLAYING + ingen trackName → TV/SPDIF
   const reportedPlaying = isPlaying(reportedPlaybackState ?? '');
-  const isTvMode = autoTvModeEnabled && reportedPlaying && !s.trackName;
+  const gwUri: string | null = (s.currentURI ?? s.currentUri ?? null) || null;
+  const currentUri: string | null = gwUri ?? currentState.currentUri;
+  const isTvMode = reportedPlaying && computeTvMode(reportedPlaybackState, s.trackName, currentUri);
 
   // Palette-hantering vid trackbyte:
   //  1. Om gateway redan skickat ny `currentPalette` → använd den.
@@ -250,6 +263,7 @@ function parseStatus(s: any): void {
     positionMs: s.positionMillis ?? null,
     durationMs: s.durationMillis ?? null,
     isTvMode,
+    currentUri,
     palette: nextPaletteForState,
     // Behåll förcachad nextPalette tills gateway skickar en ny (eller null:ar).
     // Om vi precis promotat den till `palette`, nolla så vi inte återanvänder.
