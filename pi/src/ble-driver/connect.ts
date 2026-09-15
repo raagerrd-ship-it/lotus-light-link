@@ -177,12 +177,17 @@ export function cancelAutoReconnect(): void {
  * när BLEDOM tappas via supervision timeout (reason=8).
  */
 export function scheduleAutoReconnect(): void {
-  // Debounce: kollapsa dubbla triggers (keep-alive-fail + disconnect-event)
+  // Debounce: kollapsa dubbla triggers (keep-alive-fail + disconnect-event).
+  // OBS: stampeln satts LANGST NER, forst nar nagot faktiskt schemalaggs. Forut
+  // stamplades har overst, aven nar vi returnerade tidigt for _connectInFlight —
+  // da at disconnect-eventet (mitt i initial-connect) upp debounce-fonstret, och
+  // lifecycle:s requestAutoReconnect() 12 ms senare debouncades bort. Ingen loop.
+  // Uppmatt 2026-09-15: tre boots i rad efter omstart-med-hallen-lank, alla
+  // "aktiverar auto-reconnect-loop" -> tystnad tills manuell connect.
   const now = Date.now();
   if (now - _lastReconnectRequestAt < RECONNECT_DEBOUNCE_MS) {
     return;
   }
-  _lastReconnectRequestAt = now;
 
   if (_autoReconnectGivenUp) {
     return; // pausad efter MAX_ATTEMPTS — kräv manuell /api/ble/connect
@@ -217,6 +222,7 @@ export function scheduleAutoReconnect(): void {
   }
 
 
+  _lastReconnectRequestAt = now;   // forst har: vi schemalagger pa riktigt
   _autoReconnectAttempt++;
   const backoffs = [2000, 4000, 8000, 16000, 30000];
   const delay = backoffs[Math.min(_autoReconnectAttempt - 1, backoffs.length - 1)];
