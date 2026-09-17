@@ -38,3 +38,15 @@ skrivlatens. Se `pi/src/ble-driver/protocol.ts` och projektminnet.
 
 `replicate.token` och `songs.json` ligger under
 `/var/lib/pi-control-center/apps/lotus-light/`. Nyckeln ska aldrig i repot.
+
+## Motor-begärd prime (2026-09-17)
+
+`sbin/lotus-ble-prime-req` → `/usr/local/sbin/`, `systemd/lotus-ble-prime.{path,service}`.
+
+Motorn skriver `ble-prime.req` (MAC) efter **två `connectAsync timed out` i rad** — aldrig på
+"Hittade inte" (remsan frånvarande, prime hjälper inte). Path-enheten kör hjälparen som root:
+validera → **radera begäran först** → cooldown 120 s (`/run/lotus-ble-prime.last`) →
+`touch /run/lotus-ble-prime.lock` → `systemctl stop` → `lotus-ble-prime.sh` → `start` → släpp lås.
+**blewatch hoppar över hela sin iteration medan låset finns** — annars startar den motorn mitt
+i prime (uppmätt 16:41). Samma sekvens som blewatch, men efter ~10 s i stället för 57–220 s.
+Uppmätt utlösare: 8 timeouts på 97 s efter 11 h idle; `hci down/up` i prime.sh röjde det.

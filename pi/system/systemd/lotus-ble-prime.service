@@ -1,0 +1,6 @@
+[Unit]
+Description=Prime the lotus BLE link on engine request (stop -> lotus-ble-prime.sh -> start)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lotus-ble-prime-req

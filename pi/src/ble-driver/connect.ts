@@ -64,6 +64,14 @@ let _consecutiveFailures = 0;
  */
 const INFLIGHT_HANG_LIMIT = 3;
 let _consecutiveInflightHangs = 0;
+// Motor-begard prime: efter SA HAR manga "connectAsync timed out" i rad skriver vi
+// ble-prime.req -> lotus-ble-prime.path -> rot: stop -> lotus-ble-prime.sh -> start.
+// UPPMATT 2026-09-17 16:23: 8 timeouts pa 97 s efter 11 h idle (remsan svarade,
+// LL kom upp, dog inom 4 s; hci down/up rojde). Blewatch-raknaren fyrar
+// godtyckligt 57-220 s; det har kommer efter ~10 s. Aldrig pa "Hittade inte" —
+// da ar remsan franvarande och prime hjalper inte. Hjalparen har 120 s cooldown.
+const CONN_TIMEOUT_PRIME_LIMIT = 2;
+let _consecutiveConnTimeouts = 0;
 
 // Engine-callbacks — ADDITIVA: varje setEngineBleCallbacks()-anrop lägger till
 // i listan (engine-registrering i ensureEngineInstance + app-hook i main
@@ -663,6 +671,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       }
       _consecutiveFailures = 0;
       _consecutiveInflightHangs = 0;
+      _consecutiveConnTimeouts = 0;
       _lastDisconnectReason = 'unknown';
       // Auto-wake the lamp's LED driver. Idempotent — sending power-on to
       // an already-on lamp is a no-op. Fire-and-forget; even if det failar
@@ -700,6 +709,18 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
       const _hung = /in-flight watchdog/.test(String(errStr));
       _consecutiveInflightHangs = _hung ? _consecutiveInflightHangs + 1 : 0;
       const _hungOut = _consecutiveInflightHangs >= INFLIGHT_HANG_LIMIT;
+      const _timedOut = /connectAsync timed out/.test(String(errStr));
+      _consecutiveConnTimeouts = _timedOut ? _consecutiveConnTimeouts + 1 : 0;
+      if (_consecutiveConnTimeouts === CONN_TIMEOUT_PRIME_LIMIT) {
+        console.warn(`[connect-hardcoded] ${_consecutiveConnTimeouts} connectAsync-timeouts i rad — begar prime via rot (ble-prime.req)`);
+        try {
+          const fsp = await import('node:fs/promises');
+          const dir = process.env.PCC_DATA_DIR || '/var/lib/pi-control-center/apps/lotus-light';
+          await fsp.writeFile(`${dir}/ble-prime.req`, `${HARDCODED_DEVICE.mac || ''}\n`, 'utf8');
+        } catch (e: any) {
+          console.warn(`[connect-hardcoded] kunde inte skriva ble-prime.req: ${e?.message ?? e}`);
+        }
+      }
       if ((_consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT && _sawNothing) || _hungOut) {
         // systemd restart → boot → IGNITION → Sonos-poller avgör om motorn
         // ska igång igen (mem://pi/runtime/sonos-driven-lifecycle).

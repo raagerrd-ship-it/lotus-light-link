@@ -1,0 +1,49 @@
+#!/bin/sh
+# Kors som ROOT av lotus-ble-prime.service (triggad av lotus-ble-prime.path).
+# Motorn kan inte sudo (CapabilityBoundingSet saknar CAP_SETUID/SETGID) — darfor
+# path-aktivering, samma monster som ble-drop.req / lotus-ble-drop-req.
+#
+# NAR motorn begar detta: >= 2 "connectAsync timed out" i rad. Remsan annonserar
+# och svarar (annars hade det statt "Hittade inte"), LL-anslutningen kommer upp
+# men dor inom 4 s. UPPMATT 2026-09-17 16:23: 8 timeouts pa 97 s efter 11 h idle;
+# blewatch primade (stop -> prime.sh -> start) och det gick pa ett forsok. Detta
+# ar exakt samma sekvens, triggad av motorns egen evidens efter ~10 s i stallet
+# for blewatch-raknaren (som fyrar godtyckligt 57-220 s).
+#
+# COOLDOWN 120 s (stamp i /run, nollas vid boot): prime misslyckas -> motorn
+# startar -> 2 timeouts -> ny begaran -> evig cykel. Blewatch saknar sparren men
+# gar pa 220 s; vi kommer efter ~10 s, sa sparren ar nodvandig.
+set -eu
+
+REQ=/var/lib/pi-control-center/apps/lotus-light/ble-prime.req
+STAMP=/run/lotus-ble-prime.last
+LOCK=/run/lotus-ble-prime.lock   # blewatch hoppar over sin iteration medan detta finns
+COOLDOWN=120
+
+[ -f "$REQ" ] || exit 0
+BODY=$(head -c 32 "$REQ" 2>/dev/null | tr -d '\r\n' | tr 'a-z' 'A-Z' || true)
+rm -f "$REQ"          # ta bort FORST, sa en trasig begaran inte kan loopa
+
+echo "$BODY" | grep -qE '^([0-9A-F]{2}:){5}[0-9A-F]{2}$' || {
+    echo "lotus-ble-prime: ogiltig begaran" >&2; exit 0; }
+
+now=$(date +%s)
+last=0
+[ -f "$STAMP" ] && last=$(cat "$STAMP" 2>/dev/null || echo 0)
+if [ $((now - last)) -lt "$COOLDOWN" ]; then
+    echo "lotus-ble-prime: cooldown ($((now - last)) s < $COOLDOWN s) — ignorerar" >&2
+    exit 0
+fi
+echo "$now" > "$STAMP"
+
+echo "lotus-ble-prime: motorn begarde prime ($BODY) — stop -> prime -> start"
+touch "$LOCK"; trap 'rm -f "$LOCK"' EXIT   # alla felvagar slapper laset
+systemctl stop lotus-light-engine
+sleep 2
+if LOTUS_BLE_MAC="$BODY" /usr/local/bin/lotus-ble-prime.sh; then
+    echo "lotus-ble-prime: primning OK"
+else
+    echo "lotus-ble-prime: primning misslyckades — startar anda" >&2
+fi
+systemctl start lotus-light-engine
+rm -f "$LOCK"                     # INTE exec: da fyrar trap:en aldrig

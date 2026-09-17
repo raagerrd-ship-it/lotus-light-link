@@ -18,6 +18,12 @@ except: print('- -')
 
 while true; do
   sleep 20
+  # MOTOR-BEGARD PRIME PAGAR (lotus-ble-prime-req haller laset)? Rora INGET.
+  # Uppmatt 2026-09-17 16:41: hjalparen stoppade motorn avsiktligt for prime,
+  # vakthunden sag "motorn ar nere" och startade den mitt i prime.sh -> scan+
+  # connect racade mot nobles connect -> "primning misslyckades". Tva
+  # overvakare som inte kande till varandra. Laset ar hur de gor det.
+  if [ -f /run/lotus-ble-prime.lock ]; then continue; fi
   # MOTORN NERE? STARTA DEN.
   #
   # Stod tidigare `|| continue` har — alltsa hoppa over. Det gjorde vakthunden
