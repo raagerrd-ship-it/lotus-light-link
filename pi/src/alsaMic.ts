@@ -299,6 +299,33 @@ export function onFluxReady(cb: ((flux: number) => void) | null): void {
 const ANALYSER_HOP = 128;
 
 /**
+ * LOTUS_FFT_EVERY (heltal 1-4, default 1): kor analysatorn (512-FFT, var 3:e
+ * anrop 2048-FFT, onset/kick/tempo) bara var N:e 128-hop. A/B 2026-09-18 av
+ * fragan "racker 5,33 ms stampelupplosning nar ljuspaketet ar 18,67 ms?".
+ *
+ * VAR GATEN SITTER OCH VARFOR: analysatorns glidande FFT-fonster (512) och
+ * 2048-bufferten matas INUTI Analyser.process() (copyWithin + set + lopande
+ * kvadratsumma). Att hoppa over process() varannan hop skulle darfor tappa
+ * varannat 128-block ur fonstret = diskontinuerlig signal, inte glesare FFT.
+ * I stallet far analysatorn hopSize = 128*N och process() anropas var N:e hop
+ * med N*128 KONTIGUERLIGA sampel: fonstret matas obrutet av process() sjalv,
+ * och alla dtHop-harledda tidskonstanter (EMA-alfor, kick-decay, activeMs ...)
+ * skalar automatiskt eftersom Analyser raknar dtHop = hop/rate. Kraver ingen
+ * andring i audio-analyser (Pi:ns analyser.js ar root-agd och deployas inte
+ * fil-for-fil). Hop-RAKNADE konstanter i analysatorn (kickSeed<400 = warmup,
+ * onset-median-fonster) blir N ggr langre i tid - samma pris som "hop 256 pa
+ * riktigt" skulle ha. Paketperioden (ANALYSER_HOP * BAND_EVERY_HOPS), ljud-
+ * klockan (satts VARJE 128-hop), landmarkenas tidsbas och band-cadencen rors
+ * inte. Tak 4 = fftSize/128: fonstret far inte glida langre an sig sjalvt.
+ */
+const FFT_EVERY = (() => {
+  const raw = process.env.LOTUS_FFT_EVERY;
+  const n = raw === undefined ? 1 : Math.floor(Number(raw));
+  return Number.isFinite(n) && n >= 1 && n <= 4 ? n : 1;
+})();
+if (FFT_EVERY !== 1) console.log(`[ALSA] LOTUS_FFT_EVERY=${FFT_EVERY}: analysator-hop ${ANALYSER_HOP * FFT_EVERY} (${(SAMPLE_RATE / (ANALYSER_HOP * FFT_EVERY)).toFixed(1)} Hz), paketperiod oforandrad`);
+
+/**
  * Sann dirigent-takt: emitBands fyras var BAND_EVERY_HOPS:te analysator-hop.
  * 128 × 5 / 48000 = 13.333… ms → 75 Hz (INTE 100 Hz som gamla kommentarer påstod).
  */
@@ -316,7 +343,7 @@ export const FRAME_MS = (ANALYSER_HOP * BAND_EVERY_HOPS / SAMPLE_RATE) * 1000;
 //    Ingen AGC, ingen normalisering → gainen är effektiv hela vägen till lampan.
 const analyser = createAnalyser({
   sampleRate: SAMPLE_RATE,
-  hopSize: ANALYSER_HOP,
+  hopSize: ANALYSER_HOP * FFT_EVERY,   // se FFT_EVERY: analysatorn far sanningen om sin hop
   // Percentil-AGC: 0.75 är ett TAK för topparna (95:e percentilen), inte ett medel.
   autoGainTarget: 0.75,
   maxGain: 200,
@@ -413,7 +440,10 @@ function spectrumSink(mag: Float32Array, binHz: number): void {
   fingerprinter.push(mag, binHz, fpHopCount * HOP_MS, fpScratch);
   if (fpScratch.length) { _fpEmitted += fpScratch.length; cb(fpScratch); }
 }
-const analyserScratch = new Float32Array(ANALYSER_HOP);
+const analyserScratch = new Float32Array(ANALYSER_HOP * FFT_EVERY);   // N kontiguerliga 128-block, se FFT_EVERY
+// Forberedda vyer per block (ingen subarray-allokering 375 ggr/s i hop-loopen).
+const analyserSlots: Float32Array[] = Array.from({ length: FFT_EVERY }, (_, j) => analyserScratch.subarray(j * ANALYSER_HOP, (j + 1) * ANALYSER_HOP));
+let fftSlot = 0;   // vilket block nasta hop fyller; process() nar alla N ar fyllda
 
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
@@ -436,7 +466,7 @@ export function hintAnalyserTrackChange(windowMs = 5000): void {
 // och samples försvinner tyst → "ljuset känns segt" utan hög CPU. Mät ms/hop,
 // INTE CPU-% (referens: DMX Zero 2W 1.03–1.26 ms/hop, spak = BIG_EVERY).
 // EMA + max över senaste ~1s (~375 hops) exponeras via getAnalyserCost().
-const ANALYSER_BUDGET_MS = 1000 / 375; // ≈2.667
+const ANALYSER_BUDGET_MS = (1000 / 375) * FFT_EVERY; // ≈2.667 per 128-hop; ett process()-anrop tacker FFT_EVERY hop
 let analyserMsEMA = 0;                 // α=0.02 → ~50-hop tidskonstant
 let analyserMsMax = 0;                 // sedan senaste getAnalyserCost()-läsning
 let analyserHopCount = 0;
@@ -741,6 +771,7 @@ export function resetFluxState(): void {
   latestFrame = null;
   latestFrameAt = 0;
   analyserSamplesReceived = 0;
+  fftSlot = 0;
   analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
 }
 
@@ -1187,7 +1218,7 @@ export function startMic(): void {
     capture.on('close', () => {
       if (_audioCbCount === 0) handleStartFailure('[ALSA] capture closed before first audio callback');
     });
-    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, left-channel select, period=256, band-hop=${BAND_EVERY_HOPS}×${ANALYSER_HOP}, device: ${currentDevice})`);
+    dlog(`[ALSA] Mic started via native ALSA (${SAMPLE_RATE}Hz, ${currentFormat}, left-channel select, period=256, band-hop=${BAND_EVERY_HOPS}×${ANALYSER_HOP}, fft-every=${FFT_EVERY}, device: ${currentDevice})`);
     
 
   } else {
@@ -1415,34 +1446,43 @@ function onAudioData(buf: Buffer): void {
     const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
     // Bulk-copy när blocket är kontiguet i ringen (~87.5 % av hoppen).
+    const dst = analyserSlots[fftSlot];
     if (start + ANALYSER_HOP <= RING_SIZE) {
-      analyserScratch.set(ringBuf.subarray(start, start + ANALYSER_HOP));
+      dst.set(ringBuf.subarray(start, start + ANALYSER_HOP));
     } else {
-      for (let i = 0; i < ANALYSER_HOP; i++) analyserScratch[i] = ringBuf[(start + i) & mask];
+      for (let i = 0; i < ANALYSER_HOP; i++) dst[i] = ringBuf[(start + i) & mask];
     }
-    const t0 = performance.now();
-    // Ljudklockan FORE process(): slagtiden stamplas da ur sampelraknaren, inte
-    // ur vaggklockan vid leverans. Se Analyser.setAudioClockMs.
+    // Ljudklockan VARJE hop, FORE ett ev. process(): slagtiden stamplas da ur
+    // sampelraknaren, inte ur vaggklockan vid leverans. Se Analyser.setAudioClockMs.
     // LOTUS_AUDIO_CLOCK=0 stanger av matningen -> analysatorn faller tillbaka pa
     // Date.now(), alltsa exakt det gamla beteendet. Finns for A/B av fixen live;
     // replay-banken kan inte mata den (den kor redan pa sampelklockan).
+    // (Med FFT_EVERY>1 matas den ocksa pa hop utan process(): offset-EMA:ns
+    // tidskonstant, ~5 s vid 375 anrop/s, forblir densamma.)
     if (AUDIO_CLOCK_ON) analyser.setAudioClockMs(fpHopCount * HOP_MS);
-    latestFrame = analyser.process(analyserScratch);
-    // KICK-RING HAR, inte i motorn: ticken (~53 Hz) ser bara var ~7:e av
-    // analysatorns 375 frames/s, och kickAtMs ar nollskild pa EN hop per slag.
-    // Uppmatt: 2 slag fangade pa 12 s vid 130 BPM (~26 verkliga). Har passerar
-    // alla. (Samma aliasering drabbar PLL:ens "farska kickAtMs" — se piEngine.)
-    if (latestFrame && latestFrame.kickAtMs > 0 && latestFrame.kickAtMs !== _kickLast) {
-      _kickLast = latestFrame.kickAtMs;
-      _kickRing[_kickPos] = _kickLast; _kickPos = (_kickPos + 1) % KICK_RING;
+    // FFT_EVERY-GATEN: process() forst nar alla N block i analyserScratch ar
+    // fyllda. latestFrame behalls oforandrad daremellan (kick-ringen dedupar pa
+    // kickAtMs, emitBands laser senaste ram). Se kommentaren vid FFT_EVERY.
+    if (++fftSlot >= FFT_EVERY) {
+      fftSlot = 0;
+      const t0 = performance.now();
+      latestFrame = analyser.process(analyserScratch);
+      // KICK-RING HAR, inte i motorn: ticken (~53 Hz) ser bara var ~7:e av
+      // analysatorns 375 frames/s, och kickAtMs ar nollskild pa EN hop per slag.
+      // Uppmatt: 2 slag fangade pa 12 s vid 130 BPM (~26 verkliga). Har passerar
+      // alla. (Samma aliasering drabbar PLL:ens "farska kickAtMs" - se piEngine.)
+      if (latestFrame && latestFrame.kickAtMs > 0 && latestFrame.kickAtMs !== _kickLast) {
+        _kickLast = latestFrame.kickAtMs;
+        _kickRing[_kickPos] = _kickLast; _kickPos = (_kickPos + 1) % KICK_RING;
+      }
+      latestFrameAt = Date.now();
+      const dt = performance.now() - t0;
+      // EMA (alfa=0.02, ~50 anrop) + max sedan senaste lasning; budget = FFT_EVERY hop
+      analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
+      if (dt > analyserMsMax) analyserMsMax = dt;
+      if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
+      analyserHopCount++;   // = antal process()-anrop (frames), inte 128-hop
     }
-    latestFrameAt = Date.now();
-    const dt = performance.now() - t0;
-    // EMA (α=0.02 ≈ 50-hop tidskonstant) + max sedan senaste läsning
-    analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
-    if (dt > analyserMsMax) analyserMsMax = dt;
-    if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
-    analyserHopCount++;
     fpHopCount++;
     analyserSamplesReceived -= ANALYSER_HOP;
     // Band-event mot motorn var BAND_EVERY_HOPS:e analysator-hop (~75 Hz).
