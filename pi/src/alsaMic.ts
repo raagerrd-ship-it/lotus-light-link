@@ -489,6 +489,8 @@ let _kickPos = 0, _kickLast = 0;
 export function getRecentKicks(): number[] {
   return Array.from(_kickRing).filter((v) => v > 0).sort((x, y) => x - y);
 }
+/** Senaste slagets kickAtMs (0 = inget an). Allokeringsfri - PLL:en laser den varje tick. */
+export function getLatestKickAt(): number { return _kickLast; }
 
 // ── FIN ENERGIKURVA under inspelning ───────────────────────────────────────
 //

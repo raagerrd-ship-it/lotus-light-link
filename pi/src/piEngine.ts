@@ -17,7 +17,7 @@
 
 import { SongClock } from './songClock.js';
 import { renderShow, lastRenderedColors, DEFAULT_SHOW, SHOW_STEP_MS } from './showRenderer.js';
-import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getLatestKickAt } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
@@ -99,6 +99,8 @@ const SYNC_MAX_MS = 3000;
  * satt LOTUS_SYNC_PROBE=1 nar den behovs.
  */
 const SYNC_PROBE_ON = process.env.LOTUS_SYNC_PROBE === '1';
+/** PLL:en fasar mot kick-RINGEN (analysatorns sub-hop-tid per slag), inte tickens Date.now(). 0 = gamla vagen (A/B). */
+const PLL_RING_ON = process.env.LOTUS_PLL_RING !== '0';
 
 /**
  * Var landmarkena for en pagaende inspelning laggs.
@@ -736,6 +738,7 @@ export class PiLightEngine {
   private _beat: Beat | null = null;   // fas + tempo, knuffad av verkliga kicks
   private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
+  private _pllLastKick = 0;            // senaste ring-kick PLL:en konsumerat (LOTUS_PLL_RING)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
   private _lastGridIdxH = -1;          // senaste HALVSLAG som fyrade en puls (auto-dubbel)
   private _subdivLevel = 0;             // -1 = ½×, 0 = 1×, 1 = 2×
@@ -1499,14 +1502,32 @@ export class PiLightEngine {
       setAnalyserBeatGrid(null);
     }
 
-    if (!kick || !this._beat) return;
+    if (!this._beat) return;
+
+    // RINGEN, INTE TICKEN (09-18): frame.kickAtMs ar nollskild pa EN hop per slag,
+    // sa ticken (1 av 7-9 hoppar) sag den nastan aldrig och foll tillbaka pa sin
+    // egen Date.now() = onset-detektorn pa bandtakt + tickkvantisering. Uppmatt
+    // (histogram ring-kick mot grid, 143 kickar, P=9): gridet 52 ms SENT, IQR 42 ms,
+    // och det fick beatLeadMs (132 = 87 stigtid + 45 utlatens) aldrig kompensera.
+    // Ringen bar analysatorns sub-hop-tid (+-1,3 ms) for VARJE slag; hogst ett nytt
+    // per tick (slag >=100 ms isar). LOTUS_PLL_RING=0 ger gamla vagen for A/B.
+    let nowRef: number;
+    if (PLL_RING_ON) {
+      const rk = getLatestKickAt();
+      if (rk <= 0 || rk === this._pllLastKick) return;      // inget nytt slag sedan sist
+      this._pllLastKick = rk;
+      if (nowMs - rk > 200) return;                          // gammalt (paus/omstart) - hoppa
+      nowRef = rk;
+    } else {
+      if (!kick) return;
+      // Fasen mäts helst mot analysatorns FÄRDIGMÄTTA slagtid (sub-hop, ±1.3 ms).
+      // Date.now() här bär ALSA-leveransens jitter. Bara färska värden duger.
+      const kickAt = frame?.kickAtMs ?? 0;
+      nowRef = kickAt > 0 && nowMs - kickAt < 60 ? kickAt : nowMs;
+    }
 
     const k0 = this.cal.beatSyncStrength;
     const beatMsNow = 60000 / this._beat.bpm;
-    // Fasen mäts helst mot analysatorns FÄRDIGMÄTTA slagtid (sub-hop, ±1.3 ms).
-    // Date.now() här bär ALSA-leveransens jitter. Bara färska värden duger.
-    const kickAt = frame?.kickAtMs ?? 0;
-    const nowRef = kickAt > 0 && nowMs - kickAt < 60 ? kickAt : nowMs;
     const ph = ((((nowRef - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
 
     const err = ph < 0.5 ? ph : ph - 1;    // -0.5..0.5 av ett taktslag
