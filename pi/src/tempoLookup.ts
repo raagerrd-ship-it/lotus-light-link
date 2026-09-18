@@ -13,9 +13,9 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { songKey } from './songStore.js';
 
-export interface TempoHit { bpm: number; source: string; matchArtist: string; matchTitle: string; id: number; score: number }
+export interface TempoHit { bpm: number; rawBpm: number; source: string; matchArtist: string; matchTitle: string; id: number; score: number }
 export interface TempoCacheEntry {
-  bpm: number; source: string; matchArtist?: string; matchTitle?: string; score?: number;
+  bpm: number; rawBpm?: number; source: string; matchArtist?: string; matchTitle?: string; score?: number;
   at: number; artist: string; title: string;
   /** Motorns dom nar analysatorn fatt ett sakert varde: ok / ok-fantom / avvisat. */
   analyserBpm?: number; ratio?: number; verdict?: string; verdictAt?: number;
@@ -63,6 +63,16 @@ export function similarity(a: string, b: string): number {
   return (2 * n) / (A.size + B.size);
 }
 
+/** Katalogens oktav ar inte alltid den kanda: Deezer ger "Dancing Queen" 200,7 (kanns ~100) men "Ego" 172
+ *  (kanns 172 - lampan i 86 var for langsam). Utanfor [70, 180] viks en oktav; innanfor litar vi pa katalogen.
+ *  Ravardet foljer med i cachen sa regeln kan omprovas mot lardatan. */
+export function foldCatalogBpm(bpm: number): number {
+  let b = bpm;
+  while (b > 180) b /= 2;
+  while (b > 0 && b < 70) b *= 2;
+  return b;
+}
+
 async function getJson(url: string, timeoutMs: number): Promise<any> {
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -83,7 +93,7 @@ export async function lookupDeezer(artist: string | null, title: string, timeout
     for (const c of cands) {
       const t = await getJson(`https://api.deezer.com/track/${c.id}`, timeoutMs);
       const bpm = Number(t?.bpm) || 0;
-      if (bpm > 40 && bpm < 300) return { bpm, source: artist ? 'deezer' : 'deezer-titel', matchArtist: c.a, matchTitle: c.t, id: c.id, score: c.score };
+      if (bpm > 40 && bpm < 300) return { bpm: foldCatalogBpm(bpm), rawBpm: bpm, source: artist ? 'deezer' : 'deezer-titel', matchArtist: c.a, matchTitle: c.t, id: c.id, score: c.score };
     }
   }
   return null;
@@ -93,9 +103,9 @@ export async function lookupDeezer(artist: string | null, title: string, timeout
 export async function resolveTempo(cache: TempoCache, artist: string | null, title: string): Promise<{ hit: TempoHit | null; cached: boolean }> {
   const key = songKey(artist || '', title);
   const c = cache.get(key);
-  if (c) return { hit: c.bpm > 0 ? { bpm: c.bpm, source: c.source, matchArtist: c.matchArtist || '', matchTitle: c.matchTitle || '', id: 0, score: c.score || 0 } : null, cached: true };
+  if (c) return { hit: c.bpm > 0 ? { bpm: c.bpm, rawBpm: c.rawBpm ?? c.bpm, source: c.source, matchArtist: c.matchArtist || '', matchTitle: c.matchTitle || '', id: 0, score: c.score || 0 } : null, cached: true };
   let hit: TempoHit | null;
   try { hit = await lookupDeezer(artist, title); } catch { return { hit: null, cached: false }; }
-  cache.set(key, { bpm: hit?.bpm || 0, source: hit?.source || 'ingen', matchArtist: hit?.matchArtist, matchTitle: hit?.matchTitle, score: hit?.score, at: Date.now(), artist: artist || '', title });
+  cache.set(key, { bpm: hit?.bpm || 0, rawBpm: hit?.rawBpm, source: hit?.source || 'ingen', matchArtist: hit?.matchArtist, matchTitle: hit?.matchTitle, score: hit?.score, at: Date.now(), artist: artist || '', title });
   return { hit, cached: false };
 }
