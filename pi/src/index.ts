@@ -105,6 +105,8 @@ let sonos: SonosModule | null = null;
 let engineMod: EngineModule | null = null;
 /** Latminnet, satt vid boot. null = minnet kunde inte lasas -> motorn kor som forr. */
 let songStoreRef: import('./songStore.js').SongStore | null = null;
+/** Katalogtempo-cachen (tempoLookup.ts), satt vid boot. null = ingen katalog -> analysatorn som forr. */
+let tempoCacheRef: import('./tempoLookup.js').TempoCache | null = null;
 let engineInstance: import('./piEngine.js').PiLightEngine | null = null;
 let configServer: typeof import('./configServer.js') | null = null;
 
@@ -222,6 +224,19 @@ async function ensureEngineInstance(): Promise<void> {
   // en uppslagstabell räcker — inget ljudfingeravtryck behövs.
   // Minnet är ett TILLÄGG: saknas filen eller låten beter sig motorn precis som
   // förr. Laddas en gång; en låt analyseras en gång i sitt liv.
+  // ── KATALOGTEMPO (09-18) ── Deezer via Sonos artist+titel, cache per lat. Se tempoLookup.ts.
+  // Oberoende av latminnet: faller katalogen bort kor motorn pa analysatorn som forr.
+  try {
+    const { TempoCache } = await import('./tempoLookup.js');
+    const { songKey } = await import('./songStore.js');
+    const tc = new TempoCache((await import('./storage.js')).DATA_DIR + '/tempo-cache.json');
+    tc.load(); tempoCacheRef = tc;
+    engineInstance.setMetaVerdictSaver((a, t, verdict, analyserBpm, ratio) => {
+      tc.update(songKey(a, t), { verdict, analyserBpm, ratio, verdictAt: Date.now() });
+    });
+    console.log(`[tempo] katalogcache: ${tc.size} låtar`);
+  } catch (e) { console.log('[tempo] katalogcache kunde inte laddas:', (e as Error).message); }
+
   try {
     const { SongStore } = await import('./songStore.js');
     const store = new SongStore(process.env.SONG_STORE || ((await import('./storage.js')).DATA_DIR + '/songs.json'));
@@ -413,7 +428,20 @@ async function startSonosSubsystem(): Promise<void> {
           trackDebounce = null;
           if (name !== lastTrackName) return;    // hann ändras igen → glitch
           engineInstance?.notifyTrackChange(lastArtist, name);
+          void resolveMetaTempo(lastArtist, name);
         }, 1500);
+      };
+      // Katalogtempo for den nya laten: cache forst (0 ms), annars Deezer (~0,8 s). Svaret
+      // skickas bara om laten fortfarande ar densamma; motorn kontrollerar ocksa sjalv.
+      const resolveMetaTempo = async (artist: string | null, title: string) => {
+        if (!tempoCacheRef || !engineInstance) return;
+        try {
+          const { resolveTempo } = await import('./tempoLookup.js');
+          const { hit, cached } = await resolveTempo(tempoCacheRef, artist, title);
+          if (title !== lastTrackName) return;                 // laten hann byta
+          if (hit) engineInstance.setMetaTempo(hit.bpm, hit.source + (cached ? ' (cache)' : ''), artist || '', title);
+          else console.log(`[tempo] inget katalogtempo for "${artist ?? '?'} - ${title}"${cached ? ' (cache)' : ''}`);
+        } catch (e) { console.log('[tempo] uppslag misslyckades:', (e as Error).message); }
       };
       // await så fresh-status race (≤1500ms) hinner trigga setPlaying(true)
       // FÖRE markSubsystemReady — annars kan engine starta i paused-state

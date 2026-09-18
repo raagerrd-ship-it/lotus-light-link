@@ -589,8 +589,11 @@ export function startConfigServer(port = 3050): void {
           // 'analys' = realtidsanalysen (okand lat) -- samma vag som forr
           // Reglaget maste synas har ocksa: star det pa "analys" nar inspelningen
           // ar avstangd sager UI:t sanningen om vad som faktiskt driver ljuset.
+          // 'katalog' = publicerat BPM (Deezer via Sonos artist+titel) som stamde med analysatorn
           beatMode: (((getEngine() as any)?.songBpm ?? 0) > 0
-            && (getEngine() as any)?.cal?.useRecording !== false) ? 'minne' : 'analys',
+            && (getEngine() as any)?.cal?.useRecording !== false) ? 'minne'
+            : ((getEngine() as any)?.metaTempo?.drives ? 'katalog' : 'analys'),
+          metaTempo: (getEngine() as any)?.metaTempo ?? null,
           memory: (getEngine() as any)?.memoryStatus ?? null,
           intensity: f.intensity, buildUp: f.buildUp, inRiser: f.inRiser,
           dropCount: f.dropCount, inZone: f.inZone, breaking: f.breaking,

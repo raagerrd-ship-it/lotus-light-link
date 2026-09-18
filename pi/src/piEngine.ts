@@ -296,6 +296,8 @@ export interface LightCalibration {
    * jamfora de tva vagarna mot samma lat.
    */
   useRecording: boolean;
+  /** Katalogtempo (Deezer via Sonos artist+titel, tempoLookup.ts) far driva gridet nar latminnet inte gor det. */
+  useMetaTempo: boolean;
 
 
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
@@ -412,6 +414,7 @@ const DEFAULT_CAL: LightCalibration = {
   recordFrames: 0,
   recordEnabled: true,
   useRecording: true,
+  useMetaTempo: true,        // 09-18: analysatorns fonster [80,160) viker oktaver ("Ego" 172 -> 86); katalogen har ingen vikning
 
   inLowFrac: 0.022,
   inHighFrac: 0.075,
@@ -695,6 +698,9 @@ export class PiLightEngine {
   private _songArtist = '';
   private _songTitle = '';
   private _songSaveOffset: ((artist: string, title: string, ms: number) => void) | null = null;
+  /** KATALOGTEMPO (09-18): publicerat BPM for aktuell lat (Deezer), 0 = inget. Se setMetaTempo + updateBeatClock. */
+  private _metaBpm = 0; private _metaSource = ''; private _metaRatio = 0; private _metaVerdict = ''; private _metaDrives = false;
+  private _metaVerdictSaver: ((artist: string, title: string, verdict: string, analyserBpm: number, ratio: number) => void) | null = null;
   /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
   private _capBaseMs = -1;
   private _capUntilMs = -1;
@@ -1207,6 +1213,22 @@ export class PiLightEngine {
   }
 
   /** Dar en uppmatt synkkorrigering ska sparas. */
+  setMetaVerdictSaver(fn: ((artist: string, title: string, verdict: string, analyserBpm: number, ratio: number) => void) | null): void {
+    this._metaVerdictSaver = fn;
+  }
+  /** Katalogtempo for aktuell lat (async uppslag: ignoreras om laten redan bytt). Domen faller i
+   *  updateBeatClock nar analysatorn har ett sakert varde; tills dess galler katalogen provisoriskt. */
+  setMetaTempo(bpm: number, source: string, artist: string, title: string): void {
+    if ((artist || '') !== this._songArtist || (title || '') !== this._songTitle) {
+      console.log(`[tempo] katalogsvar for annan lat ignoreras (${artist} - ${title})`); return;
+    }
+    this._metaBpm = bpm > 0 ? bpm : 0; this._metaSource = source; this._metaRatio = 0; this._metaVerdict = bpm > 0 ? 'vantar' : '';
+    if (bpm > 0) console.log(`[tempo] katalog ${source}: ${bpm.toFixed(1)} BPM for "${title}" (analysatorn just nu ${getLatestFrame()?.bpm ?? 0})`);
+  }
+  /** For /api/status: vad katalogen sa, hur det stamde med analysatorn, och om det driver gridet. */
+  get metaTempo(): { bpm: number; source: string; ratio: number; verdict: string; drives: boolean } {
+    return { bpm: this._metaBpm, source: this._metaSource, ratio: this._metaRatio, verdict: this._metaVerdict, drives: this._metaDrives };
+  }
   setSongOffsetSaver(fn: ((artist: string, title: string, ms: number) => void) | null): void {
     this._songSaveOffset = fn;
   }
@@ -1376,6 +1398,7 @@ export class PiLightEngine {
     // därmed äntligen pulsa i låtens eget tempo i stället för dubbelt.
     this._songBpm = 0;
     this._songEntry = null;
+    this._metaBpm = 0; this._metaSource = ''; this._metaRatio = 0; this._metaVerdict = ''; this._metaDrives = false;
     // Klockan nollas: ingenting fran forra laten galler. Driften behalls dock —
     // klockfelet tillhor hardvaran, inte laten.
     this._clock.reset();
@@ -1464,7 +1487,27 @@ export class PiLightEngine {
     // Samma reglage galler tempot: ar inspelningen avstangd ska INGET komma ur
     // minnet, annars vore jamforelsen mot realtid inte arlig.
     const _useRec = this.cal.useRecording !== false;
-    const _memBpm = _useRec ? this._songBpm : 0;
+    let _memBpm = _useRec ? this._songBpm : 0;
+    // KATALOGTEMPO (09-18): nar latminnet inte driver far ett publicerat BPM (Deezer via Sonos
+    // artist+titel) gora det — men bara om det stammer med analysatorn: kvot 1/2, 1, 2
+    // (analysatorns fonster [80,160) viker oktaver) eller 2/3, 3/2 (dess kanda fantomer), inom
+    // +-5 %. En felmatchad lat far aldrig styra ljuset. Tills analysatorn har ett sakert varde
+    // galler katalogen provisoriskt (battre an ingenting). Domen sparas i katalogcachen.
+    this._metaDrives = false;
+    if (_memBpm <= 0 && this._metaBpm > 0 && this.cal.useMetaTempo !== false) {
+      if (this._metaVerdict === 'vantar') {
+        const an = frame?.bpm ?? 0, ac = frame?.bpmConfidence ?? 0;
+        if (an > 40 && ac >= 0.6) {
+          const r = this._metaBpm / an;
+          const cls = [0.5, 1, 2, 2 / 3, 1.5].find((x) => Math.abs(r / x - 1) < 0.05);
+          this._metaRatio = r;
+          this._metaVerdict = cls === undefined ? 'avvisat' : ((cls === 0.5 || cls === 1 || cls === 2) ? 'ok' : 'ok-fantom');
+          console.log(`[tempo] katalog ${this._metaBpm.toFixed(1)} ${this._metaVerdict}: analysatorn ${an} (kvot ${r.toFixed(2)})`);
+          try { this._metaVerdictSaver?.(this._songArtist, this._songTitle, this._metaVerdict, an, r); } catch { /* cachen far aldrig falla motorn */ }
+        }
+      }
+      if (this._metaVerdict !== 'avvisat') { _memBpm = this._metaBpm; this._metaDrives = true; }
+    }
     const bpm = _memBpm > 0 ? _memBpm : (frame?.bpm ?? 0);
     // Ett känt tempo är inte en gissning — låt inte en svag mic sänka förtroendet.
     const conf = _memBpm > 0 ? Math.max(frame?.bpmConfidence ?? 0, 0.9) : (frame?.bpmConfidence ?? 0);
