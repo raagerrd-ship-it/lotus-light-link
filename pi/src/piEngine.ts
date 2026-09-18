@@ -99,8 +99,14 @@ const SYNC_MAX_MS = 3000;
  * satt LOTUS_SYNC_PROBE=1 nar den behovs.
  */
 const SYNC_PROBE_ON = process.env.LOTUS_SYNC_PROBE === '1';
-/** PLL:en fasar mot kick-RINGEN (analysatorns sub-hop-tid per slag), inte tickens Date.now(). 0 = gamla vagen (A/B). */
-const PLL_RING_ON = process.env.LOTUS_PLL_RING !== '0';
+/** OPT-IN (LOTUS_PLL_RING=1): PLL:en fasar mot kick-RINGEN (analysatorns sub-hop-tid per slag) i stallet for
+ *  motorns egen onset vid ticktid. MATT 09-18: ringens kickar ar GRINDADE mot vart eget grid i analysatorn
+ *  (+-max(30, 0,15*slag) ms runt attondelslinjerna) och forsta transienten efter att fonstret oppnar rapporteras
+ *  -> PLL:en jagar sin egen grindkant: err = -0,9 x tolerans i alla lagen (-65 @130, -75..-80 @105-113,
+ *  -7..-20 @224) oavsett gain och tempo, ankaret drev -20 ms/slag, och integratorn tolkade jakten som
+ *  snabbare tempo (skenade till 2x). Motorns onset vid ticktid har i stallet en KONSTANT fordrojning
+ *  (err -5..-35 @124, drift = bara analysatorns heltalskvantisering) som beatLeadMs absorberar. */
+const PLL_RING_ON = process.env.LOTUS_PLL_RING === '1';
 
 /**
  * Var landmarkena for en pagaende inspelning laggs.
@@ -248,6 +254,10 @@ export interface LightCalibration {
   beatGridPulse: boolean;
   /** Försprång (ms) på grid-pulsen — kompenserar BLE-skrivlatens (~40–60 ms). */
   beatLeadMs: number;
+  /** PLL:ens tempo-integrator: BPM-korrigering per accepterat slag och enhet fasfel (slag). 0 = av. */
+  beatBpmGain: number;
+  /** Analysator-BPM-hopp mindre an denna ANDEL (0,25 = 25 %) behaller PLL:ens forfinade tempo; samma andel klampar integratorn runt analysatorns varde (utesluter 2x, 3/2, 4/3). */
+  beatBpmKeep: number;
   /** PLL: andel av fasfelet som korrigeras per kick (0 = av). */
   beatSyncStrength: number;
   /** Drop-källa: 'analyser' = analysatorns novelty/kropp-baserade dropCount (faller
@@ -384,7 +394,13 @@ const DEFAULT_CAL: LightCalibration = {
   dropFlashMs: 320,
   beatGridPulse: true,
   beatLeadMs: 132,           // 87 ms uppmätt toppfördröjning (rise) + ~45 ms utsignalslatens
-  beatSyncStrength: 0.10,    // PLL:ens fas-ankarknuff, INTE ljus-modulation
+  beatBpmGain: 0,            // 09-18: AV. Tecknet var inverterat (bpm sjonk till -4-klampen, konstant slap 50-80 ms); med ratt tecken
+                             // skenade den anda till 2x pa attondelskickar (grindkant-jakten ovan). Tempot ar analysatorns tills en
+                             // kick-baserad tempoestimator finns. 1-2 med klamp +-3 % ar nasta forsok (tar bort heltalskvantiseringen).
+  beatBpmKeep: 0,            // 09-18: 0 = analysatorns varde tas rakt av vid varje hopp (ursprungsbeteendet). Andel: 0,25 lat integratorn
+                             // skena till 224 BPM; OBS tick-sparningen skriver hela cal-objektet, sa ett semantikbyte (BPM -> andel)
+                             // forgiftas av den sparade filen (20 lastes som 2000 %).
+  beatSyncStrength: 0.2,     // 09-18: 0,1 (k 0,17) holl inte emot tempodriften; 0,2 (k 0,34) med I-gain 8 (var 0.10)
   dropSource: 'analyser',
   barAccent: 1.6,            // ettans accent
   onsetRiseMs: 40,           // 0 gav uppsteg median 26 enheter = strobe; 40 → median 2
@@ -1461,13 +1477,21 @@ export class PiLightEngine {
       if (!this._beat || Math.abs(bpm - this._beatDetBpm) > (reacq ? 0.5 : 2)) {
         this._beatDetBpm = bpm;
         let anchor = frame?.beatAnchorMs || nowMs;
+        let bpmNew = bpm;
         if (this._beat) {
+          // TEMPO (09-18): analysatorns BPM ar HELTAL och hoppade 105-114 pa en lat vars
+          // kick-ring gav 110,8 (parsummor av attondelsintervall). Varje hopp >2 satte
+          // gridets bpm till ett fel heltal, klampen +-4 runt det nadde inte ens ratt
+          // tempo, och P-steget stod i jamvikt mot driften pa -75 ms ("takten kanns
+          // efter"). Sma hopp behaller darfor PLL:ens forfinade bpm; bara ett riktigt
+          // tempobyte (>= beatBpmKeep) eller re-acquisition tar analysatorns varde.
+          if (!reacq && Math.abs(bpm - this._beat.bpm) < bpm * (this.cal.beatBpmKeep ?? 0.25)) bpmNew = this._beat.bpm;
           // Bevara nuvarande fas vid tempoändring så pulsen inte hoppar.
-          const oldMs = 60000 / this._beat.bpm, newMs = 60000 / bpm;
+          const oldMs = 60000 / this._beat.bpm, newMs = 60000 / bpmNew;
           const ph = ((((nowMs - this._beat.anchorMs) % oldMs) + oldMs) % oldMs) / oldMs;
           anchor = nowMs - ph * newMs;
         }
-        this._beat = { anchorMs: anchor, bpm, confidence: conf };
+        this._beat = { anchorMs: anchor, bpm: bpmNew, confidence: conf };
       } else {
         this._beat.confidence = conf;
       }
@@ -1543,8 +1567,15 @@ export class PiLightEngine {
     // sjalv till ett halvt slag, sa en granne-beat kan aldrig dra den en hel takt.
     this._clock.trimToBeat(-err * beatMsNow, beatMsNow);
     if (conf > 0.4) {
-      this._beat.bpm += err * 0.35 * conf;
-      const lo = this._beatDetBpm - 4, hi = this._beatDetBpm + 4;
+      // TECKNET (09-18): err<0 = kicken kom FORE gridlinjen = gridet gar for langsamt
+      // -> bpm ska UPP. Med '+=' sjonk bpm i stallet monotont till -4-klampen (uppmatt
+      // 105,7 -> 104,1 pa 23 s mot analysatorns 108) och P-steget fick halla ett
+      // konstant slap pa 50-80 ms - "takten kanns efter". Gain som kal-falt for live-A/B.
+      this._beat.bpm -= err * (this.cal.beatBpmGain ?? 0.35) * conf;
+      // Klampen ar ett OKTAVSKYDD (2x laser ocksa perfekt pa attondelskickar), inte en tempokalla:
+      // +-25 % av analysatorns varde. +-4/+-8/+-20 BPM nadde inte sant tempo (analysatorn 105-114 mot 123, 130 mot ~156).
+      const _kf = this.cal.beatBpmKeep ?? 0.25;
+      const lo = this._beatDetBpm * (1 - _kf), hi = this._beatDetBpm * (1 + _kf);
       if (this._beat.bpm < lo) this._beat.bpm = lo;
       else if (this._beat.bpm > hi) this._beat.bpm = hi;
     }
