@@ -296,7 +296,8 @@ export interface LightCalibration {
    * jamfora de tva vagarna mot samma lat.
    */
   useRecording: boolean;
-  /** Katalogtempo (Deezer via Sonos artist+titel, tempoLookup.ts) far driva gridet nar latminnet inte gor det. */
+  /** FACIT, inte styrning (09-18): katalogtempot (Deezer via Sonos artist+titel) doms alltid mot analysatorn och
+   *  loggas per lat i tempo-cache.json; bara med true far det DRIVA gridet (testlage). Lampan ska ga pa var analysator. */
   useMetaTempo: boolean;
 
 
@@ -414,7 +415,7 @@ const DEFAULT_CAL: LightCalibration = {
   recordFrames: 0,
   recordEnabled: true,
   useRecording: true,
-  useMetaTempo: true,        // 09-18: analysatorns fonster [80,160) viker oktaver ("Ego" 172 -> 86); katalogen har ingen vikning
+  useMetaTempo: false,       // 09-18: FACIT-lage. Katalogen (Deezer) doms mot analysatorn och loggas; true = lat den driva (test)
 
   inLowFrac: 0.022,
   inHighFrac: 0.075,
@@ -701,6 +702,11 @@ export class PiLightEngine {
   /** KATALOGTEMPO (09-18): publicerat BPM for aktuell lat (Deezer), 0 = inget. Se setMetaTempo + updateBeatClock. */
   private _metaBpm = 0; private _metaSource = ''; private _metaRatio = 0; private _metaVerdict = ''; private _metaDrives = false;
   private _metaVerdictSaver: ((artist: string, title: string, verdict: string, analyserBpm: number, ratio: number) => void) | null = null;
+  /** INLARNING (09-18): per lat samlas analysatorns bpm/konfidens (1 Hz) och kick-ringens intervall (var 5 s) och
+   *  skrivs vid latbyte till katalogcachen bredvid facit-tempot. Sa lar vi analysatorn - vi ersatter den inte. */
+  private _learnBpm: number[] = []; private _learnConf: number[] = []; private _learnRing = new Map<number, number>();
+  private _learnLastAt = 0; private _learnLastRingAt = 0; private _learnLastKick = 0; private _learnStartAt = 0;
+  private _learnSaver: ((artist: string, title: string, summary: Record<string, number>) => void) | null = null;
   /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
   private _capBaseMs = -1;
   private _capUntilMs = -1;
@@ -1216,6 +1222,51 @@ export class PiLightEngine {
   setMetaVerdictSaver(fn: ((artist: string, title: string, verdict: string, analyserBpm: number, ratio: number) => void) | null): void {
     this._metaVerdictSaver = fn;
   }
+  setLearnSaver(fn: ((artist: string, title: string, summary: Record<string, number>) => void) | null): void {
+    this._learnSaver = fn;
+  }
+  /** 1 Hz: analysatorns bpm/konfidens. Var 5 s: nya kick-intervall ur ringen till ett 5 ms-histogram. */
+  private learnSample(frame: { bpm?: number; bpmConfidence?: number } | null): void {
+    const now = Date.now();
+    if (now - this._learnLastAt < 1000) return;
+    this._learnLastAt = now;
+    if (!this._learnStartAt) this._learnStartAt = now;
+    const b = frame?.bpm ?? 0, c = frame?.bpmConfidence ?? 0;
+    if (b > 0 && this._learnBpm.length < 900) { this._learnBpm.push(b); this._learnConf.push(c); }
+    if (now - this._learnLastRingAt >= 5000) {
+      this._learnLastRingAt = now;
+      const ks = getRecentKicks();
+      for (let i = 1; i < ks.length; i++) {
+        if (ks[i] <= this._learnLastKick) continue;               // redan raknat
+        const dt = ks[i] - ks[i - 1];
+        if (dt > 0 && dt < 2000) { const bin = Math.round(dt / 5) * 5; this._learnRing.set(bin, (this._learnRing.get(bin) ?? 0) + 1); }
+      }
+      if (ks.length) this._learnLastKick = ks[ks.length - 1];
+    }
+  }
+  /** Facit-raden: vad analysatorn sa under laten och hur kick-strommen sag ut. ringPerBeat = 4 betyder
+   *  fyra regelbundna transienter per analysatorslag ("Ego": analysatorn 86, ringen 172 ms => 4 => 172 BPM). */
+  private learnSummary(): Record<string, number> {
+    const med = (a: number[]) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+    const bpmMed = med(this._learnBpm);
+    let mode = 0, modeN = 0, total = 0;
+    for (const [bin, n] of this._learnRing) { total += n; if (n > modeN) { modeN = n; mode = bin; } }
+    let wsum = 0, wn = 0;
+    for (const [bin, n] of this._learnRing) if (mode > 0 && Math.abs(bin / mode - 1) <= 0.1) { wsum += bin * n; wn += n; }
+    const ringMs = wn ? wsum / wn : 0;
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    return {
+      samples: this._learnBpm.length, durationS: Math.round((Date.now() - this._learnStartAt) / 1000),
+      bpmMedian: bpmMed, bpmMin: this._learnBpm.length ? Math.min(...this._learnBpm) : 0, bpmMax: this._learnBpm.length ? Math.max(...this._learnBpm) : 0,
+      confMedian: r2(med(this._learnConf)),
+      ringIntervalMs: Math.round(ringMs * 10) / 10, ringRegular: total ? r2(wn / total) : 0, ringN: total,
+      ringPerBeat: ringMs > 0 && bpmMed > 0 ? r2((60000 / bpmMed) / ringMs) : 0,
+    };
+  }
+  private learnReset(): void {
+    this._learnBpm = []; this._learnConf = []; this._learnRing = new Map();
+    this._learnLastAt = 0; this._learnLastRingAt = 0; this._learnLastKick = 0; this._learnStartAt = 0;
+  }
   /** Katalogtempo for aktuell lat (async uppslag: ignoreras om laten redan bytt). Domen faller i
    *  updateBeatClock nar analysatorn har ett sakert varde; tills dess galler katalogen provisoriskt. */
   setMetaTempo(bpm: number, source: string, artist: string, title: string): void {
@@ -1396,6 +1447,11 @@ export class PiLightEngine {
     // OCH minnet har ingen vikning: "Snart tystnar musiken" går i 76 BPM, vilket
     // motorn MÅSTE rapportera som 152 eftersom fönstret är [80,160). Lampan kan
     // därmed äntligen pulsa i låtens eget tempo i stället för dubbelt.
+    // INLARNING: forra latens facit-rad skrivs innan allt nollas (minst 10 s data).
+    if (this._songTitle && this._learnBpm.length >= 10) {
+      try { this._learnSaver?.(this._songArtist, this._songTitle, this.learnSummary()); } catch { /* cachen far aldrig falla motorn */ }
+    }
+    this.learnReset();
     this._songBpm = 0;
     this._songEntry = null;
     this._metaBpm = 0; this._metaSource = ''; this._metaRatio = 0; this._metaVerdict = ''; this._metaDrives = false;
@@ -1493,21 +1549,22 @@ export class PiLightEngine {
     // (analysatorns fonster [80,160) viker oktaver) eller 2/3, 3/2 (dess kanda fantomer), inom
     // +-5 %. En felmatchad lat far aldrig styra ljuset. Tills analysatorn har ett sakert varde
     // galler katalogen provisoriskt (battre an ingenting). Domen sparas i katalogcachen.
+    // FACIT-LAGE (09-18, anvandarens beslut): domen falls ALLTID (det ar lardatan), men katalogen far
+    // driva gridet bara med useMetaTempo=true. Lampan ska ga pa var analysator - katalogen lar den.
     this._metaDrives = false;
-    if (_memBpm <= 0 && this._metaBpm > 0 && this.cal.useMetaTempo !== false) {
-      if (this._metaVerdict === 'vantar') {
-        const an = frame?.bpm ?? 0, ac = frame?.bpmConfidence ?? 0;
-        if (an > 40 && ac >= 0.6) {
-          const r = this._metaBpm / an;
-          const cls = [0.5, 1, 2, 2 / 3, 1.5].find((x) => Math.abs(r / x - 1) < 0.05);
-          this._metaRatio = r;
-          this._metaVerdict = cls === undefined ? 'avvisat' : ((cls === 0.5 || cls === 1 || cls === 2) ? 'ok' : 'ok-fantom');
-          console.log(`[tempo] katalog ${this._metaBpm.toFixed(1)} ${this._metaVerdict}: analysatorn ${an} (kvot ${r.toFixed(2)})`);
-          try { this._metaVerdictSaver?.(this._songArtist, this._songTitle, this._metaVerdict, an, r); } catch { /* cachen far aldrig falla motorn */ }
-        }
+    if (this._metaBpm > 0 && this._metaVerdict === 'vantar') {
+      const an = frame?.bpm ?? 0, ac = frame?.bpmConfidence ?? 0;
+      if (an > 40 && ac >= 0.6) {
+        const r = this._metaBpm / an;
+        const cls = [0.5, 1, 2, 2 / 3, 1.5].find((x) => Math.abs(r / x - 1) < 0.05);
+        this._metaRatio = r;
+        this._metaVerdict = cls === undefined ? 'avvisat' : ((cls === 0.5 || cls === 1 || cls === 2) ? 'ok' : 'ok-fantom');
+        console.log(`[tempo] facit ${this._metaBpm.toFixed(1)} vs analysatorn ${an}: ${this._metaVerdict} (kvot ${r.toFixed(2)})`);
+        try { this._metaVerdictSaver?.(this._songArtist, this._songTitle, this._metaVerdict, an, r); } catch { /* cachen far aldrig falla motorn */ }
       }
-      if (this._metaVerdict !== 'avvisat') { _memBpm = this._metaBpm; this._metaDrives = true; }
     }
+    if (_memBpm <= 0 && this._metaBpm > 0 && this.cal.useMetaTempo === true && this._metaVerdict !== 'avvisat') { _memBpm = this._metaBpm; this._metaDrives = true; }
+    this.learnSample(frame);
     const bpm = _memBpm > 0 ? _memBpm : (frame?.bpm ?? 0);
     // Ett känt tempo är inte en gissning — låt inte en svag mic sänka förtroendet.
     const conf = _memBpm > 0 ? Math.max(frame?.bpmConfidence ?? 0, 0.9) : (frame?.bpmConfidence ?? 0);

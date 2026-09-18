@@ -234,7 +234,11 @@ async function ensureEngineInstance(): Promise<void> {
     engineInstance.setMetaVerdictSaver((a, t, verdict, analyserBpm, ratio) => {
       tc.update(songKey(a, t), { verdict, analyserBpm, ratio, verdictAt: Date.now() });
     });
-    console.log(`[tempo] katalogcache: ${tc.size} låtar`);
+    engineInstance.setLearnSaver((a, t, summary) => {
+      tc.upsert(songKey(a, t), a, t, { learn: summary, learnAt: Date.now() });
+      console.log(`[tempo] inlärning: "${a} - ${t}" analysator ${summary.bpmMedian} (${summary.bpmMin}-${summary.bpmMax}, conf ${summary.confMedian}) ring ${summary.ringIntervalMs} ms x${summary.ringPerBeat}/slag reg ${summary.ringRegular} n=${summary.ringN} ${summary.durationS}s`);
+    });
+    console.log(`[tempo] katalogcache: ${tc.size} låtar (facit-läge: katalogen driver ${JSON.parse(getItem('light-calibration') || '{}').useMetaTempo === true ? 'PÅ' : 'av'})`);
   } catch (e) { console.log('[tempo] katalogcache kunde inte laddas:', (e as Error).message); }
 
   try {

@@ -19,6 +19,8 @@ export interface TempoCacheEntry {
   at: number; artist: string; title: string;
   /** Motorns dom nar analysatorn fatt ett sakert varde: ok / ok-fantom / avvisat. */
   analyserBpm?: number; ratio?: number; verdict?: string; verdictAt?: number;
+  /** Motorns inlarningsrad for laten (piEngine.learnSummary): analysatorns bpm-statistik + kick-ringens intervall. */
+  learn?: Record<string, number>; learnAt?: number;
 }
 const NEG_TTL_MS = 7 * 24 * 3600e3;
 
@@ -29,10 +31,20 @@ export class TempoCache {
   get size(): number { return Object.keys(this.map).length; }
   get(key: string): TempoCacheEntry | null {
     const e = this.map[key]; if (!e) return null;
+    if (e.source === 'ej-uppslagen') return null;                       // bara inlarningsrad, ingen uppslagning gjord
     if (e.bpm <= 0 && Date.now() - e.at > NEG_TTL_MS) return null;      // negativt svar har gatt ut
     return e;
   }
-  set(key: string, e: TempoCacheEntry): void { this.map[key] = e; this.save(); }
+  set(key: string, e: TempoCacheEntry): void {
+    const old = this.map[key];
+    this.map[key] = old?.learn ? { ...e, learn: old.learn, learnAt: old.learnAt } : e;   // inlarningsraden overlever nytt uppslag
+    this.save();
+  }
+  /** Inlarningsrad aven for latar som aldrig slogs upp (natfel) - skapar en tom post utan att blockera uppslag. */
+  upsert(key: string, artist: string, title: string, patch: Partial<TempoCacheEntry>): void {
+    const e = this.map[key] ?? (this.map[key] = { bpm: 0, source: 'ej-uppslagen', at: 0, artist, title });
+    Object.assign(e, patch); this.save();
+  }
   update(key: string, patch: Partial<TempoCacheEntry>): void { const e = this.map[key]; if (!e) return; Object.assign(e, patch); this.save(); }
   list(): Array<TempoCacheEntry & { key: string }> { return Object.entries(this.map).map(([key, e]) => ({ key, ...e })); }
   private save(): void {
