@@ -496,6 +496,16 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
         // Logga BARA matchande enheter — annars spammar varje närliggande
         // BLE-advertisement loggen och äter CPU på Pi Zero 2W.
         if (!isMatch) return;
+        // EN match per forsok. allowDuplicates=true ger flera discover-events
+        // for remsan innan scanningen hunnit stoppas. UPPMATT 2026-09-18 12:09:53Z
+        // (LOTUS_DEBUG): "3. MATCH efter 2" +218 ms och "3. MATCH efter 3" +224 ms
+        // -> tva parallella handlers. Den forsta anslot och borjade GATT (+1176 ms);
+        // den andra satt i stopScanBounded till 2 s-gransen, korde connectAsync pa
+        // samma perifer (+2392 ms) -> "Peripheral already connected" -> dess catch-
+        // gren DISCONNECTADE den friska lanken och forsoket dömdes som misslyckat
+        // (ble-drop.req, ny omgang 7 s senare). Utan guarden ar varje connect en
+        // race mot remsans annonsintervall.
+        if (matched) return;
         matched = true;
         // R1: yttre scan-timern får INTE fyra mid-connect. Vi har matchat →
         // resten av flödet bounder sig själv via withTimeout.
@@ -649,14 +659,26 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
   // 30 s efter VARJE forsok, lyckat eller ej — en spokrad mitt i nasta forsok.
   // 1 025 sadana rader i loggen; resultatraderna sa "connectAsync timed out
   // after 4000ms", inte "in-flight watchdog". Racen var aldrig forlorad.
+  //
+  // 45 s, INTE 30 s: varje await i inflight ar begransat for sig, men summan av
+  // granserna langs MATCH-vagen ar 40,5 s — cleanup 2+1+2 (stopScan, stale
+  // disconnect, cache-flagga), waitForPoweredOn 10, scan 6, stopScan 2,
+  // connectAsync 4, GATT 8, anchor 3, stadnings-disconnect 2,5. Med 30 s kunde
+  // vakthunden preemptera en helt begransad men langsam vag och doma den som
+  // "hangning" (raknas mot INFLIGHT_HANG_LIMIT -> process.exit) fast inget
+  // hangde. Granskat 2026-09-18: 0 vakthundsutfall pa 2,7 dygn sedan a7a77a8
+  // (engine.log rad 113724 och framat); de "tva i dag" var rader utan
+  // tidsstampel fran fore 09-04 som lackte genom ett strangjamfort tidsfilter.
+  // Det har ar alltsa en statisk marginal, inte en uppmatt hangning.
+  const INFLIGHT_WATCHDOG_MS = 45_000;
   let _wdTimer: ReturnType<typeof setTimeout> | null = null;
   const guarded: Promise<{ connected: boolean; error?: string }> = Promise.race([
     inflight,
     new Promise<{ connected: boolean; error?: string }>((res) => { _wdTimer = setTimeout(() => {
       _wdTimer = null;
-      console.error('[connect-hardcoded] in-flight watchdog 30s — släpper låsningen');
-      res({ connected: false, error: 'connect in-flight watchdog (30s)' });
-    }, 30_000); }),
+      console.error(`[connect-hardcoded] in-flight watchdog ${INFLIGHT_WATCHDOG_MS / 1000}s — släpper låsningen`);
+      res({ connected: false, error: `connect in-flight watchdog (${INFLIGHT_WATCHDOG_MS / 1000}s)` });
+    }, INFLIGHT_WATCHDOG_MS); }),
   ]);
   void inflight.finally(() => { if (_wdTimer) { clearTimeout(_wdTimer); _wdTimer = null; } }).catch(() => {});
 
