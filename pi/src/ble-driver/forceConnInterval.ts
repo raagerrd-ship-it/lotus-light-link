@@ -83,13 +83,23 @@ export function forceConnInterval(
 // ── Robust apply + persistent re-assert ────────────────────────────────────
 // hcitool exit 0 betyder bara att kommandot skickades — controllern kan ändå
 // ligga kvar på default-interval (skurvis leverans → hackigt ljus). Därför:
-//   1. Försök upp till 3 gånger med backoff direkt efter connect.
+//   0. VANTA IN REMSANS EGEN BEGARAN. btmon 2026-09-18: remsan skickar L2CAP Conn
+//      Param Update Req (60-85 ms, supervision 1 s) ~1 s efter VARJE anslutning;
+//      karnan auto-beviljar med egen lecup. Kor vi var lecup samtidigt: LMP Error
+//      Transaction Collision (0x23) -> LL Response Timeout (0x22) -> lanken dor.
+//      Darfor SETTLE_MS fore forsta forsoket. (lotus-ble-interval.service, som
+//      ocksa korde lecup var 15 s pa VILKEN handle som helst, ar borttagen — motorn
+//      ar nu ENDA skribenten.)
+//   1. Försök upp till 5 gånger med backoff.
 //   2. Re-assert var 25:e sekund så länge länken lever (interval kan tappas
 //      vid en LE-connection-update från lampan eller efter en reconnect).
 //   3. Verifiera mot FAKTISK sändningstakt (writeLatMax/outstanding) via
 //      bleStats — loggas så vi ser om det slog igenom, inte bara exitkoden.
 
 let reassertTimer: ReturnType<typeof setInterval> | null = null;
+/** Lat remsans param-begaran + karnans auto-beviljande landa forst (matt ~1,3 s efter GATT). */
+const SETTLE_MS = 1200;
+const MAX_ATTEMPTS = 5;
 
 export async function applyConnInterval(
   getHandle: () => number | null,
@@ -98,7 +108,8 @@ export async function applyConnInterval(
 ): Promise<void> {
   const targetUnits = CONN_INTERVAL_UNITS;   // default 12 = 15 ms, se CONN_INTERVAL_UNITS
   const targetMs = (targetUnits * 1.25).toFixed(2);
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  await new Promise((r) => setTimeout(r, SETTLE_MS));
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const handle = getHandle();
     if (handle == null) {
       await new Promise((r) => setTimeout(r, 500 * attempt));
@@ -116,7 +127,10 @@ export async function applyConnInterval(
     await new Promise((res) => setTimeout(res, 800 * attempt));
   }
   bleStats.intervalSource = 'default (lecup misslyckades)';
-  log('[forceConnInterval] gav upp efter 3 försök — länken kör på default interval (hackigt ljus förväntas)');
+  log(`[forceConnInterval] gav upp efter ${MAX_ATTEMPTS} försök — länken kör på default interval tills re-assert lyckas (var ${REASSERT_MS / 1000}:e s)`);
+  // Forut startades re-assert BARA vid r.ok -> efter give-up raddade ingen intervallet
+  // forran nasta reconnect (77 ggr/14 d). Det var luckan lotus-ble-interval tackte.
+  startConnIntervalReassert(getHandle, bleStats, log);
 }
 
 // BLEDOM förhandlar tillbaka till högt interval (~200ms) efter en stund →

@@ -898,6 +898,11 @@ export function startConfigServer(port = 3050): void {
     if ('audioClock' in req.body) {
       import('./alsaMic.js').then((m) => m.setAudioClockEnabled(!!(merged as any).audioClock)).catch(() => {});
     }
+    // Landmarkesvagen foljer "Anvand inspelning" live — av = noll kostnad (spektrumsinken kopplas bort).
+    if ('useRecording' in req.body) {
+      engine.enableLandmarks(!!(merged as any).useRecording);
+      console.log(`[fingerprint] landmarkesvagen ${(merged as any).useRecording ? 'PA' : 'AV'} (toggle)`);
+    }
     res.json({ ok: true });
   });
 

@@ -29,7 +29,7 @@ skrivlatens. Se `pi/src/ble-driver/protocol.ts` och projektminnet.
 
 | Variabel | Default | Betydelse |
 |---|---|---|
-| `LOTUS_FP=1` | av | Landmärkesgenerering (125 Hz). På sedan 2026-09-02. |
+| `LOTUS_FP=1` | av | Tvingar landmärkesvägen PÅ. Sedan 2026-09-18 följer den i stället togglen **Använd inspelning** (av = noll kostnad); drop-in:en `fp.conf` är borttagen. |
 | `LOTUS_SYNC_PROBE=1` | av | Skriver (position, rå-RMS) till `syncprobe.tsv` — blockerande, bara vid felsökning. |
 | `LOTUS_BLE_INTERVAL_UNITS` | 12 (=15 ms) | BLE-anslutningsintervall i 1,25 ms-enheter. Finns för mätt A/B mot WiFi-samexistens. |
 | `LOTUS_BLE_LATENCY` | 0 | Slave latency. Frigör periferins radio, inte Pi:ns — intervallet är det som spelar roll. |
@@ -50,3 +50,13 @@ validera → **radera begäran först** → cooldown 120 s (`/run/lotus-ble-prim
 **blewatch hoppar över hela sin iteration medan låset finns** — annars startar den motorn mitt
 i prime (uppmätt 16:41). Samma sekvens som blewatch, men efter ~10 s i stället för 57–220 s.
 Uppmätt utlösare: 8 timeouts på 97 s efter 11 h idle; `hci down/up` i prime.sh röjde det.
+
+## En skribent av länkparametrar (2026-09-18)
+
+`lotus-ble-interval.service` (+ `/usr/local/bin/lotus-ble-interval.sh`, `hcitool lecup --min 12 --max 12`
+var 15 s på **vilken handle som helst**) är **borttagen**. btmon visade tre skribenter i konflikt —
+remsans egen begäran (60–85 ms, supervision 1 s, auto-beviljad av kärnan), motorn var 25 s, och
+tjänsten var 15 s → `Transaction Collision (0x23)` → `LL Response Timeout (0x22)` → länken dog vid
+återanslutning. Nu är motorn (`forceConnInterval.ts`) enda skribenten: väntar 1,2 s in remsans
+begäran, 5 försök, och re-assert var 25:e s **även efter give-up** (det var tjänstens enda riktiga
+roll). Vill du tillbaka: `LOTUS_BLE_INTERVAL_UNITS` styr målet; tjänsten ska inte återinföras.

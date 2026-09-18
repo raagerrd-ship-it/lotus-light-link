@@ -237,9 +237,16 @@ async function ensureEngineInstance(): Promise<void> {
     // MATNING av landmarkesvagens kostnad. pi-dmx matte att for manga par per
     // ruta drev motorn till 98 % CPU och gav synligt flimmer, sa vagen far vara
     // pa forst nar den ar matt pa den har hardvaran.
-    if (process.env.LOTUS_FP === '1') {
+    // Landmarken behovs BARA for latlaset ("Anvand inspelning"). Med togglen av
+    // ar vagen rent slöseri (~6 hashramar/s + rostning for ett las ingen laser).
+    // Foljer darfor togglen (aven live, se PUT /api/calibration); env tvingar pa.
+    let _useRec = false;
+    try { _useRec = !!JSON.parse(getItem('light-calibration') || '{}').useRecording; } catch { /* ingen kal an */ }
+    if (process.env.LOTUS_FP === '1' || _useRec) {
       engineInstance.enableLandmarks(true);
-      console.log('[fingerprint] landmarkesvagen PA');
+      console.log(`[fingerprint] landmarkesvagen PA (${process.env.LOTUS_FP === '1' ? 'LOTUS_FP' : 'useRecording'})`);
+    } else {
+      console.log('[fingerprint] landmarkesvagen AV (useRecording av)');
     }
 
     // Motorn mater sitt eget synkfel per lat och sparar svaret. `store.save()`
