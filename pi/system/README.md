@@ -31,7 +31,7 @@ skrivlatens. Se `pi/src/ble-driver/protocol.ts` och projektminnet.
 |---|---|---|
 | `LOTUS_FP=1` | av | Tvingar landmärkesvägen PÅ. Sedan 2026-09-18 följer den i stället togglen **Använd inspelning** (av = noll kostnad); drop-in:en `fp.conf` är borttagen. |
 | `LOTUS_SYNC_PROBE=1` | av | Skriver (position, rå-RMS) till `syncprobe.tsv` — blockerande, bara vid felsökning. |
-| `LOTUS_BLE_INTERVAL_UNITS` | 12 (=15 ms) | BLE-anslutningsintervall i 1,25 ms-enheter. Finns för mätt A/B mot WiFi-samexistens. |
+| `LOTUS_BLE_INTERVAL_UNITS` | 12 (=15 ms) | BLE-anslutningsintervall i 1,25 ms-enheter. **15 (18,75 ms) provat 2026-09-18: SÄMRE** — skipBusy 1,2 → 8,3 %, outstandingAge p95 20 → 29 ms, sänt 52,9 → 48,5/s. Writern är busy-gatad på ACL-kvittot: intervallet måste ligga tydligt UNDER paketperioden (18,67 ms), inte lika med. Kvot ≈1 är värsta fallet. Nästa kandidat enligt samma fysik: 8 (10 ms), men +50 % radiohändelser för remsan — ej provat. |
 | `LOTUS_BLE_LATENCY` | 0 | Slave latency. Frigör periferins radio, inte Pi:ns — intervallet är det som spelar roll. |
 
 ## Skrivs INTE hit
