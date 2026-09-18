@@ -184,7 +184,11 @@ const RING_MASK = RING_SIZE - 1;
 // sample (2.67 ms). Vi fyrar band-eventet var 5:e hop ≈ 640 samples ≈ 13.3 ms
 // (~75 Hz) → ungefär 2 band-events per tick, precis som den gamla 600-hoppen,
 // men UTAN en andra FFT.
-const BAND_EVERY_HOPS = 7;
+// Paketperiod = ANALYSER_HOP * BAND_EVERY_HOPS / SAMPLE_RATE. 7 -> 18,67 ms (53,6 Hz), 8 -> 21,33
+// (46,9 Hz), 9 -> 24,0 (41,7 Hz). Env for kedje-svepet 2026-09-18 (farre paket/s till remsan,
+// intervallet matas live mot varje period). Byts ALLTID med omstart: FRAME_MS och onset-
+// konstanterna harleds harifran vid load. Leasen (tick-ms) ska ligga strax UNDER perioden.
+const BAND_EVERY_HOPS = Math.max(3, Math.min(20, Number(process.env.LOTUS_BAND_EVERY_HOPS) || 7));
 let bandHopCounter = 0;
 
 // ── BandResult ur analysatorns oktavband ──
