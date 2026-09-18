@@ -317,7 +317,7 @@ export async function triggerIdleDisconnect(): Promise<void> {
  *
  * Bakgrund: när BLEDOM tappar länken tyst (keep-alive failar i bakgrunden,
  * radio-timeout utan disconnect-event) sitter noble kvar med en peripheral
- * i `_peripherals[id]` som internt tror att GATT-sessionen lever. Nästa
+ * i `_peripherals.get(id)` som internt tror att GATT-sessionen lever. Nästa
  * `connectAsync()` mot samma instans hänger då oändligt.
  *
  * Lösningen är att purga cache-entrien så scan skapar en fresh peripheral.
@@ -372,9 +372,17 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
     if (peripherals && typeof peripherals === 'object') {
       const targetId = HARDCODED_DEVICE.idNoColon;
       const targetAddr = HARDCODED_DEVICE.addressLower;
-      const keys = Object.keys(peripherals);
-      for (const key of keys) {
-        const p = peripherals[key];
+      // noble (@stoprocent 2.5.7 i repot, 2.8.0 på Pi:n) har
+      // `this._peripherals = new Map()`. `Object.keys(Map)` är [] — så hela
+      // steget var en no-op fram till 2026-09-18 (0 "purged"-rader i engine.log).
+      // Iterera Map-poster, fallback till Object.entries om cachen är ett
+      // vanligt objekt. Ögonblicksbild: loopen awaitar, och discover-events
+      // kan muttera cachen under tiden.
+      const isMap = peripherals instanceof Map;
+      const entries: Array<[string, any]> = isMap
+        ? Array.from(peripherals.entries())
+        : Object.entries(peripherals);
+      for (const [key, p] of entries) {
         const pid = (p?.id ?? key).toLowerCase().replace(/[^0-9a-f]/g, '');
         const paddr = (p?.address ?? '').toLowerCase();
         // DET VANLIGA BLE-FELET: noble gatar på sin EGEN JS-cache
@@ -391,10 +399,12 @@ export async function forceCleanupStalePeripheral(reason: string): Promise<void>
             ]);
           } catch {}
           if (p.state === 'connected') p.state = 'disconnected';
-          dlog(`[connect-hardcoded] cleanup (${reason}): stale noble-cache-flagga nollställd (${key})`);
+          // Alltid synlig (inte dlog): det här är just fallet "noble missade
+          // disconnect-eventet", och det ska gå att räkna i engine.log.
+          console.log(`[connect-hardcoded] cleanup (${reason}): stale noble-cache-flagga nollställd (${key})`);
         }
         if (pid === targetId || paddr === targetAddr) {
-          delete peripherals[key];
+          if (isMap) peripherals.delete(key); else delete peripherals[key];
           dlog(`[connect-hardcoded] cleanup: noble._peripherals[${key}] purged`);
         }
       }
