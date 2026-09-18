@@ -1039,6 +1039,22 @@ export function startConfigServer(port = 3050): void {
   // Om intervalMs är null = vi kunde inte introspekta noble's HCI-conn.
   // Om intervalMs ≥ 30ms = controllern föll tillbaka till default → BLE-länken
   // är långsam oavsett vad vi skickar i HCI-tweaks.
+  // Kedje-svepet (2026-09-18): byt conn interval pa levande lank, noll omstart.
+  app.put('/api/ble/interval', async (req, res) => {
+    const units = Number(req.body?.units);
+    if (!Number.isFinite(units) || units < 6 || units > 3200) return res.status(400).json({ error: 'units 6..3200' });
+    const { setConnIntervalUnits } = await import('./ble-driver/forceConnInterval.js');
+    const { getAttachedHandle } = await import('./ble-driver/controllerDrain.js');
+    const { bleStats } = await import('./ble-driver/state.js');
+    const r = await setConnIntervalUnits(units, getAttachedHandle, bleStats as any, (m) => console.log(m));
+    res.status(r.ok ? 200 : 503).json(r);
+  });
+  // Jamnhet: gap mellan levererade ljuspaket (p90/median = 08-30-mattet).
+  app.get('/api/ble/gaps', async (_req, res) => {
+    const { getSentGapStats } = await import('./ble-driver/protocol.js');
+    res.json(getSentGapStats());
+  });
+
   app.get('/api/ble/conn-params', async (_req, res) => {
     try {
       const { getNoble } = await import('./ble-driver/noble-singleton.js');

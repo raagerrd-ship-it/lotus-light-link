@@ -317,6 +317,27 @@ function armDrain(delayMs = 0): void {
 }
 
 
+// Leveransstamplar for jamnhetsmattet (gap p90/median, 08-30). Bara ljus-skrivningar
+// (drain), inte keep-alive. 1024 stamplar ~ 19 s vid 53,6/s.
+const _sentAt = new Float64Array(1024);
+let _sentIdx = 0, _sentN = 0;
+export function getSentGapStats(): { n: number; medianMs: number; p90Ms: number; p99Ms: number; ratio: number; meanMs: number } {
+  const n = Math.min(_sentN, _sentAt.length);
+  if (n < 3) return { n, medianMs: 0, p90Ms: 0, p99Ms: 0, ratio: 0, meanMs: 0 };
+  const gaps: number[] = [];
+  let prev = _sentAt[(_sentIdx - n + _sentAt.length) % _sentAt.length];
+  for (let k = 1; k < n; k++) {
+    const t = _sentAt[(_sentIdx - n + k + _sentAt.length) % _sentAt.length];
+    const g = t - prev; prev = t;
+    if (g > 0 && g < 2000) gaps.push(g);   // hoppa over ateranslutningar
+  }
+  gaps.sort((a, b) => a - b);
+  const q = (p: number) => gaps[Math.min(gaps.length - 1, Math.floor(p * gaps.length))];
+  const med = q(0.5), p90 = q(0.9);
+  const mean = gaps.reduce((a, b) => a + b, 0) / Math.max(1, gaps.length);
+  return { n: gaps.length, medianMs: +med.toFixed(2), p90Ms: +p90.toFixed(2), p99Ms: +q(0.99).toFixed(2), ratio: +(p90 / med).toFixed(3), meanMs: +mean.toFixed(2) };
+}
+
 function drainQueuedWrite(): void {
   if (drainRunning) return;
   const device = getDevice();
@@ -384,6 +405,7 @@ function drainQueuedWrite(): void {
       .then(() => {
         const elapsed = performance.now() - writeStartedAt;
         bleStats.sentCount++;
+        _sentAt[_sentIdx] = performance.now(); _sentIdx = (_sentIdx + 1) % _sentAt.length; _sentN++;
         bleStats.writeLatMs = Math.round(elapsed * 10) / 10;
         _writeLatAvgPrecise = _writeLatAvgPrecise * 0.9 + elapsed * 0.1;
         bleStats.writeLatAvgMs = Math.round(_writeLatAvgPrecise * 10) / 10;

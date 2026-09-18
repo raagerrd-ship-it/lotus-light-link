@@ -106,7 +106,7 @@ export async function applyConnInterval(
   bleStats: { requestedIntervalMs: string; intervalSource: string; connIntervalReassertCount: number; outstandingAgeMs: number },
   log: (msg: string) => void,
 ): Promise<void> {
-  const targetUnits = CONN_INTERVAL_UNITS;   // default 12 = 15 ms, se CONN_INTERVAL_UNITS
+  const targetUnits = getConnIntervalUnits();   // env vid start, runtime via setConnIntervalUnits
   const targetMs = (targetUnits * 1.25).toFixed(2);
   await new Promise((r) => setTimeout(r, SETTLE_MS));
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -155,7 +155,31 @@ const REASSERT_MS = 25_000;
  * central oppnar anda varje handelse. Den frigor darfor lite pa Pi:ns radio;
  * det ar INTERVALLET som gor det. Latency finns med for att kunna utesluta den.
  */
-export const CONN_INTERVAL_UNITS = Math.max(6, Math.min(3200, Number(process.env.LOTUS_BLE_INTERVAL_UNITS) || 12));
+let _connIntervalUnits = Math.max(6, Math.min(3200, Number(process.env.LOTUS_BLE_INTERVAL_UNITS) || 12));
+/** Startvarde ur env (12 = 15 ms). Runtime: setConnIntervalUnits(). */
+export const CONN_INTERVAL_UNITS = _connIntervalUnits;
+export function getConnIntervalUnits(): number { return _connIntervalUnits; }
+/**
+ * Byt intervall pa den LEVANDE lanken utan omstart (for kedje-svepet 2026-09-18: writern ar
+ * busy-gatad pa ACL-kvittot, sa intervallet maste MATAS mot paketperioden, inte simuleras).
+ * Kor lecup direkt och startar om re-assert med det nya vardet.
+ */
+export async function setConnIntervalUnits(
+  units: number,
+  getHandle: () => number | null,
+  bleStats: { requestedIntervalMs: string; intervalSource: string; connIntervalReassertCount: number; outstandingAgeMs: number },
+  log: (msg: string) => void,
+): Promise<{ ok: boolean; units: number; ms: string; handle: number | null; error?: string }> {
+  const u = Math.max(6, Math.min(3200, Math.round(units)));
+  _connIntervalUnits = u;
+  const ms = (u * 1.25).toFixed(2);
+  const handle = getHandle();
+  if (handle == null) return { ok: false, units: u, ms, handle: null, error: 'no handle' };
+  const r = await forceConnInterval(handle, { min: u, max: u, latency: CONN_LATENCY, timeoutUnits: SUPERVISION_UNITS });
+  if (r.ok) { bleStats.requestedIntervalMs = ms; bleStats.intervalSource = 'hcitool (runtime)'; startConnIntervalReassert(getHandle, bleStats, log); }
+  log(`[forceConnInterval] runtime -> ${ms}ms (${u} enh) ${r.ok ? 'OK' : 'FAIL exit=' + r.exitCode}`);
+  return { ok: r.ok, units: u, ms, handle, error: r.ok ? undefined : r.stderr };
+}
 export const CONN_LATENCY = Math.max(0, Math.min(50, Number(process.env.LOTUS_BLE_LATENCY) || 0));
 /** 500 × 10 ms = 5 s supervision timeout — måste skickas med i BÅDA anropen. */
 export const SUPERVISION_UNITS = 500;
@@ -171,7 +195,8 @@ function startConnIntervalReassert(
     const handle = getHandle();
     if (handle == null) { stopConnIntervalReassert(); return; }
     const ageBefore = bleStats.outstandingAgeMs;
-    void forceConnInterval(handle, { min: CONN_INTERVAL_UNITS, max: CONN_INTERVAL_UNITS, latency: CONN_LATENCY, timeoutUnits: SUPERVISION_UNITS }).then((r) => {
+    const _u = getConnIntervalUnits();
+    void forceConnInterval(handle, { min: _u, max: _u, latency: CONN_LATENCY, timeoutUnits: SUPERVISION_UNITS }).then((r) => {
       bleStats.connIntervalReassertCount++;
       if (!r.ok) {
         log(`[forceConnInterval] re-assert FAIL exit=${r.exitCode} stderr="${r.stderr}"`);
