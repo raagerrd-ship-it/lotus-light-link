@@ -45,3 +45,16 @@ tabeller för tempo/fas/nivå/onset/drops/deskriptorer) + JSON. Fynd och nästa 
 (IQR 22–52 ms); kick-bias −9 ms; onset precision 0,8 / recall 0,5; styrkekanalen lag 250 ms, r 0,4; inga drops i
 materialet; ringens oktavregel 1/2 → avstängd (`beatOctaveRule` false). Mätfälla rättad samma dag: pulsoffset
 måste mätas mot förväntad fyrtid (slag − lead), annars klipper on-beat-fönstret bort just −lead-regionen.
+
+## Körbänk för analysatorns tempoval (`bench.mjs`, 2026-09-19)
+
+`node bench.mjs` matar den kompilerade analysatorn (samma kod som Pi:n) hop för hop med `corpus/` (PC-facit)
+och `corpus-synth/` (känt tempo, `gen_synth.py`), driver analysatorns **virtuella klocka** från ljudet
+(`setVirtualClock`) och klassar median-bpm över de sista 20 s mot facit. **Läxa:** utan virtuell klocka går
+30 s ljud på 1 s väggtid och all tidsstyrd logik (röster var 250 ms, commit) bryts — första baslinjen (0–2/8)
+var ett harnessfel, inte analysatorn. Med rätt klocka: gamla vägen syntet 6/8 (2 = avsedd oktavvikning),
+korpus 3/7. Provat och FÖRKASTAT (opt-in-flaggor kvar i `analyser.ts`): `LOTUS_TEMPO_EVIDENCE=1` (tempogrammet
+som kandidatgenerator + slagpoäng på basonseten: syntet 6/8, korpus 1/6 — verkliga baslinjer har toner på
+många delslag), `LOTUS_TEMPO_EVIDLOCK=1` (evidensmedian som lås: 4/8, 1/6 — grannkandidater poängsätts lika,
+medianen hoppar), `LOTUS_TEMPO_ENV_S=8|10` (längre onset-ring: 1/7, 3/7 — inget). Debug per fil:
+`BENCH_DEBUG=<namn> node bench.mjs` (kandidater, poäng, lås per 5 s). Korpusen växer med en låt per spelad låt.
