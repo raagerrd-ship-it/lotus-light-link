@@ -75,3 +75,15 @@ om den slår standard med ≥ 3 låtar på ≥ 36 korpuslåtar utan syntetförlu
 i ok-andel), publicerar morgonrapport-artifact (`morning-artifact.txt` håller URL:en), skriver minne, committar.
 Rör aldrig useRecording/useMetaTempo/integratorn/drops/BLE. Pi:ns `analyser.js` deployades 2026-09-19 17:10 som
 beteendeidentiskt bygge (backup `analyser.js.bak-20260919-1710` = 09-04-filen) så varianterna kan växlas med flaggor.
+
+## Regression 2026-09-19 17:10–21:20: `onsetEnhancements` (LÄXA)
+
+Deployen av HEAD-bygget av `analyser.js` var INTE beteendeidentisk med Pi:ns 09-04-fil: 09-07-mergen
+(commits daterade 08-31) införde `onsetEnhancements` (per-bin-whitening + variansnormering av onset-kurvan)
+som 09-04-bygget tyst ignorerade medan `alsaMic` skickade `true`. Från 17:10 kördes DSP:n skarpt: live ok-andel
+50 % → 16 %, avvisat 22 % → 51 %; körbänk på samma 64 låtar: gamla bygget 30/64, nya med flaggan AV 30/64
+(identiskt), nya med flaggan PÅ 12/64. Åtgärd 21:20: `alsaMic` skickar `onsetEnhancements: process.env.LOTUS_ONSET_ENH === '1'`
+(standard av), körbänkens standard likaså (`BENCH_ENH=1` slår på). **Regel för morgonagenten:** `LOTUS_ONSET_ENH`
+får bara slås på efter körbänksvinst enligt variantregeln (≥ +3 låtar på ≥ 36, ingen syntetförlust). **Metodregel:**
+"beteendeidentiskt" ska bevisas med körbänken mot den fil som faktiskt kör på Pi:n (hämta den, `pi/dist/audio-analyser-old/`),
+inte antas ur git-diffen mot HEAD.

@@ -40,7 +40,7 @@ function classify(facit, an) {
 
 function runOne(y, rate) {
   const HOP = 128;
-  const an = createAnalyser({ sampleRate: rate, hopSize: HOP, autoGainTarget: 0.75, maxGain: 200, noiseFloor: 0.0015, onsetEnhancements: true });
+  const an = createAnalyser({ sampleRate: rate, hopSize: HOP, autoGainTarget: 0.75, maxGain: 200, noiseFloor: 0.0015, onsetEnhancements: process.env.BENCH_ENH === '1' });   // standard AV = som Pi:n; BENCH_ENH=1 = 09-07-mergens onset-DSP (12/64 mot 30/64)
   an.setGainLock?.(false);
   const buf = new Float32Array(HOP); const bpms = []; const confs = []; const raws = []; let hopCount = 0; const warm = Math.floor(10 * rate / HOP);
   const dbg = process.env.BENCH_DEBUG && runOne.name && runOne.current && runOne.current.includes(process.env.BENCH_DEBUG);

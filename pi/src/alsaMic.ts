@@ -353,7 +353,10 @@ const analyser = createAnalyser({
   maxGain: 200,
   noiseFloor: 0.0015,
   // A/B-kontrollerad DSP: log-kompression, per-bin-whitening och novelty-normalisering.
-  onsetEnhancements: true,
+  // AV SOM STANDARD (2026-09-19): 09-04-bygget ignorerade flaggan tyst; nar ett HEAD-bygge deployades 17:10
+  // slog den till skarpt for forsta gangen och tempotraffen foll 30/64 -> 12/64 pa samma korpus (bench.mjs),
+  // live 50 % -> 16 % ok. LOTUS_ONSET_ENH=1 slar pa den - bara efter korbanksvinst.
+  onsetEnhancements: process.env.LOTUS_ONSET_ENH === '1',
 });
 analyser.setGainLock(false);
 
