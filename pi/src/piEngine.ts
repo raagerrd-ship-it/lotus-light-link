@@ -299,6 +299,8 @@ export interface LightCalibration {
   /** FACIT, inte styrning (09-18): katalogtempot (Deezer via Sonos artist+titel) doms alltid mot analysatorn och
    *  loggas per lat i tempo-cache.json; bara med true far det DRIVA gridet (testlage). Lampan ska ga pa var analysator. */
   useMetaTempo: boolean;
+  /** Sekunder for det konfidensviktade median-tempot som driver gridet (analysatorns ogonblicksvarde hoppar +-5 %). 0 = av. */
+  beatTempoSmoothS: number;
 
 
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
@@ -416,6 +418,7 @@ const DEFAULT_CAL: LightCalibration = {
   recordEnabled: true,
   useRecording: true,
   useMetaTempo: false,       // 09-18: FACIT-lage. Katalogen (Deezer) doms mot analysatorn och loggas; true = lat den driva (test)
+  beatTempoSmoothS: 12,      // 09-19: "Kla av mig": ogonblicksvardet 97-108 pa 45 s, medianen 101 hela tiden -> 8 om-ankringar blev 0
 
   inLowFrac: 0.022,
   inHighFrac: 0.075,
@@ -707,6 +710,9 @@ export class PiLightEngine {
   private _learnBpm: number[] = []; private _learnConf: number[] = []; private _learnRing = new Map<number, number>();
   private _learnLastAt = 0; private _learnLastRingAt = 0; private _learnLastKick = 0; private _learnStartAt = 0;
   private _learnSaver: ((artist: string, title: string, summary: Record<string, number>) => void) | null = null;
+  /** TEMPOSTABILITET (09-19): 1 Hz-fonster av analysatorns (bpm, conf); gridet far den viktade medianen. */
+  private _tempoWin: Array<{ t: number; bpm: number; conf: number }> = [];
+  private _tempoWinLastAt = 0; private _tempoSm = 0;
   /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
   private _capBaseMs = -1;
   private _capUntilMs = -1;
@@ -1452,6 +1458,7 @@ export class PiLightEngine {
       try { this._learnSaver?.(this._songArtist, this._songTitle, this.learnSummary()); } catch { /* cachen far aldrig falla motorn */ }
     }
     this.learnReset();
+    this._tempoWin = []; this._tempoWinLastAt = 0; this._tempoSm = 0;   // nytt fonster for ny lat (re-acq kor ra i 5 s)
     this._songBpm = 0;
     this._songEntry = null;
     this._metaBpm = 0; this._metaSource = ''; this._metaRatio = 0; this._metaVerdict = ''; this._metaDrives = false;
@@ -1565,11 +1572,31 @@ export class PiLightEngine {
     }
     if (_memBpm <= 0 && this._metaBpm > 0 && this.cal.useMetaTempo === true && this._metaVerdict !== 'avvisat') { _memBpm = this._metaBpm; this._metaDrives = true; }
     this.learnSample(frame);
-    const bpm = _memBpm > 0 ? _memBpm : (frame?.bpm ?? 0);
-    // Ett känt tempo är inte en gissning — låt inte en svag mic sänka förtroendet.
-    const conf = _memBpm > 0 ? Math.max(frame?.bpmConfidence ?? 0, 0.9) : (frame?.bpmConfidence ?? 0);
     const nowMs = Date.now();
     const reacq = nowMs < this._reacqUntil;
+    // TEMPOSTABILITET (09-19): analysatorns ogonblicksvarde hoppade 97-108 pa 45 s ("Kla av mig",
+    // conf 0,5-0,96) -> atta om-ankringar och fasfel -50..+38 vid varje. Medianen over samma 45 s
+    // var 101 hela tiden. Gridet far darfor ett konfidensviktat median-tempo over de senaste
+    // beatTempoSmoothS sekunderna (1 Hz-sampel, conf >= 0,5); ra-vardet bara under re-acquisition
+    // (ny lat) och tills fonstret har 5 sampel. Reagerar pa ett riktigt tempobyte pa ~halva fonstret.
+    const rawBpm = frame?.bpm ?? 0, rawConf = frame?.bpmConfidence ?? 0;
+    const smoothS = this.cal.beatTempoSmoothS ?? 12;
+    if (smoothS > 0 && nowMs - this._tempoWinLastAt >= 1000) {
+      this._tempoWinLastAt = nowMs;
+      if (rawBpm > 40) this._tempoWin.push({ t: nowMs, bpm: rawBpm, conf: rawConf });
+      while (this._tempoWin.length && nowMs - this._tempoWin[0].t > smoothS * 1000) this._tempoWin.shift();
+      const good = this._tempoWin.filter((x) => x.conf >= 0.5);
+      if (good.length >= 5) {
+        const sorted = [...good].sort((a, b) => a.bpm - b.bpm);
+        const tot = sorted.reduce((s, x) => s + x.conf, 0); let acc = 0; let m = sorted[0].bpm;
+        for (const x of sorted) { acc += x.conf; if (acc >= tot / 2) { m = x.bpm; break; } }
+        this._tempoSm = m;
+      } else this._tempoSm = 0;
+    }
+    const anBpm = (!reacq && smoothS > 0 && this._tempoSm > 0) ? this._tempoSm : rawBpm;
+    const bpm = _memBpm > 0 ? _memBpm : anBpm;
+    // Ett känt tempo är inte en gissning — låt inte en svag mic sänka förtroendet.
+    const conf = _memBpm > 0 ? Math.max(rawConf, 0.9) : rawConf;
 
     if (bpm > 40) {
       // Under re-acquisition räcker 0.5 BPM avvikelse för att om-ankra (annars 2),
