@@ -58,7 +58,10 @@ export function attachSubsystemStarters(s: SubsystemStarters): void {
 let attachedTempoCache: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; list(): any[] } | null = null;
 /** Snuttar for PC-facit: <DATA_DIR>/snippets/<key med | -> __>.wav + .json */
 const SNIPPET_DIR = DATA_DIR + '/snippets';
-const snippetFile = (key: string) => SNIPPET_DIR + '/' + key.replace(/\|/g, '__');
+const snippetFile = (id: string) => SNIPPET_DIR + '/' + id.replace(/\|/g, '__').replace(/#/g, '_');
+let _manualCapture: string | null = null;
+/** index.ts pollar (4 Hz): en manuellt begard fangst ('drop'), en gang. */
+export function takeManualCapture(): string | null { const m = _manualCapture; _manualCapture = null; return m; }
 
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
@@ -483,15 +486,23 @@ export function startConfigServer(port = 3050): void {
   app.get('/api/tempo/snippets', (_req, res) => {
     try {
       if (!existsSync(SNIPPET_DIR)) { res.json([]); return; }
-      const rows = readdirSync(SNIPPET_DIR).filter((f) => f.endsWith('.json')).map((f) => {
+      const rows = readdirSync(SNIPPET_DIR).filter((f) => f.endsWith('.json') && !f.endsWith('.events.json')).map((f) => {
         try { return JSON.parse(readFileSync(SNIPPET_DIR + '/' + f, 'utf8')); } catch { return null; }
       }).filter(Boolean);
       res.json(rows);
     } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
   });
+  app.get('/api/tempo/events', (req, res) => {
+    const id = String(req.query.key ?? '');
+    if (!/^[a-z0-9|#]+$/.test(id)) { res.status(400).json({ error: 'ogiltig key' }); return; }
+    const p = snippetFile(id) + '.events.json';
+    if (!existsSync(p)) { res.status(404).json({ error: 'ingen handelselogg' }); return; }
+    try { res.json(JSON.parse(readFileSync(p, 'utf8'))); } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
+  });
+  app.post('/api/tempo/capture', (req, res) => { _manualCapture = String(req.body?.kind ?? 'drop'); res.json({ ok: true, kind: _manualCapture }); });
   app.get('/api/tempo/snippet', (req, res) => {
     const key = String(req.query.key ?? '');
-    if (!/^[a-z0-9|]+$/.test(key)) { res.status(400).json({ error: 'ogiltig key' }); return; }
+    if (!/^[a-z0-9|#]+$/.test(key)) { res.status(400).json({ error: 'ogiltig key' }); return; }
     const p = snippetFile(key) + '.wav';
     if (!existsSync(p)) { res.status(404).json({ error: 'ingen snutt' }); return; }
     res.setHeader('Content-Type', 'audio/wav');
@@ -499,19 +510,28 @@ export function startConfigServer(port = 3050): void {
   });
   app.put('/api/tempo/facit', async (req, res) => {
     try {
-      const b = req.body || {}; const key = String(b.key ?? ''); const bpm = Number(b.bpm) || 0;
-      if (!/^[a-z0-9|]+$/.test(key) || !attachedTempoCache) { res.status(400).json({ error: 'ogiltig key eller ingen cache' }); return; }
+      const b = req.body || {}; const id = String(b.id ?? b.key ?? ''); const key = String(b.key ?? id.split('#')[0]); const bpm = Number(b.bpm) || 0;
+      const kind = String(b.kind ?? 'tempo');
+      if (!/^[a-z0-9|#]+$/.test(id) || !/^[a-z0-9|]+$/.test(key) || !attachedTempoCache) { res.status(400).json({ error: 'ogiltig key eller ingen cache' }); return; }
       const { foldCatalogBpm } = await import('./tempoLookup.js');
       const artist = String(b.artist ?? ''), title = String(b.title ?? ''), method = String(b.method ?? 'pc');
-      if (bpm > 40 && bpm < 300) {
-        attachedTempoCache.upsert(key, artist, title, { bpm: foldCatalogBpm(bpm), rawBpm: bpm, source: 'pc:' + method, pcConf: Number(b.conf) || 0, pcAgree: b.agree ?? null, candidates: Array.isArray(b.candidates) ? b.candidates.slice(0, 5) : undefined, at: Date.now(), artist, title });
+      // PC-ANALYSEN (09-19) utover tempot: slagfas (kick/puls mot PC:ns slag), nivakorrelation med lag,
+      // onset-precision, dropdom och deskriptorer. Allt i raden under `pc`; dropdomar samlas i `dropEvents`.
+      const analysis = (b.analysis && typeof b.analysis === 'object') ? b.analysis : undefined;
+      if (kind === 'drop') {
+        const row: any = attachedTempoCache.list().find((r: any) => r.key === key);
+        const prev = Array.isArray(row?.dropEvents) ? row.dropEvents.slice(-19) : [];
+        attachedTempoCache.upsert(key, artist, title, { dropEvents: [...prev, { at: Date.now(), id, ...(analysis?.drop ?? {}), phase: analysis?.phase ?? null }] });
+        console.log(`[tempo] PC-dropdom for "${artist} - ${title}": ${JSON.stringify(analysis?.drop ?? {}).slice(0, 160)}`);
+      } else if (bpm > 40 && bpm < 300) {
+        attachedTempoCache.upsert(key, artist, title, { bpm: foldCatalogBpm(bpm), rawBpm: bpm, source: 'pc:' + method, pcConf: Number(b.conf) || 0, candidates: Array.isArray(b.candidates) ? b.candidates.slice(0, 5) : undefined, at: Date.now(), artist, title, ...(analysis ? { pc: analysis, pcAt: Date.now() } : {}) });
         try { (attachedEngine as any)?.setMetaTempo?.(foldCatalogBpm(bpm), 'pc:' + method, artist, title); } catch { /* motorn far aldrig falla pa facit */ }
-        console.log(`[tempo] PC-facit ${bpm.toFixed(1)} (${method}, conf ${Number(b.conf) || 0}) for "${artist} - ${title}"`);
+        console.log(`[tempo] PC-facit ${bpm.toFixed(1)} (${method}, conf ${Number(b.conf) || 0}) for "${artist} - ${title}"${analysis?.phase ? ` | kick ${analysis.phase.kick?.medianMs ?? '-'} ms puls ${analysis.phase.pulse?.medianMs ?? '-'} ms` : ''}${analysis?.level ? ` | niva lag ${analysis.level.lagMs ?? '-'} ms r ${analysis.level.r ?? '-'}` : ''}`);
       } else {
-        attachedTempoCache.upsert(key, artist, title, { bpm: 0, source: 'pc:ingen', at: Date.now(), artist, title });
+        attachedTempoCache.upsert(key, artist, title, { bpm: 0, source: 'pc:ingen', at: Date.now(), artist, title, ...(analysis ? { pc: analysis, pcAt: Date.now() } : {}) });
         console.log(`[tempo] PC-facit: inget tempo for "${artist} - ${title}"`);
       }
-      for (const ext of ['.wav', '.json']) { try { unlinkSync(snippetFile(key) + ext); } catch { /* redan borta */ } }
+      for (const ext of ['.wav', '.json', '.events.json']) { try { unlinkSync(snippetFile(id) + ext); } catch { /* redan borta */ } }
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ ok: false, error: e?.message ?? String(e) }); }
   });

@@ -720,6 +720,8 @@ export class PiLightEngine {
   private _octRingMs = 0; private _octPerBeat = 0; private _octReg = 0; private _octOn = false; private _octBeats = 0; private _octBeatsTotal = 0;
   /** AUTOMATISK OKTAVLEDTRAD (09-19): lard ur facit vid forra spelningen av samma lat (2 = analysatorn en oktav under, 0.5 = over, 1 = ratt/okand). */
   private _octHint = 1;
+  /** Gridpulsernas fyrtider (Date.now vid ticken), ring 256 - for PC-analysens slagfas (events.pulses). */
+  private _pulseRing = new Float64Array(256); private _pulsePos = 0;
   /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
   private _capBaseMs = -1;
   private _capUntilMs = -1;
@@ -1296,6 +1298,13 @@ export class PiLightEngine {
     this._metaBpm = bpm > 0 ? bpm : 0; this._metaSource = source; this._metaRatio = 0; this._metaVerdict = bpm > 0 ? 'vantar' : '';
     if (bpm > 0) console.log(`[tempo] katalog ${source}: ${bpm.toFixed(1)} BPM for "${title}" (analysatorn just nu ${getLatestFrame()?.bpm ?? 0})`);
   }
+  /** Gridpulser fyrade sedan sinceMs, kronologiskt. Fyrtiden ar ticken; lampan lyser ~beatLeadMs + BLE-latens senare. */
+  getRecentPulses(sinceMs: number): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < 256; i++) { const t = this._pulseRing[i]; if (t >= sinceMs) out.push(t); }
+    return out.sort((a, b) => a - b);
+  }
+  private notePulse(): void { this._pulseRing[this._pulsePos] = Date.now(); this._pulsePos = (this._pulsePos + 1) & 255; }
   /** For /api/status: vad katalogen sa, hur det stamde med analysatorn, och om det driver gridet. */
   get metaTempo(): { bpm: number; source: string; ratio: number; verdict: string; drives: boolean } {
     return { bpm: this._metaBpm, source: this._metaSource, ratio: this._metaRatio, verdict: this._metaVerdict, drives: this._metaDrives };
@@ -2272,7 +2281,7 @@ export class PiLightEngine {
             const onOne = fireBase && accent > 1 && shift >= 0 && ((((idx + shift) % 4) + 4) % 4) === 0;
             if (fireBase) {
               this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
-              this._gridPulseCount++;
+              this._gridPulseCount++; this.notePulse();
             }
             const ppb = doubled ? 2 : (next === -1 ? 0.5 : 1);
             this._pulseIntervalMs = baseIntervalMs > 0 ? baseIntervalMs / ppb : 0;
@@ -2291,7 +2300,7 @@ export class PiLightEngine {
             if (idxH !== this._lastGridIdxH) {
               this._lastGridIdxH = idxH;
               this.onsetTarget = 0.45;
-              this._gridPulseCount++;
+              this._gridPulseCount++; this.notePulse();
             }
           }
         }

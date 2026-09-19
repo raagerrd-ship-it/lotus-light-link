@@ -574,6 +574,19 @@ let rawTarget = 0;
 // FULL-RATE (09-19): facit fran PC:n ska raknas pa SAMMA ljud som analysatorn (48 kHz, samma kanal),
 // inte pa 16 kHz-decimatet. 30 s @48 kHz = 2,9 MB - ryms. rawRate/rawDecimN valjs per capture.
 let rawRate = RAW_RATE; let rawDecimN = RAW_DECIM;
+// FORBUFFERT (09-19): rullande 15 s @48 kHz (1,44 MB Int16) sa en dropfangst kan borja 15 s FORE handelsen
+// (realtidsdetektorn fyrar vid smallen; PC:n vill se uppbyggnaden). Pa nar motorn begart det (enablePreroll).
+const PRE_SECONDS = 15; const PRE_LEN = SAMPLE_RATE * PRE_SECONDS;
+let preBuf: Int16Array | null = null; let prePos = 0; let preFilled = 0;
+let rawStartWallMs = 0; let rawPrerollSamples = 0;
+export function enablePreroll(on: boolean): void {
+  if (on) { if (!preBuf) preBuf = new Int16Array(PRE_LEN); }
+  else { preBuf = null; prePos = 0; preFilled = 0; }
+}
+/** Vaggklocka for WAV:ens sample 0 (Date.now vid forsta blocket, +-5 ms) och hur manga sampel som kom ur forbufferten. */
+export function getRawCaptureMeta(): { startWallMs: number; prerollSamples: number; rate: number } {
+  return { startWallMs: rawStartWallMs, prerollSamples: rawPrerollSamples, rate: rawRate };
+}
 // Latnamn + facit-BPM foljer med inspelningen. UTAN detta ar en inspelad WAV ett
 // klipp UTAN facit, och tempot maste gissas i efterhand -- vilket 2026-08-30/31
 // kostade en hel kvall: mina egna autokorrelationer sa 137.5 och 60.0 om samma
@@ -589,14 +602,22 @@ let rawAcc = 0;
 
 /** Starta full-rate rå-capture. Allokerar först vid anrop — annars ligger 8,6 MB
  *  och skräpar i en process med MemoryMax 300 MB. */
-export function startRawCapture(seconds: number, label?: string, fullRate = false): number {
+export function startRawCapture(seconds: number, label?: string, fullRate = false, prerollS = 0): number {
   const sec = Math.max(1, Math.min(fullRate ? 60 : RAW_MAX_SECONDS, Math.round(seconds)));   // 60 s @48 kHz = 5,8 MB tak
   rawLabel = (label ?? '').slice(0, 120);
   rawRate = fullRate ? SAMPLE_RATE : RAW_RATE; rawDecimN = fullRate ? 1 : RAW_DECIM;
-  rawTarget = rawRate * sec;
+  // Forbuffert forst: de senaste `pre` samplen ur ringen, i ordning, sa WAV:en borjar prerollS fore nu.
+  const pre = (fullRate && prerollS > 0 && preBuf) ? Math.min(preFilled, SAMPLE_RATE * Math.min(PRE_SECONDS, Math.round(prerollS))) : 0;
+  rawTarget = rawRate * sec + pre;
   rawDecim = 0; rawAcc = 0;
   if (!rawBuf || rawBuf.length < rawTarget) rawBuf = new Int16Array(rawTarget);
-  rawLen = 0;
+  rawLen = 0; rawPrerollSamples = pre; rawStartWallMs = 0;
+  if (pre > 0 && preBuf) {
+    let src = prePos - pre; if (src < 0) src += PRE_LEN;
+    for (let i = 0; i < pre; i++) { rawBuf[i] = preBuf[src]; if (++src >= PRE_LEN) src = 0; }
+    rawLen = pre;
+    rawStartWallMs = Date.now() - (pre / SAMPLE_RATE) * 1000;
+  }
   rawCaptureActive = true;
   return sec;
 }
@@ -1329,7 +1350,12 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
       lightSumLocal += rawPre * rawPre;
+      if (preBuf) {
+        let pv = rawPre * 32767; if (pv > 32767) pv = 32767; else if (pv < -32767) pv = -32767;
+        preBuf[prePos] = pv; if (++prePos >= PRE_LEN) prePos = 0; if (preFilled < PRE_LEN) preFilled++;
+      }
       if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
+        if (rawStartWallMs === 0) rawStartWallMs = Date.now();
         rawAcc += rawPre;
         if (++rawDecim >= rawDecimN) {
           let r = (rawAcc / rawDecimN) * 32767;
@@ -1360,7 +1386,12 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
       lightSumLocal += rawPre * rawPre;
+      if (preBuf) {
+        let pv = rawPre * 32767; if (pv > 32767) pv = 32767; else if (pv < -32767) pv = -32767;
+        preBuf[prePos] = pv; if (++prePos >= PRE_LEN) prePos = 0; if (preFilled < PRE_LEN) preFilled++;
+      }
       if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
+        if (rawStartWallMs === 0) rawStartWallMs = Date.now();
         rawAcc += rawPre;
         if (++rawDecim >= rawDecimN) {
           let r = (rawAcc / rawDecimN) * 32767;
