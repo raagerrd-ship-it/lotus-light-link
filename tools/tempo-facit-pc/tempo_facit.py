@@ -15,6 +15,7 @@ import numpy as np, soundfile as sf, librosa
 
 PI = next((a for a in sys.argv[1:] if a.startswith('http')), 'http://192.168.1.174:3051')
 CORPUS_DIR = os.environ.get('LOTUS_CORPUS_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'corpus')
+CORPUS_MAX_WAV = int(os.environ.get('LOTUS_CORPUS_MAX') or 600)   # ~1,7 GB; aldsta WAV:erna gallras, JSON (facit+analys) behalls
 ONCE = '--once' in sys.argv
 POLL_S = 20
 HOP = 512
@@ -260,6 +261,9 @@ def process_one(row: dict) -> bool:
         with open(os.path.join(CORPUS_DIR, safe + '.wav'), 'wb') as f: f.write(wav)
         with open(os.path.join(CORPUS_DIR, safe + '.json'), 'w', encoding='utf-8') as f:
             json.dump({'row': row, 'result': r, 'events': ev, 'savedAt': time.time()}, f, ensure_ascii=False)
+        wavs = sorted((os.path.join(CORPUS_DIR, f) for f in os.listdir(CORPUS_DIR) if f.endswith('.wav')), key=os.path.getmtime)
+        for old in wavs[:max(0, len(wavs) - CORPUS_MAX_WAV)]:
+            os.remove(old); log.info('korpus gallrad: %s', os.path.basename(old))
     except Exception as e:
         log.warning('korpus kunde inte sparas for %s: %s', sid, e)
     ph, lv, on, dr = analysis.get('phase', {}), analysis.get('level', {}), analysis.get('onset', {}), analysis.get('drop', {})
