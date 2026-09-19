@@ -58,3 +58,20 @@ som kandidatgenerator + slagpoäng på basonseten: syntet 6/8, korpus 1/6 — ve
 många delslag), `LOTUS_TEMPO_EVIDLOCK=1` (evidensmedian som lås: 4/8, 1/6 — grannkandidater poängsätts lika,
 medianen hoppar), `LOTUS_TEMPO_ENV_S=8|10` (längre onset-ring: 1/7, 3/7 — inget). Debug per fil:
 `BENCH_DEBUG=<namn> node bench.mjs` (kandidater, poäng, lås per 5 s). Korpusen växer med en låt per spelad låt.
+
+## Löpande drift i två lager (2026-09-19, "ja")
+
+**Lager 1 — nattjobb utan LLM.** Facit-tjänsten (`tempo_facit.py`, kör alltid, autostart via Startup-mappen) kör
+`nightly.py` en gång per dygn efter 04:30: körbänken över `standard/evidence/evidlock/ring10` mot korpus + syntet,
+dygnsstatistik ur Pi:ns cache (domar, ok-andel av dömda, gridsläp, kick-bias, onset, nivå, spann, ledtrådar,
+drops) → `scoreboard.jsonl`, `scoreboard.md` (senaste 14 dygn, spårad i git), `daily/<datum>.json`. Idempotent per dygn;
+`--force` kör om. Första raden 2026-09-19: standard 3/14 korpus · 6/8 syntet, ok-andel 0,47, gridsläp +4,5 ms.
+
+**Lager 2 — morgonagenten.** Schemalagd Claude-uppgift `lotus-morgonagent` (07:06 dagligen, kör bara när
+Claude-appen är öppen; annars vid nästa start). Läser resultattavlan + cache, kontrollerar hälsa, gör säkra
+kalibreringsjusteringar med gränser (beatLeadMs ±20/dygn inom 80–200 efter gridsläp på ≥ 8 ok-låtar; beatTempoSmoothS
+8–20; beatOctaveRule bara vid ≥ 80 % på ≥ 5), provar en analysatorvariant via drop-in `tempo-variant.conf` BARA
+om den slår standard med ≥ 3 låtar på ≥ 36 korpuslåtar utan syntetförlust (återgång vid > 15 procentenheters fall
+i ok-andel), publicerar morgonrapport-artifact (`morning-artifact.txt` håller URL:en), skriver minne, committar.
+Rör aldrig useRecording/useMetaTempo/integratorn/drops/BLE. Pi:ns `analyser.js` deployades 2026-09-19 17:10 som
+beteendeidentiskt bygge (backup `analyser.js.bak-20260919-1710` = 09-04-filen) så varianterna kan växlas med flaggor.

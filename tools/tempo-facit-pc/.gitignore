@@ -4,3 +4,6 @@ __pycache__/
 corpus/
 corpus-synth/
 bench-baseline/
+daily/
+scoreboard.jsonl
+morning-artifact.txt
