@@ -3,9 +3,9 @@
  * API-only — the web UI is served by a separate frontend process.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, existsSync, unlinkSync, mkdirSync } from 'fs';
 import express from 'express';
-import { getItem, setItem, getJson, getStorageDiagnostics } from './storage.js';
+import { getItem, setItem, getJson, getStorageDiagnostics, DATA_DIR } from './storage.js';
 import {
   bleStats, BLE_BUILD_TAG,
   setDimmingGamma, getDimmingGamma,
@@ -55,15 +55,22 @@ export function attachSubsystemStarters(s: SubsystemStarters): void {
 // per-profil-speglingen och profiles-storage är borta. dimmingGamma och
 // gainCalibration är globala igen och bor i sina egna storage-nycklar.
 
+let attachedTempoCache: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; list(): any[] } | null = null;
+/** Snuttar for PC-facit: <DATA_DIR>/snippets/<key med | -> __>.wav + .json */
+const SNIPPET_DIR = DATA_DIR + '/snippets';
+const snippetFile = (key: string) => SNIPPET_DIR + '/' + key.replace(/\|/g, '__');
+
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
   mic: AlsaMicModule;
   songStore?: { list(): any[]; forget(k: string): boolean; save(): Promise<void>; size: number } | null;
+  tempoCache?: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; list(): any[] } | null;
   invalidateIdleColorCache?: () => void;
 }): void {
   attachedEngine = runtime.engine;
   attachedMic = runtime.mic;
   attachedSongStore = runtime.songStore ?? null;
+  attachedTempoCache = runtime.tempoCache ?? null;
   invalidateIdleColorCacheFn = runtime.invalidateIdleColorCache ?? null;
 
   // A2: cal-punkter laddas ENBART ur mic-state.json (alsaMic:s restoreMicState).
@@ -469,6 +476,48 @@ export function startConfigServer(port = 3050): void {
       const mic: any = await import('./alsaMic.js');
       res.json(mic.getLandmarkStats ? mic.getLandmarkStats() : { frames: 0, emitted: 0 });
     } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
+  });
+  // ── FACIT FRAN PC:N (09-19) ── PC:n HAMTAR snuttar och skriver facit tillbaka: inga portar att
+  // oppna, ingen PC-adress pa Pi:n. Snutten ar 30 s @48 kHz (samma ljud som analysatorn), raderas
+  // nar facit kommit. Se tools/tempo-facit-pc/ och index.ts (schemalaggning vid latbyte).
+  app.get('/api/tempo/snippets', (_req, res) => {
+    try {
+      if (!existsSync(SNIPPET_DIR)) { res.json([]); return; }
+      const rows = readdirSync(SNIPPET_DIR).filter((f) => f.endsWith('.json')).map((f) => {
+        try { return JSON.parse(readFileSync(SNIPPET_DIR + '/' + f, 'utf8')); } catch { return null; }
+      }).filter(Boolean);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
+  });
+  app.get('/api/tempo/snippet', (req, res) => {
+    const key = String(req.query.key ?? '');
+    if (!/^[a-z0-9|]+$/.test(key)) { res.status(400).json({ error: 'ogiltig key' }); return; }
+    const p = snippetFile(key) + '.wav';
+    if (!existsSync(p)) { res.status(404).json({ error: 'ingen snutt' }); return; }
+    res.setHeader('Content-Type', 'audio/wav');
+    res.sendFile(p);
+  });
+  app.put('/api/tempo/facit', async (req, res) => {
+    try {
+      const b = req.body || {}; const key = String(b.key ?? ''); const bpm = Number(b.bpm) || 0;
+      if (!/^[a-z0-9|]+$/.test(key) || !attachedTempoCache) { res.status(400).json({ error: 'ogiltig key eller ingen cache' }); return; }
+      const { foldCatalogBpm } = await import('./tempoLookup.js');
+      const artist = String(b.artist ?? ''), title = String(b.title ?? ''), method = String(b.method ?? 'pc');
+      if (bpm > 40 && bpm < 300) {
+        attachedTempoCache.upsert(key, artist, title, { bpm: foldCatalogBpm(bpm), rawBpm: bpm, source: 'pc:' + method, pcConf: Number(b.conf) || 0, pcAgree: b.agree ?? null, candidates: Array.isArray(b.candidates) ? b.candidates.slice(0, 5) : undefined, at: Date.now(), artist, title });
+        try { (attachedEngine as any)?.setMetaTempo?.(foldCatalogBpm(bpm), 'pc:' + method, artist, title); } catch { /* motorn far aldrig falla pa facit */ }
+        console.log(`[tempo] PC-facit ${bpm.toFixed(1)} (${method}, conf ${Number(b.conf) || 0}) for "${artist} - ${title}"`);
+      } else {
+        attachedTempoCache.upsert(key, artist, title, { bpm: 0, source: 'pc:ingen', at: Date.now(), artist, title });
+        console.log(`[tempo] PC-facit: inget tempo for "${artist} - ${title}"`);
+      }
+      for (const ext of ['.wav', '.json']) { try { unlinkSync(snippetFile(key) + ext); } catch { /* redan borta */ } }
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ ok: false, error: e?.message ?? String(e) }); }
+  });
+  app.get('/api/tempo/cache', (_req, res) => {
+    if (!attachedTempoCache) { res.status(503).json({ error: 'ingen cache' }); return; }
+    res.json(attachedTempoCache.list());
   });
   app.get('/api/raw-capture/status', (_req, res) => {
     const mic: any = attachedMic;

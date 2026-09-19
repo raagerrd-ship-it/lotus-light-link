@@ -571,6 +571,9 @@ let rawCaptureActive = false;
 let rawBuf: Int16Array | null = null;
 let rawLen = 0;
 let rawTarget = 0;
+// FULL-RATE (09-19): facit fran PC:n ska raknas pa SAMMA ljud som analysatorn (48 kHz, samma kanal),
+// inte pa 16 kHz-decimatet. 30 s @48 kHz = 2,9 MB - ryms. rawRate/rawDecimN valjs per capture.
+let rawRate = RAW_RATE; let rawDecimN = RAW_DECIM;
 // Latnamn + facit-BPM foljer med inspelningen. UTAN detta ar en inspelad WAV ett
 // klipp UTAN facit, och tempot maste gissas i efterhand -- vilket 2026-08-30/31
 // kostade en hel kvall: mina egna autokorrelationer sa 137.5 och 60.0 om samma
@@ -586,10 +589,11 @@ let rawAcc = 0;
 
 /** Starta full-rate rå-capture. Allokerar först vid anrop — annars ligger 8,6 MB
  *  och skräpar i en process med MemoryMax 300 MB. */
-export function startRawCapture(seconds: number, label?: string): number {
-  const sec = Math.max(1, Math.min(RAW_MAX_SECONDS, Math.round(seconds)));
+export function startRawCapture(seconds: number, label?: string, fullRate = false): number {
+  const sec = Math.max(1, Math.min(fullRate ? 60 : RAW_MAX_SECONDS, Math.round(seconds)));   // 60 s @48 kHz = 5,8 MB tak
   rawLabel = (label ?? '').slice(0, 120);
-  rawTarget = RAW_RATE * sec;
+  rawRate = fullRate ? SAMPLE_RATE : RAW_RATE; rawDecimN = fullRate ? 1 : RAW_DECIM;
+  rawTarget = rawRate * sec;
   rawDecim = 0; rawAcc = 0;
   if (!rawBuf || rawBuf.length < rawTarget) rawBuf = new Int16Array(rawTarget);
   rawLen = 0;
@@ -598,7 +602,7 @@ export function startRawCapture(seconds: number, label?: string): number {
 }
 
 export function getRawCaptureStatus(): { active: boolean; seconds: number; done: boolean; label: string } {
-  return { active: rawCaptureActive, seconds: rawLen / RAW_RATE, done: rawLen >= rawTarget && rawTarget > 0, label: rawLabel };
+  return { active: rawCaptureActive, seconds: rawLen / rawRate, done: rawLen >= rawTarget && rawTarget > 0, label: rawLabel };
 }
 
 /** Filnamnsvanligt latnamn, t.ex. "ricky-rose-utan-dig-90". Tomt om inget angavs. */
@@ -608,7 +612,7 @@ export function getRawCaptureLabel(): string {
 
 /** WAV av det som samlats. Frigör bufferten — den behövs inte i drift. */
 export function getRawCaptureWav(): Buffer | null {
-  if (!rawBuf || rawLen < RAW_RATE) return null;   // minst 1 s
+  if (!rawBuf || rawLen < rawRate) return null;   // minst 1 s
   rawCaptureActive = false;
   const dataBytes = rawLen * 2;
   const buf = Buffer.alloc(44 + dataBytes);
@@ -619,8 +623,8 @@ export function getRawCaptureWav(): Buffer | null {
   buf.writeUInt32LE(16, 16);
   buf.writeUInt16LE(1, 20);
   buf.writeUInt16LE(1, 22);
-  buf.writeUInt32LE(RAW_RATE, 24);
-  buf.writeUInt32LE(RAW_RATE * 2, 28);
+  buf.writeUInt32LE(rawRate, 24);
+  buf.writeUInt32LE(rawRate * 2, 28);
   buf.writeUInt16LE(2, 32);
   buf.writeUInt16LE(16, 34);
   buf.write('data', 36);
@@ -1327,8 +1331,8 @@ function onAudioData(buf: Buffer): void {
       lightSumLocal += rawPre * rawPre;
       if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
         rawAcc += rawPre;
-        if (++rawDecim >= RAW_DECIM) {
-          let r = (rawAcc / RAW_DECIM) * 32767;
+        if (++rawDecim >= rawDecimN) {
+          let r = (rawAcc / rawDecimN) * 32767;
           if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
           rawBuf[rawLen++] = r;
           rawDecim = 0; rawAcc = 0;
@@ -1358,8 +1362,8 @@ function onAudioData(buf: Buffer): void {
       lightSumLocal += rawPre * rawPre;
       if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
         rawAcc += rawPre;
-        if (++rawDecim >= RAW_DECIM) {
-          let r = (rawAcc / RAW_DECIM) * 32767;
+        if (++rawDecim >= rawDecimN) {
+          let r = (rawAcc / rawDecimN) * 32767;
           if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
           rawBuf[rawLen++] = r;
           rawDecim = 0; rawAcc = 0;

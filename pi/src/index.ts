@@ -374,6 +374,7 @@ async function startMicSubsystem(): Promise<void> {
         engine: eng,
         mic: alsaMic,
         songStore: songStoreRef,
+        tempoCache: tempoCacheRef,
         invalidateIdleColorCache: engineMod?.invalidateIdleColorCache,
       });
 
@@ -463,7 +464,40 @@ async function startSonosSubsystem(): Promise<void> {
           if (name !== lastTrackName) return;    // hann ändras igen → glitch
           engineInstance?.notifyTrackChange(lastArtist, name);
           void resolveMetaTempo(lastArtist, name);
+          scheduleSnippet(lastArtist, name);
         }, 1500);
+      };
+      // SNUTT FOR PC-FACIT (09-19): 10 s in i laten, 30 s @48 kHz (samma ljud som analysatorn), till
+      // <DATA_DIR>/snippets som PC:n hamtar (GET /api/tempo/snippets). Hoppar over: facit finns redan,
+      // manuell ravfangst pagar, snutten ligger redan i kon, eller kon >= 30 (PC:n borta - vanta).
+      const scheduleSnippet = (artist: string | null, title: string) => {
+        if (!tempoCacheRef) return;
+        setTimeout(async () => {
+          try {
+            if (title !== lastTrackName) return;
+            const { songKey } = await import('./songStore.js'); const key = songKey(artist || '', title);
+            const row = tempoCacheRef!.get(key);
+            if (row && row.bpm > 0) return;
+            const mic: any = alsaMic; const st = mic.getRawCaptureStatus?.();
+            if (st?.active) return;
+            const { readdirSync, mkdirSync, writeFileSync } = await import('node:fs');
+            const dir = (await import('./storage.js')).DATA_DIR + '/snippets'; mkdirSync(dir, { recursive: true });
+            const fname = key.replace(/\|/g, '__');
+            const pending = readdirSync(dir).filter((f) => f.endsWith('.json'));
+            if (pending.includes(fname + '.json') || pending.length >= 30) return;
+            mic.startRawCapture(30, title, true);
+            console.log(`[tempo] snutt 30 s @48 kHz for "${title}" (facit fran PC:n)`);
+            setTimeout(() => {
+              try {
+                if (title !== lastTrackName) { mic.getRawCaptureWav?.(); return; }   // laten bytte - kasta
+                const wav = mic.getRawCaptureWav?.(); if (!wav) return;
+                writeFileSync(dir + '/' + fname + '.wav', wav);
+                writeFileSync(dir + '/' + fname + '.json', JSON.stringify({ key, artist: artist || '', title, capturedAt: Date.now(), rate: 48000, seconds: 30 }));
+                console.log(`[tempo] snutt sparad: ${key} (${(wav.length / 1e6).toFixed(1)} MB, ko ${pending.length + 1})`);
+              } catch (e) { console.log('[tempo] snutt kunde inte sparas:', (e as Error).message); }
+            }, 32000);
+          } catch (e) { console.log('[tempo] snutt misslyckades:', (e as Error).message); }
+        }, 10000);
       };
       // Katalogtempo for den nya laten: cache forst (0 ms), annars Deezer (~0,8 s). Svaret
       // skickas bara om laten fortfarande ar densamma; motorn kontrollerar ocksa sjalv.
