@@ -720,6 +720,8 @@ export class PiLightEngine {
   private _octRingMs = 0; private _octPerBeat = 0; private _octReg = 0; private _octOn = false; private _octBeats = 0; private _octBeatsTotal = 0;
   /** AUTOMATISK OKTAVLEDTRAD (09-19): lard ur facit vid forra spelningen av samma lat (2 = analysatorn en oktav under, 0.5 = over, 1 = ratt/okand). */
   private _octHint = 1;
+  /** TEMPOLEDTRAD (09-19): lard klass (facit/analysator) fran forra spelningen av samma lat, med analysatorns median da. */
+  private _tempoHintRatio = 1; private _tempoHintAnBpm = 0; private _tempoHintApplied = false;
   /** Gridpulsernas fyrtider (Date.now vid ticken), ring 256 - for PC-analysens slagfas (events.pulses). */
   private _pulseRing = new Float64Array(256); private _pulsePos = 0;
   /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
@@ -1241,6 +1243,12 @@ export class PiLightEngine {
     this._learnSaver = fn;
   }
   /** Oktavledtrad for aktuell lat, lard automatiskt ur facit (index.ts). Ignoreras om laten redan bytt. */
+  /** Tempoledtrad for aktuell lat (index.ts ur cachen). Grid = analysator x ratio nar analysatorn beter sig som forra gangen. */
+  setTempoHint(ratio: number, anBpm: number, artist: string, title: string): void {
+    if ((artist || '') !== this._songArtist || (title || '') !== this._songTitle) return;
+    this._tempoHintRatio = ratio > 0 ? ratio : 1; this._tempoHintAnBpm = anBpm; this._tempoHintApplied = false;
+    if (this._tempoHintRatio !== 1) console.log(`[takt] tempoledtrad x${this._tempoHintRatio.toFixed(3)} for "${title}" (galler nar analysatorn ligger nara ${anBpm})`);
+  }
   setOctaveHint(hint: number, artist: string, title: string): void {
     if ((artist || '') !== this._songArtist || (title || '') !== this._songTitle) return;
     this._octHint = hint === 2 || hint === 0.5 ? hint : 1;
@@ -1306,8 +1314,8 @@ export class PiLightEngine {
   }
   private notePulse(): void { this._pulseRing[this._pulsePos] = Date.now(); this._pulsePos = (this._pulsePos + 1) & 255; }
   /** For /api/status: vad katalogen sa, hur det stamde med analysatorn, och om det driver gridet. */
-  get metaTempo(): { bpm: number; source: string; ratio: number; verdict: string; drives: boolean } {
-    return { bpm: this._metaBpm, source: this._metaSource, ratio: this._metaRatio, verdict: this._metaVerdict, drives: this._metaDrives };
+  get metaTempo(): { bpm: number; source: string; ratio: number; verdict: string; drives: boolean; tempoHint: number; tempoHintApplied: boolean } {
+    return { bpm: this._metaBpm, source: this._metaSource, ratio: this._metaRatio, verdict: this._metaVerdict, drives: this._metaDrives, tempoHint: this._tempoHintRatio, tempoHintApplied: this._tempoHintApplied };
   }
   setSongOffsetSaver(fn: ((artist: string, title: string, ms: number) => void) | null): void {
     this._songSaveOffset = fn;
@@ -1482,6 +1490,7 @@ export class PiLightEngine {
     }
     this.learnReset();
     this._octOn = false; this._octBeats = 0; this._octBeatsTotal = 0; this._octRingMs = 0; this._octPerBeat = 0; this._octReg = 0; this._octHint = 1;
+    this._tempoHintRatio = 1; this._tempoHintAnBpm = 0; this._tempoHintApplied = false;
     this._tempoWin = []; this._tempoWinLastAt = 0; this._tempoSm = 0;   // nytt fonster for ny lat (re-acq kor ra i 5 s)
     this._songBpm = 0;
     this._songEntry = null;
@@ -1587,7 +1596,7 @@ export class PiLightEngine {
       const an = frame?.bpm ?? 0, ac = frame?.bpmConfidence ?? 0;
       if (an > 40 && ac >= 0.6) {
         const r = this._metaBpm / an;
-        const cls = [0.5, 1, 2, 2 / 3, 1.5].find((x) => Math.abs(r / x - 1) < 0.05);
+        const cls = [0.5, 1, 2, 2 / 3, 1.5, 4 / 3, 0.75].find((x) => Math.abs(r / x - 1) < 0.05);   // 4/3, 3/4 tillagda 09-19 (rapporten: 2 av 10 latar)
         this._metaRatio = r;
         this._metaVerdict = cls === undefined ? 'avvisat' : ((cls === 0.5 || cls === 1 || cls === 2) ? 'ok' : 'ok-fantom');
         console.log(`[tempo] facit ${this._metaBpm.toFixed(1)} vs analysatorn ${an}: ${this._metaVerdict} (kvot ${r.toFixed(2)})`);
@@ -1617,7 +1626,16 @@ export class PiLightEngine {
         this._tempoSm = m;
       } else this._tempoSm = 0;
     }
-    const anBpm = (!reacq && smoothS > 0 && this._tempoSm > 0) ? this._tempoSm : rawBpm;
+    let anBpm = (!reacq && smoothS > 0 && this._tempoSm > 0) ? this._tempoSm : rawBpm;
+    // TEMPOLEDTRAD (09-19, rapporten "Tio latar mot facit"): analysatorn hade ratt tempo i 3 av 10, fantom 3/2
+    // eller 4/3 i 4, halva i 1. Domen vid latslut sparas som klass pa laten; nasta spelning multipliceras
+    // analysatorns (medianade) varde med klassen - men bara nar analysatorn ligger inom +-8 % av vad den
+    // sa forra gangen, sa en analysator som denna gang har ratt inte forstors. Inlarning tillampad,
+    // inte katalogstyrning: fasen och tempot kommer fortfarande ur ljudet.
+    if (!reacq && this._tempoHintRatio !== 1 && anBpm > 0 && this._tempoHintAnBpm > 0 && Math.abs(anBpm / this._tempoHintAnBpm - 1) < 0.08) {
+      anBpm *= this._tempoHintRatio;
+      if (!this._tempoHintApplied) { this._tempoHintApplied = true; console.log(`[takt] tempoledtrad tillampad: analysatorn ${(anBpm / this._tempoHintRatio).toFixed(1)} -> grid ${anBpm.toFixed(1)}`); }
+    }
     const bpm = _memBpm > 0 ? _memBpm : anBpm;
     // Ett känt tempo är inte en gissning — låt inte en svag mic sänka förtroendet.
     const conf = _memBpm > 0 ? Math.max(rawConf, 0.9) : rawConf;

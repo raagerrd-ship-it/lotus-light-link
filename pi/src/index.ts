@@ -241,7 +241,7 @@ async function ensureEngineInstance(): Promise<void> {
       const key = songKey(a, t); const e = tc.get(key); const med = summary.bpmMedian || 0;
       let verdictEnd: string | undefined;
       if (e && e.bpm > 0 && med > 0) {
-        const r = e.bpm / med; const cls = [0.5, 1, 2, 2 / 3, 1.5].find((x) => Math.abs(r / x - 1) < 0.05);
+        const r = e.bpm / med; const cls = [0.5, 1, 2, 2 / 3, 1.5, 4 / 3, 0.75].find((x) => Math.abs(r / x - 1) < 0.05);
         verdictEnd = cls === undefined ? 'avvisat' : ((cls === 0.5 || cls === 1 || cls === 2) ? (cls === 1 ? 'ok' : `ok-oktav-${cls}`) : `ok-fantom-${cls.toFixed(2)}`);
         (summary as Record<string, number>).facitRatioEnd = Math.round(r * 100) / 100;
       }
@@ -254,6 +254,14 @@ async function ensureEngineInstance(): Promise<void> {
         if (cls > 0) {
           const same = e?.octaveHint === cls;
           hintPatch = { octaveHint: cls, hintCount: same ? (e?.hintCount ?? 0) + 1 : 1 };
+        }
+      }
+      // TEMPOLEDTRAD: klassen (aven fantomer 3/2, 4/3 ...) + analysatorns median -> nasta spelning (piEngine.setTempoHint).
+      if (verdictEnd && verdictEnd !== 'avvisat' && e && e.bpm > 0 && med > 0) {
+        const r = e.bpm / med; const cls = [0.5, 1, 2, 2 / 3, 1.5, 4 / 3, 0.75].find((x) => Math.abs(r / x - 1) < 0.05);
+        if (cls !== undefined) {
+          const prev = e.tempoHint; const same = prev && Math.abs(prev.ratio / cls - 1) < 0.01;
+          (hintPatch as any).tempoHint = { ratio: Math.round(cls * 1000) / 1000, anBpm: Math.round(med * 10) / 10, count: same ? (prev!.count + 1) : 1 };
         }
       }
       tc.upsert(key, a, t, { learn: summary, learnAt: Date.now(), ...(verdictEnd ? { verdictEnd } : {}), ...hintPatch });
@@ -560,7 +568,8 @@ async function startSonosSubsystem(): Promise<void> {
           // Lard oktavledtrad fran forra spelningen (automatisk justering, se learn-saver).
           const { songKey: sk } = await import('./songStore.js');
           const row = tempoCacheRef.get(sk(artist || '', title)) ?? null;
-          if (row && (row.octaveHint === 2 || row.octaveHint === 0.5)) engineInstance.setOctaveHint(row.octaveHint, artist || '', title);
+          if (row?.tempoHint && Math.abs(row.tempoHint.ratio - 1) > 0.01) engineInstance.setTempoHint(row.tempoHint.ratio, row.tempoHint.anBpm, artist || '', title);
+          else if (row && (row.octaveHint === 2 || row.octaveHint === 0.5)) engineInstance.setOctaveHint(row.octaveHint, artist || '', title);
           else console.log(`[tempo] inget katalogtempo for "${artist ?? '?'} - ${title}"${cached ? ' (cache)' : ''}`);
         } catch (e) { console.log('[tempo] uppslag misslyckades:', (e as Error).message); }
       };

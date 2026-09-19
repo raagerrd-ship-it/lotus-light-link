@@ -25,6 +25,9 @@ export interface TempoCacheEntry {
   verdictEnd?: string;
   /** AUTOMATISKT LARD: oktavledtrad (2 / 0.5 / 1) ur verdictEnd, och hur manga spelningar som gett samma klass. */
   octaveHint?: number; hintCount?: number;
+  /** TEMPOLEDTRAD (09-19): facit/analysator-klass vid forra spelningen (1, 2, 0.5, 1.5, 0.667, 1.333, 0.75) + analysatorns
+   *  median da. Nasta spelning: grid = analysatorns varde x ratio, bara om analysatorn ligger inom +-8 % av anBpm. */
+  tempoHint?: { ratio: number; anBpm: number; count: number };
 }
 const NEG_TTL_MS = 7 * 24 * 3600e3;
 

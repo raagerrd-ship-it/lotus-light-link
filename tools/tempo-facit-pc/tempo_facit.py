@@ -10,10 +10,11 @@ lardata-rad. Analysatorn ar gemensam med pi-dmx: det som bevisas har ska in i an
 
 Kor:  .venv\\Scripts\\python.exe tempo_facit.py [http://192.168.1.174:3051] [--once]
 Autostart vid inloggning: tempo_facit.bat via Startup-mappen (LotusTempoFacit.cmd)."""
-import io, json, sys, time, logging, urllib.request, urllib.parse
+import io, os, json, sys, time, logging, urllib.request, urllib.parse
 import numpy as np, soundfile as sf, librosa
 
 PI = next((a for a in sys.argv[1:] if a.startswith('http')), 'http://192.168.1.174:3051')
+CORPUS_DIR = os.environ.get('LOTUS_CORPUS_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'corpus')
 ONCE = '--once' in sys.argv
 POLL_S = 20
 HOP = 512
@@ -251,6 +252,16 @@ def process_one(row: dict) -> bool:
     except Exception as e: analysis['descr'] = {'error': str(e)}
     r.update({'id': sid, 'key': key, 'kind': kind, 'artist': artist, 'title': title, 'analysis': analysis})
     http('PUT', '/api/tempo/facit', r)
+    # KORPUS (09-19): snutten + handelselogg + resultat sparas pa PC:n (Pi:n raderar sin kopia nar facit
+    # kommit). Det ar datasetet for att trimma analysatorns tempoval offline - delad med pi-dmx.
+    try:
+        os.makedirs(CORPUS_DIR, exist_ok=True)
+        safe = sid.replace('|', '__').replace('#', '_')
+        with open(os.path.join(CORPUS_DIR, safe + '.wav'), 'wb') as f: f.write(wav)
+        with open(os.path.join(CORPUS_DIR, safe + '.json'), 'w', encoding='utf-8') as f:
+            json.dump({'row': row, 'result': r, 'events': ev, 'savedAt': time.time()}, f, ensure_ascii=False)
+    except Exception as e:
+        log.warning('korpus kunde inte sparas for %s: %s', sid, e)
     ph, lv, on, dr = analysis.get('phase', {}), analysis.get('level', {}), analysis.get('onset', {}), analysis.get('drop', {})
     log.info('%s [%s] %s - %s: %.1f BPM (tracker %s x%s halvkvot %s conf %s) | kick %s ms (n=%s) puls %s ms | niva lag %s ms r %s | onset p %s r %s bias %s | drop %s %s | %.1f s',
              kind, sid.split('#')[-1] if '#' in sid else '-', artist, title, r.get('bpm', 0), r.get('bpmTracker'), r.get('octave'), r.get('halfRatio'), r.get('conf'),
