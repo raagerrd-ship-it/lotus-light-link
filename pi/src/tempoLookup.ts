@@ -13,14 +13,16 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { songKey } from './songStore.js';
 
-export interface TempoHit { bpm: number; rawBpm: number; source: string; matchArtist: string; matchTitle: string; id: number; score: number }
+export interface TempoHit { bpm: number; rawBpm: number; source: string; matchArtist: string; matchTitle: string; id: number; score: number; genre?: string }
 export interface TempoCacheEntry {
-  bpm: number; rawBpm?: number; source: string; matchArtist?: string; matchTitle?: string; score?: number;
+  bpm: number; rawBpm?: number; source: string; matchArtist?: string; matchTitle?: string; score?: number; genre?: string;
   at: number; artist: string; title: string;
   /** Motorns dom nar analysatorn fatt ett sakert varde: ok / ok-fantom / avvisat. */
   analyserBpm?: number; ratio?: number; verdict?: string; verdictAt?: number;
   /** Motorns inlarningsrad for laten (piEngine.learnSummary): analysatorns bpm-statistik + kick-ringens intervall. */
   learn?: Record<string, number>; learnAt?: number;
+  /** Dom vid latslut: facit mot hela latens median-bpm (ok / ok-oktav-0.5|2 / ok-fantom-x / avvisat). */
+  verdictEnd?: string;
 }
 const NEG_TTL_MS = 7 * 24 * 3600e3;
 
@@ -100,12 +102,17 @@ export async function lookupDeezer(artist: string | null, title: string, timeout
     const cands = ((d?.data || []) as any[]).map((r) => {
       const st = similarity(title, r.title || '');
       const sa = artist ? similarity(artist, r.artist?.name || '') : 1;
-      return { id: r.id as number, t: (r.title || '') as string, a: (r.artist?.name || '') as string, st, sa, score: st * 0.6 + sa * 0.4 };
+      return { id: r.id as number, t: (r.title || '') as string, a: (r.artist?.name || '') as string, albumId: (r.album?.id ?? 0) as number, st, sa, score: st * 0.6 + sa * 0.4 };
     }).filter((c) => c.st >= (artist ? 0.6 : 0.9) && c.sa >= 0.6).sort((x, y) => y.score - x.score).slice(0, 4);
     for (const c of cands) {
       const t = await getJson(`https://api.deezer.com/track/${c.id}`, timeoutMs);
       const bpm = Number(t?.bpm) || 0;
-      if (bpm > 40 && bpm < 300) return { bpm: foldCatalogBpm(bpm), rawBpm: bpm, source: artist ? 'deezer' : 'deezer-titel', matchArtist: c.a, matchTitle: c.t, id: c.id, score: c.score };
+      if (bpm > 40 && bpm < 300) {
+        // Genre (album -> genres): lardata for att se VILKEN musik analysatorn faller pa. Bast-effort.
+        let genre: string | undefined;
+        try { const al = c.albumId ? await getJson(`https://api.deezer.com/album/${c.albumId}`, timeoutMs) : null; genre = (al?.genres?.data || []).map((g: any) => g.name).join(', ') || undefined; } catch { /* genre ar bonus */ }
+        return { bpm: foldCatalogBpm(bpm), rawBpm: bpm, source: artist ? 'deezer' : 'deezer-titel', matchArtist: c.a, matchTitle: c.t, id: c.id, score: c.score, genre };
+      }
     }
   }
   return null;
@@ -118,6 +125,6 @@ export async function resolveTempo(cache: TempoCache, artist: string | null, tit
   if (c) return { hit: c.bpm > 0 ? { bpm: c.bpm, rawBpm: c.rawBpm ?? c.bpm, source: c.source, matchArtist: c.matchArtist || '', matchTitle: c.matchTitle || '', id: 0, score: c.score || 0 } : null, cached: true };
   let hit: TempoHit | null;
   try { hit = await lookupDeezer(artist, title); } catch { return { hit: null, cached: false }; }
-  cache.set(key, { bpm: hit?.bpm || 0, rawBpm: hit?.rawBpm, source: hit?.source || 'ingen', matchArtist: hit?.matchArtist, matchTitle: hit?.matchTitle, score: hit?.score, at: Date.now(), artist: artist || '', title });
+  cache.set(key, { bpm: hit?.bpm || 0, rawBpm: hit?.rawBpm, genre: hit?.genre, source: hit?.source || 'ingen', matchArtist: hit?.matchArtist, matchTitle: hit?.matchTitle, score: hit?.score, at: Date.now(), artist: artist || '', title });
   return { hit, cached: false };
 }

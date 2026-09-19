@@ -301,6 +301,8 @@ export interface LightCalibration {
   useMetaTempo: boolean;
   /** Sekunder for det konfidensviktade median-tempot som driver gridet (analysatorns ogonblicksvarde hoppar +-5 %). 0 = av. */
   beatTempoSmoothS: number;
+  /** OKTAVREGEL ur kick-ringen (09-19): ~4 regelbundna transienter per gridslag vid grid < 100 BPM => presentera 2x. */
+  beatOctaveRule: boolean;
 
 
   /** DYNAMIK: nedre input-tröskel som fraktion av gainens primärpunkt. level under
@@ -419,6 +421,7 @@ const DEFAULT_CAL: LightCalibration = {
   useRecording: true,
   useMetaTempo: false,       // 09-18: FACIT-lage. Katalogen (Deezer) doms mot analysatorn och loggas; true = lat den driva (test)
   beatTempoSmoothS: 12,      // 09-19: "Kla av mig": ogonblicksvardet 97-108 pa 45 s, medianen 101 hela tiden -> 8 om-ankringar blev 0
+  beatOctaveRule: true,      // 09-19: "Ego" (Assergard): ring 174 ms x3,96/slag reg 0,84, analysatorn 87, orat: for langsamt -> 2x
 
   inLowFrac: 0.022,
   inHighFrac: 0.075,
@@ -713,6 +716,8 @@ export class PiLightEngine {
   /** TEMPOSTABILITET (09-19): 1 Hz-fonster av analysatorns (bpm, conf); gridet far den viktade medianen. */
   private _tempoWin: Array<{ t: number; bpm: number; conf: number }> = [];
   private _tempoWinLastAt = 0; private _tempoSm = 0;
+  /** Oktavregelns senaste ringmatt (per slag) + rakning for inlarningsraden. */
+  private _octRingMs = 0; private _octPerBeat = 0; private _octReg = 0; private _octOn = false; private _octBeats = 0; private _octBeatsTotal = 0;
   /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
   private _capBaseMs = -1;
   private _capUntilMs = -1;
@@ -1267,6 +1272,7 @@ export class PiLightEngine {
       confMedian: r2(med(this._learnConf)),
       ringIntervalMs: Math.round(ringMs * 10) / 10, ringRegular: total ? r2(wn / total) : 0, ringN: total,
       ringPerBeat: ringMs > 0 && bpmMed > 0 ? r2((60000 / bpmMed) / ringMs) : 0,
+      octave2x: this._octBeatsTotal ? r2(this._octBeats / this._octBeatsTotal) : 0,   // andel slag dar oktavregeln presenterade 2x
     };
   }
   private learnReset(): void {
@@ -1458,6 +1464,7 @@ export class PiLightEngine {
       try { this._learnSaver?.(this._songArtist, this._songTitle, this.learnSummary()); } catch { /* cachen far aldrig falla motorn */ }
     }
     this.learnReset();
+    this._octOn = false; this._octBeats = 0; this._octBeatsTotal = 0; this._octRingMs = 0; this._octPerBeat = 0; this._octReg = 0;
     this._tempoWin = []; this._tempoWinLastAt = 0; this._tempoSm = 0;   // nytt fonster for ny lat (re-acq kor ra i 5 s)
     this._songBpm = 0;
     this._songEntry = null;
@@ -1712,7 +1719,7 @@ export class PiLightEngine {
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
-    subdivLevel: number; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
+    subdivLevel: number; octave: { on: boolean; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
@@ -1726,6 +1733,7 @@ export class PiLightEngine {
       beatErr: this._beatErr,
       gridPulses: this._gridPulseCount,
       subdivLevel: this._subdivLevel,
+      octave: { on: this._octOn, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
@@ -2201,7 +2209,30 @@ export class PiLightEngine {
               if (bpmNow > _halveAbove) _bpmWants = -1;
               else if (bpmNow < _back) _bpmWants = 0;
             }
+            // OKTAVREGEL UR RINGEN (09-19, forsta regeln ur facit-lardatan): analysatorns fonster
+            // [80,160) viker oktaver, och pa "Ego" (Assergard) gav den 86/87 medan kick-ringen hade
+            // 174 ms-transienter x3,96 per gridslag med regelbundenhet 0,84 - och orat sa "for
+            // langsamt". Ovriga Assergard-latar: x3,3 reg 0,3-0,5 -> ingen dubbling. Regeln laser
+            // ringen en gang per slag (senaste 64 kickar ~18 s): ~4 regelbundna per slag vid grid
+            // < 100 BPM => presentera 2x (samma vag som energySubdiv). Hysteres + 10 s hallning.
+            let _octWants: number | null = null;
+            if (this.cal.beatOctaveRule !== false && bpmNow > 0) {
+              const ks = getRecentKicks(); const bins = new Map<number, number>(); let n = 0;
+              for (let i = 1; i < ks.length; i++) { const dt = ks[i] - ks[i - 1]; if (dt > 40 && dt < 2000) { const b = Math.round(dt / 10) * 10; bins.set(b, (bins.get(b) ?? 0) + 1); n++; } }
+              let mode = 0, modeN = 0; for (const [b, c] of bins) if (c > modeN) { modeN = c; mode = b; }
+              let ws = 0, wn = 0; for (const [b, c] of bins) if (mode > 0 && Math.abs(b / mode - 1) <= 0.1) { ws += b * c; wn += c; }
+              this._octRingMs = wn ? ws / wn : 0; this._octReg = n ? wn / n : 0;
+              this._octPerBeat = this._octRingMs > 0 ? baseIntervalMs / this._octRingMs : 0;
+              const pb = this._octPerBeat, rg = this._octReg;
+              const onCond = n >= 20 && bpmNow < 100 && pb >= 3.7 && pb <= 4.3 && rg >= 0.7;
+              const holdCond = n >= 12 && bpmNow < 105 && pb >= 3.4 && pb <= 4.6 && rg >= 0.5;
+              if (!this._octOn && onCond) { this._octOn = true; console.log(`[takt] oktavregel 2x PA: ring ${this._octRingMs.toFixed(0)} ms x${pb.toFixed(2)}/slag reg ${rg.toFixed(2)} (grid ${bpmNow.toFixed(1)})`); }
+              else if (this._octOn && !holdCond) { this._octOn = false; console.log(`[takt] oktavregel 2x AV: ring ${this._octRingMs.toFixed(0)} ms x${pb.toFixed(2)}/slag reg ${rg.toFixed(2)} (grid ${bpmNow.toFixed(1)})`); }
+              if (this._octOn) _octWants = 1;
+              this._octBeatsTotal++; if (this._octOn) this._octBeats++;
+            } else this._octOn = false;
             if (_bpmWants !== null) next = _bpmWants;
+            else if (_octWants !== null) next = _octWants;
             else if (energySubdiv) {
               if (current <= 0 && energy > (this.cal.subdivHiOn ?? 2)) next = 1;
               else if (current === 1 && energy < (this.cal.subdivHiOff ?? 1.9)) next = 0;

@@ -235,8 +235,18 @@ async function ensureEngineInstance(): Promise<void> {
       tc.update(songKey(a, t), { verdict, analyserBpm, ratio, verdictAt: Date.now() });
     });
     engineInstance.setLearnSaver((a, t, summary) => {
-      tc.upsert(songKey(a, t), a, t, { learn: summary, learnAt: Date.now() });
-      console.log(`[tempo] inlärning: "${a} - ${t}" analysator ${summary.bpmMedian} (${summary.bpmMin}-${summary.bpmMax}, conf ${summary.confMedian}) ring ${summary.ringIntervalMs} ms x${summary.ringPerBeat}/slag reg ${summary.ringRegular} n=${summary.ringN} ${summary.durationS}s`);
+      // DOM VID LATSLUT (09-19): motorns forsta dom faller pa analysatorns forsta sakra varde, som ofta
+      // ar instabilt ("All In": 121/103 -> avvisat, 30 s senare 131 = facit 130,8). Har doms facit mot
+      // hela latens median i stallet - det ar den domen lardatan ska anvanda.
+      const key = songKey(a, t); const e = tc.get(key); const med = summary.bpmMedian || 0;
+      let verdictEnd: string | undefined;
+      if (e && e.bpm > 0 && med > 0) {
+        const r = e.bpm / med; const cls = [0.5, 1, 2, 2 / 3, 1.5].find((x) => Math.abs(r / x - 1) < 0.05);
+        verdictEnd = cls === undefined ? 'avvisat' : ((cls === 0.5 || cls === 1 || cls === 2) ? (cls === 1 ? 'ok' : `ok-oktav-${cls}`) : `ok-fantom-${cls.toFixed(2)}`);
+        (summary as Record<string, number>).facitRatioEnd = Math.round(r * 100) / 100;
+      }
+      tc.upsert(key, a, t, { learn: summary, learnAt: Date.now(), ...(verdictEnd ? { verdictEnd } : {}) });
+      console.log(`[tempo] inlärning: "${a} - ${t}"${verdictEnd ? ` facit ${e!.bpm} -> ${verdictEnd} |` : ''} analysator ${summary.bpmMedian} (${summary.bpmMin}-${summary.bpmMax}, conf ${summary.confMedian}) ring ${summary.ringIntervalMs} ms x${summary.ringPerBeat}/slag reg ${summary.ringRegular} n=${summary.ringN} ${summary.durationS}s`);
     });
     console.log(`[tempo] katalogcache: ${tc.size} låtar (facit-läge: katalogen driver ${JSON.parse(getItem('light-calibration') || '{}').useMetaTempo === true ? 'PÅ' : 'av'})`);
   } catch (e) { console.log('[tempo] katalogcache kunde inte laddas:', (e as Error).message); }
