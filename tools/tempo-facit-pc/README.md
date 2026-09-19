@@ -34,3 +34,14 @@ PC:n räknar per snutt och skriver in i cacheraden (`pc`, dropdomar i `dropEvent
 - **drop**: svacka (bas ≤ 50 % i 3,5 s) → återkomst (≥ 60 % inom 2 s), `score`; för drop-fångster dom
   `ratt/falsk/osaker` mot händelsen vid 15 s; `realtimeDropsAtS` = detektorns egna fyrningar i fönstret.
 - **descr**: spektral tyngdpunkt, basandel, perkussivitet (HPSS), dynamik dB, basonsets/s.
+
+## Rapport (`report.py`)
+
+`report.py --n 10 --findings findings.json --out rapport.html` hämtar `GET /api/tempo/cache`, tar de N senaste
+låtarna med PC-analys och skriver en artifact-sida (nyckeltal, punktdiagram puls/kick mot slaget med lead-linjen,
+tabeller för tempo/fas/nivå/onset/drops/deskriptorer) + JSON. Fynd och nästa steg ges i `findings.json`.
+**2026-09-19, tio country-låtar** (`findings-2026-09-19.json`): analysatorn hade rätt tempo i 3 av 10 (3/2 ×2,
+4/3 ×2, halva ×1, annat ×2); analysatorns spann inom låt 50 BPM i median; gridet +13 ms median när tempot är rätt
+(IQR 22–52 ms); kick-bias −9 ms; onset precision 0,8 / recall 0,5; styrkekanalen lag 250 ms, r 0,4; inga drops i
+materialet; ringens oktavregel 1/2 → avstängd (`beatOctaveRule` false). Mätfälla rättad samma dag: pulsoffset
+måste mätas mot förväntad fyrtid (slag − lead), annars klipper on-beat-fönstret bort just −lead-regionen.

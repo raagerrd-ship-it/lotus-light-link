@@ -112,16 +112,23 @@ def phase_analysis(ev: dict, beats_s: np.ndarray, bpm: float) -> dict:
     grid = _wall(ev, beats_s)
     lo, hi = grid[0] - per, grid[-1] + per
 
-    def stats(src):
+    beat = ev.get('beat') or {}
+    lead = float(beat.get('leadMs') or 0)
+
+    def stats(src, shift=0.0):
+        """shift: forvantad fyrtid relativt slaget. Pulser SKA fyra vid -lead, sa de mats mot slag - lead;
+        annars klipper on-beat-fonstret (+-slag/4) bort just den regionen (rokprov 09-19: 'gridLag 122')."""
         ts = np.array([t for t in (src or []) if lo <= t <= hi], dtype=float)
-        o = _nearest_offsets(ts, grid)
+        o = _nearest_offsets(ts + shift, grid)
         on = o[np.abs(o) < per / 4] if len(o) else o
         r = {'n': int(len(o)), 'onBeat': int(len(on)), 'offBeatShare': round(1 - len(on) / len(o), 2) if len(o) else None}
         if len(on) >= 3:
-            r.update({'medianMs': round(float(np.median(on)), 1), 'iqrMs': round(float(np.percentile(on, 75) - np.percentile(on, 25)), 1)})
+            r.update({'medianMs': round(float(np.median(on)) - shift, 1), 'iqrMs': round(float(np.percentile(on, 75) - np.percentile(on, 25)), 1)})
         return r
-    beat = ev.get('beat') or {}
-    return {'kick': stats(ev.get('kicks')), 'pulse': stats(ev.get('pulses')), 'leadMs': beat.get('leadMs'), 'gridBpm': beat.get('bpm'), 'pcBpm': round(bpm, 1)}
+    kick = stats(ev.get('kicks'))
+    pulse = stats(ev.get('pulses'), shift=lead)          # medianMs = fyrtid mot slaget (forvantat -lead)
+    grid_lag = round(pulse['medianMs'] + lead, 1) if 'medianMs' in pulse else None   # +x = gridet x ms sent
+    return {'kick': kick, 'pulse': pulse, 'gridLagMs': grid_lag, 'leadMs': lead, 'gridBpm': beat.get('bpm'), 'pcBpm': round(bpm, 1)}
 
 
 def level_analysis(y: np.ndarray, sr: int, ev: dict) -> dict:

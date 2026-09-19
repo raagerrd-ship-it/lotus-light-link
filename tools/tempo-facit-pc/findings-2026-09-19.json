@@ -1,0 +1,29 @@
+{
+ "summary": [
+  "<strong>Tempot är problemet, inte fasen.</strong> Analysatorn hade rätt tempo i 3 av 10 låtar. I 4 låg den på en fantom (3/2 eller 4/3), i 1 på halva tempot, i 2 på något annat. Lampan pulserade alltså i fel takt i 7 av 10 låtar — det är \"synkar inte\"-känslan.",
+  "<strong>När tempot är rätt sitter gridet.</strong> På de tre låtarna med rätt tempo fyrar pulserna 13, −17 och −94 ms från förväntat, med kvartilavstånd 22–52 ms. Medianen över alla tio är +13 ms. Släpet på ~60 ms från första mätningen var inte generellt.",
+  "<strong>Analysatorns tempo vandrar 50 BPM inom en låt</strong> (median av spannet, t.ex. 81–143, 80–149). Medianfönstret på 12 s håller gridet stilla, men det kan inte rädda ett värde som är fel i grunden.",
+  "<strong>Kickdetektorn missar hälften.</strong> Onset-recall 0,39–0,50 (median 0,50) mot PC:ns basonsets, precision 0,67–0,94. De kickar som fyrar är riktiga och rätt i tid (bias −4 ms), men varannan basonset ger ingen kick.",
+  "<strong>Styrkekanalen släpar 200–500 ms</strong> efter ljudets RMS (median 250 ms) och följer löst (r 0,36–0,78, median 0,40). Det är envelopernas tidskonstanter, inte BLE.",
+  "<strong>Ringens oktavregel avstängd:</strong> enligt sin egen facit-logg 1 rätt av 2 (dubblade rätt på en tidigare låt, fel på \"This Ain't Country\" — shuffle med 3,6 transienter per slag där PC-facit säger 117), och den missade \"Sounds Like Something I'd Do\" där dubbling var rätt. För litet underlag: av tills minst 5 låtar med ≥ 80 % rätt."
+ ],
+ "findings": [
+  "Tempoklasser (PC-facit / analysatorns median): lika 3, dubbla 1 (Drake Milligan 160,8 mot 81), 3/2 2 (Northlake Shivers 156 mot 106, Luke Combs 141 mot 95), 4/3 2 (Zach Bryan 141 mot 103, Cody Johnson 106 mot 80), annat 2 (Kaleb Austin 1,13; Cooper Alan 1,23). Fantomklasserna 3/2 och 4/3 är kamfiltrets kända fällor — samma som pi-dmx:s \"2/3-fantom\".",
+  "Analysatorns tempo inom låt: spann 3–78 BPM, median 50. Konfidensen hjälper inte: den ligger 0,7–1,0 även när värdet är fel. Det betyder att konfidens inte kan användas som grind för tempo.",
+  "Gridets släp per låt (puls + lead − slag, positivt = sent): −94, −43, −36, −17, +13, +13, +16, +31, +43, (+122 mätt med den gamla metoden före rättelsen, se metod). Kvartilavstånden 22–154 ms; de tre bästa låtarna 22–52 ms. Med rätt tempo är fasen inom ±45 ms i 8 av 9 rättmätta.",
+  "Kickarnas läge mot PC:ns slag: median −9 ms, men per låt −92 (Goldmine) till +36 (Lets Go) med IQR 100–150 ms. Spridningen är dels åttondelskickar (off-beat-andel 0,4–0,6), dels att PC:ns slag ligger på trumman medan analysatorn fyrar på basen — mätningen skiljer inte dem åt än.",
+  "Onset: precision 0,8 i median (kickar med basonset inom 50 ms), recall 0,5 (basonsets som fick en kick). Bias −4 ms. Recall är lika låg på alla tio låtar, oberoende av genre-deskriptorerna — det är tröskeln eller grinden, inte materialet.",
+  "Styrkekanalen: lag 200–500 ms, r 0,36–0,78. Bäst på Zach Bryan (r 0,78, lag 200), sämst på Drake Milligan (r 0,36, lag 400). Ljuset rör sig i 0,3–1,0-bandet på alla låtar.",
+  "Drops: spellistan (country) innehöll inga drops. Realtidsdetektorn fyrade 0 gånger i fångstfönstren, PC:ns bästa dropscore 0,11–0,38 (två svaga kandidater). Två manuella/utlösta dropfångster: en \"falsk\", en \"osäker\". Dropverifieringen behöver annan musik.",
+  "PC-facit är en skattning: 6/6 på syntetiskt test, och här stämmer det med analysatorn på 3 låtar och ger rimliga country-tempon (102–161). Två låtar (Kaleb Austin, Cooper Alan) hamnade i klassen \"annat\" och bör kontrolleras för hand — där kan facit lika gärna ha fel."
+ ],
+ "next": [
+  "<strong>Tempot i analysatorn</strong> (delad med pi-dmx): datasetet visar exakt vilka klasser som går fel (3/2, 4/3, halva). Nästa steg är att köra analysatorns tempoval offline mot de tio snuttarna med PC-facit och trimma kamfiltrets fantomveton och oktavvalet tills klasserna stämmer, sedan ordnad deploy av analyser.js.",
+  "<strong>Per-låt-korrigering, automatiskt:</strong> domen vid låtslut ger redan oktavledtråd (2/½). Utöka till fantomklasserna (3/2, 4/3): nästa spelning får gridet analysatorns värde × klassen. Det är inlärning tillämpad, inte katalogstyrning, och det träffar 5 av dagens 7 fellåtar.",
+  "<strong>Kickdetektorn:</strong> sänk tröskeln/öppna grinden och mät recall per snutt mot PC-onsets tills ~0,8 utan att precisionen faller under 0,7. PC-onsets per snutt finns redan i händelseloggen.",
+  "<strong>Styrkekanalen:</strong> avgör om 250 ms lag är avsiktligt (ceilFollowMs, shapeMs). Är det inte det: kortare attack på nivån, mät lag och r igen.",
+  "<strong>Slagfas:</strong> med rätt tempo är gridet inom ±45 ms. Lead 132 verkar rimlig; finjustering av leaden ska vänta tills tempot är rätt på fler låtar, annars trimmas den mot brus.",
+  "<strong>Facit-kvalitet:</strong> tappa tempo för hand på Kaleb Austin och Cooper Alan (klass \"annat\") och jämför med PC:ns 127,8 och 117,2. Två knapptryck ger svaret på om PC-facit kan litas på i den klassen.",
+  "<strong>Drops:</strong> spela musik med drops en kväll så dropverifieringen får material; dropfångsten och domen finns och väntar."
+ ]
+}
